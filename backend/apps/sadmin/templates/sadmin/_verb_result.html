@@ -1,0 +1,6 @@
+{# HTMX-swap target for verb POST results. #}
+<div class="rounded border px-3 py-2 text-sm
+            {% if ok %}border-emerald-300 bg-emerald-50 text-emerald-800
+            {% else %}border-red-300 bg-red-50 text-red-700{% endif %}">
+  {{ message }}
+</div>

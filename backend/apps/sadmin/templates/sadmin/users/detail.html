@@ -1,0 +1,79 @@
+{% extends "sadmin/_base.html" %}
+{% block title %}{{ subject_user.email }}{% endblock %}
+
+{% block content %}
+<a class="text-sm text-blue-600 hover:underline" href="{% url 'sadmin:users_list' %}">← All users</a>
+
+<h2 class="text-2xl font-semibold mt-2 mb-1">{{ subject_user.email }}</h2>
+<p class="text-sm text-slate-500 mb-4">
+  is_active={{ subject_user.is_active }} · is_superuser={{ subject_user.is_superuser }}
+  · last_login={{ subject_user.last_login|date:"Y-m-d H:i"|default:"never" }}
+</p>
+
+<div id="user-status-banner" class="mb-4"></div>
+
+<section class="grid md:grid-cols-2 gap-4">
+  <div class="bg-white border border-slate-200 rounded p-4">
+    <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500 mb-2">Verbs</h3>
+    <div class="space-y-2">
+      {% if subject_user.is_active %}
+        <form hx-post="{% url 'sadmin:user_verb' subject_user.id 'suspend' %}" hx-target="#user-status-banner" hx-swap="innerHTML">
+          {% csrf_token %}
+          <input name="reason" placeholder="Reason"
+                 class="w-full border border-slate-300 rounded px-2 py-1 text-sm mb-1">
+          <button class="w-full text-left px-3 py-2 bg-red-600 text-white rounded text-sm">Suspend user</button>
+        </form>
+      {% else %}
+        <form hx-post="{% url 'sadmin:user_verb' subject_user.id 'unsuspend' %}" hx-target="#user-status-banner" hx-swap="innerHTML">
+          {% csrf_token %}
+          <button class="w-full text-left px-3 py-2 bg-emerald-700 text-white rounded text-sm">Unsuspend user</button>
+        </form>
+      {% endif %}
+      <form hx-post="{% url 'sadmin:user_verb' subject_user.id 'force_logout_all' %}" hx-target="#user-status-banner" hx-swap="innerHTML">
+        {% csrf_token %}
+        <button class="w-full text-left px-3 py-2 bg-amber-600 text-white rounded text-sm">Force-logout all sessions</button>
+      </form>
+      <form hx-post="{% url 'sadmin:user_verb' subject_user.id 'force_password_reset' %}" hx-target="#user-status-banner" hx-swap="innerHTML">
+        {% csrf_token %}
+        <button class="w-full text-left px-3 py-2 bg-amber-600 text-white rounded text-sm">Force password reset</button>
+      </form>
+      <form hx-post="{% url 'sadmin:user_verb' subject_user.id 'unlock_account' %}" hx-target="#user-status-banner" hx-swap="innerHTML">
+        {% csrf_token %}
+        <button class="w-full text-left px-3 py-2 bg-slate-700 text-white rounded text-sm">Unlock (clear axes)</button>
+      </form>
+      <form hx-post="{% url 'sadmin:user_verb' subject_user.id 'impersonate_start' %}" hx-target="#user-status-banner" hx-swap="innerHTML">
+        {% csrf_token %}
+        <input name="reason" placeholder="Reason for impersonation"
+               class="w-full border border-slate-300 rounded px-2 py-1 text-sm mb-1">
+        <button class="w-full text-left px-3 py-2 bg-purple-700 text-white rounded text-sm">Impersonate</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded p-4">
+    <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500 mb-2">Memberships</h3>
+    <ul class="text-sm divide-y divide-slate-100">
+      {% for m in memberships %}
+        <li class="py-2 flex justify-between">
+          <span>{{ m.organization.name }}</span>
+          <span class="text-xs text-slate-500">{{ m.role }}{% if m.is_org_owner %} · owner{% endif %}</span>
+        </li>
+      {% empty %}
+        <li class="py-2 text-slate-500">No org memberships.</li>
+      {% endfor %}
+    </ul>
+
+    <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500 mt-4 mb-2">Recent audit events</h3>
+    <ul class="text-sm divide-y divide-slate-100">
+      {% for ae in audit_events %}
+        <li class="py-2">
+          <span class="font-mono text-xs">{{ ae.event_type }}</span>
+          <span class="ml-2 text-xs text-slate-500">{{ ae.created_at|date:"Y-m-d H:i" }}</span>
+        </li>
+      {% empty %}
+        <li class="py-2 text-slate-500">No audit events.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "sadmin/_base.html" %}
+{% block title %}Users{% endblock %}
+
+{% block content %}
+<h2 class="text-2xl font-semibold mb-4">Users</h2>
+
+<form method="get" class="mb-4 flex gap-2 items-center">
+  <input type="text" name="q" value="{{ q|default:'' }}"
+         placeholder="Search by email"
+         class="border border-slate-300 rounded px-3 py-1 text-sm w-64">
+  <select name="status" class="border border-slate-300 rounded px-3 py-1 text-sm">
+    <option value="">All</option>
+    <option value="active" {% if status_filter == "active" %}selected{% endif %}>Active</option>
+    <option value="inactive" {% if status_filter == "inactive" %}selected{% endif %}>Inactive</option>
+    <option value="deleted" {% if status_filter == "deleted" %}selected{% endif %}>Deleted</option>
+  </select>
+  <button type="submit" class="bg-slate-900 text-white text-sm rounded px-3 py-1">Filter</button>
+</form>
+
+<table class="w-full bg-white border border-slate-200 text-sm">
+  <thead class="bg-slate-100 text-left">
+    <tr>
+      <th class="px-3 py-2">Email</th>
+      <th class="px-3 py-2">Active</th>
+      <th class="px-3 py-2">Last login</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in page_obj %}
+      <tr class="border-t border-slate-100">
+        <td class="px-3 py-2"><a class="text-blue-600 hover:underline" href="{% url 'sadmin:users_detail' u.id %}">{{ u.email }}</a></td>
+        <td class="px-3 py-2">{% if u.is_active %}✓{% else %}—{% endif %}</td>
+        <td class="px-3 py-2">{{ u.last_login|date:"Y-m-d H:i"|default:"never" }}</td>
+      </tr>
+    {% empty %}
+      <tr><td class="px-3 py-3 text-slate-500" colspan="3">No users.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% include "sadmin/_pagination.html" with page_obj=page_obj %}
+{% endblock %}

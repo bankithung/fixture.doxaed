@@ -1,0 +1,60 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Super-admin{% endblock %} · Fixture Platform</title>
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  {# Tailwind via CDN for dev (B.21 hardening: swap for compiled CSS for prod). #}
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      document.body.addEventListener('htmx:configRequest', function (event) {
+        event.detail.headers['X-CSRFToken'] =
+          document.querySelector('meta[name="csrf-token"]').content;
+      });
+    });
+  </script>
+</head>
+<body
+  class="bg-slate-50 text-slate-900 antialiased min-h-screen"
+  hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+  hx-boost="true">
+
+  {% include "sadmin/_impersonate_banner.html" %}
+
+  <div class="flex min-h-screen">
+    <aside class="w-56 bg-slate-900 text-slate-100 p-4 hidden md:block">
+      <h1 class="text-lg font-semibold mb-6">Super-admin</h1>
+      <nav class="space-y-1 text-sm">
+        <a href="{% url 'sadmin:dashboard' %}" class="block px-3 py-2 rounded hover:bg-slate-800">Dashboard</a>
+        <a href="{% url 'sadmin:orgs_list' %}" class="block px-3 py-2 rounded hover:bg-slate-800">Organizations</a>
+        <a href="{% url 'sadmin:users_list' %}" class="block px-3 py-2 rounded hover:bg-slate-800">Users</a>
+        <a href="{% url 'sadmin:feedback_list' %}" class="block px-3 py-2 rounded hover:bg-slate-800">Feedback</a>
+        <a href="{% url 'sadmin:audit_search' %}" class="block px-3 py-2 rounded hover:bg-slate-800">Audit log</a>
+      </nav>
+      <div class="mt-8 pt-4 border-t border-slate-700 text-xs text-slate-400">
+        Logged in as<br>
+        <span class="text-slate-200">{{ request.user.email }}</span>
+        <form method="post" action="{% url 'sadmin:logout' %}" class="mt-3">
+          {% csrf_token %}
+          <button type="submit" class="text-slate-300 hover:text-white underline">Sign out</button>
+        </form>
+      </div>
+    </aside>
+
+    <main class="flex-1 p-6 max-w-6xl">
+      {% if messages %}
+        <div class="mb-4 space-y-2">
+          {% for m in messages %}
+            <div class="rounded border border-slate-200 bg-white px-4 py-2 text-sm">{{ m }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

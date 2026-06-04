@@ -1,0 +1,507 @@
+[
+  {
+    "code": "football",
+    "name": "Football (Soccer)",
+    "category": "team",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "icon": "Trophy",
+    "display_order": 10,
+    "description": "Association football. The Phase 1B vertical-slice sport for v1.0.",
+    "status": "coming_soon"
+  },
+  {
+    "code": "cricket",
+    "name": "Cricket",
+    "category": "team",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "icon": "CircleDot",
+    "display_order": 20,
+    "description": "Bat-and-ball sport. Schools play limited-overs and T20 formats."
+  },
+  {
+    "code": "field-hockey",
+    "name": "Field Hockey",
+    "category": "team",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "display_order": 30,
+    "description": "India's traditional powerhouse sport. Played extensively in schools and AIU."
+  },
+  {
+    "code": "basketball",
+    "name": "Basketball",
+    "category": "team",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "display_order": 40
+  },
+  {
+    "code": "volleyball",
+    "name": "Volleyball",
+    "category": "team",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "display_order": 50
+  },
+  {
+    "code": "kabaddi",
+    "name": "Kabaddi",
+    "category": "team",
+    "indigenous_to": "India",
+    "is_team_sport": true,
+    "display_order": 60,
+    "description": "Indigenous Indian contact team sport. Major SGFI and Pro Kabaddi League sport."
+  },
+  {
+    "code": "kho-kho",
+    "name": "Kho-Kho",
+    "category": "team",
+    "indigenous_to": "India",
+    "is_team_sport": true,
+    "display_order": 70,
+    "description": "Indigenous Indian tag-team sport. SGFI staple."
+  },
+  {
+    "code": "handball",
+    "name": "Handball",
+    "category": "team",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "display_order": 80
+  },
+  {
+    "code": "throwball",
+    "name": "Throwball",
+    "category": "team",
+    "indigenous_to": "India",
+    "is_team_sport": true,
+    "display_order": 90,
+    "description": "Volleyball-adjacent net sport, very popular in girls' school competitions."
+  },
+  {
+    "code": "netball",
+    "name": "Netball",
+    "category": "team",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "display_order": 100
+  },
+  {
+    "code": "rugby-sevens",
+    "name": "Rugby Sevens",
+    "category": "team",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "display_order": 110
+  },
+  {
+    "code": "softball",
+    "name": "Softball",
+    "category": "team",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "display_order": 120
+  },
+  {
+    "code": "baseball",
+    "name": "Baseball",
+    "category": "team",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "display_order": 130
+  },
+  {
+    "code": "sepak-takraw",
+    "name": "Sepak Takraw",
+    "category": "team",
+    "indigenous_to": "Southeast Asia",
+    "is_team_sport": true,
+    "display_order": 140,
+    "description": "Foot-volleyball; popular in North-East India school games."
+  },
+  {
+    "code": "roll-ball",
+    "name": "Roll Ball",
+    "category": "team",
+    "indigenous_to": "India",
+    "is_team_sport": true,
+    "display_order": 150,
+    "description": "Indian-origin team sport combining roller skating and basketball."
+  },
+  {
+    "code": "tug-of-war",
+    "name": "Tug of War",
+    "category": "team",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "display_order": 160
+  },
+
+  {
+    "code": "tennis",
+    "name": "Tennis",
+    "category": "racket",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 200
+  },
+  {
+    "code": "badminton",
+    "name": "Badminton",
+    "category": "racket",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 210
+  },
+  {
+    "code": "table-tennis",
+    "name": "Table Tennis",
+    "category": "racket",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 220
+  },
+  {
+    "code": "squash",
+    "name": "Squash",
+    "category": "racket",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 230
+  },
+
+  {
+    "code": "boxing",
+    "name": "Boxing",
+    "category": "combat",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 300
+  },
+  {
+    "code": "wrestling",
+    "name": "Wrestling (Kushti / Freestyle / Greco-Roman)",
+    "category": "combat",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 310
+  },
+  {
+    "code": "judo",
+    "name": "Judo",
+    "category": "combat",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 320
+  },
+  {
+    "code": "karate",
+    "name": "Karate",
+    "category": "combat",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 330
+  },
+  {
+    "code": "taekwondo",
+    "name": "Taekwondo",
+    "category": "combat",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 340
+  },
+  {
+    "code": "fencing",
+    "name": "Fencing",
+    "category": "combat",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 350
+  },
+  {
+    "code": "wushu",
+    "name": "Wushu",
+    "category": "combat",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 360,
+    "description": "Chinese martial art; SGFI school games include it."
+  },
+  {
+    "code": "pencak-silat",
+    "name": "Pencak Silat",
+    "category": "combat",
+    "indigenous_to": "Southeast Asia",
+    "is_individual_sport": true,
+    "display_order": 370
+  },
+
+  {
+    "code": "athletics",
+    "name": "Athletics (Track & Field)",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 400,
+    "description": "Sprints, distance, throws, jumps. Combined event surface; per-event sub-modules in Phase 1B."
+  },
+  {
+    "code": "cross-country",
+    "name": "Cross-Country Running",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 410
+  },
+  {
+    "code": "marathon",
+    "name": "Marathon / Half Marathon",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 420
+  },
+  {
+    "code": "triathlon",
+    "name": "Triathlon",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 430
+  },
+
+  {
+    "code": "swimming",
+    "name": "Swimming",
+    "category": "aquatics",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 500
+  },
+  {
+    "code": "diving",
+    "name": "Diving",
+    "category": "aquatics",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 510
+  },
+  {
+    "code": "water-polo",
+    "name": "Water Polo",
+    "category": "aquatics",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "display_order": 520
+  },
+
+  {
+    "code": "artistic-gymnastics",
+    "name": "Artistic Gymnastics",
+    "category": "gymnastics",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 600
+  },
+  {
+    "code": "rhythmic-gymnastics",
+    "name": "Rhythmic Gymnastics",
+    "category": "gymnastics",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 610
+  },
+  {
+    "code": "yogasana",
+    "name": "Yogasana",
+    "category": "gymnastics",
+    "indigenous_to": "India",
+    "is_individual_sport": true,
+    "display_order": 620,
+    "description": "Competitive yoga. SGFI / CBSE meets include it as a sport."
+  },
+  {
+    "code": "aerobics",
+    "name": "Sport Aerobics",
+    "category": "gymnastics",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 630
+  },
+  {
+    "code": "mallakhamb",
+    "name": "Mallakhamb",
+    "category": "indigenous",
+    "indigenous_to": "Maharashtra, India",
+    "is_individual_sport": true,
+    "display_order": 640,
+    "description": "Indigenous gymnastics performed on a vertical pole or rope. SGFI sport."
+  },
+
+  {
+    "code": "weightlifting",
+    "name": "Weightlifting",
+    "category": "strength",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 700
+  },
+  {
+    "code": "powerlifting",
+    "name": "Powerlifting",
+    "category": "strength",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 710
+  },
+
+  {
+    "code": "shooting",
+    "name": "Shooting (Rifle / Pistol / Shotgun)",
+    "category": "shooting",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 800
+  },
+  {
+    "code": "archery",
+    "name": "Archery",
+    "category": "shooting",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 810
+  },
+
+  {
+    "code": "chess",
+    "name": "Chess",
+    "category": "mind",
+    "indigenous_to": "India / International",
+    "is_individual_sport": true,
+    "display_order": 900
+  },
+  {
+    "code": "carrom",
+    "name": "Carrom",
+    "category": "mind",
+    "indigenous_to": "India",
+    "is_individual_sport": true,
+    "display_order": 910,
+    "description": "Indoor strike-and-pocket board game. Common in Indian school competitions."
+  },
+
+  {
+    "code": "cycling",
+    "name": "Cycling (Road / Track / MTB)",
+    "category": "individual",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 1000
+  },
+  {
+    "code": "roller-skating",
+    "name": "Roller Skating",
+    "category": "individual",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 1010
+  },
+  {
+    "code": "ice-skating",
+    "name": "Ice Skating",
+    "category": "individual",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 1020
+  },
+  {
+    "code": "equestrian",
+    "name": "Equestrian",
+    "category": "individual",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 1030,
+    "description": "Show-jumping / dressage / eventing. Limited to schools with stable access."
+  },
+
+  {
+    "code": "sport-climbing",
+    "name": "Sport Climbing",
+    "category": "adventure",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 1100
+  },
+  {
+    "code": "sailing",
+    "name": "Sailing",
+    "category": "adventure",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 1110
+  },
+  {
+    "code": "rowing",
+    "name": "Rowing",
+    "category": "adventure",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 1120
+  },
+  {
+    "code": "canoeing-kayaking",
+    "name": "Canoeing / Kayaking",
+    "category": "adventure",
+    "indigenous_to": "International",
+    "is_individual_sport": true,
+    "display_order": 1130
+  },
+
+  {
+    "code": "gatka",
+    "name": "Gatka",
+    "category": "indigenous",
+    "indigenous_to": "Punjab, India",
+    "is_individual_sport": true,
+    "display_order": 1200,
+    "description": "Sikh martial art. SGFI school games include it."
+  },
+  {
+    "code": "kalaripayattu",
+    "name": "Kalaripayattu",
+    "category": "indigenous",
+    "indigenous_to": "Kerala, India",
+    "is_individual_sport": true,
+    "display_order": 1210,
+    "description": "South Indian martial art; one of the oldest in the world."
+  },
+  {
+    "code": "silambam",
+    "name": "Silambam",
+    "category": "indigenous",
+    "indigenous_to": "Tamil Nadu, India",
+    "is_individual_sport": true,
+    "display_order": 1220,
+    "description": "Tamil staff-fighting martial art."
+  },
+  {
+    "code": "thang-ta",
+    "name": "Thang-Ta",
+    "category": "indigenous",
+    "indigenous_to": "Manipur, India",
+    "is_individual_sport": true,
+    "display_order": 1230,
+    "description": "Manipuri sword-and-spear martial art. Particularly relevant for North-East India."
+  },
+  {
+    "code": "korfball",
+    "name": "Korfball",
+    "category": "team",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "display_order": 1300,
+    "description": "Mixed-gender team sport; some SGFI inclusion."
+  }
+]

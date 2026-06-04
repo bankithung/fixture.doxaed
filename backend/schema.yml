@@ -1,0 +1,2412 @@
+openapi: 3.0.3
+info:
+  title: Fixture Platform API (DEV)
+  version: 0.1.0
+  description: Phase 1A — User types, Org membership, RBAC modules, Super-admin console.
+paths:
+  /api/accounts/auth/2fa/confirm/:
+    post:
+      operationId: accounts_auth_2fa_confirm_create
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TwoFAConfirm'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TwoFAConfirm'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TwoFAConfirm'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TwoFAConfirmResponse'
+          description: ''
+  /api/accounts/auth/2fa/disable/:
+    post:
+      operationId: accounts_auth_2fa_disable_create
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TwoFADisable'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TwoFADisable'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TwoFADisable'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/accounts/auth/2fa/enroll/:
+    post:
+      operationId: accounts_auth_2fa_enroll_create
+      tags:
+      - accounts
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TwoFAEnrollResponse'
+          description: ''
+  /api/accounts/auth/2fa/recovery_codes:regenerate/:
+    post:
+      operationId: accounts_auth_2fa_recovery_codes:regenerate_create
+      tags:
+      - accounts
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TwoFAConfirmResponse'
+          description: ''
+  /api/accounts/auth/login/:
+    post:
+      operationId: accounts_auth_login_create
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Login'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Login'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Login'
+        required: true
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/accounts/auth/logout/:
+    post:
+      operationId: accounts_auth_logout_create
+      tags:
+      - accounts
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/accounts/auth/password-reset-complete/:
+    post:
+      operationId: accounts_auth_password_reset_complete_create
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetComplete'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordResetComplete'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordResetComplete'
+        required: true
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/accounts/auth/password-reset-request/:
+    post:
+      operationId: accounts_auth_password_reset_request_create
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/accounts/auth/password_reset_complete/:
+    post:
+      operationId: accounts_auth_password_reset_complete_create_2
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetComplete'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordResetComplete'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordResetComplete'
+        required: true
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/accounts/auth/password_reset_request/:
+    post:
+      operationId: accounts_auth_password_reset_request_create_2
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/accounts/auth/reauth/:
+    post:
+      operationId: accounts_auth_reauth_create
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reauth'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Reauth'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Reauth'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/accounts/auth/signup/:
+    post:
+      operationId: accounts_auth_signup_create
+      description: |-
+        Public Path B signup (v1Users.md §2.3).
+
+        Creates a User + a pending-review Organization + a pending Admin
+        membership in one atomic transaction. Path A (invite-accept) is
+        handled by ``apps.organizations.views.invitation_accept`` and is
+        NOT routed through here — invited users are joining an existing
+        Org, not creating one.
+
+        Idempotency: clients may send a UUID ``event_id``; replay returns
+        200 (existing record) instead of 201 (newly created), per
+        architectural invariant 3.
+
+        Rate limit: ``SignupRateThrottle`` enforces 3/hr/IP per B.11.
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Signup'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Signup'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Signup'
+        required: true
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '201':
+          description: Pending account; check email.
+  /api/accounts/auth/verify-email/:
+    post:
+      operationId: accounts_auth_verify_email_create
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyEmail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VerifyEmail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VerifyEmail'
+        required: true
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/accounts/auth/verify_email/:
+    post:
+      operationId: accounts_auth_verify_email_create_2
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyEmail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VerifyEmail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VerifyEmail'
+        required: true
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/accounts/me/:
+    get:
+      operationId: accounts_me_retrieve
+      tags:
+      - accounts
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+          description: ''
+    patch:
+      operationId: accounts_me_partial_update
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedMe'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedMe'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedMe'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+          description: ''
+  /api/accounts/users/{user_id}:soft_delete/:
+    post:
+      operationId: accounts_users_:soft_delete_create
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SoftDelete'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SoftDelete'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SoftDelete'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/audit/orgs/{slug}/:
+    get:
+      operationId: audit_orgs_retrieve
+      description: Cursor-paginated, org-scoped audit event feed. Read-only. Module-gated
+        by `org.audit_log`.
+      parameters:
+      - in: query
+        name: actor_id
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: cursor
+        schema:
+          type: string
+      - in: query
+        name: event_type
+        schema:
+          type: string
+      - in: query
+        name: from
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: limit
+        schema:
+          type: integer
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      - in: query
+        name: to
+        schema:
+          type: string
+          format: date-time
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventListResponse'
+          description: ''
+  /api/feedback/submit/:
+    post:
+      operationId: feedback_submit_create
+      description: Submit feedback from any authenticated user. Body is PII-redacted
+        at the service layer (B.11). Throttled to 10/hr/user.
+      tags:
+      - feedback
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackSubmit'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FeedbackSubmit'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FeedbackSubmit'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackSubmitResponse'
+          description: ''
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackSubmitResponse'
+          description: ''
+  /api/invitations:accept/:
+    post:
+      operationId: invitations:accept_create
+      description: |-
+        POST /api/invitations:accept/
+
+        Public path BUT the accepting user must be authenticated (otherwise
+        we 401 with a redirect hint).
+      tags:
+      - invitations:accept
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInvitation'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AcceptInvitation'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AcceptInvitation'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationMembership'
+          description: ''
+  /api/orgs/:
+    get:
+      operationId: orgs_list
+      description: |-
+        GET: list orgs the user has any active membership in.
+        POST: super-admin only — create a new Organization in pending_review.
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Organization'
+          description: ''
+    post:
+      operationId: orgs_create
+      description: |-
+        GET: list orgs the user has any active membership in.
+        POST: super-admin only — create a new Organization in pending_review.
+      tags:
+      - orgs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OrganizationCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OrganizationCreate'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+          description: ''
+  /api/orgs/{slug_or_uuid}/:
+    get:
+      operationId: orgs_retrieve
+      description: |-
+        GET / PATCH on /api/orgs/{slug_or_uuid}/.
+
+        On GET with a slug match in `SlugRedirect`, returns a 301 with
+        Location pointing at the canonical /api/orgs/{uuid}/.
+      parameters:
+      - in: path
+        name: slug_or_uuid
+        schema:
+          type: string
+        required: true
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+          description: ''
+    patch:
+      operationId: orgs_partial_update
+      description: |-
+        GET / PATCH on /api/orgs/{slug_or_uuid}/.
+
+        On GET with a slug match in `SlugRedirect`, returns a 301 with
+        Location pointing at the canonical /api/orgs/{uuid}/.
+      parameters:
+      - in: path
+        name: slug_or_uuid
+        schema:
+          type: string
+        required: true
+      tags:
+      - orgs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedOrganizationUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedOrganizationUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedOrganizationUpdate'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+          description: ''
+  /api/orgs/{slug}/invitations/:
+    get:
+      operationId: orgs_invitations_list
+      description: GET / POST /api/orgs/{slug}/invitations/
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminInvitation'
+          description: ''
+    post:
+      operationId: orgs_invitations_create
+      description: GET / POST /api/orgs/{slug}/invitations/
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - orgs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminInvitationCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminInvitationCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminInvitationCreate'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminInvitation'
+          description: ''
+  /api/orgs/{slug}/invitations/{invitation_id}/:
+    delete:
+      operationId: orgs_invitations_destroy
+      description: |-
+        DELETE /api/orgs/{slug}/invitations/{invitation_id}/
+
+        Plain DELETE = revoke. Mirrors the AIP-136
+        ``{uuid}/invitations/{id}:revoke/`` colon verb but uses the simpler
+        REST shape the SPA expects.
+      parameters:
+      - in: path
+        name: invitation_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: Revoked
+  /api/orgs/{slug}/members/:
+    get:
+      operationId: orgs_members_list
+      description: |-
+        GET /api/orgs/{slug}/members/
+
+        Returns one row per user (not per membership). Multiple membership
+        rows for the same user (e.g. admin + co_organizer) are collapsed:
+        ``roles`` is the distinct list, ``joined_at`` is MIN(created_at),
+        ``is_org_owner`` is OR across the user's rows.
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrgMemberDetail'
+          description: ''
+  /api/orgs/{slug}/ownership/transfer/:
+    post:
+      operationId: orgs_ownership_transfer_create
+      description: |-
+        POST /api/orgs/{slug}/ownership/transfer/
+
+        Slug-routed proxy of the AIP-136
+        ``{uuid}:transfer_ownership/`` colon verb.
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - orgs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferOwnership'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransferOwnership'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransferOwnership'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+          description: ''
+  /api/orgs/{uuid}/invitations/:
+    get:
+      operationId: orgs_invitations_list_2
+      parameters:
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminInvitation'
+          description: ''
+    post:
+      operationId: orgs_invitations_create_2
+      parameters:
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminInvitationCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminInvitationCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminInvitationCreate'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminInvitation'
+          description: ''
+  /api/orgs/{uuid}/invitations/{invitation_id}:revoke/:
+    post:
+      operationId: orgs_invitations_:revoke_create
+      parameters:
+      - in: path
+        name: invitation_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeInvitation'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RevokeInvitation'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RevokeInvitation'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminInvitation'
+          description: ''
+  /api/orgs/{uuid}/members/:
+    get:
+      operationId: orgs_members_list_2
+      description: |-
+        Module-gated by `org.member_directory` — defaults to admin /
+        co_organizer / game_coordinator per the v1Users.md catalog. A
+        per-user `MembershipModuleGrant` deny override revokes access even
+        for those role defaults.
+      parameters:
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrganizationMembership'
+          description: ''
+  /api/orgs/{uuid}/members/{membership_id}/:
+    delete:
+      operationId: orgs_members_destroy
+      parameters:
+      - in: path
+        name: membership_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: Removed
+  /api/orgs/{uuid}:archive/:
+    post:
+      operationId: orgs_:archive_create
+      description: Owner or super-admin only.
+      parameters:
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Archive'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Archive'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Archive'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+          description: ''
+  /api/orgs/{uuid}:change_slug/:
+    post:
+      operationId: orgs_:change_slug_create
+      description: POST /api/orgs/{uuid}:change_slug/
+      parameters:
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeSlug'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ChangeSlug'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChangeSlug'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+          description: ''
+  /api/orgs/{uuid}:suspend/:
+    post:
+      operationId: orgs_:suspend_create
+      parameters:
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Suspend'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Suspend'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Suspend'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+          description: ''
+  /api/orgs/{uuid}:transfer_ownership/:
+    post:
+      operationId: orgs_:transfer_ownership_create
+      description: Current owner only. Atomic swap.
+      parameters:
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferOwnership'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransferOwnership'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransferOwnership'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+          description: ''
+  /api/orgs/{uuid}:unsuspend/:
+    post:
+      operationId: orgs_:unsuspend_create
+      parameters:
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+          description: ''
+  /api/orgs/invitations/accept/:
+    post:
+      operationId: orgs_invitations_accept_create
+      description: |-
+        POST /api/orgs/invitations/accept/
+
+        Path alias of ``/api/invitations:accept/``. Same body, same logic.
+      tags:
+      - orgs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInvitation'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AcceptInvitation'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AcceptInvitation'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationMembership'
+          description: ''
+  /api/permissions/me/modules/:
+    get:
+      operationId: permissions_me_modules_retrieve
+      description: Return the effective module set for the requesting user in the
+        given Org.
+      parameters:
+      - in: query
+        name: org
+        schema:
+          type: string
+        description: Organization UUID
+        required: true
+      tags:
+      - permissions
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EffectiveModules'
+          description: ''
+  /api/permissions/modules/:
+    get:
+      operationId: permissions_modules_list
+      description: List all modules in the catalog.
+      tags:
+      - permissions
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Module'
+          description: ''
+  /api/permissions/orgs/{org_uuid}/users/{user_uuid}/grants/:
+    get:
+      operationId: permissions_orgs_users_grants_list
+      description: List all grant rows + computed default-on modules for a user in
+        an org.
+      parameters:
+      - in: path
+        name: org_uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: user_uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - permissions
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GrantRow'
+          description: ''
+    put:
+      operationId: permissions_orgs_users_grants_update
+      description: 'Replace grants atomically. Accepts EITHER `{grants: [{module,
+        state}], reason}` (existing shape) OR `{cells: {module_code: state}, reason,
+        event_id?}` (SPA matrix shape). If both keys are present, `cells` wins.'
+      parameters:
+      - in: path
+        name: org_uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: user_uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - permissions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkGrants'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BulkGrants'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BulkGrants'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GrantRow'
+          description: ''
+  /api/permissions/orgs/{slug}/grants/matrix/:
+    get:
+      operationId: permissions_orgs_grants_matrix_retrieve
+      description: 'Aggregate override matrix: for every active member in the org,
+        list each module''s role-default truth and explicit override state.'
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - permissions
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatrixResponse'
+          description: ''
+  /api/permissions/orgs/{slug}/me/modules/:
+    get:
+      operationId: permissions_orgs_me_modules_retrieve
+      description: Slug-routed alias of /me/modules/?org=<uuid>. Returns effective
+        module set for the authenticated user in the org identified by slug.
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - permissions
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EffectiveModules'
+          description: ''
+  /api/permissions/orgs/{slug}/users/{user_uuid}/grants/:
+    get:
+      operationId: permissions_orgs_users_grants_list_2
+      description: Slug-routed alias for GET /grants/ — same response shape.
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: user_uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - permissions
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GrantRow'
+          description: ''
+    put:
+      operationId: permissions_orgs_users_grants_update_2
+      description: 'Slug-routed alias for PUT /grants/. Accepts EITHER the `{grants:
+        [{module, state}], reason}` shape or the SPA matrix `{cells: {module: state},
+        reason, event_id?}` shape.'
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: user_uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - permissions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkGrants'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BulkGrants'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BulkGrants'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GrantRow'
+          description: ''
+  /api/sports/:
+    get:
+      operationId: sports_list
+      description: |-
+        ``GET /api/sports/`` — list every sport in the catalog.
+
+        Unfiltered by default; supports ``?status=`` and ``?category=`` query
+        params for convenience. Always ordered by ``display_order`` ascending
+        (the model's default ordering).
+      parameters:
+      - in: query
+        name: category
+        schema:
+          type: string
+        description: Filter by category band (team/racket/combat/etc).
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: Filter by lifecycle status (planned/coming_soon/active/deprecated).
+      tags:
+      - sports
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Sport'
+          description: ''
+  /api/sports/{code}/:
+    get:
+      operationId: sports_retrieve
+      description: '``GET /api/sports/<code>/`` — fetch a single sport by code.'
+      parameters:
+      - in: path
+        name: code
+        schema:
+          type: string
+        required: true
+      tags:
+      - sports
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sport'
+          description: ''
+components:
+  schemas:
+    AcceptInvitation:
+      type: object
+      properties:
+        token:
+          type: string
+          maxLength: 128
+      required:
+      - token
+    AdminInvitation:
+      type: object
+      description: |-
+        Read-side serializer. Surfaces effective_status (computed) which
+        flips pending→expired when expires_at is in the past, even if the
+        DB row hasn't been swept yet (we don't run a cron — read-time
+        materialization).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        organization:
+          type: string
+          format: uuid
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+        role:
+          allOf:
+          - $ref: '#/components/schemas/RoleEnum'
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/AdminInvitationStatusEnum'
+          readOnly: true
+          default: pending
+        effective_status:
+          type: string
+          readOnly: true
+        expires_at:
+          type: string
+          format: date-time
+          readOnly: true
+        accepted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        invited_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+      required:
+      - accepted_at
+      - created_at
+      - effective_status
+      - email
+      - expires_at
+      - id
+      - invited_by
+      - organization
+      - revoked_at
+      - role
+      - status
+    AdminInvitationCreate:
+      type: object
+      description: |-
+        Body shape accepted by both the UUID-routed and slug-routed
+        invitation-create endpoints.
+
+        Either ``role`` (single string, legacy) or ``roles`` (list, sent by
+        the SPA) may be given. ``event_id`` is the optional idempotency key
+        (UUID).
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/RolesEnum'
+        event_id:
+          type: string
+          format: uuid
+      required:
+      - email
+    AdminInvitationStatusEnum:
+      enum:
+      - pending
+      - accepted
+      - expired
+      - revoked
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `accepted` - Accepted
+        * `expired` - Expired
+        * `revoked` - Revoked
+    Archive:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+      required:
+      - reason
+    AuditEvent:
+      type: object
+      description: |-
+        Read-only serializer for AuditEvent rows.
+
+        Includes a denormalized ``actor_email_at_time`` (the actor user's
+        current email — there is no historical snapshot in v1A; B.5 lists
+        ``deleted_user_handle`` as the post-deletion fallback). ``payload``
+        is the merged ``payload_after`` (creation-style events) or
+        ``payload_before`` -> ``payload_after`` diff for mutating events.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        event_type:
+          type: string
+          readOnly: true
+        actor_id:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        actor_email_at_time:
+          type: string
+          nullable: true
+          readOnly: true
+        target_id:
+          type: string
+          format: uuid
+          readOnly: true
+        target_type:
+          type: string
+          readOnly: true
+        target_label:
+          type: string
+          nullable: true
+          readOnly: true
+        payload:
+          type: object
+          additionalProperties: {}
+          nullable: true
+          readOnly: true
+        reason:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - actor_email_at_time
+      - actor_id
+      - created_at
+      - event_type
+      - id
+      - payload
+      - reason
+      - target_id
+      - target_label
+      - target_type
+    AuditEventListResponse:
+      type: object
+      description: Cursor-paginated response shape for the audit list endpoint.
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+        next_cursor:
+          type: string
+          nullable: true
+        previous_cursor:
+          type: string
+          nullable: true
+      required:
+      - results
+    BulkGrants:
+      type: object
+      description: PUT body for /grants/ — replace all grants atomically.
+      properties:
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/GrantInput'
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 20
+      required:
+      - grants
+      - reason
+    ChangeSlug:
+      type: object
+      properties:
+        new_slug:
+          type: string
+          maxLength: 63
+      required:
+      - new_slug
+    EffectiveModules:
+      type: object
+      description: Response shape for GET /me/modules/.
+      properties:
+        modules:
+          type: array
+          items:
+            type: string
+      required:
+      - modules
+    FeedbackSubmit:
+      type: object
+      description: |-
+        Request body for ``POST /api/feedback/submit/``.
+
+        Frontend wires the feedback widget (v1Users.md A.2
+        ``personal.feedback_widget``) to this endpoint. Body is PII-redacted
+        at the service layer (B.11) so screenshots / page URLs that may
+        contain emails or recovery codes are stripped before INSERT.
+
+        ``event_id`` is an optional client-supplied UUID for idempotency
+        (PRD invariant 3). When supplied, re-submitting the same id
+        returns the existing row (200 instead of 201).
+      properties:
+        message:
+          type: string
+          maxLength: 5000
+          minLength: 1
+        page_url:
+          type: string
+          maxLength: 2048
+        screenshot_data_uri:
+          type: string
+          maxLength: 5000000
+        category:
+          allOf:
+          - $ref: '#/components/schemas/FeedbackSubmitCategoryEnum'
+          default: other
+        subject:
+          type: string
+          maxLength: 200
+        event_id:
+          type: string
+          format: uuid
+      required:
+      - message
+    FeedbackSubmitCategoryEnum:
+      enum:
+      - bug
+      - feature_request
+      - complaint
+      - praise
+      - other
+      type: string
+      description: |-
+        * `bug` - Bug
+        * `feature_request` - Feature request
+        * `complaint` - Complaint
+        * `praise` - Praise
+        * `other` - Other
+    FeedbackSubmitResponse:
+      type: object
+      description: Response body for the public submit endpoint.
+      properties:
+        id:
+          type: string
+          format: uuid
+      required:
+      - id
+    GrantInput:
+      type: object
+      description: Single (module, state) pair used inside the bulk grants PUT body.
+      properties:
+        module:
+          type: string
+          maxLength: 64
+        state:
+          $ref: '#/components/schemas/StateEnum'
+      required:
+      - module
+      - state
+    GrantRow:
+      type: object
+      description: A single MembershipModuleGrant row, with module code denormalized.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        module_code:
+          type: string
+          readOnly: true
+        state:
+          allOf:
+          - $ref: '#/components/schemas/StateEnum'
+          readOnly: true
+        reason:
+          type: string
+          readOnly: true
+        granted_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - granted_by
+      - id
+      - module_code
+      - reason
+      - state
+      - updated_at
+    Login:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          writeOnly: true
+        totp_code:
+          type: string
+      required:
+      - email
+      - password
+    MatrixMember:
+      type: object
+      description: One member row in the matrix `members` array.
+      properties:
+        user_id:
+          type: string
+        user_email:
+          type: string
+        user_full_name:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        cells:
+          type: object
+          additionalProperties:
+            type: string
+        role_defaults:
+          type: object
+          additionalProperties:
+            type: boolean
+      required:
+      - cells
+      - role_defaults
+      - roles
+      - user_email
+      - user_full_name
+      - user_id
+    MatrixModule:
+      type: object
+      description: One module row in the matrix `modules` array.
+      properties:
+        key:
+          type: string
+        scope:
+          type: string
+        label:
+          type: string
+        description:
+          type: string
+      required:
+      - description
+      - key
+      - label
+      - scope
+    MatrixResponse:
+      type: object
+      description: Top-level response shape for the matrix endpoint.
+      properties:
+        modules:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatrixModule'
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatrixMember'
+      required:
+      - members
+      - modules
+    Me:
+      type: object
+      description: |-
+        Used by GET/PATCH /api/accounts/me/.
+
+        Read shape includes `is_superuser`, `memberships[]`, and
+        `last_active_org_slug` so the SPA can route directly to a dashboard
+        without a second round-trip to /api/orgs/.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+          title: Email address
+        name:
+          type: string
+          title: Full name
+          maxLength: 200
+        is_superuser:
+          type: boolean
+          readOnly: true
+        has_2fa_enrolled:
+          type: boolean
+          readOnly: true
+        twofa_enrolled_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        email_verified_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        last_active_org_id:
+          type: string
+          format: uuid
+          nullable: true
+        last_active_org_slug:
+          type: string
+          nullable: true
+          readOnly: true
+        memberships:
+          type: array
+          items:
+            $ref: '#/components/schemas/MembershipSummary'
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - deleted_at
+      - email
+      - email_verified_at
+      - has_2fa_enrolled
+      - id
+      - is_superuser
+      - last_active_org_slug
+      - memberships
+      - twofa_enrolled_at
+    MembershipSummary:
+      type: object
+      description: |-
+        One per-org membership row consumed by the SPA bootstrap.
+
+        Aggregated across the user's (potentially multiple) role rows in
+        the same org so the SPA can render one switcher entry per org and
+        a roles-array for in-org role-view toggling (§2.7).
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        org_slug:
+          type: string
+        org_name:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        is_org_owner:
+          type: boolean
+        effective_modules:
+          type: array
+          items:
+            type: string
+      required:
+      - effective_modules
+      - is_org_owner
+      - org_id
+      - org_name
+      - org_slug
+      - roles
+    Module:
+      type: object
+      description: Serializer for the module catalog (read-only, public-ish).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        code:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        description:
+          type: string
+          readOnly: true
+        category:
+          type: string
+          readOnly: true
+        default_for_roles:
+          readOnly: true
+      required:
+      - category
+      - code
+      - default_for_roles
+      - description
+      - id
+      - name
+    OrgMemberDetail:
+      type: object
+      description: |-
+        Shape returned by ``GET /api/orgs/{slug}/members/``.
+
+        Pre-aggregated by the view: one entry per user with roles[] (distinct
+        role strings from all that user's active membership rows in this
+        org), the earliest joined_at, and OR(is_org_owner) across rows.
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        is_org_owner:
+          type: boolean
+        joined_at:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+      required:
+      - email
+      - full_name
+      - id
+      - is_active
+      - is_org_owner
+      - joined_at
+      - roles
+      - user_id
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        slug:
+          type: string
+          maxLength: 63
+        name:
+          type: string
+          maxLength: 200
+        status:
+          allOf:
+          - $ref: '#/components/schemas/OrganizationStatusEnum'
+          readOnly: true
+        time_zone:
+          type: string
+          maxLength: 64
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        archived_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        suspended_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        suspended_reason:
+          type: string
+          readOnly: true
+      required:
+      - archived_at
+      - created_at
+      - id
+      - name
+      - slug
+      - status
+      - suspended_at
+      - suspended_reason
+    OrganizationCreate:
+      type: object
+      properties:
+        slug:
+          type: string
+          maxLength: 63
+        name:
+          type: string
+          maxLength: 200
+        time_zone:
+          type: string
+          default: Asia/Kolkata
+          maxLength: 64
+      required:
+      - name
+      - slug
+    OrganizationMembership:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        user:
+          type: string
+          format: uuid
+          readOnly: true
+        organization:
+          type: string
+          format: uuid
+          readOnly: true
+        role:
+          allOf:
+          - $ref: '#/components/schemas/RoleEnum'
+          readOnly: true
+        is_org_owner:
+          type: boolean
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+          default: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        removed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - id
+      - is_active
+      - is_org_owner
+      - organization
+      - removed_at
+      - role
+      - user
+    OrganizationStatusEnum:
+      enum:
+      - pending_review
+      - active
+      - suspended
+      - archived
+      - orphaned
+      type: string
+      description: |-
+        * `pending_review` - Pending review
+        * `active` - Active
+        * `suspended` - Suspended
+        * `archived` - Archived
+        * `orphaned` - Orphaned
+    PasswordResetComplete:
+      type: object
+      properties:
+        token:
+          type: string
+        new_password:
+          type: string
+          writeOnly: true
+          minLength: 12
+      required:
+      - new_password
+      - token
+    PasswordResetRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+      required:
+      - email
+    PatchedMe:
+      type: object
+      description: |-
+        Used by GET/PATCH /api/accounts/me/.
+
+        Read shape includes `is_superuser`, `memberships[]`, and
+        `last_active_org_slug` so the SPA can route directly to a dashboard
+        without a second round-trip to /api/orgs/.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+          title: Email address
+        name:
+          type: string
+          title: Full name
+          maxLength: 200
+        is_superuser:
+          type: boolean
+          readOnly: true
+        has_2fa_enrolled:
+          type: boolean
+          readOnly: true
+        twofa_enrolled_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        email_verified_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        last_active_org_id:
+          type: string
+          format: uuid
+          nullable: true
+        last_active_org_slug:
+          type: string
+          nullable: true
+          readOnly: true
+        memberships:
+          type: array
+          items:
+            $ref: '#/components/schemas/MembershipSummary'
+          readOnly: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+    PatchedOrganizationUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        time_zone:
+          type: string
+          maxLength: 64
+    Reauth:
+      type: object
+      properties:
+        password:
+          type: string
+          writeOnly: true
+      required:
+      - password
+    RevokeInvitation:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+    RoleEnum:
+      enum:
+      - admin
+      - co_organizer
+      - game_coordinator
+      - match_scorer
+      - referee
+      - team_manager
+      type: string
+      description: |-
+        * `admin` - Admin
+        * `co_organizer` - Co-organizer
+        * `game_coordinator` - Game coordinator
+        * `match_scorer` - Match scorer
+        * `referee` - Referee
+        * `team_manager` - Team manager
+    RolesEnum:
+      enum:
+      - admin
+      - co_organizer
+      - game_coordinator
+      - match_scorer
+      - referee
+      - team_manager
+      type: string
+      description: |-
+        * `admin` - Admin
+        * `co_organizer` - Co-organizer
+        * `game_coordinator` - Game coordinator
+        * `match_scorer` - Match scorer
+        * `referee` - Referee
+        * `team_manager` - Team manager
+    Signup:
+      type: object
+      description: |-
+        Public self-signup payload (v1Users.md §2.3 Path B).
+
+        The signup endpoint creates a User AND a pending-review Organization
+        plus a pending Admin membership in a single atomic transaction. The
+        optional ``org_name`` lets the user choose a display name for their
+        new tenant; if omitted, it is derived from the email local-part.
+
+        ``event_id`` (optional, client-generated UUID) is honored for
+        idempotent retries per architectural invariant 3 — re-submitting the
+        same ``event_id`` short-circuits and returns the existing record.
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          writeOnly: true
+          minLength: 12
+        name:
+          type: string
+          maxLength: 200
+        org_name:
+          type: string
+          maxLength: 200
+        event_id:
+          type: string
+          format: uuid
+      required:
+      - email
+      - password
+    SoftDelete:
+      type: object
+      properties:
+        reason:
+          type: string
+    Sport:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        code:
+          type: string
+          readOnly: true
+          pattern: ^[-a-zA-Z0-9_]+$
+        name:
+          type: string
+          readOnly: true
+        category:
+          allOf:
+          - $ref: '#/components/schemas/SportCategoryEnum'
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/SportStatusEnum'
+          readOnly: true
+        description:
+          type: string
+          readOnly: true
+        indigenous_to:
+          type: string
+          readOnly: true
+        is_team_sport:
+          type: boolean
+          readOnly: true
+        is_individual_sport:
+          type: boolean
+          readOnly: true
+        icon:
+          type: string
+          readOnly: true
+        display_order:
+          type: integer
+          readOnly: true
+      required:
+      - category
+      - code
+      - description
+      - display_order
+      - icon
+      - id
+      - indigenous_to
+      - is_individual_sport
+      - is_team_sport
+      - name
+      - status
+    SportCategoryEnum:
+      enum:
+      - team
+      - individual
+      - racket
+      - combat
+      - athletics
+      - aquatics
+      - gymnastics
+      - strength
+      - shooting
+      - mind
+      - indigenous
+      - adventure
+      - other
+      type: string
+      description: |-
+        * `team` - Team
+        * `individual` - Individual
+        * `racket` - Racket
+        * `combat` - Combat / Martial arts
+        * `athletics` - Athletics
+        * `aquatics` - Aquatics
+        * `gymnastics` - Gymnastics
+        * `strength` - Strength sports
+        * `shooting` - Shooting / Archery
+        * `mind` - Mind sports
+        * `indigenous` - Indigenous / Traditional
+        * `adventure` - Adventure / Outdoor
+        * `other` - Other
+    SportStatusEnum:
+      enum:
+      - planned
+      - coming_soon
+      - active
+      - deprecated
+      type: string
+      description: |-
+        * `planned` - Planned
+        * `coming_soon` - Coming soon
+        * `active` - Active
+        * `deprecated` - Deprecated
+    StateEnum:
+      enum:
+      - default
+      - grant
+      - deny
+      type: string
+      description: |-
+        * `default` - Default (no override)
+        * `grant` - Grant (force on)
+        * `deny` - Deny (force off)
+    Suspend:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+      required:
+      - reason
+    TransferOwnership:
+      type: object
+      description: |-
+        Accepts either ``new_owner_user_id`` (canonical) or ``to_user_id``
+        (frontend alias). At least one must be present.
+      properties:
+        new_owner_user_id:
+          type: string
+          format: uuid
+        to_user_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          maxLength: 500
+        event_id:
+          type: string
+          format: uuid
+        conflict_acknowledged:
+          type: boolean
+    TwoFAConfirm:
+      type: object
+      properties:
+        code:
+          type: string
+      required:
+      - code
+    TwoFAConfirmResponse:
+      type: object
+      properties:
+        recovery_codes:
+          type: array
+          items:
+            type: string
+      required:
+      - recovery_codes
+    TwoFADisable:
+      type: object
+      properties:
+        reason:
+          type: string
+    TwoFAEnrollResponse:
+      type: object
+      properties:
+        otpauth_uri:
+          type: string
+        qr_data_uri:
+          type: string
+        device_id:
+          type: string
+          format: uuid
+      required:
+      - device_id
+      - otpauth_uri
+      - qr_data_uri
+    VerifyEmail:
+      type: object
+      properties:
+        token:
+          type: string
+      required:
+      - token
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid

@@ -1,0 +1,44 @@
+{% extends "sadmin/_base.html" %}
+{% block title %}Organizations{% endblock %}
+
+{% block content %}
+<h2 class="text-2xl font-semibold mb-4">Organizations</h2>
+
+<form method="get" class="mb-4 flex gap-2 items-center">
+  <input type="text" name="q" value="{{ q|default:'' }}"
+         placeholder="Search by name or slug"
+         class="border border-slate-300 rounded px-3 py-1 text-sm w-64">
+  <select name="status" class="border border-slate-300 rounded px-3 py-1 text-sm">
+    <option value="">All statuses</option>
+    {% for s in statuses %}
+      <option value="{{ s.0 }}" {% if status_filter == s.0 %}selected{% endif %}>{{ s.1 }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="bg-slate-900 text-white text-sm rounded px-3 py-1">Filter</button>
+</form>
+
+<table class="w-full bg-white border border-slate-200 text-sm">
+  <thead class="bg-slate-100 text-left">
+    <tr>
+      <th class="px-3 py-2">Name</th>
+      <th class="px-3 py-2">Slug</th>
+      <th class="px-3 py-2">Status</th>
+      <th class="px-3 py-2">Created</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for org in page_obj %}
+      <tr class="border-t border-slate-100">
+        <td class="px-3 py-2"><a class="text-blue-600 hover:underline" href="{% url 'sadmin:orgs_detail' org.id %}">{{ org.name }}</a></td>
+        <td class="px-3 py-2 font-mono text-xs">{{ org.slug }}</td>
+        <td class="px-3 py-2">{{ org.status }}</td>
+        <td class="px-3 py-2">{{ org.created_at|date:"Y-m-d" }}</td>
+      </tr>
+    {% empty %}
+      <tr><td class="px-3 py-3 text-slate-500" colspan="4">No organizations.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% include "sadmin/_pagination.html" with page_obj=page_obj %}
+{% endblock %}

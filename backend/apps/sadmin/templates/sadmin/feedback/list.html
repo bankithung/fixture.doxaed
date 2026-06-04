@@ -1,0 +1,66 @@
+{% extends "sadmin/_base.html" %}
+{% block title %}Feedback{% endblock %}
+
+{% block content %}
+<h2 class="text-2xl font-semibold mb-4">Feedback inbox</h2>
+
+<form method="get" class="mb-4 flex gap-2 items-center">
+  <select name="status" class="border border-slate-300 rounded px-3 py-1 text-sm">
+    <option value="">Any status</option>
+    {% for s in statuses %}
+      <option value="{{ s.0 }}" {% if status_filter == s.0 %}selected{% endif %}>{{ s.1 }}</option>
+    {% endfor %}
+  </select>
+  <select name="category" class="border border-slate-300 rounded px-3 py-1 text-sm">
+    <option value="">Any category</option>
+    {% for c in categories %}
+      <option value="{{ c.0 }}" {% if category_filter == c.0 %}selected{% endif %}>{{ c.1 }}</option>
+    {% endfor %}
+  </select>
+  <button class="bg-slate-900 text-white text-sm rounded px-3 py-1">Filter</button>
+</form>
+
+<table class="w-full bg-white border border-slate-200 text-sm">
+  <thead class="bg-slate-100 text-left">
+    <tr>
+      <th class="px-3 py-2">Submitted</th>
+      <th class="px-3 py-2">Submitter</th>
+      <th class="px-3 py-2">Category</th>
+      <th class="px-3 py-2">Subject</th>
+      <th class="px-3 py-2">Status</th>
+      <th class="px-3 py-2">Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for fb in page_obj %}
+      <tr class="border-t border-slate-100 align-top">
+        <td class="px-3 py-2 whitespace-nowrap">{{ fb.created_at|date:"Y-m-d H:i" }}</td>
+        <td class="px-3 py-2">{{ fb.submitter_email }}</td>
+        <td class="px-3 py-2">{{ fb.category }}</td>
+        <td class="px-3 py-2">
+          <div class="font-medium">{{ fb.subject }}</div>
+          <p class="text-xs text-slate-500 mt-1 line-clamp-2">{{ fb.body|truncatechars:140 }}</p>
+        </td>
+        <td class="px-3 py-2">{{ fb.status }}</td>
+        <td class="px-3 py-2">
+          <form hx-post="{% url 'sadmin:feedback_triage' fb.id %}" hx-swap="outerHTML" class="space-y-1">
+            {% csrf_token %}
+            <select name="status" class="border border-slate-300 rounded px-2 py-1 text-xs">
+              {% for s in statuses %}
+                <option value="{{ s.0 }}" {% if fb.status == s.0 %}selected{% endif %}>{{ s.1 }}</option>
+              {% endfor %}
+            </select>
+            <input name="internal_notes" placeholder="Internal note"
+                   class="border border-slate-300 rounded px-2 py-1 text-xs w-full">
+            <button class="text-xs bg-slate-900 text-white rounded px-2 py-1">Save</button>
+          </form>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td class="px-3 py-3 text-slate-500" colspan="6">No feedback rows.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% include "sadmin/_pagination.html" with page_obj=page_obj %}
+{% endblock %}

@@ -1,0 +1,12 @@
+{% if impersonating_email %}
+  <div class="bg-red-600 text-white px-4 py-2 text-sm flex items-center justify-between"
+       data-testid="impersonate-banner">
+    <span>
+      ⚠️ You are impersonating <strong>{{ impersonating_email }}</strong>.
+    </span>
+    <form method="post" action="{% url 'sadmin:impersonate_stop' %}">
+      {% csrf_token %}
+      <button type="submit" class="ml-3 underline hover:no-underline">Stop impersonating</button>
+    </form>
+  </div>
+{% endif %}

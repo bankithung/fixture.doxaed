@@ -1,0 +1,24 @@
+# Python / Django
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+backend/.venv/
+*.sqlite3
+backend/staticfiles/
+backend/media/
+# Secrets / env (keep *.env.example)
+.env
+backend/.env
+*.local.env
+# Node / frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+# Tooling / editor / OS artifacts
+.playwright-mcp/
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

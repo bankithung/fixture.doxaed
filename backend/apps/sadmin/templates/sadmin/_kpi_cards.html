@@ -1,0 +1,18 @@
+{% with m=metrics %}
+<div class="bg-white border border-slate-200 rounded p-4">
+  <div class="text-xs text-slate-500 uppercase tracking-wide">Total users</div>
+  <div class="text-2xl font-semibold">{{ m.total_users|default:0 }}</div>
+</div>
+<div class="bg-white border border-slate-200 rounded p-4">
+  <div class="text-xs text-slate-500 uppercase tracking-wide">Active 7d</div>
+  <div class="text-2xl font-semibold">{{ m.active_users_7d|default:0 }}</div>
+</div>
+<div class="bg-white border border-slate-200 rounded p-4">
+  <div class="text-xs text-slate-500 uppercase tracking-wide">Active orgs</div>
+  <div class="text-2xl font-semibold">{{ m.orgs_active|default:0 }}</div>
+</div>
+<div class="bg-white border border-slate-200 rounded p-4">
+  <div class="text-xs text-slate-500 uppercase tracking-wide">Open feedback</div>
+  <div class="text-2xl font-semibold">{{ m.feedback_open|default:0 }}</div>
+</div>
+{% endwith %}

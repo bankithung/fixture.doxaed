@@ -1,0 +1,156 @@
+[
+  {
+    "code": "org.settings",
+    "name": "Org Settings",
+    "category": "org_scoped",
+    "description": "Org name, slug (locked post-publish), branding, timezone, public-page settings.",
+    "default_for_roles": ["admin", "co_organizer"]
+  },
+  {
+    "code": "org.member_directory",
+    "name": "Member Directory",
+    "category": "org_scoped",
+    "description": "List of all users in the Org with roles, statuses, last-login; invite/revoke/role-change actions.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator"]
+  },
+  {
+    "code": "org.audit_log",
+    "name": "Org Audit Log",
+    "category": "org_scoped",
+    "description": "Org-scoped audit events; searchable, filterable, CSV export.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator", "referee"]
+  },
+  {
+    "code": "org.tournament_list",
+    "name": "Tournament List",
+    "category": "org_scoped",
+    "description": "List of all tournaments in the Org with status filter; entry point to per-Tournament modules.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator", "match_scorer", "referee", "team_manager"]
+  },
+  {
+    "code": "org.branding",
+    "name": "Org Branding",
+    "category": "org_scoped",
+    "description": "Logo, primary brand color, public-facing description.",
+    "default_for_roles": ["admin", "co_organizer"]
+  },
+  {
+    "code": "tournament.editor",
+    "name": "Tournament Editor",
+    "category": "tournament_scoped",
+    "description": "Wizard + edit views for basics, format, structured rules, prose rulebook, dates, venues, registration window.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator"]
+  },
+  {
+    "code": "tournament.bracket_editor",
+    "name": "Bracket Editor",
+    "category": "tournament_scoped",
+    "description": "Auto-generate + drag-drop bracket; lock/unlock.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator"]
+  },
+  {
+    "code": "tournament.schedule_editor",
+    "name": "Schedule Editor",
+    "category": "tournament_scoped",
+    "description": "Auto-generate + drag-drop schedule; conflict warnings.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator"]
+  },
+  {
+    "code": "tournament.team_registration",
+    "name": "Team Registration Manager",
+    "category": "tournament_scoped",
+    "description": "Approve/reject team registrations, withdraw, disqualify.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator", "team_manager"]
+  },
+  {
+    "code": "tournament.player_roster",
+    "name": "Player Roster Manager",
+    "category": "tournament_scoped",
+    "description": "Add/edit/remove players; eligibility freeze; suspension overrides.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator", "team_manager"]
+  },
+  {
+    "code": "tournament.lineup_manager",
+    "name": "Lineup Manager",
+    "category": "tournament_scoped",
+    "description": "View/override lineups for any match in the tournament.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator", "match_scorer", "referee", "team_manager"]
+  },
+  {
+    "code": "tournament.audit_log",
+    "name": "Tournament Audit Log",
+    "category": "tournament_scoped",
+    "description": "Tournament-scoped audit events.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator"]
+  },
+  {
+    "code": "tournament.report_export",
+    "name": "Tournament Report Export",
+    "category": "tournament_scoped",
+    "description": "End-of-tournament PDF (standings + top scorers + match results + bracket).",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator"]
+  },
+  {
+    "code": "tournament.organizer_checklist",
+    "name": "Pre-Tournament Checklist",
+    "category": "tournament_scoped",
+    "description": "Single-screen readiness summary.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator"]
+  },
+  {
+    "code": "tournament.day_pack_export",
+    "name": "Today's Day-Pack Export",
+    "category": "tournament_scoped",
+    "description": "PDF for venue use (schedule + roster + blank lineup/match-card forms).",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator"]
+  },
+  {
+    "code": "match.scoring_console",
+    "name": "Scoring Console",
+    "category": "match_scoped",
+    "description": "Live scoring UI — clock, event entry, player picker.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator", "match_scorer"]
+  },
+  {
+    "code": "match.referee_console",
+    "name": "Referee Console",
+    "category": "match_scoped",
+    "description": "Real-time event review, correction, post-match approval.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator", "referee"]
+  },
+  {
+    "code": "match.center_admin_view",
+    "name": "Match Center (admin view)",
+    "category": "match_scoped",
+    "description": "Match details with admin overlays — submitted lineups, raw event log, scorer/referee identities.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator", "match_scorer", "referee", "team_manager"]
+  },
+  {
+    "code": "match.lineup_submission",
+    "name": "Lineup Submission",
+    "category": "match_scoped",
+    "description": "Submit lineup as TM or override-submit as Admin.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator", "team_manager"]
+  },
+  {
+    "code": "personal.notification_prefs",
+    "name": "Notification Preferences",
+    "category": "personal",
+    "description": "(event_type × channel) toggle matrix.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator", "match_scorer", "referee", "team_manager"]
+  },
+  {
+    "code": "personal.profile",
+    "name": "Personal Profile",
+    "category": "personal",
+    "description": "Edit own name, photo, email, password, 2FA.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator", "match_scorer", "referee", "team_manager"]
+  },
+  {
+    "code": "personal.feedback_widget",
+    "name": "Feedback Widget",
+    "category": "personal",
+    "description": "Submit bug/feature/complaint feedback (lands in Super-admin's Feedback Inbox).",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator", "match_scorer", "referee", "team_manager"]
+  }
+]
