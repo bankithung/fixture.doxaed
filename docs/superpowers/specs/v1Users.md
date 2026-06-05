@@ -2781,3 +2781,19 @@ These are intentionally not locked at spec time:
 *Plus Appendix A — Module catalog and permission model (sport-agnostic).*
 
 *Next phase: review across sections for consistency, then translate to implementation plan via the `superpowers:writing-plans` skill.*
+
+---
+
+## Decisions added during implementation
+
+### #91 — Org-as-hidden-workspace self-serve; `single_org_per_admin_user` dropped; TournamentMembership widened to 6 roles (2026-06-05)
+
+**Context:** The locked product flow (owner, 2026-06-04) is fully symmetric / self-serve: any signed-up + email-verified user can create a tournament and become *its* admin, invite anyone by email, and assign tournament-scoped roles — NO super-admin approval gate. The `Organization` stays the multi-tenant isolation boundary but is hidden in the UI as a per-user personal **workspace**.
+
+**Decision:**
+1. **Drop `single_org_per_admin_user`** on `OrganizationMembership`. A user may hold active `admin`/`is_org_owner` memberships in **multiple** orgs (one personal workspace per tournament started). `one_owner_per_org` and `unique_active_role_per_user_per_org` are **retained**.
+2. **Tournament-admin identity moves to `TournamentMembership`** (new `apps.tournaments`); `role` is widened from §4.7's single `game_coordinator` to the **6-role set** (admin, co_organizer, game_coordinator, match_scorer, referee, team_manager).
+3. **Signup becomes account-only** — no pending org at signup; the workspace is provisioned (active) at first tournament-create (in progress).
+4. **Invite-accept becomes `AllowAny`** with inline account creation; invitees get a tournament-scoped `TournamentMembership` + a thin active `OrganizationMembership` (role never `admin`).
+
+**Supersedes** PRD §2.4 (admin-of-one-org) and v1Users §2.5's `single_org_per_admin_user`. **Design:** `docs/superpowers/audit/design-selfserve-flow.md`. Fold into PRD §14 next batch.

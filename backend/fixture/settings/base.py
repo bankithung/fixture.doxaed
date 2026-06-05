@@ -52,6 +52,7 @@ LOCAL_APPS = [
     "apps.permissions",
     "apps.sadmin",
     "apps.sports",
+    "apps.tournaments",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

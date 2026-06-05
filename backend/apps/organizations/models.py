@@ -5,7 +5,9 @@ Locked invariants implemented here:
   - Multi-tenancy by Organization is the day-one boundary.
   - DEFERRABLE INITIALLY DEFERRED on `one_owner_per_org` so atomic
     ownership-swap inside a single transaction works.
-  - Single-org-per-Admin-user widened constraint (v1Users.md §2.5).
+  - single_org_per_admin_user DROPPED (decision #91: org-as-hidden-workspace;
+    tournament-admin identity lives on TournamentMembership). one_owner_per_org
+    and unique_active_role_per_user_per_org are retained.
   - Multi-role per (user, org) supported because role is part of the
     unique tuple in `unique_active_role_per_user_per_org`.
   - is_org_owner=True implies role=admin (CheckConstraint).
@@ -224,14 +226,7 @@ class OrganizationMembership(models.Model):
                 condition=Q(is_org_owner=True, is_active=True),
                 name="one_owner_per_org",
             ),
-            # 3. A user can hold an active admin membership in only one
-            # Organization globally (PRD §2.4 widened).
-            UniqueConstraint(
-                fields=["user"],
-                condition=Q(role="admin", is_active=True),
-                name="single_org_per_admin_user",
-            ),
-            # 4. is_org_owner=True implies role=admin.
+            # is_org_owner=True implies role=admin.
             CheckConstraint(
                 condition=Q(is_org_owner=False) | Q(role="admin"),
                 name="owner_flag_only_on_admin_role",

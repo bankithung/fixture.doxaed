@@ -4,7 +4,7 @@ Each constraint is asserted to raise IntegrityError when violated:
 
   1. unique_active_role_per_user_per_org
   2. one_owner_per_org (deferrable; checked at COMMIT)
-  3. single_org_per_admin_user
+  3. single_org_per_admin_user — DROPPED (decision #91); multi-org admin now allowed
   4. owner_flag_only_on_admin_role (CheckConstraint)
 """
 from __future__ import annotations
@@ -70,18 +70,26 @@ def test_one_owner_per_org_constraint():
             )
 
 
-def test_single_org_per_admin_user_constraint():
+def test_user_can_be_admin_of_multiple_orgs():
+    """single_org_per_admin_user was DROPPED (decision #91: org-as-hidden-workspace).
+    A user can hold active admin/owner memberships in multiple orgs — one personal
+    workspace per tournament they start. This previously raised IntegrityError.
+    """
     user = UserFactory()
     org_a = OrganizationFactory(slug="org-a")
     org_b = OrganizationFactory(slug="org-b")
     OrganizationMembershipFactory(
         user=user, organization=org_a, role=MembershipRole.ADMIN, is_org_owner=True
     )
-    with pytest.raises(IntegrityError):
-        with transaction.atomic():
-            OrganizationMembershipFactory(
-                user=user, organization=org_b, role=MembershipRole.ADMIN
-            )
+    OrganizationMembershipFactory(
+        user=user, organization=org_b, role=MembershipRole.ADMIN, is_org_owner=True
+    )
+    assert (
+        OrganizationMembership.objects.filter(
+            user=user, role=MembershipRole.ADMIN, is_active=True
+        ).count()
+        == 2
+    )
 
 
 def test_owner_flag_only_on_admin_role_check():
