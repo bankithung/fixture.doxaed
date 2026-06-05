@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from django.db import IntegrityError
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from apps.teams.models import Team
+from apps.teams.models import RegistrationLink, Team
 from apps.teams.serializers import SchoolRegistrationSerializer
 from apps.teams.throttling import RegistrationRateThrottle
 from apps.teams.services.registration import (
@@ -84,6 +84,9 @@ class PublicRegistrationView(GenericAPIView):
             raise DRFValidationError(
                 {"detail": "duplicate_team_name_or_jersey_in_submission"}
             )
+        RegistrationLink.objects.filter(pk=link.pk).update(
+            submission_count=F("submission_count") + 1
+        )
         return Response(
             {"registered": len(teams), "teams": [t.name for t in teams]}, status=201
         )

@@ -160,6 +160,9 @@ class RegistrationLink(models.Model):
     token_hash = models.CharField(max_length=128, db_index=True)
     label = models.CharField(max_length=120, blank=True)
     is_active = models.BooleanField(default=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    max_submissions = models.PositiveIntegerField(null=True, blank=True)
+    submission_count = models.PositiveIntegerField(default=0)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="registration_links_created",
