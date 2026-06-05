@@ -6,14 +6,48 @@ flow and the public registration-link submission.
 """
 from __future__ import annotations
 
+import hashlib
 import re
+import secrets
 import uuid as _uuid
 
 from django.db import transaction
 
 from apps.audit.models import ActorRole, AuditEvent
 from apps.audit.services import emit_audit
-from apps.teams.models import Person, Player, Team, TeamStatus
+from apps.teams.models import Person, Player, RegistrationLink, Team, TeamStatus
+
+
+def _hash_token(plaintext: str) -> str:
+    return hashlib.sha256(plaintext.encode("utf-8")).hexdigest()
+
+
+def create_registration_link(*, tournament, created_by=None, label: str = ""):
+    """Create a shareable registration link. Returns (link, plaintext_token)."""
+    token = secrets.token_urlsafe(24)
+    link = RegistrationLink.objects.create(
+        organization=tournament.organization,
+        tournament=tournament,
+        token_hash=_hash_token(token),
+        label=(label or "")[:120],
+        created_by=created_by,
+    )
+    return link, token
+
+
+def resolve_registration_link(token_plaintext: str):
+    """Resolve an active registration link by plaintext token, or None."""
+    if not token_plaintext:
+        return None
+    return (
+        RegistrationLink.objects.filter(
+            token_hash=_hash_token(token_plaintext),
+            is_active=True,
+            tournament__deleted_at__isnull=True,
+        )
+        .select_related("tournament", "tournament__organization")
+        .first()
+    )
 
 _SCRUB = re.compile(r"[^a-z0-9-]+")
 _HYPHEN = re.compile(r"-+")

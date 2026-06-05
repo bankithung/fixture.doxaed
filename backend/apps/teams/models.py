@@ -141,3 +141,33 @@ class Player(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"#{self.jersey_no} {self.person_id}"
+
+
+class RegistrationLink(models.Model):
+    """A shareable token an organizer hands out so schools self-register their
+    teams + players (no account needed). Plaintext token is shown once; only the
+    sha256 hash is stored (same pattern as invitations)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="registration_links",
+    )
+    tournament = models.ForeignKey(
+        "tournaments.Tournament", on_delete=models.CASCADE,
+        related_name="registration_links",
+    )
+    token_hash = models.CharField(max_length=128, db_index=True)
+    label = models.CharField(max_length=120, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="registration_links_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "teams_registration_link"
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"RegistrationLink({self.tournament_id})"

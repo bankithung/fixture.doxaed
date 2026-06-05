@@ -36,6 +36,8 @@ api_v1 = [
     path("sports/", include("apps.sports.urls")),
     # Phase 1B: tournaments (self-serve create + list).
     path("tournaments/", include("apps.tournaments.urls")),
+    # Phase 1B: public school self-registration via shareable link.
+    path("register/", include("apps.teams.urls")),
     # Public feedback submit endpoint backing the SPA's feedback widget
     # (v1Users.md A.2 personal.feedback_widget). Throttled to 10/hr/user.
     path(
