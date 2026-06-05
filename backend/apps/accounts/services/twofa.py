@@ -28,6 +28,7 @@ import pyotp
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
 
@@ -45,6 +46,12 @@ _HASHER = PasswordHasher()
 RECOVERY_CODE_COUNT = 10
 RECOVERY_CODE_LEN = 10  # 10 base32 chars ~= 50 bits entropy
 _RECOVERY_ALPHABET = string.ascii_uppercase + string.digits
+
+# 2FA second-factor brute-force lockout. Deliberately SEPARATE from the
+# django-axes password lockout (AXES_RESET_ON_SUCCESS=True) so a correct
+# password cannot reset the attacker's second-factor attempt counter.
+TWOFA_MAX_ATTEMPTS = 5
+TWOFA_LOCK_SECONDS = 15 * 60
 
 
 def _random_secret_b32() -> str:
@@ -194,6 +201,29 @@ def _generate_recovery_codes(user: User) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+def _twofa_attempt_key(user_id) -> str:
+    return f"2fa-attempts:{user_id}"
+
+
+def twofa_is_locked(user: User) -> bool:
+    """True once the user has hit TWOFA_MAX_ATTEMPTS failed second factors."""
+    return int(cache.get(_twofa_attempt_key(user.id), 0)) >= TWOFA_MAX_ATTEMPTS
+
+
+def twofa_record_failure(user: User) -> int:
+    """Increment the failed-2FA counter (TTL = lock window). Returns the count."""
+    key = _twofa_attempt_key(user.id)
+    try:
+        return cache.incr(key)
+    except ValueError:
+        cache.set(key, 1, TWOFA_LOCK_SECONDS)
+        return 1
+
+
+def twofa_reset_attempts(user: User) -> None:
+    cache.delete(_twofa_attempt_key(user.id))
+
+
 def _verify_recovery(user: User, code: str) -> bool:
     """Argon2id-verify ``code`` against the user's unused recovery codes
     in O(n) (n=10). On match, mark the row used and return True.
@@ -208,9 +238,14 @@ def _verify_recovery(user: User, code: str) -> bool:
         except Exception:  # pragma: no cover - hash format defensive
             logger.exception("Recovery code hash verification failed")
             continue
-        row.used_at = timezone.now()
-        row.save(update_fields=["used_at"])
-        return True
+        # Atomic single-use claim: conditional UPDATE ... WHERE used_at IS NULL.
+        # Only the first concurrent consumer gets rowcount == 1.
+        claimed = RecoveryCode.objects.filter(
+            pk=row.pk, used_at__isnull=True
+        ).update(used_at=timezone.now())
+        if claimed == 1:
+            return True
+        return False  # consumed by a concurrent request
     return False
 
 

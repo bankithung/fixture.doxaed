@@ -223,12 +223,27 @@ def login_view(request: Request) -> Response:
         return Response({"detail": "account_inactive"}, status=status.HTTP_403_FORBIDDEN)
 
     if user.has_2fa_enrolled:
+        if twofa_svc.twofa_is_locked(user):
+            emit_audit(
+                actor_user=user,
+                actor_role=_actor_role(user),
+                event_type="user_login_failed",
+                target_type="user",
+                target_id=user.id,
+                payload_after={"reason": "2fa_locked"},
+                request=request,
+            )
+            return Response(
+                {"detail": "twofa_locked"},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
         if not totp_code:
             return Response(
                 {"requires_2fa": True},
                 status=status.HTTP_200_OK,
             )
         if not twofa_svc.verify_totp_or_recovery(user, totp_code, request=request):
+            twofa_svc.twofa_record_failure(user)
             emit_audit(
                 actor_user=user,
                 actor_role=_actor_role(user),
@@ -238,7 +253,16 @@ def login_view(request: Request) -> Response:
                 payload_after={"reason": "2fa_failed"},
                 request=request,
             )
-            return Response({"detail": "invalid_2fa"}, status=status.HTTP_400_BAD_REQUEST)
+            locked = twofa_svc.twofa_is_locked(user)
+            return Response(
+                {"detail": "twofa_locked" if locked else "invalid_2fa"},
+                status=(
+                    status.HTTP_429_TOO_MANY_REQUESTS
+                    if locked
+                    else status.HTTP_400_BAD_REQUEST
+                ),
+            )
+        twofa_svc.twofa_reset_attempts(user)
 
     login(request, user)
     cycle_session_on_role_change(request)  # B.11 fixation defense
