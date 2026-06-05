@@ -45,6 +45,8 @@ export const routes = {
   /** Tournament dashboard (thin in 1A; Phase 1B fills it). */
   tournament: (slug: string, id: string) =>
     `/o/${encodeURIComponent(slug)}/tournaments/${encodeURIComponent(id)}`,
+  /** Public school self-registration via a shared link. */
+  register: (token: string) => `/register/${encodeURIComponent(token)}`,
   profile: () => "/me",
   profileNotifications: () => "/me/notifications",
   /** Aliases — match the role-landing spec naming (`myProfile`, `myNotifications`). */

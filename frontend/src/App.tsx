@@ -15,6 +15,7 @@ import { AppShell } from "@/features/layout/AppShell";
 import { OrgChooserPage } from "@/features/layout/OrgChooserPage";
 import { CreateTournamentPage } from "@/features/tournaments/CreateTournamentPage";
 import { TournamentsListPage } from "@/features/tournaments/TournamentsListPage";
+import { RegistrationFormPage } from "@/features/registration/RegistrationFormPage";
 import { OrgDashboardPage } from "@/features/layout/OrgDashboardPage";
 // Auth pages (B1).
 import { LoginPage } from "@/features/auth/LoginPage";
@@ -113,6 +114,10 @@ export default function App(): React.ReactElement {
                 element={<TwoFactorChallengePage />}
               />
               <Route path="/accept" element={<InviteAcceptPage />} />
+              <Route
+                path="/register/:token"
+                element={<RegistrationFormPage />}
+              />
 
               {/* Protected surfaces — share the AppShell chrome. */}
               <Route
