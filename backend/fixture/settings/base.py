@@ -170,6 +170,8 @@ REST_FRAMEWORK = {
         "user": "240/min",
         # v1Users.md Appendix B.11: Org self-signup (Path B) 3/hr/IP.
         "signup": "3/hour",
+        # Public school self-registration via shared link — anti-abuse cap.
+        "school_registration": "30/hour",
     },
 }
 

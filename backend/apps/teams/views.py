@@ -10,6 +10,7 @@ from rest_framework.response import Response
 
 from apps.teams.models import Team
 from apps.teams.serializers import SchoolRegistrationSerializer
+from apps.teams.throttling import RegistrationRateThrottle
 from apps.teams.services.registration import (
     create_registration_link,
     register_school,
@@ -53,6 +54,7 @@ class PublicRegistrationView(GenericAPIView):
     context; POST registers a school's teams + players via the link."""
 
     permission_classes = [AllowAny]
+    throttle_classes = [RegistrationRateThrottle]
     serializer_class = SchoolRegistrationSerializer
 
     def get(self, request, token):
