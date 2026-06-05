@@ -9,6 +9,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient, onAuthEvent } from "@/api/queryClient";
 import { useAuthStore } from "@/features/auth/authStore";
 import { ToastProvider } from "@/components/ui/toast";
+import { ThemeProvider } from "@/features/theme/ThemeProvider";
 import { ProtectedRoute } from "@/features/layout/ProtectedRoute";
 import { AppShell } from "@/features/layout/AppShell";
 import { OrgChooserPage } from "@/features/layout/OrgChooserPage";
@@ -82,7 +83,8 @@ function AuthBusBridge(): null {
  */
 export default function App(): React.ReactElement {
   return (
-    <QueryClientProvider client={queryClient}>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <ErrorBoundary>
           <BrowserRouter>
@@ -187,6 +189,7 @@ export default function App(): React.ReactElement {
           </BrowserRouter>
         </ErrorBoundary>
       </ToastProvider>
-    </QueryClientProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }

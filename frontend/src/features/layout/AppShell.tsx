@@ -11,6 +11,7 @@ import { Bell, ChevronDown, Menu, UserRound, X } from "lucide-react";
 import { useAuthStore } from "@/features/auth/authStore";
 import { useOrgSwitcher } from "@/features/orgs/OrgSwitcherStore";
 import { OrgSwitcher } from "@/features/orgs/OrgSwitcher";
+import { ThemeToggle } from "@/features/theme/ThemeToggle";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/button";
 import { computeNavItems, type NavItem } from "./computeNavItems";
@@ -149,6 +150,7 @@ export function AppShell(): React.ReactElement {
         </nav>
 
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          <ThemeToggle />
           <OrgSwitcher />
 
           {/* User menu trigger. */}
