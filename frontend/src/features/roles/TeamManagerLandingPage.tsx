@@ -1,5 +1,6 @@
 import { Users, UserPlus, ListChecks, ShieldAlert } from "lucide-react";
 import { RoleLandingShell } from "./RoleLandingShell";
+import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 
 /**
@@ -13,7 +14,17 @@ export function TeamManagerLandingPage(): React.ReactElement {
     <RoleLandingShell
       ariaLabel={t("Team manager landing")}
       heroTitle={t("Welcome, Team manager")}
-      heroSubtitle={t("Your team console activates in Phase 1B.")}
+      heroSubtitle={t(
+        "You can register your teams and players today via a tournament's shared link. The full team console below arrives in Phase 1B.",
+      )}
+      availableNow={{
+        title: t("Register & manage teams"),
+        description: t(
+          "Open your tournaments to view teams, fixtures, and standings.",
+        ),
+        href: routes.tournaments(),
+        cta: t("Open your tournaments"),
+      }}
       tiles={[
         {
           icon: Users,

@@ -16,7 +16,7 @@ describe("TeamManagerLandingPage", () => {
       screen.getByRole("heading", { level: 1, name: /welcome, team manager/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/team console activates in phase 1b/i),
+      screen.getByText(/register your teams and players today/i),
     ).toBeInTheDocument();
     expect(screen.getAllByTestId("preview-tile")).toHaveLength(4);
     expect(screen.getByText(/roster management/i)).toBeInTheDocument();

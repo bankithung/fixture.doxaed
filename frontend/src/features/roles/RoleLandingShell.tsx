@@ -30,6 +30,13 @@ export interface RoleLandingShellProps {
   heroSubtitle: string;
   /** Preview tiles describing Phase 1B capabilities. */
   tiles: PreviewTileProps[];
+  /** Optional "available today" highlighted CTA (e.g. link to live Tournaments). */
+  availableNow?: {
+    title: string;
+    description: string;
+    href: string;
+    cta: string;
+  };
   /** Optional callback to open the feedback modal (Phase 1B handoff). */
   onSendFeedback?: () => void;
   /** ARIA label for the page section root. */
@@ -40,6 +47,7 @@ export function RoleLandingShell({
   heroTitle,
   heroSubtitle,
   tiles,
+  availableNow,
   onSendFeedback,
   ariaLabel,
 }: RoleLandingShellProps): React.ReactElement {
@@ -57,6 +65,23 @@ export function RoleLandingShell({
         </h1>
         <p className="text-sm text-muted-foreground">{heroSubtitle}</p>
       </header>
+
+      {availableNow ? (
+        <Card className="border-primary/40 bg-accent/40">
+          <CardHeader>
+            <CardTitle>{availableNow.title}</CardTitle>
+            <CardDescription>{availableNow.description}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link
+              to={availableNow.href}
+              className="inline-flex h-10 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              {availableNow.cta}
+            </Link>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

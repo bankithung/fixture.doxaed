@@ -20,7 +20,7 @@ describe("ScorerLandingPage", () => {
       screen.getByRole("heading", { level: 1, name: /welcome, match scorer/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/scoring console activates/i),
+      screen.getByText(/record match scores today/i),
     ).toBeInTheDocument();
     // 4 preview tiles per spec.
     const tiles = screen.getAllByTestId("preview-tile");

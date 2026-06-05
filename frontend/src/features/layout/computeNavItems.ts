@@ -4,6 +4,7 @@ import {
   Goal,
   LayoutDashboard,
   Shield,
+  Trophy,
   Users,
   Users2,
 } from "lucide-react";
@@ -74,6 +75,16 @@ export function computeNavItems(
     label: t("Dashboard"),
     href: routes.orgDashboard(slug),
     icon: LayoutDashboard,
+  });
+
+  // 1b. Tournaments — the primary working surface (create/manage tournaments,
+  //     share registration links, fixtures, scores, standings). Global (not
+  //     org-scoped) but shown whenever an org is in scope so it's reachable.
+  items.push({
+    key: "tournaments",
+    label: t("Tournaments"),
+    href: routes.tournaments(),
+    icon: Trophy,
   });
 
   // 2. Members — module-gated.

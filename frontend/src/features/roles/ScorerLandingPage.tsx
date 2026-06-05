@@ -1,5 +1,6 @@
 import { Activity, ClipboardList, RefreshCw, Download } from "lucide-react";
 import { RoleLandingShell } from "./RoleLandingShell";
+import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 
 /**
@@ -15,8 +16,16 @@ export function ScorerLandingPage(): React.ReactElement {
       ariaLabel={t("Match scorer landing")}
       heroTitle={t("Welcome, Match scorer")}
       heroSubtitle={t(
-        "Your scoring console activates when matches go live in Phase 1B.",
+        "You can record match scores today. The rich live console below arrives in Phase 1B.",
       )}
+      availableNow={{
+        title: t("Score matches now"),
+        description: t(
+          "Open a tournament you're assigned to, then enter scores on its fixtures.",
+        ),
+        href: routes.tournaments(),
+        cta: t("Open your tournaments"),
+      }}
       tiles={[
         {
           icon: Activity,

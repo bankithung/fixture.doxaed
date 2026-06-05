@@ -41,7 +41,7 @@ describe("computeNavItems", () => {
     // Dashboard always renders given a slug — we never try to find membership
     // for the dashboard label itself; downstream items hide because modules
     // and roles come up empty for an unknown slug.
-    expect(items.map((i) => i.key)).toEqual(["dashboard"]);
+    expect(items.map((i) => i.key)).toEqual(["dashboard", "tournaments"]);
   });
 
   it("admin sees Dashboard + Members + Permissions + Audit", () => {
@@ -50,7 +50,13 @@ describe("computeNavItems", () => {
       ["org.member_directory", "org.audit_log"],
     );
     const keys = computeNavItems(u, "acme").map((i) => i.key);
-    expect(keys).toEqual(["dashboard", "members", "permissions", "audit"]);
+    expect(keys).toEqual([
+      "dashboard",
+      "tournaments",
+      "members",
+      "permissions",
+      "audit",
+    ]);
   });
 
   it("owner sees Permissions just like admin", () => {
@@ -138,6 +144,7 @@ describe("computeNavItems", () => {
     const u = makeUser(["viewer"], []);
     expect(computeNavItems(u, "acme").map((i) => i.key)).toEqual([
       "dashboard",
+      "tournaments",
     ]);
   });
 
@@ -159,6 +166,11 @@ describe("computeNavItems", () => {
       ["org.member_directory", "org.audit_log"],
     );
     for (const item of computeNavItems(u, "acme")) {
+      if (item.key === "tournaments") {
+        // Tournaments is the global hub, not an org-scoped surface.
+        expect(item.href).toBe("/tournaments");
+        continue;
+      }
       expect(item.href.startsWith("/o/acme/")).toBe(true);
     }
   });

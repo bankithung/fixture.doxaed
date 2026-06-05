@@ -1,5 +1,6 @@
 import { ClipboardCheck, Timer, Flag, FileWarning } from "lucide-react";
 import { RoleLandingShell } from "./RoleLandingShell";
+import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 
 /**
@@ -13,7 +14,17 @@ export function RefereeLandingPage(): React.ReactElement {
     <RoleLandingShell
       ariaLabel={t("Referee landing")}
       heroTitle={t("Welcome, Referee")}
-      heroSubtitle={t("Your referee console activates in Phase 1B.")}
+      heroSubtitle={t(
+        "You can view fixtures, results, and standings today. The full referee console below arrives in Phase 1B.",
+      )}
+      availableNow={{
+        title: t("Your tournaments"),
+        description: t(
+          "View fixtures, results, and standings for tournaments you're part of.",
+        ),
+        href: routes.tournaments(),
+        cta: t("Open your tournaments"),
+      }}
       tiles={[
         {
           icon: ClipboardCheck,

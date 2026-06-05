@@ -16,7 +16,7 @@ describe("RefereeLandingPage", () => {
       screen.getByRole("heading", { level: 1, name: /welcome, referee/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/referee console activates in phase 1b/i),
+      screen.getByText(/view fixtures, results, and standings today/i),
     ).toBeInTheDocument();
     expect(screen.getAllByTestId("preview-tile")).toHaveLength(4);
     expect(screen.getByText(/lineup confirmation/i)).toBeInTheDocument();
