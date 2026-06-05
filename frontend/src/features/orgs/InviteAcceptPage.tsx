@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { orgsApi } from "@/api/orgs";
 import { ApiError } from "@/types/api";
 import { useAuthStore } from "@/features/auth/authStore";
@@ -11,12 +14,24 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 
+const schema = z.object({
+  name: z.string().optional(),
+  password: z.string().min(12, t("Password must be at least 12 characters")),
+});
+type FormValues = z.infer<typeof schema>;
+
+type State = "idle" | "loading" | "ok" | "error" | "login_required";
+
 /**
- * v1Users.md §2.13 invite-accept landing. Backend cycles the session on
- * accept (B.11), so we re-bootstrap the auth store before redirecting.
+ * Invite-accept landing. AllowAny: a logged-out, brand-new invitee can create
+ * their account inline (email is bound to the invite server-side). An existing
+ * active account is asked to sign in. On success we go to the tournaments hub
+ * (works whether the invitee has org access or only a tournament membership).
  */
 export function InviteAcceptPage(): React.ReactElement {
   const [params] = useSearchParams();
@@ -25,11 +40,12 @@ export function InviteAcceptPage(): React.ReactElement {
   const refreshMe = useAuthStore((s) => s.refreshMe);
   const user = useAuthStore((s) => s.user);
 
-  const [state, setState] = useState<"idle" | "loading" | "ok" | "error">(
-    "idle",
-  );
-  const [orgSlug, setOrgSlug] = useState<string | null>(null);
+  const [state, setState] = useState<State>("idle");
   const [error, setError] = useState<string | null>(null);
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { name: "", password: "" },
+  });
 
   useEffect(() => {
     if (!token) {
@@ -38,16 +54,25 @@ export function InviteAcceptPage(): React.ReactElement {
     }
   }, [token]);
 
-  const onAccept = async (): Promise<void> => {
+  const finishAccept = async (opts?: {
+    password?: string;
+    name?: string;
+  }): Promise<void> => {
     setState("loading");
     setError(null);
     try {
-      const res = await orgsApi.acceptInvitation(token);
-      setOrgSlug(res.org_slug);
-      // Backend cycles the session — refresh local user state.
+      await orgsApi.acceptInvitation(token, opts);
       await refreshMe();
       setState("ok");
     } catch (e) {
+      if (
+        e instanceof ApiError &&
+        e.status === 401 &&
+        e.payload.detail === "login_required"
+      ) {
+        setState("login_required");
+        return;
+      }
       setState("error");
       setError(
         e instanceof ApiError
@@ -57,6 +82,26 @@ export function InviteAcceptPage(): React.ReactElement {
     }
   };
 
+  const signInHref = `${routes.login()}?next=${encodeURIComponent(routes.inviteAccept(token))}`;
+
+  if (state === "ok") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>{t("You're in.")}</CardTitle>
+            <CardDescription>{t("Invitation accepted.")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => navigate(routes.tournaments())}>
+              {t("Go to your tournaments")}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-md">
@@ -64,44 +109,81 @@ export function InviteAcceptPage(): React.ReactElement {
           <CardTitle>{t("Accept invitation")}</CardTitle>
           <CardDescription>
             {user
-              ? t(
-                  "Joining a new organization will switch your active session to it.",
-                )
-              : t("Sign in first to accept this invitation.")}
+              ? t("Accept to join this tournament.")
+              : t("Create your account to join, or sign in if you have one.")}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {!user ? (
-            <Link
-              to={`${routes.login()}?next=${encodeURIComponent(`/accept?token=${token}`)}`}
-              className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          {user ? (
+            <Button
+              onClick={() => finishAccept()}
+              disabled={!token || state === "loading"}
             >
-              {t("Sign in to continue")}
-            </Link>
-          ) : state === "ok" && orgSlug ? (
+              {state === "loading" ? t("Accepting...") : t("Accept invite")}
+            </Button>
+          ) : state === "login_required" ? (
             <>
-              <p role="status" className="text-sm text-grant">
-                {t("You're now a member.")}
+              <p className="text-sm text-muted-foreground">
+                {t("You already have an account. Sign in to accept.")}
               </p>
-              <Button onClick={() => navigate(routes.orgDashboard(orgSlug))}>
-                {t("Go to organization")}
-              </Button>
+              <Link
+                to={signInHref}
+                className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-700 px-4 text-sm font-medium text-white hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                {t("Sign in to continue")}
+              </Link>
             </>
           ) : (
-            <>
-              <Button
-                onClick={onAccept}
-                disabled={!token || state === "loading"}
-              >
-                {state === "loading" ? t("Accepting...") : t("Accept invite")}
+            <form
+              onSubmit={form.handleSubmit((v) =>
+                finishAccept({ password: v.password, name: v.name }),
+              )}
+              className="flex flex-col gap-3"
+              noValidate
+            >
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="name">
+                  {t("Your name")}{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {t("(optional)")}
+                  </span>
+                </Label>
+                <Input id="name" autoComplete="name" {...form.register("name")} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="password">{t("Create a password")}</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="new-password"
+                  aria-invalid={!!form.formState.errors.password}
+                  {...form.register("password")}
+                />
+                {form.formState.errors.password ? (
+                  <p role="alert" className="text-xs text-destructive">
+                    {form.formState.errors.password.message}
+                  </p>
+                ) : null}
+              </div>
+              <Button type="submit" disabled={!token || state === "loading"}>
+                {state === "loading" ? t("Joining...") : t("Create account & join")}
               </Button>
-              {error ? (
-                <p role="alert" className="text-sm text-destructive">
-                  {error}
-                </p>
-              ) : null}
-            </>
+              <p className="text-center text-xs text-muted-foreground">
+                {t("Already have an account?")}{" "}
+                <Link
+                  to={signInHref}
+                  className="font-medium text-emerald-700 hover:underline focus-visible:underline focus-visible:outline-none"
+                >
+                  {t("Sign in")}
+                </Link>
+              </p>
+            </form>
           )}
+          {error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
         </CardContent>
       </Card>
     </div>
