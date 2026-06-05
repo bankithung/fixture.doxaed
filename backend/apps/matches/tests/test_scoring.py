@@ -8,7 +8,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from apps.matches.models import Match, MatchStatus
-from apps.matches.services.scoring import record_score
+from apps.matches.services.scoring import assign_scorer, record_score
 from apps.matches.services.standings import compute_standings
 from apps.teams.services.registration import register_school
 from apps.tournaments.services.create import create_tournament
@@ -76,3 +76,43 @@ def test_record_score_idempotent_on_event_id():
 
     m.refresh_from_db()
     assert (m.home_score, m.away_score) == (2, 2)
+
+
+def test_rescore_completed_match_is_blocked():
+    from django.core.exceptions import ValidationError
+
+    admin = _verified()
+    t = create_tournament(user=admin, name="Cup")
+    a, b = _two_teams(t)
+    m = Match.objects.create(organization=t.organization, tournament=t, home_team=a, away_team=b)
+    record_score(match=m, home_score=1, away_score=0, by=admin)
+
+    with pytest.raises(ValidationError):
+        record_score(match=m, home_score=9, away_score=9, by=admin)  # different (no) event_id
+
+
+def test_assign_scorer_requires_tournament_membership():
+    from django.core.exceptions import ValidationError
+
+    from apps.tournaments.models import (
+        TournamentMembership,
+        TournamentMembershipRole,
+        TournamentMembershipStatus,
+    )
+
+    admin = _verified()
+    t = create_tournament(user=admin, name="Cup")
+    a, b = _two_teams(t)
+    m = Match.objects.create(organization=t.organization, tournament=t, home_team=a, away_team=b)
+    outsider = _verified("outsider@test.local")
+
+    with pytest.raises(ValidationError):
+        assign_scorer(match=m, user=outsider, by=admin)
+
+    TournamentMembership.objects.create(
+        user=outsider, tournament=t, role=TournamentMembershipRole.MATCH_SCORER,
+        status=TournamentMembershipStatus.ACTIVE,
+    )
+    assign_scorer(match=m, user=outsider, by=admin)
+    m.refresh_from_db()
+    assert m.scorer_id == outsider.id
