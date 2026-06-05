@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from django.db import IntegrityError
+from django.db.models import Count, Q
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from apps.teams.models import Team
 from apps.teams.serializers import SchoolRegistrationSerializer
 from apps.teams.services.registration import (
     create_registration_link,
@@ -82,4 +84,37 @@ class PublicRegistrationView(GenericAPIView):
             )
         return Response(
             {"registered": len(teams), "teams": [t.name for t in teams]}, status=201
+        )
+
+
+class TournamentTeamsListView(GenericAPIView):
+    """`GET /api/tournaments/{id}/teams/` — registered teams (access-scoped)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id):
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        qs = (
+            Team.objects.filter(tournament_id=tournament_id, deleted_at__isnull=True)
+            .annotate(
+                player_count=Count(
+                    "players", filter=Q(players__deleted_at__isnull=True)
+                )
+            )
+            .order_by("pool", "name")
+        )
+        return Response(
+            [
+                {
+                    "id": str(t.id),
+                    "name": t.name,
+                    "short_name": t.short_name,
+                    "school": t.school,
+                    "pool": t.pool,
+                    "status": t.status,
+                    "player_count": t.player_count,
+                }
+                for t in qs
+            ]
         )

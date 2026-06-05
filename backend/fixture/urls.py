@@ -38,6 +38,8 @@ api_v1 = [
     path("tournaments/", include("apps.tournaments.urls")),
     # Phase 1B: public school self-registration via shareable link.
     path("register/", include("apps.teams.urls")),
+    # Phase 1B: match scoring endpoints.
+    path("matches/", include("apps.matches.urls")),
     # Public feedback submit endpoint backing the SPA's feedback widget
     # (v1Users.md A.2 personal.feedback_widget). Throttled to 10/hr/user.
     path(
