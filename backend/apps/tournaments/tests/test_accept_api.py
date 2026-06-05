@@ -82,3 +82,29 @@ def test_email_taken_from_invite_not_body():
     assert resp.status_code == 200
     assert User.objects.filter(email="victim@test.local").exists()
     assert not User.objects.filter(email="attacker@test.local").exists()
+
+
+def test_accept_does_not_reset_existing_users_password():
+    """Invite-accept must NOT double as a password reset for a pre-existing
+    account (security review HIGH). An existing unverified account is activated
+    by the invite (token proves email ownership), but its password is unchanged;
+    a body-supplied password is ignored for pre-existing users.
+    """
+    admin = _verified("admin@test.local")
+    t = create_tournament(user=admin, name="Kohima Cup")
+    victim = User.objects.create_user(
+        email="member@test.local", password="OriginalPass123!", is_active=False
+    )
+    token = _invite(admin, t, "member@test.local")
+
+    resp = APIClient().post(
+        ACCEPT_URL,
+        {"token": token, "password": "AttackerNewPass999!"},
+        format="json",
+    )
+
+    assert resp.status_code == 200, resp.content
+    victim.refresh_from_db()
+    assert victim.is_active is True
+    assert victim.check_password("OriginalPass123!") is True  # unchanged
+    assert victim.check_password("AttackerNewPass999!") is False  # body pw ignored

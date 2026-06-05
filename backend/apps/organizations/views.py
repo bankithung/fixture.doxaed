@@ -492,17 +492,17 @@ class InvitationAcceptView(APIView):
                 )
             password = ser.validated_data.get("password")
             if existing is not None and not existing.is_active:
+                # Pre-existing (unverified) account: the invite token proves
+                # email ownership, so activate + mark verified — but NEVER reset
+                # the password. Invite-acceptance must not double as a password
+                # reset (security review HIGH); a body-supplied password is
+                # ignored for pre-existing accounts. Lost passwords go through
+                # the dedicated password-reset flow.
                 user = existing
-                if password:
-                    try:
-                        validate_password(password, user)
-                    except DjangoValidationError as exc:
-                        raise DRFValidationError({"password": list(exc.messages)})
-                    user.set_password(password)
                 user.is_active = True
                 if user.email_verified_at is None:
                     user.email_verified_at = timezone.now()
-                user.save()
+                user.save(update_fields=["is_active", "email_verified_at"])
             else:
                 if not password:
                     return Response(
