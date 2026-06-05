@@ -44,6 +44,8 @@ api_v1 = [
     path("notifications/", include("apps.notifications.urls")),
     # Phase 1B: dispute resolution endpoints.
     path("disputes/", include("apps.disputes.urls")),
+    # Phase 1B: public live viewer snapshot (one-way; SSE upgrade later).
+    path("live/", include("apps.live.urls")),
     # Public feedback submit endpoint backing the SPA's feedback widget
     # (v1Users.md A.2 personal.feedback_widget). Throttled to 10/hr/user.
     path(

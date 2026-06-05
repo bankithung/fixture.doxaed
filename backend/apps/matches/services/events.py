@@ -25,10 +25,25 @@ logger = logging.getLogger(__name__)
 
 
 def publish_match_event(match_id, event_id) -> None:
-    """Post-commit delivery hook (invariant #4: publish AFTER the DB commit).
-    Real SSE/WebSocket transport (via Redis) lands with apps.live — safe no-op
-    log stub for now so the commit path is correct end-to-end."""
+    """Post-commit delivery (invariant #4/#11: publish AFTER the DB commit) —
+    fan out to the match WebSocket room via the channel layer (Redis in prod,
+    in-memory in dev). Best-effort: delivery failure never affects the commit."""
     logger.info("match_event committed match=%s event=%s", match_id, event_id)
+    try:
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
+        layer = get_channel_layer()
+        if layer is not None:
+            async_to_sync(layer.group_send)(
+                f"match_{match_id}",
+                {
+                    "type": "match.event",
+                    "data": {"match_id": str(match_id), "event_id": str(event_id)},
+                },
+            )
+    except Exception:  # pragma: no cover - delivery is best-effort
+        logger.exception("publish_match_event fan-out failed")
 
 
 def recompute_score(match: Match) -> None:
