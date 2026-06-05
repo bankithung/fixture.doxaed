@@ -9,8 +9,11 @@ from __future__ import annotations
 import uuid as _uuid
 from typing import Any
 
+from django.contrib.auth import login
+from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import Http404
+from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
@@ -21,7 +24,7 @@ from rest_framework.exceptions import (
     ValidationError as DRFValidationError,
 )
 from rest_framework.generics import GenericAPIView, ListAPIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -461,26 +464,82 @@ class OrgInvitationRevokeView(APIView):
 class InvitationAcceptView(APIView):
     """POST /api/invitations:accept/
 
-    Public path BUT the accepting user must be authenticated (otherwise
-    we 401 with a redirect hint).
+    AllowAny: a logged-out invitee can accept. If the invite's email has no
+    account, one is created inline (password required); the email is taken from
+    the signed invite, NEVER the request body (account-takeover guard). If an
+    active account already exists, respond 401 `login_required`.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
-    @extend_schema(request=AcceptInvitationSerializer, responses=OrganizationMembershipSerializer)
+    @extend_schema(request=AcceptInvitationSerializer, responses=None)
     def post(self, request):
         ser = AcceptInvitationSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
+        token = ser.validated_data["token"]
+
+        invite = invitation_svc.get_invitation_by_token(token)
+        if invite is None or invite.status != InviteStatus.PENDING:
+            raise DRFValidationError({"detail": "invalid_or_used_invitation"})
+
+        user = request.user if request.user.is_authenticated else None
+        if user is None:
+            existing = User.objects.filter(email=invite.email).first()
+            if existing is not None and existing.is_active:
+                return Response(
+                    {"detail": "login_required", "email": invite.email},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+            password = ser.validated_data.get("password")
+            if existing is not None and not existing.is_active:
+                user = existing
+                if password:
+                    try:
+                        validate_password(password, user)
+                    except DjangoValidationError as exc:
+                        raise DRFValidationError({"password": list(exc.messages)})
+                    user.set_password(password)
+                user.is_active = True
+                if user.email_verified_at is None:
+                    user.email_verified_at = timezone.now()
+                user.save()
+            else:
+                if not password:
+                    return Response(
+                        {"detail": "password_required"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                try:
+                    validate_password(password)
+                except DjangoValidationError as exc:
+                    raise DRFValidationError({"password": list(exc.messages)})
+                user = User.objects.create_user(
+                    email=invite.email,  # from the invite, NEVER the request body
+                    password=password,
+                    name=ser.validated_data.get("name", ""),
+                    is_active=True,
+                )
+                user.email_verified_at = timezone.now()
+                user.save(update_fields=["email_verified_at"])
+            login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+
         try:
             membership = invitation_svc.accept_invitation(
-                token_plaintext=ser.validated_data["token"],
-                accepting_user=request.user,
+                token_plaintext=token,
+                accepting_user=user,
                 request=request,
             )
         except DjangoValidationError as exc:
             _drf_raise(exc)
+
+        org_slug = getattr(getattr(membership, "organization", None), "slug", None)
+        if org_slug is None and invite.tournament_id:
+            org_slug = invite.tournament.organization.slug
         return Response(
-            OrganizationMembershipSerializer(membership).data,
+            {
+                "org_slug": org_slug,
+                "tournament_id": str(invite.tournament_id) if invite.tournament_id else None,
+            },
             status=status.HTTP_200_OK,
         )
 

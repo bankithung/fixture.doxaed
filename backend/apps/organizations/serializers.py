@@ -212,6 +212,12 @@ class AdminInvitationCreateSerializer(serializers.Serializer):
 
 class AcceptInvitationSerializer(serializers.Serializer):
     token = serializers.CharField(max_length=128)
+    # For logged-out invitees creating an account inline. The email is NEVER
+    # taken from the body — it is read from the signed invite (takeover guard).
+    password = serializers.CharField(
+        required=False, allow_blank=True, min_length=12, write_only=True
+    )
+    name = serializers.CharField(required=False, allow_blank=True, max_length=200)
 
 
 class RevokeInvitationSerializer(serializers.Serializer):

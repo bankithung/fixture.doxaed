@@ -397,3 +397,13 @@ def revoke_invitation(
             request=request,
         )
     return invitation
+
+
+def get_invitation_by_token(token_plaintext: str) -> Optional[AdminInvitation]:
+    """Look up an invitation by plaintext token (no mutation). Returns None if
+    not found. Used by the AllowAny accept view to read the invite's email +
+    tournament before establishing/creating the accepting user's session.
+    """
+    if not token_plaintext:
+        return None
+    return AdminInvitation.objects.filter(token_hash=_hash_token(token_plaintext)).first()
