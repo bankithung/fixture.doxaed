@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from apps.tournaments.models import Tournament
+from apps.tournaments.models import Tournament, TournamentMembershipRole
 
 
 class TournamentSerializer(serializers.ModelSerializer):
@@ -27,4 +27,10 @@ class TournamentSerializer(serializers.ModelSerializer):
 class TournamentCreateSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=200)
     sport_code = serializers.CharField(required=False, allow_blank=True)
+    event_id = serializers.UUIDField(required=False)
+
+
+class TournamentInvitationCreateSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    role = serializers.ChoiceField(choices=TournamentMembershipRole.choices)
     event_id = serializers.UUIDField(required=False)
