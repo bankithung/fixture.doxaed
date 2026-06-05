@@ -4,38 +4,49 @@
 
 @layer base {
   :root {
+    /* Surfaces */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 42%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Brand = primary (Nagaland emerald) */
+    --primary: 160 84% 30%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 160 84% 26%;
+    --accent: 160 60% 94%;
+    --accent-foreground: 160 84% 22%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Secondary (neutral chrome) */
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Status */
+    --success: 142 71% 40%;
+    --success-foreground: 0 0% 100%;
+    --success-muted: 142 50% 94%;
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-muted: 0 60% 96%;
+    --warning: 38 92% 42%;
+    --warning-foreground: 38 95% 12%;
+    --warning-muted: 38 92% 94%;
+    --info: 215 70% 45%;
+    --info-foreground: 0 0% 100%;
+    --info-muted: 215 60% 95%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Lines + focus */
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 160 84% 30%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --radius: 0.625rem;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-
-    --radius: 0.5rem;
-
-    /* Brand tokens — emerald primary, slate ink. Consumed by landing /
-       auth surfaces; kept minimal to avoid bleeding into shadcn primitives. */
+    /* Brand tokens (kept for AuthLayout / LandingPage back-compat). */
     --brand: 160 84% 30%;
     --brand-fg: 0 0% 100%;
     --brand-muted: 160 50% 96%;
@@ -43,25 +54,45 @@
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --background: 222 47% 7%;
+    --foreground: 210 40% 96%;
+    --card: 222 40% 11%;
+    --card-foreground: 210 40% 96%;
+    --popover: 222 40% 11%;
+    --popover-foreground: 210 40% 96%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 68%;
+
+    --primary: 158 64% 52%;
+    --primary-foreground: 222 47% 9%;
+    --primary-hover: 158 64% 58%;
+    --accent: 158 40% 18%;
+    --accent-foreground: 158 64% 70%;
+
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 96%;
+
+    --success: 142 60% 48%;
+    --success-foreground: 222 47% 9%;
+    --success-muted: 142 30% 16%;
+    --destructive: 0 63% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-muted: 0 40% 16%;
+    --warning: 38 90% 55%;
+    --warning-foreground: 38 95% 10%;
+    --warning-muted: 38 50% 16%;
+    --info: 215 70% 60%;
+    --info-foreground: 222 47% 9%;
+    --info-muted: 215 40% 18%;
+
+    --border: 217 33% 20%;
+    --input: 217 33% 22%;
+    --ring: 158 64% 52%;
+
+    --brand: 158 64% 52%;
+    --brand-fg: 222 47% 9%;
+    --brand-muted: 158 40% 18%;
+    --brand-ink: 210 40% 96%;
   }
 }
 
@@ -73,9 +104,29 @@
     @apply bg-background text-foreground;
     margin: 0;
     font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+    font-variant-numeric: normal;
   }
   /* WCAG 2.1 AA - visible focus ring on all interactive elements. */
   :focus-visible {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer utilities {
+  .font-tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Global reduced-motion safety net. framer-motion components additionally
+   read useReducedMotion(), but this guarantees CSS animations collapse too. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
