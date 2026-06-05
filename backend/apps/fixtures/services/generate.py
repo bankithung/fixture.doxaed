@@ -85,3 +85,59 @@ def generate_round_robin(*, tournament, group_size: int = 5) -> list[Match]:
                 )
         Match.objects.bulk_create(to_create)
     return to_create
+
+
+def generate_single_elimination(*, tournament, teams, stage: str = "knockout") -> list[Match]:
+    """Generate a single-elimination bracket from `teams` (a power-of-2 count).
+
+    Round 1 pairs concrete teams; later rounds carry typed winner_of pointers
+    (invariant #9) that apps.fixtures.services.advance resolves on completion.
+    """
+    n = len(teams)
+    if n < 2 or (n & (n - 1)) != 0:
+        raise ValueError("single elimination requires a power-of-2 team count (>= 2)")
+
+    org = tournament.organization
+    created: list[Match] = []
+    # Continue match numbering after any existing (e.g. group-stage) matches.
+    match_no = Match.objects.filter(tournament=tournament).count()
+
+    with transaction.atomic():
+        round_matches: list[Match] = []
+        for i in range(0, n, 2):
+            match_no += 1
+            home, away = teams[i], teams[i + 1]
+            round_matches.append(
+                Match(
+                    organization=org, tournament=tournament, stage=stage,
+                    round_no=1, match_no=match_no,
+                    home_team=home, away_team=away,
+                    home_source={"type": "team", "team_id": str(home.id)},
+                    away_source={"type": "team", "team_id": str(away.id)},
+                    status=MatchStatus.SCHEDULED,
+                )
+            )
+        Match.objects.bulk_create(round_matches)
+        created.extend(round_matches)
+
+        prev = round_matches
+        round_no = 2
+        while len(prev) > 1:
+            nxt: list[Match] = []
+            for i in range(0, len(prev), 2):
+                match_no += 1
+                nxt.append(
+                    Match(
+                        organization=org, tournament=tournament, stage=stage,
+                        round_no=round_no, match_no=match_no,
+                        home_source={"type": "winner_of", "match_id": str(prev[i].id)},
+                        away_source={"type": "winner_of", "match_id": str(prev[i + 1].id)},
+                        status=MatchStatus.SCHEDULED,
+                    )
+                )
+            Match.objects.bulk_create(nxt)
+            created.extend(nxt)
+            prev = nxt
+            round_no += 1
+
+    return created

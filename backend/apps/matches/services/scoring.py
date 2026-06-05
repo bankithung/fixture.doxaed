@@ -95,4 +95,9 @@ def record_score(
             payload_after={"home": int(home_score), "away": int(away_score)},
             request=request,
         )
+        # Knockout advancement (invariant #9) — resolve dependents after commit.
+        from apps.matches.services.state import _fire_advancement
+
+        mid = locked.id
+        transaction.on_commit(lambda: _fire_advancement(mid))
     return locked
