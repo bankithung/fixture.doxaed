@@ -49,6 +49,9 @@ export const routes = {
   register: (token: string) => `/register/${encodeURIComponent(token)}`,
   /** Tournament management page (teams, fixtures, scores, standings). */
   tournamentDetail: (id: string) => `/tournaments/${encodeURIComponent(id)}`,
+  /** Live scorer console for a match. */
+  matchConsole: (tournamentId: string, matchId: string) =>
+    `/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}`,
   profile: () => "/me",
   profileNotifications: () => "/me/notifications",
   /** Aliases — match the role-landing spec naming (`myProfile`, `myNotifications`). */

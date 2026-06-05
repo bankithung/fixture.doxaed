@@ -16,6 +16,7 @@ import { OrgChooserPage } from "@/features/layout/OrgChooserPage";
 import { CreateTournamentPage } from "@/features/tournaments/CreateTournamentPage";
 import { TournamentsListPage } from "@/features/tournaments/TournamentsListPage";
 import { TournamentDetailPage } from "@/features/tournaments/TournamentDetailPage";
+import { MatchConsolePage } from "@/features/matches/MatchConsolePage";
 import { RegistrationFormPage } from "@/features/registration/RegistrationFormPage";
 import { OrgDashboardPage } from "@/features/layout/OrgDashboardPage";
 // Auth pages (B1).
@@ -137,6 +138,10 @@ export default function App(): React.ReactElement {
                 <Route
                   path="/tournaments/:id"
                   element={<TournamentDetailPage />}
+                />
+                <Route
+                  path="/tournaments/:id/matches/:matchId"
+                  element={<MatchConsolePage />}
                 />
 
                 {/* Personal / role-agnostic. */}

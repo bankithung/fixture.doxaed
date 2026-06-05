@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link2, Trophy, Wand2 } from "lucide-react";
 import {
@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { newEventId } from "@/lib/eventId";
+import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 
 function ScoreRow({
@@ -78,6 +79,12 @@ function ScoreRow({
         </span>
       )}
       <span className="flex-1 truncate">{match.away_team?.name ?? t("TBD")}</span>
+      <Link
+        to={routes.matchConsole(tournamentId, match.id)}
+        className="shrink-0 text-xs font-medium text-primary hover:underline"
+      >
+        {t("Live")}
+      </Link>
     </div>
   );
 }

@@ -9,9 +9,16 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.matches.models import Match
-from apps.matches.serializers import MatchSerializer, RecordScoreSerializer
+from apps.matches.serializers import (
+    MatchSerializer,
+    RecordEventSerializer,
+    RecordScoreSerializer,
+    TransitionSerializer,
+)
+from apps.matches.services.events import record_match_event
 from apps.matches.services.scoring import assign_scorer, record_score
 from apps.matches.services.standings import compute_standings
+from apps.matches.services.state import transition_match
 from apps.tournaments.models import (
     Tournament,
     TournamentMembership,
@@ -131,5 +138,62 @@ class RecordScoreView(GenericAPIView):
             )
         except ValidationError as e:
             raise DRFValidationError({"detail": getattr(e, "message", "invalid_score")})
+        match.refresh_from_db()
+        return Response(MatchSerializer(match).data)
+
+
+class RecordMatchEventView(GenericAPIView):
+    """`POST /api/matches/{id}/events/` — append a live event (goal/card/etc.).
+    Scores derive from the event log (invariant #4)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, match_id):
+        match = _match_or_404(request.user, match_id)
+        if not _can_score(request.user, match):
+            raise PermissionDenied("not_allowed_to_score")
+        ser = RecordEventSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        side = ser.validated_data.get("side")
+        team = (
+            match.home_team if side == "home"
+            else match.away_team if side == "away"
+            else None
+        )
+        record_match_event(
+            match=match,
+            event_type=ser.validated_data["event_type"],
+            team=team,
+            minute=ser.validated_data.get("minute"),
+            by=request.user,
+            event_id=ser.validated_data.get("event_id"),
+            request=request,
+        )
+        match.refresh_from_db()
+        return Response(MatchSerializer(match).data, status=201)
+
+
+class TransitionMatchView(GenericAPIView):
+    """`POST /api/matches/{id}/transition/` — move the match through its state
+    machine (start/half-time/complete/etc.)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, match_id):
+        match = _match_or_404(request.user, match_id)
+        if not _can_score(request.user, match):
+            raise PermissionDenied("not_allowed_to_transition")
+        ser = TransitionSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            transition_match(
+                match=match,
+                to_status=ser.validated_data["to_status"],
+                by=request.user,
+                reason=ser.validated_data.get("reason", ""),
+                request=request,
+            )
+        except ValidationError as e:
+            raise DRFValidationError({"detail": getattr(e, "message", "illegal_transition")})
         match.refresh_from_db()
         return Response(MatchSerializer(match).data)
