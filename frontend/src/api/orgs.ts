@@ -79,10 +79,13 @@ export const orgsApi = {
     api.post<OrgInvitation>(`/api/orgs/${slug}/invitations/`, payload),
   revokeInvitation: (slug: string, id: string) =>
     api.delete<void>(`/api/orgs/${slug}/invitations/${id}/`),
-  acceptInvitation: (token: string) =>
-    api.post<{ org_slug: string; membership: Membership }>(
+  acceptInvitation: (
+    token: string,
+    opts?: { password?: string; name?: string },
+  ) =>
+    api.post<{ org_slug: string | null; tournament_id: string | null }>(
       "/api/orgs/invitations/accept/",
-      { token },
+      { token, ...(opts ?? {}) },
     ),
   /**
    * Remove a member from an org. Backend has only the UUID-routed delete:

@@ -38,6 +38,11 @@ export const routes = {
   orgReferee: (slug: string) => `/o/${encodeURIComponent(slug)}/referee`,
   /** Phase 1A placeholder for the Phase 1B team-manager console. */
   orgTeam: (slug: string) => `/o/${encodeURIComponent(slug)}/team`,
+  /** Self-serve "create your first tournament" page. */
+  tournamentNew: () => "/tournaments/new",
+  /** Tournament dashboard (thin in 1A; Phase 1B fills it). */
+  tournament: (slug: string, id: string) =>
+    `/o/${encodeURIComponent(slug)}/tournaments/${encodeURIComponent(id)}`,
   profile: () => "/me",
   profileNotifications: () => "/me/notifications",
   /** Aliases — match the role-landing spec naming (`myProfile`, `myNotifications`). */
