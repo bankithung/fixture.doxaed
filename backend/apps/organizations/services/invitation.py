@@ -113,6 +113,7 @@ def create_invitation(
     invited_by,
     request: Optional[HttpRequest] = None,
     event_id: Optional[Union[str, _uuid.UUID]] = None,
+    tournament=None,
 ) -> tuple[AdminInvitation, str]:
     """Create an invitation row + return (invitation, plaintext_token).
 
@@ -171,11 +172,14 @@ def create_invitation(
             f"Cannot send invites for an org in status '{org.status}'."
         )
 
-    # One pending invite per (org, email) — enforced by partial unique
-    # constraint at the DB layer; surface a clean message at the service
+    if tournament is not None and tournament.organization_id != org.id:
+        raise ValidationError("Tournament does not belong to this organization.")
+
+    # One pending invite per (org, tournament, email) — enforced by partial
+    # unique constraint at the DB layer; surface a clean message at the service
     # layer so callers don't crash on IntegrityError.
     existing = AdminInvitation.objects.filter(
-        organization=org, email=email, status=InviteStatus.PENDING
+        organization=org, tournament=tournament, email=email, status=InviteStatus.PENDING
     ).first()
     if existing is not None:
         raise ValidationError(
@@ -188,6 +192,7 @@ def create_invitation(
     with transaction.atomic():
         inv = AdminInvitation.objects.create(
             organization=org,
+            tournament=tournament,
             email=email,
             role=effective_role,
             invited_by=invited_by,
@@ -277,24 +282,67 @@ def accept_invitation(
                 f"Cannot accept an invitation for an org in status '{org.status}'."
             )
 
-        # Idempotent membership creation: if an active membership
-        # already exists for (user, org, role), reuse it; otherwise
-        # create. Inactive prior rows get reactivated.
-        membership = OrganizationMembership.objects.filter(
-            user=accepting_user, organization=org, role=inv.role
-        ).first()
-        if membership is None:
-            membership = OrganizationMembership.objects.create(
-                user=accepting_user,
-                organization=org,
-                role=inv.role,
-                is_active=True,
-                created_by=inv.invited_by,
+        # Idempotent membership creation. Tournament-scoped invites create a
+        # TournamentMembership (no org-wide membership — preserves isolation:
+        # an invited scorer gets only that tournament, not the whole org).
+        # Org-level invites keep the existing OrganizationMembership behavior.
+        from django.db import IntegrityError
+
+        if inv.tournament_id:
+            from apps.tournaments.models import (
+                TournamentMembership,
+                TournamentMembershipStatus,
             )
-        elif not membership.is_active:
-            membership.is_active = True
-            membership.removed_at = None
-            membership.save(update_fields=["is_active", "removed_at"])
+
+            result = TournamentMembership.objects.filter(
+                user=accepting_user, tournament_id=inv.tournament_id, role=inv.role
+            ).first()
+            if result is None:
+                try:
+                    result = TournamentMembership.objects.create(
+                        user=accepting_user,
+                        tournament_id=inv.tournament_id,
+                        role=inv.role,
+                        status=TournamentMembershipStatus.ACTIVE,
+                        assigned_by=inv.invited_by,
+                    )
+                except IntegrityError as exc:
+                    raise ValidationError("membership_conflict") from exc
+            elif result.status != TournamentMembershipStatus.ACTIVE:
+                result.status = TournamentMembershipStatus.ACTIVE
+                result.revoked_at = None
+                result.save(update_fields=["status", "revoked_at"])
+            audit_target_type = "tournament_membership"
+            audit_payload = {
+                "user_id": str(accepting_user.id),
+                "tournament_id": str(inv.tournament_id),
+                "role": inv.role,
+            }
+        else:
+            result = OrganizationMembership.objects.filter(
+                user=accepting_user, organization=org, role=inv.role
+            ).first()
+            if result is None:
+                try:
+                    result = OrganizationMembership.objects.create(
+                        user=accepting_user,
+                        organization=org,
+                        role=inv.role,
+                        is_active=True,
+                        created_by=inv.invited_by,
+                    )
+                except IntegrityError as exc:
+                    raise ValidationError("membership_conflict") from exc
+            elif not result.is_active:
+                result.is_active = True
+                result.removed_at = None
+                result.save(update_fields=["is_active", "removed_at"])
+            audit_target_type = "organization_membership"
+            audit_payload = {
+                "user_id": str(accepting_user.id),
+                "organization_id": str(org.id),
+                "role": inv.role,
+            }
 
         inv.status = InviteStatus.ACCEPTED
         inv.accepted_at = timezone.now()
@@ -305,13 +353,9 @@ def accept_invitation(
             actor_user=accepting_user,
             actor_role=ActorRole.SYSTEM,
             event_type="member_invite_accepted",
-            target_type="organization_membership",
-            target_id=membership.id,
-            payload_after={
-                "user_id": str(accepting_user.id),
-                "organization_id": str(org.id),
-                "role": inv.role,
-            },
+            target_type=audit_target_type,
+            target_id=result.id,
+            payload_after=audit_payload,
             organization_id=org.id,
             request=request,
         )
@@ -319,7 +363,7 @@ def accept_invitation(
     # Session-cycle outside the transaction so it survives commit.
     _cycle_session(request)
 
-    return membership
+    return result
 
 
 def revoke_invitation(

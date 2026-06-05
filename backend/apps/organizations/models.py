@@ -268,6 +268,15 @@ class AdminInvitation(models.Model):
         default=MembershipRole.CO_ORGANIZER,
     )
 
+    # Tournament-scoped invite (decision #91); null = org-level invite.
+    tournament = models.ForeignKey(
+        "tournaments.Tournament",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="invitations",
+    )
+
     # sha256(token_plaintext) — plaintext is emailed only.
     token_hash = models.CharField(max_length=128, db_index=True)
 
@@ -300,9 +309,9 @@ class AdminInvitation(models.Model):
         ]
         constraints = [
             UniqueConstraint(
-                fields=["organization", "email"],
+                fields=["organization", "tournament", "email"],
                 condition=Q(status="pending"),
-                name="unique_pending_invite_per_email_per_org",
+                name="unique_pending_invite_per_email_per_org_tournament",
             ),
         ]
 
