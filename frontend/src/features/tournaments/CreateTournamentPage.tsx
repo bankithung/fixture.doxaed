@@ -1,0 +1,101 @@
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useNavigate } from "react-router-dom";
+import { tournamentsApi } from "@/api/tournaments";
+import { ApiError } from "@/types/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { routes } from "@/lib/routes";
+import { t } from "@/lib/t";
+
+const schema = z.object({
+  name: z.string().min(1, t("Tournament name is required")).max(200),
+});
+type FormValues = z.infer<typeof schema>;
+
+/** Client UUID for idempotent create (invariant 3), with a safe fallback. */
+function newEventId(): string {
+  const c = globalThis.crypto as Crypto | undefined;
+  return c?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+/**
+ * Self-serve "Start a tournament" page. Posting auto-provisions the creator's
+ * hidden personal workspace and makes them the tournament admin (no org concept
+ * shown). On success we land on the workspace dashboard.
+ */
+export function CreateTournamentPage(): React.ReactElement {
+  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { name: "" },
+  });
+
+  const onSubmit = async (values: FormValues): Promise<void> => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const tournament = await tournamentsApi.create({
+        name: values.name,
+        event_id: newEventId(),
+      });
+      navigate(routes.orgDashboard(tournament.organization_slug));
+    } catch (e) {
+      setError(
+        e instanceof ApiError
+          ? (e.payload.detail ?? t("Could not create tournament"))
+          : t("Could not create tournament"),
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-xl p-6">
+      <h1 className="mb-2 text-2xl font-semibold">{t("Start a tournament")}</h1>
+      <p className="mb-6 text-sm text-muted-foreground">
+        {t("Give it a name. You'll be its admin and can invite people next.")}
+      </p>
+
+      {error ? (
+        <div
+          role="alert"
+          className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {error}
+        </div>
+      ) : null}
+
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className="flex flex-col gap-4"
+        noValidate
+      >
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="name">{t("Tournament name")}</Label>
+          <Input
+            id="name"
+            autoFocus
+            placeholder={t("e.g. Kohima Premier League 2026")}
+            aria-invalid={!!form.formState.errors.name}
+            {...form.register("name")}
+          />
+          {form.formState.errors.name ? (
+            <p role="alert" className="text-xs text-destructive">
+              {form.formState.errors.name.message}
+            </p>
+          ) : null}
+        </div>
+        <Button type="submit" disabled={submitting} size="lg">
+          {submitting ? t("Creating...") : t("Create tournament")}
+        </Button>
+      </form>
+    </div>
+  );
+}

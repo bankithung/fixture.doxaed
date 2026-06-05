@@ -12,6 +12,7 @@ import { ToastProvider } from "@/components/ui/toast";
 import { ProtectedRoute } from "@/features/layout/ProtectedRoute";
 import { AppShell } from "@/features/layout/AppShell";
 import { OrgChooserPage } from "@/features/layout/OrgChooserPage";
+import { CreateTournamentPage } from "@/features/tournaments/CreateTournamentPage";
 import { OrgDashboardPage } from "@/features/layout/OrgDashboardPage";
 // Auth pages (B1).
 import { LoginPage } from "@/features/auth/LoginPage";
@@ -119,6 +120,10 @@ export default function App(): React.ReactElement {
                 }
               >
                 <Route path="/orgs" element={<OrgChooserPage />} />
+                <Route
+                  path="/tournaments/new"
+                  element={<CreateTournamentPage />}
+                />
 
                 {/* Personal / role-agnostic. */}
                 <Route path="/me" element={<MyProfilePage />} />
