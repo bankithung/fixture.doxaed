@@ -38,6 +38,8 @@ export const routes = {
   orgReferee: (slug: string) => `/o/${encodeURIComponent(slug)}/referee`,
   /** Phase 1A placeholder for the Phase 1B team-manager console. */
   orgTeam: (slug: string) => `/o/${encodeURIComponent(slug)}/team`,
+  /** Your tournaments hub (the primary post-login surface). */
+  tournaments: () => "/tournaments",
   /** Self-serve "create your first tournament" page. */
   tournamentNew: () => "/tournaments/new",
   /** Tournament dashboard (thin in 1A; Phase 1B fills it). */

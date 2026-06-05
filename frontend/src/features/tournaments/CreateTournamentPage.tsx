@@ -9,18 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { routes } from "@/lib/routes";
+import { newEventId } from "@/lib/eventId";
 import { t } from "@/lib/t";
 
 const schema = z.object({
   name: z.string().min(1, t("Tournament name is required")).max(200),
 });
 type FormValues = z.infer<typeof schema>;
-
-/** Client UUID for idempotent create (invariant 3), with a safe fallback. */
-function newEventId(): string {
-  const c = globalThis.crypto as Crypto | undefined;
-  return c?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
 
 /**
  * Self-serve "Start a tournament" page. Posting auto-provisions the creator's
@@ -40,11 +35,11 @@ export function CreateTournamentPage(): React.ReactElement {
     setError(null);
     setSubmitting(true);
     try {
-      const tournament = await tournamentsApi.create({
+      await tournamentsApi.create({
         name: values.name,
         event_id: newEventId(),
       });
-      navigate(routes.orgDashboard(tournament.organization_slug));
+      navigate(routes.tournaments());
     } catch (e) {
       setError(
         e instanceof ApiError
