@@ -42,6 +42,8 @@ api_v1 = [
     path("matches/", include("apps.matches.urls")),
     # Phase 1B: in-app notifications (the bell).
     path("notifications/", include("apps.notifications.urls")),
+    # Phase 1B: dispute resolution endpoints.
+    path("disputes/", include("apps.disputes.urls")),
     # Public feedback submit endpoint backing the SPA's feedback widget
     # (v1Users.md A.2 personal.feedback_widget). Throttled to 10/hr/user.
     path(
