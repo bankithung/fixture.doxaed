@@ -156,13 +156,26 @@ export function TournamentsListPage(): React.ReactElement {
           {tournaments.map((tn) => (
             <Card key={tn.id}>
               <CardHeader>
-                <CardTitle className="text-lg">{tn.name}</CardTitle>
+                <CardTitle className="text-lg">
+                  <Link
+                    to={routes.tournamentDetail(tn.id)}
+                    className="hover:text-primary hover:underline focus-visible:underline focus-visible:outline-none"
+                  >
+                    {tn.name}
+                  </Link>
+                </CardTitle>
                 <CardDescription>
                   {t("Status")}: {t(tn.status.replace(/_/g, " "))}
                   {tn.sport_code ? ` · ${tn.sport_code}` : ""}
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="flex flex-col gap-3">
+                <Link
+                  to={routes.tournamentDetail(tn.id)}
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  {t("Manage teams, fixtures & scores")} →
+                </Link>
                 <InviteByEmail tournamentId={tn.id} />
               </CardContent>
             </Card>

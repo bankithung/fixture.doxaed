@@ -47,6 +47,8 @@ export const routes = {
     `/o/${encodeURIComponent(slug)}/tournaments/${encodeURIComponent(id)}`,
   /** Public school self-registration via a shared link. */
   register: (token: string) => `/register/${encodeURIComponent(token)}`,
+  /** Tournament management page (teams, fixtures, scores, standings). */
+  tournamentDetail: (id: string) => `/tournaments/${encodeURIComponent(id)}`,
   profile: () => "/me",
   profileNotifications: () => "/me/notifications",
   /** Aliases — match the role-landing spec naming (`myProfile`, `myNotifications`). */
