@@ -124,6 +124,124 @@ class Match(models.Model):
         return self.away_team_id if w == self.home_team_id else self.home_team_id
 
 
+class LineupRole(models.TextChoices):
+    STARTER = "starter", _("Starter")
+    SUBSTITUTE = "substitute", _("Substitute")
+
+
+class Lineup(models.Model):
+    """A team's confirmed XI + bench for a match (referee/manager sets it before
+    kickoff). Org-scoped (invariant #2); one live lineup per (match, team)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="lineups",
+    )
+    match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name="lineups")
+    team = models.ForeignKey(
+        "teams.Team", on_delete=models.CASCADE, related_name="lineups"
+    )
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="lineups_confirmed",
+    )
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "matches_lineup"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["match", "team"],
+                condition=models.Q(deleted_at__isnull=True),
+                name="unique_lineup_per_match_team",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["match"], name="lineup_match_idx"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"Lineup(match={self.match_id}, team={self.team_id})"
+
+
+class LineupEntry(models.Model):
+    """One player's slot (starter/substitute) in a Lineup."""
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    lineup = models.ForeignKey(
+        Lineup, on_delete=models.CASCADE, related_name="entries"
+    )
+    player = models.ForeignKey(
+        "teams.Player", on_delete=models.CASCADE, related_name="lineup_entries"
+    )
+    role = models.CharField(
+        max_length=16, choices=LineupRole.choices, default=LineupRole.STARTER
+    )
+    shirt_no = models.PositiveSmallIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "matches_lineup_entry"
+        ordering = ["role", "shirt_no"]
+        indexes = [
+            models.Index(fields=["lineup"], name="lineup_entry_lineup_idx"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.role} {self.player_id}"
+
+
+class MatchIncidentKind(models.TextChoices):
+    FOUL_PLAY = "foul_play", _("Foul play")
+    MISCONDUCT = "misconduct", _("Misconduct")
+    INJURY = "injury", _("Injury")
+    ABANDONMENT = "abandonment", _("Abandonment")
+    OTHER = "other", _("Other")
+
+
+class MatchIncident(models.Model):
+    """A referee's post-match incident report feeding disputes/discipline.
+
+    Append-only (no update/delete endpoint), org-scoped (invariant #2),
+    idempotent on event_id (invariant #3)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="match_incidents",
+    )
+    match = models.ForeignKey(
+        Match, on_delete=models.CASCADE, related_name="incidents"
+    )
+    reported_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="match_incidents_reported",
+    )
+    kind = models.CharField(max_length=20, choices=MatchIncidentKind.choices)
+    description = models.TextField()
+    minute = models.PositiveSmallIntegerField(null=True, blank=True)
+    player = models.ForeignKey(
+        "teams.Player", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="match_incidents",
+    )
+    event_id = models.UUIDField(unique=True, null=True, blank=True)  # idempotency #3
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "matches_match_incident"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["match"], name="incident_match_idx"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"MatchIncident({self.kind}, match={self.match_id})"
+
+
 class MatchEvent(models.Model):
     """DB-first event log (invariant #4) — the system of record for what happened
     in a match. Scores are DERIVED from these rows. Append-only in spirit:

@@ -11,14 +11,21 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.matches.models import Match, MatchEvent
+from apps.matches.models import Lineup, Match, MatchEvent, MatchIncident
 from apps.matches.serializers import (
+    ConfirmLineupSerializer,
+    FileIncidentSerializer,
+    LineupSerializer,
+    MatchIncidentSerializer,
     MatchSerializer,
     RecordEventSerializer,
     RecordScoreSerializer,
+    SetLineupSerializer,
     TransitionSerializer,
 )
 from apps.matches.services.events import record_match_event
+from apps.matches.services.incidents import file_incident
+from apps.matches.services.lineups import confirm_lineup, set_lineup
 from apps.matches.services.scoring import assign_scorer, record_score
 from apps.matches.services.standings import compute_standings
 from apps.matches.services.state import transition_match
@@ -284,3 +291,135 @@ class MatchEventsExportView(GenericAPIView):
                 ]
             )
         return resp
+
+
+def _team_in_match_or_400(match: Match, team_id):
+    if team_id is None:
+        raise DRFValidationError({"detail": "team_id_required"})
+    if team_id not in (match.home_team_id, match.away_team_id):
+        raise DRFValidationError({"detail": "team_not_in_match"})
+    team = match.home_team if team_id == match.home_team_id else match.away_team
+    if team is None:
+        raise DRFValidationError({"detail": "team_not_found"})
+    return team
+
+
+class MatchLineupView(GenericAPIView):
+    """`GET/POST /api/matches/{id}/lineups/` — read both teams' lineups (any
+    match viewer) or set a team's lineup (manager/scorer/referee)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, match_id):
+        match = _match_or_404(request.user, match_id)
+        lineups = (
+            Lineup.objects.filter(match=match, deleted_at__isnull=True)
+            .select_related("team")
+            .prefetch_related("entries", "entries__player", "entries__player__person")
+            .order_by("created_at")
+        )
+        return Response({"lineups": LineupSerializer(lineups, many=True).data})
+
+    def post(self, request, match_id):
+        match = _match_or_404(request.user, match_id)
+        if not _can_score(request.user, match):
+            raise PermissionDenied("not_allowed_to_set_lineup")
+        ser = SetLineupSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        team = _team_in_match_or_400(match, ser.validated_data["team_id"])
+
+        existing = Lineup.objects.filter(
+            match=match, team=team, deleted_at__isnull=True
+        ).exists()
+        try:
+            lineup = set_lineup(
+                match=match,
+                team=team,
+                entries=ser.validated_data["entries"],
+                by=request.user,
+                event_id=ser.validated_data.get("event_id"),
+                request=request,
+            )
+        except ValidationError as e:
+            raise DRFValidationError({"detail": getattr(e, "message", "invalid_lineup")})
+        lineup = (
+            Lineup.objects.select_related("team")
+            .prefetch_related("entries", "entries__player", "entries__player__person")
+            .get(pk=lineup.pk)
+        )
+        status = 200 if existing else 201
+        return Response(LineupSerializer(lineup).data, status=status)
+
+
+class ConfirmLineupView(GenericAPIView):
+    """`POST /api/matches/{id}/lineups/confirm/` — referee/manager confirms a
+    team's lineup before kickoff."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, match_id):
+        match = _match_or_404(request.user, match_id)
+        if not _can_score(request.user, match):
+            raise PermissionDenied("not_allowed_to_confirm_lineup")
+        ser = ConfirmLineupSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        team = _team_in_match_or_400(match, ser.validated_data["team_id"])
+        try:
+            lineup = confirm_lineup(
+                match=match,
+                team=team,
+                by=request.user,
+                event_id=ser.validated_data.get("event_id"),
+                request=request,
+            )
+        except ValidationError as e:
+            raise DRFValidationError({"detail": getattr(e, "message", "invalid_confirm")})
+        lineup = (
+            Lineup.objects.select_related("team")
+            .prefetch_related("entries", "entries__player", "entries__player__person")
+            .get(pk=lineup.pk)
+        )
+        return Response(LineupSerializer(lineup).data)
+
+
+class MatchIncidentView(GenericAPIView):
+    """`GET/POST /api/matches/{id}/incidents/` — list incident reports (any
+    match viewer) or file one (manager/scorer/referee). Append-only."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, match_id):
+        match = _match_or_404(request.user, match_id)
+        qs = MatchIncident.objects.filter(match=match).order_by("-created_at")
+        return Response(MatchIncidentSerializer(qs, many=True).data)
+
+    def post(self, request, match_id):
+        match = _match_or_404(request.user, match_id)
+        if not _can_score(request.user, match):
+            raise PermissionDenied("not_allowed_to_file_incident")
+        ser = FileIncidentSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        player = None
+        player_id = ser.validated_data.get("player_id")
+        if player_id:
+            from apps.teams.models import Player
+
+            player = Player.objects.filter(
+                id=player_id, tournament=match.tournament, deleted_at__isnull=True
+            ).first()
+            if player is None:
+                raise DRFValidationError({"detail": "player_not_found"})
+        try:
+            incident = file_incident(
+                match=match,
+                kind=ser.validated_data["kind"],
+                description=ser.validated_data["description"],
+                by=request.user,
+                minute=ser.validated_data.get("minute"),
+                player=player,
+                event_id=ser.validated_data.get("event_id"),
+                request=request,
+            )
+        except ValidationError as e:
+            raise DRFValidationError({"detail": getattr(e, "message", "invalid_incident")})
+        return Response(MatchIncidentSerializer(incident).data, status=201)

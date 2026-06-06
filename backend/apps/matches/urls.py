@@ -4,7 +4,10 @@ from django.urls import path
 
 from apps.matches.views import (
     AssignScorerView,
+    ConfirmLineupView,
     MatchEventsExportView,
+    MatchIncidentView,
+    MatchLineupView,
     RecordMatchEventView,
     RecordScoreView,
     TransitionMatchView,
@@ -24,5 +27,16 @@ urlpatterns = [
         "<uuid:match_id>/transition/",
         TransitionMatchView.as_view(),
         name="match-transition",
+    ),
+    path(
+        "<uuid:match_id>/lineups/confirm/",
+        ConfirmLineupView.as_view(),
+        name="match-lineup-confirm",
+    ),
+    path("<uuid:match_id>/lineups/", MatchLineupView.as_view(), name="match-lineups"),
+    path(
+        "<uuid:match_id>/incidents/",
+        MatchIncidentView.as_view(),
+        name="match-incidents",
     ),
 ]
