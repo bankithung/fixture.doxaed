@@ -76,6 +76,12 @@ class Tournament(models.Model):
     # invariant 10 — auto-generate + manual-edit conflict tracking (filled by Phase 1B generators).
     inputs_hash = models.CharField(max_length=64, blank=True)
     last_manual_edit_at = models.DateTimeField(null=True, blank=True)
+    # Data-driven rules + scheduling constraints (FET-style). See
+    # docs/superpowers/specs/2026-06-06-tournament-rules-constraints-design.md.
+    # `rules` is editable in draft/published, frozen at registration_open (invariant 7).
+    rules = models.JSONField(default=dict, blank=True)
+    constraints = models.JSONField(default=list, blank=True)
+    rules_frozen_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
