@@ -95,11 +95,14 @@ export const tournamentsApi = {
   /** Standings grouped by pool. */
   standings: (id: string) =>
     api.get<{ groups: StandingsGroup[] }>(`/api/tournaments/${id}/standings/`),
-  /** Generate the fixture (manager only). */
-  generateFixtures: (id: string, groupSize = 5) =>
-    api.post<{ generated: number }>(
+  /** Generate the fixture (manager only): round-robin groups or a knockout bracket. */
+  generateFixtures: (
+    id: string,
+    opts?: { groupSize?: number; format?: "round_robin" | "knockout" },
+  ) =>
+    api.post<{ generated: number; format?: string }>(
       `/api/tournaments/${id}/generate-fixtures/`,
-      { group_size: groupSize },
+      { group_size: opts?.groupSize ?? 5, format: opts?.format ?? "round_robin" },
     ),
   /** Mint a shareable school-registration link (manager only). */
   createRegistrationLink: (id: string) =>

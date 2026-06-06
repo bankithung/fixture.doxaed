@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link2, Trophy, Wand2 } from "lucide-react";
+import { GitBranch, Link2, Trophy, Wand2 } from "lucide-react";
 import {
   tournamentsApi,
   type MatchRow,
@@ -19,7 +19,6 @@ import { newEventId } from "@/lib/eventId";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 import { DisputesPanel } from "@/features/disputes/DisputesPanel";
-import { BracketView } from "./BracketView";
 
 function ScoreRow({
   match,
@@ -142,7 +141,8 @@ export function TournamentDetailPage(): React.ReactElement {
       setLinkUrl(`${window.location.origin}/register/${r.token}`),
   });
   const generate = useMutation({
-    mutationFn: () => tournamentsApi.generateFixtures(id, 5),
+    mutationFn: (format: "round_robin" | "knockout") =>
+      tournamentsApi.generateFixtures(id, { format }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["t-matches", id] });
       qc.invalidateQueries({ queryKey: ["t-standings", id] });
@@ -176,13 +176,39 @@ export function TournamentDetailPage(): React.ReactElement {
             <Link2 aria-hidden="true" className="mr-1.5 h-4 w-4" />
             {t("Share registration link")}
           </Button>
-          <Button
-            onClick={() => generate.mutate()}
-            disabled={generate.isPending || teamCount < 2 || matchCount > 0}
-          >
-            <Wand2 aria-hidden="true" className="mr-1.5 h-4 w-4" />
-            {matchCount > 0 ? t("Fixtures generated") : t("Generate fixtures")}
-          </Button>
+          {matchCount > 0 ? (
+            <Button variant="outline" disabled>
+              <Wand2 aria-hidden="true" className="mr-1.5 h-4 w-4" />
+              {t("Fixtures generated")}
+            </Button>
+          ) : (
+            <>
+              <Button
+                onClick={() => generate.mutate("round_robin")}
+                disabled={generate.isPending || teamCount < 2}
+              >
+                <Wand2 aria-hidden="true" className="mr-1.5 h-4 w-4" />
+                {t("Round-robin")}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => generate.mutate("knockout")}
+                disabled={generate.isPending || teamCount < 2}
+              >
+                <GitBranch aria-hidden="true" className="mr-1.5 h-4 w-4" />
+                {t("Knockout")}
+              </Button>
+            </>
+          )}
+          {matchCount > 0 ? (
+            <Link
+              to={routes.tournamentBracket(id)}
+              className="inline-flex h-10 items-center rounded-md border border-input px-4 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <GitBranch aria-hidden="true" className="mr-1.5 h-4 w-4" />
+              {t("Bracket view")}
+            </Link>
+          ) : null}
         </div>
       </div>
 
@@ -236,13 +262,6 @@ export function TournamentDetailPage(): React.ReactElement {
               </Card>
             ))}
           </div>
-        </section>
-      ) : null}
-
-      {matchCount > 0 ? (
-        <section>
-          <h2 className="mb-2 text-lg font-semibold">{t("Bracket / flow view")}</h2>
-          <BracketView matches={matches.data ?? []} />
         </section>
       ) : null}
 

@@ -81,9 +81,35 @@ describe("TournamentDetailPage", () => {
     vi.mocked(tournamentsApi.generateFixtures).mockResolvedValue({ generated: 1 });
 
     renderPage();
-    await screen.findByRole("button", { name: /generate fixtures/i });
-    await userEvent.click(screen.getByRole("button", { name: /generate fixtures/i }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /round-robin/i }),
+    );
 
-    await waitFor(() => expect(tournamentsApi.generateFixtures).toHaveBeenCalledWith("t1", 5));
+    await waitFor(() =>
+      expect(tournamentsApi.generateFixtures).toHaveBeenCalledWith("t1", {
+        format: "round_robin",
+      }),
+    );
+  });
+
+  it("can generate a knockout bracket", async () => {
+    vi.mocked(tournamentsApi.teams).mockResolvedValue([
+      { id: "tm1", name: "Alpha", short_name: "", school: "S", pool: "", status: "registered", player_count: 0 },
+      { id: "tm2", name: "Beta", short_name: "", school: "S", pool: "", status: "registered", player_count: 0 },
+    ]);
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([]);
+    vi.mocked(tournamentsApi.standings).mockResolvedValue({ groups: [] });
+    vi.mocked(tournamentsApi.generateFixtures).mockResolvedValue({ generated: 1 });
+
+    renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /knockout/i }),
+    );
+
+    await waitFor(() =>
+      expect(tournamentsApi.generateFixtures).toHaveBeenCalledWith("t1", {
+        format: "knockout",
+      }),
+    );
   });
 });

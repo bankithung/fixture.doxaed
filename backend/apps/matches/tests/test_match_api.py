@@ -59,6 +59,19 @@ def test_generate_list_score_and_standings_flow():
     assert any(grp["rows"] for grp in st.json()["groups"])
 
 
+def test_generate_knockout_bracket():
+    admin = _verified("admin@test.local")
+    t = _setup(admin)  # 4 registered teams
+    client = APIClient()
+    client.force_authenticate(user=admin)
+
+    r = client.post(
+        f"/api/tournaments/{t.id}/generate-fixtures/", {"format": "knockout"}, format="json"
+    )
+    assert r.status_code == 201, r.content
+    assert r.json()["generated"] == 3  # 4 teams single-elim = 2 semis + final
+
+
 def test_outsider_cannot_list_matches():
     admin = _verified("admin@test.local")
     t = _setup(admin)

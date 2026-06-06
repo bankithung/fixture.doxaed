@@ -17,6 +17,7 @@ import { CreateTournamentPage } from "@/features/tournaments/CreateTournamentPag
 import { TournamentsListPage } from "@/features/tournaments/TournamentsListPage";
 import { TournamentDetailPage } from "@/features/tournaments/TournamentDetailPage";
 import { MatchConsolePage } from "@/features/matches/MatchConsolePage";
+import { BracketPage } from "@/features/tournaments/BracketPage";
 import { RegistrationFormPage } from "@/features/registration/RegistrationFormPage";
 import { OrgDashboardPage } from "@/features/layout/OrgDashboardPage";
 // Auth pages (B1).
@@ -138,6 +139,10 @@ export default function App(): React.ReactElement {
                 <Route
                   path="/tournaments/:id"
                   element={<TournamentDetailPage />}
+                />
+                <Route
+                  path="/tournaments/:id/bracket"
+                  element={<BracketPage />}
                 />
                 <Route
                   path="/tournaments/:id/matches/:matchId"

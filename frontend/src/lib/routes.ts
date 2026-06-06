@@ -52,6 +52,9 @@ export const routes = {
   /** Live scorer console for a match. */
   matchConsole: (tournamentId: string, matchId: string) =>
     `/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}`,
+  /** Visual bracket / flow view of a tournament's fixtures. */
+  tournamentBracket: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/bracket`,
   profile: () => "/me",
   profileNotifications: () => "/me/notifications",
   /** Aliases — match the role-landing spec naming (`myProfile`, `myNotifications`). */
