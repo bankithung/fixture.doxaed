@@ -18,6 +18,7 @@ import {
 import { newEventId } from "@/lib/eventId";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
+import { DisputesPanel } from "@/features/disputes/DisputesPanel";
 
 function ScoreRow({
   match,
@@ -247,6 +248,8 @@ export function TournamentDetailPage(): React.ReactElement {
           </div>
         </section>
       ) : null}
+
+      <DisputesPanel tournamentId={id} />
     </div>
   );
 }
