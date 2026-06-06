@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { TeamManagerLandingPage } from "../TeamManagerLandingPage";
 
 describe("TeamManagerLandingPage", () => {
-  it("renders hero copy and 4 team-manager preview tiles", () => {
+  it("renders hero + an open-tournaments CTA and no coming-soon tiles", () => {
     render(
       <MemoryRouter initialEntries={["/o/acme/team"]}>
         <Routes>
@@ -16,12 +16,8 @@ describe("TeamManagerLandingPage", () => {
       screen.getByRole("heading", { level: 1, name: /welcome, team manager/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/register your teams and players today/i),
+      screen.getByRole("link", { name: /open your tournaments/i }),
     ).toBeInTheDocument();
-    expect(screen.getAllByTestId("preview-tile")).toHaveLength(4);
-    expect(screen.getByText(/roster management/i)).toBeInTheDocument();
-    expect(screen.getByText(/player registration/i)).toBeInTheDocument();
-    expect(screen.getByText(/lineup submission/i)).toBeInTheDocument();
-    expect(screen.getByText(/suspension tracking/i)).toBeInTheDocument();
+    expect(screen.queryAllByTestId("preview-tile")).toHaveLength(0);
   });
 });

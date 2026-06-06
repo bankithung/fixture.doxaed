@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { RefereeLandingPage } from "../RefereeLandingPage";
 
 describe("RefereeLandingPage", () => {
-  it("renders hero copy and 4 referee preview tiles", () => {
+  it("renders hero + an open-tournaments CTA and no coming-soon tiles", () => {
     render(
       <MemoryRouter initialEntries={["/o/acme/referee"]}>
         <Routes>
@@ -16,14 +16,8 @@ describe("RefereeLandingPage", () => {
       screen.getByRole("heading", { level: 1, name: /welcome, referee/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/view fixtures, results, and standings today/i),
+      screen.getByRole("link", { name: /open your tournaments/i }),
     ).toBeInTheDocument();
-    expect(screen.getAllByTestId("preview-tile")).toHaveLength(4);
-    expect(screen.getByText(/lineup confirmation/i)).toBeInTheDocument();
-    expect(screen.getByText(/match clock control/i)).toBeInTheDocument();
-    expect(screen.getByText(/card \/ foul logger/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/match-incident reports/i),
-    ).toBeInTheDocument();
+    expect(screen.queryAllByTestId("preview-tile")).toHaveLength(0);
   });
 });
