@@ -30,25 +30,31 @@ DEFAULT_RULES: dict[str, Any] = {
 _NESTED = {"points", "match", "squad", "discipline"}
 
 
-def merge_rules(partial: dict[str, Any] | None) -> dict[str, Any]:
-    """Merge a partial rules dict onto the canonical defaults.
+def merge_rules(
+    partial: dict[str, Any] | None,
+    base: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Merge layers onto the canonical defaults: defaults < base < partial.
 
-    Raises ValueError on any unknown top-level or nested key (whitelist).
+    `base` is the tournament's currently-stored rules (so a PATCH of just
+    `{"points": {"win": 2}}` keeps the rest of the existing ruleset, not the
+    bare defaults). Raises ValueError on any unknown top-level/nested key.
     """
-    partial = partial or {}
-    unknown = set(partial) - set(DEFAULT_RULES)
-    if unknown:
-        raise ValueError(f"unknown rule keys: {sorted(unknown)}")
-
     out = copy.deepcopy(DEFAULT_RULES)
-    for key, value in partial.items():
-        if key in _NESTED and isinstance(value, dict):
-            sub_unknown = set(value) - set(DEFAULT_RULES[key])
-            if sub_unknown:
-                raise ValueError(f"unknown {key} keys: {sorted(sub_unknown)}")
-            out[key].update(value)
-        else:
-            out[key] = value
+    for layer in (base, partial):
+        if not layer:
+            continue
+        unknown = set(layer) - set(DEFAULT_RULES)
+        if unknown:
+            raise ValueError(f"unknown rule keys: {sorted(unknown)}")
+        for key, value in layer.items():
+            if key in _NESTED and isinstance(value, dict):
+                sub_unknown = set(value) - set(DEFAULT_RULES[key])
+                if sub_unknown:
+                    raise ValueError(f"unknown {key} keys: {sorted(sub_unknown)}")
+                out[key].update(value)
+            else:
+                out[key] = value
     return out
 
 
@@ -62,3 +68,57 @@ def freeze_rules(tournament) -> None:
     if tournament.rules_frozen_at is None:
         tournament.rules_frozen_at = timezone.now()
         tournament.save(update_fields=["rules_frozen_at"])
+
+
+def update_settings(
+    *, tournament, rules=None, constraints=None, by, amend=False, reason="",
+    event_id=None, request=None,
+):
+    """Update a tournament's rules and/or constraints (manager only).
+
+    Enforces the freeze gate (invariant 7): blocked once rules aren't editable
+    unless ``amend=True`` + a reason. Idempotent on ``event_id`` (invariant 3).
+    Raises PermissionError("rules_frozen") or ValueError on invalid input.
+    """
+    from django.db import transaction
+
+    from apps.audit.models import ActorRole, AuditEvent
+    from apps.audit.services import emit_audit
+    from apps.fixtures.services.constraints import validate_constraints
+
+    if event_id is not None:
+        prior = AuditEvent.objects.filter(
+            idempotency_key=event_id, event_type="tournament_settings_updated"
+        ).first()
+        if prior is not None:
+            return tournament  # replay
+
+    if not can_edit_rules(tournament) and not amend:
+        raise PermissionError("rules_frozen")
+    if amend and not (reason or "").strip():
+        raise ValueError("amend_reason_required")
+
+    with transaction.atomic():
+        if rules is not None:
+            tournament.rules = merge_rules(rules, base=tournament.rules)
+        if constraints is not None:
+            tournament.constraints = validate_constraints(constraints)
+        tournament.last_manual_edit_at = timezone.now()
+        tournament.save(update_fields=["rules", "constraints", "last_manual_edit_at"])
+        emit_audit(
+            actor_user=by,
+            actor_role=ActorRole.ADMIN,
+            event_type="tournament_settings_updated",
+            target_type="tournament",
+            target_id=tournament.id,
+            organization_id=tournament.organization_id,
+            idempotency_key=event_id,
+            payload_after={
+                "rules": tournament.rules,
+                "constraints": tournament.constraints,
+                "amend": amend,
+                "reason": reason,
+            },
+            request=request,
+        )
+    return tournament

@@ -7,12 +7,24 @@ from apps.fixtures.views import GenerateFixturesView
 from apps.matches.views import TournamentMatchListView, TournamentStandingsView
 from apps.teams.views import RegistrationLinkCreateView, TournamentTeamsListView
 from apps.tournaments.views import (
+    ConstraintTypesView,
     TournamentInvitationCreateView,
     TournamentListCreateView,
+    TournamentSettingsView,
 )
 
 urlpatterns = [
     path("", TournamentListCreateView.as_view(), name="tournament-list-create"),
+    path(
+        "constraint-types/",
+        ConstraintTypesView.as_view(),
+        name="tournament-constraint-types",
+    ),
+    path(
+        "<uuid:tournament_id>/settings/",
+        TournamentSettingsView.as_view(),
+        name="tournament-settings",
+    ),
     path(
         "<uuid:tournament_id>/invitations/",
         TournamentInvitationCreateView.as_view(),

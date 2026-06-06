@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -15,6 +16,11 @@ from apps.tournaments.serializers import (
     TournamentSerializer,
 )
 from apps.tournaments.services.create import create_tournament
+from apps.tournaments.services.rules import (
+    can_edit_rules,
+    merge_rules,
+    update_settings,
+)
 
 
 class TournamentListCreateView(GenericAPIView):
@@ -89,3 +95,59 @@ class TournamentInvitationCreateView(GenericAPIView):
             },
             status=201,
         )
+
+
+def _settings_payload(tournament, user) -> dict:
+    return {
+        "rules": merge_rules(tournament.rules),
+        "constraints": tournament.constraints or [],
+        "rules_frozen_at": tournament.rules_frozen_at,
+        "can_edit": can_edit_rules(tournament)
+        and can_manage_tournament(user, tournament),
+    }
+
+
+class TournamentSettingsView(GenericAPIView):
+    """`GET`/`PATCH /api/tournaments/{id}/settings/` — data-driven rules + constraints.
+
+    PATCH is manager-only, idempotent on `event_id`, and blocked once rules are
+    frozen (invariant 7) unless `amend=true` + a reason.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id):
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        return Response(_settings_payload(tournament, request.user))
+
+    def patch(self, request, tournament_id):
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        if not can_manage_tournament(request.user, tournament):
+            raise PermissionDenied("not_tournament_manager")
+        try:
+            tournament = update_settings(
+                tournament=tournament,
+                rules=request.data.get("rules"),
+                constraints=request.data.get("constraints"),
+                by=request.user,
+                amend=bool(request.data.get("amend")),
+                reason=request.data.get("reason", ""),
+                event_id=request.data.get("event_id"),
+                request=request,
+            )
+        except PermissionError:
+            return Response({"detail": "rules_frozen"}, status=409)
+        except ValueError as exc:
+            raise DRFValidationError({"detail": str(exc)})
+        return Response(_settings_payload(tournament, request.user))
+
+
+class ConstraintTypesView(GenericAPIView):
+    """`GET /api/tournaments/constraint-types/` — static catalog for the UI builder."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.fixtures.services.constraints import CONSTRAINT_TYPES
+
+        return Response(CONSTRAINT_TYPES)
