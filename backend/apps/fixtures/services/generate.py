@@ -141,3 +141,49 @@ def generate_single_elimination(*, tournament, teams, stage: str = "knockout") -
             round_no += 1
 
     return created
+
+
+def generate_knockout_from_groups(*, tournament, advance_per_group: int = 2) -> list[Match]:
+    """Advance the top `advance_per_group` of each group into a single-elimination
+    bracket (FIFA-style groups → knockout). Cross-seeds winners vs other groups'
+    runners-up. Idempotent: returns the existing knockout if already generated.
+    """
+    from apps.matches.services.standings import compute_standings
+
+    existing = list(
+        Match.objects.filter(
+            tournament=tournament, stage="knockout", deleted_at__isnull=True
+        )
+    )
+    if existing:
+        return existing
+
+    groups = sorted(
+        g
+        for g in Match.objects.filter(
+            tournament=tournament, stage="group", deleted_at__isnull=True
+        )
+        .values_list("group_label", flat=True)
+        .distinct()
+        if g
+    )
+    if not groups:
+        raise ValueError("No group stage to advance from.")
+
+    quals: list[list[str]] = []
+    for g in groups:
+        rows = compute_standings(tournament, group_label=g)
+        ids = [r["team_id"] for r in rows[:advance_per_group]]
+        if len(ids) < 2:
+            raise ValueError(f"Group {g} hasn't finished enough matches to advance teams.")
+        quals.append(ids)
+
+    n = len(groups)
+    # Cross-seed: group i winner vs the next group's runner-up.
+    seed_ids: list[str] = []
+    for i in range(n):
+        seed_ids.append(quals[i][0])
+        seed_ids.append(quals[(i + 1) % n][1])
+
+    teams = [Team.objects.get(id=tid) for tid in seed_ids]
+    return generate_single_elimination(tournament=tournament, teams=teams, stage="knockout")

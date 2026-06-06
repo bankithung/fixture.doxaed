@@ -59,6 +59,33 @@ def test_scoring_semis_advances_winners_into_final():
     assert final.away_team_id == semis[1].away_team_id  # semi-1 away won
 
 
+def test_knockout_from_groups_advances_top_two():
+    from apps.fixtures.services.generate import (
+        generate_knockout_from_groups,
+        generate_round_robin,
+    )
+    from apps.matches.models import Match
+    from apps.matches.services.scoring import record_score
+
+    admin = _verified()
+    t = create_tournament(user=admin, name="Groups KO")
+    register_school(
+        tournament=t, school_name="S",
+        teams=[{"name": f"T{i + 1}", "players": []} for i in range(8)],
+    )
+    generate_round_robin(tournament=t, group_size=4)  # 2 groups of 4
+    for i, m in enumerate(Match.objects.filter(tournament=t, stage="group").order_by("match_no")):
+        record_score(match=m, home_score=(i % 4) + 1, away_score=i % 3, by=admin)
+
+    ko = generate_knockout_from_groups(tournament=t)
+    # 2 groups x top-2 = 4 teams -> single elim = 2 semis + final
+    assert len(ko) == 3
+    assert all(m.stage == "knockout" for m in ko)
+    # round-1 knockout matches have concrete teams drawn from the groups
+    r1 = [m for m in ko if m.round_no == 1]
+    assert all(m.home_team_id and m.away_team_id for m in r1)
+
+
 def test_single_elim_requires_power_of_two():
     admin = _verified()
     t = create_tournament(user=admin, name="Cup")

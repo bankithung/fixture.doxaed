@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.fixtures.services.generate import (
+    generate_knockout_from_groups,
     generate_round_robin,
     generate_single_elimination,
 )
@@ -34,6 +35,8 @@ class GenerateFixturesView(GenericAPIView):
                     ).order_by("seed", "name")
                 )
                 matches = generate_single_elimination(tournament=t, teams=teams)
+            elif fmt == "knockout_from_groups":
+                matches = generate_knockout_from_groups(tournament=t)
             else:
                 matches = generate_round_robin(
                     tournament=t, group_size=int(request.data.get("group_size", 5))

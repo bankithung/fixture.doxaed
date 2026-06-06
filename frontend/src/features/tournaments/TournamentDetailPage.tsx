@@ -141,7 +141,7 @@ export function TournamentDetailPage(): React.ReactElement {
       setLinkUrl(`${window.location.origin}/register/${r.token}`),
   });
   const generate = useMutation({
-    mutationFn: (format: "round_robin" | "knockout") =>
+    mutationFn: (format: "round_robin" | "knockout" | "knockout_from_groups") =>
       tournamentsApi.generateFixtures(id, { format }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["t-matches", id] });
@@ -159,6 +159,8 @@ export function TournamentDetailPage(): React.ReactElement {
 
   const teamCount = teams.data?.length ?? 0;
   const matchCount = matches.data?.length ?? 0;
+  const hasKnockout = (matches.data ?? []).some((m) => m.stage === "knockout");
+  const hasGroups = (matches.data ?? []).some((m) => m.stage === "group");
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 p-6">
@@ -177,10 +179,21 @@ export function TournamentDetailPage(): React.ReactElement {
             {t("Share registration link")}
           </Button>
           {matchCount > 0 ? (
-            <Button variant="outline" disabled>
-              <Wand2 aria-hidden="true" className="mr-1.5 h-4 w-4" />
-              {t("Fixtures generated")}
-            </Button>
+            <>
+              <Button variant="outline" disabled>
+                <Wand2 aria-hidden="true" className="mr-1.5 h-4 w-4" />
+                {t("Fixtures generated")}
+              </Button>
+              {hasGroups && !hasKnockout ? (
+                <Button
+                  onClick={() => generate.mutate("knockout_from_groups")}
+                  disabled={generate.isPending}
+                >
+                  <GitBranch aria-hidden="true" className="mr-1.5 h-4 w-4" />
+                  {t("Generate knockout")}
+                </Button>
+              ) : null}
+            </>
           ) : (
             <>
               <Button

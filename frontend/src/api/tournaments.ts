@@ -98,7 +98,10 @@ export const tournamentsApi = {
   /** Generate the fixture (manager only): round-robin groups or a knockout bracket. */
   generateFixtures: (
     id: string,
-    opts?: { groupSize?: number; format?: "round_robin" | "knockout" },
+    opts?: {
+      groupSize?: number;
+      format?: "round_robin" | "knockout" | "knockout_from_groups";
+    },
   ) =>
     api.post<{ generated: number; format?: string }>(
       `/api/tournaments/${id}/generate-fixtures/`,
