@@ -47,6 +47,64 @@ def test_record_goal_event_updates_score():
     assert r.json()["home_score"] == 1
 
 
+def test_event_attributes_to_player():
+    from apps.matches.models import MatchEvent
+
+    admin = _verified()
+    t = create_tournament(user=admin, name="Cup")
+    teams = register_school(
+        tournament=t, school_name="S",
+        teams=[
+            {"name": "A", "players": [{"full_name": "Striker", "jersey_no": 9}]},
+            {"name": "B", "players": []},
+        ],
+    )
+    a = teams[0]
+    m = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=a, away_team=teams[1],
+        status=MatchStatus.LIVE,
+    )
+    player = a.players.first()
+    client = APIClient()
+    client.force_authenticate(user=admin)
+
+    r = client.post(
+        f"/api/matches/{m.id}/events/",
+        {"event_type": "goal", "side": "home", "player_id": str(player.id)},
+        format="json",
+    )
+    assert r.status_code == 201, r.content
+    assert r.json()["home_score"] == 1
+    ev = MatchEvent.objects.get(match=m, event_type="goal")
+    assert ev.player_id == player.id
+
+
+def test_event_player_not_on_team_rejected():
+    admin = _verified()
+    t = create_tournament(user=admin, name="Cup")
+    teams = register_school(
+        tournament=t, school_name="S",
+        teams=[
+            {"name": "A", "players": []},
+            {"name": "B", "players": [{"full_name": "Other", "jersey_no": 1}]},
+        ],
+    )
+    m = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=teams[0], away_team=teams[1],
+        status=MatchStatus.LIVE,
+    )
+    other = teams[1].players.first()  # player on the AWAY team
+    client = APIClient()
+    client.force_authenticate(user=admin)
+
+    r = client.post(
+        f"/api/matches/{m.id}/events/",
+        {"event_type": "goal", "side": "home", "player_id": str(other.id)},
+        format="json",
+    )
+    assert r.status_code == 400
+
+
 def test_transition_match_state():
     admin = _verified()
     _t, m = _match(admin, status=MatchStatus.SCHEDULED)

@@ -129,7 +129,6 @@ export function computeNavItems(
       label: t("Scoring"),
       href: routes.orgScoring(slug),
       icon: Goal,
-      badge: t("Phase 1B"),
     });
   }
   if (hasModule(MODULE_MATCH_REFEREE_CONSOLE)) {
@@ -138,7 +137,6 @@ export function computeNavItems(
       label: t("Referee"),
       href: routes.orgReferee(slug),
       icon: Flag,
-      badge: t("Phase 1B"),
     });
   }
   // Team workspace: no Appendix A.2 module exists (`tournament.team_manager_workspace`
@@ -151,7 +149,6 @@ export function computeNavItems(
       label: t("Team"),
       href: routes.orgTeam(slug),
       icon: Users2,
-      badge: t("Phase 1B"),
     });
   }
 

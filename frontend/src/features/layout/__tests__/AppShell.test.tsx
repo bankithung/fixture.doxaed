@@ -91,7 +91,7 @@ describe("AppShell", () => {
     expect(primary.textContent).toMatch(/audit/i);
   });
 
-  it("scorer sees the Scoring nav item with a Phase 1B badge", () => {
+  it("scorer sees the Scoring nav item", () => {
     useAuthStore.setState({
       user: makeUser(["match_scorer"], ["match.scoring_console"]),
       bootstrapped: true,
@@ -99,7 +99,6 @@ describe("AppShell", () => {
     renderShellAt();
     const primary = screen.getByRole("navigation", { name: /primary/i });
     expect(primary.textContent).toMatch(/scoring/i);
-    expect(primary.textContent).toMatch(/phase 1b/i);
   });
 
   it("non-admin viewer does NOT see the Permissions nav item", () => {

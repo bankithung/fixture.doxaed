@@ -16,7 +16,7 @@ export function ScorerLandingPage(): React.ReactElement {
       ariaLabel={t("Match scorer landing")}
       heroTitle={t("Welcome, Match scorer")}
       heroSubtitle={t(
-        "You can record match scores today. The rich live console below arrives in Phase 1B.",
+        "You can record match scores today — open a match's Live console to log goals and cards as they happen.",
       )}
       availableNow={{
         title: t("Score matches now"),

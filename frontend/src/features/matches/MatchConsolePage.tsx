@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveApi } from "@/api/live";
@@ -37,8 +38,9 @@ export function MatchConsolePage(): React.ReactElement {
     refetchInterval: 5000,
   });
   const refresh = () => qc.invalidateQueries({ queryKey: ["live", matchId] });
+  const [sel, setSel] = useState<{ home?: string; away?: string }>({});
   const ev = useMutation({
-    mutationFn: (p: { event_type: string; side?: string }) =>
+    mutationFn: (p: { event_type: string; side?: string; player_id?: string }) =>
       liveApi.recordEvent(matchId, { ...p, event_id: newEventId() }),
     onSuccess: refresh,
   });
@@ -101,38 +103,54 @@ export function MatchConsolePage(): React.ReactElement {
             <CardTitle className="text-base">{t("Record event")}</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-4">
-            {(["home", "away"] as const).map((side) => (
-              <div key={side} className="flex flex-col gap-2">
-                <div className="text-xs font-medium text-muted-foreground">
-                  {side === "home"
-                    ? (match.home_team?.name ?? t("Home"))
-                    : (match.away_team?.name ?? t("Away"))}
+            {(["home", "away"] as const).map((side) => {
+              const team = side === "home" ? match.home_team : match.away_team;
+              const players = team?.players ?? [];
+              const fire = (event_type: string) =>
+                ev.mutate({ event_type, side, player_id: sel[side] });
+              return (
+                <div key={side} className="flex flex-col gap-2">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    {team?.name ?? (side === "home" ? t("Home") : t("Away"))}
+                  </div>
+                  <select
+                    aria-label={side === "home" ? t("Home player") : t("Away player")}
+                    value={sel[side] ?? ""}
+                    onChange={(e) =>
+                      setSel((s) => ({ ...s, [side]: e.target.value || undefined }))
+                    }
+                    className="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="">{t("Team (no player)")}</option>
+                    {players.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.jersey_no ? `#${p.jersey_no} ` : ""}
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Button size="sm" disabled={ev.isPending} onClick={() => fire("goal")}>
+                    {t("Goal")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={ev.isPending}
+                    onClick={() => fire("yellow_card")}
+                  >
+                    {t("Yellow card")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={ev.isPending}
+                    onClick={() => fire("red_card")}
+                  >
+                    {t("Red card")}
+                  </Button>
                 </div>
-                <Button
-                  size="sm"
-                  disabled={ev.isPending}
-                  onClick={() => ev.mutate({ event_type: "goal", side })}
-                >
-                  {t("Goal")}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={ev.isPending}
-                  onClick={() => ev.mutate({ event_type: "yellow_card", side })}
-                >
-                  {t("Yellow card")}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={ev.isPending}
-                  onClick={() => ev.mutate({ event_type: "red_card", side })}
-                >
-                  {t("Red card")}
-                </Button>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       ) : null}
@@ -151,7 +169,10 @@ export function MatchConsolePage(): React.ReactElement {
                   <span className="w-10 text-right font-tabular text-muted-foreground">
                     {e.minute != null ? `${e.minute}'` : `#${e.sequence_no}`}
                   </span>
-                  <span>{t(e.type.replace(/_/g, " "))}</span>
+                  <span>
+                    {t(e.type.replace(/_/g, " "))}
+                    {e.player ? ` — ${e.player}` : ""}
+                  </span>
                 </li>
               ))}
             </ul>

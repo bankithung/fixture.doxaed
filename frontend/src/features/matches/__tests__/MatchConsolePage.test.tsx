@@ -30,8 +30,13 @@ function snap(status: string): LiveSnapshot {
       id: "m1",
       status,
       current_period: status === "live" ? "first_half" : "",
-      home_team: { id: "a", name: "Alpha", short_name: "ALP" },
-      away_team: { id: "b", name: "Beta", short_name: "BET" },
+      home_team: {
+        id: "a",
+        name: "Alpha",
+        short_name: "ALP",
+        players: [{ id: "p1", name: "Striker", jersey_no: 9, position: "ST" }],
+      },
+      away_team: { id: "b", name: "Beta", short_name: "BET", players: [] },
       home_score: 0,
       away_score: 0,
     },
@@ -56,6 +61,20 @@ describe("MatchConsolePage", () => {
     expect(payload.event_type).toBe("goal");
     expect(payload.side).toBe("home");
     expect(payload.event_id).toBeTruthy();
+  });
+
+  it("attributes a goal to the selected player", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(snap("live"));
+    vi.mocked(liveApi.recordEvent).mockResolvedValue({} as never);
+    renderConsole();
+    await screen.findByText("Alpha");
+
+    await userEvent.selectOptions(screen.getByLabelText(/home player/i), "p1");
+    await userEvent.click(screen.getAllByRole("button", { name: /^goal$/i })[0]);
+
+    await waitFor(() => expect(liveApi.recordEvent).toHaveBeenCalled());
+    const [, payload] = vi.mocked(liveApi.recordEvent).mock.calls[0];
+    expect(payload.player_id).toBe("p1");
   });
 
   it("starts the match from scheduled", async () => {

@@ -160,10 +160,25 @@ class RecordMatchEventView(GenericAPIView):
             else match.away_team if side == "away"
             else None
         )
+        player = None
+        player_id = ser.validated_data.get("player_id")
+        if player_id:
+            from apps.teams.models import Player
+
+            player = Player.objects.filter(
+                id=player_id, tournament=match.tournament, deleted_at__isnull=True
+            ).first()
+            if player is None:
+                raise DRFValidationError({"detail": "player_not_found"})
+            if team is not None and player.team_id != team.id:
+                raise DRFValidationError({"detail": "player_not_on_team"})
+            if team is None:
+                team = player.team
         record_match_event(
             match=match,
             event_type=ser.validated_data["event_type"],
             team=team,
+            player=player,
             minute=ser.validated_data.get("minute"),
             by=request.user,
             event_id=ser.validated_data.get("event_id"),

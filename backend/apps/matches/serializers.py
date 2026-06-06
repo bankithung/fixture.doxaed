@@ -39,6 +39,7 @@ class RecordScoreSerializer(serializers.Serializer):
 class RecordEventSerializer(serializers.Serializer):
     event_type = serializers.ChoiceField(choices=MatchEventType.values)
     side = serializers.ChoiceField(choices=["home", "away"], required=False, allow_blank=True)
+    player_id = serializers.UUIDField(required=False)
     minute = serializers.IntegerField(required=False, min_value=0, max_value=200)
     event_id = serializers.UUIDField(required=False)
 

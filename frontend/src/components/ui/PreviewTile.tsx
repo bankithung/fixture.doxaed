@@ -51,7 +51,7 @@ export function PreviewTile({
         className="absolute right-3 top-3 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-secondary-foreground"
         data-testid="preview-tile-badge"
       >
-        {t(badgeText ?? "Phase 1B")}
+        {t(badgeText ?? "Soon")}
       </span>
       <div
         aria-hidden="true"

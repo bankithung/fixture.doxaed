@@ -85,11 +85,9 @@ export function RoleLandingShell({
 
       <Card>
         <CardHeader>
-          <CardTitle>{t("Coming in Phase 1B")}</CardTitle>
+          <CardTitle>{t("More coming soon")}</CardTitle>
           <CardDescription>
-            {t(
-              "Preview of the surfaces that will activate when tournaments and matches go live.",
-            )}
+            {t("Deeper tools we're still building on top of what works today.")}
           </CardDescription>
         </CardHeader>
         <CardContent>

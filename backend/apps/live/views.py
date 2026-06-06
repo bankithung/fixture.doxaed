@@ -13,7 +13,23 @@ from apps.matches.models import Match, MatchEvent
 def _team(t):
     if t is None:
         return None
-    return {"id": str(t.id), "name": t.name, "short_name": t.short_name}
+    players = [
+        {
+            "id": str(p.id),
+            "name": p.person.full_name if p.person else "",
+            "jersey_no": p.jersey_no,
+            "position": p.position,
+        }
+        for p in t.players.filter(deleted_at__isnull=True)
+        .select_related("person")
+        .order_by("jersey_no", "id")
+    ]
+    return {
+        "id": str(t.id),
+        "name": t.name,
+        "short_name": t.short_name,
+        "players": players,
+    }
 
 
 class LiveMatchSnapshotView(GenericAPIView):
@@ -27,7 +43,11 @@ class LiveMatchSnapshotView(GenericAPIView):
         )
         if m is None:
             raise NotFound("match_not_found")
-        events = list(MatchEvent.objects.filter(match=m).order_by("-sequence_no")[:20])
+        events = list(
+            MatchEvent.objects.filter(match=m)
+            .select_related("player", "player__person")
+            .order_by("-sequence_no")[:30]
+        )
         return Response(
             {
                 "match": {
@@ -44,6 +64,11 @@ class LiveMatchSnapshotView(GenericAPIView):
                         "sequence_no": e.sequence_no,
                         "type": e.event_type,
                         "team_id": str(e.team_id) if e.team_id else None,
+                        "player": (
+                            e.player.person.full_name
+                            if e.player and e.player.person
+                            else None
+                        ),
                         "minute": e.minute,
                         "period": e.period,
                     }
