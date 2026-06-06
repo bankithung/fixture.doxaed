@@ -65,7 +65,8 @@ describe("TournamentsListPage", () => {
       screen.getByLabelText(/invite by email/i),
       "ref@example.com",
     );
-    await userEvent.selectOptions(screen.getByLabelText(/role/i), "referee");
+    await userEvent.click(screen.getByRole("button", { name: /^role$/i }));
+    await userEvent.click(screen.getByRole("option", { name: /referee/i }));
     await userEvent.click(screen.getByRole("button", { name: /send invite/i }));
 
     await waitFor(() => expect(tournamentsApi.invite).toHaveBeenCalledTimes(1));
