@@ -51,7 +51,8 @@ describe("MatchConsolePage", () => {
     vi.mocked(liveApi.snapshot).mockResolvedValue(snap("live"));
     vi.mocked(liveApi.recordEvent).mockResolvedValue({} as never);
     renderConsole();
-    await screen.findByText("Alpha");
+    // Team name renders in both the scoreboard and the per-side recorder.
+    await screen.findAllByText("Alpha");
 
     await userEvent.click(screen.getAllByRole("button", { name: /^goal$/i })[0]);
 
@@ -67,9 +68,12 @@ describe("MatchConsolePage", () => {
     vi.mocked(liveApi.snapshot).mockResolvedValue(snap("live"));
     vi.mocked(liveApi.recordEvent).mockResolvedValue({} as never);
     renderConsole();
-    await screen.findByText("Alpha");
+    // Team name renders in both the scoreboard and the per-side recorder.
+    await screen.findAllByText("Alpha");
 
-    await userEvent.selectOptions(screen.getByLabelText(/home player/i), "p1");
+    // Custom <Select> (button-triggered listbox): open it, then pick the player.
+    await userEvent.click(screen.getByRole("button", { name: /home player/i }));
+    await userEvent.click(screen.getByRole("option", { name: /striker/i }));
     await userEvent.click(screen.getAllByRole("button", { name: /^goal$/i })[0]);
 
     await waitFor(() => expect(liveApi.recordEvent).toHaveBeenCalled());

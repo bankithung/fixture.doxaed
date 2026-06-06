@@ -34,7 +34,7 @@ describe("RegistrationFormPage", () => {
       teams: ["Mount Hermon A"],
     });
     renderPage();
-    await screen.findByText(/Kohima Cup/);
+    await screen.findByRole("heading", { name: /kohima cup/i });
 
     await userEvent.type(
       screen.getByLabelText(/school \/ college name/i),

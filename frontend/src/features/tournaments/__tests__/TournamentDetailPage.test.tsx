@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TournamentDetailPage } from "../TournamentDetailPage";
+import { ToastProvider } from "@/components/ui/toast";
 import { tournamentsApi, type MatchRow } from "@/api/tournaments";
 
 vi.mock("@/api/tournaments");
@@ -12,11 +13,13 @@ function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/tournaments/t1"]}>
-        <Routes>
-          <Route path="/tournaments/:id" element={<TournamentDetailPage />} />
-        </Routes>
-      </MemoryRouter>
+      <ToastProvider>
+        <MemoryRouter initialEntries={["/tournaments/t1"]}>
+          <Routes>
+            <Route path="/tournaments/:id" element={<TournamentDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }

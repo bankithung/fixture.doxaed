@@ -1,15 +1,10 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { RotateCcw, ShieldOff, Users } from "lucide-react";
 import { permissionsApi } from "@/api/permissions";
 import { ApiError } from "@/types/api";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import type {
   GrantState,
@@ -18,6 +13,7 @@ import type {
   ModuleScope,
 } from "@/types/user";
 import { GrantCell } from "./GrantCell";
+import { useBreakpoint } from "@/lib/useBreakpoint";
 import { t } from "@/lib/t";
 import { cn } from "@/lib/tailwind";
 
@@ -41,6 +37,11 @@ const SCOPE_LABEL: Record<ModuleScope, string> = {
   match: "Match",
 };
 
+const PAGE_WRAP = "flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8";
+const OVERLINE =
+  "text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground";
+const CARD = "rounded-xl border border-border bg-card shadow-sm";
+
 /** Per-row pending edits keyed by user_id then module key. */
 type PendingMap = Record<string, Record<string, GrantState>>;
 
@@ -56,6 +57,8 @@ type PendingMap = Record<string, Record<string, GrantState>>;
  *   - Per-row Save button, only enabled when that row has unsaved edits.
  *   - Toolbar: "Reset to defaults" clears local edits across all rows
  *     (no auto-save).
+ *   - On small screens the dense table collapses to a stacked per-member
+ *     card list (modules grouped by scope) so the matrix stays usable.
  *
  * State strategy:
  *   - Optimistic save: PUT for that row's full cell map; on success,
@@ -69,6 +72,7 @@ export function ModuleMatrixPage(): React.ReactElement {
   const { orgSlug = "" } = useParams<{ orgSlug: string }>();
   const qc = useQueryClient();
   const toast = useToast();
+  const { isMobile } = useBreakpoint();
 
   const matrixQ = useQuery({
     queryKey: ["permissions", "matrix", orgSlug],
@@ -168,20 +172,20 @@ export function ModuleMatrixPage(): React.ReactElement {
   // ----- Loading state -----
   if (matrixQ.isLoading) {
     return (
-      <div className="flex flex-col gap-4 p-6" role="status" aria-live="polite">
-        <div className="text-2xl font-semibold">{t("Permissions")}</div>
-        <Card>
-          <CardContent className="space-y-2 p-6">
-            {Array.from({ length: 5 }).map((_, i) => (
+      <div className={PAGE_WRAP} role="status" aria-live="polite">
+        <PageHeader rows={rows} modules={modules} totalEdits={0} editedRowCount={0} />
+        <div className={cn(CARD, "p-6")}>
+          <div className="space-y-2">
+            {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
-                className="h-8 animate-pulse rounded bg-muted"
+                className="h-8 animate-pulse rounded-lg bg-muted"
                 aria-hidden="true"
               />
             ))}
-            <span className="sr-only">{t("Loading permissions...")}</span>
-          </CardContent>
-        </Card>
+          </div>
+          <span className="sr-only">{t("Loading permissions...")}</span>
+        </div>
       </div>
     );
   }
@@ -191,43 +195,53 @@ export function ModuleMatrixPage(): React.ReactElement {
     const err = matrixQ.error;
     if (err instanceof ApiError && err.status === 403) {
       return (
-        <div className="flex flex-col gap-4 p-6">
-          <h1 className="text-2xl font-semibold">{t("Permissions")}</h1>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("Access required")}</CardTitle>
-              <CardDescription>
+        <div className={PAGE_WRAP}>
+          <div>
+            <p className={OVERLINE}>{t("Access control")}</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+              {t("Permissions")}
+            </h1>
+          </div>
+          <div className={cn(CARD, "flex flex-col items-center gap-3 p-10 text-center")}>
+            <span
+              aria-hidden="true"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-muted text-muted-foreground"
+            >
+              <ShieldOff className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="text-lg font-semibold">{t("Access required")}</h2>
+              <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                 {t(
                   "You don't have access to the module override matrix in this organisation.",
                 )}
-              </CardDescription>
-            </CardHeader>
-          </Card>
+              </p>
+            </div>
+          </div>
         </div>
       );
     }
     return (
-      <div className="flex flex-col gap-4 p-6">
-        <h1 className="text-2xl font-semibold">{t("Permissions")}</h1>
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("Couldn't load permissions")}</CardTitle>
-            <CardDescription>
+      <div className={PAGE_WRAP}>
+        <div>
+          <p className={OVERLINE}>{t("Access control")}</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+            {t("Permissions")}
+          </h1>
+        </div>
+        <div className={cn(CARD, "flex flex-col items-center gap-3 p-10 text-center")}>
+          <div>
+            <h2 className="text-lg font-semibold">{t("Couldn't load permissions")}</h2>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
               {err instanceof ApiError
                 ? (err.payload.detail ?? err.message)
                 : t("Network error")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <button
-              type="button"
-              onClick={() => matrixQ.refetch()}
-              className="rounded border border-primary bg-primary px-3 py-1.5 text-sm text-primary-foreground"
-            >
-              {t("Retry")}
-            </button>
-          </CardContent>
-        </Card>
+            </p>
+          </div>
+          <Button type="button" variant="outline" onClick={() => matrixQ.refetch()}>
+            {t("Retry")}
+          </Button>
+        </div>
       </div>
     );
   }
@@ -238,64 +252,60 @@ export function ModuleMatrixPage(): React.ReactElement {
   );
   const editedRowCount = Object.keys(edits).length;
 
+  const rowSaving = (userId: string): boolean =>
+    saveRow.isPending && saveRow.variables?.userId === userId;
+
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">{t("Module overrides")}</h1>
-          <p className="text-sm text-muted-foreground">
-            {t(
-              "Per-user module overrides. Default cells defer to the role; toggle to grant or deny explicitly. Saves are atomic per row.",
-            )}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {rows.length} {t("members")} · {modules.length} {t("modules")}
-            {totalEdits > 0 ? (
-              <>
-                {" · "}
-                <span className="text-primary">
-                  {totalEdits} {t("unsaved edit(s)")}
-                  {editedRowCount > 1 ? ` (${editedRowCount} rows)` : ""}
-                </span>
-              </>
-            ) : null}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onResetAll}
-            disabled={totalEdits === 0}
-            className={cn(
-              "rounded border px-3 py-1.5 text-xs",
-              totalEdits === 0
-                ? "border-border text-muted-foreground"
-                : "border-border bg-card hover:bg-muted",
-            )}
-            aria-label={t("Reset all unsaved edits to defaults")}
-          >
-            {t("Reset to defaults")}
-          </button>
-        </div>
+    <div className={PAGE_WRAP}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <PageHeader
+          rows={rows}
+          modules={modules}
+          totalEdits={totalEdits}
+          editedRowCount={editedRowCount}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onResetAll}
+          disabled={totalEdits === 0}
+          className="shrink-0"
+          aria-label={t("Reset all unsaved edits to defaults")}
+        >
+          <RotateCcw aria-hidden="true" className="h-4 w-4" />
+          {t("Reset to defaults")}
+        </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("Module override matrix")}</CardTitle>
-          <CardDescription>
+      <section className={cn(CARD, "overflow-hidden")} aria-label={t("Module override matrix")}>
+        <div className="border-b border-border p-4 sm:p-5">
+          <h2 className="text-sm font-semibold">{t("Module override matrix")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
             {t(
               "Click a cell to cycle: default → grant → deny → default. Press Save to persist a row's edits.",
             )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="overflow-x-auto p-0">
-          {rows.length === 0 ? (
-            <div className="p-6 text-sm text-muted-foreground">
-              {t("No members yet.")}
-            </div>
-          ) : (
+          </p>
+          <Legend />
+        </div>
+
+        {rows.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+            <Users aria-hidden="true" className="h-8 w-8 text-muted-foreground/40" />
+            <p className="text-sm text-muted-foreground">{t("No members yet.")}</p>
+          </div>
+        ) : isMobile ? (
+          <MobileMatrix
+            rows={rows}
+            grouped={grouped}
+            edits={edits}
+            onCellChange={onCellChange}
+            onSaveRow={onSaveRow}
+            rowSaving={rowSaving}
+          />
+        ) : (
+          <div className="overflow-x-auto">
             <table
-              className="min-w-full border-separate border-spacing-0 text-xs"
+              className="min-w-full border-separate border-spacing-0 text-sm"
               aria-label={t("Per-user module override matrix")}
             >
               <thead className="sticky top-0 z-20 bg-card">
@@ -304,7 +314,7 @@ export function ModuleMatrixPage(): React.ReactElement {
                   <th
                     rowSpan={2}
                     scope="col"
-                    className="sticky left-0 z-30 border-b border-r bg-card p-2 text-left"
+                    className="sticky left-0 z-30 border-b border-r border-border bg-card px-4 py-2.5 text-left text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground"
                   >
                     {t("Member")}
                   </th>
@@ -313,7 +323,7 @@ export function ModuleMatrixPage(): React.ReactElement {
                       key={g.scope}
                       scope="colgroup"
                       colSpan={g.mods.length}
-                      className="border-b border-l bg-muted/40 p-1 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+                      className="border-b border-l border-border bg-muted/50 px-2 py-1.5 text-left text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground"
                     >
                       {t(SCOPE_LABEL[g.scope] ?? g.scope)}
                     </th>
@@ -321,7 +331,7 @@ export function ModuleMatrixPage(): React.ReactElement {
                   <th
                     rowSpan={2}
                     scope="col"
-                    className="sticky right-0 z-30 border-b border-l bg-card p-2"
+                    className="sticky right-0 z-30 border-b border-l border-border bg-card px-3 py-2.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground"
                   >
                     {t("Save")}
                   </th>
@@ -333,7 +343,7 @@ export function ModuleMatrixPage(): React.ReactElement {
                       key={m.key}
                       scope="col"
                       title={m.description}
-                      className="border-b p-1 text-left align-bottom font-medium"
+                      className="border-b border-border px-1.5 py-2 text-left align-bottom text-xs font-medium text-muted-foreground"
                     >
                       <div className="w-24 truncate">{m.label}</div>
                     </th>
@@ -344,11 +354,16 @@ export function ModuleMatrixPage(): React.ReactElement {
                 {rows.map((row) => {
                   const rowEdits = edits[row.user_id] ?? {};
                   const isDirty = Object.keys(rowEdits).length > 0;
+                  const saving = rowSaving(row.user_id);
                   return (
-                    <tr key={row.user_id} aria-label={row.user_email}>
+                    <tr
+                      key={row.user_id}
+                      aria-label={row.user_email}
+                      className="group transition-colors hover:bg-accent/40"
+                    >
                       <th
                         scope="row"
-                        className="sticky left-0 z-10 border-b border-r bg-card p-2 text-left"
+                        className="sticky left-0 z-10 border-b border-r border-border bg-card px-4 py-2.5 text-left transition-colors group-hover:bg-accent/40"
                       >
                         <MemberCell row={row} />
                       </th>
@@ -359,7 +374,7 @@ export function ModuleMatrixPage(): React.ReactElement {
                         return (
                           <td
                             key={m.key}
-                            className="border-b p-0.5 text-center"
+                            className="border-b border-border px-1 py-1 text-center"
                           >
                             <GrantCell
                               state={eff}
@@ -367,33 +382,27 @@ export function ModuleMatrixPage(): React.ReactElement {
                               moduleLabel={m.label}
                               userLabel={row.user_email}
                               onChange={(n) => onCellChange(row, m.key, n)}
-                              disabled={
-                                saveRow.isPending &&
-                                saveRow.variables?.userId === row.user_id
-                              }
+                              disabled={saving}
                             />
                           </td>
                         );
                       })}
-                      <td className="sticky right-0 border-b border-l bg-card p-1">
+                      <td className="sticky right-0 z-10 border-b border-l border-border bg-card px-3 py-1.5 transition-colors group-hover:bg-accent/40">
                         {isDirty ? (
-                          <button
+                          <Button
                             type="button"
+                            size="sm"
                             onClick={() => onSaveRow(row)}
-                            disabled={
-                              saveRow.isPending &&
-                              saveRow.variables?.userId === row.user_id
-                            }
-                            className="rounded border border-primary bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-50"
+                            disabled={saving}
                             aria-label={`${t("Save row for")} ${row.user_email}`}
                           >
-                            {saveRow.isPending &&
-                            saveRow.variables?.userId === row.user_id
-                              ? t("Saving...")
-                              : t("Save row")}
-                          </button>
+                            {saving ? t("Saving...") : t("Save row")}
+                          </Button>
                         ) : (
-                          <span className="text-[10px] text-muted-foreground">
+                          <span
+                            aria-hidden="true"
+                            className="block text-center text-xs text-muted-foreground/60"
+                          >
                             —
                           </span>
                         )}
@@ -403,10 +412,161 @@ export function ModuleMatrixPage(): React.ReactElement {
                 })}
               </tbody>
             </table>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        )}
+      </section>
     </div>
+  );
+}
+
+function PageHeader({
+  rows,
+  modules,
+  totalEdits,
+  editedRowCount,
+}: {
+  rows: ModuleMatrixRow[];
+  modules: ModuleDef[];
+  totalEdits: number;
+  editedRowCount: number;
+}): React.ReactElement {
+  return (
+    <div className="min-w-0">
+      <p className={OVERLINE}>{t("Access control")}</p>
+      <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+        {t("Module overrides")}
+      </h1>
+      <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+        {t(
+          "Per-user module overrides. Default cells defer to the role; toggle to grant or deny explicitly. Saves are atomic per row.",
+        )}
+      </p>
+      <p className="mt-2 text-xs text-muted-foreground">
+        <span className="font-tabular">{rows.length}</span> {t("members")} ·{" "}
+        <span className="font-tabular">{modules.length}</span> {t("modules")}
+        {totalEdits > 0 ? (
+          <>
+            {" · "}
+            <span className="font-medium text-primary">
+              <span className="font-tabular">{totalEdits}</span>{" "}
+              {t("unsaved edit(s)")}
+              {editedRowCount > 1 ? (
+                <>
+                  {" ("}
+                  <span className="font-tabular">{editedRowCount}</span> {t("rows")}
+                  {")"}
+                </>
+              ) : (
+                ""
+              )}
+            </span>
+          </>
+        ) : null}
+      </p>
+    </div>
+  );
+}
+
+function Legend(): React.ReactElement {
+  const items: { cls: string; label: string }[] = [
+    { cls: "bg-grant-muted border border-grant/30", label: t("Role default (grants)") },
+    { cls: "bg-muted border border-border", label: t("Role default (no grant)") },
+    { cls: "bg-grant border border-grant", label: t("Granted") },
+    { cls: "bg-deny border border-deny", label: t("Denied") },
+  ];
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+      {items.map((it) => (
+        <span
+          key={it.label}
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+        >
+          <span
+            aria-hidden="true"
+            className={cn("h-3 w-3 shrink-0 rounded", it.cls)}
+          />
+          {it.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function MobileMatrix({
+  rows,
+  grouped,
+  edits,
+  onCellChange,
+  onSaveRow,
+  rowSaving,
+}: {
+  rows: ModuleMatrixRow[];
+  grouped: ScopeGroup[];
+  edits: PendingMap;
+  onCellChange: (row: ModuleMatrixRow, moduleKey: string, next: GrantState) => void;
+  onSaveRow: (row: ModuleMatrixRow) => void;
+  rowSaving: (userId: string) => boolean;
+}): React.ReactElement {
+  return (
+    <ul className="divide-y divide-border">
+      {rows.map((row) => {
+        const rowEdits = edits[row.user_id] ?? {};
+        const isDirty = Object.keys(rowEdits).length > 0;
+        const saving = rowSaving(row.user_id);
+        return (
+          <li key={row.user_id} aria-label={row.user_email} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <MemberCell row={row} />
+              {isDirty ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => onSaveRow(row)}
+                  disabled={saving}
+                  className="shrink-0"
+                  aria-label={`${t("Save row for")} ${row.user_email}`}
+                >
+                  {saving ? t("Saving...") : t("Save row")}
+                </Button>
+              ) : null}
+            </div>
+            <div className="mt-3 space-y-3">
+              {grouped.map((g) => (
+                <div key={g.scope}>
+                  <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                    {t(SCOPE_LABEL[g.scope] ?? g.scope)}
+                  </p>
+                  <div className="mt-1.5 space-y-1.5">
+                    {g.mods.map((m) => {
+                      const stored: GrantState = row.cells[m.key] ?? "default";
+                      const eff: GrantState = rowEdits[m.key] ?? stored;
+                      return (
+                        <div
+                          key={m.key}
+                          className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background px-3 py-2"
+                        >
+                          <span className="min-w-0 truncate text-sm" title={m.description}>
+                            {m.label}
+                          </span>
+                          <GrantCell
+                            state={eff}
+                            roleDefault={Boolean(row.role_defaults[m.key])}
+                            moduleLabel={m.label}
+                            userLabel={row.user_email}
+                            onChange={(n) => onCellChange(row, m.key, n)}
+                            disabled={saving}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -419,25 +579,25 @@ function MemberCell({ row }: { row: ModuleMatrixRow }): React.ReactElement {
     .join("")
     .toUpperCase();
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2.5">
       <span
         aria-hidden="true"
-        className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground"
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-[0.6875rem] font-semibold text-muted-foreground"
       >
         {initials || "?"}
       </span>
       <div className="min-w-[10rem]">
-        <div className="font-medium">{row.user_full_name}</div>
-        <div className="text-[10px] text-muted-foreground">
-          {row.user_email}
+        <div className="text-sm font-medium text-foreground">
+          {row.user_full_name}
         </div>
-        <div className="mt-0.5 flex flex-wrap gap-1">
+        <div className="text-xs text-muted-foreground">{row.user_email}</div>
+        <div className="mt-1 flex flex-wrap gap-1">
           {row.roles.map((r) => (
             <span
               key={r}
-              className="rounded border border-border bg-muted px-1 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground"
+              className="inline-flex items-center rounded-full bg-secondary px-1.5 py-0.5 text-[0.625rem] font-medium uppercase tracking-wide text-secondary-foreground"
             >
-              {r}
+              {r.replace(/_/g, " ")}
             </span>
           ))}
         </div>

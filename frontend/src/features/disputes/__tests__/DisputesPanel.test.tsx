@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DisputesPanel } from "../DisputesPanel";
+import { ToastProvider } from "@/components/ui/toast";
 import { disputesApi } from "@/api/disputes";
 
 vi.mock("@/api/disputes");
@@ -11,7 +12,9 @@ function renderPanel() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <DisputesPanel tournamentId="t1" />
+      <ToastProvider>
+        <DisputesPanel tournamentId="t1" />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
