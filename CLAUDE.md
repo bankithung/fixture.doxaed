@@ -4,111 +4,111 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-**Greenfield, pre-implementation.** No source code exists yet. Two canonical specs:
+**Built and running** (this line was previously "greenfield" — it is stale). A multi-tenant **sports fixture & tournament management platform** (Nagaland focus; v1 = **football** vertical slice over a sport-agnostic chassis).
 
-1. **PRD** at `docs/superpowers/specs/2026-04-30-fixture-platform-prd.md` — vision, scope, state machines, schema baseline, 70 logged decisions.
-2. **User-types spec** at `docs/superpowers/specs/v1Users.md` — refines and locks the user/account model, RBAC, module catalog, and ~20 additional decisions (#71–#90, to be folded into PRD §14). The user-types spec **supersedes PRD §3.2 (permission matrix), PRD §3.1 (role count), PRD §7.5 (RBAC layering), and parts of PRD §8 (data model)** where the two conflict. PRD remains canonical for state machines (§5.2, §5.5), live-update transport (§7.2), security baseline (§7.7), and phased delivery (§11).
+- **Phase 1A** (user/account chassis: accounts, organizations, module-RBAC, audit, super-admin console) is production-grade and fully tested.
+- **Phase 1B** is substantially built: tournaments + state, teams/players/registration, fixture generation (round-robin / knockout / groups→knockout), matches with an **event-sourced** scoring engine, live WebSocket/SSE delivery, brackets + standings, disputes, lineups, match-incident reports, notifications, and a data-driven **rules & constraints** backend.
+- The **frontend** has a complete design system + redesign (see "Frontend design system").
 
-Read both. The implementation plan (next phase) will translate them into ordered milestones via the `superpowers:writing-plans` skill.
+Test status (keep green): **~448 backend** (pytest) + **~193 frontend** (vitest), tsc clean.
 
-## What is being built
-
-A multi-tenant **sports fixture & tournament management platform** focused on Nagaland sports. v1 is a vertical slice for **football only**, designed to prove a chassis that v2+ extends to 9 more sports.
-
-- **Backend:** Django 5.x + DRF + Channels + async views, Postgres 16, Redis 7, Python 3.13.
-- **Frontend:** React 18 + TypeScript + Vite, TailwindCSS + shadcn/ui, TanStack Query, Zustand, dnd-kit, react-hook-form + zod, Playwright + vitest.
-- **Live transport split:** SSE for public viewers (one-way, viral fan-out); WebSockets for scorer/referee (bidirectional, low volume).
-- **Production:** single Ubuntu VPS (4 vCPU / 8 GB / 80 GB) — Postgres + Redis + Django ASGI + nginx + systemd + Caddy TLS + nightly `pg_dump` to S3-compatible storage.
-- **Development:** local Windows machine; Docker Compose for Postgres + Redis; Django runs natively for fast reload; Vite dev server at `localhost:5173`.
-
-## Architectural invariants (apply to every file)
-
-These are decisions made up-front in the PRD that affect the shape of the codebase. Do not relitigate them; do not deviate without checking with the user.
-
-1. **UUID v7 primary keys everywhere.** No sequential / auto-increment IDs. Public URLs use `(slug, UUID)` pairs.
-2. **Multi-tenancy by `Organization`, day 1.** Every tenant-scoped model has an `organization` FK; default managers filter by accessible orgs; CI tests assert no cross-org leak via any DRF / SSE / WebSocket endpoint.
-3. **Idempotent writes.** Every mutation endpoint accepts a client-generated `event_id` (UUID) with a unique DB constraint. Re-submitting returns the existing record (200, not 201). This is non-negotiable for the scorer flow but applies to *all* writes.
-4. **DB-first event log.** `MatchEvent` rows in Postgres are the system of record. WebSocket and SSE are delivery only. Every state-changing action publishes to Redis pub/sub *after* the DB transaction commits (`transaction.on_commit`).
-5. **Append-only audit at DB level.** `UPDATE` / `DELETE` on `AuditEvent` are denied by Postgres role permissions, not just application code. A migration that tries to mutate audit rows must fail.
-6. **State machines, not boolean flags.** Tournament and Match status are explicit enums with audit-logged transitions (see PRD §5.2 and §5.5 for the canonical transition tables — every transition specifies trigger / preconditions / notifications / audit).
-7. **Rule freeze at the right boundary.** Tournament structured rules are mutable in `draft` / `published`, frozen at `registration_open` (amend requires reason + 24h grace + notifications). Match rules are *additionally* frozen once the match enters `live_first_half`; no amend retroactively applies.
-8. **Person ↔ Player split.** `Person` is the platform-scoped human identity; `Player` is a per-tournament registration referencing a `Person`. This is what makes cross-tournament career stats work without later migrations.
-9. **Match dependencies as typed references.** `Match.home_source` and `Match.away_source` are JSONB typed pointers (`winner_of` / `loser_of` / `group_position` / `team` / `tbd`), not inferred from bracket structure. Advancement is a `transaction.on_commit` domain-event hook.
-10. **Auto-generate everything; manual edit allowed; conflict warnings.** Every auto-generated artifact (bracket, schedule, prose rulebook, suspensions, etc.) stores `inputs_hash` + `last_manual_edit_at`. UI shows a "regenerate / keep manual / view diff" banner if inputs change after a manual edit.
-11. **SSE for one-way, WebSockets for two-way.** Don't use WebSockets for the public viewer or notification bell — those are SSE on `user:<uuid>:notifications` and `match:<uuid>` channels. WebSockets are reserved for the scorer + referee collaborative-scoring rooms.
-12. **Permission matrix is the canonical RBAC source of truth — but `v1Users.md §§2-7 + Appendix A` supersedes PRD §3.2 where they conflict.** v1Users.md introduces the **module-based RBAC layer** (Appendix A.2 catalog of 22 modules) and the **per-user override layer** (`MembershipModuleGrant`). The §3.2 row-level matrix governs fine-grained verbs; modules govern surface visibility. Tests parametrize over BOTH (`apps/permissions/tests/test_module_matrix.py` for modules; PRD §3.2 parametrized test for verbs).
-13. **i18n + a11y from day 1.** Every user-visible string wrapped in `gettext` / `t()` even though only English ships v1. WCAG 2.1 AA on all non-scorer UIs.
-14. **Time zones.** All `DateTimeField`s stored UTC (`USE_TZ = True`). Tournament TZ defaults to Org TZ; admin/scorer screens render in tournament TZ; public screens render in viewer TZ with a tournament-TZ tooltip. TZ change is blocked once tournament is `scheduled`.
-15. **Session auth (no JWT) for the SPA on the same origin.** DRF + cookies + CSRF token in custom header.
-
-## Repository layout (planned, not yet built)
-
-```
-fixture.doxaed.com/
-├── backend/                  # Django project (to be created)
-│   ├── manage.py
-│   ├── pyproject.toml        # ruff, mypy, pytest config
-│   └── apps/
-│       ├── accounts/         # User, 2FA, signup/invite, password reset
-│       ├── organizations/    # Org, OrgMembership, AdminInvitation, SlugRedirect
-│       ├── permissions/      # Module catalog, MembershipModuleGrant, effective_modules() resolver
-│       ├── audit/            # AuditEvent + Postgres role enforcement migration
-│       ├── sadmin/           # Super-admin custom Django+HTMX console (sadmin.fixture.doxaed.com)
-│       │                     # Feedback, UsageEvent, KPISnapshot live here
-│       ├── tournaments/      # Tournament + state machine + rule freeze (Phase 1B sport module)
-│       ├── teams/            # Person, Team, Player, registration (Phase 1B)
-│       ├── fixtures/         # Bracket / schedule generation engine (Phase 1B)
-│       ├── matches/          # Match + state machine + MatchEvent + Lineup (Phase 1B)
-│       ├── live/             # WebSocket consumers + SSE endpoints + Redis pub/sub
-│       ├── notifications/    # Notification + dispatcher + scheduled-notification cron
-│       └── disputes/         # Dispute lifecycle + cascade engine (Phase 1B)
-├── frontend/                 # React SPA (to be created)
-│   ├── package.json
-│   ├── vite.config.ts
-│   └── src/
-│       ├── api/              # DRF client + TanStack Query hooks
-│       ├── features/         # feature-folders (tournament, scoring, viewer, etc.)
-│       └── components/ui/    # shadcn/ui primitives
-├── docker-compose.dev.yml    # Postgres + Redis for local dev
-├── docs/
-│   └── superpowers/
-│       └── specs/            # PRD + future implementation plan
-└── CLAUDE.md
-```
-
-When scaffolding, follow this layout unless the implementation plan adopts a different convention.
+**Canonical specs live in `docs/superpowers/specs/`:**
+- `2026-04-30-fixture-platform-prd.md` (PRD, Draft v3) — vision, state machines (§5.2/§5.5), schema baseline, decisions log.
+- `v1Users.md` — user/account model + module-RBAC; **supersedes PRD §3.2/§3.1/§7.5 and parts of §8** where they conflict.
+- `2026-06-06-tournament-rules-constraints-design.md` — the data-driven rules/constraints feature (backend increments 1/2/5 done; generator-default, constraint scheduler, and the Settings UI remain).
 
 ## Commands
 
-No build / test / run commands exist yet — there is no code. Once scaffolding lands, this section will document:
+Backend (Windows venv at `backend/.venv/`; the pytest config lives in `backend/pyproject.toml`, so always pass `-c`):
 
-- `make dev` / `npm run dev:all` — bring up Postgres + Redis (Docker Compose), Django ASGI, Vite all at once.
-- Backend test runner (pytest) + how to run a single test.
-- Frontend test runner (vitest) + how to run a single test.
-- Lint (`ruff`, `eslint`), typecheck (`mypy`, `tsc`), format (`prettier`).
-- E2E (Playwright).
-- Migrations (`manage.py migrate`) — note: PRD §5 mandates that migrations are blocked while any tournament is in `live` state. Pre-flight check is part of the deploy script.
+```bash
+# all backend tests
+backend/.venv/Scripts/python.exe -m pytest -c backend/pyproject.toml backend/apps -q
+# one file / one test
+backend/.venv/Scripts/python.exe -m pytest -c backend/pyproject.toml backend/apps/matches/tests/test_lineups.py -q
+backend/.venv/Scripts/python.exe -m pytest -c backend/pyproject.toml "backend/apps/matches/tests/test_lineups.py::test_name" -q
 
-Until then, when asked to "run tests" or "build," check whether the relevant tooling has been added; if not, surface that explicitly rather than fabricating a command.
+backend/.venv/Scripts/python.exe backend/manage.py runserver 127.0.0.1:8000   # ASGI dev server
+backend/.venv/Scripts/python.exe backend/manage.py makemigrations <app>
+backend/.venv/Scripts/python.exe backend/manage.py migrate
+backend/.venv/Scripts/python.exe -m ruff check backend/apps                    # lint
+backend/.venv/Scripts/python.exe -m mypy backend/apps                          # typecheck (strict)
+```
+Settings module is `fixture.settings.dev` (pytest sets it automatically); `prod.py` exists for deploy.
 
-## Working with the PRD
+Frontend (run from repo root with `--prefix`):
 
-- The PRD is **versioned in-document** (currently `Draft v3`). When making meaningful design changes, bump the draft number and update §14 "Decisions log" rather than silently editing.
-- Section §13 "Open questions" is the deferred-decision list. When implementation forces one of these decisions, settle it, move it from §13 into §14, and reference the section/file where the decision now lives.
-- The PRD's §5.2 and §5.5 transition tables are not optional flavour text — every implemented state transition must match them. New transitions = PRD edit first, code second.
+```bash
+npm --prefix frontend run dev          # Vite dev server (prints its URL; falls back off 5173 if taken)
+npm --prefix frontend run test         # vitest (all)
+npm --prefix frontend run test -- src/features/matches/__tests__/MatchConsolePage.test.tsx   # one file
+npm --prefix frontend run type-check   # tsc -b --noEmit
+npm --prefix frontend run lint         # eslint
+npm --prefix frontend run build        # tsc -b && vite build
+npm --prefix frontend run test:e2e     # Playwright
+npm --prefix frontend run gen:types    # regenerate src/types from backend/schema.yml (DRF spectacular)
+```
 
-## Workflow conventions
+After **any** change, run the relevant test suite + `type-check` before committing. Commit per verified increment (the owner lost a long unsaved run once — save frequently).
 
-This project uses the `superpowers` skill workflow:
+## Architecture — the big picture (cross-file patterns)
 
-- **Brainstorming → writing-plans → executing-plans.** The PRD came out of `superpowers:brainstorming`. The implementation plan should come out of `superpowers:writing-plans`. Implementation tasks should come out of `superpowers:executing-plans` or `superpowers:subagent-driven-development`.
-- **Specs live in `docs/superpowers/specs/` named `YYYY-MM-DD-<topic>-design.md` OR a stable topic name (e.g., `v1Users.md`, `v1Frontend.md`).** Plans live alongside.
-- **User-types / RBAC decisions live in `v1Users.md`** as a second canonical-decisions doc. Lock decisions there first; fold stable ones into PRD §14 in batches.
-- **Sport-coupled work is Phase 1B**, separate spec (`v1Sport.md` — to be written). User-types phase (Phase 1A) is sport-agnostic and ships independently. PRD §5 (football-specific) becomes part of Phase 1B's source.
-- **Tests-first for non-trivial logic.** PRD calls out specific test layers including a "permission matrix" suite (parametrized over PRD §3.2) and a "state machine" suite (every transition + every blocked transition).
-- **Multi-tenancy isolation tests are not optional.** Every endpoint must be covered by a test that asserts user A in Org X cannot access org Y data.
+These patterns span many files; understand them before editing the domain layer.
+
+- **Event-sourced scores.** A match score is *derived*, not stored: `apps/matches/services/events.py::record_match_event` appends an immutable `MatchEvent` (gapless `sequence_no` via `select_for_update` + Max+1), then `recompute_score` derives home/away from the non-voided GOAL-type events. Corrections are `VOID` events (append-only), never edits. `transaction.on_commit` publishes to the Redis/channel-layer group `match_<id>` for live fan-out. `apps/matches/services/scoring.py` is the aggregate score path.
+- **State machines + advancement.** `apps/matches/services/state.py` (`ALLOWED_TRANSITIONS` + guarded/audited `transition_match`) and the Tournament status enum. On match completion/walkover, `transaction.on_commit` fires `apps/fixtures/services/advance.py::advance_from_match`, which resolves **typed match-dependency pointers** (`Match.home_source`/`away_source` JSONB: `winner_of`/`loser_of`/`group_position`/`team`/`tbd`) to fill the next round.
+- **Fixture generation** lives in `apps/fixtures/services/generate.py`: `generate_round_robin` (circle method, grouped), `generate_single_elimination` (power-of-2, winner_of pointers), `generate_knockout_from_groups` (top-N per group, cross-seeded). `GenerateFixturesView` (`apps/fixtures/views.py`) dispatches by `format`.
+- **Multi-tenancy scope** is enforced through `apps/tournaments/scope.py::accessible_tournaments` + `apps/tournaments/permissions.py::can_manage_tournament`; every endpoint resolves via these (404 on no-access, no existence leak). Org is a *hidden personal workspace*; users see tournaments, and `TournamentMembership` carries the 6 tournament-scoped roles.
+- **RBAC is two layers.** Module visibility (`apps/permissions/` — catalog + `MembershipModuleGrant` overrides + `effective_modules()` resolver) governs *surfaces*; the PRD §3.2 verb matrix governs *fine-grained verbs*. Tests parametrize over both.
+- **Data-driven rules/constraints.** `Tournament.rules` + `.constraints` are JSONB interpreted at runtime (FET-style), never hardcoded. `apps/tournaments/services/rules.py` (`DEFAULT_RULES`, `merge_rules`, freeze gate, `update_settings`) + `apps/fixtures/services/constraints.py` (catalog + validation). `compute_standings` reads `rules.points`/`rules.tiebreakers`.
+- **Live transport split.** SSE for one-way public viewers + the notification bell (`apps/live/`); WebSockets (`apps/live/consumers.py`, `routing.py`, `fixture/asgi.py` via `ProtocolTypeRouter`/`AuthMiddlewareStack`) only for the scorer/referee rooms.
+
+## Architectural invariants (apply to every file)
+
+Up-front PRD decisions that shape the codebase. Do not relitigate; do not deviate without checking with the user.
+
+1. **UUID v7 PKs everywhere** (`apps.accounts.models.uuid7`). No auto-increment. Public URLs are `(slug, UUID)` pairs.
+2. **Multi-tenancy by `Organization`, day 1.** Every tenant-scoped model has an `organization` FK; every endpoint is covered by a cross-org isolation test (user A in org X cannot reach org Y data).
+3. **Idempotent writes.** Every mutation endpoint takes a client `event_id` (UUID) with a unique constraint; replay returns the existing record (200, not 201).
+4. **DB-first event log.** `MatchEvent` rows are the system of record; WS/SSE are delivery only; publish on `transaction.on_commit`.
+5. **Append-only audit at the DB level.** `UPDATE`/`DELETE` on `AuditEvent` denied by Postgres role perms (a mutating migration must fail).
+6. **State machines, not booleans.** Tournament + Match status are enums with audit-logged transitions matching PRD §5.2/§5.5.
+7. **Rule freeze at the boundary.** Tournament structured rules mutable in `draft`/`published`, frozen at `registration_open` (amend = reason + 24h grace + notify); match rules additionally frozen once a match goes live.
+8. **Person ↔ Player split.** `Person` = platform identity; `Player` = per-tournament registration referencing a Person (cross-tournament stats without migrations).
+9. **Match dependencies as typed references** (`home_source`/`away_source` JSONB), not inferred from bracket shape; advancement is an `on_commit` hook.
+10. **Auto-generate; manual edit allowed; conflict warnings.** Generated artifacts store `inputs_hash` + `last_manual_edit_at`; UI shows regenerate/keep/diff when inputs change after a manual edit.
+11. **SSE one-way, WebSockets two-way** (see live transport split above).
+12. **Module RBAC + verb matrix are both canonical** (`v1Users.md §§2-7 + Appendix A` supersedes PRD §3.2 on modules). Tests parametrize over both.
+13. **i18n + a11y from day 1.** Every user-visible string wrapped in `gettext`/`t()`; WCAG 2.1 AA on non-scorer UIs.
+14. **UTC storage** (`USE_TZ = True`); render in tournament TZ (admin/scorer) or viewer TZ (public); TZ change blocked once `scheduled`.
+15. **Session auth (no JWT)**, same-origin SPA: DRF + cookies + CSRF token in a custom header.
+
+## Frontend design system (established; match it)
+
+- **Shell:** `features/layout/AppShell.tsx` = fixed left `Sidebar.tsx` + sticky frosted topbar; mobile → hamburger drawer. Pages render inside `<main>` and **fill width** — use `flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8`, **never** `mx-auto max-w-*` centered columns (dead margins).
+- **Tokens only** (light+dark CSS vars): `bg-card`, `border-border`, `text-muted-foreground`, `bg-primary`/`text-primary-foreground`/`hover:bg-primary-hover`, `bg-accent`, `bg-secondary`, `bg-muted`, `text-destructive`. No hardcoded hex / `emerald-700`.
+- **Inter** font globally; `font-tabular` for all numbers.
+- **No native dropdowns or alerts.** Use `components/ui/Select.tsx` (custom accessible listbox) instead of `<select>`; use `components/ui/toast` (`useToast`) / `components/ui/dialog` instead of `window.alert/confirm/prompt`.
+- **Global screen detector:** `lib/useBreakpoint.ts` (`useSyncExternalStore`-backed) for JS-level responsive decisions; Tailwind responsive utilities otherwise. Tables → stacked cards on mobile via `useBreakpoint().isMobile`.
+- Cards/panels: `rounded-xl border border-border bg-card shadow-sm`. State as TanStack Query (server) + Zustand (client). `cn()` is `lib/tailwind`; routes via `lib/routes.ts` helpers.
+
+## Working with the PRD & specs
+
+- PRD is **versioned in-document** (Draft v3): on meaningful design changes, bump the draft + update §14 "Decisions log" rather than silently editing. §13 "Open questions" is the deferred list — when implementation forces a decision, move it §13→§14.
+- §5.2/§5.5 transition tables are binding: a new state transition = PRD edit first, code second.
+- New feature work goes through `superpowers:brainstorming` → `superpowers:writing-plans` → execute; specs are saved to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`.
+- **Tests-first for non-trivial logic.** Mandatory suites: the permission matrix (modules + verbs) and the state-machine suite (every transition + every blocked transition). Multi-tenancy isolation tests are not optional.
+
+## Dev gotchas (learned, easy to trip on)
+
+- **Restart the backend after backend code changes if you launched it with `--noreload`** (stale process returns 404 for new routes). Plain `runserver` autoreloads.
+- **Vite port:** dev server prints its URL; it can fall back off `5173` when that port is occupied by another app — use the printed port, don't assume 5173.
+- **Migrations are blocked while any tournament is `live`** (PRD §5) — a deploy pre-flight check. `makemigrations <app>` writes the file; run `migrate` to apply to the dev DB.
+- **Windows console is cp1252** — don't print/emit non-ASCII (`→`, `§`) in one-off scripts; write files as UTF-8 explicitly. Git Bash is the default Bash shell; prefer forward-slash paths, use the PowerShell tool only when genuinely needed.
+- The **dev DB has seeded demo tournaments** (e.g. "Nagaland Schools Cup", "Knockout Cup") used for browser verification.
+- You must `Read` a file in the current context before `Edit`/`Write` (read-state resets across compaction).
 
 ## Tooling notes
 
-- The project uses the **`code-review-graph`** MCP tool (configured at the user level). Once code exists, prefer graph queries (`semantic_search_nodes`, `query_graph`, `get_impact_radius`, `detect_changes`) over Grep/Glob for navigation. The graph rebuilds incrementally on file changes via hooks.
-- The user is on Windows (PowerShell available, but Git Bash is the default shell for Bash tool calls). Prefer forward slashes and Unix paths in shell commands; use the PowerShell tool when a command genuinely requires PowerShell.
+- **`code-review-graph`** MCP is configured: prefer graph queries (`semantic_search_nodes`, `query_graph`, `get_impact_radius`, `detect_changes`, `get_review_context`) over Grep/Glob for navigation; it rebuilds incrementally via hooks.
+- A user-level **`design-taste-frontend`** skill (`.agents/skills/`) and the built-in `frontend-design` skill inform UI work.
