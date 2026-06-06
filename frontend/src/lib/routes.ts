@@ -49,6 +49,8 @@ export const routes = {
   register: (token: string) => `/register/${encodeURIComponent(token)}`,
   /** Tournament management page (teams, fixtures, scores, standings). */
   tournamentDetail: (id: string) => `/tournaments/${encodeURIComponent(id)}`,
+  /** Public, read-only live match viewer (no login). */
+  liveViewer: (matchId: string) => `/m/${encodeURIComponent(matchId)}`,
   /** Live scorer console for a match. */
   matchConsole: (tournamentId: string, matchId: string) =>
     `/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}`,

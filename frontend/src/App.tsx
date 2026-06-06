@@ -19,6 +19,7 @@ import { TournamentDetailPage } from "@/features/tournaments/TournamentDetailPag
 import { MatchConsolePage } from "@/features/matches/MatchConsolePage";
 import { BracketPage } from "@/features/tournaments/BracketPage";
 import { RegistrationFormPage } from "@/features/registration/RegistrationFormPage";
+import { LiveViewerPage } from "@/features/live/LiveViewerPage";
 import { OrgDashboardPage } from "@/features/layout/OrgDashboardPage";
 // Auth pages (B1).
 import { LoginPage } from "@/features/auth/LoginPage";
@@ -121,6 +122,7 @@ export default function App(): React.ReactElement {
                 path="/register/:token"
                 element={<RegistrationFormPage />}
               />
+              <Route path="/m/:matchId" element={<LiveViewerPage />} />
 
               {/* Protected surfaces — share the AppShell chrome. */}
               <Route
