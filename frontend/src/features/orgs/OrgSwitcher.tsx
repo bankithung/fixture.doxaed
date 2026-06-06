@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { useAuthStore } from "@/features/auth/authStore";
 import { useOrgSwitcher } from "./OrgSwitcherStore";
+import { Select } from "@/components/ui/Select";
 import { authApi } from "@/api/auth";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
@@ -13,8 +14,7 @@ import type { OrgMembership, Role } from "@/types/user";
  *
  * Switching org → navigate to /o/{newSlug}/dashboard, then PATCH /me/
  * with `last_active_org_id` so the next reload (no slug in URL) lands
- * on the correct org. Failures are non-blocking — server-side persistence
- * is best-effort.
+ * on the correct org. Uses the custom <Select> (no native dropdowns).
  */
 export function OrgSwitcher(): React.ReactElement | null {
   const user = useAuthStore((s) => s.user);
@@ -46,32 +46,25 @@ export function OrgSwitcher(): React.ReactElement | null {
   };
 
   return (
-    <div className="flex items-center gap-3">
-      <label htmlFor="org-switcher" className="sr-only">
-        {t("Active organization")}
-      </label>
-      <select
-        id="org-switcher"
+    <div className="flex items-center gap-2">
+      <Select
         value={current.org_slug}
-        onChange={(e) => {
-          const next = memberships.find(
-            (m) => m.org_slug === e.target.value,
-          );
+        onChange={(slug) => {
+          const next = memberships.find((m) => m.org_slug === slug);
           if (next) onPickOrg(next);
         }}
-        className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-      >
-        {memberships.map((m) => (
-          <option key={m.org_id} value={m.org_slug}>
-            {m.org_name}
-          </option>
-        ))}
-      </select>
+        options={memberships.map((m) => ({
+          value: m.org_slug,
+          label: m.org_name,
+        }))}
+        aria-label={t("Active organization")}
+        className="w-36 sm:w-48"
+      />
       {currentRoles.length > 1 ? (
         <div
           role="radiogroup"
           aria-label={t("Active role view")}
-          className="flex items-center gap-1 rounded-md border bg-muted p-0.5 text-xs"
+          className="hidden items-center gap-0.5 rounded-lg border bg-muted p-0.5 text-xs lg:flex"
         >
           {currentRoles.map((r) => (
             <button
@@ -81,13 +74,13 @@ export function OrgSwitcher(): React.ReactElement | null {
               aria-checked={(activeRole ?? currentRoles[0]) === r}
               onClick={() => onPickRole(r)}
               className={cn(
-                "rounded px-2 py-1",
+                "rounded-md px-2 py-1 capitalize transition-colors",
                 (activeRole ?? currentRoles[0]) === r
-                  ? "bg-background font-medium shadow-sm"
+                  ? "bg-background font-medium text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {r}
+              {r.replace(/_/g, " ")}
             </button>
           ))}
         </div>
