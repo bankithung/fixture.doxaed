@@ -18,6 +18,7 @@ import {
 } from "@/features/orgs/dashboardCards";
 import { feedbackApi } from "@/api/feedback";
 import { ApiError } from "@/types/api";
+import { useBreakpoint } from "@/lib/useBreakpoint";
 import { t } from "@/lib/t";
 
 /**
@@ -58,6 +59,18 @@ export function OrgDashboardPage(): React.ReactElement {
 
   const orgName = membership?.org_name ?? orgSlug;
   const roles = membership?.roles ?? [];
+  const { isMobile } = useBreakpoint();
+  const initials =
+    (user?.name || user?.email || "?")
+      .trim()
+      .split(/\s+/)
+      .map((w) => w[0] ?? "")
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "?";
+  const greeting = isMobile
+    ? t("Welcome back")
+    : `${t("Welcome back")}${user?.name ? `, ${user.name}` : ""}`;
 
   const closeFeedback = (): void => {
     setFeedbackOpen(false);
@@ -110,60 +123,83 @@ export function OrgDashboardPage(): React.ReactElement {
   };
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <header className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{orgName}</h1>
-          {roles.length > 0 ? (
-            <span
-              className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground"
-              data-testid="role-pill"
-            >
-              {t("You are:")} {roles.join(", ")}
-            </span>
-          ) : (
-            <span
-              className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
-              data-testid="role-pill"
-            >
-              {t("No active role")}
-            </span>
-          )}
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:gap-8 sm:p-6 lg:p-8">
+      <header className="relative overflow-hidden rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-primary/10 blur-3xl"
+        />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 flex-col gap-3">
+            <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              {greeting}
+            </p>
+            <h1 className="truncate text-2xl font-semibold tracking-tight sm:text-3xl">
+              {orgName}
+            </h1>
+            <div className="flex flex-wrap items-center gap-1.5" data-testid="role-pill">
+              {roles.length > 0 ? (
+                roles.map((role) => (
+                  <span
+                    key={role}
+                    className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-medium capitalize text-primary"
+                  >
+                    {role.replace(/_/g, " ")}
+                  </span>
+                ))
+              ) : (
+                <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                  {t("No active role")}
+                </span>
+              )}
+            </div>
+          </div>
+          <div
+            aria-hidden="true"
+            className="hidden h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-lg font-semibold text-primary-foreground shadow-sm sm:flex"
+          >
+            {initials}
+          </div>
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="relative mt-4 max-w-2xl text-sm text-muted-foreground">
           {t(
-            "Pick a card to jump straight to that surface. Cards are filtered to what you have access to.",
+            "Pick a card to jump straight to that surface. Everything is filtered to what you have access to.",
           )}
         </p>
       </header>
 
-      <section
-        aria-label={t("Available actions")}
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-        data-testid="dashboard-cards"
-      >
-        {cards.length === 0 ? (
-          <p className="col-span-full text-sm text-muted-foreground">
-            {t("Loading your modules...")}
-          </p>
-        ) : (
-          cards.map((card) => (
-            <DashboardCard
-              key={card.key}
-              icon={card.icon}
-              title={card.title}
-              description={card.description}
-              href={card.href}
-              badge={card.badge}
-              onClick={
-                card.action === "feedback"
-                  ? (): void => setFeedbackOpen(true)
-                  : undefined
-              }
-            />
-          ))
-        )}
-      </section>
+      <div className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          {t("Quick actions")}
+        </h2>
+        <section
+          aria-label={t("Available actions")}
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          data-testid="dashboard-cards"
+        >
+          {cards.length === 0 ? (
+            <p className="col-span-full text-sm text-muted-foreground">
+              {t("Loading your modules...")}
+            </p>
+          ) : (
+            cards.map((card) => (
+              <DashboardCard
+                key={card.key}
+                icon={card.icon}
+                title={card.title}
+                description={card.description}
+                href={card.href}
+                badge={card.badge}
+                onClick={
+                  card.action === "feedback"
+                    ? (): void => setFeedbackOpen(true)
+                    : undefined
+                }
+              />
+            ))
+          )}
+        </section>
+      </div>
 
       {PHASE_1B_TEASERS.length > 0 ? (
         <aside

@@ -101,10 +101,12 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     margin: 0;
-    font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+    font-family:
+      "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     font-variant-numeric: normal;
+    font-feature-settings: "cv11", "ss01";
   }
   /* WCAG 2.1 AA - visible focus ring on all interactive elements. */
   :focus-visible {
