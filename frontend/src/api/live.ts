@@ -47,10 +47,13 @@ export const liveApi = {
       event_type: string;
       side?: string;
       player_id?: string;
+      related_player_id?: string;
       minute?: number;
       event_id: string;
     },
   ) => api.post(`/api/matches/${matchId}/events/`, payload),
+  /** Full event timeline as a downloadable CSV (same-origin; sends the cookie). */
+  exportUrl: (matchId: string) => `/api/matches/${matchId}/events/export/`,
   /** Scorer/manager: move the match through its state machine. */
   transition: (matchId: string, to_status: string) =>
     api.post(`/api/matches/${matchId}/transition/`, { to_status }),

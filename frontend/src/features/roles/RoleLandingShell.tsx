@@ -83,27 +83,29 @@ export function RoleLandingShell({
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("More coming soon")}</CardTitle>
-          <CardDescription>
-            {t("Deeper tools we're still building on top of what works today.")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div
-            role="list"
-            aria-label={t("Phase 1B preview tiles")}
-            className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
-          >
-            {tiles.map((tile) => (
-              <div role="listitem" key={tile.title}>
-                <PreviewTile {...tile} />
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      {tiles.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("More coming soon")}</CardTitle>
+            <CardDescription>
+              {t("Deeper tools we're still building on top of what works today.")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div
+              role="list"
+              aria-label={t("Upcoming tools")}
+              className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
+            >
+              {tiles.map((tile) => (
+                <div role="listitem" key={tile.title}>
+                  <PreviewTile {...tile} />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -135,7 +137,7 @@ export function RoleLandingShell({
                 {t("Update notification preferences")}
               </Link>
               <span className="ml-2 text-xs text-muted-foreground">
-                {t("Choose which events alert you (Phase 1B)")}
+                {t("Choose which events alert you")}
               </span>
             </li>
             <li>

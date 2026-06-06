@@ -14,21 +14,16 @@ function renderAt(path: string): void {
 }
 
 describe("ScorerLandingPage", () => {
-  it("renders hero copy and Phase 1B preview tiles", () => {
+  it("renders hero + an open-tournaments CTA and no coming-soon tiles", () => {
     renderAt("/o/acme/scoring");
     expect(
       screen.getByRole("heading", { level: 1, name: /welcome, match scorer/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/record match scores today/i),
+      screen.getByRole("link", { name: /open your tournaments/i }),
     ).toBeInTheDocument();
-    // 4 preview tiles per spec.
-    const tiles = screen.getAllByTestId("preview-tile");
-    expect(tiles).toHaveLength(4);
-    expect(screen.getByText(/live scorebox/i)).toBeInTheDocument();
-    expect(screen.getByText(/set-piece logger/i)).toBeInTheDocument();
-    expect(screen.getByText(/substitution tracker/i)).toBeInTheDocument();
-    expect(screen.getByText(/timeline export/i)).toBeInTheDocument();
+    // The scorer console is built — no "coming soon" preview tiles remain.
+    expect(screen.queryAllByTestId("preview-tile")).toHaveLength(0);
   });
 
   it("links the today-actions to /me, /me/notifications, and surfaces feedback", () => {

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import csv
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.http import HttpResponse
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.matches.models import Match
+from apps.matches.models import Match, MatchEvent
 from apps.matches.serializers import (
     MatchSerializer,
     RecordEventSerializer,
@@ -170,15 +173,30 @@ class RecordMatchEventView(GenericAPIView):
             ).first()
             if player is None:
                 raise DRFValidationError({"detail": "player_not_found"})
+            if player.team_id not in (match.home_team_id, match.away_team_id):
+                raise DRFValidationError({"detail": "player_not_on_team"})
             if team is not None and player.team_id != team.id:
                 raise DRFValidationError({"detail": "player_not_on_team"})
             if team is None:
                 team = player.team
+        related_player = None
+        related_player_id = ser.validated_data.get("related_player_id")
+        if related_player_id:
+            from apps.teams.models import Player
+
+            related_player = Player.objects.filter(
+                id=related_player_id, tournament=match.tournament, deleted_at__isnull=True
+            ).first()
+            if related_player is None:
+                raise DRFValidationError({"detail": "related_player_not_found"})
+            if related_player.team_id not in (match.home_team_id, match.away_team_id):
+                raise DRFValidationError({"detail": "related_player_not_on_team"})
         record_match_event(
             match=match,
             event_type=ser.validated_data["event_type"],
             team=team,
             player=player,
+            related_player=related_player,
             minute=ser.validated_data.get("minute"),
             by=request.user,
             event_id=ser.validated_data.get("event_id"),
@@ -212,3 +230,45 @@ class TransitionMatchView(GenericAPIView):
             raise DRFValidationError({"detail": getattr(e, "message", "illegal_transition")})
         match.refresh_from_db()
         return Response(MatchSerializer(match).data)
+
+
+class MatchEventsExportView(GenericAPIView):
+    """`GET /api/matches/{id}/events/export/` — full event timeline as CSV."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, match_id):
+        match = _match_or_404(request.user, match_id)
+        events = (
+            MatchEvent.objects.filter(match=match)
+            .select_related(
+                "team", "player", "player__person",
+                "related_player", "related_player__person",
+            )
+            .order_by("sequence_no")
+        )
+        resp = HttpResponse(content_type="text/csv")
+        resp["Content-Disposition"] = (
+            f'attachment; filename="match-{match_id}-timeline.csv"'
+        )
+        writer = csv.writer(resp)
+        writer.writerow(
+            ["seq", "minute", "period", "type", "team", "player", "related_player"]
+        )
+        for e in events:
+            writer.writerow(
+                [
+                    e.sequence_no,
+                    e.minute if e.minute is not None else "",
+                    e.period,
+                    e.event_type,
+                    e.team.name if e.team else "",
+                    e.player.person.full_name if e.player and e.player.person else "",
+                    (
+                        e.related_player.person.full_name
+                        if e.related_player and e.related_player.person
+                        else ""
+                    ),
+                ]
+            )
+        return resp

@@ -3,6 +3,8 @@ import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveApi } from "@/api/live";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -24,11 +26,22 @@ const STATE_ACTIONS: Record<string, { label: string; to: string }[]> = {
   ],
 };
 
-/**
- * Live scorer console: record events (goal/card) that derive the score, drive
- * the match state machine, and watch the event log. Polls the public snapshot;
- * writes go through the scorer-gated event/transition endpoints.
- */
+// Event palette (live scorebox + set-piece logger). Goal counts toward score;
+// the rest are non-scoring match events.
+const EVENT_BUTTONS: { type: string; label: string; primary?: boolean }[] = [
+  { type: "goal", label: "Goal", primary: true },
+  { type: "shot", label: "Shot" },
+  { type: "save", label: "Save" },
+  { type: "corner", label: "Corner" },
+  { type: "free_kick", label: "Free kick" },
+  { type: "foul", label: "Foul" },
+  { type: "penalty_awarded", label: "Penalty" },
+  { type: "yellow_card", label: "Yellow" },
+  { type: "red_card", label: "Red" },
+];
+
+type Side = "home" | "away";
+
 export function MatchConsolePage(): React.ReactElement {
   const { matchId = "" } = useParams();
   const qc = useQueryClient();
@@ -38,10 +51,23 @@ export function MatchConsolePage(): React.ReactElement {
     refetchInterval: 5000,
   });
   const refresh = () => qc.invalidateQueries({ queryKey: ["live", matchId] });
+
+  const [minute, setMinute] = useState("");
   const [sel, setSel] = useState<{ home?: string; away?: string }>({});
+  const [subOn, setSubOn] = useState<{ home?: string; away?: string }>({});
+
   const ev = useMutation({
-    mutationFn: (p: { event_type: string; side?: string; player_id?: string }) =>
-      liveApi.recordEvent(matchId, { ...p, event_id: newEventId() }),
+    mutationFn: (p: {
+      event_type: string;
+      side?: string;
+      player_id?: string;
+      related_player_id?: string;
+    }) =>
+      liveApi.recordEvent(matchId, {
+        ...p,
+        minute: minute ? Number(minute) : undefined,
+        event_id: newEventId(),
+      }),
     onSuccess: refresh,
   });
   const tr = useMutation({
@@ -99,11 +125,22 @@ export function MatchConsolePage(): React.ReactElement {
 
       {live ? (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
             <CardTitle className="text-base">{t("Record event")}</CardTitle>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="minute" className="text-xs">{t("Minute")}</Label>
+              <Input
+                id="minute"
+                inputMode="numeric"
+                placeholder="—"
+                value={minute}
+                onChange={(e) => setMinute(e.target.value)}
+                className="h-8 w-14 text-center"
+              />
+            </div>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-4">
-            {(["home", "away"] as const).map((side) => {
+          <CardContent className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            {(["home", "away"] as Side[]).map((side) => {
               const team = side === "home" ? match.home_team : match.away_team;
               const players = team?.players ?? [];
               const fire = (event_type: string) =>
@@ -129,25 +166,52 @@ export function MatchConsolePage(): React.ReactElement {
                       </option>
                     ))}
                   </select>
-                  <Button size="sm" disabled={ev.isPending} onClick={() => fire("goal")}>
-                    {t("Goal")}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={ev.isPending}
-                    onClick={() => fire("yellow_card")}
-                  >
-                    {t("Yellow card")}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={ev.isPending}
-                    onClick={() => fire("red_card")}
-                  >
-                    {t("Red card")}
-                  </Button>
+                  <div className="flex flex-wrap gap-1.5">
+                    {EVENT_BUTTONS.map((b) => (
+                      <Button
+                        key={b.type}
+                        size="sm"
+                        variant={b.primary ? "default" : "outline"}
+                        disabled={ev.isPending}
+                        onClick={() => fire(b.type)}
+                      >
+                        {t(b.label)}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <select
+                      aria-label={side === "home" ? t("Home sub on") : t("Away sub on")}
+                      value={subOn[side] ?? ""}
+                      onChange={(e) =>
+                        setSubOn((s) => ({ ...s, [side]: e.target.value || undefined }))
+                      }
+                      className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <option value="">{t("Sub on…")}</option>
+                      {players.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.jersey_no ? `#${p.jersey_no} ` : ""}
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={ev.isPending || !sel[side] || !subOn[side]}
+                      onClick={() =>
+                        ev.mutate({
+                          event_type: "substitution",
+                          side,
+                          player_id: sel[side],
+                          related_player_id: subOn[side],
+                        })
+                      }
+                    >
+                      {t("Sub")}
+                    </Button>
+                  </div>
                 </div>
               );
             })}
@@ -156,8 +220,14 @@ export function MatchConsolePage(): React.ReactElement {
       ) : null}
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
           <CardTitle className="text-base">{t("Event log")}</CardTitle>
+          <a
+            href={liveApi.exportUrl(matchId)}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            {t("Export timeline (CSV)")}
+          </a>
         </CardHeader>
         <CardContent>
           {events.length === 0 ? (
