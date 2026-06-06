@@ -91,11 +91,10 @@ describe("OrgSwitcher", () => {
       .mockResolvedValue(user);
 
     renderWithRouter();
-    const select = screen.getByRole("combobox", {
-      name: /active organization/i,
-    });
-
-    await userEvent.selectOptions(select, "globex");
+    await userEvent.click(
+      screen.getByRole("button", { name: /active organization/i }),
+    );
+    await userEvent.click(screen.getByRole("option", { name: "Globex" }));
 
     expect(patchSpy).toHaveBeenCalledWith({ last_active_org_id: "o2" });
     expect(screen.getByTestId("loc").textContent).toBe("/o/globex/dashboard");

@@ -1,14 +1,19 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "@/components/ui/toast";
 import { OrgDashboardPage } from "../OrgDashboardPage";
 import { useAuthStore } from "@/features/auth/authStore";
-import { MODULES } from "@/features/orgs/dashboardCards";
+import { tournamentsApi } from "@/api/tournaments";
 import type { User } from "@/types/user";
 
-function makeUser(roles: string[], modules: string[]): User {
+vi.mock("@/api/tournaments", () => ({
+  tournamentsApi: { list: vi.fn(), matches: vi.fn() },
+}));
+
+function makeUser(roles: string[]): User {
   return {
     id: "u1",
     email: "x@example.com",
@@ -25,150 +30,101 @@ function makeUser(roles: string[], modules: string[]): User {
         org_slug: "acme",
         org_name: "Acme FC",
         roles: roles as User["memberships"][number]["roles"],
-        is_org_owner: roles.includes("owner"),
-        effective_modules: modules,
+        is_org_owner: roles.includes("admin"),
+        effective_modules: [],
       },
     ],
     deleted_at: null,
   };
 }
 
+function tn(over: Record<string, unknown>) {
+  return {
+    id: "t1",
+    slug: "coal-cup",
+    name: "Coal Cup",
+    status: "published",
+    organization_slug: "acme",
+    sport_code: "football",
+    time_zone: "UTC",
+    created_at: "2026-06-01T00:00:00Z",
+    ...over,
+  };
+}
+
 function renderPage(): void {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
-    <ToastProvider>
-      <MemoryRouter initialEntries={["/o/acme/dashboard"]}>
-        <Routes>
-          <Route path="/o/:orgSlug/dashboard" element={<OrgDashboardPage />} />
-        </Routes>
-      </MemoryRouter>
-    </ToastProvider>,
+    <QueryClientProvider client={qc}>
+      <ToastProvider>
+        <MemoryRouter initialEntries={["/o/acme/dashboard"]}>
+          <Routes>
+            <Route path="/o/:orgSlug/dashboard" element={<OrgDashboardPage />} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>
+    </QueryClientProvider>,
   );
 }
 
 beforeEach(() => {
-  useAuthStore.setState({
-    user: makeUser(
-      ["admin"],
-      [
-        MODULES.ORG_MEMBER_DIRECTORY,
-        MODULES.ORG_SETTINGS,
-        MODULES.ORG_AUDIT_LOG,
-        MODULES.ORG_TOURNAMENT_LIST,
-        MODULES.ORG_BRANDING,
-        MODULES.PERSONAL_NOTIFICATION_PREFS,
-        MODULES.PERSONAL_FEEDBACK_WIDGET,
-      ],
-    ),
-    bootstrapped: true,
-  });
+  vi.mocked(tournamentsApi.list).mockResolvedValue([
+    tn({ id: "t1", name: "Coal Cup", slug: "coal-cup", status: "published" }),
+    tn({ id: "t2", name: "U-15 League", slug: "u15", status: "live_first_half" }),
+  ] as never);
+  vi.mocked(tournamentsApi.matches).mockResolvedValue([] as never);
+  useAuthStore.setState({ user: makeUser(["admin"]), bootstrapped: true });
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   useAuthStore.getState().clear();
 });
 
 describe("OrgDashboardPage", () => {
   it("renders org name and role pill", () => {
     renderPage();
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
-      "Acme FC",
-    );
-    const pill = screen.getByTestId("role-pill");
-    expect(pill.textContent).toMatch(/admin/i);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Acme FC");
+    expect(screen.getByTestId("role-pill").textContent).toMatch(/admin/i);
   });
 
-  it("admin sees the Members + Settings + Permissions + Audit + Branding cards", () => {
+  it("shows the KPI strip", () => {
     renderPage();
-    const grid = screen.getByTestId("dashboard-cards");
-    const within_grid = within(grid);
-    expect(
-      within_grid.getByRole("link", { name: /member directory/i }),
-    ).toBeInTheDocument();
-    expect(
-      within_grid.getByRole("link", { name: /org settings/i }),
-    ).toBeInTheDocument();
-    expect(
-      within_grid.getByRole("link", { name: /module overrides/i }),
-    ).toBeInTheDocument();
-    expect(
-      within_grid.getByRole("link", { name: /audit log/i }),
-    ).toBeInTheDocument();
-    expect(
-      within_grid.getByRole("link", { name: /branding/i }),
-    ).toBeInTheDocument();
-    expect(
-      within_grid.getByRole("link", { name: /my profile/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("kpi-strip")).toBeInTheDocument();
   });
 
-  it("Tournaments card links to the live tournaments hub", () => {
+  it("lists tournaments from the API", async () => {
     renderPage();
-    const link = screen.getByRole("link", { name: /tournaments/i });
-    expect(link.getAttribute("href")).toBe("/tournaments");
+    expect(await screen.findByText("Coal Cup")).toBeInTheDocument();
+    expect(screen.getByText("U-15 League")).toBeInTheDocument();
   });
 
-  it("scorer-only sees just Profile + Notifications + Feedback", () => {
-    useAuthStore.setState({
-      user: makeUser(
-        ["match_scorer"],
-        [
-          MODULES.ORG_TOURNAMENT_LIST,
-          MODULES.PERSONAL_NOTIFICATION_PREFS,
-          MODULES.PERSONAL_FEEDBACK_WIDGET,
-        ],
-      ),
-      bootstrapped: true,
-    });
+  it("filters the table by search", async () => {
     renderPage();
-    expect(
-      screen.getByRole("link", { name: /my profile/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: /notifications/i }),
-    ).toBeInTheDocument();
-    // No admin / settings cards.
-    expect(
-      screen.queryByRole("link", { name: /module overrides/i }),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("link", { name: /org settings/i }),
-    ).toBeNull();
-    expect(screen.queryByRole("link", { name: /audit log/i })).toBeNull();
+    await screen.findByText("Coal Cup");
+    await userEvent.type(screen.getByLabelText(/search tournaments/i), "u-15");
+    expect(screen.queryByText("Coal Cup")).toBeNull();
+    expect(screen.getByText("U-15 League")).toBeInTheDocument();
   });
 
-  it("does not show a coming-soon teaser strip (features shipped)", () => {
+  it("does not show a coming-soon teaser strip", () => {
     renderPage();
     expect(screen.queryByTestId("phase1b-teaser")).toBeNull();
   });
 
-  it("opens the feedback modal when the Feedback card is clicked", async () => {
+  it("opens the feedback modal from the quick action", async () => {
     renderPage();
-    const fb = screen.getByRole("button", { name: /send feedback/i });
-    await userEvent.click(fb);
-    // The dialog itself uses aria-label="Send feedback".
+    await userEvent.click(screen.getByRole("button", { name: /send feedback/i }));
     const dialog = screen.getByRole("dialog", { name: /send feedback/i });
-    expect(dialog).toBeInTheDocument();
-    expect(
-      within(dialog).getByLabelText(/feedback message/i),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/feedback message/i)).toBeInTheDocument();
   });
 
-  it("falls back gracefully when membership is missing for the slug", () => {
+  it("falls back to the slug when membership is missing", () => {
     useAuthStore.setState({
-      user: {
-        ...makeUser(["admin"], []),
-        memberships: [],
-      },
+      user: { ...makeUser(["admin"]), memberships: [] },
       bootstrapped: true,
     });
     renderPage();
-    // Heading falls back to the slug.
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
-      "acme",
-    );
-    // Profile card always shows.
-    expect(
-      screen.getByRole("link", { name: /my profile/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("acme");
   });
 });
