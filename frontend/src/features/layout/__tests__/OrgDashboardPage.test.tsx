@@ -101,12 +101,10 @@ describe("OrgDashboardPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("Tournaments card links to the Phase 1B teaser route", () => {
+  it("Tournaments card links to the live tournaments hub", () => {
     renderPage();
     const link = screen.getByRole("link", { name: /tournaments/i });
-    expect(link.getAttribute("href")).toBe(
-      "/o/acme/tournaments-coming-soon",
-    );
+    expect(link.getAttribute("href")).toBe("/tournaments");
   });
 
   it("scorer-only sees just Profile + Notifications + Feedback", () => {
@@ -138,14 +136,9 @@ describe("OrgDashboardPage", () => {
     expect(screen.queryByRole("link", { name: /audit log/i })).toBeNull();
   });
 
-  it("shows the Phase 1B teaser strip", () => {
+  it("does not show a coming-soon teaser strip (features shipped)", () => {
     renderPage();
-    const teaser = screen.getByTestId("phase1b-teaser");
-    expect(teaser.textContent).toMatch(/Tournament editor/);
-    expect(teaser.textContent).toMatch(/Bracket generator/);
-    expect(teaser.textContent).toMatch(/Live scoring/);
-    expect(teaser.textContent).toMatch(/Referee console/);
-    expect(teaser.textContent).toMatch(/Match disputes/);
+    expect(screen.queryByTestId("phase1b-teaser")).toBeNull();
   });
 
   it("opens the feedback modal when the Feedback card is clicked", async () => {

@@ -19,6 +19,7 @@ import { newEventId } from "@/lib/eventId";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 import { DisputesPanel } from "@/features/disputes/DisputesPanel";
+import { BracketView } from "./BracketView";
 
 function ScoreRow({
   match,
@@ -235,6 +236,13 @@ export function TournamentDetailPage(): React.ReactElement {
               </Card>
             ))}
           </div>
+        </section>
+      ) : null}
+
+      {matchCount > 0 ? (
+        <section>
+          <h2 className="mb-2 text-lg font-semibold">{t("Bracket / flow view")}</h2>
+          <BracketView matches={matches.data ?? []} />
         </section>
       ) : null}
 

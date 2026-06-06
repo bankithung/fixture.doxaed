@@ -34,6 +34,14 @@ from apps.tournaments.scope import accessible_tournaments
 User = get_user_model()
 
 
+def _csv_safe(value) -> str:
+    """Neutralize CSV formula injection (Excel executes cells starting with =,+,-,@)."""
+    s = "" if value is None else str(value)
+    if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + s
+    return s
+
+
 def _accessible_tournament_or_404(user, tournament_id) -> Tournament:
     if not accessible_tournaments(user).filter(id=tournament_id).exists():
         raise NotFound("tournament_not_found")
@@ -260,11 +268,15 @@ class MatchEventsExportView(GenericAPIView):
                 [
                     e.sequence_no,
                     e.minute if e.minute is not None else "",
-                    e.period,
-                    e.event_type,
-                    e.team.name if e.team else "",
-                    e.player.person.full_name if e.player and e.player.person else "",
-                    (
+                    _csv_safe(e.period),
+                    _csv_safe(e.event_type),
+                    _csv_safe(e.team.name if e.team else ""),
+                    _csv_safe(
+                        e.player.person.full_name
+                        if e.player and e.player.person
+                        else ""
+                    ),
+                    _csv_safe(
                         e.related_player.person.full_name
                         if e.related_player and e.related_player.person
                         else ""

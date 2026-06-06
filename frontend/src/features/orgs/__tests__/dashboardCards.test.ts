@@ -198,7 +198,7 @@ describe("computeDashboardCards", () => {
     expect(result).toContain("permissions");
   });
 
-  it("Tournaments card carries the Phase 1B badge", () => {
+  it("Tournaments card links to the live tournaments hub (no badge)", () => {
     const user = makeUser();
     const cards = computeDashboardCards({
       user,
@@ -208,7 +208,8 @@ describe("computeDashboardCards", () => {
       slug: "acme",
     });
     const tournaments = cards.find((c) => c.key === "tournaments");
-    expect(tournaments?.badge).toBeDefined();
+    expect(tournaments?.badge).toBeUndefined();
+    expect(tournaments?.href).toBe("/tournaments");
   });
 
   it("Feedback card uses the modal action (no href)", () => {

@@ -165,17 +165,19 @@ export function OrgDashboardPage(): React.ReactElement {
         )}
       </section>
 
-      <aside
-        aria-label={t("Phase 1B preview")}
-        className="rounded-lg border border-dashed bg-muted/40 p-4 text-sm"
-        data-testid="phase1b-teaser"
-      >
-        <p className="font-medium">{t("Coming in Phase 1B")}</p>
-        <p className="mt-1 text-muted-foreground">
-          {PHASE_1B_TEASERS.map((s) => t(s)).join(", ")}
-          {"."}
-        </p>
-      </aside>
+      {PHASE_1B_TEASERS.length > 0 ? (
+        <aside
+          aria-label={t("Roadmap preview")}
+          className="rounded-lg border border-dashed bg-muted/40 p-4 text-sm"
+          data-testid="phase1b-teaser"
+        >
+          <p className="font-medium">{t("More coming soon")}</p>
+          <p className="mt-1 text-muted-foreground">
+            {PHASE_1B_TEASERS.map((s) => t(s)).join(", ")}
+            {"."}
+          </p>
+        </aside>
+      ) : null}
 
       <Dialog
         open={feedbackOpen}

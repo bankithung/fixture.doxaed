@@ -170,17 +170,16 @@ export function computeDashboardCards(opts: {
     });
   }
 
-  // 5. Tournaments (Phase 1B teaser)
+  // 5. Tournaments — the live working surface (fixtures, scoring, standings).
   if (showByModule(MODULES.ORG_TOURNAMENT_LIST, false)) {
     cards.push({
       key: "tournaments",
       icon: Trophy,
       title: t("Tournaments"),
       description: t(
-        "Create, schedule, and run tournaments. Coming in Phase 1B.",
+        "Create, run, and score tournaments — fixtures, live scoring, standings.",
       ),
-      href: routes.orgTournamentsComingSoon(slug),
-      badge: t("Phase 1B"),
+      href: routes.tournaments(),
     });
   }
 
@@ -242,14 +241,8 @@ export const ALL_CARD_KEYS: DashboardCardKey[] = [
   "feedback",
 ];
 
-/** Phase 1B teaser strip content, surfaced by the page. */
-export const PHASE_1B_TEASERS: readonly string[] = [
-  "Tournament editor",
-  "Bracket generator",
-  "Live scoring",
-  "Referee console",
-  "Match disputes",
-] as const;
+/** Teaser strip content. Empty now that tournaments/scoring/disputes have shipped. */
+export const PHASE_1B_TEASERS: readonly string[] = [] as const;
 
 /** Re-export icon identity for tests that want to assert specific icons. */
 export const CARD_ICONS = {
