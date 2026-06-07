@@ -73,6 +73,16 @@ export const tournamentsApi = {
   /** Tournaments the user can access (isolation-scoped on the server). */
   list: () => api.get<Tournament[]>("/api/tournaments/"),
   /**
+   * Resolve a single accessible tournament by id. There's no dedicated
+   * retrieve endpoint yet, so we derive it from the (already isolation-scoped)
+   * list — TanStack caches it, and the row carries everything the nav header
+   * needs (name). Returns `null` if the id isn't accessible.
+   */
+  get: async (id: string): Promise<Tournament | null> => {
+    const all = await api.get<Tournament[]>("/api/tournaments/");
+    return all.find((tt) => tt.id === id) ?? null;
+  },
+  /**
    * Self-serve create. Auto-provisions a hidden personal workspace if the user
    * has none and makes them the tournament admin. `event_id` is a client UUID
    * for idempotency (invariant 3).

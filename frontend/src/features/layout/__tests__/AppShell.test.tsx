@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppShell } from "../AppShell";
 import { useAuthStore } from "@/features/auth/authStore";
 import { authApi } from "@/api/auth";
+import { tournamentsApi, type Tournament } from "@/api/tournaments";
 import type { Role, User } from "@/types/user";
 
 function makeUser(roles: string[], modules: string[]): User {
@@ -51,6 +52,12 @@ function renderShellAt(path = "/o/acme/dashboard"): void {
               path="/o/:orgSlug/dashboard"
               element={<LocationProbe />}
             />
+            <Route path="/tournaments" element={<LocationProbe />} />
+            <Route path="/tournaments/:id" element={<LocationProbe />} />
+            <Route
+              path="/tournaments/:id/bracket"
+              element={<LocationProbe />}
+            />
             <Route path="/login" element={<LocationProbe />} />
             <Route path="/me" element={<LocationProbe />} />
             <Route path="*" element={<LocationProbe />} />
@@ -82,23 +89,28 @@ describe("AppShell", () => {
     expect(brand.getAttribute("href")).toBe("/");
   });
 
-  it("admin renders Dashboard + Members + Permissions + Audit nav items", () => {
+  it("admin renders Workspace + Admin groups (Dashboard/Members/Permissions/Audit/Settings)", () => {
     renderShellAt();
     const primary = screen.getByRole("navigation", { name: /primary/i });
+    expect(primary.textContent).toMatch(/workspace/i);
+    expect(primary.textContent).toMatch(/admin/i);
     expect(primary.textContent).toMatch(/dashboard/i);
     expect(primary.textContent).toMatch(/members/i);
     expect(primary.textContent).toMatch(/permissions/i);
     expect(primary.textContent).toMatch(/audit/i);
+    expect(primary.textContent).toMatch(/settings/i);
   });
 
-  it("scorer sees the Scoring nav item", () => {
+  it("workspace nav no longer surfaces the standalone Scoring item", () => {
+    // Org-level Scoring was a Phase-1A placeholder; it's dropped from the
+    // primary workspace nav (per-match scoring is reached from Overview).
     useAuthStore.setState({
       user: makeUser(["match_scorer"], ["match.scoring_console"]),
       bootstrapped: true,
     });
     renderShellAt();
     const primary = screen.getByRole("navigation", { name: /primary/i });
-    expect(primary.textContent).toMatch(/scoring/i);
+    expect(primary.textContent).not.toMatch(/scoring/i);
   });
 
   it("non-admin viewer does NOT see the Permissions nav item", () => {
@@ -166,5 +178,52 @@ describe("AppShell", () => {
     expect(
       screen.getByRole("dialog", { name: /navigation menu/i }),
     ).toBeInTheDocument();
+  });
+
+  it("tournament route switches to the Manage group + fetches the name header", async () => {
+    vi.spyOn(tournamentsApi, "get").mockResolvedValue({
+      id: "t-123",
+      slug: "spring-cup",
+      name: "Spring Cup",
+      status: "draft",
+      organization_slug: "acme",
+      sport_code: "football",
+      time_zone: "Asia/Kolkata",
+      created_at: "2026-01-01T00:00:00Z",
+    } satisfies Tournament);
+
+    useAuthStore.setState({
+      user: makeUser(["admin"], ["forms"]),
+      bootstrapped: true,
+    });
+    renderShellAt("/tournaments/t-123");
+
+    const primary = screen.getByRole("navigation", { name: /primary/i });
+    // Manage group with the three tournament destinations.
+    expect(primary.textContent).toMatch(/manage/i);
+    expect(primary.textContent).toMatch(/overview/i);
+    expect(primary.textContent).toMatch(/registration forms/i);
+    expect(primary.textContent).toMatch(/fixtures & bracket/i);
+    // "All tournaments" back-link is present.
+    expect(
+      screen.getAllByRole("link", { name: /all tournaments/i }).length,
+    ).toBeGreaterThan(0);
+    // Workspace-only items are gone in tournament mode.
+    expect(primary.textContent).not.toMatch(/members/i);
+    // Name resolves asynchronously into the rail header.
+    await waitFor(() =>
+      expect(screen.getAllByText(/spring cup/i).length).toBeGreaterThan(0),
+    );
+  });
+
+  it("/tournaments/new is NOT treated as a tournament context", () => {
+    const getSpy = vi.spyOn(tournamentsApi, "get");
+    renderShellAt("/tournaments/new");
+    const primary = screen.getByRole("navigation", { name: /primary/i });
+    // Workspace mode: the Workspace group + Dashboard remain.
+    expect(primary.textContent).toMatch(/workspace/i);
+    expect(primary.textContent).toMatch(/dashboard/i);
+    expect(primary.textContent).not.toMatch(/manage/i);
+    expect(getSpy).not.toHaveBeenCalled();
   });
 });

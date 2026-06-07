@@ -1,13 +1,12 @@
 import {
   ClipboardList,
   FileText,
-  Flag,
-  Goal,
+  GitBranch,
   LayoutDashboard,
+  Settings,
   Shield,
   Trophy,
   Users,
-  Users2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { OrgMembership, User } from "@/types/user";
@@ -22,8 +21,6 @@ import { t } from "@/lib/t";
  */
 const MODULE_ORG_MEMBER_DIRECTORY = "org.member_directory";
 const MODULE_ORG_AUDIT_LOG = "org.audit_log";
-const MODULE_MATCH_SCORING_CONSOLE = "match.scoring_console";
-const MODULE_MATCH_REFEREE_CONSOLE = "match.referee_console";
 /** Registration-forms module (apps/permissions/fixtures/modules.json → "forms"). */
 const MODULE_FORMS = "forms";
 
@@ -40,23 +37,30 @@ export interface NavItem {
 }
 
 /**
- * Pure function — given a hydrated `User` and the URL slug, returns the
- * ordered list of nav items the AppShell should render in its primary
- * navigation. No Zustand or router reads: easy to unit-test.
- *
- * Slug rule: when there is no `:orgSlug` in the URL (e.g. on `/orgs` or
- * `/me`), only Dashboard is suppressed (no org context). The rest of the
- * org-scoped items hide entirely until a slug is in scope.
+ * A labelled cluster of nav items. The Sidebar renders the `label` as an
+ * overline above its `items`. Empty groups are never emitted by the builders
+ * below, so the UI can render every group it receives unconditionally.
  */
-export function computeNavItems(
-  user: User | null,
-  slug: string | null,
-): NavItem[] {
-  if (!user || !slug) return [];
+export interface NavGroup {
+  /** Stable identifier for tests / keys; not user-visible. */
+  key: string;
+  /** Localised group heading (overline). */
+  label: string;
+  items: NavItem[];
+}
 
-  const membership: OrgMembership | undefined = user.memberships.find(
-    (m) => m.org_slug === slug,
-  );
+/**
+ * Resolve the user's per-org context for the given slug. Centralised so both
+ * the workspace and tournament builders apply the SAME gating rules.
+ */
+function resolveContext(user: User | null, slug: string | null): {
+  hasModule: (key: string) => boolean;
+  canManagePermissions: boolean;
+} {
+  const membership: OrgMembership | undefined =
+    user && slug
+      ? user.memberships.find((m) => m.org_slug === slug)
+      : undefined;
   const roles: readonly string[] = (membership?.roles ?? []) as readonly string[];
   const modules: string[] = membership?.effective_modules ?? [];
 
@@ -66,106 +70,132 @@ export function computeNavItems(
   // Module-Overrides surface is admin-only on the BACKEND (v1Users.md §2 line
   // 736 — override-grant verb is reserved to Admin in v1.0). Co-organizer +
   // game-coordinator can manage members but not the override matrix; mirror
-  // that here so the nav doesn't tease a 403.
-  const canManagePermissions =
-    roles.includes("admin") || isOrgOwner;
+  // that here so the nav doesn't tease a 403. Settings is gated the same way.
+  const canManagePermissions = roles.includes("admin") || isOrgOwner;
 
-  const items: NavItem[] = [];
+  return { hasModule, canManagePermissions };
+}
 
-  // 1. Dashboard — always visible when org is in scope.
-  items.push({
-    key: "dashboard",
-    label: t("Dashboard"),
-    href: routes.orgDashboard(slug),
-    icon: LayoutDashboard,
-  });
+/**
+ * Pure function — given a hydrated `User` and the URL slug, returns the
+ * grouped WORKSPACE navigation (Workspace + Admin) the AppShell renders when
+ * the route is NOT inside a specific tournament. No Zustand or router reads:
+ * easy to unit-test. Empty groups are omitted.
+ *
+ * Slug rule: when there is no org slug in scope (e.g. on `/orgs` before a
+ * fallback resolves), org-scoped Admin items hide entirely, but Dashboard +
+ * Tournaments still render so the user can navigate.
+ */
+export function computeWorkspaceNav(
+  user: User | null,
+  slug: string | null,
+): NavGroup[] {
+  if (!user || !slug) return [];
 
-  // 1b. Tournaments — the primary working surface (create/manage tournaments,
-  //     share registration links, fixtures, scores, standings). Global (not
-  //     org-scoped) but shown whenever an org is in scope so it's reachable.
-  items.push({
-    key: "tournaments",
-    label: t("Tournaments"),
-    href: routes.tournaments(),
-    icon: Trophy,
-  });
+  const { hasModule, canManagePermissions } = resolveContext(user, slug);
 
-  // 1c. Registration forms — module-gated ("forms"). The list/builder are
-  //     tournament-scoped, so this points at the Tournaments hub (the entry
-  //     point); each tournament surfaces its own "Registration forms" link.
-  if (hasModule(MODULE_FORMS)) {
-    items.push({
-      key: "forms",
-      label: t("Registration forms"),
+  // Workspace group — Dashboard + the global Tournaments hub.
+  const workspace: NavItem[] = [
+    {
+      key: "dashboard",
+      label: t("Dashboard"),
+      href: routes.orgDashboard(slug),
+      icon: LayoutDashboard,
+    },
+    {
+      // Tournaments is the primary working surface. Global (not org-scoped)
+      // but shown whenever an org is in scope so it's always reachable.
+      key: "tournaments",
+      label: t("Tournaments"),
       href: routes.tournaments(),
-      icon: ClipboardList,
-    });
-  }
+      icon: Trophy,
+    },
+  ];
 
-  // 2. Members — module-gated.
+  // Admin group — each item gated as before.
+  const admin: NavItem[] = [];
   if (hasModule(MODULE_ORG_MEMBER_DIRECTORY)) {
-    items.push({
+    admin.push({
       key: "members",
       label: t("Members"),
       href: routes.orgMembers(slug),
       icon: Users,
     });
   }
-
-  // 3. Permissions — admin role + org owner ONLY (matches backend gate).
   if (canManagePermissions) {
-    items.push({
+    admin.push({
       key: "permissions",
       label: t("Permissions"),
       href: routes.orgPermissions(slug),
       icon: Shield,
     });
   }
-
-  // 4. Audit — module-gated.
   if (hasModule(MODULE_ORG_AUDIT_LOG)) {
-    items.push({
+    admin.push({
       key: "audit",
       label: t("Audit"),
       href: routes.orgAudit(slug),
       icon: FileText,
     });
   }
-
-  // 5. Role-specific landings (Phase 1A placeholders for Phase 1B consoles).
-  //    Module-gated per v1Users.md §A.1 two-layer model: any user with the
-  //    relevant module sees the nav item, regardless of role string. This
-  //    correctly surfaces Scoring/Referee for admin / co_organizer /
-  //    game_coordinator (who all hold the module by default) without
-  //    needing role-string matching.
-  if (hasModule(MODULE_MATCH_SCORING_CONSOLE)) {
-    items.push({
-      key: "scoring",
-      label: t("Scoring"),
-      href: routes.orgScoring(slug),
-      icon: Goal,
-    });
-  }
-  if (hasModule(MODULE_MATCH_REFEREE_CONSOLE)) {
-    items.push({
-      key: "referee",
-      label: t("Referee"),
-      href: routes.orgReferee(slug),
-      icon: Flag,
-    });
-  }
-  // Team workspace: no Appendix A.2 module exists (`tournament.team_manager_workspace`
-  // is unspecified). Spec gap — see report. Fall back to role-only gating until
-  // the module catalog is extended. Use a People icon (Users2) to differentiate
-  // from the Tournaments Trophy icon (DEFECT-N).
-  if (roles.includes("team_manager")) {
-    items.push({
-      key: "team",
-      label: t("Team"),
-      href: routes.orgTeam(slug),
-      icon: Users2,
+  if (canManagePermissions) {
+    admin.push({
+      key: "settings",
+      label: t("Settings"),
+      href: routes.orgSettings(slug),
+      icon: Settings,
     });
   }
 
-  return items;
+  const groups: NavGroup[] = [
+    { key: "workspace", label: t("Workspace"), items: workspace },
+  ];
+  if (admin.length > 0) {
+    groups.push({ key: "admin", label: t("Admin"), items: admin });
+  }
+  return groups;
+}
+
+/**
+ * Pure function — the grouped TOURNAMENT navigation (the "Manage" group) the
+ * AppShell renders when the route is under `/tournaments/:id`. Only links to
+ * routes that already exist: Overview, Registration forms (module-gated on
+ * `forms`), and Fixtures & bracket.
+ *
+ * `opts.user` + `opts.slug` mirror the workspace `hasModule("forms")` check
+ * using the user's memberships, so the forms item is gated identically in both
+ * modes. If membership can't be resolved the forms item simply hides.
+ */
+export function computeTournamentNav(
+  tournamentId: string,
+  opts: { user: User | null; slug: string | null },
+): NavGroup[] {
+  if (!tournamentId) return [];
+
+  const { hasModule } = resolveContext(opts.user, opts.slug);
+
+  const manage: NavItem[] = [
+    {
+      key: "overview",
+      label: t("Overview"),
+      href: routes.tournamentDetail(tournamentId),
+      icon: Trophy,
+    },
+  ];
+  if (hasModule(MODULE_FORMS)) {
+    manage.push({
+      key: "forms",
+      label: t("Registration forms"),
+      href: routes.tournamentForms(tournamentId),
+      icon: ClipboardList,
+    });
+  }
+  manage.push({
+    key: "bracket",
+    label: t("Fixtures & bracket"),
+    href: routes.tournamentBracket(tournamentId),
+    icon: GitBranch,
+  });
+
+  return [{ key: "manage", label: t("Manage"), items: manage }];
 }
