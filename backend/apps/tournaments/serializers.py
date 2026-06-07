@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from apps.tournaments.models import Tournament, TournamentMembershipRole
+from apps.tournaments.models import (
+    Tournament,
+    TournamentMembership,
+    TournamentMembershipRole,
+    TournamentMembershipStatus,
+)
 
 
 class TournamentSerializer(serializers.ModelSerializer):
@@ -34,3 +39,35 @@ class TournamentInvitationCreateSerializer(serializers.Serializer):
     email = serializers.EmailField()
     role = serializers.ChoiceField(choices=TournamentMembershipRole.choices)
     event_id = serializers.UUIDField(required=False)
+
+
+class TournamentMembershipSerializer(serializers.ModelSerializer):
+    """Roster row: user identity + tournament-scoped role/status."""
+
+    user_id = serializers.UUIDField(read_only=True)
+    email = serializers.CharField(source="user.email", read_only=True)
+    full_name = serializers.CharField(source="user.name", read_only=True)
+
+    class Meta:
+        model = TournamentMembership
+        fields = [
+            "id",
+            "user_id",
+            "email",
+            "full_name",
+            "role",
+            "status",
+            "assigned_at",
+        ]
+        read_only_fields = fields
+
+
+class TournamentMembershipUpdateSerializer(serializers.Serializer):
+    """PATCH body for member management — role and/or status, both optional."""
+
+    role = serializers.ChoiceField(
+        choices=TournamentMembershipRole.choices, required=False
+    )
+    status = serializers.ChoiceField(
+        choices=TournamentMembershipStatus.choices, required=False
+    )

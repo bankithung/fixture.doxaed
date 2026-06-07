@@ -9,8 +9,11 @@ from apps.matches.views import TournamentMatchListView, TournamentStandingsView
 from apps.teams.views import RegistrationLinkCreateView, TournamentTeamsListView
 from apps.tournaments.views import (
     ConstraintTypesView,
+    TournamentAuditView,
     TournamentInvitationCreateView,
     TournamentListCreateView,
+    TournamentMemberDetailView,
+    TournamentMembersView,
     TournamentSettingsView,
 )
 
@@ -30,6 +33,21 @@ urlpatterns = [
         "<uuid:tournament_id>/invitations/",
         TournamentInvitationCreateView.as_view(),
         name="tournament-invitation-create",
+    ),
+    path(
+        "<uuid:tournament_id>/members/",
+        TournamentMembersView.as_view(),
+        name="tournament-members",
+    ),
+    path(
+        "<uuid:tournament_id>/members/<uuid:membership_id>/",
+        TournamentMemberDetailView.as_view(),
+        name="tournament-member-detail",
+    ),
+    path(
+        "<uuid:tournament_id>/audit/",
+        TournamentAuditView.as_view(),
+        name="tournament-audit",
     ),
     path(
         "<uuid:tournament_id>/registration-link/",
