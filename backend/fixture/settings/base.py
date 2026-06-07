@@ -54,6 +54,7 @@ LOCAL_APPS = [
     "apps.sports",
     "apps.tournaments",
     "apps.teams",
+    "apps.forms",
     "apps.matches",
     "apps.fixtures",
     "apps.notifications",
