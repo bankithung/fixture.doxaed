@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from apps.forms.services.fields import validate_value, FieldError
+from apps.forms.services.fields import FieldError, validate_value
+
 
 def f(type_, **kw):
     return {"key": "k", "type": type_, "label": "L", **kw}

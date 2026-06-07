@@ -4,7 +4,10 @@ from __future__ import annotations
 from typing import Any
 
 from apps.forms.constants import (
-    CHOICE_TYPES, FIELD_TYPES, PROMOTED_ROLES, VISIBILITY_OPS,
+    CHOICE_TYPES,
+    FIELD_TYPES,
+    PROMOTED_ROLES,
+    VISIBILITY_OPS,
 )
 
 

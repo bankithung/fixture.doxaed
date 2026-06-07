@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from apps.forms.services.schema import validate_schema, SchemaError
+from apps.forms.services.schema import SchemaError, validate_schema
 
 
 def _schema(sections):

@@ -3,7 +3,8 @@ valid answer looks like. Add a type = add a handler here; no migration."""
 from __future__ import annotations
 
 import re
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from apps.forms.constants import CHOICE_TYPES, DISPLAY_TYPES
 
@@ -55,7 +56,7 @@ def _number(field: dict, value: Any) -> float | int:
     try:
         num = int(value) if str(value).strip().lstrip("-").isdigit() else float(value)
     except (TypeError, ValueError):
-        raise FieldError("expected number")
+        raise FieldError("expected number") from None
     v = _validation(field)
     if "min" in v and num < v["min"]:
         raise FieldError("below min")
