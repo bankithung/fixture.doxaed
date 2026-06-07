@@ -38,6 +38,8 @@ api_v1 = [
     path("tournaments/", include("apps.tournaments.urls")),
     # Phase 1B: public school self-registration via shareable link.
     path("register/", include("apps.teams.urls")),
+    # Phase 1B: data-driven registration form builder.
+    path("forms/", include("apps.forms.urls")),
     # Phase 1B: match scoring endpoints.
     path("matches/", include("apps.matches.urls")),
     # Phase 1B: in-app notifications (the bell).

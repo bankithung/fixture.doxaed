@@ -4,6 +4,7 @@ from django.urls import path
 
 from apps.disputes.views import TournamentDisputeView
 from apps.fixtures.views import GenerateFixturesView
+from apps.forms.views import TournamentFormsView
 from apps.matches.views import TournamentMatchListView, TournamentStandingsView
 from apps.teams.views import RegistrationLinkCreateView, TournamentTeamsListView
 from apps.tournaments.views import (
@@ -39,6 +40,11 @@ urlpatterns = [
         "<uuid:tournament_id>/teams/",
         TournamentTeamsListView.as_view(),
         name="tournament-teams",
+    ),
+    path(
+        "<uuid:tournament_id>/forms/",
+        TournamentFormsView.as_view(),
+        name="tournament-forms",
     ),
     path(
         "<uuid:tournament_id>/matches/",
