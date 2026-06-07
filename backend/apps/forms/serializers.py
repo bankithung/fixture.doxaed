@@ -43,3 +43,12 @@ class FormCreateSerializer(serializers.Serializer):
         default="organization_registration",
     )
     schema = FormSchemaField(required=False)
+
+
+class PublicSubmitSerializer(serializers.Serializer):
+    """Validates the shape of a public submission payload. Answer-level
+    validation (branching-aware) happens in ``submit_response``."""
+
+    answers = serializers.DictField()
+    event_id = serializers.UUIDField(required=False)
+    upload_refs = serializers.DictField(required=False, default=dict)
