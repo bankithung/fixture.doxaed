@@ -1,0 +1,127 @@
+"""Branching-aware answer validation. Walk the schema from the first section,
+follow goto/next using the submitted answers, enforce required/type only on
+fields actually reached AND visible. Drop answers to unreached/hidden fields so
+branching can't be bypassed by posting hidden values."""
+from __future__ import annotations
+
+from typing import Any, cast
+
+from apps.forms.constants import DISPLAY_TYPES
+from apps.forms.services.fields import FieldError, validate_value
+
+
+class AnswerError(ValueError):
+    def __init__(self, errors: dict[str, str]):
+        self.errors = errors
+        super().__init__("; ".join(f"{k}: {v}" for k, v in errors.items()))
+
+
+def _visible(rule: dict | None, answers: dict) -> bool:
+    if not rule:
+        return True
+    val = answers.get(rule["field"])
+    op, target = rule["op"], rule.get("value")
+    if op == "answered":
+        return val not in (None, "", [], {})
+    if op == "equals":
+        return val == target
+    if op == "not_equals":
+        return val != target
+    if op == "in":
+        return val in (target or [])
+    if op == "includes":
+        return isinstance(val, list) and target in val
+    if op == "gt":
+        try:
+            return float(cast(Any, val)) > float(cast(Any, target))
+        except (TypeError, ValueError):
+            return False
+    if op == "lt":
+        try:
+            return float(cast(Any, val)) < float(cast(Any, target))
+        except (TypeError, ValueError):
+            return False
+    return False
+
+
+def _next_section(section: dict, answers: dict, sections: list[dict]) -> str | None:
+    """Resolve the next section key. Resolution order (design spec §3.2): the
+    chosen option's `goto`, else `section.next`, else the next section in array
+    order; returns None past the last section (which ends the walk)."""
+    for fld in section.get("fields", []):
+        if fld.get("type") in ("single_choice", "dropdown"):
+            chosen = answers.get(fld["key"])
+            for o in fld.get("options", []):
+                if str(o["value"]) == str(chosen) and o.get("goto"):
+                    return o["goto"]
+    nxt = section.get("next")
+    if nxt is not None:
+        return nxt
+    # else: fall through to the next section in document order
+    idx = next((i for i, s in enumerate(sections) if s["key"] == section["key"]), -1)
+    if 0 <= idx < len(sections) - 1:
+        return sections[idx + 1]["key"]
+    return None
+
+
+def validate_answers(schema: dict, answers: dict) -> dict:
+    """Return a cleaned answers dict (only reached+visible fields, coerced).
+    Raise AnswerError(errors) on any validation failure."""
+    sections = schema.get("sections", [])
+    by_key = {s["key"]: s for s in sections}
+    if not sections:
+        return {}
+
+    clean: dict[str, Any] = {}
+    errors: dict[str, str] = {}
+    visited: set[str] = set()
+    current: str | None = sections[0]["key"]
+    order_guard = 0
+
+    while current and current != "_end" and order_guard < len(sections) + 1:
+        order_guard += 1
+        if current in visited:
+            break  # cycle guard
+        visited.add(current)
+        section = by_key.get(current)
+        if section is None:
+            break
+
+        if _visible(section.get("visibility"), answers):
+            for fld in section.get("fields", []):
+                ftype = fld["type"]
+                if ftype in DISPLAY_TYPES:
+                    continue
+                if not _visible(fld.get("visibility"), answers):
+                    continue
+                key = fld["key"]
+                raw = answers.get(key, None)
+                empty = raw in (None, "", [], {})
+                if empty:
+                    if fld.get("required"):
+                        errors[key] = "required"
+                    continue
+                if ftype == "group":
+                    clean[key] = raw  # group deep-validation: follow-up; store as-is for v1
+                    continue
+                try:
+                    clean[key] = validate_value(fld, raw)
+                except FieldError as e:
+                    errors[key] = str(e)
+
+        current = _next_section(section, answers, sections)
+
+    if errors:
+        raise AnswerError(errors)
+    return clean
+
+
+def promote(schema: dict, clean: dict) -> dict:
+    """Extract role->value (email/phone/name/title) for the FormResponse columns."""
+    out: dict[str, str] = {}
+    for sec in schema.get("sections", []):
+        for fld in sec.get("fields", []):
+            role = fld.get("role")
+            if role and fld["key"] in clean:
+                out[role] = str(clean[fld["key"]])
+    return out
