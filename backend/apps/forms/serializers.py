@@ -4,7 +4,7 @@ from typing import Any
 
 from rest_framework import serializers
 
-from apps.forms.models import Form
+from apps.forms.models import Form, FormResponse
 from apps.forms.services.schema import SchemaError, validate_schema
 
 
@@ -43,6 +43,18 @@ class FormCreateSerializer(serializers.Serializer):
         default="organization_registration",
     )
     schema = FormSchemaField(required=False)
+
+
+class FormResponseSerializer(serializers.ModelSerializer):
+    """Read-only view of a submitted response for the organizer responses list."""
+
+    class Meta:
+        model = FormResponse
+        fields = (
+            "id", "answers", "form_version", "respondent_email", "respondent_phone",
+            "respondent_name", "title", "status", "mapped_entities", "created_at",
+        )
+        read_only_fields = fields
 
 
 class PublicSubmitSerializer(serializers.Serializer):
