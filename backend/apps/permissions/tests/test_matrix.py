@@ -68,13 +68,13 @@ def admin_org(loaded_modules):
 # ---------------------------------------------------------------------------
 
 
-def test_matrix_returns_22_modules(admin_org):
+def test_matrix_returns_23_modules(admin_org):
     admin, org = admin_org
     resp = _api(admin).get(f"/api/permissions/orgs/{org.slug}/grants/matrix/")
     assert resp.status_code == 200, resp.content
     body = resp.json()
     assert "modules" in body
-    assert len(body["modules"]) == 22
+    assert len(body["modules"]) == 23
     # Each module row has the required keys.
     for row in body["modules"]:
         assert set(row.keys()) >= {"key", "scope", "label", "description"}

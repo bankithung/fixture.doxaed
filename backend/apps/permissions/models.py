@@ -1,7 +1,8 @@
 """permissions models — Module catalog + MembershipModuleGrant.
 
-v1Users.md Appendix A.2 catalogs 22 modules. The catalog is loaded
-by `python manage.py load_modules` from `fixtures/modules.json`.
+v1Users.md Appendix A.2 catalogs 22 modules; the registration form
+builder adds a 23rd. The catalog is loaded by `python manage.py
+load_modules` from `fixtures/modules.json`.
 
 MembershipModuleGrant is keyed on (user, organization) per the
 audit fix (Appendix A.4):

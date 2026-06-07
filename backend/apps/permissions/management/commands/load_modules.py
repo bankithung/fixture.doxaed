@@ -1,10 +1,11 @@
-"""Load (or upsert) the 22-module catalog from modules.json.
+"""Load (or upsert) the 23-module catalog from modules.json.
 
 Idempotent: re-running updates name/description/category/default_for_roles
 on existing rows; never deletes.
 
 Source of truth: `apps/permissions/fixtures/modules.json` (translated
-from v1Users.md Appendix A.2 + B.16 = 22 modules total).
+from v1Users.md Appendix A.2 + B.16 = 22 modules, plus the registration
+form builder = 23 modules total).
 
 Usage:
     python manage.py load_modules

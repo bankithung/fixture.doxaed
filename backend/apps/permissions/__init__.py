@@ -6,7 +6,8 @@ internal references that need an app label (Meta.app_label, migration
 dependencies) MUST use `permissions_app`.
 
 Implements:
-  - Module catalog (22 modules — Appendix A.2 of v1Users.md).
+  - Module catalog (23 modules — Appendix A.2 of v1Users.md + the
+    registration form builder).
   - MembershipModuleGrant — per-(user, organization) override row
     keyed on (user, org), NOT on OrganizationMembership.
   - effective_modules(user, organization) resolver — multi-role

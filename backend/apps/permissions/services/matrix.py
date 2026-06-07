@@ -4,7 +4,7 @@ Powers `GET /api/permissions/orgs/{slug}/grants/matrix/` (Appendix B.16).
 
 The matrix shows, for every active member of an Organization, which
 modules they have by role-default, plus the explicit override state
-(grant / deny / default) for each of the 22 catalog modules.
+(grant / deny / default) for each of the 23 catalog modules.
 
 Layered on top of (not duplicating) the resolver:
   - Catalog source-of-truth: `Module.default_for_roles`.
@@ -44,7 +44,7 @@ def _scope_for(code: str) -> str:
 
 
 def _serialize_modules(modules: list[Module]) -> list[dict[str, Any]]:
-    """Serialize the 22-row module catalog into the matrix `modules` list."""
+    """Serialize the 23-row module catalog into the matrix `modules` list."""
     return [
         {
             "key": m.code,
@@ -79,7 +79,7 @@ def build_matrix(organization) -> dict[str, Any]:
     module_codes = [m.code for m in modules]
 
     # 2. Pre-compute role → set(module_codes that default-on for that role).
-    #    This is one scan over the 22 catalog rows, not per-member.
+    #    This is one scan over the 23 catalog rows, not per-member.
     role_to_modules: dict[str, set[str]] = defaultdict(set)
     for m in modules:
         for role in m.default_for_roles or []:

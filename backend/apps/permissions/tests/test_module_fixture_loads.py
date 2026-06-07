@@ -1,4 +1,4 @@
-"""load_modules management command — exactly 22 rows, idempotent."""
+"""load_modules management command — exactly 23 rows, idempotent."""
 from __future__ import annotations
 
 import pytest
@@ -8,9 +8,9 @@ from apps.permissions.models import Module
 
 
 @pytest.mark.django_db
-def test_load_modules_creates_22_rows():
+def test_load_modules_creates_23_rows():
     call_command("load_modules")
-    assert Module.objects.count() == 22
+    assert Module.objects.count() == 23
 
 
 @pytest.mark.django_db
@@ -19,7 +19,7 @@ def test_load_modules_idempotent():
     first = Module.objects.count()
     call_command("load_modules")
     second = Module.objects.count()
-    assert first == second == 22
+    assert first == second == 23
 
 
 @pytest.mark.django_db
@@ -35,3 +35,5 @@ def test_module_codes_are_unique_and_well_formed():
     assert "tournament.report_export" in codes
     assert "tournament.organizer_checklist" in codes
     assert "tournament.day_pack_export" in codes
+    # Registration form builder module.
+    assert "forms" in codes
