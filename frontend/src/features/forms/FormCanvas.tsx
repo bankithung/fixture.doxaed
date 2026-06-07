@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import { useBuilderStore } from "./builderStore";
 import type { Field, Section } from "./types";
+import { priorFields } from "./visibility";
+import { VisibilityRuleEditor } from "./VisibilityRuleEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/tailwind";
@@ -129,11 +131,16 @@ function SectionCard({
   index: number;
   total: number;
 }): React.ReactElement {
+  const sections = useBuilderStore((s) => s.schema.sections);
   const updateSection = useBuilderStore((s) => s.updateSection);
   const removeSection = useBuilderStore((s) => s.removeSection);
   const setActiveSection = useBuilderStore((s) => s.setActiveSection);
   const activeSectionKey = useBuilderStore((s) => s.activeSectionKey);
   const isActive = activeSectionKey === section.key;
+
+  // A section may only be gated on answers asked in PRIOR sections.
+  const triggers = priorFields(sections, section.key);
+  const hasVisibility = !!section.visibility;
 
   return (
     <section
@@ -156,6 +163,12 @@ function SectionCard({
           placeholder={t("Section title")}
           className="h-9 flex-1 border-transparent bg-transparent px-2 font-semibold focus-visible:border-input"
         />
+        {hasVisibility ? (
+          <GitBranch
+            aria-label={t("Section is conditional")}
+            className="h-4 w-4 shrink-0 text-primary"
+          />
+        ) : null}
         {total > 1 ? (
           <button
             type="button"
@@ -184,6 +197,24 @@ function SectionCard({
           ))
         )}
       </div>
+
+      {/* Section-level visibility: gate the whole section on an earlier answer.
+          Only available once a PRIOR section has fields to depend on. */}
+      {triggers.length > 0 ? (
+        <div className="border-t border-border px-4 py-3">
+          <p className="mb-2 text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            {t("Conditions")}
+          </p>
+          <VisibilityRuleEditor
+            label="Show this section when"
+            rule={section.visibility}
+            triggers={triggers}
+            onChange={(rule) =>
+              updateSection(section.key, { visibility: rule })
+            }
+          />
+        </div>
+      ) : null}
     </section>
   );
 }

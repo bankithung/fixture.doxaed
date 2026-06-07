@@ -158,3 +158,66 @@ describe("formLogic", () => {
     expect(errs.tt_cats).toBeUndefined();
   });
 });
+
+/**
+ * Headline end-to-end case: an admin authors section-level visibility so that
+ * choosing "Both" shows BOTH category sections. This is exactly the rule the
+ * builder's VisibilityRuleEditor writes (`op:"in"` with an array value), proven
+ * here against the REAL renderer traversal in `reachableSections`. The
+ * competition field carries NO per-option `goto`, so traversal falls through in
+ * document order and section visibility alone gates Sepak vs TT vs both.
+ */
+describe("formLogic — section visibility 'Both' case (Sepak/TT)", () => {
+  const both: FormSchema = {
+    version: 1,
+    sections: [
+      {
+        key: "competition",
+        title: "Competition",
+        fields: [
+          {
+            key: "competition",
+            type: "single_choice",
+            label: "Which?",
+            required: true,
+            options: [
+              { value: "sepak", label: "Sepak Takraw" },
+              { value: "tt", label: "Table Tennis" },
+              { value: "both", label: "Both" },
+            ],
+          },
+        ],
+      },
+      {
+        key: "sepak",
+        title: "Sepak categories",
+        visibility: { field: "competition", op: "in", value: ["sepak", "both"] },
+        fields: [{ key: "sepak_cats", type: "multi_choice", label: "Cats" }],
+      },
+      {
+        key: "tt",
+        title: "TT categories",
+        visibility: { field: "competition", op: "in", value: ["tt", "both"] },
+        fields: [{ key: "tt_cats", type: "multi_choice", label: "Cats" }],
+      },
+    ],
+  };
+
+  it("competition='both' → BOTH category sections are reachable", () => {
+    const keys = reachableSections(both, { competition: "both" }).map((s) => s.key);
+    expect(keys).toContain("sepak");
+    expect(keys).toContain("tt");
+  });
+
+  it("competition='sepak' → only the Sepak section", () => {
+    const keys = reachableSections(both, { competition: "sepak" }).map((s) => s.key);
+    expect(keys).toContain("sepak");
+    expect(keys).not.toContain("tt");
+  });
+
+  it("competition='tt' → only the TT section", () => {
+    const keys = reachableSections(both, { competition: "tt" }).map((s) => s.key);
+    expect(keys).toContain("tt");
+    expect(keys).not.toContain("sepak");
+  });
+});

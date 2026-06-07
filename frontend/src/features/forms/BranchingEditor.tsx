@@ -1,121 +1,18 @@
 import { useBuilderStore } from "./builderStore";
-import type { Field, Section, Visibility, VisibilityOp } from "./types";
+import type { Field } from "./types";
+import { priorFields } from "./visibility";
+import { VisibilityRuleEditor } from "./VisibilityRuleEditor";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { t } from "@/lib/t";
 
 const END_KEY = "_end";
 
-/** Visibility operators offered in the rule builder (mirrors backend
- *  `VISIBILITY_OPS`). */
-const VISIBILITY_OPS: { value: VisibilityOp; label: string }[] = [
-  { value: "equals", label: "equals" },
-  { value: "not_equals", label: "does not equal" },
-  { value: "in", label: "is one of" },
-  { value: "includes", label: "includes" },
-  { value: "gt", label: "greater than" },
-  { value: "lt", label: "less than" },
-  { value: "answered", label: "is answered" },
-];
-
-const CHOICE_TYPES = new Set<string>([
-  "single_choice",
-  "multi_choice",
-  "dropdown",
-]);
-
-/** Operators that don't need a value input. */
-const VALUELESS_OPS = new Set<VisibilityOp>(["answered"]);
-
-/** All fields that appear before the given section (valid visibility triggers). */
-function priorFields(sections: Section[], sectionKey: string): Field[] {
-  const out: Field[] = [];
-  for (const sec of sections) {
-    if (sec.key === sectionKey) break;
-    out.push(...sec.fields);
-  }
-  return out;
-}
-
-function VisibilityRuleEditor({
-  label,
-  rule,
-  triggers,
-  onChange,
-}: {
-  label: string;
-  rule: Visibility | null | undefined;
-  triggers: Field[];
-  onChange: (rule: Visibility | null) => void;
-}): React.ReactElement {
-  const trigger = triggers.find((f) => f.key === rule?.field);
-  const triggerOpts = [
-    { value: "", label: t("Always show") },
-    ...triggers.map((f) => ({ value: f.key, label: f.label || f.key })),
-  ];
-  const valueOpts = (trigger?.options ?? []).map((o) => ({
-    value: String(o.value),
-    label: o.label,
-  }));
-
-  return (
-    <div className="flex flex-col gap-2">
-      <Label>{t(label)}</Label>
-      <Select
-        aria-label={t("Condition field")}
-        value={rule?.field ?? ""}
-        options={triggerOpts}
-        onChange={(field) =>
-          onChange(field ? { field, op: rule?.op ?? "equals", value: rule?.value } : null)
-        }
-        placeholder={t("Always show")}
-      />
-      {rule?.field ? (
-        <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-2.5">
-          <Select
-            aria-label={t("Condition operator")}
-            value={rule.op}
-            options={VISIBILITY_OPS.map((o) => ({
-              value: o.value,
-              label: t(o.label),
-            }))}
-            onChange={(op) =>
-              onChange({ ...rule, op: op as VisibilityOp })
-            }
-          />
-          {VALUELESS_OPS.has(rule.op) ? null : valueOpts.length > 0 ? (
-            <Select
-              aria-label={t("Condition value")}
-              value={String(rule.value ?? "")}
-              options={[{ value: "", label: t("Select a value…") }, ...valueOpts]}
-              onChange={(value) =>
-                onChange({
-                  ...rule,
-                  value: rule.op === "in" ? [value] : value,
-                })
-              }
-              placeholder={t("Select a value…")}
-            />
-          ) : (
-            <input
-              aria-label={t("Condition value")}
-              value={String(rule.value ?? "")}
-              onChange={(e) => onChange({ ...rule, value: e.target.value })}
-              placeholder={t("Value")}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 /**
  * Branching controls for the selected field + its section:
  *   (a) per-option `goto` targets (single_choice / dropdown),
  *   (b) the section's fall-through `next`,
- *   (c) the field's visibility rule (and the section's, when relevant).
+ *   (c) the field's visibility rule (via the shared VisibilityRuleEditor).
  * Section keys + an "End" sentinel populate every goto/next Select.
  */
 export function BranchingEditor({
@@ -139,7 +36,6 @@ export function BranchingEditor({
   ];
 
   const triggers = priorFields(sections, sectionKey);
-  const isChoice = CHOICE_TYPES.has(field.type);
 
   return (
     <div className="flex flex-col gap-4 border-t border-border pt-4">
@@ -193,7 +89,7 @@ export function BranchingEditor({
       {/* (c) Field visibility rule. */}
       {triggers.length > 0 ? (
         <VisibilityRuleEditor
-          label={isChoice ? "Show this field when" : "Show this field when"}
+          label="Show this field when"
           rule={field.visibility}
           triggers={triggers}
           onChange={(rule) =>

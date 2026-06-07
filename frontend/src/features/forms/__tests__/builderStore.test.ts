@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useBuilderStore } from "@/features/forms/builderStore";
+import { reachableSections } from "@/lib/formLogic";
 
 const reset = () =>
   useBuilderStore.getState().load({
@@ -81,5 +82,54 @@ describe("builderStore", () => {
     expect(
       useBuilderStore.getState().schema.sections.length,
     ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("authoring section visibility via updateSection drives the renderer ('Both')", () => {
+    // Hand-assemble the Sepak/TT example through the store, exactly as the
+    // builder's VisibilityRuleEditor + updateSection would.
+    const s = useBuilderStore.getState();
+    s.load({
+      version: 1,
+      sections: [
+        {
+          key: "competition",
+          title: "Competition",
+          fields: [
+            {
+              key: "competition",
+              type: "single_choice",
+              label: "Which?",
+              options: [
+                { value: "sepak", label: "Sepak Takraw" },
+                { value: "tt", label: "Table Tennis" },
+                { value: "both", label: "Both" },
+              ],
+            },
+          ],
+        },
+        { key: "sepak", title: "Sepak categories", fields: [] },
+        { key: "tt", title: "TT categories", fields: [] },
+      ],
+    });
+
+    useBuilderStore.getState().updateSection("sepak", {
+      visibility: { field: "competition", op: "in", value: ["sepak", "both"] },
+    });
+    useBuilderStore.getState().updateSection("tt", {
+      visibility: { field: "competition", op: "in", value: ["tt", "both"] },
+    });
+
+    const schema = useBuilderStore.getState().schema;
+    const reach = (answer: string) =>
+      reachableSections(schema, { competition: answer }).map((sec) => sec.key);
+
+    // "Both" → BOTH category sections reachable; single picks → just one.
+    expect(reach("both")).toEqual(
+      expect.arrayContaining(["sepak", "tt"]),
+    );
+    expect(reach("sepak")).toContain("sepak");
+    expect(reach("sepak")).not.toContain("tt");
+    expect(reach("tt")).toContain("tt");
+    expect(reach("tt")).not.toContain("sepak");
   });
 });
