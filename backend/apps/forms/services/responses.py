@@ -9,7 +9,7 @@ atomically. Replays on a client ``event_id`` return the existing row (invariant
 """
 from __future__ import annotations
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import F
 
 from apps.audit.models import ActorRole
@@ -37,20 +37,35 @@ def submit_response(
     roles = promote(form.schema, clean)
 
     with transaction.atomic():
-        resp = FormResponse.objects.create(
-            form=form,
-            organization=form.organization,
-            tournament=form.tournament,
-            answers=clean,
-            form_version=form.version,
-            respondent_email=roles.get("email", "")[:254],
-            respondent_phone=roles.get("phone", "")[:32],
-            respondent_name=roles.get("name", "")[:200],
-            title=roles.get("title", "")[:200],
-            status=ResponseStatus.SUBMITTED,
-            event_id=event_id,
-            submitted_via=share_link,
-        )
+        # Idempotency hardening: a concurrent identical-``event_id`` submit can win
+        # the race between the pre-check above and this create. The unique
+        # (form, event_id) constraint then fires an IntegrityError; catch it via a
+        # savepoint, roll back to it, and return the row the other writer created
+        # (so a replay yields the existing response, not a 500). When event_id is
+        # None there is no constraint to collide on, so the create runs directly.
+        try:
+            with transaction.atomic():
+                resp = FormResponse.objects.create(
+                    form=form,
+                    organization=form.organization,
+                    tournament=form.tournament,
+                    answers=clean,
+                    form_version=form.version,
+                    respondent_email=roles.get("email", "")[:254],
+                    respondent_phone=roles.get("phone", "")[:32],
+                    respondent_name=roles.get("name", "")[:200],
+                    title=roles.get("title", "")[:200],
+                    status=ResponseStatus.SUBMITTED,
+                    event_id=event_id,
+                    submitted_via=share_link,
+                )
+        except IntegrityError:
+            if event_id is None:
+                raise
+            existing = FormResponse.objects.filter(form=form, event_id=event_id).first()
+            if existing is None:
+                raise
+            return existing
         if upload_refs:
             FormFileUpload.objects.filter(
                 form=form,
