@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { AuditEvent } from "./audit";
 
 /** Tournament row as returned by `GET /api/tournaments/` and create (201). */
 export interface Tournament {
@@ -18,6 +19,35 @@ export interface TournamentInvitation {
   role: string;
   tournament_id: string;
   status: string;
+}
+
+/**
+ * Tournament roster row from `GET /api/tournaments/{id}/members/`
+ * (see `TournamentMembershipSerializer`). `id` is the membership row PK that
+ * the PATCH route addresses; `role`/`status` are the 6-role + 3-status enums.
+ */
+export interface TournamentMember {
+  /** Membership row id (UUID) — the PATCH route uses this. */
+  id: string;
+  user_id: string;
+  email: string;
+  full_name: string;
+  /** One of the 6 tournament roles. */
+  role: string;
+  /** `active` | `suspended` | `revoked`. */
+  status: string;
+  assigned_at: string;
+}
+
+/** PATCH body for member management — both fields optional. */
+export interface TournamentMemberUpdate {
+  role?: string;
+  status?: string;
+}
+
+/** Tournament-scoped audit feed shape: `{ results: AuditEvent[] }`. */
+export interface TournamentAuditResponse {
+  results: AuditEvent[];
 }
 
 export interface TeamRow {
@@ -98,6 +128,25 @@ export const tournamentsApi = {
       `/api/tournaments/${tournamentId}/invitations/`,
       payload,
     ),
+  /** Tournament roster (manager-gated on the server; 404 on no-access). */
+  members: (id: string) =>
+    api.get<TournamentMember[]>(`/api/tournaments/${id}/members/`),
+  /**
+   * Change a member's role and/or status (manager-only). `status:"revoked"`
+   * removes them. Backend guards the last admin → 400 `{detail:"last_admin"}`.
+   */
+  updateMember: (
+    id: string,
+    membershipId: string,
+    body: TournamentMemberUpdate,
+  ) =>
+    api.patch<TournamentMember>(
+      `/api/tournaments/${id}/members/${membershipId}/`,
+      body,
+    ),
+  /** Tournament-scoped audit feed (manager-only; 403 otherwise). Newest first. */
+  audit: (id: string) =>
+    api.get<TournamentAuditResponse>(`/api/tournaments/${id}/audit/`),
   /** Registered teams for a tournament. */
   teams: (id: string) => api.get<TeamRow[]>(`/api/tournaments/${id}/teams/`),
   /** All matches (the generated fixture). */

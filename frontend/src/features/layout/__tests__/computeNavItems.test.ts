@@ -50,83 +50,31 @@ describe("computeWorkspaceNav", () => {
     expect(computeWorkspaceNav(makeUser(["admin"], []), null)).toEqual([]);
   });
 
-  it("unknown slug → only the Workspace group (Dashboard + Tournaments)", () => {
-    // Dashboard/Tournaments always render given a slug; the Admin group hides
-    // because modules + roles come up empty for an unknown slug.
-    const groups = computeWorkspaceNav(makeUser(["admin"], []), "ghost");
+  it("is ONLY the Workspace group: Dashboard + Tournaments", () => {
+    // The org-level Admin group (Members/Permissions/Audit/Settings) has been
+    // removed from the primary nav — member/role management + audit now live
+    // inside a tournament. Even an admin with every module sees just Workspace.
+    const u = makeUser(["admin"], ["org.member_directory", "org.audit_log"]);
+    const groups = computeWorkspaceNav(u, "acme");
     expect(groupKeys(groups)).toEqual(["workspace"]);
     expect(flatKeys(groups)).toEqual(["dashboard", "tournaments"]);
   });
 
-  it("admin sees Workspace (Dashboard+Tournaments) + Admin (Members+Permissions+Audit+Settings)", () => {
+  it("never surfaces an Admin group or its items", () => {
     const u = makeUser(["admin"], ["org.member_directory", "org.audit_log"]);
     const groups = computeWorkspaceNav(u, "acme");
-    expect(groupKeys(groups)).toEqual(["workspace", "admin"]);
-    expect(flatKeys(groups)).toEqual([
-      "dashboard",
-      "tournaments",
-      "members",
-      "permissions",
-      "audit",
-      "settings",
-    ]);
-  });
-
-  it("owner sees Permissions + Settings just like admin", () => {
-    const u = makeUser(["owner"], ["org.member_directory"]);
-    const keys = flatKeys(computeWorkspaceNav(u, "acme"));
-    expect(keys).toContain("permissions");
-    expect(keys).toContain("settings");
-  });
-
-  it("co_organizer sees Members + Audit but NOT Permissions/Settings", () => {
-    // Per v1Users.md §2 line 736 the override-grant verb is reserved to Admin
-    // in v1.0; co-organizers manage members but not the override matrix or
-    // org settings — the nav must mirror the backend gate.
-    const u = makeUser(
-      ["co_organizer"],
-      ["org.member_directory", "org.audit_log"],
-    );
-    const keys = flatKeys(computeWorkspaceNav(u, "acme"));
-    expect(keys).toContain("members");
-    expect(keys).toContain("audit");
+    expect(groupKeys(groups)).not.toContain("admin");
+    const keys = flatKeys(groups);
+    expect(keys).not.toContain("members");
     expect(keys).not.toContain("permissions");
+    expect(keys).not.toContain("audit");
     expect(keys).not.toContain("settings");
-  });
-
-  it("game_coordinator sees Members + Audit but NOT Permissions/Settings", () => {
-    const u = makeUser(
-      ["game_coordinator"],
-      ["org.member_directory", "org.audit_log"],
-    );
-    const keys = flatKeys(computeWorkspaceNav(u, "acme"));
-    expect(keys).toContain("members");
-    expect(keys).toContain("audit");
-    expect(keys).not.toContain("permissions");
   });
 
   it("viewer with no modules sees only the Workspace group", () => {
     const groups = computeWorkspaceNav(makeUser(["viewer"], []), "acme");
     expect(groupKeys(groups)).toEqual(["workspace"]);
     expect(flatKeys(groups)).toEqual(["dashboard", "tournaments"]);
-  });
-
-  it("Members hides when org.member_directory module is absent", () => {
-    const keys = flatKeys(computeWorkspaceNav(makeUser(["admin"], []), "acme"));
-    expect(keys).not.toContain("members");
-  });
-
-  it("Audit hides when org.audit_log module is absent", () => {
-    const keys = flatKeys(
-      computeWorkspaceNav(makeUser(["admin"], ["org.member_directory"]), "acme"),
-    );
-    expect(keys).not.toContain("audit");
-  });
-
-  it("Admin group is omitted entirely when no admin item qualifies", () => {
-    // A viewer has no admin modules and isn't owner/admin → no Admin group.
-    const groups = computeWorkspaceNav(makeUser(["viewer"], []), "acme");
-    expect(groupKeys(groups)).not.toContain("admin");
   });
 
   it("dashboard links to the org dashboard; tournaments to the global hub", () => {
@@ -137,23 +85,6 @@ describe("computeWorkspaceNav", () => {
     );
     expect(items.find((i) => i.key === "tournaments")?.href).toBe(
       routes.tournaments(),
-    );
-  });
-
-  it("admin items resolve to their org-scoped routes", () => {
-    const u = makeUser(["admin"], ["org.member_directory", "org.audit_log"]);
-    const items = computeWorkspaceNav(u, "acme").flatMap((g) => g.items);
-    expect(items.find((i) => i.key === "members")?.href).toBe(
-      routes.orgMembers("acme"),
-    );
-    expect(items.find((i) => i.key === "permissions")?.href).toBe(
-      routes.orgPermissions("acme"),
-    );
-    expect(items.find((i) => i.key === "audit")?.href).toBe(
-      routes.orgAudit("acme"),
-    );
-    expect(items.find((i) => i.key === "settings")?.href).toBe(
-      routes.orgSettings("acme"),
     );
   });
 
@@ -175,13 +106,18 @@ describe("computeTournamentNav", () => {
     ).toEqual([]);
   });
 
-  it("emits a single Manage group with Overview + Bracket (no forms module)", () => {
+  it("emits a single Manage group with Overview + Bracket + Members + Audit (no forms module)", () => {
     const groups = computeTournamentNav(TID, {
       user: makeUser(["admin"], []),
       slug: "acme",
     });
     expect(groupKeys(groups)).toEqual(["manage"]);
-    expect(flatKeys(groups)).toEqual(["overview", "bracket"]);
+    expect(flatKeys(groups)).toEqual([
+      "overview",
+      "bracket",
+      "members",
+      "audit",
+    ]);
   });
 
   it("includes Registration forms when the forms module is granted", () => {
@@ -189,7 +125,13 @@ describe("computeTournamentNav", () => {
       user: makeUser(["admin"], ["forms"]),
       slug: "acme",
     });
-    expect(flatKeys(groups)).toEqual(["overview", "forms", "bracket"]);
+    expect(flatKeys(groups)).toEqual([
+      "overview",
+      "forms",
+      "bracket",
+      "members",
+      "audit",
+    ]);
   });
 
   it("hides Registration forms when the forms module is absent", () => {
@@ -208,7 +150,19 @@ describe("computeTournamentNav", () => {
     expect(flatKeys(groups)).not.toContain("forms");
   });
 
-  it("links Overview / Forms / Bracket to the right routes", () => {
+  it("shows Members + Audit to anyone in tournament context (pages enforce manager-only)", () => {
+    // Even a viewer with no modules sees Members + Audit — the Audit PAGE
+    // enforces the manager gate (403 → friendly empty state).
+    const groups = computeTournamentNav(TID, {
+      user: makeUser(["viewer"], []),
+      slug: "acme",
+    });
+    const keys = flatKeys(groups);
+    expect(keys).toContain("members");
+    expect(keys).toContain("audit");
+  });
+
+  it("links Overview / Forms / Bracket / Members / Audit to the right routes", () => {
     const items = computeTournamentNav(TID, {
       user: makeUser(["admin"], ["forms"]),
       slug: "acme",
@@ -221,6 +175,12 @@ describe("computeTournamentNav", () => {
     );
     expect(items.find((i) => i.key === "bracket")?.href).toBe(
       routes.tournamentBracket(TID),
+    );
+    expect(items.find((i) => i.key === "members")?.href).toBe(
+      routes.tournamentMembers(TID),
+    );
+    expect(items.find((i) => i.key === "audit")?.href).toBe(
+      routes.tournamentAudit(TID),
     );
   });
 });

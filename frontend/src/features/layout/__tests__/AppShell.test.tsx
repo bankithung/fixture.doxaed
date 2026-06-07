@@ -89,16 +89,17 @@ describe("AppShell", () => {
     expect(brand.getAttribute("href")).toBe("/");
   });
 
-  it("admin renders Workspace + Admin groups (Dashboard/Members/Permissions/Audit/Settings)", () => {
+  it("workspace nav is just the Workspace group (Dashboard + Tournaments); no Admin group", () => {
+    // Member/role management + audit moved INSIDE a tournament; the org-level
+    // Admin group is gone from the primary nav even for an admin.
     renderShellAt();
     const primary = screen.getByRole("navigation", { name: /primary/i });
     expect(primary.textContent).toMatch(/workspace/i);
-    expect(primary.textContent).toMatch(/admin/i);
     expect(primary.textContent).toMatch(/dashboard/i);
-    expect(primary.textContent).toMatch(/members/i);
-    expect(primary.textContent).toMatch(/permissions/i);
-    expect(primary.textContent).toMatch(/audit/i);
-    expect(primary.textContent).toMatch(/settings/i);
+    expect(primary.textContent).toMatch(/tournaments/i);
+    expect(primary.textContent).not.toMatch(/\badmin\b/i);
+    expect(primary.textContent).not.toMatch(/permissions/i);
+    expect(primary.textContent).not.toMatch(/settings/i);
   });
 
   it("workspace nav no longer surfaces the standalone Scoring item", () => {
@@ -199,17 +200,20 @@ describe("AppShell", () => {
     renderShellAt("/tournaments/t-123");
 
     const primary = screen.getByRole("navigation", { name: /primary/i });
-    // Manage group with the three tournament destinations.
+    // Manage group with the tournament destinations.
     expect(primary.textContent).toMatch(/manage/i);
     expect(primary.textContent).toMatch(/overview/i);
     expect(primary.textContent).toMatch(/registration forms/i);
     expect(primary.textContent).toMatch(/fixtures & bracket/i);
+    // Tournament-scoped Members + Audit now live in the Manage group.
+    expect(primary.textContent).toMatch(/members/i);
+    expect(primary.textContent).toMatch(/audit/i);
     // "All tournaments" back-link is present.
     expect(
       screen.getAllByRole("link", { name: /all tournaments/i }).length,
     ).toBeGreaterThan(0);
     // Workspace-only items are gone in tournament mode.
-    expect(primary.textContent).not.toMatch(/members/i);
+    expect(primary.textContent).not.toMatch(/dashboard/i);
     // Name resolves asynchronously into the rail header.
     await waitFor(() =>
       expect(screen.getAllByText(/spring cup/i).length).toBeGreaterThan(0),

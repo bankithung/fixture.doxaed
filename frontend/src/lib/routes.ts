@@ -57,6 +57,12 @@ export const routes = {
   /** Visual bracket / flow view of a tournament's fixtures. */
   tournamentBracket: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/bracket`,
+  /** Tournament-scoped members & roles management. */
+  tournamentMembers: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/members`,
+  /** Tournament-scoped audit log (manager-only page). */
+  tournamentAudit: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/audit`,
   /** Registration-forms list for a tournament (builder entry point). */
   tournamentForms: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/forms`,
