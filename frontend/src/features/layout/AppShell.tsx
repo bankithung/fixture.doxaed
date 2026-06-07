@@ -34,10 +34,27 @@ import {
   type NavItem,
 } from "./computeNavItems";
 import { tournamentsApi } from "@/api/tournaments";
+import { invitationsApi } from "@/api/invitations";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+
+/**
+ * Attach the pending-invite count as a `badge` on the Workspace "invites" nav
+ * item. Returns the groups unchanged when the count is 0 (no badge) so the
+ * Sidebar/drawer render a plain item. Non-mutating: only the matched item is
+ * cloned.
+ */
+function decorateInvitesBadge(groups: NavGroup[], count: number): NavGroup[] {
+  if (count <= 0) return groups;
+  return groups.map((group) => ({
+    ...group,
+    items: group.items.map((item) =>
+      item.key === "invites" ? { ...item, badge: String(count) } : item,
+    ),
+  }));
+}
 
 /**
  * Authenticated app shell: a fixed left Sidebar (desktop) + a slim sticky
@@ -130,9 +147,21 @@ export function AppShell(): React.ReactElement {
   const inTournamentContext = tournamentId != null;
   const tournamentName = tournamentQuery.data?.name ?? null;
 
+  // Pending-invite count for the Workspace > Invites badge. Cheap + cached;
+  // a failed/loading query simply yields no badge.
+  const invitesQuery = useQuery({
+    queryKey: ["my-invitations"],
+    queryFn: invitationsApi.myInvitations,
+    staleTime: 30_000,
+  });
+  const pendingInviteCount = invitesQuery.data?.length ?? 0;
+
   const navGroups: NavGroup[] = inTournamentContext
     ? computeTournamentNav(tournamentId, { user, slug: navSlug })
-    : computeWorkspaceNav(user, navSlug);
+    : decorateInvitesBadge(
+        computeWorkspaceNav(user, navSlug),
+        pendingInviteCount,
+      );
 
   const handleSignOut = async (): Promise<void> => {
     setMenuOpen(false);

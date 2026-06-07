@@ -42,6 +42,8 @@ export const routes = {
   tournaments: () => "/tournaments",
   /** Self-serve "create your first tournament" page. */
   tournamentNew: () => "/tournaments/new",
+  /** Your pending invitations inbox (workspace-level). */
+  invites: () => "/invites",
   /** Tournament dashboard (thin in 1A; Phase 1B fills it). */
   tournament: (slug: string, id: string) =>
     `/o/${encodeURIComponent(slug)}/tournaments/${encodeURIComponent(id)}`,

@@ -50,14 +50,14 @@ describe("computeWorkspaceNav", () => {
     expect(computeWorkspaceNav(makeUser(["admin"], []), null)).toEqual([]);
   });
 
-  it("is ONLY the Workspace group: Dashboard + Tournaments", () => {
+  it("is ONLY the Workspace group: Dashboard + Tournaments + Invites", () => {
     // The org-level Admin group (Members/Permissions/Audit/Settings) has been
     // removed from the primary nav — member/role management + audit now live
     // inside a tournament. Even an admin with every module sees just Workspace.
     const u = makeUser(["admin"], ["org.member_directory", "org.audit_log"]);
     const groups = computeWorkspaceNav(u, "acme");
     expect(groupKeys(groups)).toEqual(["workspace"]);
-    expect(flatKeys(groups)).toEqual(["dashboard", "tournaments"]);
+    expect(flatKeys(groups)).toEqual(["dashboard", "tournaments", "invites"]);
   });
 
   it("never surfaces an Admin group or its items", () => {
@@ -74,7 +74,7 @@ describe("computeWorkspaceNav", () => {
   it("viewer with no modules sees only the Workspace group", () => {
     const groups = computeWorkspaceNav(makeUser(["viewer"], []), "acme");
     expect(groupKeys(groups)).toEqual(["workspace"]);
-    expect(flatKeys(groups)).toEqual(["dashboard", "tournaments"]);
+    expect(flatKeys(groups)).toEqual(["dashboard", "tournaments", "invites"]);
   });
 
   it("dashboard links to the org dashboard; tournaments to the global hub", () => {
@@ -86,6 +86,15 @@ describe("computeWorkspaceNav", () => {
     expect(items.find((i) => i.key === "tournaments")?.href).toBe(
       routes.tournaments(),
     );
+  });
+
+  it("includes an Invites item (after Tournaments) linking to the invites inbox", () => {
+    const groups = computeWorkspaceNav(makeUser(["admin"], []), "acme");
+    const keys = flatKeys(groups);
+    // Invites comes immediately after Tournaments.
+    expect(keys.indexOf("invites")).toBe(keys.indexOf("tournaments") + 1);
+    const items = groups.flatMap((g) => g.items);
+    expect(items.find((i) => i.key === "invites")?.href).toBe(routes.invites());
   });
 
   it("href slugs are URL-encoded", () => {

@@ -3,6 +3,7 @@ import {
   FileText,
   GitBranch,
   LayoutDashboard,
+  Mail,
   Trophy,
   Users,
 } from "lucide-react";
@@ -93,6 +94,13 @@ export function computeWorkspaceNav(
       label: t("Tournaments"),
       href: routes.tournaments(),
       icon: Trophy,
+    },
+    {
+      // Pending-invites inbox. The AppShell attaches a count `badge` here.
+      key: "invites",
+      label: t("Invites"),
+      href: routes.invites(),
+      icon: Mail,
     },
   ];
 

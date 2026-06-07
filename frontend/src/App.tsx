@@ -17,6 +17,7 @@ import { CreateTournamentPage } from "@/features/tournaments/CreateTournamentPag
 import { TournamentsListPage } from "@/features/tournaments/TournamentsListPage";
 import { TournamentDetailPage } from "@/features/tournaments/TournamentDetailPage";
 import { TournamentMembersPage } from "@/features/tournaments/TournamentMembersPage";
+import { InvitesPage } from "@/features/invitations/InvitesPage";
 import { TournamentAuditPage } from "@/features/tournaments/TournamentAuditPage";
 import { MatchConsolePage } from "@/features/matches/MatchConsolePage";
 import { BracketPage } from "@/features/tournaments/BracketPage";
@@ -142,6 +143,7 @@ export default function App(): React.ReactElement {
                 }
               >
                 <Route path="/orgs" element={<OrgChooserPage />} />
+                <Route path="/invites" element={<InvitesPage />} />
                 <Route path="/tournaments" element={<TournamentsListPage />} />
                 <Route
                   path="/tournaments/new"
