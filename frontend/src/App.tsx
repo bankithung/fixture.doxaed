@@ -21,6 +21,7 @@ import { BracketPage } from "@/features/tournaments/BracketPage";
 import { RegistrationFormPage } from "@/features/registration/RegistrationFormPage";
 import { FormsListPage } from "@/features/forms/FormsListPage";
 import { FormBuilderPage } from "@/features/forms/FormBuilderPage";
+import { ResponsesPage } from "@/features/forms/ResponsesPage";
 import { PublicFormPage } from "@/features/forms/PublicFormPage";
 import { LiveViewerPage } from "@/features/live/LiveViewerPage";
 import { OrgDashboardPage } from "@/features/layout/OrgDashboardPage";
@@ -163,6 +164,10 @@ export default function App(): React.ReactElement {
                 <Route
                   path="/tournaments/:id/forms/:formId/edit"
                   element={<FormBuilderPage />}
+                />
+                <Route
+                  path="/tournaments/:id/forms/:formId/responses"
+                  element={<ResponsesPage />}
                 />
 
                 {/* Personal / role-agnostic. */}
