@@ -188,7 +188,7 @@ export function AppShell(): React.ReactElement {
         <Icon aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
         <span className="flex-1 truncate">{item.label}</span>
         {item.badge ? (
-          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800">
+          <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
             {item.badge}
           </span>
         ) : null}
