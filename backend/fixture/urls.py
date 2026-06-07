@@ -18,7 +18,12 @@ from django.conf import settings
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from apps.organizations.views import InvitationAcceptView  # noqa: E402
+from apps.organizations.views import (  # noqa: E402
+    InvitationAcceptByIdView,
+    InvitationAcceptView,
+    InvitationDeclineView,
+    MyInvitationsView,
+)
 from apps.sadmin.views import FeedbackSubmitView  # noqa: E402
 
 api_v1 = [
@@ -29,6 +34,25 @@ api_v1 = [
         "invitations:accept/",
         InvitationAcceptView.as_view(),
         name="invitations-accept",
+    ),
+    # In-app invitations inbox (logged-in invitee). The bare `invitations/`
+    # list + the `<uuid>:accept/`/`<uuid>:decline/` colon verbs are distinct
+    # from the token-based `invitations:accept/` above (that has no UUID
+    # segment), so there is no route collision.
+    path(
+        "invitations/",
+        MyInvitationsView.as_view(),
+        name="my-invitations",
+    ),
+    path(
+        "invitations/<uuid:invitation_id>:accept/",
+        InvitationAcceptByIdView.as_view(),
+        name="invitation-accept-by-id",
+    ),
+    path(
+        "invitations/<uuid:invitation_id>:decline/",
+        InvitationDeclineView.as_view(),
+        name="invitation-decline",
     ),
     path("permissions/", include("apps.permissions.urls")),
     path("audit/", include("apps.audit.urls")),

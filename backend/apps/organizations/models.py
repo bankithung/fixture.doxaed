@@ -61,6 +61,7 @@ class InviteStatus(models.TextChoices):
     ACCEPTED = "accepted", _("Accepted")
     EXPIRED = "expired", _("Expired")
     REVOKED = "revoked", _("Revoked")
+    DECLINED = "declined", _("Declined")
 
 
 # ---------------------------------------------------------------------------

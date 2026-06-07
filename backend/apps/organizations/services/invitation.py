@@ -20,7 +20,7 @@ import secrets
 import uuid as _uuid
 from typing import Optional, Sequence, Union
 
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.mail import send_mail
 from django.db import transaction
 from django.http import HttpRequest
@@ -232,6 +232,103 @@ def create_invitation(
     return inv, plaintext
 
 
+def _accept_invitation_row(inv: AdminInvitation, accepting_user, request):
+    """Core accept logic for a *locked* invitation row, shared by the
+    token-based and id-based accept paths.
+
+    Caller is responsible for:
+      - selecting the row FOR UPDATE inside an open transaction,
+      - all status/expiry/email-ownership pre-checks,
+      - the post-commit session cycle.
+
+    Performs idempotent membership creation, flips the invitation to
+    ACCEPTED, and emits the accept audit. Returns the created/fetched
+    membership (TournamentMembership for tournament-scoped invites,
+    OrganizationMembership for org-level invites).
+    """
+    from django.db import IntegrityError
+
+    org = inv.organization
+
+    # Idempotent membership creation. Tournament-scoped invites create a
+    # TournamentMembership (no org-wide membership — preserves isolation:
+    # an invited scorer gets only that tournament, not the whole org).
+    # Org-level invites keep the existing OrganizationMembership behavior.
+    if inv.tournament_id:
+        from apps.tournaments.models import (
+            TournamentMembership,
+            TournamentMembershipStatus,
+        )
+
+        result = TournamentMembership.objects.filter(
+            user=accepting_user, tournament_id=inv.tournament_id, role=inv.role
+        ).first()
+        if result is None:
+            try:
+                result = TournamentMembership.objects.create(
+                    user=accepting_user,
+                    tournament_id=inv.tournament_id,
+                    role=inv.role,
+                    status=TournamentMembershipStatus.ACTIVE,
+                    assigned_by=inv.invited_by,
+                )
+            except IntegrityError as exc:
+                raise ValidationError("membership_conflict") from exc
+        elif result.status != TournamentMembershipStatus.ACTIVE:
+            result.status = TournamentMembershipStatus.ACTIVE
+            result.revoked_at = None
+            result.save(update_fields=["status", "revoked_at"])
+        audit_target_type = "tournament_membership"
+        audit_payload = {
+            "user_id": str(accepting_user.id),
+            "tournament_id": str(inv.tournament_id),
+            "role": inv.role,
+        }
+    else:
+        result = OrganizationMembership.objects.filter(
+            user=accepting_user, organization=org, role=inv.role
+        ).first()
+        if result is None:
+            try:
+                result = OrganizationMembership.objects.create(
+                    user=accepting_user,
+                    organization=org,
+                    role=inv.role,
+                    is_active=True,
+                    created_by=inv.invited_by,
+                )
+            except IntegrityError as exc:
+                raise ValidationError("membership_conflict") from exc
+        elif not result.is_active:
+            result.is_active = True
+            result.removed_at = None
+            result.save(update_fields=["is_active", "removed_at"])
+        audit_target_type = "organization_membership"
+        audit_payload = {
+            "user_id": str(accepting_user.id),
+            "organization_id": str(org.id),
+            "role": inv.role,
+        }
+
+    inv.status = InviteStatus.ACCEPTED
+    inv.accepted_at = timezone.now()
+    inv.accepted_by_user = accepting_user
+    inv.save(update_fields=["status", "accepted_at", "accepted_by_user"])
+
+    emit_audit(
+        actor_user=accepting_user,
+        actor_role=ActorRole.SYSTEM,
+        event_type="member_invite_accepted",
+        target_type=audit_target_type,
+        target_id=result.id,
+        payload_after=audit_payload,
+        organization_id=org.id,
+        request=request,
+    )
+
+    return result
+
+
 def accept_invitation(
     *,
     token_plaintext: str,
@@ -272,6 +369,8 @@ def accept_invitation(
             raise ValidationError("Invitation has already been accepted.")
         if inv.status == InviteStatus.REVOKED:
             raise ValidationError("Invitation has been revoked.")
+        if inv.status == InviteStatus.DECLINED:
+            raise ValidationError("Invitation has been declined.")
         if inv.status == InviteStatus.EXPIRED or inv.is_expired():
             # Materialized above; just raise.
             raise ValidationError("Invitation has expired.")
@@ -282,88 +381,124 @@ def accept_invitation(
                 f"Cannot accept an invitation for an org in status '{org.status}'."
             )
 
-        # Idempotent membership creation. Tournament-scoped invites create a
-        # TournamentMembership (no org-wide membership — preserves isolation:
-        # an invited scorer gets only that tournament, not the whole org).
-        # Org-level invites keep the existing OrganizationMembership behavior.
-        from django.db import IntegrityError
-
-        if inv.tournament_id:
-            from apps.tournaments.models import (
-                TournamentMembership,
-                TournamentMembershipStatus,
-            )
-
-            result = TournamentMembership.objects.filter(
-                user=accepting_user, tournament_id=inv.tournament_id, role=inv.role
-            ).first()
-            if result is None:
-                try:
-                    result = TournamentMembership.objects.create(
-                        user=accepting_user,
-                        tournament_id=inv.tournament_id,
-                        role=inv.role,
-                        status=TournamentMembershipStatus.ACTIVE,
-                        assigned_by=inv.invited_by,
-                    )
-                except IntegrityError as exc:
-                    raise ValidationError("membership_conflict") from exc
-            elif result.status != TournamentMembershipStatus.ACTIVE:
-                result.status = TournamentMembershipStatus.ACTIVE
-                result.revoked_at = None
-                result.save(update_fields=["status", "revoked_at"])
-            audit_target_type = "tournament_membership"
-            audit_payload = {
-                "user_id": str(accepting_user.id),
-                "tournament_id": str(inv.tournament_id),
-                "role": inv.role,
-            }
-        else:
-            result = OrganizationMembership.objects.filter(
-                user=accepting_user, organization=org, role=inv.role
-            ).first()
-            if result is None:
-                try:
-                    result = OrganizationMembership.objects.create(
-                        user=accepting_user,
-                        organization=org,
-                        role=inv.role,
-                        is_active=True,
-                        created_by=inv.invited_by,
-                    )
-                except IntegrityError as exc:
-                    raise ValidationError("membership_conflict") from exc
-            elif not result.is_active:
-                result.is_active = True
-                result.removed_at = None
-                result.save(update_fields=["is_active", "removed_at"])
-            audit_target_type = "organization_membership"
-            audit_payload = {
-                "user_id": str(accepting_user.id),
-                "organization_id": str(org.id),
-                "role": inv.role,
-            }
-
-        inv.status = InviteStatus.ACCEPTED
-        inv.accepted_at = timezone.now()
-        inv.accepted_by_user = accepting_user
-        inv.save(update_fields=["status", "accepted_at", "accepted_by_user"])
-
-        emit_audit(
-            actor_user=accepting_user,
-            actor_role=ActorRole.SYSTEM,
-            event_type="member_invite_accepted",
-            target_type=audit_target_type,
-            target_id=result.id,
-            payload_after=audit_payload,
-            organization_id=org.id,
-            request=request,
-        )
+        result = _accept_invitation_row(inv, accepting_user, request)
 
     # Session-cycle outside the transaction so it survives commit.
     _cycle_session(request)
 
     return result
+
+
+def accept_invitation_by_id(
+    *,
+    invitation_id,
+    accepting_user,
+    request: Optional[HttpRequest] = None,
+):
+    """Accept an invitation addressed to the logged-in user by its id.
+
+    The in-app inbox companion to :func:`accept_invitation`. The logged-in
+    user proves ownership by matching the invite email (case-insensitive)
+    instead of presenting the emailed token.
+
+    Raises:
+      - ValidationError("invitation_not_found") if no such invitation (→404).
+      - PermissionDenied if the invite email != the user's email (→403).
+      - ValidationError for already-accepted / revoked / declined / expired
+        / suspended-org states (→400).
+    """
+    # 404 if missing.
+    pre_inv = AdminInvitation.objects.filter(pk=invitation_id).first()
+    if pre_inv is None:
+        raise ValidationError("invitation_not_found")
+
+    # Email-ownership check (403). The signed-in user may only accept invites
+    # addressed to their own email.
+    if (pre_inv.email or "").strip().lower() != (
+        (accepting_user.email or "").strip().lower()
+    ):
+        raise PermissionDenied("This invitation is addressed to a different email.")
+
+    # Materialize expiry outside the atomic block so the flip survives a
+    # later rollback (mirror the token path).
+    if pre_inv.status == InviteStatus.PENDING and pre_inv.is_expired():
+        AdminInvitation.objects.filter(
+            pk=pre_inv.pk, status=InviteStatus.PENDING
+        ).update(status=InviteStatus.EXPIRED)
+        raise ValidationError("Invitation has expired.")
+
+    with transaction.atomic():
+        try:
+            inv = AdminInvitation.objects.select_for_update().get(pk=invitation_id)
+        except AdminInvitation.DoesNotExist as exc:
+            raise ValidationError("invitation_not_found") from exc
+
+        if inv.status == InviteStatus.ACCEPTED:
+            raise ValidationError("Invitation has already been accepted.")
+        if inv.status == InviteStatus.REVOKED:
+            raise ValidationError("Invitation has been revoked.")
+        if inv.status == InviteStatus.DECLINED:
+            raise ValidationError("Invitation has been declined.")
+        if inv.status == InviteStatus.EXPIRED or inv.is_expired():
+            raise ValidationError("Invitation has expired.")
+
+        org = inv.organization
+        if org.status not in (OrgStatus.ACTIVE, OrgStatus.PENDING_REVIEW):
+            raise ValidationError(
+                f"Cannot accept an invitation for an org in status '{org.status}'."
+            )
+
+        result = _accept_invitation_row(inv, accepting_user, request)
+
+    # Session-cycle outside the transaction so it survives commit.
+    _cycle_session(request)
+
+    return result
+
+
+def decline_invitation(
+    *,
+    invitation_id,
+    declining_user,
+    request: Optional[HttpRequest] = None,
+) -> AdminInvitation:
+    """Decline an invitation addressed to the logged-in user.
+
+    Email-ownership enforced (403 via PermissionDenied). Only a PENDING
+    invitation may be declined; any other status raises ValidationError
+    (→400). Sets status=DECLINED and audits the decline.
+    """
+    inv = AdminInvitation.objects.filter(pk=invitation_id).first()
+    if inv is None:
+        raise ValidationError("invitation_not_found")
+
+    if (inv.email or "").strip().lower() != (
+        (declining_user.email or "").strip().lower()
+    ):
+        raise PermissionDenied("This invitation is addressed to a different email.")
+
+    if inv.status != InviteStatus.PENDING:
+        raise ValidationError(
+            f"Cannot decline an invitation in status '{inv.status}'."
+        )
+
+    with transaction.atomic():
+        before = {"status": inv.status}
+        inv.status = InviteStatus.DECLINED
+        inv.save(update_fields=["status"])
+
+        emit_audit(
+            actor_user=declining_user,
+            actor_role=ActorRole.SYSTEM,
+            event_type="member_invite_declined",
+            target_type="admin_invitation",
+            target_id=inv.id,
+            payload_before=before,
+            payload_after={"status": inv.status},
+            organization_id=inv.organization_id,
+            request=request,
+        )
+    return inv
 
 
 def revoke_invitation(

@@ -11,7 +11,10 @@ from typing import Any
 
 from django.contrib.auth import login
 from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.exceptions import (
+    PermissionDenied as DjangoPermissionDenied,
+    ValidationError as DjangoValidationError,
+)
 from django.http import Http404
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
@@ -542,6 +545,125 @@ class InvitationAcceptView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+# ---------------------------------------------------------------------------
+# In-app invitations inbox (the logged-in invitee's view)
+# ---------------------------------------------------------------------------
+
+
+class MyInvitationsView(APIView):
+    """GET /api/invitations/
+
+    Returns the signed-in user's PENDING, non-expired invitations matched by
+    email (case-insensitive), enriched for the inbox UI. Tournament-scoped
+    invites carry a ``tournament_id`` + ``tournament_name``; org-level invites
+    have both null.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses=None)
+    def get(self, request):
+        email = (request.user.email or "").strip().lower()
+        if not email:
+            return Response([])
+        now = timezone.now()
+        qs = (
+            AdminInvitation.objects.filter(
+                email__iexact=email,
+                status=InviteStatus.PENDING,
+                expires_at__gt=now,
+            )
+            .select_related("organization", "tournament", "invited_by")
+            .order_by("-created_at")
+        )
+        data = [
+            {
+                "id": str(inv.id),
+                "email": inv.email,
+                "role": inv.role,
+                "status": inv.status,
+                "organization_name": inv.organization.name,
+                "tournament_id": (
+                    str(inv.tournament_id) if inv.tournament_id else None
+                ),
+                "tournament_name": (
+                    inv.tournament.name if inv.tournament_id else None
+                ),
+                "invited_by_email": (
+                    inv.invited_by.email if inv.invited_by_id else None
+                ),
+                "expires_at": inv.expires_at,
+                "created_at": inv.created_at,
+            }
+            for inv in qs
+        ]
+        return Response(data)
+
+
+class InvitationAcceptByIdView(APIView):
+    """POST /api/invitations/{uuid}:accept/
+
+    In-app accept by invitation id. The signed-in user proves ownership by
+    matching the invite email. Wrong email → 403; already-accepted / expired /
+    declined / revoked → 400.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(request=None, responses=None)
+    def post(self, request, invitation_id):
+        try:
+            membership = invitation_svc.accept_invitation_by_id(
+                invitation_id=invitation_id,
+                accepting_user=request.user,
+                request=request,
+            )
+        except DjangoPermissionDenied as exc:
+            raise PermissionDenied(str(exc) or "Forbidden")
+        except DjangoValidationError as exc:
+            msgs = exc.messages if hasattr(exc, "messages") else [str(exc)]
+            if "invitation_not_found" in msgs:
+                raise Http404("Invitation not found.")
+            _drf_raise(exc)
+
+        tournament_id = getattr(membership, "tournament_id", None)
+        body = {
+            "membership_id": str(membership.id),
+            "role": membership.role,
+            "status": "accepted",
+        }
+        if tournament_id is not None:
+            body["tournament_id"] = str(tournament_id)
+        return Response(body, status=status.HTTP_200_OK)
+
+
+class InvitationDeclineView(APIView):
+    """POST /api/invitations/{uuid}:decline/
+
+    In-app decline by invitation id. Email-ownership enforced (403). Only a
+    PENDING invitation may be declined; otherwise 400.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(request=None, responses=None)
+    def post(self, request, invitation_id):
+        try:
+            invitation_svc.decline_invitation(
+                invitation_id=invitation_id,
+                declining_user=request.user,
+                request=request,
+            )
+        except DjangoPermissionDenied as exc:
+            raise PermissionDenied(str(exc) or "Forbidden")
+        except DjangoValidationError as exc:
+            msgs = exc.messages if hasattr(exc, "messages") else [str(exc)]
+            if "invitation_not_found" in msgs:
+                raise Http404("Invitation not found.")
+            _drf_raise(exc)
+        return Response({"status": "declined"}, status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------
