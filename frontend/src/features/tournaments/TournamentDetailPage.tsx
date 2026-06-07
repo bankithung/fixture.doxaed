@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  ClipboardList,
   GitBranch,
   Link2,
   Trophy,
@@ -238,6 +239,10 @@ export function TournamentDetailPage(): React.ReactElement {
             <Link2 aria-hidden="true" className="h-4 w-4" />
             {t("Share registration link")}
           </Button>
+          <Link to={routes.tournamentForms(id)} className={LINK_BTN}>
+            <ClipboardList aria-hidden="true" className="h-4 w-4" />
+            {t("Registration forms")}
+          </Link>
           {matchCount > 0 ? (
             <>
               <Button variant="outline" disabled>

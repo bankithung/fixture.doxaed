@@ -19,6 +19,8 @@ import { TournamentDetailPage } from "@/features/tournaments/TournamentDetailPag
 import { MatchConsolePage } from "@/features/matches/MatchConsolePage";
 import { BracketPage } from "@/features/tournaments/BracketPage";
 import { RegistrationFormPage } from "@/features/registration/RegistrationFormPage";
+import { FormsListPage } from "@/features/forms/FormsListPage";
+import { FormBuilderPage } from "@/features/forms/FormBuilderPage";
 import { LiveViewerPage } from "@/features/live/LiveViewerPage";
 import { OrgDashboardPage } from "@/features/layout/OrgDashboardPage";
 // Auth pages (B1).
@@ -149,6 +151,14 @@ export default function App(): React.ReactElement {
                 <Route
                   path="/tournaments/:id/matches/:matchId"
                   element={<MatchConsolePage />}
+                />
+                <Route
+                  path="/tournaments/:id/forms"
+                  element={<FormsListPage />}
+                />
+                <Route
+                  path="/tournaments/:id/forms/:formId/edit"
+                  element={<FormBuilderPage />}
                 />
 
                 {/* Personal / role-agnostic. */}

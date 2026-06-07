@@ -57,6 +57,15 @@ export const routes = {
   /** Visual bracket / flow view of a tournament's fixtures. */
   tournamentBracket: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/bracket`,
+  /** Registration-forms list for a tournament (builder entry point). */
+  tournamentForms: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/forms`,
+  /** Drag-and-drop builder for a single registration form. */
+  tournamentFormBuilder: (id: string, formId: string) =>
+    `/tournaments/${encodeURIComponent(id)}/forms/${encodeURIComponent(formId)}/edit`,
+  /** Responses dashboard for a registration form (Increment 8). */
+  tournamentFormResponses: (id: string, formId: string) =>
+    `/tournaments/${encodeURIComponent(id)}/forms/${encodeURIComponent(formId)}/responses`,
   profile: () => "/me",
   profileNotifications: () => "/me/notifications",
   /** Aliases — match the role-landing spec naming (`myProfile`, `myNotifications`). */

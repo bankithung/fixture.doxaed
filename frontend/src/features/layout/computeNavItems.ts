@@ -1,4 +1,5 @@
 import {
+  ClipboardList,
   FileText,
   Flag,
   Goal,
@@ -23,6 +24,8 @@ const MODULE_ORG_MEMBER_DIRECTORY = "org.member_directory";
 const MODULE_ORG_AUDIT_LOG = "org.audit_log";
 const MODULE_MATCH_SCORING_CONSOLE = "match.scoring_console";
 const MODULE_MATCH_REFEREE_CONSOLE = "match.referee_console";
+/** Registration-forms module (apps/permissions/fixtures/modules.json → "forms"). */
+const MODULE_FORMS = "forms";
 
 export interface NavItem {
   /** Stable identifier for tests / keys; not user-visible. */
@@ -86,6 +89,18 @@ export function computeNavItems(
     href: routes.tournaments(),
     icon: Trophy,
   });
+
+  // 1c. Registration forms — module-gated ("forms"). The list/builder are
+  //     tournament-scoped, so this points at the Tournaments hub (the entry
+  //     point); each tournament surfaces its own "Registration forms" link.
+  if (hasModule(MODULE_FORMS)) {
+    items.push({
+      key: "forms",
+      label: t("Registration forms"),
+      href: routes.tournaments(),
+      icon: ClipboardList,
+    });
+  }
 
   // 2. Members — module-gated.
   if (hasModule(MODULE_ORG_MEMBER_DIRECTORY)) {
