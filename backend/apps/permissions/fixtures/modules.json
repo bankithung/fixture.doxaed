@@ -84,6 +84,13 @@
     "default_for_roles": ["admin", "co_organizer", "game_coordinator"]
   },
   {
+    "code": "forms",
+    "name": "Registration forms",
+    "category": "tournament_scoped",
+    "description": "Build, publish, and manage data-driven registration forms; review responses.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator", "team_manager"]
+  },
+  {
     "code": "tournament.report_export",
     "name": "Tournament Report Export",
     "category": "tournament_scoped",
