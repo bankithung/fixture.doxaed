@@ -977,15 +977,20 @@ def _visible(rule: dict | None, answers: dict) -> bool:
     return False
 
 
-def _next_section(section: dict, answers: dict, by_key: dict[str, dict]) -> str | None:
-    """Resolve the next section key via the chosen option's goto, else section.next."""
+def _next_section(section: dict, answers: dict, sections: list[dict]) -> str | None:
+    """Resolve the next section key: the chosen option's goto, else section.next,
+    else the next section in document order; None when there is no next."""
     for fld in section.get("fields", []):
         if fld.get("type") in ("single_choice", "dropdown"):
             chosen = answers.get(fld["key"])
             for o in fld.get("options", []):
                 if str(o["value"]) == str(chosen) and o.get("goto"):
                     return o["goto"]
-    return section.get("next")
+    if section.get("next"):
+        return section["next"]
+    keys = [s["key"] for s in sections]
+    idx = keys.index(section["key"])
+    return keys[idx + 1] if idx + 1 < len(keys) else None
 
 
 def validate_answers(schema: dict, answers: dict) -> dict:
@@ -1033,7 +1038,7 @@ def validate_answers(schema: dict, answers: dict) -> dict:
                 except FieldError as e:
                     errors[key] = str(e)
 
-        current = _next_section(section, answers, by_key)
+        current = _next_section(section, answers, sections)
 
     if errors:
         raise AnswerError(errors)

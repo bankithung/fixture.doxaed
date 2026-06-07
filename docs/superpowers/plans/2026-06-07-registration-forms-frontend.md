@@ -231,18 +231,22 @@ export function nextSectionKey(section: Section, answers: Record<string, unknown
   return section.next;
 }
 
-/** Walk the schema following branching; return the ordered list of reachable+visible sections. */
+/** Walk the schema following branching; return the ordered list of reachable+visible sections.
+ *  Traversal MUST match the backend services/validation.py::_next_section exactly:
+ *  chosen option's goto, else section.next, else the next section in document order. */
 export function reachableSections(schema: FormSchema, answers: Record<string, unknown>): Section[] {
-  const byKey = new Map(schema.sections.map((s) => [s.key, s]));
+  const sections = schema.sections;
   const out: Section[] = [];
   const seen = new Set<string>();
-  let cur: string | undefined = schema.sections[0]?.key;
+  let cur: string | undefined = sections[0]?.key;
   while (cur && cur !== "_end" && !seen.has(cur)) {
     seen.add(cur);
-    const sec = byKey.get(cur);
+    const idx = sections.findIndex((s) => s.key === cur);
+    const sec = idx >= 0 ? sections[idx] : undefined;
     if (!sec) break;
     if (isVisible(sec.visibility, answers)) out.push(sec);
-    cur = nextSectionKey(sec, answers);
+    const explicit = nextSectionKey(sec, answers); // option.goto or section.next
+    cur = explicit ?? (idx + 1 < sections.length ? sections[idx + 1].key : undefined);
   }
   return out;
 }
