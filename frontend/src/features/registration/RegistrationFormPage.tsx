@@ -17,8 +17,8 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { newEventId } from "@/lib/eventId";
-import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { Centered, PublicShell } from "./PublicShell";
 
 interface PlayerRow {
   full_name: string;
@@ -495,53 +495,3 @@ function PlayerCard({
   );
 }
 
-/**
- * Lightweight public chrome for the standalone registration page (it lives
- * outside the authenticated AppShell). A trustworthy branded top bar over a
- * muted backdrop so schools know who they're registering with.
- */
-function PublicShell({
-  children,
-  tournamentName,
-}: {
-  children: React.ReactNode;
-  tournamentName?: string;
-}): React.ReactElement {
-  return (
-    <div className="min-h-screen bg-muted/30">
-      <header className="border-b border-border bg-card">
-        <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-4 py-3 sm:px-6">
-          <span
-            aria-hidden="true"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-primary font-bold text-primary-foreground"
-          >
-            F
-          </span>
-          <span className="text-sm font-semibold tracking-tight text-foreground">
-            {t("Fixture Platform")}
-          </span>
-          {tournamentName ? (
-            <span className="ml-auto truncate text-xs text-muted-foreground">
-              {tournamentName}
-            </span>
-          ) : null}
-        </div>
-      </header>
-      {children}
-    </div>
-  );
-}
-
-function Centered({ children }: { children: React.ReactNode }): React.ReactElement {
-  return (
-    <div className="flex min-h-[60vh] items-center justify-center px-4 py-12">
-      <div
-        className={cn(
-          "w-full max-w-md rounded-xl border border-border bg-card p-6 text-center shadow-sm",
-        )}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}

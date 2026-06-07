@@ -21,6 +21,7 @@ import { BracketPage } from "@/features/tournaments/BracketPage";
 import { RegistrationFormPage } from "@/features/registration/RegistrationFormPage";
 import { FormsListPage } from "@/features/forms/FormsListPage";
 import { FormBuilderPage } from "@/features/forms/FormBuilderPage";
+import { PublicFormPage } from "@/features/forms/PublicFormPage";
 import { LiveViewerPage } from "@/features/live/LiveViewerPage";
 import { OrgDashboardPage } from "@/features/layout/OrgDashboardPage";
 // Auth pages (B1).
@@ -124,6 +125,9 @@ export default function App(): React.ReactElement {
                 path="/register/:token"
                 element={<RegistrationFormPage />}
               />
+              {/* Data-driven public form renderer (Increment 7). */}
+              <Route path="/f/:formId" element={<PublicFormPage />} />
+              <Route path="/r/:token" element={<PublicFormPage />} />
               <Route path="/m/:matchId" element={<LiveViewerPage />} />
 
               {/* Protected surfaces — share the AppShell chrome. */}

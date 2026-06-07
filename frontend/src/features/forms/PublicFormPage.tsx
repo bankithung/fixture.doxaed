@@ -1,0 +1,328 @@
+import { useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { CheckCircle2, Lock, ShieldCheck } from "lucide-react";
+import { formsApi } from "@/api/forms";
+import { ApiError } from "@/types/api";
+import { Button } from "@/components/ui/button";
+import { newEventId } from "@/lib/eventId";
+import { isVisible, reachableSections, validateRequired } from "@/lib/formLogic";
+import { t } from "@/lib/t";
+import { Centered, PublicShell } from "@/features/registration/PublicShell";
+import { FieldRenderer } from "./fieldRenderers";
+import type { Field } from "./types";
+
+const OVERLINE =
+  "text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground";
+
+/** Pull a DRF `{ errors: { field: msg } }` map off an ApiError, if present. */
+function serverFieldErrors(e: unknown): Record<string, string> {
+  if (!(e instanceof ApiError)) return {};
+  const raw = e.payload.errors;
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    out[k] = Array.isArray(v) ? String(v[0]) : String(v);
+  }
+  return out;
+}
+
+/**
+ * Standalone PUBLIC form renderer reached by a school via a shared link
+ * (`/f/:formId` for an open public form, `/r/:token` for a personalised share
+ * link). It renders the data-driven schema as a paged wizard, evaluating
+ * branching with the SAME `lib/formLogic` traversal the backend uses, so the
+ * client and server always agree on which sections/fields are reachable.
+ *
+ * Rendered OUTSIDE the authenticated AppShell — it carries its own light
+ * branded chrome. No account needed.
+ */
+export function PublicFormPage(): React.ReactElement {
+  const { formId, token } = useParams();
+
+  const payload = useQuery({
+    queryKey: ["public-form", formId ?? token],
+    queryFn: () =>
+      token !== undefined
+        ? formsApi.publicGetByToken(token)
+        : formsApi.publicGet(formId ?? ""),
+    retry: false,
+  });
+
+  const [answers, setAnswers] = useState<Record<string, unknown>>({});
+  const [uploadRefs, setUploadRefs] = useState<Record<string, string>>({});
+  const [stepIndex, setStepIndex] = useState(0);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [eventId] = useState(newEventId); // stable across retries (idempotency)
+  const [done, setDone] = useState<string | null>(null);
+
+  const data = payload.data;
+  const form = data?.form;
+  const schema = useMemo(
+    () => form?.schema ?? { version: 1, sections: [] },
+    [form?.schema],
+  );
+
+  // The reachable path is recomputed from answers on every render so picking an
+  // option that changes branching immediately re-routes the wizard.
+  const sections = useMemo(
+    () => reachableSections(schema, answers),
+    [schema, answers],
+  );
+  const clamped = Math.min(stepIndex, Math.max(sections.length - 1, 0));
+  const current = sections[clamped];
+  const isLast = clamped >= sections.length - 1;
+
+  const setAnswer = (key: string, value: unknown) => {
+    setAnswers((a) => ({ ...a, [key]: value }));
+    setErrors((e) => {
+      if (!e[key]) return e;
+      const next = { ...e };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const handleUpload = async (field: Field, file: File): Promise<string> => {
+    const id = form?.id ?? formId ?? "";
+    const res = await formsApi.publicUpload(id, field.key, file);
+    setUploadRefs((r) => ({ ...r, [field.key]: res.upload_ref }));
+    return res.upload_ref;
+  };
+
+  const submit = useMutation({
+    mutationFn: () => {
+      const body = { answers, event_id: eventId, upload_refs: uploadRefs };
+      return token !== undefined
+        ? formsApi.publicSubmitByToken(token, { answers, event_id: eventId })
+        : formsApi.publicSubmit(form?.id ?? formId ?? "", body);
+    },
+    onSuccess: (res) => setDone(res.message),
+    onError: (e) => {
+      const fieldErrs = serverFieldErrors(e);
+      if (Object.keys(fieldErrs).length) {
+        setErrors(fieldErrs);
+        // Jump to the first reachable section that owns a failing field.
+        const idx = sections.findIndex((s) =>
+          s.fields.some((f) => fieldErrs[f.key]),
+        );
+        if (idx >= 0) setStepIndex(idx);
+      } else {
+        setErrors({
+          __form:
+            e instanceof ApiError
+              ? (e.payload.detail ?? t("Submission failed"))
+              : t("Submission failed"),
+        });
+      }
+    },
+  });
+
+  /** Validate ONLY the current section's required fields before advancing. */
+  function validateCurrent(): boolean {
+    if (!current) return true;
+    const all = validateRequired(schema, answers);
+    const here: Record<string, string> = {};
+    for (const f of current.fields) {
+      if (all[f.key]) here[f.key] = all[f.key];
+    }
+    setErrors(here);
+    return Object.keys(here).length === 0;
+  }
+
+  function onNext() {
+    if (!validateCurrent()) return;
+    setStepIndex((i) => Math.min(i + 1, sections.length - 1));
+  }
+
+  function onBack() {
+    setErrors({});
+    setStepIndex((i) => Math.max(i - 1, 0));
+  }
+
+  function onSubmit() {
+    if (!validateCurrent()) return;
+    // Final full-schema check across every reachable section.
+    const all = validateRequired(schema, answers);
+    if (Object.keys(all).length) {
+      setErrors(all);
+      const idx = sections.findIndex((s) => s.fields.some((f) => all[f.key]));
+      if (idx >= 0) setStepIndex(idx);
+      return;
+    }
+    submit.mutate();
+  }
+
+  // --- Terminal & loading states -------------------------------------------
+
+  if (payload.isError) {
+    return (
+      <PublicShell>
+        <Centered>
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <ShieldCheck aria-hidden="true" className="h-6 w-6" />
+          </div>
+          <h1 className="mt-4 text-xl font-semibold tracking-tight">
+            {t("This form could not be found")}
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {t("Ask the organizer for a fresh link.")}
+          </p>
+        </Centered>
+      </PublicShell>
+    );
+  }
+
+  if (data?.closed) {
+    return (
+      <PublicShell tournamentName={data.tournament_name}>
+        <Centered>
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <Lock aria-hidden="true" className="h-6 w-6" />
+          </div>
+          <h1 className="mt-4 text-xl font-semibold tracking-tight">
+            {t("Registration closed")}
+          </h1>
+          <p role="status" className="mt-2 text-sm text-muted-foreground">
+            {t("This form is no longer accepting submissions.")}
+          </p>
+        </Centered>
+      </PublicShell>
+    );
+  }
+
+  if (done !== null) {
+    return (
+      <PublicShell tournamentName={data?.tournament_name}>
+        <Centered>
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <CheckCircle2 aria-hidden="true" className="h-6 w-6" />
+          </div>
+          <h1 className="mt-4 text-xl font-semibold tracking-tight">
+            {t("Registration received")}
+          </h1>
+          <p
+            role="status"
+            aria-live="polite"
+            className="mt-2 text-sm text-muted-foreground"
+          >
+            {done || t("Thank you! Your submission has been recorded.")}
+          </p>
+        </Centered>
+      </PublicShell>
+    );
+  }
+
+  if (payload.isLoading || !form) {
+    return (
+      <PublicShell>
+        <Centered>
+          <p role="status" className="text-sm text-muted-foreground">
+            {t("Loading…")}
+          </p>
+        </Centered>
+      </PublicShell>
+    );
+  }
+
+  const visibleFields = current
+    ? current.fields.filter((f) => isVisible(f.visibility, answers))
+    : [];
+  const formError = errors.__form;
+
+  return (
+    <PublicShell tournamentName={data?.tournament_name}>
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6">
+        {/* Heading */}
+        <div>
+          <p className={OVERLINE}>{t("Registration")}</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+            {t(form.title)}
+          </h1>
+          {form.description ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t(form.description)}
+            </p>
+          ) : null}
+        </div>
+
+        {/* Step indicator */}
+        {sections.length > 1 ? (
+          <p className="font-tabular text-xs text-muted-foreground" aria-live="polite">
+            {t("Step")} {clamped + 1} {t("of")} {sections.length}
+            {current?.title ? ` · ${t(current.title)}` : ""}
+          </p>
+        ) : null}
+
+        {/* Current section */}
+        {current ? (
+          <section
+            aria-label={current.title || t("Section")}
+            className="flex flex-col gap-5 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6"
+          >
+            <div>
+              <h2 className="text-base font-semibold">{t(current.title)}</h2>
+              {current.description ? (
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {t(current.description)}
+                </p>
+              ) : null}
+            </div>
+
+            {visibleFields.map((f) => (
+              <FieldRenderer
+                key={f.key}
+                field={f}
+                value={answers[f.key]}
+                error={errors[f.key]}
+                onChange={(v) => setAnswer(f.key, v)}
+                onUpload={handleUpload}
+              />
+            ))}
+          </section>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {t("This form has no questions yet.")}
+          </p>
+        )}
+
+        {/* Form-level error */}
+        {formError ? (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          >
+            {formError}
+          </div>
+        ) : null}
+
+        {/* Navigation */}
+        <div className="flex items-center justify-between gap-3 border-t border-border pt-5">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onBack}
+            disabled={clamped === 0 || submit.isPending}
+          >
+            {t("Back")}
+          </Button>
+          {isLast ? (
+            <Button
+              type="button"
+              size="lg"
+              disabled={submit.isPending || !current}
+              onClick={onSubmit}
+            >
+              {submit.isPending ? t("Submitting…") : t("Submit")}
+            </Button>
+          ) : (
+            <Button type="button" size="lg" onClick={onNext}>
+              {t("Next")}
+            </Button>
+          )}
+        </div>
+      </div>
+    </PublicShell>
+  );
+}

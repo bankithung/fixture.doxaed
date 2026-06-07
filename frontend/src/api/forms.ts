@@ -80,6 +80,20 @@ export const formsApi = {
       `/api/forms/${formId}/public/`,
       body,
     ),
+  /**
+   * Stage a file for a public submission. Multipart `file` + `field_key`;
+   * returns the `upload_ref` the renderer collects into `upload_refs` and
+   * passes on submit (the backend then claims the unattached upload row).
+   */
+  publicUpload: (formId: string, fieldKey: string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("field_key", fieldKey);
+    return api.post<{ upload_ref: string }>(
+      `/api/forms/${formId}/uploads/`,
+      fd,
+    );
+  },
   publicGetByToken: (token: string) =>
     api.get<PublicFormPayload>(`/api/forms/r/${token}/`),
   publicSubmitByToken: (
