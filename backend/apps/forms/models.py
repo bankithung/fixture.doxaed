@@ -28,6 +28,12 @@ class Form(models.Model):
     purpose = models.CharField(
         max_length=32, choices=FormPurpose.choices, default=FormPurpose.GENERIC
     )
+    # The TournamentStage this form is bound to (e.g. "org_registration",
+    # "team_registration"), so advancing/reopening a stage can auto-close/re-open
+    # it. Empty = not stage-bound (generic form; never auto-closed). See
+    # spec 2026-06-08 §2.3. `purpose` governs entity mapping; `stage` governs the
+    # setup-workflow lifecycle.
+    stage = models.CharField(max_length=24, blank=True, db_index=True)
     schema = models.JSONField(default=dict, blank=True)
     status = models.CharField(
         max_length=12, choices=FormStatus.choices, default=FormStatus.DRAFT, db_index=True

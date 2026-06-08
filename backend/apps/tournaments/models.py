@@ -33,6 +33,25 @@ class TournamentStatus(models.TextChoices):
     ARCHIVED = "archived", _("Archived")
 
 
+class TournamentStage(models.TextChoices):
+    """Setup-workflow stages (spec 2026-06-08 §1). Orthogonal to TournamentStatus
+    (the PRD §5.2 lifecycle): the lifecycle is draft→…→live→completed; the *stage*
+    is the owner's 4-stage setup flow. Coupling is one-way and applied in
+    ``services/state.py::transition_tournament``.
+
+    Forward order: SETUP < ORG_REGISTRATION < TEAM_REGISTRATION < MEMBERS <
+    FIXTURES < READY. Forward is one step at a time; backward (reopen) may jump to
+    any earlier stage. Advancing auto-closes the previous stage's bound form.
+    """
+
+    SETUP = "setup", _("Setup")
+    ORG_REGISTRATION = "org_registration", _("Institution registration")
+    TEAM_REGISTRATION = "team_registration", _("Team registration")
+    MEMBERS = "members", _("Members & roles")
+    FIXTURES = "fixtures", _("Fixtures")
+    READY = "ready", _("Ready")
+
+
 class TournamentMembershipRole(models.TextChoices):
     """Tournament-scoped roles (decision #91 widens v1Users §4.7 to 6 roles)."""
 
@@ -73,6 +92,18 @@ class Tournament(models.Model):
         db_index=True,
     )
     time_zone = models.CharField(max_length=64, default="Asia/Kolkata")
+    # Setup-workflow stage (orthogonal to `status`). Driven by
+    # services/state.py::transition_tournament. See spec 2026-06-08 §1.
+    stage = models.CharField(
+        max_length=24,
+        choices=TournamentStage.choices,
+        default=TournamentStage.SETUP,
+        db_index=True,
+    )
+    # Per-stage bookkeeping (entered/exited/reopened, who, completeness snapshot),
+    # keyed by stage value. JSONB (mirrors rules/constraints convention); the
+    # audit log holds the full transition history. See spec §3.1.
+    stage_meta = models.JSONField(default=dict, blank=True)
     # invariant 10 — auto-generate + manual-edit conflict tracking (filled by Phase 1B generators).
     inputs_hash = models.CharField(max_length=64, blank=True)
     last_manual_edit_at = models.DateTimeField(null=True, blank=True)
@@ -83,6 +114,7 @@ class Tournament(models.Model):
     constraints = models.JSONField(default=list, blank=True)
     rules_frozen_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -103,6 +135,7 @@ class Tournament(models.Model):
         ]
         indexes = [
             models.Index(fields=["organization", "status"], name="trn_org_status_idx"),
+            models.Index(fields=["organization", "stage"], name="trn_org_stage_idx"),
         ]
 
     def __str__(self) -> str:  # pragma: no cover
