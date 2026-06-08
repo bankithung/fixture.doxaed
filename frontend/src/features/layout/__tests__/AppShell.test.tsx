@@ -181,7 +181,7 @@ describe("AppShell", () => {
     ).toBeInTheDocument();
   });
 
-  it("tournament route keeps the workspace nav + fetches the name header", async () => {
+  it("tournament route shows the CONTEXTUAL tournament nav + fetches the name header", async () => {
     vi.spyOn(tournamentsApi, "get").mockResolvedValue({
       id: "t-123",
       slug: "spring-cup",
@@ -192,6 +192,15 @@ describe("AppShell", () => {
       time_zone: "Asia/Kolkata",
       created_at: "2026-01-01T00:00:00Z",
     } satisfies Tournament);
+    vi.spyOn(tournamentsApi, "stage").mockResolvedValue({
+      stage: "org_registration",
+      status: "published",
+      order: ["setup", "org_registration", "team_registration", "members", "fixtures", "ready"],
+      allowed_to: [],
+      can_manage: true,
+      rules_frozen_at: null,
+      stages: [],
+    } as never);
 
     useAuthStore.setState({
       user: makeUser(["admin"], ["forms"]),
@@ -200,13 +209,11 @@ describe("AppShell", () => {
     renderShellAt("/tournaments/t-123");
 
     const primary = screen.getByRole("navigation", { name: /primary/i });
-    // Tournament-internal nav now lives in the tabbed workspace, NOT the sidebar.
-    // The sidebar keeps the Workspace group (Dashboard + Tournaments).
-    expect(primary.textContent).toMatch(/dashboard/i);
-    expect(primary.textContent).toMatch(/tournaments/i);
-    expect(primary.textContent).not.toMatch(/registration forms/i);
-    expect(primary.textContent).not.toMatch(/fixtures & bracket/i);
-    // Name still resolves asynchronously into the rail header.
+    // Inside a tournament the sidebar switches to that tournament's sections.
+    expect(primary.textContent).toMatch(/overview/i);
+    expect(primary.textContent).toMatch(/institutions/i);
+    expect(primary.textContent).toMatch(/fixtures/i);
+    // Name resolves into the rail identity header.
     await waitFor(() =>
       expect(screen.getAllByText(/spring cup/i).length).toBeGreaterThan(0),
     );

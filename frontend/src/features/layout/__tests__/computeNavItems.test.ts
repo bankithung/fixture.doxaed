@@ -121,7 +121,20 @@ describe("computeTournamentNav", () => {
     ).toEqual([]);
   });
 
-  it("emits a single Manage group with Overview + Bracket + Members + Audit (no forms module)", () => {
+  const STAGE = {
+    stage: "org_registration",
+    order: ["setup", "org_registration", "team_registration", "members", "fixtures", "ready"],
+    stages: [
+      { key: "setup", label: "Setup" },
+      { key: "org_registration", label: "Institution registration" },
+      { key: "team_registration", label: "Team registration" },
+      { key: "members", label: "Members & roles" },
+      { key: "fixtures", label: "Fixtures" },
+      { key: "ready", label: "Ready" },
+    ],
+  };
+
+  it("emits a single Manage group with the tournament sections", () => {
     const groups = computeTournamentNav(TID, {
       user: makeUser(["admin"], []),
       slug: "acme",
@@ -129,73 +142,50 @@ describe("computeTournamentNav", () => {
     expect(groupKeys(groups)).toEqual(["manage"]);
     expect(flatKeys(groups)).toEqual([
       "overview",
-      "bracket",
+      "institutions",
+      "teams",
       "members",
-      "audit",
+      "fixtures",
+      "settings",
     ]);
   });
 
-  it("includes Registration forms when the forms module is granted", () => {
-    const groups = computeTournamentNav(TID, {
-      user: makeUser(["admin"], ["forms"]),
-      slug: "acme",
-    });
-    expect(flatKeys(groups)).toEqual([
-      "overview",
-      "forms",
-      "bracket",
-      "members",
-      "audit",
-    ]);
-  });
-
-  it("hides Registration forms when the forms module is absent", () => {
-    const groups = computeTournamentNav(TID, {
-      user: makeUser(["admin"], ["org.member_directory"]),
-      slug: "acme",
-    });
-    expect(flatKeys(groups)).not.toContain("forms");
-  });
-
-  it("hides Registration forms when org membership can't be resolved", () => {
-    const groups = computeTournamentNav(TID, {
-      user: makeUser(["admin"], ["forms"]),
-      slug: null,
-    });
-    expect(flatKeys(groups)).not.toContain("forms");
-  });
-
-  it("shows Members + Audit to anyone in tournament context (pages enforce manager-only)", () => {
-    // Even a viewer with no modules sees Members + Audit — the Audit PAGE
-    // enforces the manager gate (403 → friendly empty state).
-    const groups = computeTournamentNav(TID, {
-      user: makeUser(["viewer"], []),
-      slug: "acme",
-    });
-    const keys = flatKeys(groups);
-    expect(keys).toContain("members");
-    expect(keys).toContain("audit");
-  });
-
-  it("links Overview / Forms / Bracket / Members / Audit to the right routes", () => {
+  it("locks future-stage sections from the stage payload", () => {
     const items = computeTournamentNav(TID, {
-      user: makeUser(["admin"], ["forms"]),
+      user: makeUser(["admin"], []),
+      slug: "acme",
+      stage: STAGE,
+    }).flatMap((g) => g.items);
+    const byKey = Object.fromEntries(items.map((i) => [i.key, i]));
+    // At org_registration: institutions reachable; teams + fixtures locked.
+    expect(byKey.institutions.locked).toBeFalsy();
+    expect(byKey.teams.locked).toBe(true);
+    expect(byKey.teams.lockLabel).toBe("Team registration");
+    expect(byKey.fixtures.locked).toBe(true);
+    // Always-available sections are never locked.
+    expect(byKey.overview.locked).toBeFalsy();
+    expect(byKey.members.locked).toBeFalsy();
+    expect(byKey.settings.locked).toBeFalsy();
+  });
+
+  it("locks nothing when no stage payload is provided", () => {
+    const items = computeTournamentNav(TID, {
+      user: makeUser(["admin"], []),
       slug: "acme",
     }).flatMap((g) => g.items);
-    expect(items.find((i) => i.key === "overview")?.href).toBe(
-      routes.tournamentDetail(TID),
-    );
-    expect(items.find((i) => i.key === "forms")?.href).toBe(
-      routes.tournamentForms(TID),
-    );
-    expect(items.find((i) => i.key === "bracket")?.href).toBe(
-      routes.tournamentBracket(TID),
-    );
-    expect(items.find((i) => i.key === "members")?.href).toBe(
-      routes.tournamentMembers(TID),
-    );
-    expect(items.find((i) => i.key === "audit")?.href).toBe(
-      routes.tournamentAudit(TID),
-    );
+    expect(items.every((i) => !i.locked)).toBe(true);
+  });
+
+  it("links sections to the right routes", () => {
+    const items = computeTournamentNav(TID, {
+      user: makeUser(["admin"], []),
+      slug: "acme",
+    }).flatMap((g) => g.items);
+    expect(items.find((i) => i.key === "overview")?.href).toBe(routes.tournamentDetail(TID));
+    expect(items.find((i) => i.key === "institutions")?.href).toBe(routes.tournamentInstitutions(TID));
+    expect(items.find((i) => i.key === "teams")?.href).toBe(routes.tournamentTeams(TID));
+    expect(items.find((i) => i.key === "members")?.href).toBe(routes.tournamentMembers(TID));
+    expect(items.find((i) => i.key === "fixtures")?.href).toBe(routes.tournamentFixtures(TID));
+    expect(items.find((i) => i.key === "settings")?.href).toBe(routes.tournamentSettings(TID));
   });
 });

@@ -29,6 +29,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/button";
 import { Sidebar } from "./Sidebar";
 import {
+  computeTournamentNav,
   computeWorkspaceNav,
   type NavGroup,
   type NavItem,
@@ -166,6 +167,15 @@ export function AppShell(): React.ReactElement {
   const inTournamentContext = tournamentId != null;
   const tournamentName = tournamentQuery.data?.name ?? null;
 
+  // Stage payload drives the contextual rail's stage-gating (shared source of
+  // truth with the in-page lock states). Cheap + cached; only inside a tournament.
+  const stageQuery = useQuery({
+    queryKey: ["tournament-stage", tournamentId],
+    queryFn: () => tournamentsApi.stage(tournamentId as string),
+    enabled: tournamentId != null,
+    staleTime: 30_000,
+  });
+
   // Pending-invite count for the Workspace > Invites badge. Cheap + cached;
   // a failed/loading query simply yields no badge.
   const invitesQuery = useQuery({
@@ -175,14 +185,15 @@ export function AppShell(): React.ReactElement {
   });
   const pendingInviteCount = invitesQuery.data?.length ?? 0;
 
-  // The sidebar always shows the WORKSPACE nav; tournament-internal navigation
-  // now lives in the tabbed workspace (TournamentWorkspace), so the old
-  // per-tournament "Manage" sidebar group is no longer rendered (it duplicated
-  // the tabs and caused confusion).
-  const navGroups: NavGroup[] = decorateInvitesBadge(
-    computeWorkspaceNav(user, navSlug),
-    pendingInviteCount,
-  );
+  // Contextual sidebar: inside a tournament it shows THAT tournament's sections
+  // (stage-gated); at the workspace root it shows Dashboard/Tournaments/Invites.
+  const navGroups: NavGroup[] = inTournamentContext
+    ? computeTournamentNav(tournamentId, {
+        user,
+        slug: navSlug,
+        stage: stageQuery.data ?? null,
+      })
+    : decorateInvitesBadge(computeWorkspaceNav(user, navSlug), pendingInviteCount);
 
   const handleSignOut = async (): Promise<void> => {
     setMenuOpen(false);

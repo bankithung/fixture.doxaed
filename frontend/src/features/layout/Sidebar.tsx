@@ -1,5 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
-import { ArrowLeft, Plus, Trophy } from "lucide-react";
+import { ArrowLeft, Lock, Plus, Trophy } from "lucide-react";
 import type { NavGroup, NavItem } from "./computeNavItems";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
@@ -25,6 +25,40 @@ const NAV_LINK = (isActive: boolean, collapsed: boolean): string =>
 
 function railNavLink(item: NavItem, collapsed: boolean): React.ReactElement {
   const Icon = item.icon;
+
+  // Stage-gated section not yet reached — disabled, with an "Unlocks at X" hint.
+  if (item.locked) {
+    return (
+      <div
+        key={item.key}
+        aria-disabled="true"
+        title={
+          collapsed
+            ? `${item.label} — ${t("Unlocks at")} ${item.lockLabel ?? ""}`
+            : undefined
+        }
+        className={cn(
+          "group relative flex cursor-not-allowed items-start gap-3 rounded-lg py-2 text-sm text-muted-foreground/40",
+          collapsed ? "justify-center px-0" : "px-3",
+        )}
+      >
+        <Lock aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
+        {collapsed ? (
+          <span className="sr-only">{item.label}</span>
+        ) : (
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate">{item.label}</span>
+            {item.lockLabel ? (
+              <span className="truncate text-[0.6875rem]">
+                {t("Unlocks at")} {item.lockLabel}
+              </span>
+            ) : null}
+          </span>
+        )}
+      </div>
+    );
+  }
+
   return (
     <NavLink
       key={item.key}

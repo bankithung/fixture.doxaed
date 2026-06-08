@@ -1,14 +1,15 @@
 import {
-  ClipboardList,
-  FileText,
-  GitBranch,
+  Building2,
+  CalendarClock,
   LayoutDashboard,
   Mail,
+  Settings,
   Trophy,
+  UserCog,
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { OrgMembership, User } from "@/types/user";
+import type { User } from "@/types/user";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 
@@ -20,8 +21,6 @@ import { t } from "@/lib/t";
  *
  * Registration-forms module (apps/permissions/fixtures/modules.json → "forms").
  */
-const MODULE_FORMS = "forms";
-
 export interface NavItem {
   /** Stable identifier for tests / keys; not user-visible. */
   key: string;
@@ -32,6 +31,17 @@ export interface NavItem {
   icon: LucideIcon;
   /** Optional badge text (e.g. "Phase 1B"). */
   badge?: string;
+  /** Stage-gated rail item: locked until the tournament reaches its stage. */
+  locked?: boolean;
+  /** Label of the stage that unlocks a locked item (for the "Unlocks at" copy). */
+  lockLabel?: string;
+}
+
+/** Minimal stage payload the tournament rail needs to compute gating. */
+export interface NavStage {
+  stage: string;
+  order: string[];
+  stages: { key: string; label: string }[];
 }
 
 /**
@@ -45,22 +55,6 @@ export interface NavGroup {
   /** Localised group heading (overline). */
   label: string;
   items: NavItem[];
-}
-
-/**
- * Resolve the user's per-org module set for the given slug. Centralised so the
- * tournament builder's `forms` gate matches the rest of the app.
- */
-function resolveContext(user: User | null, slug: string | null): {
-  hasModule: (key: string) => boolean;
-} {
-  const membership: OrgMembership | undefined =
-    user && slug
-      ? user.memberships.find((m) => m.org_slug === slug)
-      : undefined;
-  const modules: string[] = membership?.effective_modules ?? [];
-  const hasModule = (key: string): boolean => modules.includes(key);
-  return { hasModule };
 }
 
 /**
@@ -121,48 +115,75 @@ export function computeWorkspaceNav(
  * `forms` module the same way the workspace nav does; if membership can't be
  * resolved the forms item simply hides.
  */
+/**
+ * Pure function — the CONTEXTUAL tournament rail shown inside `/tournaments/:id/*`.
+ * Sections mirror the staged flow (Overview · Institutions · Teams · Members ·
+ * Fixtures · Settings) and are **stage-gated**: a section is locked until the
+ * tournament reaches its stage, computed from the passed `stage` payload (the
+ * single source of truth, shared with the in-page lock states). No router/Zustand
+ * reads — easy to unit-test.
+ */
 export function computeTournamentNav(
   tournamentId: string,
-  opts: { user: User | null; slug: string | null },
+  opts: { user: User | null; slug: string | null; stage?: NavStage | null },
 ): NavGroup[] {
   if (!tournamentId) return [];
 
-  const { hasModule } = resolveContext(opts.user, opts.slug);
+  const stage = opts.stage ?? null;
+  const order = stage?.order ?? [];
+  const curIdx = stage ? order.indexOf(stage.stage) : -1;
+
+  // A section keyed to `stageKey` is locked until the tournament reaches it.
+  const gate = (stageKey: string | null): Pick<NavItem, "locked" | "lockLabel"> => {
+    if (!stage || stageKey === null) return {};
+    const rank = order.indexOf(stageKey);
+    if (rank > curIdx) {
+      return { locked: true, lockLabel: stage.stages[rank]?.label ?? "" };
+    }
+    return {};
+  };
 
   const manage: NavItem[] = [
     {
       key: "overview",
       label: t("Overview"),
       href: routes.tournamentDetail(tournamentId),
-      icon: Trophy,
+      icon: LayoutDashboard,
+    },
+    {
+      key: "institutions",
+      label: t("Institutions"),
+      href: routes.tournamentInstitutions(tournamentId),
+      icon: Building2,
+      ...gate("org_registration"),
+    },
+    {
+      key: "teams",
+      label: t("Teams"),
+      href: routes.tournamentTeams(tournamentId),
+      icon: Users,
+      ...gate("team_registration"),
+    },
+    {
+      key: "members",
+      label: t("Members"),
+      href: routes.tournamentMembers(tournamentId),
+      icon: UserCog,
+    },
+    {
+      key: "fixtures",
+      label: t("Fixtures"),
+      href: routes.tournamentFixtures(tournamentId),
+      icon: CalendarClock,
+      ...gate("fixtures"),
+    },
+    {
+      key: "settings",
+      label: t("Settings"),
+      href: routes.tournamentSettings(tournamentId),
+      icon: Settings,
     },
   ];
-  if (hasModule(MODULE_FORMS)) {
-    manage.push({
-      key: "forms",
-      label: t("Registration forms"),
-      href: routes.tournamentForms(tournamentId),
-      icon: ClipboardList,
-    });
-  }
-  manage.push({
-    key: "bracket",
-    label: t("Fixtures & bracket"),
-    href: routes.tournamentBracket(tournamentId),
-    icon: GitBranch,
-  });
-  manage.push({
-    key: "members",
-    label: t("Members"),
-    href: routes.tournamentMembers(tournamentId),
-    icon: Users,
-  });
-  manage.push({
-    key: "audit",
-    label: t("Audit"),
-    href: routes.tournamentAudit(tournamentId),
-    icon: FileText,
-  });
 
   return [{ key: "manage", label: t("Manage"), items: manage }];
 }

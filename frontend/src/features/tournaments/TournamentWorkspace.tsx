@@ -122,40 +122,8 @@ export function TournamentWorkspace(): React.ReactElement {
         ) : null}
       </div>
 
-      {/* Tabs — future-stage tabs are locked until reached. */}
-      <nav className="mt-5 flex gap-1 overflow-x-auto border-b border-border">
-        {tabs.map((tab) =>
-          isLocked(tab.stageKey) ? (
-            <span
-              key={tab.label}
-              title={`${t("Unlocks at")} ${lockLabel(tab.stageKey) ?? ""}`}
-              aria-disabled="true"
-              className="flex cursor-not-allowed items-center gap-1.5 whitespace-nowrap border-b-2 border-transparent px-3.5 py-2.5 text-sm font-medium text-muted-foreground/40"
-            >
-              <Lock aria-hidden="true" className="h-3 w-3" />
-              {t(tab.label)}
-            </span>
-          ) : (
-            <NavLink
-              key={tab.label}
-              to={tab.to}
-              end={tab.end}
-              className={({ isActive }) =>
-                cn(
-                  "whitespace-nowrap border-b-2 px-3.5 py-2.5 text-sm font-medium transition-colors",
-                  isActive
-                    ? "border-primary text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-border",
-                )
-              }
-            >
-              {t(tab.label)}
-            </NavLink>
-          ),
-        )}
-      </nav>
-
-      <div className="pt-6">
+      {/* Navigation lives in the contextual left sidebar now (no horizontal tabs). */}
+      <div className="mt-6">
         {activeLocked ? (
           <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card py-16 text-center">
             <Lock aria-hidden="true" className="h-8 w-8 text-muted-foreground/40" />
@@ -165,7 +133,7 @@ export function TournamentWorkspace(): React.ReactElement {
             <p className="max-w-sm text-sm text-muted-foreground">
               {t("It unlocks when the tournament reaches")}{" "}
               <span className="font-medium">{lockLabel(activeTab?.stageKey ?? null)}</span>.{" "}
-              {t("Advance from the Overview tab when you're ready.")}
+              {t("Advance from Overview when you're ready.")}
             </p>
           </div>
         ) : (
