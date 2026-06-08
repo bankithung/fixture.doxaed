@@ -1,0 +1,31 @@
+[Unit]
+Description=Fixture Platform ASGI (gunicorn + uvicorn worker)
+After=network.target postgresql.service redis-server.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+Type=notify
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/Fixture/backend
+Environment=DJANGO_SETTINGS_MODULE=fixture.settings.prod
+Environment=PYTHONUNBUFFERED=1
+# Creates /run/fixture (owned ubuntu:www-data, 0750) for the gunicorn socket.
+RuntimeDirectory=fixture
+RuntimeDirectoryMode=0750
+ExecStart=/home/ubuntu/Fixture/backend/.venv/bin/gunicorn \
+    -c /home/ubuntu/Fixture/deploy/gunicorn.conf.py \
+    fixture.asgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=3
+KillMode=mixed
+TimeoutStopSec=30
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

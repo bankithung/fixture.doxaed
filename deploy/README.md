@@ -1,0 +1,113 @@
+# Fixture Platform — Production Deployment Runbook
+
+Native deployment (no Docker) on Ubuntu 26.04: Postgres 18 + Redis + nginx (TLS) +
+gunicorn/uvicorn (systemd). The React SPA is built to static and served by nginx;
+`/api`, `/sadmin`, and `/ws` proxy to the ASGI app over a Unix socket.
+
+## Topology
+
+```
+            ┌─────────── nginx :443 (TLS) ───────────┐
+browser ───▶│  /            -> frontend/dist (SPA)    │
+            │  /assets/     -> hashed SPA bundles     │
+            │  /static/     -> backend/staticfiles    │
+            │  /media/      -> backend/media          │
+            │  /api  /sadmin /ws -> unix:/run/fixture/gunicorn.sock
+            └────────────────────┬───────────────────┘
+                                 ▼
+              gunicorn (uvicorn workers)  ── systemd: fixture.service
+                                 │
+                    Postgres 18 (fixturedb)   Redis (cache + channels)
+```
+
+## Components
+
+| Piece            | Location                                            |
+|------------------|-----------------------------------------------------|
+| Backend venv     | `backend/.venv` (Python 3.13)                       |
+| Settings         | `fixture.settings.prod` (env-driven)                |
+| Env / secrets    | `backend/.env` (chmod 600, gitignored)              |
+| Gunicorn config  | `deploy/gunicorn.conf.py`                           |
+| systemd unit     | `/etc/systemd/system/fixture.service`               |
+| nginx site       | `/etc/nginx/sites-available/fixture.conf`           |
+| TLS cert         | `/etc/ssl/fixture/fixture.{crt,key}` (self-signed)  |
+| SPA build        | `frontend/dist`                                     |
+| Credentials      | `deploy/CREDENTIALS-PROD.md` (chmod 600)            |
+
+## Postgres roles (security model)
+
+- `fixture_owner` — owns `fixturedb`, runs migrations. NOSUPERUSER. `CREATEDB`
+  is granted only when running the test suite, revoked otherwise.
+- `fixture_app`   — runtime role used by the live server. NON-superuser,
+  NON-owner. `UPDATE`/`DELETE` are **revoked on `audit_event`** so the app role
+  can never mutate the append-only audit log (defense-in-depth on top of the
+  DB trigger). Default privileges grant it CRUD on future tables.
+
+## Operations
+
+```bash
+# Service
+sudo systemctl status  fixture
+sudo systemctl restart fixture
+sudo systemctl reload  fixture        # graceful worker reload (HUP)
+journalctl -u fixture -f              # logs
+
+# nginx
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+## Deploying a new version
+
+```bash
+cd /home/ubuntu/Fixture
+git pull
+
+# Backend
+backend/.venv/bin/python -m pip install -r <(python - <<'PY'
+import tomllib;print("\n".join(tomllib.load(open("backend/pyproject.toml","rb"))["project"]["dependencies"]))
+PY
+)
+# Migrations run as the OWNER role (app role is intentionally non-owner):
+cd backend
+DJANGO_SETTINGS_MODULE=fixture.settings.prod \
+DATABASE_URL="postgres://fixture_owner:<PW>@127.0.0.1:5432/fixturedb" \
+  .venv/bin/python manage.py migrate --noinput
+DJANGO_SETTINGS_MODULE=fixture.settings.prod .venv/bin/python manage.py collectstatic --noinput
+cd ..
+
+# Frontend
+npm --prefix frontend ci --legacy-peer-deps
+npm --prefix frontend run build
+
+# Reload
+sudo systemctl reload fixture
+sudo systemctl reload nginx
+```
+
+> Pre-flight (PRD §5): migrations are blocked while any tournament is `live`.
+
+## Tests
+
+```bash
+# Backend (needs a role that can CREATE the test DB):
+sudo -u postgres psql -c "ALTER ROLE fixture_owner CREATEDB;"
+cd backend
+DATABASE_URL="postgres://fixture_owner:<PW>@127.0.0.1:5432/fixturedb" \
+  .venv/bin/python -m pytest -c pyproject.toml apps -q
+sudo -u postgres psql -c "ALTER ROLE fixture_owner NOCREATEDB;"   # revoke after
+
+# Frontend:
+npm --prefix frontend run test
+```
+
+## Production hardening TODO (before a real public launch)
+
+1. **Real domain + cert.** Point DNS at the host, then replace the self-signed
+   cert with Let's Encrypt (`certbot --nginx`). Update `ALLOWED_HOSTS`,
+   `CSRF_TRUSTED_ORIGINS`, `CORS_ALLOWED_ORIGINS` in `backend/.env`.
+2. **SMTP.** Fill `EMAIL_*` in `.env` so password-reset / email-verify mails send.
+3. **Remove demo data** (`organizer@demo.test`, `*.doxaed.test`) — published creds.
+4. **Rotate** the super-admin password and the GitHub PAT used to clone.
+5. **2FA** for the super-admin (currently not enrolled on the seed account).
+6. **Firewall** — restrict Postgres/Redis to localhost (already bound local),
+   open only 80/443 publicly. Consider `SADMIN_IP_ALLOWLIST` in `.env`.

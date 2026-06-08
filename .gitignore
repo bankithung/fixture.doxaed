@@ -22,3 +22,6 @@ frontend/dist/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local production secrets (never commit)
+deploy/CREDENTIALS-PROD.md
