@@ -37,7 +37,15 @@ def _unique_slug(tournament, title: str) -> str:
     return slug
 
 
-def create_form(*, tournament, title, purpose, schema=None, stage="", created_by=None, request=None) -> Form:
+def create_form(*, tournament, title, purpose, schema=None, stage="",
+                source_form_id=None, created_by=None, request=None) -> Form:
+    # "Start from an existing form" — copy a sibling form's schema (same tenant).
+    if source_form_id and not schema:
+        src = Form.objects.filter(
+            id=source_form_id, tournament=tournament, deleted_at__isnull=True
+        ).first()
+        if src is not None:
+            schema = src.schema
     schema = schema or {"version": 1, "sections": []}
     if schema.get("sections"):
         validate_schema(schema)

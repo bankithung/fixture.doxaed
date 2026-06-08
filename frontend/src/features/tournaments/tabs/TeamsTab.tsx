@@ -17,9 +17,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
+import { FilePlus2 } from "lucide-react";
 import { newEventId } from "@/lib/eventId";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
+import { CreateFormDialog } from "../CreateFormDialog";
 import { EmptyState } from "./shared";
 
 export function TeamsTab(): React.ReactElement {
@@ -28,6 +30,7 @@ export function TeamsTab(): React.ReactElement {
   const toast = useToast();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [institutionId, setInstitutionId] = useState("");
   const [name, setName] = useState("");
 
@@ -114,19 +117,25 @@ export function TeamsTab(): React.ReactElement {
                 {t("Edit team form")}
               </Button>
             ) : (
-              <Button
-                variant="outline"
-                disabled={(institutions.data?.length ?? 0) === 0 || generateForm.isPending}
-                onClick={() => generateForm.mutate()}
-                title={
-                  (institutions.data?.length ?? 0) === 0
-                    ? t("Register institutions first")
-                    : undefined
-                }
-              >
-                <Sparkles aria-hidden="true" className="h-4 w-4" />
-                {generateForm.isPending ? t("Generating…") : t("Auto-generate team form")}
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  disabled={(institutions.data?.length ?? 0) === 0 || generateForm.isPending}
+                  onClick={() => generateForm.mutate()}
+                  title={
+                    (institutions.data?.length ?? 0) === 0
+                      ? t("Register institutions first")
+                      : undefined
+                  }
+                >
+                  <Sparkles aria-hidden="true" className="h-4 w-4" />
+                  {generateForm.isPending ? t("Generating…") : t("Auto-generate team form")}
+                </Button>
+                <Button variant="outline" onClick={() => setCreateOpen(true)}>
+                  <FilePlus2 aria-hidden="true" className="h-4 w-4" />
+                  {t("Create form")}
+                </Button>
+              </>
             )}
             <Button
               disabled={(institutions.data?.length ?? 0) === 0}
@@ -229,6 +238,15 @@ export function TeamsTab(): React.ReactElement {
           </Button>
         </DialogFooter>
       </Dialog>
+
+      <CreateFormDialog
+        tournamentId={id}
+        stage="team_registration"
+        purpose="team_registration"
+        defaultTitle={t("Team registration")}
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+      />
     </div>
   );
 }

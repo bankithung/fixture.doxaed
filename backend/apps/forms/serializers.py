@@ -43,6 +43,7 @@ class FormCreateSerializer(serializers.Serializer):
         default="organization_registration",
     )
     stage = serializers.CharField(required=False, allow_blank=True, default="")
+    source_form_id = serializers.UUIDField(required=False)
     schema = FormSchemaField(required=False)
 
 

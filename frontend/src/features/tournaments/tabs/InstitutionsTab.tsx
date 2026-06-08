@@ -20,6 +20,7 @@ import { useToast } from "@/components/ui/toast";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { CreateFormDialog } from "../CreateFormDialog";
 import { EmptyState } from "./shared";
 
 const ORG_PURPOSE = "organization_registration";
@@ -42,19 +43,7 @@ export function InstitutionsTab(): React.ReactElement {
     (forms.data ?? []).find((f) => f.stage === ORG_STAGE) ??
     (forms.data ?? []).find((f) => f.purpose === ORG_PURPOSE);
 
-  const createForm = useMutation({
-    mutationFn: () =>
-      formsApi.create(id, {
-        title: t("Institution registration"),
-        purpose: ORG_PURPOSE,
-        stage: ORG_STAGE,
-      }),
-    onSuccess: (f) => {
-      qc.invalidateQueries({ queryKey: ["t-forms", id] });
-      navigate(routes.tournamentFormBuilder(id, f.id));
-    },
-    onError: () => toast.push({ kind: "error", title: t("Could not create the form") }),
-  });
+  const [createOpen, setCreateOpen] = useState(false);
 
   const publish = useMutation({
     mutationFn: () => formsApi.publish(orgForm!.id),
@@ -107,9 +96,9 @@ export function InstitutionsTab(): React.ReactElement {
                 {t("Add the questions you want schools to answer (name, contact, sport, categories). You can then share it or fill it in yourself.")}
               </p>
             </div>
-            <Button onClick={() => createForm.mutate()} disabled={createForm.isPending}>
+            <Button onClick={() => setCreateOpen(true)}>
               <Plus aria-hidden="true" className="h-4 w-4" />
-              {createForm.isPending ? t("Creating…") : t("Create registration form")}
+              {t("Create registration form")}
             </Button>
           </div>
         ) : (
@@ -227,6 +216,15 @@ export function InstitutionsTab(): React.ReactElement {
           </div>
         )}
       </div>
+
+      <CreateFormDialog
+        tournamentId={id}
+        stage={ORG_STAGE}
+        purpose={ORG_PURPOSE}
+        defaultTitle={t("Institution registration")}
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+      />
     </div>
   );
 }

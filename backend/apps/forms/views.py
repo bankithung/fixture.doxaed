@@ -86,6 +86,7 @@ class TournamentFormsView(GenericAPIView):
             tournament=t, title=ser.validated_data["title"],
             purpose=ser.validated_data["purpose"],
             stage=ser.validated_data.get("stage", ""),
+            source_form_id=ser.validated_data.get("source_form_id"),
             schema=ser.validated_data.get("schema"),
             created_by=request.user, request=request,
         )
