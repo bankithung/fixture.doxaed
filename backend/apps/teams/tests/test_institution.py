@@ -173,6 +173,20 @@ def test_api_patch_withdraw_institution():
     assert inst.status == "withdrawn"
 
 
+def test_api_admin_add_team_under_institution():
+    admin = _admin()
+    t = create_tournament(user=admin, name="Cup")
+    inst = get_or_create_institution(tournament=t, name="Hosting High")
+    r = _client(admin).post(
+        f"/api/tournaments/{t.id}/teams/",
+        {"institution_id": str(inst.id), "name": "U-16 Boys", "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 201, r.content
+    team = Team.objects.get(tournament=t, name="U-16 Boys")
+    assert team.institution_id == inst.id
+
+
 def test_org_registration_form_creates_institution():
     from apps.forms.models import Form, FormResponse
     from apps.forms.services.mapping import map_response

@@ -15,7 +15,12 @@ import { AppShell } from "@/features/layout/AppShell";
 import { OrgChooserPage } from "@/features/layout/OrgChooserPage";
 import { CreateTournamentPage } from "@/features/tournaments/CreateTournamentPage";
 import { TournamentsListPage } from "@/features/tournaments/TournamentsListPage";
-import { TournamentDetailPage } from "@/features/tournaments/TournamentDetailPage";
+import { TournamentWorkspace } from "@/features/tournaments/TournamentWorkspace";
+import { OverviewTab } from "@/features/tournaments/tabs/OverviewTab";
+import { InstitutionsTab } from "@/features/tournaments/tabs/InstitutionsTab";
+import { TeamsTab } from "@/features/tournaments/tabs/TeamsTab";
+import { FixturesTab } from "@/features/tournaments/tabs/FixturesTab";
+import { SettingsTab } from "@/features/tournaments/tabs/SettingsTab";
 import { TournamentMembersPage } from "@/features/tournaments/TournamentMembersPage";
 import { InvitesPage } from "@/features/invitations/InvitesPage";
 import { TournamentAuditPage } from "@/features/tournaments/TournamentAuditPage";
@@ -149,17 +154,17 @@ export default function App(): React.ReactElement {
                   path="/tournaments/new"
                   element={<CreateTournamentPage />}
                 />
-                <Route
-                  path="/tournaments/:id"
-                  element={<TournamentDetailPage />}
-                />
+                <Route path="/tournaments/:id" element={<TournamentWorkspace />}>
+                  <Route index element={<OverviewTab />} />
+                  <Route path="institutions" element={<InstitutionsTab />} />
+                  <Route path="teams" element={<TeamsTab />} />
+                  <Route path="members" element={<TournamentMembersPage />} />
+                  <Route path="fixtures" element={<FixturesTab />} />
+                  <Route path="settings" element={<SettingsTab />} />
+                </Route>
                 <Route
                   path="/tournaments/:id/bracket"
                   element={<BracketPage />}
-                />
-                <Route
-                  path="/tournaments/:id/members"
-                  element={<TournamentMembersPage />}
                 />
                 <Route
                   path="/tournaments/:id/audit"

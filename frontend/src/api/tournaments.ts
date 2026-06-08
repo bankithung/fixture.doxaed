@@ -55,6 +55,8 @@ export interface TeamRow {
   name: string;
   short_name: string;
   school: string;
+  institution_id?: string | null;
+  institution_name?: string;
   pool: string;
   status: string;
   player_count: number;

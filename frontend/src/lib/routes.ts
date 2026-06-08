@@ -49,8 +49,16 @@ export const routes = {
     `/o/${encodeURIComponent(slug)}/tournaments/${encodeURIComponent(id)}`,
   /** Public school self-registration via a shared link. */
   register: (token: string) => `/register/${encodeURIComponent(token)}`,
-  /** Tournament management page (teams, fixtures, scores, standings). */
+  /** Tournament workspace — Overview tab (index of the tabbed workspace). */
   tournamentDetail: (id: string) => `/tournaments/${encodeURIComponent(id)}`,
+  /** Workspace tabs (dedicated pages). */
+  tournamentInstitutions: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/institutions`,
+  tournamentTeams: (id: string) => `/tournaments/${encodeURIComponent(id)}/teams`,
+  tournamentFixtures: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/fixtures`,
+  tournamentSettings: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/settings`,
   /** Public, read-only live match viewer (no login). */
   liveViewer: (matchId: string) => `/m/${encodeURIComponent(matchId)}`,
   /** Live scorer console for a match. */

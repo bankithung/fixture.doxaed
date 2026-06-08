@@ -97,9 +97,45 @@ class PublicRegistrationView(GenericAPIView):
 
 
 class TournamentTeamsListView(GenericAPIView):
-    """`GET /api/tournaments/{id}/teams/` — registered teams (access-scoped)."""
+    """`GET` registered teams (access-scoped); `POST` admin direct-add of a team
+    under an institution (Stage-2; manager-only)."""
 
     permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        tournament = (
+            Tournament.objects.filter(id=tournament_id, deleted_at__isnull=True)
+            .select_related("organization")
+            .first()
+        )
+        if tournament is None or not accessible_tournaments(request.user).filter(
+            id=tournament_id
+        ).exists():
+            raise NotFound("tournament_not_found")
+        if not can_manage_tournament(request.user, tournament):
+            raise PermissionDenied("not_tournament_manager")
+        institution_id = request.data.get("institution_id")
+        name = (request.data.get("name") or "").strip()
+        if not institution_id or not name:
+            raise DRFValidationError({"detail": "institution_id and name are required"})
+        try:
+            teams = register_school(
+                tournament=tournament,
+                school_name="",
+                teams=[{"name": name, "players": []}],
+                submitted_by=request.user,
+                channel="admin",
+                event_id=request.data.get("event_id"),
+                institution_id=institution_id,
+                request=request,
+            )
+        except ValueError as e:
+            raise DRFValidationError({"detail": str(e)})
+        except IntegrityError:
+            raise DRFValidationError({"detail": "duplicate_team_name"})
+        return Response(
+            {"registered": len(teams), "teams": [t.name for t in teams]}, status=201
+        )
 
     def get(self, request, tournament_id):
         if not accessible_tournaments(request.user).filter(id=tournament_id).exists():

@@ -396,15 +396,10 @@ export function TournamentMembersPage(): React.ReactElement {
     pendingRevoke?.full_name?.trim() || pendingRevoke?.email || "";
 
   return (
-    <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="flex w-full flex-col gap-6">
       <div className="min-w-0">
-        <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-          {t("Tournament")}
-        </p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
-          {t("Members & roles")}
-        </h1>
-        <p className="mt-1 font-tabular text-sm text-muted-foreground">
+        <h2 className="text-lg font-semibold">{t("Members & roles")}</h2>
+        <p className="mt-0.5 font-tabular text-sm text-muted-foreground">
           {membersQuery.isLoading
             ? t("Loading members...")
             : t(`${total} ${total === 1 ? "member" : "members"}`)}

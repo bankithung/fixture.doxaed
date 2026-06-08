@@ -1,24 +1,13 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  CalendarClock,
-  Check,
-  ClipboardList,
-  GitBranch,
-  Link2,
-  Lock,
-  Users,
-  Wand2,
-} from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, Lock } from "lucide-react";
 import {
   tournamentsApi,
   type StageConsequences,
   type StageInfo,
 } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
-import { ScheduleWizard } from "./ScheduleWizard";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,18 +22,28 @@ import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
-const LINK_BTN =
-  "inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+/** Where the "Open «stage»" button takes you (the dedicated tab for the work). */
+function stageRoute(id: string, key: string): string | null {
+  switch (key) {
+    case "org_registration":
+      return routes.tournamentInstitutions(id);
+    case "team_registration":
+      return routes.tournamentTeams(id);
+    case "members":
+      return routes.tournamentMembers(id);
+    case "fixtures":
+      return routes.tournamentFixtures(id);
+    default:
+      return null;
+  }
+}
 
-/** What the admin should DO at each stage (the merged "get started" guidance). */
 const STAGE_HINT: Record<string, string> = {
   setup: "Start the setup — invite institutions next.",
-  org_registration:
-    "Invite schools/colleges to register, or add them yourself.",
-  team_registration:
-    "Collect team entries from registered institutions, or add teams yourself.",
+  org_registration: "Register the schools/colleges taking part (form or add directly).",
+  team_registration: "Collect each institution's teams (form or add directly).",
   members: "Invite people to help run this tournament and assign their roles.",
-  fixtures: "Generate the fixtures from your teams and constraints.",
+  fixtures: "Generate the fixtures and schedule them with your constraints.",
   ready: "Setup is complete — the tournament is scheduled.",
 };
 
@@ -95,9 +94,6 @@ export function StageStepper({
   const toast = useToast();
   const [target, setTarget] = useState<string | null>(null);
   const [ack, setAck] = useState(false);
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [linkUrl, setLinkUrl] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const stageQ = useQuery({
     queryKey: ["tournament-stage", tournamentId],
@@ -109,14 +105,6 @@ export function StageStepper({
     enabled: target !== null,
   });
 
-  const invalidate = (): void => {
-    qc.invalidateQueries({ queryKey: ["tournament-stage", tournamentId] });
-    qc.invalidateQueries({ queryKey: ["tournament", tournamentId] });
-    qc.invalidateQueries({ queryKey: ["t-teams", tournamentId] });
-    qc.invalidateQueries({ queryKey: ["t-matches", tournamentId] });
-    qc.invalidateQueries({ queryKey: ["t-standings", tournamentId] });
-  };
-
   const transition = useMutation({
     mutationFn: () =>
       tournamentsApi.transitionStage(tournamentId, {
@@ -125,7 +113,8 @@ export function StageStepper({
         event_id: newEventId(),
       }),
     onSuccess: () => {
-      invalidate();
+      qc.invalidateQueries({ queryKey: ["tournament-stage", tournamentId] });
+      qc.invalidateQueries({ queryKey: ["tournament", tournamentId] });
       toast.push({ kind: "success", title: t("Stage updated") });
       closeDialog();
     },
@@ -137,122 +126,23 @@ export function StageStepper({
       }),
   });
 
-  const createLink = useMutation({
-    mutationFn: () => tournamentsApi.createRegistrationLink(tournamentId),
-    onSuccess: (r) => setLinkUrl(`${window.location.origin}/register/${r.token}`),
-  });
-
-  const generate = useMutation({
-    mutationFn: (format: "round_robin" | "knockout") =>
-      tournamentsApi.generateFixtures(tournamentId, { format }),
-    onSuccess: () => {
-      invalidate();
-      toast.push({ kind: "success", title: t("Fixtures generated") });
-    },
-  });
-
   const closeDialog = (): void => {
     setTarget(null);
     setAck(false);
-  };
-
-  const copyLink = async (): Promise<void> => {
-    if (!linkUrl) return;
-    try {
-      await navigator.clipboard.writeText(linkUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      toast.push({ kind: "error", title: t("Could not copy"), description: linkUrl });
-    }
   };
 
   if (stageQ.isLoading || !stageQ.data) return null;
   const data = stageQ.data;
   const allowed = new Set(data.allowed_to);
   const curIdx = data.order.indexOf(data.stage);
-  const byKey = Object.fromEntries(data.stages.map((s) => [s.key, s]));
-  const teamCount = Number(byKey["team_registration"]?.counts?.teams ?? 0);
-  const matchCount = Number(byKey["fixtures"]?.counts?.matches ?? 0);
-
   const nextStage = data.order[curIdx + 1];
   const canAdvance = data.can_manage && nextStage && allowed.has(nextStage);
+  const openRoute = stageRoute(tournamentId, data.stage);
 
   const consequences = previewQ.data;
   const blockers = consequences?.blockers ?? [];
   const warnings = consequences?.warnings ?? [];
   const isReopen = target !== null && data.order.indexOf(target) < curIdx;
-
-  // Contextual actions for the CURRENT stage (the merged "get started").
-  const stageActions = (): React.ReactNode => {
-    switch (data.stage) {
-      case "org_registration":
-      case "team_registration":
-        return (
-          <>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => createLink.mutate()}
-              disabled={createLink.isPending}
-            >
-              <Link2 aria-hidden="true" className="h-4 w-4" />
-              {t("Share registration link")}
-            </Button>
-            <Link to={routes.tournamentForms(tournamentId)} className={LINK_BTN}>
-              <ClipboardList aria-hidden="true" className="h-4 w-4" />
-              {t("Open forms")}
-            </Link>
-          </>
-        );
-      case "members":
-        return (
-          <Link to={routes.tournamentMembers(tournamentId)} className={LINK_BTN}>
-            <Users aria-hidden="true" className="h-4 w-4" />
-            {t("Manage members")}
-          </Link>
-        );
-      case "fixtures":
-        if (matchCount > 0)
-          return (
-            <>
-              <Button size="sm" onClick={() => setWizardOpen(true)}>
-                <CalendarClock aria-hidden="true" className="h-4 w-4" />
-                {t("Schedule fixtures")}
-              </Button>
-              <Link to={routes.tournamentBracket(tournamentId)} className={LINK_BTN}>
-                <GitBranch aria-hidden="true" className="h-4 w-4" />
-                {t("View bracket")}
-              </Link>
-            </>
-          );
-        if (teamCount < 2)
-          return (
-            <p className="text-sm text-muted-foreground">
-              {t("Add at least 2 teams to generate fixtures.")}
-            </p>
-          );
-        return (
-          <>
-            <Button size="sm" onClick={() => generate.mutate("round_robin")} disabled={generate.isPending}>
-              <Wand2 aria-hidden="true" className="h-4 w-4" />
-              {t("Round-robin")}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => generate.mutate("knockout")}
-              disabled={generate.isPending}
-            >
-              <GitBranch aria-hidden="true" className="h-4 w-4" />
-              {t("Knockout")}
-            </Button>
-          </>
-        );
-      default:
-        return null;
-    }
-  };
 
   return (
     <section
@@ -271,7 +161,7 @@ export function StageStepper({
         ) : null}
       </div>
 
-      {/* Stage chips */}
+      {/* Stage chips — click a past/next stage to jump (reopen warns first). */}
       <ol className="flex flex-col gap-2 sm:flex-row sm:items-stretch sm:gap-1">
         {data.stages.map((s, i) => {
           const clickable = data.can_manage && allowed.has(s.key);
@@ -337,17 +227,26 @@ export function StageStepper({
         })}
       </ol>
 
-      {/* Current-stage action panel (the merged "get started") */}
-      <div className="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-muted/20 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
-              {t("Now")} · {data.stages[curIdx]?.label}
-            </p>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              {t(STAGE_HINT[data.stage] ?? "")}
-            </p>
-          </div>
+      {/* Current-stage callout — link to the dedicated tab + Continue. */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 p-4">
+        <div className="min-w-0">
+          <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
+            {t("Now")} · {data.stages[curIdx]?.label}
+          </p>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {t(STAGE_HINT[data.stage] ?? "")}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {openRoute ? (
+            <Link
+              to={openRoute}
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {t("Open")} {data.stages[curIdx]?.label}
+              <ArrowRight aria-hidden="true" className="h-4 w-4" />
+            </Link>
+          ) : null}
           {canAdvance ? (
             <Button
               size="sm"
@@ -356,7 +255,8 @@ export function StageStepper({
                 setTarget(nextStage);
               }}
             >
-              {t("Continue")} →
+              {t("Continue")}
+              <ArrowRight aria-hidden="true" className="h-4 w-4" />
             </Button>
           ) : data.stage === "ready" ? (
             <span className="inline-flex items-center gap-1 text-sm font-medium text-primary">
@@ -365,24 +265,6 @@ export function StageStepper({
             </span>
           ) : null}
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">{stageActions()}</div>
-
-        {linkUrl ? (
-          <div className="flex flex-wrap items-center gap-2 rounded-md border border-primary/30 bg-primary/[0.04] p-2">
-            <code className="min-w-0 flex-1 break-all px-1 font-tabular text-xs">
-              {linkUrl}
-            </code>
-            <Button size="sm" variant="outline" onClick={() => void copyLink()}>
-              {copied ? (
-                <Check aria-hidden="true" className="h-4 w-4" />
-              ) : (
-                <Link2 aria-hidden="true" className="h-4 w-4" />
-              )}
-              {copied ? t("Copied") : t("Copy")}
-            </Button>
-          </div>
-        ) : null}
       </div>
 
       {/* Transition confirm dialog (preview → ack → execute). */}
@@ -469,12 +351,6 @@ export function StageStepper({
           </Button>
         </DialogFooter>
       </Dialog>
-
-      <ScheduleWizard
-        tournamentId={tournamentId}
-        open={wizardOpen}
-        onClose={() => setWizardOpen(false)}
-      />
     </section>
   );
 }
