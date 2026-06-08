@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ClipboardList,
   Eye,
+  LayoutTemplate,
   Lock,
   PanelRightClose,
   PanelRightOpen,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 import { formsApi } from "@/api/forms";
 import type { FormSummary } from "./types";
+import { CopyFromDialog } from "./CopyFromDialog";
 import { useBuilderStore } from "./builderStore";
 import { FieldPalette } from "./FieldPalette";
 import { FormCanvas } from "./FormCanvas";
@@ -151,6 +153,7 @@ export function FormBuilderPage(): React.ReactElement {
   const load = useBuilderStore((s) => s.load);
   const [paletteOpen, setPaletteOpen] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [copyOpen, setCopyOpen] = useState(false);
 
   const query = useQuery({
     queryKey: ["form", formId],
@@ -276,6 +279,10 @@ export function FormBuilderPage(): React.ReactElement {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setCopyOpen(true)}>
+            <LayoutTemplate aria-hidden="true" className="h-4 w-4" />
+            {t("Templates")}
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -358,6 +365,17 @@ export function FormBuilderPage(): React.ReactElement {
           onClose={() => setPreviewOpen(false)}
         />
       ) : null}
+
+      <CopyFromDialog
+        formId={formId}
+        open={copyOpen}
+        onClose={() => setCopyOpen(false)}
+        onCopied={() => {
+          // Force the builder store to reload from the freshly-copied schema.
+          loadedId.current = null;
+          qc.invalidateQueries({ queryKey: ["form", formId] });
+        }}
+      />
     </div>
   );
 }

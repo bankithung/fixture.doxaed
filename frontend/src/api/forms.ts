@@ -18,6 +18,16 @@ export interface PublicFormPayload {
   closed?: boolean;
 }
 
+export interface CopyableItem {
+  id: string;
+  title: string;
+  purpose: string;
+  description?: string;
+  tournament_name?: string;
+  field_count: number;
+  is_template: boolean;
+}
+
 export interface DirectoryFilter {
   key: string;
   label: string;
@@ -65,6 +75,14 @@ export const formsApi = {
   /** Auto-generate a draft team-registration form from the org-reg categories. */
   generateTeamForm: (tournamentId: string) =>
     api.post<FormSummary>(`/api/tournaments/${tournamentId}/forms/generate-team/`, {}),
+  /** Built-in templates + every form the user can access, for the copy picker. */
+  copyable: () =>
+    api.get<{ templates: CopyableItem[]; forms: CopyableItem[] }>(`/api/forms/copyable/`),
+  /** Replace a form's schema (+bindings) from a template or another form. */
+  copyFrom: (
+    formId: string,
+    body: { template_id?: string; source_form_id?: string },
+  ) => api.post<FormSummary>(`/api/forms/${formId}:copy-from/`, body),
   get: (formId: string) => api.get<FormSummary>(`/api/forms/${formId}/`),
   update: (formId: string, body: FormUpdateBody) =>
     api.patch<FormSummary>(`/api/forms/${formId}/`, body),

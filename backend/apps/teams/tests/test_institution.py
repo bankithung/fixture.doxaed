@@ -187,6 +187,32 @@ def test_api_admin_add_team_under_institution():
     assert team.institution_id == inst.id
 
 
+def test_copyable_lists_templates_and_copy_from_populates_form():
+    from apps.forms.models import Form
+
+    admin = _admin()
+    t = create_tournament(user=admin, name="Cup")
+    blank = Form.objects.create(
+        organization=t.organization, tournament=t, slug="blank", title="Blank",
+        purpose="organization_registration", status="draft",
+        schema={"version": 1, "sections": []},
+    )
+    c = _client(admin)
+
+    r = c.get("/api/forms/copyable/")
+    assert r.status_code == 200, r.content
+    assert any(tpl["id"].startswith("template:") for tpl in r.json()["templates"])
+
+    r2 = c.post(
+        f"/api/forms/{blank.id}:copy-from/",
+        {"template_id": "template:institution-registration"}, format="json",
+    )
+    assert r2.status_code == 200, r2.content
+    blank.refresh_from_db()
+    assert blank.schema["sections"]  # populated from the template
+    assert blank.settings.get("bindings", {}).get("institution_name")
+
+
 def test_auto_generate_team_form_and_multi_category_mapping():
     from apps.forms.models import Form, FormResponse
     from apps.forms.services.generation import generate_team_form_template

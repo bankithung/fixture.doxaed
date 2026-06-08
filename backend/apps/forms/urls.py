@@ -3,8 +3,10 @@ from __future__ import annotations
 from django.urls import path
 
 from apps.forms.views import (
+    CopyableFormsView,
     FieldTypesView,
     FormCloseView,
+    FormCopyFromView,
     FormDetailView,
     FormDuplicateView,
     FormPublishView,
@@ -19,6 +21,7 @@ from apps.forms.views import (
 # Mounted at /api/forms/
 urlpatterns = [
     path("field-types/", FieldTypesView.as_view(), name="form-field-types"),
+    path("copyable/", CopyableFormsView.as_view(), name="form-copyable"),
     # Public submission API (AllowAny, throttled).
     path("r/<str:token>/", PublicFormView.as_view(), name="form-public-token"),
     path("<uuid:form_id>/public/", PublicFormView.as_view(), name="form-public"),
@@ -35,4 +38,5 @@ urlpatterns = [
     path("<uuid:form_id>:publish/", FormPublishView.as_view(), name="form-publish"),
     path("<uuid:form_id>:close/", FormCloseView.as_view(), name="form-close"),
     path("<uuid:form_id>:duplicate/", FormDuplicateView.as_view(), name="form-duplicate"),
+    path("<uuid:form_id>:copy-from/", FormCopyFromView.as_view(), name="form-copy-from"),
 ]

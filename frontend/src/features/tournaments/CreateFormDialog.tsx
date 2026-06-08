@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, FilePlus2 } from "lucide-react";
-import { formsApi } from "@/api/forms";
+import { Copy, FilePlus2, LayoutTemplate } from "lucide-react";
+import { formsApi, type CopyableItem } from "@/api/forms";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/Select";
 import {
   Dialog,
   DialogDescription,
@@ -20,9 +19,9 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
 /**
- * "Create form" flow that first asks whether to start blank or duplicate an
- * existing form. On confirm it creates the form (bound to the given stage +
- * purpose, optionally copying a source form's schema) and opens the builder.
+ * "Create form" flow: start blank, or copy from a built-in TEMPLATE or any form
+ * the organizer can access (incl. other tournaments). Creates the form bound to
+ * the given stage + purpose, copies the chosen schema, and opens the builder.
  */
 export function CreateFormDialog({
   tournamentId,
@@ -42,24 +41,31 @@ export function CreateFormDialog({
   const qc = useQueryClient();
   const toast = useToast();
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"choose" | "existing">("choose");
+  const [mode, setMode] = useState<"choose" | "copy">("choose");
   const [title, setTitle] = useState(defaultTitle);
-  const [sourceId, setSourceId] = useState("");
+  const [selected, setSelected] = useState<string | null>(null);
 
-  const forms = useQuery({
-    queryKey: ["t-forms", tournamentId],
-    queryFn: () => formsApi.list(tournamentId),
+  const copyable = useQuery({
+    queryKey: ["forms-copyable"],
+    queryFn: () => formsApi.copyable(),
     enabled: open,
   });
 
   const create = useMutation({
-    mutationFn: (sourceFormId?: string) =>
-      formsApi.create(tournamentId, {
+    mutationFn: async (item: CopyableItem | null) => {
+      const form = await formsApi.create(tournamentId, {
         title: title.trim() || defaultTitle,
         purpose,
         stage,
-        ...(sourceFormId ? { source_form_id: sourceFormId } : {}),
-      }),
+      });
+      if (item) {
+        await formsApi.copyFrom(
+          form.id,
+          item.is_template ? { template_id: item.id } : { source_form_id: item.id },
+        );
+      }
+      return form;
+    },
     onSuccess: (f) => {
       qc.invalidateQueries({ queryKey: ["t-forms", tournamentId] });
       close();
@@ -75,12 +81,45 @@ export function CreateFormDialog({
 
   const close = (): void => {
     setMode("choose");
-    setSourceId("");
+    setSelected(null);
     setTitle(defaultTitle);
     onClose();
   };
 
-  const existing = forms.data ?? [];
+  const templates = copyable.data?.templates ?? [];
+  const forms = (copyable.data?.forms ?? []).filter((f) => f.id !== tournamentId);
+  const allItems = [...templates, ...forms];
+  const pick = allItems.find((i) => i.id === selected) ?? null;
+
+  const ItemCard = ({ item }: { item: CopyableItem }): React.ReactElement => (
+    <button
+      type="button"
+      onClick={() => setSelected(item.id)}
+      className={cn(
+        "flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+        selected === item.id
+          ? "border-primary bg-primary/[0.05] ring-1 ring-primary/40"
+          : "border-border bg-card hover:border-primary/40 hover:bg-accent/30",
+      )}
+    >
+      <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10">
+        {item.is_template ? (
+          <LayoutTemplate aria-hidden="true" className="h-4 w-4 text-primary" />
+        ) : (
+          <Copy aria-hidden="true" className="h-4 w-4 text-primary" />
+        )}
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-medium">{item.title}</span>
+        <span className="block truncate text-xs text-muted-foreground">
+          {item.is_template
+            ? item.description
+            : `${item.tournament_name ?? ""} · ${t(item.purpose)}`}
+          {` · ${item.field_count} ${t("fields")}`}
+        </span>
+      </span>
+    </button>
+  );
 
   return (
     <Dialog
@@ -94,8 +133,8 @@ export function CreateFormDialog({
         <DialogTitle>{t("Create form")}</DialogTitle>
         <DialogDescription>
           {mode === "choose"
-            ? t("Start from scratch, or duplicate one of your existing forms as a starting point.")
-            : t("Pick a form to copy. You can edit everything afterwards.")}
+            ? t("Start from scratch, or copy a ready-made template or one of your existing forms.")
+            : t("Pick a template or form to copy. You can edit everything afterwards.")}
         </DialogDescription>
       </DialogHeader>
 
@@ -108,12 +147,9 @@ export function CreateFormDialog({
         <div className="grid gap-2 sm:grid-cols-2">
           <button
             type="button"
-            onClick={() => create.mutate(undefined)}
+            onClick={() => create.mutate(null)}
             disabled={create.isPending}
-            className={cn(
-              "flex flex-col items-start gap-1.5 rounded-xl border border-border bg-card p-4 text-left transition-colors",
-              "hover:border-primary/50 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            )}
+            className="flex flex-col items-start gap-1.5 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <FilePlus2 aria-hidden="true" className="h-5 w-5 text-primary" />
             <span className="text-sm font-medium">{t("Start blank")}</span>
@@ -121,51 +157,58 @@ export function CreateFormDialog({
           </button>
           <button
             type="button"
-            onClick={() => setMode("existing")}
-            disabled={existing.length === 0}
-            className={cn(
-              "flex flex-col items-start gap-1.5 rounded-xl border border-border bg-card p-4 text-left transition-colors",
-              existing.length === 0
-                ? "cursor-not-allowed opacity-50"
-                : "hover:border-primary/50 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            )}
+            onClick={() => setMode("copy")}
+            className="flex flex-col items-start gap-1.5 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <Copy aria-hidden="true" className="h-5 w-5 text-primary" />
-            <span className="text-sm font-medium">{t("Use an existing form")}</span>
+            <LayoutTemplate aria-hidden="true" className="h-5 w-5 text-primary" />
+            <span className="text-sm font-medium">{t("Use a template or existing form")}</span>
             <span className="text-xs text-muted-foreground">
-              {existing.length === 0
-                ? t("No existing forms yet.")
-                : t("Copy the questions from another form.")}
+              {t("Copy questions from a ready-made template or another form.")}
             </span>
           </button>
         </div>
       ) : (
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">{t("Copy from")}</span>
-          <Select
-            value={sourceId}
-            onChange={setSourceId}
-            options={existing.map((f) => ({
-              value: f.id,
-              label: `${f.title} (${t(f.purpose)})`,
-            }))}
-            placeholder={t("Select a form")}
-            aria-label={t("Copy from")}
-          />
-        </label>
+        <div className="flex max-h-72 flex-col gap-3 overflow-y-auto pr-1">
+          {copyable.isLoading ? (
+            <p className="text-sm text-muted-foreground">{t("Loading…")}</p>
+          ) : (
+            <>
+              {templates.length ? (
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    {t("Templates")}
+                  </p>
+                  {templates.map((i) => (
+                    <ItemCard key={i.id} item={i} />
+                  ))}
+                </div>
+              ) : null}
+              {forms.length ? (
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    {t("Your forms")}
+                  </p>
+                  {forms.map((i) => (
+                    <ItemCard key={i.id} item={i} />
+                  ))}
+                </div>
+              ) : null}
+              {!templates.length && !forms.length ? (
+                <p className="text-sm text-muted-foreground">{t("Nothing to copy yet.")}</p>
+              ) : null}
+            </>
+          )}
+        </div>
       )}
 
       <DialogFooter>
-        {mode === "existing" ? (
+        {mode === "copy" ? (
           <>
             <Button variant="outline" onClick={() => setMode("choose")}>
               {t("Back")}
             </Button>
-            <Button
-              disabled={!sourceId || create.isPending}
-              onClick={() => create.mutate(sourceId)}
-            >
-              {create.isPending ? t("Creating…") : t("Create from this form")}
+            <Button disabled={!pick || create.isPending} onClick={() => create.mutate(pick)}>
+              {create.isPending ? t("Creating…") : t("Create from selection")}
             </Button>
           </>
         ) : (

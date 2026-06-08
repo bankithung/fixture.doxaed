@@ -470,3 +470,87 @@ class GenerateTeamFormView(GenericAPIView):
             tournament=t, created_by=request.user, request=request
         )
         return Response(FormSerializer(form).data, status=201)
+
+
+class CopyableFormsView(GenericAPIView):
+    """`GET /api/forms/copyable/` — built-in templates + every form the user can
+    access (across their tournaments) that has content, for the "copy from" picker."""
+
+    permission_classes: ClassVar[list[type[BasePermission]]] = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.forms.services.templates import template_summaries
+
+        forms = (
+            Form.objects.filter(
+                tournament__in=accessible_tournaments(request.user),
+                deleted_at__isnull=True,
+            )
+            .select_related("tournament")
+            .order_by("-created_at")
+        )
+        form_rows = [
+            {
+                "id": str(f.id),
+                "title": f.title,
+                "purpose": f.purpose,
+                "tournament_name": f.tournament.name,
+                "field_count": sum(
+                    len(s.get("fields", [])) for s in (f.schema or {}).get("sections", [])
+                ),
+                "is_template": False,
+            }
+            for f in forms
+            if (f.schema or {}).get("sections")
+        ]
+        return Response({"templates": template_summaries(), "forms": form_rows})
+
+
+class FormCopyFromView(GenericAPIView):
+    """`POST /api/forms/{id}:copy-from/` — replace this form's schema (+ bindings)
+    with a built-in template or another accessible form's schema. Manager-only on
+    the target; the source must be a template id or a form the user can access."""
+
+    permission_classes: ClassVar[list[type[BasePermission]]] = [IsAuthenticated]
+
+    def post(self, request, form_id):
+        from apps.forms.services.schema import SchemaError, validate_schema
+        from apps.forms.services.templates import get_template
+
+        form = _get_manageable_form(request.user, form_id)
+        template_id = request.data.get("template_id")
+        source_form_id = request.data.get("source_form_id")
+
+        if template_id:
+            tpl = get_template(template_id)
+            if tpl is None:
+                raise NotFound("template_not_found")
+            schema, settings = tpl["schema"], tpl.get("settings", {})
+        elif source_form_id:
+            src = (
+                Form.objects.filter(id=source_form_id, deleted_at__isnull=True)
+                .select_related("tournament")
+                .first()
+            )
+            if src is None or not accessible_tournaments(request.user).filter(
+                id=src.tournament_id
+            ).exists():
+                raise NotFound("source_form_not_found")
+            schema, settings = src.schema, (src.settings or {})
+        else:
+            raise DRFValidationError({"detail": "template_id or source_form_id required"})
+
+        try:
+            if schema.get("sections"):
+                validate_schema(schema)
+        except SchemaError as e:
+            raise DRFValidationError({"detail": str(e)}) from e
+
+        form.schema = schema
+        # Merge bindings so the copied form maps on submit, keep other settings.
+        merged = {**(form.settings or {})}
+        if settings.get("bindings"):
+            merged["bindings"] = settings["bindings"]
+        form.settings = merged
+        form.save(update_fields=["schema", "settings", "updated_at"])
+        return Response(FormSerializer(form).data)
