@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  CalendarClock,
   Check,
   ClipboardList,
   GitBranch,
@@ -17,6 +18,7 @@ import {
   type StageInfo,
 } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
+import { ScheduleWizard } from "./ScheduleWizard";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -93,6 +95,7 @@ export function StageStepper({
   const toast = useToast();
   const [target, setTarget] = useState<string | null>(null);
   const [ack, setAck] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -212,10 +215,16 @@ export function StageStepper({
       case "fixtures":
         if (matchCount > 0)
           return (
-            <Link to={routes.tournamentBracket(tournamentId)} className={LINK_BTN}>
-              <GitBranch aria-hidden="true" className="h-4 w-4" />
-              {t("View bracket")}
-            </Link>
+            <>
+              <Button size="sm" onClick={() => setWizardOpen(true)}>
+                <CalendarClock aria-hidden="true" className="h-4 w-4" />
+                {t("Schedule fixtures")}
+              </Button>
+              <Link to={routes.tournamentBracket(tournamentId)} className={LINK_BTN}>
+                <GitBranch aria-hidden="true" className="h-4 w-4" />
+                {t("View bracket")}
+              </Link>
+            </>
           );
         if (teamCount < 2)
           return (
@@ -460,6 +469,12 @@ export function StageStepper({
           </Button>
         </DialogFooter>
       </Dialog>
+
+      <ScheduleWizard
+        tournamentId={tournamentId}
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+      />
     </section>
   );
 }

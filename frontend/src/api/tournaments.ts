@@ -188,7 +188,39 @@ export const tournamentsApi = {
     id: string,
     body: { to_stage: string; ack_warnings?: boolean; reason?: string; event_id: string },
   ) => api.post<StagePayload>(`/api/tournaments/${id}/stage/`, body),
+
+  // --- Fixture generation + FET scheduling engine (WS6) ---
+  constraintTypes: () =>
+    api.get<ConstraintType[]>(`/api/tournaments/constraint-types/`),
+  scheduleFixtures: (id: string, config: ScheduleRequest) =>
+    api.post<ScheduleResultDTO>(`/api/tournaments/${id}/schedule/`, config),
 };
+
+export interface ConstraintType {
+  type: string;
+  label: string;
+  hard: boolean;
+  params_schema: Record<string, string>;
+}
+
+export interface ScheduleRequest {
+  date_start: string;
+  date_end: string;
+  daily_start?: string;
+  daily_end?: string;
+  slot_minutes?: number;
+  venues?: string[];
+  rest_minutes?: number;
+  max_per_team_per_day?: number;
+  excluded_dates?: string[];
+}
+
+export interface ScheduleResultDTO {
+  scheduled: number;
+  unscheduled: string[];
+  soft_score: number;
+  explanation: string[];
+}
 
 /** One step in the setup stepper (server-computed; FE renders, never hardcodes). */
 export interface StageInfo {
