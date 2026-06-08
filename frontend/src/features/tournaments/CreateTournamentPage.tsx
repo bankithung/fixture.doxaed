@@ -52,7 +52,7 @@ export function CreateTournamentPage(): React.ReactElement {
   };
 
   return (
-    <div className="mx-auto max-w-xl p-6">
+    <div className="w-full max-w-xl px-4 py-6 sm:px-6 lg:px-8">
       <h1 className="mb-2 text-2xl font-semibold">{t("Start a tournament")}</h1>
       <p className="mb-6 text-sm text-muted-foreground">
         {t("Give it a name. You'll be its admin and can invite people next.")}

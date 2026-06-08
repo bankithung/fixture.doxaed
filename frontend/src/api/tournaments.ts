@@ -191,12 +191,38 @@ export const tournamentsApi = {
     body: { to_stage: string; ack_warnings?: boolean; reason?: string; event_id: string },
   ) => api.post<StagePayload>(`/api/tournaments/${id}/stage/`, body),
 
+  // --- Rules & settings ---
+  settings: (id: string) =>
+    api.get<TournamentSettings>(`/api/tournaments/${id}/settings/`),
+  updateSettings: (
+    id: string,
+    body: { rules?: Partial<TournamentRules>; amend?: boolean; reason?: string; event_id: string },
+  ) => api.patch<TournamentSettings>(`/api/tournaments/${id}/settings/`, body),
+
   // --- Fixture generation + FET scheduling engine (WS6) ---
   constraintTypes: () =>
     api.get<ConstraintType[]>(`/api/tournaments/constraint-types/`),
   scheduleFixtures: (id: string, config: ScheduleRequest) =>
     api.post<ScheduleResultDTO>(`/api/tournaments/${id}/schedule/`, config),
 };
+
+export interface TournamentRules {
+  format: string;
+  group_size: number;
+  advance_per_group: number;
+  points: { win: number; draw: number; loss: number };
+  tiebreakers: string[];
+  match: { halves: number; half_minutes: number; extra_time: boolean; penalties: boolean };
+  squad: { min_players: number; max_players: number; max_subs: number };
+  discipline: { yellow_suspension_threshold: number; red_matches_banned: number };
+}
+
+export interface TournamentSettings {
+  rules: TournamentRules;
+  constraints: unknown[];
+  rules_frozen_at: string | null;
+  can_edit: boolean;
+}
 
 export interface ConstraintType {
   type: string;

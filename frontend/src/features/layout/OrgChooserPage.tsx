@@ -15,7 +15,7 @@ export function OrgChooserPage(): React.ReactElement {
   if (!user) return <div />;
 
   return (
-    <div className="mx-auto max-w-2xl p-6">
+    <div className="w-full max-w-2xl px-4 py-6 sm:px-6 lg:px-8">
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">{t("Your tournaments")}</h1>
