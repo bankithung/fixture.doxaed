@@ -211,6 +211,9 @@ SUPERUSER_PASSWORD = env("SUPERUSER_PASSWORD", default=None)
 SADMIN_HOST = env("SADMIN_HOST", default="localhost")
 
 # --- Project tunables -----------------------------------------------------
+# Public base URL of the SPA — used to build absolute links in outbound email
+# (verification, password reset, invitations). Prod sets the real https origin.
+FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:5173").rstrip("/")
 DEFAULT_ORG_TIMEZONE = env("TIME_ZONE", default="Asia/Kolkata")
 INVITE_TOKEN_TTL_DAYS = 7
 PENDING_ARCHIVE_DAYS = 30

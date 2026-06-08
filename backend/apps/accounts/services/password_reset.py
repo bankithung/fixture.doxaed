@@ -96,7 +96,7 @@ def request_password_reset(email: str, request: HttpRequest | None = None) -> No
         requested_ip=ip,
     )
 
-    reset_link = f"/auth/reset?token={plaintext}"
+    reset_link = f"{settings.FRONTEND_BASE_URL}/password-reset/complete?token={plaintext}"
     try:
         send_mail(
             subject="Reset your Fixture Platform password",

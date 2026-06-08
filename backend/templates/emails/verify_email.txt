@@ -1,0 +1,15 @@
+Confirm your email address
+
+{% if user.name %}Hi {{ user.name }},{% else %}Hi there,{% endif %}
+
+Thanks for signing up for Fixture. Confirm this email address to activate
+your account and get started.
+
+Verify your email (link expires in {{ ttl_hours }} hours):
+{{ verify_url }}
+
+If you didn't create a Fixture account, you can safely ignore this email.
+
+—
+Fixture Platform · fixture.doxaed.com
+This is an automated message — please don't reply.

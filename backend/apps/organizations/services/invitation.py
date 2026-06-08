@@ -20,6 +20,7 @@ import secrets
 import uuid as _uuid
 from typing import Optional, Sequence, Union
 
+from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.mail import send_mail
 from django.db import transaction
@@ -219,7 +220,9 @@ def create_invitation(
                 subject=f"You've been invited to {org.name}",
                 message=(
                     f"You've been invited to join {org.name} on Fixture Platform.\n\n"
-                    f"Use this token to accept: {plaintext}\n\n"
+                    f"Accept your invitation:\n\n"
+                    f"{settings.FRONTEND_BASE_URL}/accept?token={plaintext}\n\n"
+                    f"(Or enter this token manually: {plaintext})\n\n"
                     f"This invitation expires at {inv.expires_at.isoformat()}."
                 ),
                 from_email=None,  # uses DEFAULT_FROM_EMAIL

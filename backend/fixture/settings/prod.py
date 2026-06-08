@@ -56,14 +56,27 @@ CHANNEL_LAYERS = {
     }
 }
 
-# --- Email — real SMTP ----------------------------------------------------
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+# --- Email -----------------------------------------------------------------
+# Backend is env-selectable. Production uses Amazon SES via django-ses
+# (EMAIL_BACKEND=django_ses.SESBackend); SMTP remains available as a fallback.
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@fixture.doxaed.com")
+SERVER_EMAIL = env("SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
+
+# SES (django-ses) — auth via the shared IAM key pair, API not SMTP.
+AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="")
+AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="")
+AWS_SES_REGION_NAME = env("AWS_SES_REGION_NAME", default="ap-south-2")
+AWS_SES_REGION_ENDPOINT = env(
+    "AWS_SES_REGION_ENDPOINT", default="email.ap-south-2.amazonaws.com"
+)
+
+# SMTP fallback (only used when EMAIL_BACKEND is the smtp backend).
 EMAIL_HOST = env("EMAIL_HOST", default="")
 EMAIL_PORT = env.int("EMAIL_PORT", default=587)
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@fixture.doxaed.com")
 
 # --- Logging --------------------------------------------------------------
 LOGGING = {

@@ -22,11 +22,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import secrets
+from datetime import timedelta
 
 from axes.helpers import get_client_ip_address
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
-from django.core.mail import send_mail
 from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
@@ -51,6 +52,7 @@ from apps.accounts.serializers import (
     TwoFAEnrollResponseSerializer,
     VerifyEmailSerializer,
 )
+from apps.accounts.services import mailer
 from apps.accounts.services import password_reset as password_reset_svc
 from apps.accounts.services import signup as signup_svc
 from apps.accounts.services import twofa as twofa_svc
@@ -125,25 +127,13 @@ def signup(request: Request) -> Response:
             {"status": "pending_verification"}, status=status.HTTP_201_CREATED
         )
 
-    # Fresh signup — fire verification email best-effort.
+    # Fresh signup — fire branded verification email best-effort.
     plaintext = result.verification_token_plaintext
     if plaintext:
         ttl_hours = getattr(settings, "EMAIL_VERIFICATION_TTL_HOURS", 48)
-        try:
-            send_mail(
-                subject="Verify your Fixture Platform email",
-                message=(
-                    f"Verify your email within {ttl_hours} hours: "
-                    f"/auth/verify?token={plaintext}"
-                ),
-                from_email=getattr(
-                    settings, "DEFAULT_FROM_EMAIL", "no-reply@fixture.local"
-                ),
-                recipient_list=[result.user.email],
-                fail_silently=True,
-            )
-        except Exception:  # pragma: no cover
-            logger.exception("Failed to send verification email")
+        mailer.send_verification_email(
+            user=result.user, token=plaintext, ttl_hours=ttl_hours
+        )
 
     return Response({"status": "pending_verification"}, status=status.HTTP_201_CREATED)
 
@@ -186,6 +176,47 @@ def verify_email(request: Request) -> Response:
     return Response({"status": "verified"})
 
 
+@extend_schema(responses={202: None}, tags=["accounts"])
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@throttle_classes([SignupRateThrottle])
+def resend_verification(request: Request) -> Response:
+    """Re-send the email-verification link for a pending account.
+
+    Enumeration-safe: always returns 202 regardless of whether the email maps
+    to a pending account. Only acts for users that exist, aren't deleted, and
+    are still unverified — minting a fresh token and invalidating older unused
+    ones so a single live link exists at a time.
+    """
+    email = str(request.data.get("email") or "").strip().lower()
+    if email:
+        user = (
+            User.objects.filter(
+                email__iexact=email,
+                deleted_at__isnull=True,
+                is_active=False,
+                email_verified_at__isnull=True,
+            )
+            .order_by("-id")  # UUIDv7 PKs are time-ordered → newest first
+            .first()
+        )
+        if user is not None:
+            ttl_hours = getattr(settings, "EMAIL_VERIFICATION_TTL_HOURS", 48)
+            EmailVerificationToken.objects.filter(
+                user=user, used_at__isnull=True
+            ).update(used_at=timezone.now())
+            plaintext = secrets.token_urlsafe(48)
+            EmailVerificationToken.objects.create(
+                user=user,
+                token_hash=_hash_token(plaintext),
+                expires_at=timezone.now() + timedelta(hours=ttl_hours),
+            )
+            mailer.send_verification_email(
+                user=user, token=plaintext, ttl_hours=ttl_hours
+            )
+    return Response({"status": "ok"}, status=status.HTTP_202_ACCEPTED)
+
+
 # ---------------------------------------------------------------------------
 # Login / logout / reauth
 # ---------------------------------------------------------------------------
@@ -204,6 +235,23 @@ def login_view(request: Request) -> Response:
     # ``axes`` requires a username kwarg matching USERNAME_FIELD.
     user = authenticate(request, username=email, password=password)
     if user is None:
+        # Correct password but the email was never verified → tell the SPA so
+        # it can prompt "verify your email / resend", instead of a misleading
+        # invalid_credentials. Only revealed to someone who knows the password,
+        # so this is not an account-enumeration leak.
+        unverified = User.objects.filter(
+            email__iexact=email, deleted_at__isnull=True
+        ).first()
+        if (
+            unverified is not None
+            and not unverified.is_active
+            and unverified.email_verified_at is None
+            and unverified.check_password(password)
+        ):
+            return Response(
+                {"detail": "email_not_verified", "email": unverified.email},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         try:
             target = User.objects.filter(email=email).only("id").first()
             if target is not None:

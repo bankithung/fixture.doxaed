@@ -1,0 +1,48 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Verify your email · Fixture{% endblock %}
+{% block preheader %}Confirm your email address to activate your Fixture account.{% endblock %}
+
+{% block content %}
+  <h1 style="margin:0 0 16px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:24px; line-height:32px; font-weight:700; color:#0f172a; letter-spacing:-0.3px;">
+    Confirm your email address
+  </h1>
+
+  <p style="margin:0 0 16px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#475569;">
+    {% if user.name %}Hi {{ user.name }},{% else %}Hi there,{% endif %}
+  </p>
+
+  <p style="margin:0 0 28px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#475569;">
+    Thanks for signing up for <strong style="color:#0f172a;">Fixture</strong>. Confirm this email address to activate your account and get started.
+  </p>
+
+  <!-- Bulletproof CTA button -->
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 28px 0;">
+    <tr>
+      <td align="center" bgcolor="#0c8d62" class="btn" style="background:#0c8d62; border-radius:10px;">
+        <a href="{{ verify_url }}" target="_blank"
+           style="display:inline-block; padding:14px 32px; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; line-height:20px; color:#ffffff; text-decoration:none; border-radius:10px;">
+          Verify email address
+        </a>
+      </td>
+    </tr>
+  </table>
+
+  <p style="margin:0 0 8px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#64748b;">
+    Or paste this link into your browser:
+  </p>
+  <p style="margin:0 0 28px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; word-break:break-all;">
+    <a href="{{ verify_url }}" target="_blank" style="color:#0c8d62; text-decoration:underline;">{{ verify_url }}</a>
+  </p>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td style="border-top:1px solid #e2e8f0; padding-top:20px;">
+      <p style="margin:0 0 6px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#94a3b8;">
+        This link expires in <strong style="color:#64748b;">{{ ttl_hours }} hours</strong>.
+      </p>
+      <p style="margin:0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#94a3b8;">
+        If you didn't create a Fixture account, you can safely ignore this email.
+      </p>
+    </td></tr>
+  </table>
+{% endblock %}

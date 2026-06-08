@@ -15,6 +15,11 @@ urlpatterns = [
     path("auth/signup/", views.signup, name="signup"),
     path("auth/verify_email/", views.verify_email, name="verify_email"),
     path("auth/verify-email/", views.verify_email),  # SPA hyphen alias
+    path(
+        "auth/resend-verification/",
+        views.resend_verification,
+        name="resend_verification",
+    ),
     path("auth/login/", views.login_view, name="login"),
     path("auth/logout/", views.logout_view, name="logout"),
     path("auth/reauth/", views.reauth_view, name="reauth"),
