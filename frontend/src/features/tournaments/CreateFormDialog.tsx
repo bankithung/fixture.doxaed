@@ -67,7 +67,7 @@ export function CreateFormDialog({
       return form;
     },
     onSuccess: (f) => {
-      qc.invalidateQueries({ queryKey: ["t-forms", tournamentId] });
+      qc.invalidateQueries({ queryKey: ["forms", tournamentId] });
       close();
       navigate(routes.tournamentFormBuilder(tournamentId, f.id));
     },

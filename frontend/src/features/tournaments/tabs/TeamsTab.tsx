@@ -19,6 +19,7 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { FilePlus2 } from "lucide-react";
 import { newEventId } from "@/lib/eventId";
+import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 import { CreateFormDialog } from "../CreateFormDialog";
@@ -39,7 +40,7 @@ export function TeamsTab(): React.ReactElement {
     queryKey: ["t-institutions", id],
     queryFn: () => institutionsApi.list(id),
   });
-  const forms = useQuery({ queryKey: ["t-forms", id], queryFn: () => formsApi.list(id) });
+  const forms = useQuery({ queryKey: ["forms", id], queryFn: () => formsApi.list(id) });
   const stage = useQuery({
     queryKey: ["tournament-stage", id],
     queryFn: () => tournamentsApi.stage(id),
@@ -52,7 +53,7 @@ export function TeamsTab(): React.ReactElement {
   const generateForm = useMutation({
     mutationFn: () => formsApi.generateTeamForm(id),
     onSuccess: (f) => {
-      qc.invalidateQueries({ queryKey: ["t-forms", id] });
+      invalidateTournament(qc, id);
       toast.push({
         kind: "success",
         title: t("Team form generated"),
@@ -79,9 +80,7 @@ export function TeamsTab(): React.ReactElement {
         event_id: newEventId(),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["t-teams", id] });
-      qc.invalidateQueries({ queryKey: ["t-institutions", id] });
-      qc.invalidateQueries({ queryKey: ["tournament-stage", id] });
+      invalidateTournament(qc, id);
       toast.push({ kind: "success", title: t("Team added") });
       setOpen(false);
       setName("");

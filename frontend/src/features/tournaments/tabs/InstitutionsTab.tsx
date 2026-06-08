@@ -17,6 +17,7 @@ import { tournamentsApi } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -33,7 +34,7 @@ export function InstitutionsTab(): React.ReactElement {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
 
-  const forms = useQuery({ queryKey: ["t-forms", id], queryFn: () => formsApi.list(id) });
+  const forms = useQuery({ queryKey: ["forms", id], queryFn: () => formsApi.list(id) });
   const list = useQuery({ queryKey: ["t-institutions", id], queryFn: () => institutionsApi.list(id) });
   const stage = useQuery({ queryKey: ["tournament-stage", id], queryFn: () => tournamentsApi.stage(id) });
   const canManage = stage.data?.can_manage ?? false;
@@ -48,7 +49,7 @@ export function InstitutionsTab(): React.ReactElement {
   const publish = useMutation({
     mutationFn: () => formsApi.publish(orgForm!.id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["t-forms", id] });
+      invalidateTournament(qc, id);
       toast.push({ kind: "success", title: t("Registration form is open") });
     },
     onError: (e) =>

@@ -23,10 +23,14 @@ function emit(e: AuthEvent): void {
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30_000,
+      // Short staleness + refetch-on-focus/reconnect so data stays coherent
+      // across pages without a manual refresh. Mutations also explicitly
+      // invalidate dependent queries (see lib/queryKeys.ts::invalidateTournament).
+      staleTime: 10_000,
       gcTime: 5 * 60_000,
       retry: 1,
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
     },
     mutations: {
       retry: 0,

@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { newEventId } from "@/lib/eventId";
+import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -75,8 +76,7 @@ export function ScoreRow({
         event_id: newEventId(),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["t-matches", tournamentId] });
-      qc.invalidateQueries({ queryKey: ["t-standings", tournamentId] });
+      invalidateTournament(qc, tournamentId);
     },
   });
   const done = match.status === "completed";

@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
+import { invalidateTournament } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
@@ -94,8 +95,7 @@ export function ScheduleWizard({
       }),
     onSuccess: (r) => {
       setResult(r);
-      qc.invalidateQueries({ queryKey: ["t-matches", tournamentId] });
-      qc.invalidateQueries({ queryKey: ["tournament-stage", tournamentId] });
+      invalidateTournament(qc, tournamentId);
     },
     onError: (e) =>
       toast.push({

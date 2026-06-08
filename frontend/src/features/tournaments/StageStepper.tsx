@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { newEventId } from "@/lib/eventId";
+import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -113,8 +114,7 @@ export function StageStepper({
         event_id: newEventId(),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tournament-stage", tournamentId] });
-      qc.invalidateQueries({ queryKey: ["tournament", tournamentId] });
+      invalidateTournament(qc, tournamentId);
       toast.push({ kind: "success", title: t("Stage updated") });
       closeDialog();
     },

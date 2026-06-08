@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { newEventId } from "@/lib/eventId";
+import { invalidateTournament } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
@@ -77,7 +78,11 @@ export function MatchConsolePage(): React.ReactElement {
     queryFn: () => liveApi.snapshot(matchId),
     refetchInterval: 5000,
   });
-  const refresh = () => qc.invalidateQueries({ queryKey: ["live", matchId] });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["live", matchId] });
+    // Keep the tournament's Fixtures/standings pages coherent with the score.
+    if (id) invalidateTournament(qc, id);
+  };
 
   const [minute, setMinute] = useState("");
   const [sel, setSel] = useState<{ home?: string; away?: string }>({});

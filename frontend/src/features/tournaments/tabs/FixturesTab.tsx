@@ -5,6 +5,7 @@ import { CalendarClock, GitBranch, Wand2 } from "lucide-react";
 import { tournamentsApi, type MatchRow } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 import { ScheduleWizard } from "../ScheduleWizard";
@@ -35,9 +36,7 @@ export function FixturesTab(): React.ReactElement {
     mutationFn: (format: "round_robin" | "knockout") =>
       tournamentsApi.generateFixtures(id, { format }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["t-matches", id] });
-      qc.invalidateQueries({ queryKey: ["t-standings", id] });
-      qc.invalidateQueries({ queryKey: ["tournament-stage", id] });
+      invalidateTournament(qc, id);
       toast.push({ kind: "success", title: t("Fixtures generated") });
     },
     onError: () => toast.push({ kind: "error", title: t("Could not generate fixtures") }),
