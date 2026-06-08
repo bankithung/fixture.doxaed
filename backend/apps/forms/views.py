@@ -452,3 +452,20 @@ class PublicInstitutionDirectoryView(GenericAPIView):
                 "count": len(entries),
             }
         )
+
+
+class GenerateTeamFormView(GenericAPIView):
+    """`POST /api/tournaments/{id}/forms/generate-team/` — auto-generate a draft
+    team-registration form from the org-reg form's categories + registered
+    institutions. Manager-only. Returns the new form for the admin to review."""
+
+    permission_classes: ClassVar[list[type[BasePermission]]] = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        from apps.forms.services.generation import generate_team_form_template
+
+        t = _get_manageable_tournament(request.user, tournament_id)
+        form = generate_team_form_template(
+            tournament=t, created_by=request.user, request=request
+        )
+        return Response(FormSerializer(form).data, status=201)

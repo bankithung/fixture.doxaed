@@ -62,6 +62,9 @@ export const formsApi = {
     tournamentId: string,
     body: { title: string; purpose: string; stage?: string },
   ) => api.post<FormSummary>(`/api/tournaments/${tournamentId}/forms/`, body),
+  /** Auto-generate a draft team-registration form from the org-reg categories. */
+  generateTeamForm: (tournamentId: string) =>
+    api.post<FormSummary>(`/api/tournaments/${tournamentId}/forms/generate-team/`, {}),
   get: (formId: string) => api.get<FormSummary>(`/api/forms/${formId}/`),
   update: (formId: string, body: FormUpdateBody) =>
     api.patch<FormSummary>(`/api/forms/${formId}/`, body),

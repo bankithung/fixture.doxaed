@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, Plus, Users } from "lucide-react";
+import { Pencil, Plus, Sparkles, Users } from "lucide-react";
 import { institutionsApi } from "@/api/institutions";
+import { formsApi } from "@/api/forms";
 import { tournamentsApi, type TeamRow } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ export function TeamsTab(): React.ReactElement {
   const { id = "" } = useParams();
   const qc = useQueryClient();
   const toast = useToast();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [institutionId, setInstitutionId] = useState("");
   const [name, setName] = useState("");
@@ -34,11 +36,29 @@ export function TeamsTab(): React.ReactElement {
     queryKey: ["t-institutions", id],
     queryFn: () => institutionsApi.list(id),
   });
+  const forms = useQuery({ queryKey: ["t-forms", id], queryFn: () => formsApi.list(id) });
   const stage = useQuery({
     queryKey: ["tournament-stage", id],
     queryFn: () => tournamentsApi.stage(id),
   });
   const canManage = stage.data?.can_manage ?? false;
+  const teamForm =
+    (forms.data ?? []).find((f) => f.stage === "team_registration") ??
+    (forms.data ?? []).find((f) => f.purpose === "team_registration");
+
+  const generateForm = useMutation({
+    mutationFn: () => formsApi.generateTeamForm(id),
+    onSuccess: (f) => {
+      qc.invalidateQueries({ queryKey: ["t-forms", id] });
+      toast.push({
+        kind: "success",
+        title: t("Team form generated"),
+        description: t("Review and edit the template, then open it for registration."),
+      });
+      navigate(routes.tournamentFormBuilder(id, f.id));
+    },
+    onError: () => toast.push({ kind: "error", title: t("Could not generate the team form") }),
+  });
 
   const grouped = useMemo(() => {
     const g: Record<string, TeamRow[]> = {};
@@ -85,13 +105,29 @@ export function TeamsTab(): React.ReactElement {
         </div>
         {canManage ? (
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              to={routes.tournamentForms(id)}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
-              <ClipboardList aria-hidden="true" className="h-4 w-4" />
-              {t("Registration form")}
-            </Link>
+            {teamForm ? (
+              <Button
+                variant="outline"
+                onClick={() => navigate(routes.tournamentFormBuilder(id, teamForm.id))}
+              >
+                <Pencil aria-hidden="true" className="h-4 w-4" />
+                {t("Edit team form")}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                disabled={(institutions.data?.length ?? 0) === 0 || generateForm.isPending}
+                onClick={() => generateForm.mutate()}
+                title={
+                  (institutions.data?.length ?? 0) === 0
+                    ? t("Register institutions first")
+                    : undefined
+                }
+              >
+                <Sparkles aria-hidden="true" className="h-4 w-4" />
+                {generateForm.isPending ? t("Generating…") : t("Auto-generate team form")}
+              </Button>
+            )}
             <Button
               disabled={(institutions.data?.length ?? 0) === 0}
               onClick={() => {
@@ -105,6 +141,12 @@ export function TeamsTab(): React.ReactElement {
           </div>
         ) : null}
       </div>
+
+      {canManage && (institutions.data?.length ?? 0) > 0 && !teamForm ? (
+        <p className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+          {t("Tip: “Auto-generate team form” builds a registration form from the categories each institution selected — a conditional section per category — for you to review and open.")}
+        </p>
+      ) : null}
 
       {total === 0 ? (
         <EmptyState

@@ -187,6 +187,46 @@ def test_api_admin_add_team_under_institution():
     assert team.institution_id == inst.id
 
 
+def test_auto_generate_team_form_and_multi_category_mapping():
+    from apps.forms.models import Form, FormResponse
+    from apps.forms.services.generation import generate_team_form_template
+    from apps.forms.services.mapping import map_response
+
+    admin = _admin()
+    t = create_tournament(user=admin, name="Cup")
+    Form.objects.create(
+        organization=t.organization, tournament=t, slug="org", title="Org",
+        purpose="organization_registration", stage="org_registration", status="open",
+        schema={"sections": [{"key": "s", "title": "S", "fields": [
+            {"key": "categories", "type": "multi_choice", "label": "Categories",
+             "options": ["U14", "U16"]},
+        ]}]},
+    )
+    inst = get_or_create_institution(tournament=t, name="Hilltop School")
+
+    team = generate_team_form_template(tournament=t, created_by=admin)
+    assert team.purpose == "team_registration" and team.stage == "team_registration"
+    keys = [s["key"] for s in team.schema["sections"]]
+    assert "institution" in keys and any(k.startswith("cat_") for k in keys)
+    cg = team.settings["bindings"]["category_groups"]
+    assert len(cg) == 2
+
+    # A school that selected only U14 submits two teams.
+    u14 = next(c for c in cg if c["category"] == "U14")
+    resp = FormResponse.objects.create(
+        form=team, organization=t.organization, tournament=t,
+        answers={
+            "institution_id": str(inst.id),
+            "categories": ["U14"],
+            u14["group"]: [{u14["team_name"]: "Hilltop A"}, {u14["team_name"]: "Hilltop B"}],
+        },
+    )
+    map_response(resp)
+    made = Team.objects.filter(tournament=t, institution=inst, deleted_at__isnull=True)
+    assert made.count() == 2
+    assert set(made.values_list("pool", flat=True)) == {"U14"}
+
+
 def test_public_directory_lists_institutions_with_dynamic_filters():
     from rest_framework.test import APIClient
 

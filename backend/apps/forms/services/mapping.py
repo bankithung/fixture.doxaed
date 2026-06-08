@@ -88,6 +88,12 @@ def _map_team_registration(resp: FormResponse) -> FormResponse:
     form = resp.form
     b = (form.settings or {}).get("bindings", {})
     a = resp.answers or {}
+
+    # Auto-generated multi-category team form: one repeating group per category,
+    # each row = a team (pool = category) under the selected institution.
+    if b.get("category_groups"):
+        return _map_team_registration_multi(resp, form, b, a)
+
     school_name = a.get(b.get("school_name", "school_name")) or resp.title or "School"
 
     # A team_registration form may carry a repeating ``group`` for players; v1
@@ -122,6 +128,39 @@ def _map_team_registration(resp: FormResponse) -> FormResponse:
         event_id=derived_event_id,
         institution_id=institution_id,
     )
+    resp.mapped_entities = {"team_ids": [str(t.id) for t in teams]}
+    resp.save(update_fields=["mapped_entities"])
+    return resp
+
+
+def _map_team_registration_multi(resp, form, b, a) -> FormResponse:
+    """Auto-generated team form: collect teams from every category group into one
+    register_school call (all under the chosen institution)."""
+    institution_id = a.get(b.get("institution_id", "institution_id")) or None
+    teams_payload: list[dict] = []
+    for cg in b.get("category_groups", []):
+        group_key = cg.get("group")
+        tname_key = cg.get("team_name")
+        category = cg.get("category") or ""
+        rows = a.get(group_key, []) or []
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            name = row.get(tname_key)
+            if name:
+                teams_payload.append({"name": str(name), "pool": category, "players": []})
+
+    derived_event_id = uuid.uuid5(uuid.NAMESPACE_URL, f"formresp-teamreg:{resp.id}")
+    teams = register_school(
+        tournament=form.tournament,
+        school_name="",
+        teams=teams_payload,
+        channel="self",
+        event_id=derived_event_id,
+        institution_id=institution_id,
+    ) if teams_payload else []
     resp.mapped_entities = {"team_ids": [str(t.id) for t in teams]}
     resp.save(update_fields=["mapped_entities"])
     return resp
