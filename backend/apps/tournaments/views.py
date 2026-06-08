@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -23,12 +24,19 @@ from apps.tournaments.serializers import (
     TournamentMembershipSerializer,
     TournamentMembershipUpdateSerializer,
     TournamentSerializer,
+    TournamentStageTransitionSerializer,
 )
 from apps.tournaments.services.create import create_tournament
 from apps.tournaments.services.rules import (
     can_edit_rules,
     merge_rules,
     update_settings,
+)
+from apps.tournaments.services.state import (
+    StageTransitionError,
+    build_stage_payload,
+    preview_transition,
+    transition_tournament,
 )
 
 
@@ -315,3 +323,60 @@ class TournamentAuditView(GenericAPIView):
         )
         page = list(qs[:limit])
         return Response({"results": AuditEventSerializer(page, many=True).data})
+
+
+class TournamentStageView(GenericAPIView):
+    """GET the setup-stepper state; POST executes a stage transition.
+
+    Mirrors the tournament view pattern: _get_tournament_or_404 (404-not-403),
+    then the manager verb gate on writes. GET is visible to any member.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id):
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        return Response(build_stage_payload(tournament, request.user))
+
+    def post(self, request, tournament_id):
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        if not can_manage_tournament(request.user, tournament):
+            raise PermissionDenied("not_tournament_manager")
+        ser = TournamentStageTransitionSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            tournament = transition_tournament(
+                tournament=tournament,
+                to_stage=ser.validated_data["to_stage"],
+                ack_warnings=ser.validated_data.get("ack_warnings", False),
+                reason=ser.validated_data.get("reason", ""),
+                event_id=ser.validated_data.get("event_id"),
+                by=request.user,
+                request=request,
+            )
+        except StageTransitionError as exc:
+            # blocked / unacknowledged warnings -> 409 with the consequences payload
+            return Response(
+                {"detail": exc.detail, "consequences": exc.consequences},
+                status=409,
+            )
+        except DjangoValidationError as exc:
+            # illegal transition -> 400 (mirrors transition_match contract)
+            return Response({"detail": exc.messages[0]}, status=400)
+        return Response(build_stage_payload(tournament, request.user))
+
+
+class TournamentStagePreviewView(GenericAPIView):
+    """POST a dry-run of a transition; never mutates. Manager-only."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        if not can_manage_tournament(request.user, tournament):
+            raise PermissionDenied("not_tournament_manager")
+        to_stage = request.data.get("to_stage")
+        try:
+            return Response(preview_transition(tournament, to_stage))
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=400)

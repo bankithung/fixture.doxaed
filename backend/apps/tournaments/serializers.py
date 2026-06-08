@@ -7,7 +7,15 @@ from apps.tournaments.models import (
     TournamentMembership,
     TournamentMembershipRole,
     TournamentMembershipStatus,
+    TournamentStage,
 )
+
+
+class TournamentStageTransitionSerializer(serializers.Serializer):
+    to_stage = serializers.ChoiceField(choices=TournamentStage.choices)
+    ack_warnings = serializers.BooleanField(required=False, default=False)
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
+    event_id = serializers.UUIDField(required=False)
 
 
 class TournamentSerializer(serializers.ModelSerializer):

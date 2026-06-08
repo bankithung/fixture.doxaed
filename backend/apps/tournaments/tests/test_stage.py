@@ -211,3 +211,102 @@ def test_build_stage_payload_shape():
     assert [s["key"] for s in payload["stages"]] == list(st._ORDER)
     assert payload["stages"][0]["state"] == "current"
     assert payload["stages"][1]["state"] == "upcoming"
+
+
+# --------------------------------------------------------------------------- API
+from rest_framework.test import APIClient  # noqa: E402
+
+
+def _client(user):
+    c = APIClient()
+    c.force_authenticate(user=user)
+    return c
+
+
+def test_api_get_stage_payload():
+    admin = _admin()
+    t = create_tournament(user=admin, name="API")
+    r = _client(admin).get(f"/api/tournaments/{t.id}/stage/")
+    assert r.status_code == 200, r.content
+    body = r.json()
+    assert body["stage"] == G.SETUP
+    assert body["order"][0] == G.SETUP and body["order"][-1] == G.READY
+    assert body["can_manage"] is True
+
+
+def test_api_advance_with_ack():
+    admin = _admin()
+    t = create_tournament(user=admin, name="API2")
+    r = _client(admin).post(
+        f"/api/tournaments/{t.id}/stage/",
+        {"to_stage": G.ORG_REGISTRATION, "ack_warnings": True, "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 200, r.content
+    assert r.json()["stage"] == G.ORG_REGISTRATION
+
+
+def test_api_preview_consequences():
+    admin = _admin()
+    t = create_tournament(user=admin, name="API3")
+    _advance(t, G.ORG_REGISTRATION)
+    r = _client(admin).post(
+        f"/api/tournaments/{t.id}/stage/preview/",
+        {"to_stage": G.TEAM_REGISTRATION}, format="json",
+    )
+    assert r.status_code == 200, r.content
+    codes = {w["code"] for w in r.json()["warnings"]}
+    assert "rules_will_freeze" in codes
+
+
+def test_api_blocked_returns_409():
+    admin = _admin()
+    t = create_tournament(user=admin, name="API4")
+    _advance(t, G.ORG_REGISTRATION)
+    _advance(t, G.TEAM_REGISTRATION)
+    r = _client(admin).post(
+        f"/api/tournaments/{t.id}/stage/",
+        {"to_stage": G.MEMBERS, "ack_warnings": True}, format="json",
+    )
+    assert r.status_code == 409, r.content
+    assert r.json()["detail"] == "stage_blocked"
+
+
+def test_api_illegal_returns_400():
+    admin = _admin()
+    t = create_tournament(user=admin, name="API5")
+    r = _client(admin).post(
+        f"/api/tournaments/{t.id}/stage/",
+        {"to_stage": G.FIXTURES, "ack_warnings": True}, format="json",
+    )
+    assert r.status_code == 400, r.content
+
+
+def test_api_isolation_404_for_other_org():
+    owner = _admin("owner@stage.test")
+    t = create_tournament(user=owner, name="Private")
+    outsider = _admin("outsider@stage.test")
+    r = _client(outsider).get(f"/api/tournaments/{t.id}/stage/")
+    assert r.status_code == 404  # no existence leak (invariant 2)
+
+
+def test_api_non_manager_member_get_ok_post_403():
+    from apps.tournaments.models import (
+        TournamentMembership,
+        TournamentMembershipRole,
+        TournamentMembershipStatus,
+    )
+
+    admin = _admin()
+    t = create_tournament(user=admin, name="Roles")
+    ref = _admin("ref@stage.test")
+    TournamentMembership.objects.create(
+        user=ref, tournament=t, role=TournamentMembershipRole.REFEREE,
+        status=TournamentMembershipStatus.ACTIVE, assigned_by=admin,
+    )
+    assert _client(ref).get(f"/api/tournaments/{t.id}/stage/").status_code == 200
+    r = _client(ref).post(
+        f"/api/tournaments/{t.id}/stage/",
+        {"to_stage": G.ORG_REGISTRATION, "ack_warnings": True}, format="json",
+    )
+    assert r.status_code == 403

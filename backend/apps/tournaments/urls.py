@@ -15,6 +15,8 @@ from apps.tournaments.views import (
     TournamentMemberDetailView,
     TournamentMembersView,
     TournamentSettingsView,
+    TournamentStagePreviewView,
+    TournamentStageView,
 )
 
 urlpatterns = [
@@ -83,5 +85,15 @@ urlpatterns = [
         "<uuid:tournament_id>/disputes/",
         TournamentDisputeView.as_view(),
         name="tournament-disputes",
+    ),
+    path(
+        "<uuid:tournament_id>/stage/",
+        TournamentStageView.as_view(),
+        name="tournament-stage",
+    ),
+    path(
+        "<uuid:tournament_id>/stage/preview/",
+        TournamentStagePreviewView.as_view(),
+        name="tournament-stage-preview",
     ),
 ]
