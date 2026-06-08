@@ -35,7 +35,7 @@ def test_build_slots_counts():
         venues=["A", "B"],
     )
     slots = build_slots(cfg)
-    # 9:00 and 10:30 fit before 12:00 → 2 slots/day/venue × 2 days × 2 venues = 8
+    # 9:00 and 10:30 fit before 12:00 → 2 slots/day/venue x 2 days x 2 venues = 8
     assert len(slots) == 8
     assert slots == sorted(slots, key=lambda s: (s[0], s[1]))
 

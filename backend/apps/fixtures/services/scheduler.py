@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
+
 # --------------------------------------------------------------------------- config
 @dataclass
 class ScheduleConfig:
@@ -52,7 +53,7 @@ def _parse_time(v: Any, default: time) -> time:
     if isinstance(v, time):
         return v
     if isinstance(v, str) and v:
-        h, m, *_ = (v.split(":") + ["0"])
+        h, m, *_ = [*v.split(":"), "0"]
         return time(int(h), int(m))
     return default
 
@@ -199,7 +200,7 @@ def _score_soft(assignments, team_busy, cfg, total) -> tuple[float, list[str]]:
     # spread: fraction of teams whose matches land on distinct days
     clustered = 0
     teams = 0
-    for team, busy in team_busy.items():
+    for _team, busy in team_busy.items():
         teams += 1
         days = {s.date() for s, _ in busy}
         if len(days) < len(busy):
