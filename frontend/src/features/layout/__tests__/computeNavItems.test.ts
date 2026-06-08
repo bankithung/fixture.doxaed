@@ -46,8 +46,14 @@ describe("computeWorkspaceNav", () => {
     expect(computeWorkspaceNav(null, "acme")).toEqual([]);
   });
 
-  it("returns no groups when there is no slug", () => {
-    expect(computeWorkspaceNav(makeUser(["admin"], []), null)).toEqual([]);
+  it("still shows the Workspace group when there is no slug (org-less user)", () => {
+    // A brand-new user with no org yet must keep a usable sidebar. Dashboard
+    // falls back to the workspace chooser; Tournaments + Invites are global.
+    const groups = computeWorkspaceNav(makeUser(["admin"], []), null);
+    expect(groupKeys(groups)).toEqual(["workspace"]);
+    expect(flatKeys(groups)).toEqual(["dashboard", "tournaments", "invites"]);
+    const dashboard = groups[0].items.find((i) => i.key === "dashboard");
+    expect(dashboard?.href).toBe("/orgs");
   });
 
   it("is ONLY the Workspace group: Dashboard + Tournaments + Invites", () => {

@@ -47,11 +47,23 @@ export function ProtectedRoute({
     return <Navigate to={`${routes.login()}?next=${next}`} replace />;
   }
 
+  // Surfaces a brand-new (org-less) user must still reach: the chooser, the
+  // tournaments hub, the self-serve "start a tournament" page (which
+  // auto-provisions their workspace), their invites inbox, and their profile.
+  // Without this allowlist the zero-membership redirect traps new users in a
+  // loop — /orgs → "Start a tournament" → /tournaments/new → back to /orgs.
+  const ORG_OPTIONAL_PATHS = new Set<string>([
+    routes.orgChooser(),
+    routes.tournaments(),
+    routes.tournamentNew(),
+    routes.invites(),
+    "/me",
+  ]);
   const memberships = user.memberships ?? [];
   if (
     memberships.length === 0 &&
     !user.is_superuser &&
-    location.pathname !== routes.orgChooser()
+    !ORG_OPTIONAL_PATHS.has(location.pathname)
   ) {
     return <Navigate to={routes.orgChooser()} replace />;
   }

@@ -56,6 +56,11 @@ export const authApi = {
     api.post<{ user: User }>("/api/accounts/auth/signup/", payload),
   verifyEmail: (token: string) =>
     api.post<{ ok: true }>("/api/accounts/auth/verify-email/", { token }),
+  /** Re-send the verification link for a pending account (enumeration-safe). */
+  resendVerification: (email: string) =>
+    api.post<{ status: string }>("/api/accounts/auth/resend-verification/", {
+      email,
+    }),
   passwordResetRequest: (email: string) =>
     api.post<{ ok: true }>("/api/accounts/auth/password-reset-request/", {
       email,

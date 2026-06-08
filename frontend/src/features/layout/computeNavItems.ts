@@ -77,14 +77,16 @@ export function computeWorkspaceNav(
   user: User | null,
   slug: string | null,
 ): NavGroup[] {
-  if (!user || !slug) return [];
+  if (!user) return [];
 
-  // Workspace group — Dashboard + the global Tournaments hub. Nothing else.
+  // Workspace group — always shown so a brand-new (org-less) user still has a
+  // usable sidebar. Tournaments + Invites are global; Dashboard needs an org
+  // slug, so it falls back to the workspace chooser until one is in scope.
   const workspace: NavItem[] = [
     {
       key: "dashboard",
       label: t("Dashboard"),
-      href: routes.orgDashboard(slug),
+      href: slug ? routes.orgDashboard(slug) : routes.orgChooser(),
       icon: LayoutDashboard,
     },
     {

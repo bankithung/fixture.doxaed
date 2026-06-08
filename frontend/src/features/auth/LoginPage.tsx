@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -7,10 +7,25 @@ import { useAuthStore } from "./authStore";
 import { AuthLayout } from "./AuthLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { Label } from "@/components/ui/label";
+import { authApi } from "@/api/auth";
+import { ApiError } from "@/types/api";
 import { pickLandingPathForUser } from "@/features/roles/redirectByRole";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
+
+/** Map backend error codes to friendly, human messages. */
+function friendlyAuthError(code: string | null): string | null {
+  if (!code) return null;
+  const map: Record<string, string> = {
+    invalid_credentials: t("Incorrect email or password."),
+    account_inactive: t("This account is inactive. Contact an administrator."),
+    invalid_2fa: t("That code didn't match. Try again."),
+    twofa_locked: t("Too many attempts. Try again in a few minutes."),
+  };
+  return map[code] ?? code;
+}
 
 const credSchema = z.object({
   email: z.string().email(t("Enter a valid email")),
@@ -41,6 +56,23 @@ export function LoginPage(): React.ReactElement {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const explicitNext = safeNext(params.get("next"));
+
+  // Email-verification gate: set when login returns `email_not_verified`.
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+  const [resend, setResend] = useState<"idle" | "sending" | "sent" | "error">(
+    "idle",
+  );
+
+  const onResend = async (): Promise<void> => {
+    if (!unverifiedEmail) return;
+    setResend("sending");
+    try {
+      await authApi.resendVerification(unverifiedEmail);
+      setResend("sent");
+    } catch {
+      setResend("error");
+    }
+  };
 
   const credForm = useForm<CredValues>({
     resolver: zodResolver(credSchema),
@@ -75,14 +107,21 @@ export function LoginPage(): React.ReactElement {
   };
 
   const onCredSubmit = async (values: CredValues): Promise<void> => {
+    setUnverifiedEmail(null);
+    setResend("idle");
     try {
       const res = await login(values);
       if (!res.requires_2fa) {
         navigate(resolveDestination());
       }
       // If requires_2fa we stay on this page and the totp form renders.
-    } catch {
-      // surfaced via store error
+    } catch (e) {
+      // Surface the "verify your email" gate inline with a resend action.
+      if (e instanceof ApiError && e.payload.detail === "email_not_verified") {
+        const payload = e.payload as { email?: string };
+        setUnverifiedEmail(payload.email ?? values.email);
+      }
+      // Other errors are surfaced via the store `error`.
     }
   };
 
@@ -104,12 +143,51 @@ export function LoginPage(): React.ReactElement {
           : t("Welcome back. Enter your credentials to continue.")
       }
     >
-      {error ? (
+      {unverifiedEmail ? (
+        <div
+          role="status"
+          className="mb-4 rounded-md border border-primary/30 bg-primary/10 px-4 py-3 text-sm"
+        >
+          <p className="font-medium text-foreground">
+            {t("Verify your email to continue")}
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            {t("We sent a verification link to")}{" "}
+            <span className="font-medium text-foreground">
+              {unverifiedEmail}
+            </span>
+            . {t("Click it to activate your account.")}
+          </p>
+          {resend === "sent" ? (
+            <p className="mt-2 font-medium text-primary">
+              {t("Sent. Check your inbox (and spam).")}
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={onResend}
+              disabled={resend === "sending"}
+              className="mt-2 font-medium text-primary hover:underline focus-visible:underline focus-visible:outline-none disabled:opacity-50"
+            >
+              {resend === "sending"
+                ? t("Sending...")
+                : t("Resend verification email")}
+            </button>
+          )}
+          {resend === "error" ? (
+            <p className="mt-1 text-destructive">
+              {t("Couldn't resend right now. Try again shortly.")}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {error && error !== "email_not_verified" ? (
         <div
           role="alert"
           className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
         >
-          {error}
+          {friendlyAuthError(error)}
         </div>
       ) : null}
 
@@ -170,9 +248,8 @@ export function LoginPage(): React.ReactElement {
                 {t("Forgot password?")}
               </Link>
             </div>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               autoComplete="current-password"
               aria-invalid={!!credForm.formState.errors.password}
               {...credForm.register("password")}

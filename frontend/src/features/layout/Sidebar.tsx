@@ -14,22 +14,24 @@ export interface TournamentContext {
   name: string | null;
 }
 
-const NAV_LINK = (isActive: boolean): string =>
+const NAV_LINK = (isActive: boolean, collapsed: boolean): string =>
   cn(
-    "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    "group relative flex items-center gap-3 rounded-lg py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    collapsed ? "justify-center px-0" : "px-3",
     isActive
       ? "bg-accent font-medium text-accent-foreground"
       : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
   );
 
-function railNavLink(item: NavItem): React.ReactElement {
+function railNavLink(item: NavItem, collapsed: boolean): React.ReactElement {
   const Icon = item.icon;
   return (
     <NavLink
       key={item.key}
       to={item.href}
       end
-      className={({ isActive }) => NAV_LINK(isActive)}
+      title={collapsed ? item.label : undefined}
+      className={({ isActive }) => NAV_LINK(isActive, collapsed)}
     >
       {({ isActive }) => (
         <>
@@ -40,12 +42,26 @@ function railNavLink(item: NavItem): React.ReactElement {
             />
           ) : null}
           <Icon aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
-          <span className="flex-1 truncate">{item.label}</span>
-          {item.badge ? (
-            <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
-              {item.badge}
-            </span>
-          ) : null}
+          {collapsed ? (
+            <>
+              <span className="sr-only">{item.label}</span>
+              {item.badge ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-primary"
+                />
+              ) : null}
+            </>
+          ) : (
+            <>
+              <span className="flex-1 truncate">{item.label}</span>
+              {item.badge ? (
+                <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
+                  {item.badge}
+                </span>
+              ) : null}
+            </>
+          )}
         </>
       )}
     </NavLink>
@@ -57,6 +73,9 @@ function railNavLink(item: NavItem): React.ReactElement {
  * viewport (no centered-column dead margins). Hidden below md; the mobile
  * drawer in AppShell renders the same grouped nav.
  *
+ * `collapsed` shrinks the rail to an icons-only strip (labels move to native
+ * tooltips); the choice is persisted by AppShell.
+ *
  * Two modes, both driven by `groups`:
  *  - Workspace mode (`tournament` omitted): Workspace + Admin groups.
  *  - Tournament mode (`tournament` provided): a context header ("← All
@@ -65,55 +84,87 @@ function railNavLink(item: NavItem): React.ReactElement {
 export function Sidebar({
   groups,
   tournament,
+  collapsed = false,
 }: {
   groups: NavGroup[];
   tournament?: TournamentContext;
+  collapsed?: boolean;
 }): React.ReactElement {
   return (
-    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-card md:flex lg:w-64">
-      <div className="flex h-14 items-center border-b border-border px-4">
+    <aside
+      className={cn(
+        "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border bg-card transition-[width] duration-200 md:flex",
+        collapsed ? "w-16" : "w-60 lg:w-64",
+      )}
+    >
+      <div
+        className={cn(
+          "flex h-14 items-center border-b border-border",
+          collapsed ? "justify-center px-2" : "px-4",
+        )}
+      >
         <Link
           to={routes.landing()}
+          title={collapsed ? t("Fixture") : undefined}
           className="flex items-center gap-2 rounded-md font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-sm">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-sm">
             F
           </span>
-          {t("Fixture")}
+          {collapsed ? null : t("Fixture")}
         </Link>
       </div>
 
       <nav
         aria-label={t("Primary")}
-        className="flex flex-1 flex-col gap-1 overflow-y-auto p-3"
+        className={cn(
+          "flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden p-3",
+          collapsed && "items-stretch",
+        )}
       >
         {tournament ? (
           <div className="mb-2 flex flex-col gap-2 border-b border-border pb-3">
             <Link
               to={routes.tournaments()}
-              className="flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              title={collapsed ? t("All tournaments") : undefined}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                collapsed ? "justify-center px-0" : "px-3",
+              )}
             >
               <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-              {t("All tournaments")}
+              {collapsed ? null : t("All tournaments")}
             </Link>
-            <div className="flex items-center gap-2 px-3">
+            <div
+              className={cn(
+                "flex items-center gap-2",
+                collapsed ? "justify-center px-0" : "px-3",
+              )}
+              title={collapsed ? (tournament.name ?? t("Tournament")) : undefined}
+            >
               <Trophy
                 aria-hidden="true"
                 className="h-[18px] w-[18px] shrink-0 text-primary"
               />
-              <span className="truncate text-sm font-semibold tracking-tight">
-                {tournament.name ?? t("Tournament")}
-              </span>
+              {collapsed ? null : (
+                <span className="truncate text-sm font-semibold tracking-tight">
+                  {tournament.name ?? t("Tournament")}
+                </span>
+              )}
             </div>
           </div>
         ) : null}
 
         {groups.map((group) => (
           <div key={group.key} className="flex flex-col gap-0.5 pb-2">
-            <p className="px-3 pb-1 pt-1 text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              {group.label}
-            </p>
-            {group.items.map(railNavLink)}
+            {collapsed ? (
+              <div aria-hidden="true" className="mx-2 my-1 border-t border-border/60" />
+            ) : (
+              <p className="px-3 pb-1 pt-1 text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                {group.label}
+              </p>
+            )}
+            {group.items.map((item) => railNavLink(item, collapsed))}
           </div>
         ))}
       </nav>
@@ -121,10 +172,14 @@ export function Sidebar({
       <div className="border-t border-border p-3">
         <Link
           to={routes.tournamentNew()}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          title={collapsed ? t("New tournament") : undefined}
+          className={cn(
+            "flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            collapsed ? "px-0" : "px-3",
+          )}
         >
-          <Plus aria-hidden="true" className="h-4 w-4" />
-          {t("New tournament")}
+          <Plus aria-hidden="true" className="h-4 w-4 shrink-0" />
+          {collapsed ? null : t("New tournament")}
         </Link>
       </div>
     </aside>

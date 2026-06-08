@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   Menu,
+  PanelLeft,
   Plus,
   Trophy,
   UserRound,
@@ -84,6 +85,25 @@ export function AppShell(): React.ReactElement {
   const [menuOpen, setMenuOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Desktop sidebar collapse (icons-only), persisted across sessions.
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("sidebar:collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleCollapsed = (): void =>
+    setCollapsed((c) => {
+      const next = !c;
+      try {
+        localStorage.setItem("sidebar:collapsed", next ? "1" : "0");
+      } catch {
+        /* storage unavailable — non-fatal */
+      }
+      return next;
+    });
 
   // Mirror URL slug into the switcher store (B.20: URL is source of truth).
   useEffect(() => {
@@ -200,6 +220,7 @@ export function AppShell(): React.ReactElement {
     <div className="flex min-h-screen bg-background">
       <Sidebar
         groups={navGroups}
+        collapsed={collapsed}
         tournament={
           inTournamentContext ? { name: tournamentName } : undefined
         }
@@ -219,6 +240,16 @@ export function AppShell(): React.ReactElement {
             className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
           >
             <Menu aria-hidden="true" className="h-5 w-5" />
+          </button>
+
+          <button
+            type="button"
+            aria-label={collapsed ? t("Expand sidebar") : t("Collapse sidebar")}
+            aria-pressed={collapsed}
+            onClick={toggleCollapsed}
+            className="hidden h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:inline-flex"
+          >
+            <PanelLeft aria-hidden="true" className="h-5 w-5" />
           </button>
 
           <Link
