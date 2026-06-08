@@ -21,7 +21,7 @@ from django.utils import timezone
 
 from apps.audit.models import ActorRole, AuditEvent
 from apps.audit.services import emit_audit
-from apps.forms.constants import FormPurpose, FormStatus
+from apps.forms.constants import FormStatus
 from apps.forms.models import Form
 from apps.forms.services.forms import close_form, is_open, publish_form
 from apps.matches.models import Match
@@ -127,14 +127,12 @@ def _member_count(t: Tournament) -> int:
 
 
 def _institution_count(t: Tournament) -> int:
-    """Proxy until the Institution entity lands (spec OQ-1): submissions to the
-    org-registration form(s). ``Form.response_count`` is maintained on submit."""
-    agg = Form.objects.filter(
-        tournament_id=t.id,
-        purpose=FormPurpose.ORGANIZATION_REGISTRATION,
-        deleted_at__isnull=True,
-    ).values_list("response_count", flat=True)
-    return sum(agg)
+    """Registered/invited institutions for this tournament (the real entity)."""
+    from apps.teams.models import Institution
+
+    return Institution.objects.filter(
+        tournament_id=t.id, deleted_at__isnull=True
+    ).exclude(status__in=["withdrawn", "rejected"]).count()
 
 
 def _counts_for(t: Tournament) -> dict[str, int]:

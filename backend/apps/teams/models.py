@@ -46,10 +46,98 @@ class Person(models.Model):
         return self.full_name
 
 
+class InstitutionKind(models.TextChoices):
+    SCHOOL = "school", _("School")
+    COLLEGE = "college", _("College")
+    UNIVERSITY = "university", _("University")
+    CLUB = "club", _("Club")
+    ACADEMY = "academy", _("Academy")
+    OTHER = "other", _("Other")
+
+
+class InstitutionStatus(models.TextChoices):
+    DRAFT = "draft", _("Draft")
+    INVITED = "invited", _("Invited")
+    REGISTERED = "registered", _("Registered")
+    WITHDRAWN = "withdrawn", _("Withdrawn")
+    REJECTED = "rejected", _("Rejected")
+
+
+class Institution(models.Model):
+    """A participant entity (school / college / club) that owns many Teams —
+    the new level in Organization → Tournament → Institution → Team → Player
+    (spec 2026-06-08 §1). Org + tournament scoped like Team/Player. Promotes the
+    old free-text ``Team.school`` into a first-class row so Stage-2 team
+    registration can attach teams to a chosen institution.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="institutions",
+    )
+    tournament = models.ForeignKey(
+        "tournaments.Tournament", on_delete=models.CASCADE,
+        related_name="institutions",
+    )
+    slug = models.CharField(max_length=80)
+    name = models.CharField(max_length=200)
+    short_name = models.CharField(max_length=40, blank=True)
+    kind = models.CharField(
+        max_length=16, choices=InstitutionKind.choices, default=InstitutionKind.SCHOOL,
+    )
+    region = models.CharField(max_length=120, blank=True)
+    contact_name = models.CharField(max_length=200, blank=True)
+    contact_email = models.EmailField(blank=True)
+    contact_phone = models.CharField(max_length=32, blank=True)
+    status = models.CharField(
+        max_length=16, choices=InstitutionStatus.choices,
+        default=InstitutionStatus.REGISTERED, db_index=True,
+    )
+    # Free-form labels the constraint engine keys off (e.g. {"campus": "north"}),
+    # FET-style (mirrors Tournament.rules/constraints "everything is data").
+    attributes = models.JSONField(default=dict, blank=True)
+    # Optional pointer to the Stage-1 form response that created this row (bare
+    # UUID, no FK — avoids a teams→forms cycle; mirrors audit scope columns).
+    source_response_id = models.UUIDField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="institutions_created",
+    )
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "teams_institution"
+        constraints = [
+            UniqueConstraint(
+                fields=["tournament", "slug"],
+                name="unique_institution_slug_per_tournament",
+            ),
+            UniqueConstraint(
+                fields=["tournament", "name"],
+                condition=Q(deleted_at__isnull=True),
+                name="unique_institution_name_per_tournament",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["tournament", "status"], name="inst_trn_status_idx"),
+            models.Index(fields=["organization"], name="inst_org_idx"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return self.name
+
+
 class Team(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
     organization = models.ForeignKey(
         "organizations.Organization", on_delete=models.CASCADE, related_name="teams"
+    )
+    institution = models.ForeignKey(
+        Institution, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="teams",
     )
     tournament = models.ForeignKey(
         "tournaments.Tournament", on_delete=models.CASCADE, related_name="teams"

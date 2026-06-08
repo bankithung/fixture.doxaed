@@ -1,0 +1,123 @@
+"""Institution → Team hierarchy: register_school auto-links/creates institutions
+(backward-compatible), idempotency, de-dup, cross-tournament guard, and the
+model constraints (unique name per tournament, PROTECT on delete)."""
+from __future__ import annotations
+
+import uuid
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
+from django.db.models import ProtectedError
+from django.utils import timezone
+
+from apps.audit.models import AuditEvent
+from apps.teams.models import Institution, Team
+from apps.teams.services.registration import get_or_create_institution, register_school
+from apps.tournaments.services.create import create_tournament
+
+User = get_user_model()
+pytestmark = pytest.mark.django_db
+
+
+def _admin(email="admin@inst.test"):
+    u = User.objects.create_user(email=email, password="FixtureDemo2026!", is_active=True)
+    u.email_verified_at = timezone.now()
+    u.save(update_fields=["email_verified_at"])
+    return u
+
+
+def _teams(*names):
+    return [{"name": n, "players": []} for n in names]
+
+
+def test_legacy_call_creates_and_links_institution():
+    t = create_tournament(user=_admin(), name="Cup")
+    teams = register_school(
+        tournament=t, school_name="Mount Hermon", teams=_teams("U-14 Boys", "U-16 Boys")
+    )
+    assert len(teams) == 2
+    insts = Institution.objects.filter(tournament=t)
+    assert insts.count() == 1
+    inst = insts.first()
+    assert inst.name == "Mount Hermon"
+    assert inst.organization_id == t.organization_id  # org-consistency
+    for tm in teams:
+        assert tm.institution_id == inst.id
+        assert tm.school == "Mount Hermon"  # mirror kept in sync
+
+
+def test_same_school_name_reuses_one_institution():
+    t = create_tournament(user=_admin(), name="Cup")
+    register_school(tournament=t, school_name="Don Bosco", teams=_teams("A"))
+    register_school(tournament=t, school_name="Don Bosco", teams=_teams("B"))
+    assert Institution.objects.filter(tournament=t, name="Don Bosco").count() == 1
+    assert Team.objects.filter(tournament=t, institution__name="Don Bosco").count() == 2
+
+
+def test_institution_id_path_links_and_guards_cross_tournament():
+    t1 = create_tournament(user=_admin("a@inst.test"), name="T1")
+    t2 = create_tournament(user=_admin("b@inst.test"), name="T2")
+    inst1 = get_or_create_institution(tournament=t1, name="School X")
+    # linking teams in t1 to inst1 works
+    teams = register_school(
+        tournament=t1, school_name="ignored", teams=_teams("X1"), institution_id=inst1.id
+    )
+    assert teams[0].institution_id == inst1.id
+    # an institution from another tournament is rejected
+    with pytest.raises(ValueError, match="institution_not_in_tournament"):
+        register_school(
+            tournament=t2, school_name="y", teams=_teams("Y1"), institution_id=inst1.id
+        )
+
+
+def test_idempotent_replay_no_duplicate_institution():
+    t = create_tournament(user=_admin(), name="Cup")
+    eid = uuid.uuid4()
+    first = register_school(
+        tournament=t, school_name="Loyola", teams=_teams("A", "B"), event_id=eid
+    )
+    again = register_school(
+        tournament=t, school_name="Loyola", teams=_teams("A", "B"), event_id=eid
+    )
+    assert {tm.id for tm in first} == {tm.id for tm in again}  # replay returns same
+    assert Institution.objects.filter(tournament=t, name="Loyola").count() == 1
+    assert Team.objects.filter(tournament=t, deleted_at__isnull=True).count() == 2
+    assert AuditEvent.objects.filter(
+        event_type="school_registered", idempotency_key=eid
+    ).count() == 1
+
+
+def test_get_or_create_institution_idempotent_and_blank():
+    t = create_tournament(user=_admin(), name="Cup")
+    a = get_or_create_institution(tournament=t, name="Carmel")
+    b = get_or_create_institution(tournament=t, name="Carmel")
+    assert a.id == b.id
+    assert get_or_create_institution(tournament=t, name="   ") is None
+
+
+def test_unique_institution_name_per_tournament():
+    t = create_tournament(user=_admin(), name="Cup")
+    get_or_create_institution(tournament=t, name="Unique High")
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            Institution.objects.create(
+                organization=t.organization, tournament=t, slug="dup",
+                name="Unique High",
+            )
+
+
+def test_same_name_allowed_in_different_tournament():
+    a = create_tournament(user=_admin("a2@inst.test"), name="T1")
+    b = create_tournament(user=_admin("b2@inst.test"), name="T2")
+    i1 = get_or_create_institution(tournament=a, name="Shared Name")
+    i2 = get_or_create_institution(tournament=b, name="Shared Name")
+    assert i1.id != i2.id  # tournament-scoped, no collision
+
+
+def test_protect_institution_with_teams():
+    t = create_tournament(user=_admin(), name="Cup")
+    register_school(tournament=t, school_name="Protected", teams=_teams("A"))
+    inst = Institution.objects.get(tournament=t, name="Protected")
+    with pytest.raises(ProtectedError):
+        inst.delete()  # has teams -> PROTECT

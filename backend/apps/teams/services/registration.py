@@ -16,7 +16,15 @@ from django.utils import timezone
 
 from apps.audit.models import ActorRole, AuditEvent
 from apps.audit.services import emit_audit
-from apps.teams.models import Person, Player, RegistrationLink, Team, TeamStatus
+from apps.teams.models import (
+    Institution,
+    InstitutionStatus,
+    Person,
+    Player,
+    RegistrationLink,
+    Team,
+    TeamStatus,
+)
 
 
 def _hash_token(plaintext: str) -> str:
@@ -83,6 +91,42 @@ def _unique_team_slug(tournament, name: str) -> str:
     return slug
 
 
+def _unique_institution_slug(tournament, name: str) -> str:
+    base = _slugify(name) or "institution"
+    slug, n = base, 2
+    while Institution.objects.filter(tournament=tournament, slug=slug).exists():
+        slug = f"{base}-{n}"[:80]
+        n += 1
+    return slug
+
+
+def get_or_create_institution(
+    *, tournament, name, kind: str = "school", attributes=None,
+    status=InstitutionStatus.REGISTERED, created_by=None, source_response_id=None,
+) -> Institution | None:
+    """Stage-1 institution writer — idempotent on (tournament, name). Copies the
+    tournament's organization (org-consistency). Returns None for a blank name."""
+    name = (name or "").strip()[:200]
+    if not name:
+        return None
+    existing = Institution.objects.filter(
+        tournament=tournament, name=name, deleted_at__isnull=True
+    ).first()
+    if existing is not None:
+        return existing
+    return Institution.objects.create(
+        organization=tournament.organization,
+        tournament=tournament,
+        slug=_unique_institution_slug(tournament, name),
+        name=name,
+        kind=kind or "school",
+        attributes=attributes or {},
+        status=status,
+        created_by=created_by,
+        source_response_id=source_response_id,
+    )
+
+
 def register_school(
     *,
     tournament,
@@ -92,34 +136,70 @@ def register_school(
     channel: str = "self",
     event_id: _uuid.UUID | None = None,
     request=None,
+    # Institution hierarchy (spec 2026-06-08). All keyword-only with defaults so
+    # every existing caller/test works unchanged; legacy school_name-only calls
+    # auto-upgrade to create/link an Institution.
+    institution: Institution | None = None,
+    institution_id: _uuid.UUID | None = None,
+    institution_kind: str = "school",
+    institution_attributes: dict | None = None,
 ) -> list[Team]:
     """Create the school's teams + players. Returns the created Team rows.
 
     `teams` = [{name, short_name?, region?, pool?, players: [
         {full_name, jersey_no?, position?, dob_year?, is_goalkeeper?, captain?}, ...]}]
+
+    Resolves (or creates from ``school_name``) an Institution and links every
+    created Team to it (Organization → Tournament → Institution → Team → Player).
     """
     if event_id is not None:
         prior = AuditEvent.objects.filter(
             idempotency_key=event_id, event_type="school_registered"
         ).first()
         if prior is not None:
+            inst = institution
+            if inst is None and institution_id is not None:
+                inst = Institution.objects.filter(
+                    id=institution_id, tournament=tournament
+                ).first()
+            replay = Team.objects.filter(tournament=tournament, deleted_at__isnull=True)
             return list(
-                Team.objects.filter(
-                    tournament=tournament, school=school_name, deleted_at__isnull=True
-                )
+                replay.filter(institution=inst)
+                if inst is not None
+                else replay.filter(school=school_name)
             )
 
     org = tournament.organization
     created: list[Team] = []
     with transaction.atomic():
+        # Resolve or create the Institution this school's teams belong to.
+        resolved = institution
+        if resolved is None and institution_id is not None:
+            resolved = Institution.objects.filter(
+                id=institution_id, tournament=tournament
+            ).first()
+            if resolved is None:
+                raise ValueError("institution_not_in_tournament")
+        if resolved is None:
+            resolved = get_or_create_institution(
+                tournament=tournament,
+                name=school_name,
+                kind=institution_kind,
+                attributes=institution_attributes,
+                created_by=submitted_by,
+            )
+        # School-name mirror stays in sync with the institution (deprecated field).
+        school_label = resolved.name if resolved is not None else (school_name or "")
+
         for td in teams:
             team = Team.objects.create(
                 organization=org,
                 tournament=tournament,
+                institution=resolved,
                 slug=_unique_team_slug(tournament, td["name"]),
                 name=td["name"][:200],
                 short_name=(td.get("short_name") or "")[:40],
-                school=(school_name or "")[:200],
+                school=school_label[:200],
                 region=(td.get("region") or "")[:120],
                 pool=(td.get("pool") or "")[:80],
                 status=TeamStatus.REGISTERED,
