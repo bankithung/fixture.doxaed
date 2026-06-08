@@ -27,7 +27,7 @@ export function PublicShell({
             F
           </span>
           <span className="text-sm font-semibold tracking-tight text-foreground">
-            {t("Fixture Platform")}
+            {t("fixture.doxaed.com")}
           </span>
           {tournamentName ? (
             <span className="ml-auto truncate text-xs text-muted-foreground">

@@ -1,12 +1,17 @@
-import { Plus, Trash2 } from "lucide-react";
+import {
+  CheckSquare,
+  ChevronDownSquare,
+  Circle,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useBuilderStore } from "./builderStore";
 import { BranchingEditor } from "./BranchingEditor";
-import type { FieldRole, Option } from "./types";
+import type { Field, FieldRole, FieldType, Option, Section } from "./types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
-import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
 const ROLE_OPTIONS: { value: string; label: string }[] = [
@@ -24,146 +29,75 @@ const CHOICE_TYPES = new Set<string>([
 ]);
 const SCALE_TYPES = new Set<string>(["rating", "linear_scale", "number"]);
 
-/** Right rail of the builder: edit the selected field. */
-export function FieldInspector({
-  className,
-}: {
-  className?: string;
-}): React.ReactElement {
-  const selected = useBuilderStore((s) => s.selected);
-  const sections = useBuilderStore((s) => s.schema.sections);
-  const updateField = useBuilderStore((s) => s.updateField);
-
-  const section = sections.find((s) => s.key === selected?.sectionKey);
-  const field = section?.fields.find((f) => f.key === selected?.fieldKey);
-
-  if (!selected || !field || !section) {
+/** Per-option leading glyph that mirrors how the option will render. */
+function optionGlyph(type: FieldType): React.ReactElement {
+  if (type === "multi_choice")
+    return <CheckSquare aria-hidden="true" className="h-4 w-4 text-muted-foreground" />;
+  if (type === "dropdown")
     return (
-      <aside
-        aria-label={t("Field settings")}
-        className={cn(
-          "flex flex-col gap-2 rounded-xl border border-border bg-card p-4 shadow-sm",
-          className,
-        )}
-      >
-        <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-          {t("Field settings")}
-        </p>
-        <p className="text-sm text-muted-foreground">
-          {t("Select a field on the canvas to edit it.")}
-        </p>
-      </aside>
+      <ChevronDownSquare aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
     );
-  }
+  return <Circle aria-hidden="true" className="h-4 w-4 text-muted-foreground" />;
+}
 
+/**
+ * Inline field editor — the controls that live INSIDE an expanded field card
+ * (Google-Forms style). The card itself owns the label + type controls; this
+ * renders options, help, required, role mapping, validation, and branching.
+ */
+export function FieldEditor({
+  section,
+  field,
+}: {
+  section: Section;
+  field: Field;
+}): React.ReactElement {
+  const updateField = useBuilderStore((s) => s.updateField);
   const sectionKey = section.key;
   const isChoice = CHOICE_TYPES.has(field.type);
   const isScale = SCALE_TYPES.has(field.type);
   const options = field.options ?? [];
 
-  const setOption = (i: number, patch: Partial<Option>) =>
+  const setOption = (i: number, patch: Partial<Option>): void =>
     updateField(sectionKey, field.key, {
       options: options.map((o, j) => (j === i ? { ...o, ...patch } : o)),
     });
-  const addOption = () =>
+  const addOption = (): void =>
     updateField(sectionKey, field.key, {
       options: [
         ...options,
-        { value: `opt${options.length + 1}`, label: `Option ${options.length + 1}` },
+        {
+          value: `opt${options.length + 1}`,
+          label: `Option ${options.length + 1}`,
+        },
       ],
     });
-  const removeOption = (i: number) =>
+  const removeOption = (i: number): void =>
     updateField(sectionKey, field.key, {
       options: options.filter((_, j) => j !== i),
     });
 
   return (
-    <aside
-      aria-label={t("Field settings")}
-      className={cn(
-        "flex flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-sm",
-        className,
-      )}
-    >
-      <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-        {t("Field settings")}
-      </p>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="insp-label">{t("Label")}</Label>
-        <Input
-          id="insp-label"
-          value={field.label}
-          onChange={(e) =>
-            updateField(sectionKey, field.key, { label: e.target.value })
-          }
-        />
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="insp-help">{t("Help text")}</Label>
-        <Input
-          id="insp-help"
-          value={field.help ?? ""}
-          onChange={(e) =>
-            updateField(sectionKey, field.key, { help: e.target.value })
-          }
-          placeholder={t("Optional hint shown under the label")}
-        />
-      </div>
-
-      {field.type !== "section_text" ? (
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={!!field.required}
-            onChange={(e) =>
-              updateField(sectionKey, field.key, { required: e.target.checked })
-            }
-            className="h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-          <span>{t("Required")}</span>
-        </label>
-      ) : null}
-
-      {field.type !== "section_text" ? (
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="insp-role">{t("Maps to")}</Label>
-          <Select
-            id="insp-role"
-            value={field.role ?? ""}
-            options={ROLE_OPTIONS.map((o) => ({
-              value: o.value,
-              label: t(o.label),
-            }))}
-            onChange={(role) =>
-              updateField(sectionKey, field.key, {
-                role: (role || undefined) as FieldRole | undefined,
-              })
-            }
-            placeholder={t("No special role")}
-          />
-        </div>
-      ) : null}
-
-      {/* Options editor for choice fields. */}
+    <div className="flex flex-col gap-4">
+      {/* Choice options — the primary body for choice fields. */}
       {isChoice ? (
         <div className="flex flex-col gap-2">
-          <Label>{t("Options")}</Label>
           {options.map((o, i) => (
             <div key={i} className="flex items-center gap-2">
+              {optionGlyph(field.type)}
               <Input
                 aria-label={t("Option label")}
                 value={o.label}
                 onChange={(e) => setOption(i, { label: e.target.value })}
-                placeholder={t("Option label")}
+                placeholder={t("Option")}
+                className="flex-1"
               />
               <Input
-                aria-label={t("Option value")}
+                aria-label={t("Stored value")}
                 value={o.value}
                 onChange={(e) => setOption(i, { value: e.target.value })}
                 placeholder={t("value")}
-                className="w-24 font-tabular"
+                className="w-24 font-tabular text-xs"
               />
               {options.length > 1 ? (
                 <button
@@ -186,20 +120,36 @@ export function FieldInspector({
         </div>
       ) : null}
 
+      {/* Help text. */}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`help-${field.key}`}>{t("Help text")}</Label>
+        <Input
+          id={`help-${field.key}`}
+          value={field.help ?? ""}
+          onChange={(e) =>
+            updateField(sectionKey, field.key, { help: e.target.value })
+          }
+          placeholder={t("Optional hint shown under the label")}
+        />
+      </div>
+
       {/* Validation bounds for scaled/numeric fields. */}
       {isScale ? (
         <div className="grid grid-cols-2 gap-2">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="insp-min">{t("Min")}</Label>
+            <Label htmlFor={`min-${field.key}`}>{t("Min")}</Label>
             <Input
-              id="insp-min"
+              id={`min-${field.key}`}
               inputMode="numeric"
               value={field.validation?.min ?? ""}
               onChange={(e) =>
                 updateField(sectionKey, field.key, {
                   validation: {
                     ...field.validation,
-                    min: e.target.value === "" ? undefined : Number(e.target.value),
+                    min:
+                      e.target.value === ""
+                        ? undefined
+                        : Number(e.target.value),
                   },
                 })
               }
@@ -207,16 +157,19 @@ export function FieldInspector({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="insp-max">{t("Max")}</Label>
+            <Label htmlFor={`max-${field.key}`}>{t("Max")}</Label>
             <Input
-              id="insp-max"
+              id={`max-${field.key}`}
               inputMode="numeric"
               value={field.validation?.max ?? ""}
               onChange={(e) =>
                 updateField(sectionKey, field.key, {
                   validation: {
                     ...field.validation,
-                    max: e.target.value === "" ? undefined : Number(e.target.value),
+                    max:
+                      e.target.value === ""
+                        ? undefined
+                        : Number(e.target.value),
                   },
                 })
               }
@@ -228,9 +181,9 @@ export function FieldInspector({
 
       {field.type === "multi_choice" ? (
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="insp-maxsel">{t("Max selections")}</Label>
+          <Label htmlFor={`maxsel-${field.key}`}>{t("Max selections")}</Label>
           <Input
-            id="insp-maxsel"
+            id={`maxsel-${field.key}`}
             inputMode="numeric"
             value={field.validation?.maxSelections ?? ""}
             onChange={(e) =>
@@ -238,16 +191,40 @@ export function FieldInspector({
                 validation: {
                   ...field.validation,
                   maxSelections:
-                    e.target.value === "" ? undefined : Number(e.target.value),
+                    e.target.value === ""
+                      ? undefined
+                      : Number(e.target.value),
                 },
               })
             }
-            className="font-tabular"
+            className="w-32 font-tabular"
+          />
+        </div>
+      ) : null}
+
+      {/* Maps-to role. */}
+      {field.type !== "section_text" ? (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`role-${field.key}`}>{t("Maps to")}</Label>
+          <Select
+            id={`role-${field.key}`}
+            value={field.role ?? ""}
+            options={ROLE_OPTIONS.map((o) => ({
+              value: o.value,
+              label: t(o.label),
+            }))}
+            onChange={(role) =>
+              updateField(sectionKey, field.key, {
+                role: (role || undefined) as FieldRole | undefined,
+              })
+            }
+            placeholder={t("No special role")}
+            className="max-w-xs"
           />
         </div>
       ) : null}
 
       <BranchingEditor sectionKey={sectionKey} field={field} />
-    </aside>
+    </div>
   );
 }

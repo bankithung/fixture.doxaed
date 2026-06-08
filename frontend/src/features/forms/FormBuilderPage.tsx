@@ -3,8 +3,12 @@ import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
+  ChevronDown,
   ClipboardList,
+  Eye,
   Lock,
+  PanelRightClose,
+  PanelRightOpen,
   Save,
   Send,
   Settings2,
@@ -14,14 +18,12 @@ import type { FormSummary } from "./types";
 import { useBuilderStore } from "./builderStore";
 import { FieldPalette } from "./FieldPalette";
 import { FormCanvas } from "./FormCanvas";
-import { FieldInspector } from "./FieldInspector";
-import { FormPreview } from "./FormPreview";
+import { FormPreviewDialog } from "./FormPreviewDialog";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
-import { useBreakpoint } from "@/lib/useBreakpoint";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -37,6 +39,7 @@ function toLocalInput(iso: string | null): string {
   )}:${pad(d.getMinutes())}`;
 }
 
+/** Collapsible form-level settings (title, close date, confirmation). */
 function SettingsPanel({
   form,
   tournamentId,
@@ -46,6 +49,7 @@ function SettingsPanel({
 }): React.ReactElement {
   const qc = useQueryClient();
   const toast = useToast();
+  const [open, setOpen] = useState(false);
   const [title, setTitle] = useState(form.title);
   const [confirmation, setConfirmation] = useState(form.confirmation_message);
   const [closesAt, setClosesAt] = useState(toLocalInput(form.closes_at));
@@ -67,76 +71,92 @@ function SettingsPanel({
   return (
     <section
       aria-label={t("Form settings")}
-      className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 shadow-sm"
+      className="rounded-xl border border-border bg-card shadow-sm"
     >
-      <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 rounded-xl px-5 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
         <Settings2 aria-hidden="true" className="h-4 w-4 text-primary" />
-        <h2 className="text-sm font-semibold">{t("Form settings")}</h2>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="form-title">{t("Title")}</Label>
-          <Input
-            id="form-title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="form-closes">{t("Closes at")}</Label>
-          <Input
-            id="form-closes"
-            type="datetime-local"
-            value={closesAt}
-            onChange={(e) => setClosesAt(e.target.value)}
-          />
-        </div>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="form-confirm">{t("Confirmation message")}</Label>
-        <Input
-          id="form-confirm"
-          value={confirmation}
-          onChange={(e) => setConfirmation(e.target.value)}
-          placeholder={t("Shown to respondents after they submit")}
+        <h2 className="flex-1 text-sm font-semibold">{t("Form settings")}</h2>
+        <ChevronDown
+          aria-hidden="true"
+          className={cn(
+            "h-4 w-4 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
         />
-      </div>
-      <div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={save.isPending}
-          onClick={() => save.mutate()}
-        >
-          {save.isPending ? t("Saving...") : t("Save settings")}
-        </Button>
-      </div>
+      </button>
+
+      {open ? (
+        <div className="flex flex-col gap-4 border-t border-border p-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="form-title">{t("Title")}</Label>
+              <Input
+                id="form-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="form-closes">{t("Closes at")}</Label>
+              <Input
+                id="form-closes"
+                type="datetime-local"
+                value={closesAt}
+                onChange={(e) => setClosesAt(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="form-confirm">{t("Confirmation message")}</Label>
+            <Input
+              id="form-confirm"
+              value={confirmation}
+              onChange={(e) => setConfirmation(e.target.value)}
+              placeholder={t("Shown to respondents after they submit")}
+            />
+          </div>
+          <div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={save.isPending}
+              onClick={() => save.mutate()}
+            >
+              {save.isPending ? t("Saving...") : t("Save settings")}
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
 
 /**
  * Builder route container. Loads the form, hydrates the Zustand store, and
- * lays out the palette / canvas / inspector (3-column on desktop, stacked on
- * mobile). Schema edits debounce-autosave; header actions cover an explicit
- * Save plus Publish / Close. Route: `/tournaments/:id/forms/:formId/edit`.
+ * lays out a Google-Forms-style canvas (inline-editable question cards) beside
+ * a collapsible "Add a field" palette. Schema edits debounce-autosave; header
+ * actions cover Save / Publish / Close. Route: `/tournaments/:id/forms/:formId/edit`.
  */
 export function FormBuilderPage(): React.ReactElement {
   const { id = "", formId = "" } = useParams();
   const qc = useQueryClient();
   const toast = useToast();
-  const { isMobile } = useBreakpoint();
 
   const schema = useBuilderStore((s) => s.schema);
   const load = useBuilderStore((s) => s.load);
+  const [paletteOpen, setPaletteOpen] = useState(true);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const query = useQuery({
     queryKey: ["form", formId],
     queryFn: () => formsApi.get(formId),
   });
 
-  // Hydrate the store once the form loads. `loadedId` guards against
-  // re-loading (and wiping unsaved edits) on background refetches.
   const loadedId = useRef<string | null>(null);
   useEffect(() => {
     if (query.data && loadedId.current !== query.data.id) {
@@ -163,12 +183,11 @@ export function FormBuilderPage(): React.ReactElement {
       }),
   });
 
-  // Debounced autosave whenever the schema changes after the initial load.
   const dirtyRef = useRef(false);
   useEffect(() => {
     if (!loadedId.current) return;
     if (!dirtyRef.current) {
-      dirtyRef.current = true; // skip the first run (hydration)
+      dirtyRef.current = true;
       return;
     }
     const handle = setTimeout(() => saveSchema.mutate(), 1200);
@@ -187,8 +206,7 @@ export function FormBuilderPage(): React.ReactElement {
       toast.push({
         kind: "error",
         title: t("Could not publish"),
-        description:
-          e instanceof ApiError ? (e.payload.detail ?? "") : "",
+        description: e instanceof ApiError ? (e.payload.detail ?? "") : "",
       }),
   });
 
@@ -227,9 +245,9 @@ export function FormBuilderPage(): React.ReactElement {
   const status = form.status;
 
   return (
-    <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-      {/* Header */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
+      {/* Header — compact. */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <Link
             to={routes.tournamentForms(id)}
@@ -237,47 +255,59 @@ export function FormBuilderPage(): React.ReactElement {
           >
             {t("← Back to forms")}
           </Link>
-          <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight sm:text-3xl">
-            {form.title || t("Untitled form")}
-          </h1>
-          <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="rounded-full bg-muted px-2 py-0.5 font-medium capitalize">
+          <div className="mt-1 flex items-center gap-3">
+            <h1 className="truncate text-lg font-semibold tracking-tight sm:text-xl">
+              {form.title || t("Untitled form")}
+            </h1>
+            <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium capitalize text-muted-foreground">
               {t(status)}
             </span>
             {saveSchema.isPending ? (
-              <span>{t("Saving…")}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {t("Saving…")}
+              </span>
             ) : savedAt ? (
-              <span className="inline-flex items-center gap-1">
+              <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
                 <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
                 {t("All changes saved")}
               </span>
             ) : null}
-          </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
+            size="sm"
             disabled={saveSchema.isPending}
             onClick={() => saveSchema.mutate()}
           >
             <Save aria-hidden="true" className="h-4 w-4" />
             {t("Save")}
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPreviewOpen(true)}
+          >
+            <Eye aria-hidden="true" className="h-4 w-4" />
+            {t("Preview")}
+          </Button>
           <Link to={routes.tournamentFormResponses(id, formId)}>
-            <Button variant="outline">
+            <Button variant="outline" size="sm">
               <ClipboardList aria-hidden="true" className="h-4 w-4" />
               {t("Responses")}
             </Button>
           </Link>
           {status === "draft" || status === "closed" ? (
-            <Button disabled={publish.isPending} onClick={() => publish.mutate()}>
+            <Button size="sm" disabled={publish.isPending} onClick={() => publish.mutate()}>
               <Send aria-hidden="true" className="h-4 w-4" />
               {t("Publish")}
             </Button>
           ) : (
             <Button
               variant="outline"
+              size="sm"
               disabled={close.isPending}
               onClick={() => close.mutate()}
             >
@@ -290,20 +320,44 @@ export function FormBuilderPage(): React.ReactElement {
 
       <SettingsPanel form={form} tournamentId={id} />
 
-      {/* Builder grid: palette | canvas | inspector — stacked on mobile. */}
-      <div
-        className={cn(
-          "grid gap-4",
-          isMobile ? "grid-cols-1" : "lg:grid-cols-[16rem_minmax(0,1fr)_20rem]",
+      {/* Builder: inline-editable canvas + collapsible palette rail. */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        <FormCanvas className="min-w-0 flex-1" />
+
+        {paletteOpen ? (
+          <div className="lg:sticky lg:top-20 lg:w-72 lg:shrink-0">
+            <div className="mb-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPaletteOpen(false)}
+                aria-label={t("Collapse field palette")}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <PanelRightClose aria-hidden="true" className="h-4 w-4" />
+                {t("Hide")}
+              </button>
+            </div>
+            <FieldPalette />
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="inline-flex items-center gap-2 self-start rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:sticky lg:top-20"
+          >
+            <PanelRightOpen aria-hidden="true" className="h-4 w-4 text-primary" />
+            {t("Add a field")}
+          </button>
         )}
-      >
-        <FieldPalette />
-        <FormCanvas />
-        <FieldInspector />
       </div>
 
-      {/* Preview spans full width below the builder. */}
-      <FormPreview schema={schema} />
+      {previewOpen ? (
+        <FormPreviewDialog
+          schema={schema}
+          title={form.title}
+          onClose={() => setPreviewOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

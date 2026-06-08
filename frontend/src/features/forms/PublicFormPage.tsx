@@ -141,13 +141,17 @@ export function PublicFormPage(): React.ReactElement {
   }
 
   function onSubmit() {
-    if (!validateCurrent()) return;
-    // Final full-schema check across every reachable section.
+    // Full-schema check across every reachable section so nothing slips by.
     const all = validateRequired(schema, answers);
     if (Object.keys(all).length) {
-      setErrors(all);
+      setErrors({
+        ...all,
+        __form: t("Please answer the required questions highlighted below."),
+      });
       const idx = sections.findIndex((s) => s.fields.some((f) => all[f.key]));
       if (idx >= 0) setStepIndex(idx);
+      if (typeof window !== "undefined")
+        window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
     submit.mutate();

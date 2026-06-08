@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowLeft,
   Check,
   ClipboardList,
   GitBranch,
@@ -98,6 +99,110 @@ function ScoreRow({
   );
 }
 
+function statusBadge(status: string): { label: string; cls: string } {
+  if (status.startsWith("live")) return { label: "Live", cls: "bg-primary/15 text-primary" };
+  const m: Record<string, { label: string; cls: string }> = {
+    draft: { label: "Draft", cls: "bg-muted text-muted-foreground" },
+    published: { label: "Published", cls: "bg-secondary text-secondary-foreground" },
+    registration_open: { label: "Registration open", cls: "bg-secondary text-secondary-foreground" },
+    scheduled: { label: "Scheduled", cls: "bg-secondary text-secondary-foreground" },
+    completed: { label: "Completed", cls: "bg-accent text-accent-foreground" },
+    archived: { label: "Archived", cls: "bg-muted text-muted-foreground" },
+  };
+  return m[status] ?? { label: status.replace(/_/g, " "), cls: "bg-muted text-muted-foreground" };
+}
+
+const OVERLINE =
+  "text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground";
+
+/** KPI tile — matches the workspace dashboard's stat language for cohesion. */
+function Stat({
+  label,
+  value,
+  sub,
+  live,
+}: {
+  label: string;
+  value: number | string;
+  sub?: string;
+  live?: boolean;
+}): React.ReactElement {
+  return (
+    <div className="p-5">
+      <div className="flex items-center gap-2 text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+        {live ? (
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+          </span>
+        ) : null}
+        {label}
+      </div>
+      <div className="mt-1 font-tabular text-2xl font-semibold tracking-tight sm:text-3xl">
+        {value}
+      </div>
+      {sub ? <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div> : null}
+    </div>
+  );
+}
+
+/** One step of the "Get started" onboarding strip. */
+function SetupStep({
+  index,
+  title,
+  hint,
+  state,
+  children,
+}: {
+  index: number;
+  title: string;
+  hint: string;
+  state: "done" | "active" | "todo";
+  children?: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <li
+      className={cn(
+        "flex flex-col gap-2 rounded-xl border p-4",
+        state === "active"
+          ? "border-primary/40 bg-primary/[0.04]"
+          : "border-border bg-background",
+      )}
+    >
+      <div className="flex items-center gap-2.5">
+        <span
+          className={cn(
+            "grid h-7 w-7 shrink-0 place-items-center rounded-full font-tabular text-xs font-semibold",
+            state === "done"
+              ? "bg-primary text-primary-foreground"
+              : state === "active"
+                ? "bg-primary/15 text-primary ring-1 ring-primary/40"
+                : "bg-muted text-muted-foreground",
+          )}
+        >
+          {state === "done" ? (
+            <Check aria-hidden="true" className="h-4 w-4" />
+          ) : (
+            index
+          )}
+        </span>
+        <span
+          className={cn(
+            "text-sm font-semibold",
+            state === "todo" && "text-muted-foreground",
+          )}
+        >
+          {title}
+        </span>
+      </div>
+      <p className="text-xs leading-relaxed text-muted-foreground">{hint}</p>
+      {children ? (
+        <div className="mt-auto flex flex-wrap gap-2 pt-1">{children}</div>
+      ) : null}
+    </li>
+  );
+}
+
 const STAT_COLS = ["P", "W", "D", "L", "GF", "GA", "GD", "Pts"] as const;
 
 function StandingsTable({ group }: { group: StandingsGroup }): React.ReactElement {
@@ -151,6 +256,10 @@ export function TournamentDetailPage(): React.ReactElement {
   const { id = "" } = useParams();
   const qc = useQueryClient();
   const toast = useToast();
+  const tournament = useQuery({
+    queryKey: ["tournament", id],
+    queryFn: () => tournamentsApi.get(id),
+  });
   const teams = useQuery({
     queryKey: ["t-teams", id],
     queryFn: () => tournamentsApi.teams(id),
@@ -190,8 +299,14 @@ export function TournamentDetailPage(): React.ReactElement {
 
   const teamCount = teams.data?.length ?? 0;
   const matchCount = matches.data?.length ?? 0;
+  const playerCount = (teams.data ?? []).reduce(
+    (n, tm) => n + (tm.player_count ?? 0),
+    0,
+  );
   const hasKnockout = (matches.data ?? []).some((m) => m.stage === "knockout");
   const hasGroups = (matches.data ?? []).some((m) => m.stage === "group");
+  const anyCompleted = (matches.data ?? []).some((m) => m.status === "completed");
+  const setupDone = teamCount > 0 && matchCount > 0 && anyCompleted;
 
   const copyLink = async (): Promise<void> => {
     if (!linkUrl) return;
@@ -213,44 +328,160 @@ export function TournamentDetailPage(): React.ReactElement {
     }
   };
 
+  const name = tournament.data?.name ?? t("Tournament");
+  const status = tournament.data?.status ?? "draft";
+  const sport = tournament.data?.sport_code;
+  const badge = statusBadge(status);
+
   return (
     <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-      {/* Header */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      {/* Back link */}
+      <Link
+        to={routes.tournaments()}
+        className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
+        {t("All tournaments")}
+      </Link>
+
+      {/* Identity header */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
-          <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            {t("Tournament")}
-          </p>
-          <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-            <Trophy aria-hidden="true" className="h-7 w-7 shrink-0 text-primary" />
-            <span className="truncate">{t("Tournament")}</span>
+          <h1 className="flex items-center gap-2.5 text-2xl font-semibold tracking-tight sm:text-3xl">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10">
+              <Trophy aria-hidden="true" className="h-5 w-5 text-primary" />
+            </span>
+            <span className="truncate">{name}</span>
           </h1>
-          <p className="mt-2 font-tabular text-sm text-muted-foreground">
-            {teamCount} {t("teams")} · {matchCount} {t("fixtures")}
-          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 font-medium capitalize",
+                badge.cls,
+              )}
+            >
+              {t(badge.label)}
+            </span>
+            {sport ? (
+              <span className="rounded-full bg-muted px-2 py-0.5 font-medium capitalize text-muted-foreground">
+                {sport}
+              </span>
+            ) : null}
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => createLink.mutate()}
-            disabled={createLink.isPending}
-          >
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Link to={routes.tournamentMembers(id)} className={LINK_BTN}>
+            <Users aria-hidden="true" className="h-4 w-4" />
+            {t("Members")}
+          </Link>
+          <Link to={routes.tournamentForms(id)} className={LINK_BTN}>
+            <ClipboardList aria-hidden="true" className="h-4 w-4" />
+            {t("Forms")}
+          </Link>
+          <Button onClick={() => createLink.mutate()} disabled={createLink.isPending}>
             <Link2 aria-hidden="true" className="h-4 w-4" />
             {t("Share registration link")}
           </Button>
-          <Link to={routes.tournamentForms(id)} className={LINK_BTN}>
-            <ClipboardList aria-hidden="true" className="h-4 w-4" />
-            {t("Registration forms")}
-          </Link>
-          {matchCount > 0 ? (
-            <>
-              <Button variant="outline" disabled>
-                <Wand2 aria-hidden="true" className="h-4 w-4" />
-                {t("Fixtures generated")}
+        </div>
+      </div>
+
+      {/* KPI stat row — same language as the workspace dashboard. */}
+      <div className="grid grid-cols-2 divide-x divide-y divide-border rounded-xl border border-border bg-card shadow-sm md:grid-cols-4 md:divide-y-0">
+        <Stat label={t("Teams")} value={teamCount} sub={t("registered")} />
+        <Stat label={t("Fixtures")} value={matchCount} sub={t("scheduled")} />
+        <Stat label={t("Players")} value={playerCount} sub={t("across teams")} />
+        <Stat
+          label={t("Status")}
+          value={t(badge.label)}
+          live={status.startsWith("live")}
+        />
+      </div>
+
+      {/* Newly-created registration link banner. */}
+      {linkUrl ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/[0.04] p-3 shadow-sm">
+          <span className={cn(OVERLINE, "w-full")}>
+            {t("Share this link with schools")}
+          </span>
+          <code className="min-w-0 flex-1 break-all rounded-lg bg-muted px-3 py-2 font-tabular text-xs">
+            {linkUrl}
+          </code>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void copyLink()}
+            aria-label={t("Copy registration link")}
+          >
+            {copied ? (
+              <Check aria-hidden="true" className="h-4 w-4" />
+            ) : (
+              <Link2 aria-hidden="true" className="h-4 w-4" />
+            )}
+            {copied ? t("Copied") : t("Copy")}
+          </Button>
+        </div>
+      ) : null}
+
+      {/* Get started — onboarding strip, hidden once the tournament is rolling. */}
+      {!setupDone ? (
+        <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <p className={cn(OVERLINE, "mb-3")}>{t("Get started")}</p>
+          <ol className="grid gap-3 md:grid-cols-3">
+            <SetupStep
+              index={1}
+              title={t("Add teams")}
+              hint={t("Share the registration link or open a form so schools can enter.")}
+              state={teamCount > 0 ? "done" : "active"}
+            >
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => createLink.mutate()}
+                disabled={createLink.isPending}
+              >
+                <Link2 aria-hidden="true" className="h-4 w-4" />
+                {t("Share link")}
               </Button>
-              {hasGroups && !hasKnockout ? (
+              <Link to={routes.tournamentForms(id)} className={LINK_BTN + " h-9 px-3 text-sm"}>
+                <ClipboardList aria-hidden="true" className="h-4 w-4" />
+                {t("Forms")}
+              </Link>
+            </SetupStep>
+
+            <SetupStep
+              index={2}
+              title={t("Generate fixtures")}
+              hint={
+                teamCount < 2
+                  ? t("Add at least 2 teams first.")
+                  : t("Create a round-robin or knockout draw automatically.")
+              }
+              state={matchCount > 0 ? "done" : teamCount >= 2 ? "active" : "todo"}
+            >
+              {matchCount === 0 && teamCount >= 2 ? (
+                <>
+                  <Button
+                    size="sm"
+                    onClick={() => generate.mutate("round_robin")}
+                    disabled={generate.isPending}
+                  >
+                    <Wand2 aria-hidden="true" className="h-4 w-4" />
+                    {t("Round-robin")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => generate.mutate("knockout")}
+                    disabled={generate.isPending}
+                  >
+                    <GitBranch aria-hidden="true" className="h-4 w-4" />
+                    {t("Knockout")}
+                  </Button>
+                </>
+              ) : matchCount > 0 && hasGroups && !hasKnockout ? (
                 <Button
+                  size="sm"
                   onClick={() => generate.mutate("knockout_from_groups")}
                   disabled={generate.isPending}
                 >
@@ -258,59 +489,23 @@ export function TournamentDetailPage(): React.ReactElement {
                   {t("Generate knockout")}
                 </Button>
               ) : null}
-            </>
-          ) : (
-            <>
-              <Button
-                onClick={() => generate.mutate("round_robin")}
-                disabled={generate.isPending || teamCount < 2}
-              >
-                <Wand2 aria-hidden="true" className="h-4 w-4" />
-                {t("Round-robin")}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => generate.mutate("knockout")}
-                disabled={generate.isPending || teamCount < 2}
-              >
-                <GitBranch aria-hidden="true" className="h-4 w-4" />
-                {t("Knockout")}
-              </Button>
-            </>
-          )}
-          {matchCount > 0 ? (
-            <Link to={routes.tournamentBracket(id)} className={LINK_BTN}>
-              <GitBranch aria-hidden="true" className="h-4 w-4" />
-              {t("Bracket view")}
-            </Link>
-          ) : null}
-        </div>
-      </div>
+            </SetupStep>
 
-      {linkUrl ? (
-        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-          <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            {t("Share this link with schools:")}
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <code className="min-w-0 flex-1 break-all rounded-lg bg-muted px-3 py-2 font-tabular text-xs">
-              {linkUrl}
-            </code>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void copyLink()}
-              aria-label={t("Copy registration link")}
+            <SetupStep
+              index={3}
+              title={t("Score & track")}
+              hint={t("Enter scores in Fixtures below; standings update automatically.")}
+              state={anyCompleted ? "done" : matchCount > 0 ? "active" : "todo"}
             >
-              {copied ? (
-                <Check aria-hidden="true" className="h-4 w-4" />
-              ) : (
-                <Link2 aria-hidden="true" className="h-4 w-4" />
-              )}
-              {copied ? t("Copied") : t("Copy")}
-            </Button>
-          </div>
-        </div>
+              {matchCount > 0 ? (
+                <Link to={routes.tournamentBracket(id)} className={LINK_BTN + " h-9 px-3 text-sm"}>
+                  <GitBranch aria-hidden="true" className="h-4 w-4" />
+                  {t("Bracket")}
+                </Link>
+              ) : null}
+            </SetupStep>
+          </ol>
+        </section>
       ) : null}
 
       {/* Teams */}
