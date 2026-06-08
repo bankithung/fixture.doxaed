@@ -15,8 +15,14 @@ CONSTRAINT_TYPES: list[dict[str, Any]] = [
     {"type": "no_double_booking_team", "label": "No team double-booking", "hard": True, "params_schema": {}},
     {"type": "min_rest_minutes", "label": "Minimum rest between a team's matches", "hard": True, "params_schema": {"minutes": "int"}},
     {"type": "venue_single_use", "label": "One match per venue per slot", "hard": True, "params_schema": {}},
+    {"type": "max_matches_per_team_per_day", "label": "Max matches per team per day", "hard": True, "params_schema": {"count": "int"}},
+    {"type": "keep_apart_until_round", "label": "Keep matching participants apart until a round", "hard": True, "params_schema": {"key": "str", "until_round": "int"}},
+    {"type": "blackout_dates", "label": "Dates no matches may be scheduled", "hard": True, "params_schema": {"dates": "list"}},
+    {"type": "team_unavailable", "label": "A team is unavailable on dates", "hard": True, "params_schema": {"team_id": "str", "dates": "list"}},
     {"type": "preferred_window", "label": "Preferred match window", "hard": False, "params_schema": {"days": "list", "from": "time", "to": "time"}},
     {"type": "avoid_back_to_back", "label": "Avoid back-to-back matches", "hard": False, "params_schema": {}},
+    {"type": "even_spacing", "label": "Spread each team's matches evenly", "hard": False, "params_schema": {}},
+    {"type": "balance_venues", "label": "Balance matches across venues", "hard": False, "params_schema": {}},
 ]
 
 _BY_TYPE = {c["type"]: c for c in CONSTRAINT_TYPES}
