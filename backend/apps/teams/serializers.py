@@ -18,6 +18,21 @@ class TeamInSerializer(serializers.Serializer):
     players = PlayerInSerializer(many=True, required=False, default=list)
 
 
+class InstitutionInSerializer(serializers.Serializer):
+    """Admin direct-add / edit of an Institution (Stage-1)."""
+
+    name = serializers.CharField(max_length=200)
+    kind = serializers.ChoiceField(
+        choices=["school", "college", "university", "club", "academy", "other"],
+        required=False, default="school",
+    )
+    region = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    short_name = serializers.CharField(required=False, allow_blank=True, max_length=40)
+    contact_name = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    contact_email = serializers.EmailField(required=False, allow_blank=True)
+    contact_phone = serializers.CharField(required=False, allow_blank=True, max_length=32)
+
+
 class SchoolRegistrationSerializer(serializers.Serializer):
     """Payload a school submits via the public registration link."""
 

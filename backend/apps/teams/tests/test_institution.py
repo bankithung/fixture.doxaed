@@ -121,3 +121,80 @@ def test_protect_institution_with_teams():
     inst = Institution.objects.get(tournament=t, name="Protected")
     with pytest.raises(ProtectedError):
         inst.delete()  # has teams -> PROTECT
+
+
+# --------------------------------------------------------------------------- API
+def _client(user):
+    from rest_framework.test import APIClient
+
+    c = APIClient()
+    c.force_authenticate(user=user)
+    return c
+
+
+def test_api_admin_add_and_list_institutions():
+    admin = _admin()
+    t = create_tournament(user=admin, name="Cup")
+    r = _client(admin).post(
+        f"/api/tournaments/{t.id}/institutions/",
+        {"name": "Greenwood High", "kind": "school", "region": "Kohima",
+         "contact_email": "head@greenwood.edu"},
+        format="json",
+    )
+    assert r.status_code == 201, r.content
+    assert r.json()["name"] == "Greenwood High"
+    lst = _client(admin).get(f"/api/tournaments/{t.id}/institutions/").json()
+    assert any(i["name"] == "Greenwood High" and i["team_count"] == 0 for i in lst)
+
+
+def test_api_institution_isolation_and_manager_gate():
+    owner = _admin("o@inst.test")
+    t = create_tournament(user=owner, name="Cup")
+    outsider = _admin("x@inst.test")
+    # outsider: 404 (no existence leak)
+    assert _client(outsider).get(
+        f"/api/tournaments/{t.id}/institutions/"
+    ).status_code == 404
+    assert _client(outsider).post(
+        f"/api/tournaments/{t.id}/institutions/", {"name": "X"}, format="json"
+    ).status_code == 404
+
+
+def test_api_patch_withdraw_institution():
+    admin = _admin()
+    t = create_tournament(user=admin, name="Cup")
+    inst = get_or_create_institution(tournament=t, name="WD High")
+    r = _client(admin).patch(
+        f"/api/tournaments/{t.id}/institutions/{inst.id}/",
+        {"status": "withdrawn"}, format="json",
+    )
+    assert r.status_code == 200, r.content
+    inst.refresh_from_db()
+    assert inst.status == "withdrawn"
+
+
+def test_org_registration_form_creates_institution():
+    from apps.forms.models import Form, FormResponse
+    from apps.forms.services.mapping import map_response
+
+    t = create_tournament(user=_admin(), name="Cup")
+    form = Form.objects.create(
+        organization=t.organization, tournament=t, slug="org", title="Org reg",
+        purpose="organization_registration", status="open", schema={"sections": []},
+    )
+    resp = FormResponse.objects.create(
+        form=form, organization=t.organization, tournament=t,
+        answers={"institution_name": "Riverside College", "kind": "college",
+                 "contact_email": "admin@riverside.edu"},
+        title="Riverside College",
+    )
+    map_response(resp)
+    resp.refresh_from_db()
+    inst = Institution.objects.get(tournament=t, name="Riverside College")
+    assert resp.mapped_entities["institution_id"] == str(inst.id)
+    assert inst.source_response_id == resp.id
+    assert inst.kind == "college"
+    assert inst.contact_email == "admin@riverside.edu"
+    # replay is idempotent — no duplicate
+    map_response(resp)
+    assert Institution.objects.filter(tournament=t, name="Riverside College").count() == 1

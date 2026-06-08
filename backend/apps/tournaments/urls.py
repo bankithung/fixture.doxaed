@@ -6,7 +6,12 @@ from apps.disputes.views import TournamentDisputeView
 from apps.fixtures.views import GenerateFixturesView, ScheduleFixturesView
 from apps.forms.views import TournamentFormsView
 from apps.matches.views import TournamentMatchListView, TournamentStandingsView
-from apps.teams.views import RegistrationLinkCreateView, TournamentTeamsListView
+from apps.teams.views import (
+    InstitutionDetailView,
+    InstitutionListCreateView,
+    RegistrationLinkCreateView,
+    TournamentTeamsListView,
+)
 from apps.tournaments.views import (
     ConstraintTypesView,
     TournamentAuditView,
@@ -85,6 +90,16 @@ urlpatterns = [
         "<uuid:tournament_id>/schedule/",
         ScheduleFixturesView.as_view(),
         name="tournament-schedule-fixtures",
+    ),
+    path(
+        "<uuid:tournament_id>/institutions/",
+        InstitutionListCreateView.as_view(),
+        name="tournament-institutions",
+    ),
+    path(
+        "<uuid:tournament_id>/institutions/<uuid:institution_id>/",
+        InstitutionDetailView.as_view(),
+        name="tournament-institution-detail",
     ),
     path(
         "<uuid:tournament_id>/disputes/",

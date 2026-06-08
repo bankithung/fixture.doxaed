@@ -23,7 +23,10 @@ import uuid
 
 from apps.forms.constants import FormPurpose
 from apps.forms.models import FormResponse
-from apps.teams.services.registration import register_school
+from apps.teams.services.registration import (
+    get_or_create_institution,
+    register_school,
+)
 
 
 def map_response(resp: FormResponse) -> FormResponse:
@@ -34,7 +37,50 @@ def map_response(resp: FormResponse) -> FormResponse:
         return resp
     if resp.form.purpose == FormPurpose.TEAM_REGISTRATION:
         return _map_team_registration(resp)
-    # organization_registration + generic: the response IS the record.
+    if resp.form.purpose == FormPurpose.ORGANIZATION_REGISTRATION:
+        return _map_organization_registration(resp)
+    # generic: the response IS the record.
+    return resp
+
+
+def _map_organization_registration(resp: FormResponse) -> FormResponse:
+    """Stage-1: an organization-registration submission creates an Institution.
+
+    Idempotent: ``map_response`` early-returns if already mapped, and
+    ``get_or_create_institution`` is keyed on (tournament, name)."""
+    form = resp.form
+    b = (form.settings or {}).get("bindings", {})
+    a = resp.answers or {}
+    name = (
+        a.get(b.get("institution_name", "institution_name"))
+        or a.get("school")
+        or a.get("name")
+        or resp.title
+        or "Institution"
+    )
+    kind = str(a.get(b.get("kind", "kind")) or "school").lower()
+    inst = get_or_create_institution(
+        tournament=form.tournament,
+        name=str(name),
+        kind=kind,
+        source_response_id=resp.id,
+    )
+    if inst is not None:
+        changed = []
+        for field, attr in (
+            ("contact_name", "contact_name"),
+            ("contact_email", "contact_email"),
+            ("contact_phone", "contact_phone"),
+            ("region", "region"),
+        ):
+            val = a.get(b.get(field, field))
+            if val and not getattr(inst, attr):
+                setattr(inst, attr, str(val)[:200])
+                changed.append(attr)
+        if changed:
+            inst.save(update_fields=[*changed, "updated_at"])
+    resp.mapped_entities = {"institution_id": str(inst.id) if inst else None}
+    resp.save(update_fields=["mapped_entities"])
     return resp
 
 
@@ -61,6 +107,10 @@ def _map_team_registration(resp: FormResponse) -> FormResponse:
                         row[k] = p[k]
                 players.append(row)
 
+    # Stage-2 "select your institution": a data-bound field maps to the chosen
+    # institution id, which scopes the teams under that institution.
+    institution_id = a.get(b.get("institution_id", "institution_id")) or None
+
     # Derive a stable audit key distinct from the submit audit (see module note).
     derived_event_id = uuid.uuid5(uuid.NAMESPACE_URL, f"formresp-teamreg:{resp.id}")
 
@@ -70,6 +120,7 @@ def _map_team_registration(resp: FormResponse) -> FormResponse:
         teams=[{"name": team_name, "players": players}],
         channel="self",
         event_id=derived_event_id,
+        institution_id=institution_id,
     )
     resp.mapped_entities = {"team_ids": [str(t.id) for t in teams]}
     resp.save(update_fields=["mapped_entities"])
