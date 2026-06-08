@@ -66,7 +66,7 @@ describe("LoginPage", () => {
     expect(screen.getAllByText(/Fixture Platform/).length).toBeGreaterThan(0);
     expect(screen.getByText(/Sports fixtures, made in Nagaland\./i)).toBeInTheDocument();
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /sign in/i }),
     ).toBeInTheDocument();
@@ -85,7 +85,7 @@ describe("LoginPage", () => {
     vi.spyOn(authApi, "login").mockResolvedValue({ user });
     renderAt("/login");
     await userEvent.type(screen.getByLabelText(/email/i), "x@example.com");
-    await userEvent.type(screen.getByLabelText(/password/i), "hunter22hunter");
+    await userEvent.type(screen.getByLabelText(/^password$/i), "hunter22hunter");
     await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
     await waitFor(() => {
       expect(screen.getByTestId("loc").textContent).toBe("/orgs");
@@ -96,7 +96,7 @@ describe("LoginPage", () => {
     vi.spyOn(authApi, "login").mockResolvedValue({ user });
     renderAt("/login?next=/o/acme/dashboard");
     await userEvent.type(screen.getByLabelText(/email/i), "x@example.com");
-    await userEvent.type(screen.getByLabelText(/password/i), "hunter22hunter");
+    await userEvent.type(screen.getByLabelText(/^password$/i), "hunter22hunter");
     await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
     await waitFor(() => {
       expect(screen.getByTestId("loc").textContent).toBe(
@@ -109,7 +109,7 @@ describe("LoginPage", () => {
     vi.spyOn(authApi, "login").mockResolvedValue({ requires_2fa: true });
     renderAt();
     await userEvent.type(screen.getByLabelText(/email/i), "x@example.com");
-    await userEvent.type(screen.getByLabelText(/password/i), "hunter22hunter");
+    await userEvent.type(screen.getByLabelText(/^password$/i), "hunter22hunter");
     await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
     await waitFor(() => {
       expect(screen.getByLabelText(/authentication code/i)).toBeInTheDocument();
@@ -128,7 +128,7 @@ describe("LoginPage", () => {
     vi.spyOn(authApi, "login").mockResolvedValue({ user });
     renderAt("/login?next=https://evil.example.com/x");
     await userEvent.type(screen.getByLabelText(/email/i), "x@example.com");
-    await userEvent.type(screen.getByLabelText(/password/i), "hunter22hunter");
+    await userEvent.type(screen.getByLabelText(/^password$/i), "hunter22hunter");
     await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
     await waitFor(() => {
       // Off-site `next` is rejected; falls through to pickLandingPathForUser,
