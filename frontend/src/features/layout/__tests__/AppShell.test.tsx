@@ -181,7 +181,7 @@ describe("AppShell", () => {
     ).toBeInTheDocument();
   });
 
-  it("tournament route switches to the Manage group + fetches the name header", async () => {
+  it("tournament route keeps the workspace nav + fetches the name header", async () => {
     vi.spyOn(tournamentsApi, "get").mockResolvedValue({
       id: "t-123",
       slug: "spring-cup",
@@ -200,21 +200,13 @@ describe("AppShell", () => {
     renderShellAt("/tournaments/t-123");
 
     const primary = screen.getByRole("navigation", { name: /primary/i });
-    // Manage group with the tournament destinations.
-    expect(primary.textContent).toMatch(/manage/i);
-    expect(primary.textContent).toMatch(/overview/i);
-    expect(primary.textContent).toMatch(/registration forms/i);
-    expect(primary.textContent).toMatch(/fixtures & bracket/i);
-    // Tournament-scoped Members + Audit now live in the Manage group.
-    expect(primary.textContent).toMatch(/members/i);
-    expect(primary.textContent).toMatch(/audit/i);
-    // "All tournaments" back-link is present.
-    expect(
-      screen.getAllByRole("link", { name: /all tournaments/i }).length,
-    ).toBeGreaterThan(0);
-    // Workspace-only items are gone in tournament mode.
-    expect(primary.textContent).not.toMatch(/dashboard/i);
-    // Name resolves asynchronously into the rail header.
+    // Tournament-internal nav now lives in the tabbed workspace, NOT the sidebar.
+    // The sidebar keeps the Workspace group (Dashboard + Tournaments).
+    expect(primary.textContent).toMatch(/dashboard/i);
+    expect(primary.textContent).toMatch(/tournaments/i);
+    expect(primary.textContent).not.toMatch(/registration forms/i);
+    expect(primary.textContent).not.toMatch(/fixtures & bracket/i);
+    // Name still resolves asynchronously into the rail header.
     await waitFor(() =>
       expect(screen.getAllByText(/spring cup/i).length).toBeGreaterThan(0),
     );
