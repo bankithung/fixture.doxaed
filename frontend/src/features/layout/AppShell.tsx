@@ -13,6 +13,7 @@ import {
   Bell,
   ChevronDown,
   ChevronRight,
+  Lock,
   Menu,
   PanelLeft,
   Plus,
@@ -203,6 +204,26 @@ export function AppShell(): React.ReactElement {
 
   const drawerNavLink = (item: NavItem): React.ReactElement => {
     const Icon = item.icon;
+    // Stage-gated section not yet reached — disabled, not a link (mirrors the rail).
+    if (item.locked) {
+      return (
+        <div
+          key={item.key}
+          aria-disabled="true"
+          className="flex cursor-not-allowed items-start gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground/40"
+        >
+          <Lock aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate">{item.label}</span>
+            {item.lockLabel ? (
+              <span className="truncate text-[0.6875rem]">
+                {t("Unlocks at")} {item.lockLabel}
+              </span>
+            ) : null}
+          </span>
+        </div>
+      );
+    }
     return (
       <NavLink
         key={item.key}

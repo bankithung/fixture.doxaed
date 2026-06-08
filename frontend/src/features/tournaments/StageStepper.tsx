@@ -1,7 +1,19 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, Check, Lock } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Building2,
+  CalendarClock,
+  Check,
+  Circle,
+  Lock,
+  Settings2,
+  Trophy,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import {
   tournamentsApi,
   type StageConsequences,
@@ -38,6 +50,16 @@ function stageRoute(id: string, key: string): string | null {
       return null;
   }
 }
+
+/** Icon per setup stage (FE-only affordance; server owns the stage list). */
+const STAGE_ICON: Record<string, typeof Building2> = {
+  setup: Settings2,
+  org_registration: Building2,
+  team_registration: Users,
+  members: UserPlus,
+  fixtures: CalendarClock,
+  ready: Trophy,
+};
 
 const STAGE_HINT: Record<string, string> = {
   setup: "Start the setup — invite institutions next.",
@@ -144,112 +166,50 @@ export function StageStepper({
   const warnings = consequences?.warnings ?? [];
   const isReopen = target !== null && data.order.indexOf(target) < curIdx;
 
+  const currentLabel = data.stages[curIdx]?.label ?? "";
+  const currentCount = countLabel(data.stages[curIdx]);
+  const CurrentIcon = STAGE_ICON[data.stage] ?? Circle;
+
   return (
-    <section
-      aria-label={t("Setup progress")}
-      className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5"
-    >
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-          {t("Setup progress")}
-        </p>
-        {data.rules_frozen_at ? (
-          <span className="inline-flex items-center gap-1 text-[0.6875rem] text-muted-foreground">
-            <Lock aria-hidden="true" className="h-3 w-3" />
-            {t("Rules frozen")}
+    <div className="flex flex-col gap-4">
+      {/* Hero — the one thing to do now, with the primary action. */}
+      <section
+        aria-label={t("Current stage")}
+        className="flex flex-col gap-4 rounded-xl border border-primary/20 bg-primary/[0.06] p-5 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div className="flex min-w-0 items-start gap-3.5">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+            <CurrentIcon aria-hidden="true" className="h-5 w-5" />
           </span>
-        ) : null}
-      </div>
-
-      {/* Stage chips — click a past/next stage to jump (reopen warns first). */}
-      <ol className="flex flex-col gap-2 sm:flex-row sm:items-stretch sm:gap-1">
-        {data.stages.map((s, i) => {
-          const clickable = data.can_manage && allowed.has(s.key);
-          const count = countLabel(s);
-          return (
-            <li key={s.key} className="flex-1">
-              <button
-                type="button"
-                disabled={!clickable}
-                onClick={() => {
-                  if (clickable) {
-                    setAck(false);
-                    setTarget(s.key);
-                  }
-                }}
-                aria-current={s.state === "current" ? "step" : undefined}
-                className={cn(
-                  "flex w-full items-start gap-2.5 rounded-lg border p-3 text-left transition-colors",
-                  s.state === "current"
-                    ? "border-primary bg-primary/[0.04]"
-                    : s.state === "complete"
-                      ? "border-border bg-background"
-                      : "border-dashed border-border bg-background",
-                  clickable
-                    ? "hover:border-primary/50 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    : "cursor-default",
-                )}
-              >
-                <span
-                  className={cn(
-                    "grid h-6 w-6 shrink-0 place-items-center rounded-full font-tabular text-xs font-semibold",
-                    s.state === "complete"
-                      ? "bg-primary text-primary-foreground"
-                      : s.state === "current"
-                        ? "bg-primary/15 text-primary ring-1 ring-primary/40"
-                        : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {s.state === "complete" ? (
-                    <Check aria-hidden="true" className="h-3.5 w-3.5" />
-                  ) : (
-                    i + 1
-                  )}
-                </span>
-                <span className="min-w-0">
-                  <span
-                    className={cn(
-                      "block truncate text-sm font-medium",
-                      s.state === "upcoming" && "text-muted-foreground",
-                    )}
-                  >
-                    {s.label}
-                  </span>
-                  {count ? (
-                    <span className="mt-0.5 block font-tabular text-[0.6875rem] text-muted-foreground">
-                      {count}
-                    </span>
-                  ) : null}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-
-      {/* Current-stage callout — link to the dedicated tab + Continue. */}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 p-4">
-        <div className="min-w-0">
-          <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
-            {t("Now")} · {data.stages[curIdx]?.label}
-          </p>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {t(STAGE_HINT[data.stage] ?? "")}
-          </p>
+          <div className="min-w-0">
+            <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-primary">
+              {t("You're here")}
+            </p>
+            <h2 className="mt-0.5 text-lg font-semibold tracking-tight">{currentLabel}</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {t(STAGE_HINT[data.stage] ?? "")}
+            </p>
+            {currentCount ? (
+              <span className="mt-2 inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 font-tabular text-xs font-medium text-primary">
+                {currentCount}
+              </span>
+            ) : null}
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           {openRoute ? (
             <Link
               to={openRoute}
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              {t("Open")} {data.stages[curIdx]?.label}
+              {t("Open")} {currentLabel}
               <ArrowRight aria-hidden="true" className="h-4 w-4" />
             </Link>
           ) : null}
           {canAdvance ? (
             <Button
               size="sm"
+              variant={openRoute ? "outline" : "default"}
               onClick={() => {
                 setAck(false);
                 setTarget(nextStage);
@@ -259,13 +219,110 @@ export function StageStepper({
               <ArrowRight aria-hidden="true" className="h-4 w-4" />
             </Button>
           ) : data.stage === "ready" ? (
-            <span className="inline-flex items-center gap-1 text-sm font-medium text-primary">
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
               <Check aria-hidden="true" className="h-4 w-4" />
               {t("Setup complete")}
             </span>
           ) : null}
         </div>
-      </div>
+      </section>
+
+      {/* Setup timeline — click a stage to advance/reopen (warns first). */}
+      <section
+        aria-label={t("Setup progress")}
+        className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5"
+      >
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            {t("Setup progress")}
+          </p>
+          {data.rules_frozen_at ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[0.6875rem] font-medium text-muted-foreground">
+              <Lock aria-hidden="true" className="h-3 w-3" />
+              {t("Rules frozen")}
+            </span>
+          ) : null}
+        </div>
+
+        <div className="-mx-1 overflow-x-auto px-1 pb-1">
+          <ol className="flex min-w-[34rem] items-start">
+            {data.stages.map((s, i) => {
+              const clickable = data.can_manage && allowed.has(s.key);
+              const Icon = STAGE_ICON[s.key] ?? Circle;
+              return (
+                <li key={s.key} className="relative flex flex-1 flex-col items-center">
+                  {i > 0 ? (
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "absolute left-0 top-[15px] h-0.5 w-1/2",
+                        i <= curIdx ? "bg-primary" : "bg-border",
+                      )}
+                    />
+                  ) : null}
+                  {i < data.stages.length - 1 ? (
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "absolute right-0 top-[15px] h-0.5 w-1/2",
+                        i < curIdx ? "bg-primary" : "bg-border",
+                      )}
+                    />
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={!clickable}
+                    onClick={() => {
+                      if (clickable) {
+                        setAck(false);
+                        setTarget(s.key);
+                      }
+                    }}
+                    aria-current={s.state === "current" ? "step" : undefined}
+                    title={
+                      clickable
+                        ? i <= curIdx
+                          ? t("Go back to this stage")
+                          : t("Advance to this stage")
+                        : s.label
+                    }
+                    className={cn(
+                      "group relative z-10 flex w-full flex-col items-center gap-1.5 rounded-lg px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      clickable ? "cursor-pointer" : "cursor-default",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 transition-colors",
+                        s.state === "complete"
+                          ? "border-emerald-500 bg-emerald-500 text-white"
+                          : s.state === "current"
+                            ? "border-primary bg-primary/10 text-primary ring-4 ring-primary/15"
+                            : "border-border bg-card text-muted-foreground/40",
+                        clickable && s.state !== "complete" && "group-hover:border-primary group-hover:text-primary",
+                      )}
+                    >
+                      {s.state === "complete" ? (
+                        <Check aria-hidden="true" className="h-4 w-4" />
+                      ) : (
+                        <Icon aria-hidden="true" className="h-4 w-4" />
+                      )}
+                    </span>
+                    <span
+                      className={cn(
+                        "max-w-[7rem] text-center text-xs font-medium leading-tight",
+                        s.state === "upcoming" ? "text-muted-foreground" : "text-foreground",
+                      )}
+                    >
+                      {s.label}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      </section>
 
       {/* Transition confirm dialog (preview → ack → execute). */}
       <Dialog
@@ -351,6 +408,6 @@ export function StageStepper({
           </Button>
         </DialogFooter>
       </Dialog>
-    </section>
+    </div>
   );
 }

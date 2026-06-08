@@ -23,7 +23,9 @@ const TAB_DEFS = (id: string) => [
   { to: routes.tournamentDetail(id), label: "Overview", end: true, stageKey: null },
   { to: routes.tournamentInstitutions(id), label: "Institutions", stageKey: "org_registration" },
   { to: routes.tournamentTeams(id), label: "Teams", stageKey: "team_registration" },
-  { to: routes.tournamentMembers(id), label: "Members", stageKey: "members" },
+  // Members (invite people / assign roles) is always available — like Overview &
+  // Settings — not a stage-gated work section. Keep in sync with computeNavItems.
+  { to: routes.tournamentMembers(id), label: "Members", stageKey: null },
   { to: routes.tournamentFixtures(id), label: "Fixtures", stageKey: "fixtures" },
   { to: routes.tournamentSettings(id), label: "Settings", stageKey: null },
 ];
@@ -84,7 +86,7 @@ export function TournamentWorkspace(): React.ReactElement {
             <Trophy aria-hidden="true" className="h-5 w-5 text-primary" />
           </span>
           <div className="min-w-0">
-            <h1 className="truncate text-2xl font-semibold tracking-tight">{name}</h1>
+            <h1 className="truncate text-xl font-semibold tracking-tight">{name}</h1>
             <span
               className={cn(
                 "mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize",
@@ -97,25 +99,22 @@ export function TournamentWorkspace(): React.ReactElement {
         </div>
 
         {stage ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <div className="flex items-center gap-1" aria-label={t("Setup progress")}>
               {stage.order.map((s, i) => (
                 <span
                   key={s}
                   title={stage.stages[i]?.label}
                   className={cn(
-                    "h-2 w-2 rounded-full",
-                    i < curIdx
-                      ? "bg-primary"
-                      : i === curIdx
-                        ? "bg-primary ring-2 ring-primary/30"
-                        : "bg-muted",
+                    "h-1.5 rounded-full transition-colors",
+                    i === curIdx ? "w-7" : "w-5",
+                    i <= curIdx ? "bg-primary" : "bg-muted",
                   )}
                 />
               ))}
             </div>
-            <span className="font-tabular text-xs text-muted-foreground">
-              {curIdx + 1}/{stage.order.length}
+            <span className="whitespace-nowrap font-tabular text-xs font-medium text-muted-foreground">
+              {t("Step")} {curIdx + 1} {t("of")} {stage.order.length}
               {nextLabel ? ` · ${t("Next")}: ${nextLabel}` : ` · ${t("Ready")}`}
             </span>
           </div>

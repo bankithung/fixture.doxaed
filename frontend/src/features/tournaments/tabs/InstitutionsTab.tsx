@@ -11,6 +11,7 @@ import {
   Plus,
   Search,
   Send,
+  X,
 } from "lucide-react";
 import { institutionsApi, type Institution } from "@/api/institutions";
 import { formsApi } from "@/api/forms";
@@ -25,7 +26,6 @@ import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { useBreakpoint } from "@/lib/useBreakpoint";
 import { CreateFormDialog } from "../CreateFormDialog";
 import { EmptyState } from "./shared";
 
@@ -50,7 +50,6 @@ export function InstitutionsTab(): React.ReactElement {
   const qc = useQueryClient();
   const toast = useToast();
   const navigate = useNavigate();
-  const { isMobile } = useBreakpoint();
   const [copied, setCopied] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [filters, setFilters] = useState<Record<string, string>>({});
@@ -120,13 +119,18 @@ export function InstitutionsTab(): React.ReactElement {
       return Array.isArray(ev) ? ev.map(String).includes(val) : String(ev ?? "") === val;
     });
   });
+  const hasActiveFilters = q !== "" || Object.values(filters).some(Boolean);
+  const clearFilters = (): void => {
+    setFilters({});
+    setSearch("");
+  };
 
   return (
     <div className="flex flex-col gap-5">
       <div>
         <h2 className="text-lg font-semibold">{t("Institution registration")}</h2>
         <p className="text-sm text-muted-foreground">
-          {t("Build one registration form. Share it for schools to apply, or fill it yourself to add them — same form, one source of truth.")}
+          {t("One form to register schools — share it, or add them yourself.")}
         </p>
       </div>
 
@@ -138,7 +142,7 @@ export function InstitutionsTab(): React.ReactElement {
             <div>
               <p className="text-sm font-medium">{t("Create the registration form first")}</p>
               <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                {t("Add the questions you want schools to answer (name, contact, sport, categories). You can then share it or fill it in yourself.")}
+                {t("Add your questions, then share the form or add schools yourself.")}
               </p>
             </div>
             <Button onClick={() => setCreateOpen(true)}>
@@ -193,7 +197,7 @@ export function InstitutionsTab(): React.ReactElement {
               <a href={directoryUrl} target="_blank" rel="noreferrer"
                 className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-primary hover:underline">
                 <Eye aria-hidden="true" className="h-3.5 w-3.5" />
-                {t("View public directory of registered institutions")}
+                {t("View public directory")}
                 <ExternalLink aria-hidden="true" className="h-3 w-3" />
               </a>
             ) : null}
@@ -210,18 +214,21 @@ export function InstitutionsTab(): React.ReactElement {
           </span>
         </div>
 
-        {/* Filters (search + a Select per choice field). */}
+        {/* Filters — dynamic: search + one compact Select per choice field. */}
         {items.length > 0 ? (
-          <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/20 p-3 sm:flex-row sm:flex-wrap sm:items-end">
-            <label className="relative min-w-[12rem] flex-1">
+          <div className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-muted/20 p-2.5">
+            <label className="relative min-w-[11rem] flex-1 sm:max-w-xs">
               <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={search} onChange={(e) => setSearch(e.target.value)}
-                placeholder={t("Search name or region…")} className="pl-9" aria-label={t("Search")} />
+                placeholder={t("Search name or region…")} className="h-9 pl-9" aria-label={t("Search")} />
             </label>
             {choiceFields.map((f) => (
-              <label key={f.key} className="flex min-w-[11rem] flex-col gap-1">
-                <span className="text-[0.6875rem] font-medium text-muted-foreground">{f.label}</span>
+              <label key={f.key} className="flex w-40 min-w-0 flex-col gap-1">
+                <span className="truncate text-[0.6875rem] font-medium text-muted-foreground" title={f.label}>
+                  {f.label}
+                </span>
                 <Select
+                  size="sm"
                   value={filters[f.key] ?? ""}
                   onChange={(v) => setFilters((s) => ({ ...s, [f.key]: v }))}
                   options={[{ value: "", label: t("All") }, ...(f.options ?? [])]}
@@ -229,6 +236,12 @@ export function InstitutionsTab(): React.ReactElement {
                 />
               </label>
             ))}
+            {hasActiveFilters ? (
+              <Button size="sm" variant="ghost" className="h-9 text-muted-foreground" onClick={clearFilters}>
+                <X aria-hidden="true" className="h-4 w-4" />
+                {t("Clear")}
+              </Button>
+            ) : null}
           </div>
         ) : null}
 
@@ -238,14 +251,12 @@ export function InstitutionsTab(): React.ReactElement {
           <EmptyState
             icon={<Building2 className="h-8 w-8" />}
             title={t("No institutions registered yet")}
-            hint={t("Share the form, or fill it in yourself with “Add institute”.")}
+            hint={t("Share the form, or add a school yourself.")}
           />
         ) : filteredItems.length === 0 ? (
           <p className="rounded-xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">
             {t("No institutions match your filters.")}
           </p>
-        ) : isMobile ? (
-          <InstitutionCards items={filteredItems} fields={fieldDefs} />
         ) : (
           <InstitutionTable items={filteredItems} fields={fieldDefs} />
         )}
@@ -278,74 +289,58 @@ function StatusPill({ status }: { status: string }): React.ReactElement {
   );
 }
 
+/** Header cell — sticky to the top of the scroll container. */
+const TH =
+  "sticky top-0 z-20 border-b border-border bg-muted px-3 py-2.5 text-left align-bottom font-medium";
+/** Body cell — bottom border + row-hover tint (works on sticky cells too). */
+const TD = "border-b border-border px-3 py-2.5 align-top group-hover:bg-accent/40";
+
 function InstitutionTable({ items, fields }: { items: Institution[]; fields: Field[] }): React.ReactElement {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-      <table className="w-full min-w-[40rem] text-sm">
+    <div className="max-h-[34rem] overflow-auto rounded-xl border border-border bg-card shadow-sm">
+      <table className="w-full border-separate border-spacing-0 text-sm">
         <thead>
-          <tr className="border-b border-border text-left text-[0.6875rem] uppercase tracking-wide text-muted-foreground">
-            <th className="px-4 py-2.5 font-medium">{t("Institution")}</th>
-            <th className="px-3 py-2.5 font-medium">{t("Type")}</th>
-            <th className="px-3 py-2.5 font-medium">{t("Region")}</th>
+          <tr className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground">
+            {/* Institution stays pinned to the left while the dynamic columns scroll. */}
+            <th className={cn(TH, "sticky left-0 z-30 px-4")}>{t("Institution")}</th>
+            <th className={TH}>{t("Type")}</th>
+            <th className={TH}>{t("Region")}</th>
             {fields.map((f) => (
-              <th key={f.key} className="px-3 py-2.5 font-medium">{f.label}</th>
+              <th key={f.key} className={TH} title={f.label}>
+                <span className="block max-w-[11rem] truncate">{f.label}</span>
+              </th>
             ))}
-            <th className="px-3 py-2.5 text-right font-medium">{t("Teams")}</th>
-            <th className="px-3 py-2.5 font-medium">{t("Status")}</th>
+            <th className={cn(TH, "text-right")}>{t("Teams")}</th>
+            <th className={TH}>{t("Status")}</th>
           </tr>
         </thead>
         <tbody>
           {items.map((i) => (
-            <tr key={i.id} className={cn("border-b border-border last:border-0 transition-colors hover:bg-accent/30", i.status === "withdrawn" && "opacity-60")}>
-              <td className="px-4 py-2.5 font-medium">{i.name}</td>
-              <td className="px-3 py-2.5 capitalize text-muted-foreground">{t(i.kind)}</td>
-              <td className="px-3 py-2.5 text-muted-foreground">{i.region || "—"}</td>
-              {fields.map((f) => (
-                <td key={f.key} className="px-3 py-2.5 text-muted-foreground">
-                  {fmtAnswer(f, i.answers[f.key])}
-                </td>
-              ))}
-              <td className="px-3 py-2.5 text-right font-tabular">{i.team_count}</td>
-              <td className="px-3 py-2.5"><StatusPill status={i.status} /></td>
+            <tr key={i.id} className={cn("group", i.status === "withdrawn" && "opacity-60")}>
+              <td
+                className="sticky left-0 z-10 border-b border-border bg-card px-4 py-2.5 align-top font-medium"
+                title={i.name}
+              >
+                <span className="block max-w-[14rem] truncate">{i.name}</span>
+              </td>
+              <td className={cn(TD, "capitalize text-muted-foreground")}>{t(i.kind)}</td>
+              <td className={cn(TD, "text-muted-foreground")}>{i.region || "—"}</td>
+              {fields.map((f) => {
+                const v = fmtAnswer(f, i.answers[f.key]);
+                return (
+                  <td key={f.key} className={cn(TD, "text-muted-foreground")} title={v}>
+                    <span className="block max-w-[12rem] truncate">{v}</span>
+                  </td>
+                );
+              })}
+              <td className={cn(TD, "text-right font-tabular")}>{i.team_count}</td>
+              <td className={TD}>
+                <StatusPill status={i.status} />
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-function InstitutionCards({ items, fields }: { items: Institution[]; fields: Field[] }): React.ReactElement {
-  return (
-    <div className="flex flex-col gap-2">
-      {items.map((i) => (
-        <div key={i.id} className={cn("rounded-xl border border-border bg-card p-4 shadow-sm", i.status === "withdrawn" && "opacity-60")}>
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="truncate font-medium">{i.name}</div>
-              <div className="mt-0.5 text-xs capitalize text-muted-foreground">
-                {t(i.kind)}{i.region ? ` · ${i.region}` : ""}
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-              <span className="rounded-full bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground">
-                {i.team_count} {t("teams")}
-              </span>
-              <StatusPill status={i.status} />
-            </div>
-          </div>
-          {fields.length ? (
-            <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-              {fields.map((f) => (
-                <div key={f.key} className="min-w-0">
-                  <dt className="truncate text-muted-foreground">{f.label}</dt>
-                  <dd className="truncate font-medium">{fmtAnswer(f, i.answers[f.key])}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : null}
-        </div>
-      ))}
     </div>
   );
 }

@@ -120,6 +120,33 @@
   }
 }
 
+/* Slim, professional scrollbars everywhere — table overflow, dropdown listboxes,
+   and the page itself. Firefox (scrollbar-*) + WebKit (::-webkit-scrollbar).
+   The thumb uses a 2px transparent inset so it reads as a thin rounded bar. */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.3);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+  }
+}
+
 /* Global reduced-motion safety net. framer-motion components additionally
    read useReducedMotion(), but this guarantees CSS animations collapse too. */
 @media (prefers-reduced-motion: reduce) {

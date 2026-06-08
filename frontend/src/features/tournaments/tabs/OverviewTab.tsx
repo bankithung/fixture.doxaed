@@ -1,20 +1,46 @@
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Building2, CalendarClock, ChevronRight, Lock, Users } from "lucide-react";
+import {
+  Building2,
+  CalendarClock,
+  ChevronRight,
+  Lock,
+  UserRound,
+  Users,
+} from "lucide-react";
 import { tournamentsApi } from "@/api/tournaments";
 import { institutionsApi } from "@/api/institutions";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { StageStepper } from "../StageStepper";
-import { Stat, statusBadge } from "./shared";
 
+/** Soft, dark-mode-aware tint per metric (icon tile color). */
+const TINT: Record<string, string> = {
+  blue: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+  violet: "bg-violet-500/15 text-violet-600 dark:text-violet-400",
+  amber: "bg-amber-500/15 text-amber-600 dark:text-amber-500",
+  emerald: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+};
+
+interface MetricDef {
+  key: string;
+  icon: typeof Building2;
+  label: string;
+  value: number;
+  sub: string;
+  color: keyof typeof TINT | string;
+  to: string | null;
+  stageKey: string | null;
+}
+
+/**
+ * Tournament Overview: the setup hero/timeline (StageStepper) plus a single row
+ * of colorful, clickable metric cards — one surface that doubles as at-a-glance
+ * numbers AND navigation into each section (locked until its stage is reached).
+ */
 export function OverviewTab(): React.ReactElement {
   const { id = "" } = useParams();
-  const tournament = useQuery({
-    queryKey: ["tournament", id],
-    queryFn: () => tournamentsApi.get(id),
-  });
   const teams = useQuery({ queryKey: ["t-teams", id], queryFn: () => tournamentsApi.teams(id) });
   const matches = useQuery({ queryKey: ["t-matches", id], queryFn: () => tournamentsApi.matches(id) });
   const institutions = useQuery({
@@ -27,88 +53,107 @@ export function OverviewTab(): React.ReactElement {
   const matchCount = matches.data?.length ?? 0;
   const instCount = institutions.data?.length ?? 0;
   const playerCount = (teams.data ?? []).reduce((n, tm) => n + (tm.player_count ?? 0), 0);
-  const status = tournament.data?.status ?? "draft";
-  const badge = statusBadge(status);
 
   const order = stage.data?.order ?? [];
   const curIdx = stage.data ? order.indexOf(stage.data.stage) : -1;
-  const locked = (key: string): boolean =>
-    !!stage.data && order.indexOf(key) > curIdx;
-  const lockedLabel = (key: string): string =>
-    stage.data?.stages[order.indexOf(key)]?.label ?? "";
+  const locked = (key: string | null): boolean =>
+    !!stage.data && key !== null && order.indexOf(key) > curIdx;
+  const lockedLabel = (key: string | null): string =>
+    key !== null ? (stage.data?.stages[order.indexOf(key)]?.label ?? "") : "";
 
-  const jumps = [
-    { to: routes.tournamentInstitutions(id), icon: Building2, label: t("Institutions"), value: instCount, sub: t("registered"), stageKey: "org_registration" },
-    { to: routes.tournamentTeams(id), icon: Users, label: t("Teams"), value: teamCount, sub: t("entered"), stageKey: "team_registration" },
-    { to: routes.tournamentFixtures(id), icon: CalendarClock, label: t("Fixtures"), value: matchCount, sub: t("generated"), stageKey: "fixtures" },
+  const metrics: MetricDef[] = [
+    { key: "inst", icon: Building2, label: t("Institutions"), value: instCount, sub: t("registered"), color: "blue", to: routes.tournamentInstitutions(id), stageKey: "org_registration" },
+    { key: "teams", icon: Users, label: t("Teams"), value: teamCount, sub: t("entered"), color: "violet", to: routes.tournamentTeams(id), stageKey: "team_registration" },
+    { key: "players", icon: UserRound, label: t("Players"), value: playerCount, sub: t("across teams"), color: "amber", to: null, stageKey: null },
+    { key: "fixtures", icon: CalendarClock, label: t("Fixtures"), value: matchCount, sub: t("generated"), color: "emerald", to: routes.tournamentFixtures(id), stageKey: "fixtures" },
   ];
 
   return (
     <div className="flex flex-col gap-6">
       <StageStepper tournamentId={id} />
 
-      {/* KPI row */}
-      <div className="grid grid-cols-2 divide-x divide-y divide-border rounded-xl border border-border bg-card shadow-sm md:grid-cols-4 md:divide-y-0">
-        <Stat label={t("Institutions")} value={instCount} sub={t("registered")} />
-        <Stat label={t("Teams")} value={teamCount} sub={t("entered")} />
-        <Stat label={t("Players")} value={playerCount} sub={t("across teams")} />
-        <Stat label={t("Status")} value={t(badge.label)} live={status.startsWith("live")} />
-      </div>
-
-      {/* Jump-to cards — locked until the tournament reaches that stage. */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        {jumps.map((j) => {
-          const isLocked = locked(j.stageKey);
-          const body = (
-            <>
-              <span
-                className={cn(
-                  "grid h-10 w-10 shrink-0 place-items-center rounded-lg",
-                  isLocked ? "bg-muted" : "bg-primary/10",
-                )}
-              >
-                {isLocked ? (
-                  <Lock aria-hidden="true" className="h-5 w-5 text-muted-foreground/50" />
-                ) : (
-                  <j.icon aria-hidden="true" className="h-5 w-5 text-primary" />
-                )}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className={cn("text-sm font-medium", isLocked && "text-muted-foreground")}>
-                  {j.label}
-                </div>
-                <div className="font-tabular text-xs text-muted-foreground">
-                  {isLocked ? `${t("Unlocks at")} ${lockedLabel(j.stageKey)}` : `${j.value} ${j.sub}`}
-                </div>
-              </div>
-              {!isLocked ? (
-                <ChevronRight
-                  aria-hidden="true"
-                  className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5"
-                />
-              ) : null}
-            </>
-          );
-          return isLocked ? (
-            <div
-              key={j.label}
-              aria-disabled="true"
-              title={`${t("Unlocks at")} ${lockedLabel(j.stageKey)}`}
-              className="flex cursor-not-allowed items-center gap-3 rounded-xl border border-dashed border-border bg-card p-4 opacity-70"
-            >
-              {body}
-            </div>
-          ) : (
-            <Link
-              key={j.label}
-              to={j.to}
-              className="group flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/30"
-            >
-              {body}
-            </Link>
-          );
-        })}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {metrics.map((m) => (
+          <MetricCard
+            key={m.key}
+            metric={m}
+            locked={locked(m.stageKey)}
+            lockedLabel={lockedLabel(m.stageKey)}
+          />
+        ))}
       </div>
     </div>
+  );
+}
+
+function MetricCard({
+  metric,
+  locked,
+  lockedLabel,
+}: {
+  metric: MetricDef;
+  locked: boolean;
+  lockedLabel: string;
+}): React.ReactElement {
+  const tile = TINT[metric.color] ?? TINT.blue;
+
+  if (locked) {
+    return (
+      <div
+        aria-disabled="true"
+        title={`${t("Unlocks at")} ${lockedLabel}`}
+        className="flex cursor-not-allowed items-center gap-3 rounded-xl border border-dashed border-border bg-card p-3 opacity-75"
+      >
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted">
+          <Lock aria-hidden="true" className="h-4 w-4 text-muted-foreground/50" />
+        </span>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-muted-foreground">{metric.label}</div>
+          <div className="truncate text-xs text-muted-foreground">
+            {t("Unlocks at")} {lockedLabel}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const inner = (
+    <>
+      <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-lg", tile)}>
+        <metric.icon aria-hidden="true" className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-1.5">
+          <span className="font-tabular text-lg font-semibold leading-none tracking-tight">
+            {metric.value}
+          </span>
+          <span className="truncate text-sm font-medium">{metric.label}</span>
+        </div>
+        <div className="mt-0.5 truncate text-xs text-muted-foreground">{metric.sub}</div>
+      </div>
+      {metric.to ? (
+        <ChevronRight
+          aria-hidden="true"
+          className="h-4 w-4 shrink-0 text-muted-foreground/40 transition-all group-hover:translate-x-0.5 group-hover:text-foreground"
+        />
+      ) : null}
+    </>
+  );
+
+  if (!metric.to) {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-sm">
+        {inner}
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      to={metric.to}
+      className="group flex items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-sm transition-colors hover:border-primary/30 hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {inner}
+    </Link>
   );
 }

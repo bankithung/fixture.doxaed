@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Lock, ShieldCheck } from "lucide-react";
@@ -58,6 +58,14 @@ export function PublicFormPage(): React.ReactElement {
 
   const data = payload.data;
   const form = data?.form;
+
+  // Name the browser tab after the tournament (richer than "Fixture Platform").
+  // NB: chat-app link unfurling needs server-side meta — see PR notes.
+  useEffect(() => {
+    const name = data?.tournament_name;
+    if (name) document.title = form?.title ? `${name} · ${form.title}` : name;
+  }, [data, form]);
+
   const schema = useMemo(
     () => form?.schema ?? { version: 1, sections: [] },
     [form?.schema],

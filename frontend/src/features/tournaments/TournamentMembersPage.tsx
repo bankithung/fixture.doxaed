@@ -139,12 +139,13 @@ function MemberRow({
       </td>
       <td className="px-4 py-3">
         <Select
+          size="sm"
           value={member.role}
           onChange={(v) => onRoleChange(member, v)}
           options={ROLE_OPTIONS}
           disabled={busy || revoked}
           aria-label={t(`Role for ${displayName}`)}
-          className="w-44"
+          className="w-40"
         />
       </td>
       <td className="px-4 py-3">
@@ -201,6 +202,7 @@ function MemberCard({
       <div className="mt-3 flex flex-col gap-1">
         <Label className="text-xs text-muted-foreground">{t("Role")}</Label>
         <Select
+          size="sm"
           value={member.role}
           onChange={(v) => onRoleChange(member, v)}
           options={ROLE_OPTIONS}
@@ -295,14 +297,16 @@ function InvitePanel({ tournamentId }: { tournamentId: string }): React.ReactEle
             onChange={(e) => setEmail(e.target.value)}
             placeholder={t("person@example.com")}
             data-testid="invite-email"
+            className="h-9"
           />
         </div>
-        <div className="flex flex-col gap-1 sm:w-48">
+        <div className="flex flex-col gap-1 sm:w-44">
           <Label htmlFor="invite-role" className="text-xs text-muted-foreground">
             {t("Role")}
           </Label>
           <Select
             id="invite-role"
+            size="sm"
             value={role}
             onChange={setRole}
             options={ROLE_OPTIONS}
@@ -313,7 +317,7 @@ function InvitePanel({ tournamentId }: { tournamentId: string }): React.ReactEle
           type="submit"
           disabled={!email || invite.isPending}
           data-testid="invite-submit"
-          className="shrink-0"
+          className="h-9 shrink-0"
         >
           <UserPlus className="h-4 w-4" aria-hidden="true" />
           {invite.isPending ? t("Sending...") : t("Invite")}
