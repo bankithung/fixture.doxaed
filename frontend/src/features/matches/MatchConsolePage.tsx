@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Radio } from "lucide-react";
+import { ArrowLeft, Download, Radio } from "lucide-react";
+import { routes } from "@/lib/routes";
 import { liveApi, type LiveTeam, type MiniPlayer } from "@/api/live";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,7 +70,7 @@ function statusMeta(s: string): { label: string; badge: string; dot: string; liv
 type Side = "home" | "away";
 
 export function MatchConsolePage(): React.ReactElement {
-  const { matchId = "" } = useParams();
+  const { id = "", matchId = "" } = useParams();
   const qc = useQueryClient();
   const query = useQuery({
     queryKey: ["live", matchId],
@@ -135,6 +136,13 @@ export function MatchConsolePage(): React.ReactElement {
 
   return (
     <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+      <Link
+        to={routes.tournamentFixtures(id)}
+        className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
+        {t("Back to fixtures")}
+      </Link>
       {/* Page header */}
       <div className="flex flex-col gap-1">
         <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">

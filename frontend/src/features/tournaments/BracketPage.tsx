@@ -1,5 +1,6 @@
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft } from "lucide-react";
 import { tournamentsApi } from "@/api/tournaments";
 import { BracketView } from "./BracketView";
 import { routes } from "@/lib/routes";
@@ -14,16 +15,15 @@ export function BracketPage(): React.ReactElement {
   });
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-4 p-6">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{t("Bracket / flow view")}</h1>
-        <Link
-          to={routes.tournamentDetail(id)}
-          className="text-sm font-medium text-primary hover:underline"
-        >
-          {t("← Back to tournament")}
-        </Link>
-      </div>
+    <div className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
+      <Link
+        to={routes.tournamentFixtures(id)}
+        className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
+        {t("Back to fixtures")}
+      </Link>
+      <h1 className="text-2xl font-semibold tracking-tight">{t("Bracket / flow view")}</h1>
       {query.isLoading ? (
         <p className="text-sm text-muted-foreground">{t("Loading...")}</p>
       ) : query.isError ? (
