@@ -42,6 +42,7 @@ class FormCreateSerializer(serializers.Serializer):
         choices=["organization_registration", "team_registration", "generic"],
         default="organization_registration",
     )
+    stage = serializers.CharField(required=False, allow_blank=True, default="")
     schema = FormSchemaField(required=False)
 
 

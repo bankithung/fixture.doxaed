@@ -1,6 +1,6 @@
-import { NavLink, Outlet, useParams } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Trophy } from "lucide-react";
+import { ArrowLeft, Lock, Trophy } from "lucide-react";
 import { tournamentsApi } from "@/api/tournaments";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
@@ -16,17 +16,21 @@ const STATUS_CLS: Record<string, string> = {
   archived: "bg-muted text-muted-foreground",
 };
 
-const TABS = (id: string) => [
-  { to: routes.tournamentDetail(id), label: "Overview", end: true },
-  { to: routes.tournamentInstitutions(id), label: "Institutions" },
-  { to: routes.tournamentTeams(id), label: "Teams" },
-  { to: routes.tournamentMembers(id), label: "Members" },
-  { to: routes.tournamentFixtures(id), label: "Fixtures" },
-  { to: routes.tournamentSettings(id), label: "Settings" },
+// `stageKey` = the stage a tab belongs to (null = always available). A tab
+// unlocks once the tournament reaches its stage — progressive disclosure so we
+// don't surface team/fixture work during institution registration.
+const TAB_DEFS = (id: string) => [
+  { to: routes.tournamentDetail(id), label: "Overview", end: true, stageKey: null },
+  { to: routes.tournamentInstitutions(id), label: "Institutions", stageKey: "org_registration" },
+  { to: routes.tournamentTeams(id), label: "Teams", stageKey: "team_registration" },
+  { to: routes.tournamentMembers(id), label: "Members", stageKey: "members" },
+  { to: routes.tournamentFixtures(id), label: "Fixtures", stageKey: "fixtures" },
+  { to: routes.tournamentSettings(id), label: "Settings", stageKey: null },
 ];
 
 export function TournamentWorkspace(): React.ReactElement {
   const { id = "" } = useParams();
+  const location = useLocation();
   const tournament = useQuery({
     queryKey: ["tournament", id],
     queryFn: () => tournamentsApi.get(id),
@@ -44,6 +48,24 @@ export function TournamentWorkspace(): React.ReactElement {
     stage && curIdx >= 0 && curIdx < stage.order.length - 1
       ? stage.stages[curIdx + 1]?.label
       : null;
+
+  // A tab is locked until the tournament reaches its stage. Until the stage
+  // payload loads, nothing is locked (avoids a flash of all-locked tabs).
+  const stageRank = (key: string | null): number =>
+    key === null || !stage ? -1 : stage.order.indexOf(key);
+  const isLocked = (key: string | null): boolean =>
+    !!stage && key !== null && stageRank(key) > curIdx;
+  const lockLabel = (key: string | null): string | null => {
+    const r = stageRank(key);
+    return r >= 0 && stage ? (stage.stages[r]?.label ?? null) : null;
+  };
+
+  const tabs = TAB_DEFS(id);
+  // Guard deep-links to a not-yet-reached tab.
+  const activeTab = tabs
+    .filter((tb) => location.pathname === tb.to || (!tb.end && location.pathname.startsWith(tb.to)))
+    .sort((a, b) => b.to.length - a.to.length)[0];
+  const activeLocked = activeTab ? isLocked(activeTab.stageKey) : false;
 
   return (
     <div className="flex w-full flex-col px-4 py-6 sm:px-6 lg:px-8">
@@ -100,29 +122,55 @@ export function TournamentWorkspace(): React.ReactElement {
         ) : null}
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — future-stage tabs are locked until reached. */}
       <nav className="mt-5 flex gap-1 overflow-x-auto border-b border-border">
-        {TABS(id).map((tab) => (
-          <NavLink
-            key={tab.label}
-            to={tab.to}
-            end={tab.end}
-            className={({ isActive }) =>
-              cn(
-                "whitespace-nowrap border-b-2 px-3.5 py-2.5 text-sm font-medium transition-colors",
-                isActive
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border",
-              )
-            }
-          >
-            {t(tab.label)}
-          </NavLink>
-        ))}
+        {tabs.map((tab) =>
+          isLocked(tab.stageKey) ? (
+            <span
+              key={tab.label}
+              title={`${t("Unlocks at")} ${lockLabel(tab.stageKey) ?? ""}`}
+              aria-disabled="true"
+              className="flex cursor-not-allowed items-center gap-1.5 whitespace-nowrap border-b-2 border-transparent px-3.5 py-2.5 text-sm font-medium text-muted-foreground/40"
+            >
+              <Lock aria-hidden="true" className="h-3 w-3" />
+              {t(tab.label)}
+            </span>
+          ) : (
+            <NavLink
+              key={tab.label}
+              to={tab.to}
+              end={tab.end}
+              className={({ isActive }) =>
+                cn(
+                  "whitespace-nowrap border-b-2 px-3.5 py-2.5 text-sm font-medium transition-colors",
+                  isActive
+                    ? "border-primary text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-border",
+                )
+              }
+            >
+              {t(tab.label)}
+            </NavLink>
+          ),
+        )}
       </nav>
 
       <div className="pt-6">
-        <Outlet />
+        {activeLocked ? (
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card py-16 text-center">
+            <Lock aria-hidden="true" className="h-8 w-8 text-muted-foreground/40" />
+            <p className="text-sm font-medium">
+              {t("This stage isn't active yet")}
+            </p>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              {t("It unlocks when the tournament reaches")}{" "}
+              <span className="font-medium">{lockLabel(activeTab?.stageKey ?? null)}</span>.{" "}
+              {t("Advance from the Overview tab when you're ready.")}
+            </p>
+          </div>
+        ) : (
+          <Outlet />
+        )}
       </div>
     </div>
   );

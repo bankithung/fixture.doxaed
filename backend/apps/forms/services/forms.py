@@ -37,14 +37,14 @@ def _unique_slug(tournament, title: str) -> str:
     return slug
 
 
-def create_form(*, tournament, title, purpose, schema=None, created_by=None, request=None) -> Form:
+def create_form(*, tournament, title, purpose, schema=None, stage="", created_by=None, request=None) -> Form:
     schema = schema or {"version": 1, "sections": []}
     if schema.get("sections"):
         validate_schema(schema)
     form = Form.objects.create(
         organization=tournament.organization, tournament=tournament,
         slug=_unique_slug(tournament, title), title=title[:200],
-        purpose=purpose, schema=schema, created_by=created_by,
+        purpose=purpose, stage=stage or "", schema=schema, created_by=created_by,
     )
     emit_audit(actor_user=created_by, actor_role=ActorRole.SYSTEM, event_type="form_created",
                target_type="form", target_id=form.id, organization_id=tournament.organization_id,
