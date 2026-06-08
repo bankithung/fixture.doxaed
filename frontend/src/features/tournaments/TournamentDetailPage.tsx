@@ -24,6 +24,7 @@ import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { DisputesPanel } from "@/features/disputes/DisputesPanel";
+import { StageStepper } from "./StageStepper";
 
 const LINK_BTN =
   "inline-flex h-10 items-center gap-2 rounded-lg border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
@@ -385,6 +386,9 @@ export function TournamentDetailPage(): React.ReactElement {
           </Button>
         </div>
       </div>
+
+      {/* Setup-stage stepper (WS4) — the staged-flow spine. */}
+      <StageStepper tournamentId={id} />
 
       {/* KPI stat row — same language as the workspace dashboard. */}
       <div className="grid grid-cols-2 divide-x divide-y divide-border rounded-xl border border-border bg-card shadow-sm md:grid-cols-4 md:divide-y-0">

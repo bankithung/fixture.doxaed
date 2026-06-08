@@ -177,4 +177,52 @@ export const tournamentsApi = {
     matchId: string,
     payload: { home_score: number; away_score: number; event_id: string },
   ) => api.post<MatchRow>(`/api/matches/${matchId}/score/`, payload),
+
+  // --- Setup-stage workflow (WS4) ---
+  stage: (id: string) => api.get<StagePayload>(`/api/tournaments/${id}/stage/`),
+  previewStage: (id: string, toStage: string) =>
+    api.post<StageConsequences>(`/api/tournaments/${id}/stage/preview/`, {
+      to_stage: toStage,
+    }),
+  transitionStage: (
+    id: string,
+    body: { to_stage: string; ack_warnings?: boolean; reason?: string; event_id: string },
+  ) => api.post<StagePayload>(`/api/tournaments/${id}/stage/`, body),
 };
+
+/** One step in the setup stepper (server-computed; FE renders, never hardcodes). */
+export interface StageInfo {
+  key: string;
+  label: string;
+  state: "complete" | "current" | "upcoming";
+  entered_at: string | null;
+  reopened_count: number;
+  form: { id: string; status: string; title: string } | null;
+  counts: Record<string, number>;
+}
+
+export interface StagePayload {
+  stage: string;
+  status: string;
+  order: string[];
+  allowed_to: string[];
+  can_manage: boolean;
+  rules_frozen_at: string | null;
+  stages: StageInfo[];
+}
+
+export interface StageWarning {
+  code: string;
+  [k: string]: unknown;
+}
+
+export interface StageConsequences {
+  from_stage: string;
+  to_stage: string;
+  allowed: boolean;
+  blockers: string[];
+  warnings: StageWarning[];
+  lifecycle_effect?: { status_from: string; status_to: string } | null;
+  summary_counts?: Record<string, number>;
+  irreversible?: boolean;
+}
