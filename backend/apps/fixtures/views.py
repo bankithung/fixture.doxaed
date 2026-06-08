@@ -11,6 +11,7 @@ from apps.fixtures.services.generate import (
     generate_round_robin,
     generate_single_elimination,
 )
+from apps.fixtures.services.scheduler import apply_schedule
 from apps.teams.models import Team, TeamStatus
 from apps.tournaments.models import Tournament
 from apps.tournaments.permissions import can_manage_tournament
@@ -44,3 +45,31 @@ class GenerateFixturesView(GenericAPIView):
         except (ValueError, TypeError) as e:
             raise DRFValidationError({"detail": str(e)})
         return Response({"generated": len(matches), "format": fmt}, status=201)
+
+
+class ScheduleFixturesView(GenericAPIView):
+    """POST /api/tournaments/{id}/schedule/ — run the FET-style engine over the
+    tournament's matches with the wizard's constraint payload; persist + explain."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        if not can_manage_tournament(request.user, t):
+            raise PermissionDenied("not_tournament_manager")
+        try:
+            result = apply_schedule(
+                tournament=t, config=request.data or {}, by=request.user, request=request
+            )
+        except (ValueError, TypeError) as e:
+            raise DRFValidationError({"detail": str(e)})
+        return Response(
+            {
+                "scheduled": len(result.assignments),
+                "unscheduled": result.unscheduled,
+                "soft_score": result.soft_score,
+                "explanation": result.explanation,
+            }
+        )

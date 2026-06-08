@@ -3,7 +3,7 @@ from __future__ import annotations
 from django.urls import path
 
 from apps.disputes.views import TournamentDisputeView
-from apps.fixtures.views import GenerateFixturesView
+from apps.fixtures.views import GenerateFixturesView, ScheduleFixturesView
 from apps.forms.views import TournamentFormsView
 from apps.matches.views import TournamentMatchListView, TournamentStandingsView
 from apps.teams.views import RegistrationLinkCreateView, TournamentTeamsListView
@@ -80,6 +80,11 @@ urlpatterns = [
         "<uuid:tournament_id>/generate-fixtures/",
         GenerateFixturesView.as_view(),
         name="tournament-generate-fixtures",
+    ),
+    path(
+        "<uuid:tournament_id>/schedule/",
+        ScheduleFixturesView.as_view(),
+        name="tournament-schedule-fixtures",
     ),
     path(
         "<uuid:tournament_id>/disputes/",

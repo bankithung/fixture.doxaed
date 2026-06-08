@@ -153,3 +153,36 @@ def test_apply_schedule_persists_and_audits():
     assert AuditEvent.objects.filter(
         event_type="fixtures_scheduled", target_id=t.id
     ).exists()
+
+
+@pytest.mark.django_db
+def test_schedule_api_manager_only_and_isolation():
+    from rest_framework.test import APIClient
+
+    owner = User.objects.create_user(email="o@sch.test", password="FixtureDemo2026!",
+                                     is_active=True)
+    owner.email_verified_at = timezone.now()
+    owner.save(update_fields=["email_verified_at"])
+    t = create_tournament(user=owner, name="API Sched")
+    register_school(tournament=t, school_name="A", teams=[{"name": "A", "players": []}])
+    register_school(tournament=t, school_name="B", teams=[{"name": "B", "players": []}])
+    generate_round_robin(tournament=t, group_size=4)
+
+    c = APIClient()
+    c.force_authenticate(user=owner)
+    r = c.post(
+        f"/api/tournaments/{t.id}/schedule/",
+        {"date_start": "2026-08-01", "date_end": "2026-08-03", "venues": ["G1"]},
+        format="json",
+    )
+    assert r.status_code == 200, r.content
+    assert r.json()["scheduled"] == 1  # round-robin of 2 teams = 1 match
+
+    # outsider cannot reach it -> 404 (no existence leak)
+    outsider = User.objects.create_user(email="x@sch.test", password="FixtureDemo2026!",
+                                        is_active=True)
+    c2 = APIClient()
+    c2.force_authenticate(user=outsider)
+    assert c2.post(f"/api/tournaments/{t.id}/schedule/",
+                   {"date_start": "2026-08-01", "date_end": "2026-08-03"},
+                   format="json").status_code == 404
