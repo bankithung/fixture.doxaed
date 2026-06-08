@@ -187,6 +187,39 @@ def test_api_admin_add_team_under_institution():
     assert team.institution_id == inst.id
 
 
+def test_public_directory_lists_institutions_with_dynamic_filters():
+    from rest_framework.test import APIClient
+
+    from apps.forms.models import Form, FormResponse
+    from apps.forms.services.mapping import map_response
+
+    t = create_tournament(user=_admin(), name="Cup")
+    form = Form.objects.create(
+        organization=t.organization, tournament=t, slug="org", title="Org reg",
+        purpose="organization_registration", stage="org_registration", status="open",
+        schema={"sections": [{"key": "s", "title": "S", "fields": [
+            {"key": "sport", "type": "single_choice", "label": "Sport",
+             "options": ["Football", "Cricket"]},
+        ]}]},
+    )
+    resp = FormResponse.objects.create(
+        form=form, organization=t.organization, tournament=t,
+        answers={"institution_name": "Green High", "sport": "Football",
+                 "contact_email": "x@green.edu"},
+        title="Green High",
+    )
+    map_response(resp)
+
+    r = APIClient().get(f"/api/forms/{form.id}/directory/")  # no auth — public
+    assert r.status_code == 200, r.content
+    body = r.json()
+    assert body["count"] == 1
+    assert any(f["key"] == "sport" for f in body["filters"])
+    e = body["entries"][0]
+    assert e["name"] == "Green High" and e["values"].get("sport") == "Football"
+    assert "contact_email" not in e["values"]  # private fields excluded
+
+
 def test_org_registration_form_creates_institution():
     from apps.forms.models import Form, FormResponse
     from apps.forms.services.mapping import map_response

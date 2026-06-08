@@ -17,6 +17,7 @@ const form: FormSummary = {
   title: "Inter-School Registration",
   description: "",
   purpose: "organization_registration",
+  stage: "",
   status: "open",
   opens_at: null,
   closes_at: null,

@@ -20,7 +20,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
-from apps.forms.constants import CHOICE_TYPES, FIELD_TYPES, ResponseStatus
+from apps.forms.constants import CHOICE_TYPES, FIELD_TYPES, FormStatus, ResponseStatus
 from apps.forms.models import Form, FormFileUpload, FormResponse
 from apps.forms.serializers import (
     FormCreateSerializer,
@@ -364,3 +364,91 @@ class FormSendStage2View(GenericAPIView):
             })
             # TODO(notify): enqueue email via apps/notifications using r.respondent_email
         return Response({"sent": len(out), "links": out}, status=201)
+
+
+def _norm_option(o):
+    if isinstance(o, dict):
+        return {"value": o.get("value", o.get("label", "")), "label": o.get("label", o.get("value", ""))}
+    return {"value": o, "label": o}
+
+
+def _choice_fields(schema: dict) -> list[dict]:
+    """Choice fields across sections + group children — the filterable columns."""
+    out: list[dict] = []
+    for sec in (schema or {}).get("sections", []):
+        for fld in sec.get("fields", []):
+            if fld.get("type") in CHOICE_TYPES:
+                out.append(fld)
+            if fld.get("type") == "group":
+                for child in fld.get("fields", []):
+                    if child.get("type") in CHOICE_TYPES:
+                        out.append(child)
+    return out
+
+
+class PublicInstitutionDirectoryView(GenericAPIView):
+    """`GET /api/forms/{form_id}/directory/` — AllowAny public directory of the
+    institutions registered through an org-registration form, with filters
+    derived dynamically from the form's own choice fields. Exposes only
+    name/region/kind + the choice-field selections (never contact details)."""
+
+    permission_classes: ClassVar[list[type[BasePermission]]] = [AllowAny]
+    throttle_classes: ClassVar[list] = [PublicFormThrottle]
+
+    def get(self, request, form_id):
+        from apps.teams.models import Institution
+
+        form = (
+            Form.objects.filter(id=form_id, deleted_at__isnull=True)
+            .select_related("tournament")
+            .first()
+        )
+        if form is None or form.status != FormStatus.OPEN:
+            raise NotFound("form_not_found")
+
+        cfields = _choice_fields(form.schema or {})
+        filters = [
+            {
+                "key": f["key"],
+                "label": f.get("label", f["key"]),
+                "options": [_norm_option(o) for o in (f.get("options") or [])],
+            }
+            for f in cfields
+        ]
+        choice_keys = {f["key"] for f in cfields}
+
+        insts = list(
+            Institution.objects.filter(
+                tournament_id=form.tournament_id, deleted_at__isnull=True
+            )
+            .exclude(status__in=["withdrawn", "rejected"])
+            .order_by("name")
+        )
+        resp_ids = [i.source_response_id for i in insts if i.source_response_id]
+        answers = (
+            {r.id: (r.answers or {}) for r in FormResponse.objects.filter(id__in=resp_ids)}
+            if resp_ids
+            else {}
+        )
+        entries = [
+            {
+                "name": i.name,
+                "region": i.region,
+                "kind": i.kind,
+                "values": {
+                    k: answers.get(i.source_response_id, {}).get(k)
+                    for k in choice_keys
+                    if i.source_response_id and k in answers.get(i.source_response_id, {})
+                },
+            }
+            for i in insts
+        ]
+        return Response(
+            {
+                "tournament_name": form.tournament.name,
+                "form_title": form.title,
+                "filters": filters,
+                "entries": entries,
+                "count": len(entries),
+            }
+        )

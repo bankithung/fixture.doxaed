@@ -29,7 +29,6 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/button";
 import { Sidebar } from "./Sidebar";
 import {
-  computeTournamentNav,
   computeWorkspaceNav,
   type NavGroup,
   type NavItem,
@@ -176,12 +175,14 @@ export function AppShell(): React.ReactElement {
   });
   const pendingInviteCount = invitesQuery.data?.length ?? 0;
 
-  const navGroups: NavGroup[] = inTournamentContext
-    ? computeTournamentNav(tournamentId, { user, slug: navSlug })
-    : decorateInvitesBadge(
-        computeWorkspaceNav(user, navSlug),
-        pendingInviteCount,
-      );
+  // The sidebar always shows the WORKSPACE nav; tournament-internal navigation
+  // now lives in the tabbed workspace (TournamentWorkspace), so the old
+  // per-tournament "Manage" sidebar group is no longer rendered (it duplicated
+  // the tabs and caused confusion).
+  const navGroups: NavGroup[] = decorateInvitesBadge(
+    computeWorkspaceNav(user, navSlug),
+    pendingInviteCount,
+  );
 
   const handleSignOut = async (): Promise<void> => {
     setMenuOpen(false);

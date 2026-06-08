@@ -31,6 +31,7 @@ import { FormsListPage } from "@/features/forms/FormsListPage";
 import { FormBuilderPage } from "@/features/forms/FormBuilderPage";
 import { ResponsesPage } from "@/features/forms/ResponsesPage";
 import { PublicFormPage } from "@/features/forms/PublicFormPage";
+import { PublicDirectoryPage } from "@/features/forms/PublicDirectoryPage";
 import { LiveViewerPage } from "@/features/live/LiveViewerPage";
 import { OrgDashboardPage } from "@/features/layout/OrgDashboardPage";
 // Auth pages (B1).
@@ -135,6 +136,7 @@ export default function App(): React.ReactElement {
                 element={<RegistrationFormPage />}
               />
               {/* Data-driven public form renderer (Increment 7). */}
+              <Route path="/f/:formId/directory" element={<PublicDirectoryPage />} />
               <Route path="/f/:formId" element={<PublicFormPage />} />
               <Route path="/r/:token" element={<PublicFormPage />} />
               <Route path="/m/:matchId" element={<LiveViewerPage />} />

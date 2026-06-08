@@ -102,6 +102,7 @@ export interface FormSummary {
   title: string;
   description: string;
   purpose: FormPurpose;
+  stage: string;
   status: FormStatus;
   opens_at: string | null;
   closes_at: string | null;

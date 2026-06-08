@@ -248,6 +248,12 @@ export function PublicFormPage(): React.ReactElement {
               {t(form.description)}
             </p>
           ) : null}
+          <a
+            href={`/f/${form.id}/directory`}
+            className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+          >
+            {t("View registered organisations")} →
+          </a>
         </div>
 
         {/* Step indicator */}

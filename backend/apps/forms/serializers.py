@@ -28,11 +28,11 @@ class FormSerializer(serializers.ModelSerializer):
     class Meta:
         model = Form
         fields = (
-            "id", "slug", "title", "description", "purpose", "schema", "status",
+            "id", "slug", "title", "description", "purpose", "stage", "schema", "status",
             "opens_at", "closes_at", "version", "max_responses", "response_count",
             "confirmation_message", "settings", "created_at", "updated_at",
         )
-        read_only_fields = ("id", "slug", "status", "version", "response_count",
+        read_only_fields = ("id", "slug", "stage", "status", "version", "response_count",
                             "created_at", "updated_at")
 
 

@@ -18,6 +18,25 @@ export interface PublicFormPayload {
   closed?: boolean;
 }
 
+export interface DirectoryFilter {
+  key: string;
+  label: string;
+  options: { value: string; label: string }[];
+}
+export interface DirectoryEntry {
+  name: string;
+  region: string;
+  kind: string;
+  values: Record<string, unknown>;
+}
+export interface DirectoryPayload {
+  tournament_name: string;
+  form_title: string;
+  filters: DirectoryFilter[];
+  entries: DirectoryEntry[];
+  count: number;
+}
+
 export type FormUpdateBody = Partial<
   Pick<
     FormSummary,
@@ -39,8 +58,10 @@ export type FormUpdateBody = Partial<
 export const formsApi = {
   list: (tournamentId: string) =>
     api.get<FormSummary[]>(`/api/tournaments/${tournamentId}/forms/`),
-  create: (tournamentId: string, body: { title: string; purpose: string }) =>
-    api.post<FormSummary>(`/api/tournaments/${tournamentId}/forms/`, body),
+  create: (
+    tournamentId: string,
+    body: { title: string; purpose: string; stage?: string },
+  ) => api.post<FormSummary>(`/api/tournaments/${tournamentId}/forms/`, body),
   get: (formId: string) => api.get<FormSummary>(`/api/forms/${formId}/`),
   update: (formId: string, body: FormUpdateBody) =>
     api.patch<FormSummary>(`/api/forms/${formId}/`, body),
@@ -94,6 +115,9 @@ export const formsApi = {
       fd,
     );
   },
+  /** Public directory of institutions registered through an org-reg form. */
+  directory: (formId: string) =>
+    api.get<DirectoryPayload>(`/api/forms/${formId}/directory/`),
   publicGetByToken: (token: string) =>
     api.get<PublicFormPayload>(`/api/forms/r/${token}/`),
   publicSubmitByToken: (
