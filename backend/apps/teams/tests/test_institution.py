@@ -253,6 +253,46 @@ def test_auto_generate_team_form_and_multi_category_mapping():
     assert set(made.values_list("pool", flat=True)) == {"U14"}
 
 
+def test_form_create_rejects_invalid_stage():
+    admin = _admin()
+    t = create_tournament(user=admin, name="Cup")
+    c = _client(admin)
+    bad = c.post(
+        f"/api/tournaments/{t.id}/forms/",
+        {"title": "X", "purpose": "organization_registration", "stage": "bogus_stage"},
+        format="json",
+    )
+    assert bad.status_code == 400, bad.content
+    ok = c.post(
+        f"/api/tournaments/{t.id}/forms/",
+        {"title": "Y", "purpose": "organization_registration", "stage": "org_registration"},
+        format="json",
+    )
+    assert ok.status_code == 201
+
+
+def test_org_registration_whitespace_name_falls_back_not_none():
+    from apps.forms.models import Form, FormResponse
+    from apps.forms.services.mapping import map_response
+
+    t = create_tournament(user=_admin(), name="Cup")
+    form = Form.objects.create(
+        organization=t.organization, tournament=t, slug="org", title="Org",
+        purpose="organization_registration", stage="org_registration", status="open",
+        schema={"sections": []},
+    )
+    resp = FormResponse.objects.create(
+        form=form, organization=t.organization, tournament=t,
+        answers={"institution_name": "   "}, title="   ",
+    )
+    map_response(resp)
+    resp.refresh_from_db()
+    # Whitespace-only name must NOT silently yield institution_id=None.
+    assert resp.mapped_entities["institution_id"] is not None
+    inst = Institution.objects.get(id=resp.mapped_entities["institution_id"])
+    assert inst.name == "Institution"
+
+
 def test_team_form_institution_field_is_live_data_bound():
     """The auto-gen team form's "select your institution" field is populated from
     the CURRENT institutions when the public form is fetched (not a snapshot)."""

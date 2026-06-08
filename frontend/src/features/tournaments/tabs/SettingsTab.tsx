@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { newEventId } from "@/lib/eventId";
-import { invalidateTournament } from "@/lib/queryKeys";
+import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 import { DisputesPanel } from "@/features/disputes/DisputesPanel";
@@ -47,7 +47,7 @@ export function SettingsTab(): React.ReactElement {
   const [draft, setDraft] = useState<Editable | null>(null);
 
   const settings = useQuery({
-    queryKey: ["t-settings", id],
+    queryKey: qk.settings(id),
     queryFn: () => tournamentsApi.settings(id),
   });
 
@@ -65,8 +65,7 @@ export function SettingsTab(): React.ReactElement {
     mutationFn: () =>
       tournamentsApi.updateSettings(id, { rules: draft!, event_id: newEventId() }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["t-settings", id] });
-      invalidateTournament(qc, id);
+      invalidateTournament(qc, id); // covers t-settings + all tournament data
       toast.push({ kind: "success", title: t("Settings saved") });
     },
     onError: (e) =>

@@ -11,7 +11,7 @@ import re
 import secrets
 import uuid as _uuid
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.audit.models import ActorRole, AuditEvent
@@ -152,88 +152,98 @@ def register_school(
     Resolves (or creates from ``school_name``) an Institution and links every
     created Team to it (Organization → Tournament → Institution → Team → Player).
     """
-    if event_id is not None:
-        prior = AuditEvent.objects.filter(
-            idempotency_key=event_id, event_type="school_registered"
-        ).first()
-        if prior is not None:
-            inst = institution
-            if inst is None and institution_id is not None:
-                inst = Institution.objects.filter(
-                    id=institution_id, tournament=tournament
-                ).first()
-            replay = Team.objects.filter(tournament=tournament, deleted_at__isnull=True)
-            return list(
-                replay.filter(institution=inst)
-                if inst is not None
-                else replay.filter(school=school_name)
-            )
-
     org = tournament.organization
-    created: list[Team] = []
-    with transaction.atomic():
-        # Resolve or create the Institution this school's teams belong to.
-        resolved = institution
-        if resolved is None and institution_id is not None:
-            resolved = Institution.objects.filter(
+
+    def _replay() -> list[Team]:
+        inst = institution
+        if inst is None and institution_id is not None:
+            inst = Institution.objects.filter(
                 id=institution_id, tournament=tournament
             ).first()
-            if resolved is None:
-                raise ValueError("institution_not_in_tournament")
-        if resolved is None:
-            resolved = get_or_create_institution(
-                tournament=tournament,
-                name=school_name,
-                kind=institution_kind,
-                attributes=institution_attributes,
-                created_by=submitted_by,
-            )
-        # School-name mirror stays in sync with the institution (deprecated field).
-        school_label = resolved.name if resolved is not None else (school_name or "")
+        existing = Team.objects.filter(tournament=tournament, deleted_at__isnull=True)
+        return list(
+            existing.filter(institution=inst)
+            if inst is not None
+            else existing.filter(school=school_name)
+        )
 
-        for td in teams:
-            team = Team.objects.create(
-                organization=org,
-                tournament=tournament,
-                institution=resolved,
-                slug=_unique_team_slug(tournament, td["name"]),
-                name=td["name"][:200],
-                short_name=(td.get("short_name") or "")[:40],
-                school=school_label[:200],
-                region=(td.get("region") or "")[:120],
-                pool=(td.get("pool") or "")[:80],
-                status=TeamStatus.REGISTERED,
-                created_by=submitted_by,
-            )
-            for pd in td.get("players", []):
-                person = Person.objects.create(
-                    full_name=pd["full_name"][:200],
-                    display_name=(pd.get("display_name") or "")[:120],
-                    dob_year=pd.get("dob_year"),
+    # Replay (invariant 3): if this event already registered, return its teams.
+    if event_id is not None and AuditEvent.objects.filter(
+        idempotency_key=event_id, event_type="school_registered"
+    ).exists():
+        return _replay()
+
+    created: list[Team] = []
+    try:
+        with transaction.atomic():
+            # Resolve or create the Institution this school's teams belong to.
+            resolved = institution
+            if resolved is None and institution_id is not None:
+                resolved = Institution.objects.filter(
+                    id=institution_id, tournament=tournament
+                ).first()
+                if resolved is None:
+                    raise ValueError("institution_not_in_tournament")
+            if resolved is None:
+                resolved = get_or_create_institution(
+                    tournament=tournament,
+                    name=school_name,
+                    kind=institution_kind,
+                    attributes=institution_attributes,
                     created_by=submitted_by,
                 )
-                Player.objects.create(
+            # School-name mirror stays in sync with the institution (deprecated).
+            school_label = resolved.name if resolved is not None else (school_name or "")
+
+            for td in teams:
+                team = Team.objects.create(
                     organization=org,
                     tournament=tournament,
-                    team=team,
-                    person=person,
-                    jersey_no=pd.get("jersey_no"),
-                    position=(pd.get("position") or "")[:16],
-                    captain=bool(pd.get("captain", False)),
-                    is_goalkeeper=bool(pd.get("is_goalkeeper", False)),
-                    added_by=submitted_by,
+                    institution=resolved,
+                    slug=_unique_team_slug(tournament, td["name"]),
+                    name=td["name"][:200],
+                    short_name=(td.get("short_name") or "")[:40],
+                    school=school_label[:200],
+                    region=(td.get("region") or "")[:120],
+                    pool=(td.get("pool") or "")[:80],
+                    status=TeamStatus.REGISTERED,
+                    created_by=submitted_by,
                 )
-            created.append(team)
+                for pd in td.get("players", []):
+                    person = Person.objects.create(
+                        full_name=pd["full_name"][:200],
+                        display_name=(pd.get("display_name") or "")[:120],
+                        dob_year=pd.get("dob_year"),
+                        created_by=submitted_by,
+                    )
+                    Player.objects.create(
+                        organization=org,
+                        tournament=tournament,
+                        team=team,
+                        person=person,
+                        jersey_no=pd.get("jersey_no"),
+                        position=(pd.get("position") or "")[:16],
+                        captain=bool(pd.get("captain", False)),
+                        is_goalkeeper=bool(pd.get("is_goalkeeper", False)),
+                        added_by=submitted_by,
+                    )
+                created.append(team)
 
-        emit_audit(
-            actor_user=submitted_by,
-            actor_role=ActorRole.SYSTEM,
-            event_type="school_registered",
-            target_type="tournament",
-            target_id=tournament.id,
-            organization_id=org.id,
-            idempotency_key=event_id,
-            payload_after={"school": school_name, "teams": [t.name for t in created]},
-            request=request,
-        )
+            emit_audit(
+                actor_user=submitted_by,
+                actor_role=ActorRole.SYSTEM,
+                event_type="school_registered",
+                target_type="tournament",
+                target_id=tournament.id,
+                organization_id=org.id,
+                idempotency_key=event_id,
+                payload_after={"school": school_name, "teams": [t.name for t in created]},
+                request=request,
+            )
+    except IntegrityError:
+        # A concurrent request with the same event_id won the race (its audit
+        # row's unique idempotency_key tripped ours). Return the winner's teams.
+        if event_id is not None:
+            return _replay()
+        raise
     return created

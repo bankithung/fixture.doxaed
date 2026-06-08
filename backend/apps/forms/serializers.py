@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from apps.forms.models import Form, FormResponse
 from apps.forms.services.schema import SchemaError, validate_schema
+from apps.tournaments.models import TournamentStage
 
 
 class FormSchemaField(serializers.JSONField):
@@ -42,7 +43,11 @@ class FormCreateSerializer(serializers.Serializer):
         choices=["organization_registration", "team_registration", "generic"],
         default="organization_registration",
     )
-    stage = serializers.CharField(required=False, allow_blank=True, default="")
+    # Constrain to real lifecycle stages so a form can't be bound to a typo'd
+    # stage that the auto-close mechanism would silently never match.
+    stage = serializers.ChoiceField(
+        choices=TournamentStage.values, required=False, allow_blank=True, default="",
+    )
     source_form_id = serializers.UUIDField(required=False)
     schema = FormSchemaField(required=False)
 

@@ -51,12 +51,20 @@ def _map_organization_registration(resp: FormResponse) -> FormResponse:
     form = resp.form
     b = (form.settings or {}).get("bindings", {})
     a = resp.answers or {}
-    name = (
-        a.get(b.get("institution_name", "institution_name"))
-        or a.get("school")
-        or a.get("name")
-        or resp.title
-        or "Institution"
+    # First non-blank candidate (whitespace-only counts as blank, else a "   "
+    # answer would short-circuit the chain and create no Institution).
+    name = next(
+        (
+            str(c).strip()
+            for c in (
+                a.get(b.get("institution_name", "institution_name")),
+                a.get("school"),
+                a.get("name"),
+                resp.title,
+            )
+            if c and str(c).strip()
+        ),
+        "Institution",
     )
     kind = str(a.get(b.get("kind", "kind")) or "school").lower()
     inst = get_or_create_institution(

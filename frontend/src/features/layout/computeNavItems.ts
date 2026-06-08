@@ -13,14 +13,7 @@ import type { User } from "@/types/user";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 
-/**
- * Module CODES — must match `apps/permissions/fixtures/modules.json`.
- * Duplicated here (rather than imported from features/orgs) to keep this
- * pure helper module-isolated; the source-of-truth list is in
- * features/orgs/dashboardCards.ts and the two should stay in sync.
- *
- * Registration-forms module (apps/permissions/fixtures/modules.json → "forms").
- */
+/** One sidebar item. Pure data — the Sidebar renders it (incl. locked state). */
 export interface NavItem {
   /** Stable identifier for tests / keys; not user-visible. */
   key: string;

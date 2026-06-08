@@ -20,6 +20,7 @@ export const qk = {
   form: (formId: string) => ["form", formId] as const,
   disputes: (id: string) => ["disputes", id] as const,
   audit: (id: string) => ["audit", id] as const,
+  settings: (id: string) => ["t-settings", id] as const,
 };
 
 /**
@@ -39,6 +40,7 @@ export function invalidateTournament(qc: QueryClient, id: string): void {
     qk.forms(id),
     qk.disputes(id),
     qk.audit(id),
+    qk.settings(id),
   ];
   for (const key of keys) qc.invalidateQueries({ queryKey: key });
   // The tournaments hub may show this tournament's summary too.
