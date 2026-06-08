@@ -11,6 +11,8 @@ export interface Institution {
   contact_phone: string;
   status: string;
   team_count: number;
+  /** The registration-form answers that created this row (empty for direct add). */
+  answers: Record<string, unknown>;
 }
 
 export interface InstitutionInput {

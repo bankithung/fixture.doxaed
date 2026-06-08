@@ -171,7 +171,7 @@ class TournamentTeamsListView(GenericAPIView):
         )
 
 
-def _institution_dict(i: Institution) -> dict:
+def _institution_dict(i: Institution, answers: dict | None = None) -> dict:
     return {
         "id": str(i.id),
         "name": i.name,
@@ -183,6 +183,9 @@ def _institution_dict(i: Institution) -> dict:
         "contact_phone": i.contact_phone,
         "status": i.status,
         "team_count": getattr(i, "team_count", 0),
+        # The registration-form answers that created this row (for the admin's
+        # flexible table columns + filters). Empty for direct admin-added rows.
+        "answers": answers or {},
     }
 
 
@@ -205,7 +208,24 @@ class InstitutionListCreateView(GenericAPIView):
             )
             .order_by("name")
         )
-        return Response([_institution_dict(i) for i in qs])
+        institutions = list(qs)
+        # Bulk-load the registration answers that created each institution.
+        from apps.forms.models import FormResponse
+
+        resp_ids = [i.source_response_id for i in institutions if i.source_response_id]
+        answers_by_resp = (
+            {r.id: (r.answers or {}) for r in FormResponse.objects.filter(id__in=resp_ids)}
+            if resp_ids
+            else {}
+        )
+        return Response(
+            [
+                _institution_dict(
+                    i, answers_by_resp.get(i.source_response_id) if i.source_response_id else None
+                )
+                for i in institutions
+            ]
+        )
 
     def post(self, request, tournament_id):
         tournament = (
