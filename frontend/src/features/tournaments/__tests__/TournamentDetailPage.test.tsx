@@ -38,6 +38,26 @@ const MATCH: MatchRow = {
   scheduled_at: null,
 };
 
+// Generation now lives in the StageStepper at the `fixtures` stage. A payload
+// with 2 registered teams and 0 matches makes the stepper render the
+// Round-robin / Knockout actions.
+const STAGE_FIXTURES = {
+  stage: "fixtures",
+  status: "registration_open",
+  order: ["setup", "org_registration", "team_registration", "members", "fixtures", "ready"],
+  allowed_to: ["ready", "members", "setup", "org_registration", "team_registration"],
+  can_manage: true,
+  rules_frozen_at: null,
+  stages: [
+    { key: "setup", label: "Setup", state: "complete", entered_at: null, reopened_count: 0, form: null, counts: {} },
+    { key: "org_registration", label: "Institution registration", state: "complete", entered_at: null, reopened_count: 0, form: null, counts: { institutions: 0 } },
+    { key: "team_registration", label: "Team registration", state: "complete", entered_at: null, reopened_count: 0, form: null, counts: { teams: 2 } },
+    { key: "members", label: "Members & roles", state: "complete", entered_at: null, reopened_count: 0, form: null, counts: { members: 0 } },
+    { key: "fixtures", label: "Fixtures", state: "current", entered_at: null, reopened_count: 0, form: null, counts: { matches: 0 } },
+    { key: "ready", label: "Ready", state: "upcoming", entered_at: null, reopened_count: 0, form: null, counts: {} },
+  ],
+} as const;
+
 describe("TournamentDetailPage", () => {
   beforeEach(() => vi.resetAllMocks());
 
@@ -82,6 +102,7 @@ describe("TournamentDetailPage", () => {
     vi.mocked(tournamentsApi.matches).mockResolvedValue([]);
     vi.mocked(tournamentsApi.standings).mockResolvedValue({ groups: [] });
     vi.mocked(tournamentsApi.generateFixtures).mockResolvedValue({ generated: 1 });
+    vi.mocked(tournamentsApi.stage).mockResolvedValue(STAGE_FIXTURES as never);
 
     renderPage();
     await userEvent.click(
@@ -103,6 +124,7 @@ describe("TournamentDetailPage", () => {
     vi.mocked(tournamentsApi.matches).mockResolvedValue([]);
     vi.mocked(tournamentsApi.standings).mockResolvedValue({ groups: [] });
     vi.mocked(tournamentsApi.generateFixtures).mockResolvedValue({ generated: 1 });
+    vi.mocked(tournamentsApi.stage).mockResolvedValue(STAGE_FIXTURES as never);
 
     renderPage();
     await userEvent.click(
