@@ -32,6 +32,19 @@ function isEmpty(val: unknown): boolean {
   return false;
 }
 
+/**
+ * Parse a value to a finite number, or null when it isn't one — the client-side
+ * mirror of Python's `float(x)` inside a try/except (used by the backend
+ * `_visible` for gt/lt). null/undefined/"" and arrays/objects/NaN/±Infinity all
+ * yield null so gt/lt evaluate to false on non-numbers, matching the server.
+ */
+function toFiniteNumber(val: unknown): number | null {
+  if (val === null || val === undefined || val === "") return null;
+  if (typeof val === "object") return null; // arrays/objects: float() would raise
+  const n = Number(val);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function isVisible(
   rule: Visibility | null | undefined,
   answers: Record<string, unknown>,
@@ -50,10 +63,22 @@ export function isVisible(
       return Array.isArray(target) && target.includes(val as never);
     case "includes":
       return Array.isArray(val) && (val as unknown[]).includes(target);
-    case "gt":
-      return Number(val) > Number(target);
-    case "lt":
-      return Number(val) < Number(target);
+    case "gt": {
+      // Parity with backend apps/forms/services/validation.py::_visible — it
+      // uses float(val)/float(target) in try/except, returning False when
+      // either side isn't a finite number. The old Number() coercion treated
+      // "" and null as 0 (Number("")===0), so an empty optional number with
+      // rule gt:-1 showed client-side but was hidden server-side → spurious
+      // 400 (verified bug V5). toFiniteNumber mirrors float()'s "raise → False".
+      const a = toFiniteNumber(val);
+      const b = toFiniteNumber(target);
+      return a !== null && b !== null && a > b;
+    }
+    case "lt": {
+      const a = toFiniteNumber(val);
+      const b = toFiniteNumber(target);
+      return a !== null && b !== null && a < b;
+    }
     default:
       return false;
   }

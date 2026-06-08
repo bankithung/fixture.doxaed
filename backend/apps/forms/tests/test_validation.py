@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from apps.forms.services.validation import AnswerError, validate_answers
+from apps.forms.services.validation import AnswerError, _visible, validate_answers
 
 SCHEMA = {"version": 1, "sections": [
     {"key": "school", "title": "School", "fields": [
@@ -62,3 +62,19 @@ def test_invalid_value_rejected():
         validate_answers(SCHEMA, {
             "school_name": "MH", "email": "bad", "competition": "none", "agree": "yes",
         })
+
+
+@pytest.mark.parametrize("val", ["", None, "abc", [], {}])
+def test_gt_lt_non_numeric_is_hidden(val):
+    # Contract pinned by the client/server parity fix (verdict V5): gt/lt are
+    # False for empty/null/non-numeric answers (float() raises -> False). The
+    # frontend lib/formLogic.ts::toFiniteNumber mirrors this exactly.
+    assert _visible({"field": "x", "op": "gt", "value": -1}, {"x": val}) is False
+    assert _visible({"field": "x", "op": "lt", "value": 10}, {"x": val}) is False
+
+
+def test_gt_lt_numeric_compares():
+    assert _visible({"field": "x", "op": "gt", "value": 3}, {"x": 5}) is True
+    assert _visible({"field": "x", "op": "gt", "value": "3"}, {"x": "5"}) is True
+    assert _visible({"field": "x", "op": "gt", "value": 0}, {"x": -2}) is False
+    assert _visible({"field": "x", "op": "lt", "value": "10"}, {"x": "3"}) is True

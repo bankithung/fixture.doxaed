@@ -121,6 +121,23 @@ describe("formLogic", () => {
     expect(isVisible({ field: "x", op: "answered" }, { x: [] })).toBe(false);
   });
 
+  // Parity with backend _visible (validation.py): gt/lt use float() in
+  // try/except, so a non-numeric / empty / null answer is NOT "> target".
+  // Regression for verified divergence V5 (Number("")===0 false-positives).
+  it("isVisible gt/lt match server semantics on empty/null/non-numeric", () => {
+    // empty string and null must be treated as "not a number" → hidden
+    expect(isVisible({ field: "x", op: "gt", value: -1 }, { x: "" })).toBe(false);
+    expect(isVisible({ field: "x", op: "gt", value: -1 }, { x: null })).toBe(false);
+    expect(isVisible({ field: "x", op: "gt", value: -1 }, {})).toBe(false);
+    expect(isVisible({ field: "x", op: "lt", value: 10 }, { x: "" })).toBe(false);
+    expect(isVisible({ field: "x", op: "gt", value: 3 }, { x: "abc" })).toBe(false);
+    expect(isVisible({ field: "x", op: "gt", value: [] }, { x: 5 })).toBe(false);
+    // genuine numbers (incl. numeric strings) still compare correctly
+    expect(isVisible({ field: "x", op: "gt", value: 3 }, { x: "5" })).toBe(true);
+    expect(isVisible({ field: "x", op: "gt", value: 0 }, { x: -2 })).toBe(false);
+    expect(isVisible({ field: "x", op: "lt", value: "10" }, { x: "3" })).toBe(true);
+  });
+
   it("nextSectionKey follows option.goto", () => {
     expect(nextSectionKey(schema.sections[1], { competition: "tt" })).toBe("tt");
   });
