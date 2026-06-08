@@ -165,13 +165,63 @@ class FieldTypesView(GenericAPIView):
 # AllowAny + throttled: anyone with a form link or share token may submit.
 
 
+_DATA_BOUND = {"single_choice", "multi_choice", "dropdown"}
+
+
+def _resolve_data_sources(schema: dict, tournament) -> dict:
+    """Populate options for data-bound choice fields (e.g. "select your
+    institution") at fetch time, so the dropdown always reflects the CURRENT
+    institutions rather than a snapshot. Returns a copy; never mutates the DB."""
+    import copy as _copy
+
+    def _is_inst(f):
+        return (
+            f.get("type") in _DATA_BOUND
+            and (f.get("data_source") or {}).get("type") == "institution_list"
+        )
+
+    def _scan(fields):
+        for f in fields:
+            if _is_inst(f):
+                return True
+            if f.get("type") == "group" and _scan(f.get("fields", [])):
+                return True
+        return False
+
+    sections = (schema or {}).get("sections", [])
+    if not any(_scan(s.get("fields", [])) for s in sections):
+        return schema
+
+    from apps.teams.models import Institution
+
+    insts = (
+        Institution.objects.filter(tournament=tournament, deleted_at__isnull=True)
+        .exclude(status__in=["withdrawn", "rejected"])
+        .order_by("name")
+    )
+    options = [{"value": str(i.id), "label": i.name} for i in insts]
+
+    resolved = _copy.deepcopy(schema)
+
+    def _fill(fields):
+        for f in fields:
+            if _is_inst(f):
+                f["options"] = options
+            if f.get("type") == "group":
+                _fill(f.get("fields", []))
+
+    for s in resolved.get("sections", []):
+        _fill(s.get("fields", []))
+    return resolved
+
+
 def _public_payload(form):
     return {
         "form": {
             "id": str(form.id),
             "title": form.title,
             "description": form.description,
-            "schema": form.schema,
+            "schema": _resolve_data_sources(form.schema, form.tournament),
             "confirmation_message": form.confirmation_message,
         },
         "tournament_name": form.tournament.name,
@@ -369,7 +419,10 @@ class FormSendStage2View(GenericAPIView):
 
 def _norm_option(o):
     if isinstance(o, dict):
-        return {"value": o.get("value", o.get("label", "")), "label": o.get("label", o.get("value", ""))}
+        return {
+            "value": o.get("value", o.get("label", "")),
+            "label": o.get("label", o.get("value", "")),
+        }
     return {"value": o, "label": o}
 
 

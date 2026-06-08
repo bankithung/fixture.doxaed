@@ -253,6 +253,31 @@ def test_auto_generate_team_form_and_multi_category_mapping():
     assert set(made.values_list("pool", flat=True)) == {"U14"}
 
 
+def test_team_form_institution_field_is_live_data_bound():
+    """The auto-gen team form's "select your institution" field is populated from
+    the CURRENT institutions when the public form is fetched (not a snapshot)."""
+    from rest_framework.test import APIClient
+
+    from apps.forms.services.generation import generate_team_form_template
+
+    admin = _admin()
+    t = create_tournament(user=admin, name="Cup")
+    inst = get_or_create_institution(tournament=t, name="Late Joiner High")
+    team = generate_team_form_template(tournament=t, created_by=admin)
+    # publish so the public endpoint serves it
+    _client(admin).post(f"/api/forms/{team.id}:publish/")
+
+    payload = APIClient().get(f"/api/forms/{team.id}/public/").json()
+    inst_field = next(
+        f
+        for s in payload["form"]["schema"]["sections"]
+        for f in s["fields"]
+        if f["key"] == "institution_id"
+    )
+    values = [o["value"] for o in inst_field["options"]]
+    assert str(inst.id) in values  # live-bound, not empty
+
+
 def test_public_directory_lists_institutions_with_dynamic_filters():
     from rest_framework.test import APIClient
 

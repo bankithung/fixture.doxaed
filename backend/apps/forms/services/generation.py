@@ -48,15 +48,13 @@ def _find_categories_field(schema: dict) -> dict | None:
     return choice[0] if choice else None
 
 
-def build_team_form_schema(org_form: Form | None, institutions: list) -> tuple[dict, dict]:
+def build_team_form_schema(org_form: Form | None) -> tuple[dict, dict]:
     """Return (schema, bindings) for the generated team-registration form."""
     cat_field = _find_categories_field(org_form.schema) if org_form else None
     cat_opts = [
         (str(_opt_value(o)), str(_opt_label(o)))
         for o in ((cat_field or {}).get("options", []) or [])
     ]
-
-    inst_options = [{"value": str(i.id), "label": i.name} for i in institutions]
 
     sections: list[dict] = [
         {
@@ -68,22 +66,33 @@ def build_team_form_schema(org_form: Form | None, institutions: list) -> tuple[d
                     "type": "dropdown",
                     "label": "Select your institution",
                     "required": True,
-                    "options": inst_options,
+                    "options": [],
+                    # Live-bound: the public form fills these from the current
+                    # registered institutions at fetch time (always up to date).
+                    "data_source": {"type": "institution_list"},
                 },
-                {
-                    "key": "categories",
-                    "type": "multi_choice",
-                    "label": "Which categories are you entering?",
-                    "required": True,
-                    "options": [{"value": v, "label": l} for v, l in cat_opts],
-                },
+                # The categories selector only exists when the org-reg form
+                # offered categories (otherwise an empty choice field is invalid).
+                *(
+                    [
+                        {
+                            "key": "categories",
+                            "type": "multi_choice",
+                            "label": "Which categories are you entering?",
+                            "required": True,
+                            "options": [{"value": v, "label": lbl} for v, lbl in cat_opts],
+                        }
+                    ]
+                    if cat_opts
+                    else []
+                ),
             ],
         }
     ]
 
     category_groups: list[dict] = []
     used: set[str] = set()
-    for v, l in cat_opts:
+    for v, lbl in cat_opts:
         slug = _slug(v, f"cat{len(category_groups)}")
         while slug in used:
             slug += "_x"
@@ -92,13 +101,13 @@ def build_team_form_schema(org_form: Form | None, institutions: list) -> tuple[d
         sections.append(
             {
                 "key": f"cat_{slug}",
-                "title": f"Teams — {l}",
+                "title": f"Teams — {lbl}",
                 "visibility": {"field": "categories", "op": "includes", "value": v},
                 "fields": [
                     {
                         "key": gkey,
                         "type": "group",
-                        "label": f"Team(s) for {l}",
+                        "label": f"Team(s) for {lbl}",
                         "repeatable": True,
                         "fields": [
                             {"key": tkey, "type": "short_text", "label": "Team name",
@@ -139,11 +148,10 @@ def build_team_form_schema(org_form: Form | None, institutions: list) -> tuple[d
 
 
 def generate_team_form_template(*, tournament, created_by=None, request=None) -> Form:
-    """Create a draft team-registration form from the tournament's org-reg form +
-    its currently registered institutions. Idempotent-ish: always creates a fresh
-    draft the admin reviews (templates are cheap; the admin keeps or discards)."""
-    from apps.teams.models import Institution
-
+    """Create a draft team-registration form from the tournament's org-reg form.
+    Idempotent-ish: always creates a fresh draft the admin reviews (templates are
+    cheap; the admin keeps or discards). The "select your institution" field is
+    live-bound, so it reflects whoever is registered when each respondent opens it."""
     org_form = (
         Form.objects.filter(
             tournament=tournament, stage="org_registration", deleted_at__isnull=True
@@ -154,12 +162,7 @@ def generate_team_form_template(*, tournament, created_by=None, request=None) ->
             deleted_at__isnull=True,
         ).order_by("created_at").first()
     )
-    institutions = list(
-        Institution.objects.filter(tournament=tournament, deleted_at__isnull=True)
-        .exclude(status__in=["withdrawn", "rejected"])
-        .order_by("name")
-    )
-    schema, bindings = build_team_form_schema(org_form, institutions)
+    schema, bindings = build_team_form_schema(org_form)
     form = create_form(
         tournament=tournament,
         title="Team registration",

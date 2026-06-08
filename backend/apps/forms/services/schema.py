@@ -46,7 +46,13 @@ def _check_field(field: dict) -> None:
         raise SchemaError(f"unknown role: {field['role']}")
     if ftype in CHOICE_TYPES:
         opts = field.get("options")
-        if not opts or not isinstance(opts, list):
+        # A data-bound choice (e.g. {"data_source": {"type": "institution_list"}})
+        # is populated by the server at fetch time, so empty options are valid.
+        if not opts:
+            if field.get("data_source"):
+                return
+            raise SchemaError(f"{field['key']} needs options")
+        if not isinstance(opts, list):
             raise SchemaError(f"{field['key']} needs options")
         for o in opts:
             if "value" not in o or "label" not in o:
