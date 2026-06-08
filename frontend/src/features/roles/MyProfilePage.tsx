@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -14,7 +14,10 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { useAuthStore } from "@/features/auth/authStore";
 import { authApi } from "@/api/auth";
+import { tournamentsApi } from "@/api/tournaments";
+import { invitationsApi } from "@/api/invitations";
 import { ApiError } from "@/types/api";
+import { qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 
@@ -87,6 +90,17 @@ export function MyProfilePage(): React.ReactElement {
     }
   };
 
+  const tournamentsQuery = useQuery({
+    queryKey: qk.tournaments(),
+    queryFn: () => tournamentsApi.list(),
+    enabled: !!user,
+  });
+  const invitesQuery = useQuery({
+    queryKey: ["my-invitations"],
+    queryFn: invitationsApi.myInvitations,
+    enabled: !!user,
+  });
+
   if (!user) {
     return (
       <div className="p-6 text-sm text-muted-foreground" role="status">
@@ -96,6 +110,10 @@ export function MyProfilePage(): React.ReactElement {
   }
 
   const memberships = user.memberships ?? [];
+  const tournaments = tournamentsQuery.data ?? [];
+  const pendingInvites = (invitesQuery.data ?? []).filter(
+    (i) => i.status === "pending" && i.tournament_id,
+  );
 
   return (
     <div className="flex flex-col gap-4 p-6">
@@ -251,6 +269,66 @@ export function MyProfilePage(): React.ReactElement {
                     aria-label={`${t("Switch to")} ${m.org_name}`}
                   >
                     {t("Switch")}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Tournaments + invitations — so members find what they're part of. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("Your tournaments")}</CardTitle>
+          <CardDescription>
+            {t("Tournaments you organise or have a role in, plus pending invitations.")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {pendingInvites.length ? (
+            <div className="flex flex-col gap-2">
+              <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                {t("Pending invitations")}
+              </p>
+              {pendingInvites.map((inv) => (
+                <div
+                  key={inv.id}
+                  className="flex items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/[0.04] px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <span className="truncate font-medium">{inv.tournament_name}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {t("invited as")} {t(inv.role.replace(/_/g, " "))}
+                    </span>
+                  </div>
+                  <Link
+                    to={routes.invites()}
+                    className="shrink-0 text-sm font-medium text-primary hover:underline"
+                  >
+                    {t("Review")}
+                  </Link>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {tournaments.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {t("You're not part of any tournament yet.")}
+            </p>
+          ) : (
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {tournaments.map((tn) => (
+                <li key={tn.id}>
+                  <Link
+                    to={routes.tournamentDetail(tn.id)}
+                    className="flex items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 transition-colors hover:border-primary/40 hover:bg-accent/30"
+                  >
+                    <span className="min-w-0 truncate font-medium">{tn.name}</span>
+                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs capitalize text-muted-foreground">
+                      {t(tn.status.replace(/_/g, " "))}
+                    </span>
                   </Link>
                 </li>
               ))}

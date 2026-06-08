@@ -11,11 +11,14 @@ import {
   Plus,
   Send,
 } from "lucide-react";
+import { Search } from "lucide-react";
 import { institutionsApi } from "@/api/institutions";
 import { formsApi } from "@/api/forms";
 import { tournamentsApi } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
 import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
@@ -45,6 +48,17 @@ export function InstitutionsTab(): React.ReactElement {
     (forms.data ?? []).find((f) => f.purpose === ORG_PURPOSE);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [search, setSearch] = useState("");
+
+  // Dynamic filters derived from the registration form's own choice fields
+  // (sport, categories, …) + each institution's answers. Available once the
+  // form is published (open or closed).
+  const directory = useQuery({
+    queryKey: ["form-directory", orgForm?.id],
+    queryFn: () => formsApi.directory(orgForm!.id),
+    enabled: !!orgForm && orgForm.status !== "draft",
+  });
 
   const publish = useMutation({
     mutationFn: () => formsApi.publish(orgForm!.id),
@@ -76,6 +90,22 @@ export function InstitutionsTab(): React.ReactElement {
 
   const items = list.data ?? [];
   const isOpen = orgForm?.status === "open";
+
+  // Filter institutions by the form's choice-field answers (dynamic) + search.
+  const dirFilters = directory.data?.filters ?? [];
+  const valuesByName: Record<string, Record<string, unknown>> = {};
+  for (const e of directory.data?.entries ?? []) valuesByName[e.name] = e.values;
+  const q = search.trim().toLowerCase();
+  const filteredItems = items.filter((i) => {
+    if (q && !i.name.toLowerCase().includes(q) && !(i.region ?? "").toLowerCase().includes(q))
+      return false;
+    const v = valuesByName[i.name] ?? {};
+    return Object.entries(filters).every(([k, val]) => {
+      if (!val) return true;
+      const ev = v[k];
+      return Array.isArray(ev) ? ev.map(String).includes(val) : String(ev ?? "") === val;
+    });
+  });
 
   return (
     <div className="flex flex-col gap-5">
@@ -173,8 +203,40 @@ export function InstitutionsTab(): React.ReactElement {
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold">{t("Registered institutions")}</h3>
-          <span className="font-tabular text-xs text-muted-foreground">{items.length}</span>
+          <span className="font-tabular text-xs text-muted-foreground">
+            {filteredItems.length === items.length
+              ? items.length
+              : `${filteredItems.length}/${items.length}`}
+          </span>
         </div>
+
+        {/* Dynamic filters — generated from the registration form's fields. */}
+        {items.length > 0 ? (
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/20 p-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <label className="relative flex-1">
+              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t("Search name or region…")}
+                className="pl-9"
+                aria-label={t("Search")}
+              />
+            </label>
+            {dirFilters.map((f) => (
+              <label key={f.key} className="flex min-w-[10rem] flex-col gap-1">
+                <span className="text-[0.6875rem] font-medium text-muted-foreground">{f.label}</span>
+                <Select
+                  value={filters[f.key] ?? ""}
+                  onChange={(v) => setFilters((s) => ({ ...s, [f.key]: v }))}
+                  options={[{ value: "", label: t("All") }, ...f.options]}
+                  aria-label={f.label}
+                />
+              </label>
+            ))}
+          </div>
+        ) : null}
+
         {list.isLoading ? (
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2].map((i) => (
@@ -187,9 +249,13 @@ export function InstitutionsTab(): React.ReactElement {
             title={t("No institutions registered yet")}
             hint={t("Share the form, or fill it in yourself with “Add institute”.")}
           />
+        ) : filteredItems.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">
+            {t("No institutions match your filters.")}
+          </p>
         ) : (
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {items.map((i) => (
+            {filteredItems.map((i) => (
               <div
                 key={i.id}
                 className={cn(

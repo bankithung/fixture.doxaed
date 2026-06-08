@@ -404,7 +404,9 @@ class PublicInstitutionDirectoryView(GenericAPIView):
             .select_related("tournament")
             .first()
         )
-        if form is None or form.status != FormStatus.OPEN:
+        # Visible once published (open OR closed) so the directory still works
+        # after the stage advances and the form auto-closes; drafts stay private.
+        if form is None or form.status == FormStatus.DRAFT:
             raise NotFound("form_not_found")
 
         cfields = _choice_fields(form.schema or {})
