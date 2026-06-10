@@ -47,6 +47,15 @@ def _check_field(field: dict) -> None:
         raise SchemaError(f"field {field.get('key')} missing label")
     if "role" in field and field["role"] not in PROMOTED_ROLES:
         raise SchemaError(f"unknown role: {field['role']}")
+    if ftype == "group":
+        mn, mx = field.get("min_items"), field.get("max_items")
+        for v in (mn, mx):
+            if v is not None and (isinstance(v, bool) or not isinstance(v, int) or v < 0):
+                raise SchemaError(
+                    f"{field.get('key')} min/max_items must be non-negative integers"
+                )
+        if isinstance(mn, int) and isinstance(mx, int) and mn > mx:
+            raise SchemaError(f"{field.get('key')} min_items exceeds max_items")
     if ftype in CHOICE_TYPES:
         opts = field.get("options")
         # A data-bound choice (e.g. {"data_source": {"type": "institution_list"}})

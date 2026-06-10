@@ -272,6 +272,35 @@ def build_team_form_schema(
             slug += "_x"
         used_slugs.add(slug)
         gkey, tkey = f"teams_{slug}", f"team_name_{slug}"
+
+        # Roster bounds from the category's format node (W2-B): a 1v1 leaf
+        # starts at exactly 1 player; the admin widens max_items in the
+        # builder to allow substitutes. No format → unbounded, as before.
+        players: dict = {
+            "key": f"players_{slug}", "type": "group",
+            "label": "Player", "repeatable": True,
+            "fields": [
+                {"key": f"player_name_{slug}", "type": "short_text",
+                 "label": "Player name", "required": True},
+            ],
+        }
+        if tournament is not None and getattr(tournament, "sports", None):
+            from apps.tournaments.services.sports import leaf_roster_rules
+
+            rules = leaf_roster_rules(tournament.sports, v)
+            if rules.get("squad_min"):
+                players["min_items"] = rules["squad_min"]
+            if rules.get("squad_max"):
+                players["max_items"] = rules["squad_max"]
+            pps = rules.get("players_per_side")
+            if pps:
+                lo, hi = rules.get("squad_min"), rules.get("squad_max")
+                players["help"] = (
+                    f"{pps} on the field; squad of {lo}" if lo == hi
+                    else f"{pps} on the field; squad of {lo}-{hi}" if lo and hi
+                    else f"{pps} players per side"
+                )
+
         sections.append(
             {
                 "key": f"cat_{slug}",
@@ -288,12 +317,7 @@ def build_team_form_schema(
                         "fields": [
                             {"key": tkey, "type": "short_text", "label": "Team name",
                              "required": True},
-                            {"key": f"players_{slug}", "type": "group",
-                             "label": "Player", "repeatable": True,
-                             "fields": [
-                                 {"key": f"player_name_{slug}", "type": "short_text",
-                                  "label": "Player name", "required": True},
-                             ]},
+                            players,
                         ],
                     }
                 ],

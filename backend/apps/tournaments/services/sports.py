@@ -21,12 +21,20 @@ readers (serializer, FE types) see a consistent projection.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 # Path separator for leaf keys. Node keys themselves never contain dots.
 LEAF_SEP = "."
 # Sanity bound; deeper levels are silently ignored (UI offers far fewer).
 MAX_DEPTH = 6
+
+# What a category node IS (W2-B): drives downstream logic — a "format" node
+# (1v1, 5v5…) carries team-size rules the generated team form enforces.
+NODE_KINDS = ("age_group", "gender", "format", "level", "custom")
+
+# "1v1" / "5 v 5" / "3vs3" style names ⇒ players-per-side auto-detection.
+_NVN = re.compile(r"^\s*(\d{1,2})\s*[vV][sS]?\s*(\d{1,2})\s*$")
 
 
 def sport_key(name: str) -> str:
@@ -43,10 +51,31 @@ def node_key(name: str) -> str:
     return sport_key(name)
 
 
+def _clean_format(raw: Any, name: str) -> dict | None:
+    """Per-node team-size rules ({players_per_side, squad_min, squad_max}),
+    auto-seeded from "NvN" names (1v1 ⇒ players_per_side 1) when not given
+    explicitly (W2-B). Invalid/unknown keys dropped; None when empty."""
+    out: dict = {}
+    if isinstance(raw, dict):
+        for k in ("players_per_side", "squad_min", "squad_max"):
+            v = raw.get(k)
+            if isinstance(v, (int, float)) and v is not True and int(v) > 0:
+                out[k] = int(v)
+    if "players_per_side" not in out:
+        m = _NVN.match(name)
+        if m:
+            out["players_per_side"] = int(m.group(1))
+    if out.get("squad_min") and out.get("squad_max") \
+            and out["squad_min"] > out["squad_max"]:
+        out.pop("squad_min")
+    return out or None
+
+
 def _normalize_nodes(raw: Any, depth: int = 0) -> list[dict]:
     """Recursively normalize a node list. Accepts the canonical shape
-    ({key, name, children}), the legacy dict shape ({name, subcategories}) and
-    plain strings. Blank names and duplicate keys (per level) are dropped."""
+    ({key, name, kind?, format?, children}), the legacy dict shape
+    ({name, subcategories}) and plain strings. Blank names and duplicate keys
+    (per level) are dropped."""
     if not isinstance(raw, list) or depth >= MAX_DEPTH:
         return []
     out: list[dict] = []
@@ -54,12 +83,15 @@ def _normalize_nodes(raw: Any, depth: int = 0) -> list[dict]:
     for n in raw:
         if isinstance(n, str):
             name, key_raw, children_raw = n.strip(), "", []
+            kind_raw, format_raw = "", None
         elif isinstance(n, dict):
             name = str(n.get("name") or "").strip()
             key_raw = str(n.get("key") or "")
             children_raw = n.get("children")
             if children_raw is None:
                 children_raw = n.get("subcategories") or []
+            kind_raw = str(n.get("kind") or "")
+            format_raw = n.get("format")
         else:
             continue
         if not name:
@@ -68,11 +100,20 @@ def _normalize_nodes(raw: Any, depth: int = 0) -> list[dict]:
         if not key or key in seen:
             continue
         seen.add(key)
-        out.append({
+        entry: dict = {
             "key": key,
             "name": name[:80],
             "children": _normalize_nodes(children_raw, depth + 1),
-        })
+        }
+        fmt = _clean_format(format_raw, name)
+        kind = kind_raw if kind_raw in NODE_KINDS else ""
+        if not kind and fmt and "players_per_side" in fmt and _NVN.match(name):
+            kind = "format"  # NvN names self-describe
+        if kind:
+            entry["kind"] = kind
+        if fmt:
+            entry["format"] = fmt
+        out.append(entry)
     return out
 
 
@@ -268,6 +309,43 @@ def leaf_label(sports: list[dict] | None, leaf_key: str, *, with_sport: bool = T
         return leaf["sport_name"]
     body = leaf["label"]
     return f"{leaf['sport_name']} — {body}" if with_sport else body
+
+
+def leaf_roster_rules(sports: list[dict] | None, leaf_key: str) -> dict:
+    """Team-size rules for one competition (W2-B): walk the leaf's node path
+    from DEEPEST to shallowest and take the nearest node carrying a
+    ``format`` (so ``football.u15.girls.5v5`` inherits the 5v5 node's rules).
+
+    Returns {players_per_side, squad_min, squad_max} where any value may be
+    None. Defaults when players_per_side is known: a squad of exactly that
+    size (squad_min == squad_max == players_per_side) — the generated team
+    form starts strict and the admin widens it for substitutes in the
+    builder (owner 2026-06-10)."""
+    parts = (leaf_key or "").split(LEAF_SEP)
+    fmt: dict = {}
+    if len(parts) >= 2:
+        for s in sports or []:
+            if s.get("key") != parts[0]:
+                continue
+            path_nodes: list[dict] = []
+            nodes = _sport_nodes(s)
+            for part in parts[1:]:
+                node = next((n for n in nodes if n.get("key") == part), None)
+                if node is None:
+                    break
+                path_nodes.append(node)
+                nodes = node.get("children") or []
+            for node in reversed(path_nodes):
+                if node.get("format"):
+                    fmt = dict(node["format"])
+                    break
+            break
+    pps = fmt.get("players_per_side")
+    return {
+        "players_per_side": pps,
+        "squad_min": fmt.get("squad_min") or pps,
+        "squad_max": fmt.get("squad_max") or pps,
+    }
 
 
 def sports_inputs_hash(sports: list[dict] | None) -> str:

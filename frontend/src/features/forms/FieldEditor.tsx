@@ -207,6 +207,48 @@ export function FieldEditor({
         </div>
       ) : null}
 
+      {/* Repeatable-group row bounds (W2-B): how many rows a respondent may
+          add — e.g. widen a 1v1 category's players group from 1/1 to 1/3 to
+          allow substitutes. Server-enforced on submission. */}
+      {field.type === "group" && field.repeatable ? (
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`minitems-${field.key}`}>{t("Min rows")}</Label>
+            <Input
+              id={`minitems-${field.key}`}
+              inputMode="numeric"
+              value={field.min_items ?? ""}
+              onChange={(e) =>
+                updateField(sectionKey, field.key, {
+                  min_items:
+                    e.target.value === ""
+                      ? undefined
+                      : Math.max(0, Number(e.target.value) || 0),
+                })
+              }
+              className="font-tabular"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`maxitems-${field.key}`}>{t("Max rows")}</Label>
+            <Input
+              id={`maxitems-${field.key}`}
+              inputMode="numeric"
+              value={field.max_items ?? ""}
+              onChange={(e) =>
+                updateField(sectionKey, field.key, {
+                  max_items:
+                    e.target.value === ""
+                      ? undefined
+                      : Math.max(0, Number(e.target.value) || 0),
+                })
+              }
+              className="font-tabular"
+            />
+          </div>
+        </div>
+      ) : null}
+
       {field.type === "multi_choice" ? (
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={`maxsel-${field.key}`}>{t("Max selections")}</Label>

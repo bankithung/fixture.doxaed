@@ -13,9 +13,22 @@ export interface SportCategory {
  * `key` is the server-minted stable identity — ALWAYS round-trip it so
  * renames don't orphan registered teams; omit it only for new nodes.
  */
+/** Team-size rules a "format" node carries (1v1 → 1 per side; W2-B). The
+ * generated team form turns these into roster row bounds. */
+export interface SportNodeFormat {
+  players_per_side?: number;
+  squad_min?: number;
+  squad_max?: number;
+}
+
+export type SportNodeKind = "age_group" | "gender" | "format" | "level" | "custom";
+
 export interface SportNode {
   key?: string;
   name: string;
+  /** What this category IS (drives team-size logic for "format" nodes). */
+  kind?: SportNodeKind;
+  format?: SportNodeFormat;
   children?: SportNode[];
 }
 

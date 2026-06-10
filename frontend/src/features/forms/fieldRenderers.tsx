@@ -300,6 +300,14 @@ export function FieldRenderer({
             ? (value as Record<string, unknown>[])
             : [];
           const rowLabel = t(field.label) || t("Item");
+          // Roster bounds (W2-B): a category's format can pin squad size —
+          // Add stops at max_items, Remove stops at min_items, and the
+          // counter shows where you stand. Server enforces the same bounds.
+          const minRows = typeof field.min_items === "number" ? field.min_items : 0;
+          const maxRows =
+            typeof field.max_items === "number" ? field.max_items : Infinity;
+          const atMax = rows.length >= maxRows;
+          const canRemove = !disabled && rows.length > minRows;
           return (
             <div className="flex flex-col gap-2">
               {rows.map((row, i) => (
@@ -311,7 +319,7 @@ export function FieldRenderer({
                     <span className="text-xs font-medium text-muted-foreground">
                       {rowLabel} {i + 1}
                     </span>
-                    {!disabled ? (
+                    {canRemove ? (
                       <button
                         type="button"
                         onClick={() =>
@@ -341,7 +349,7 @@ export function FieldRenderer({
                   ))}
                 </div>
               ))}
-              {!disabled ? (
+              {!disabled && !atMax ? (
                 <Button
                   type="button"
                   variant="outline"
@@ -352,6 +360,25 @@ export function FieldRenderer({
                   <Plus aria-hidden="true" className="h-4 w-4" />
                   {t(`Add ${rowLabel}`)}
                 </Button>
+              ) : null}
+              {minRows > 0 || maxRows !== Infinity ? (
+                <p
+                  className={cn(
+                    "font-tabular text-xs",
+                    rows.length < minRows
+                      ? "text-destructive"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {rows.length}
+                  {maxRows !== Infinity
+                    ? ` / ${maxRows}`
+                    : ""}{" "}
+                  {rowLabel.toLowerCase()}
+                  {minRows > 0 && rows.length < minRows
+                    ? ` — ${t("at least")} ${minRows} ${t("required")}`
+                    : ""}
+                </p>
               ) : null}
             </div>
           );

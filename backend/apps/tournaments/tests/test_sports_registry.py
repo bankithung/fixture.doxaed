@@ -151,3 +151,106 @@ def test_sports_put_persists_deep_tree_and_config():
     assert saved["scheduling"] == {"duration_minutes": 100}
     t.refresh_from_db()
     assert t.sports[0]["nodes"][0]["key"] == "u15"
+
+
+# ---------------------------------------------------------------- W2-B kinds
+
+
+def test_nvn_names_autodetect_format_and_kind():
+    from apps.tournaments.services.sports import leaf_roster_rules
+
+    sports = normalize_sports([
+        {"name": "Football", "nodes": [
+            {"name": "U15", "children": [
+                {"name": "5v5"},
+                {"name": "Open"},
+            ]},
+        ]},
+    ])
+    five = sports[0]["nodes"][0]["children"][0]
+    assert five["kind"] == "format"
+    assert five["format"] == {"players_per_side": 5}
+    # plain names carry no format
+    assert "format" not in sports[0]["nodes"][0]["children"][1]
+
+    # nearest format node on the path wins; defaults pin the squad to
+    # players_per_side until the admin widens it
+    rules = leaf_roster_rules(sports, "football.u15.5v5")
+    assert rules == {"players_per_side": 5, "squad_min": 5, "squad_max": 5}
+    # no format anywhere on the path → unbounded
+    assert leaf_roster_rules(sports, "football.u15.open") == {
+        "players_per_side": None, "squad_min": None, "squad_max": None,
+    }
+
+
+def test_explicit_format_and_squad_round_trip():
+    from apps.tournaments.services.sports import leaf_roster_rules
+
+    sports = normalize_sports([
+        {"name": "Sepak Takraw", "nodes": [
+            {"name": "Regu", "kind": "format",
+             "format": {"players_per_side": 3, "squad_min": 3, "squad_max": 5}},
+        ]},
+    ])
+    node = sports[0]["nodes"][0]
+    assert node["kind"] == "format"
+    assert node["format"] == {"players_per_side": 3, "squad_min": 3,
+                              "squad_max": 5}
+    assert leaf_roster_rules(sports, "sepak_takraw.regu") == {
+        "players_per_side": 3, "squad_min": 3, "squad_max": 5,
+    }
+
+
+def test_generated_team_form_pins_roster_bounds_and_validator_enforces():
+    from apps.forms.services.generation import generate_team_form_template
+    from apps.forms.services.validation import AnswerError, validate_answers
+
+    admin = _verified("rb@test.local")
+    t = create_tournament(user=admin, name="Bounds Cup")
+    t.sports = normalize_sports([
+        {"name": "Table Tennis", "nodes": [{"name": "1v1"}]},
+    ])
+    t.save(update_fields=["sports"])
+    form = generate_team_form_template(tournament=t, created_by=admin)
+
+    sec = next(s for s in form.schema["sections"]
+               if (s.get("visibility") or {}).get("value") == "table_tennis.1v1")
+    team_group = sec["fields"][0]
+    players = next(f for f in team_group["fields"] if f["type"] == "group")
+    assert players["min_items"] == 1
+    assert players["max_items"] == 1
+
+    groups = {g["leaf_key"]: g for g in
+              form.settings["bindings"]["category_groups"]}
+    g = groups["table_tennis.1v1"]
+    base = {
+        "institution_id": "00000000-0000-0000-0000-000000000001",
+        "sports": ["table_tennis"],
+        "categories_table_tennis": ["table_tennis.1v1"],
+    }
+    ok = validate_answers(form.schema, {
+        **base,
+        g["group"]: [{g["team_name"]: "TT A",
+                      g["players_group"]: [{g["player_name"]: "Asen"}]}],
+    })
+    assert ok[g["group"]][0][g["team_name"]] == "TT A"
+
+    # two players in a 1v1 squad → rejected server-side
+    with pytest.raises(AnswerError) as exc:
+        validate_answers(form.schema, {
+            **base,
+            g["group"]: [{g["team_name"]: "TT A",
+                          g["players_group"]: [
+                              {g["player_name"]: "Asen"},
+                              {g["player_name"]: "Ben"},
+                          ]}],
+        })
+    assert "too_many_items" in str(exc.value)
+
+    # a team row with no players misses the squad minimum
+    with pytest.raises(AnswerError) as exc:
+        validate_answers(form.schema, {
+            **base,
+            g["group"]: [{g["team_name"]: "TT A"}],
+        })
+    assert "too_few_items" in str(exc.value)

@@ -75,6 +75,34 @@ def _option_selected(fld: dict, option: dict, answers: dict) -> bool:
     return a is not None and str(a) == str(val)
 
 
+def _check_group_bounds(fld: dict, raw: Any, path: str, errors: dict) -> None:
+    """Enforce repeatable-group row bounds (min_items/max_items), recursing
+    into child groups inside each row (W2-B: a 1v1 category's players group
+    must hold exactly the configured squad). Bounds-less groups pass as
+    before; a missing nested group counts as zero rows, so a team row that
+    lists no players fails its squad minimum."""
+    if fld.get("repeatable"):
+        rows = raw if isinstance(raw, list) else (
+            [] if raw in (None, "", {}) else [raw]
+        )
+        mn, mx = fld.get("min_items"), fld.get("max_items")
+        if isinstance(mn, int) and mn > 0 and len(rows) < mn:
+            errors[path] = "too_few_items"
+        elif isinstance(mx, int) and mx > 0 and len(rows) > mx:
+            errors[path] = "too_many_items"
+    else:
+        rows = [raw] if isinstance(raw, dict) else []
+    for child in fld.get("fields") or []:
+        if child.get("type") != "group":
+            continue
+        for i, row in enumerate(rows):
+            if isinstance(row, dict):
+                _check_group_bounds(
+                    child, row.get(child["key"]),
+                    f"{path}.{i}.{child['key']}", errors,
+                )
+
+
 def _validate_fields(
     fields: list[dict], answers: dict, clean: dict, errors: dict
 ) -> None:
@@ -95,7 +123,8 @@ def _validate_fields(
                 errors[key] = "required"
             continue
         if ftype == "group":
-            clean[key] = raw  # group deep-validation: follow-up; store as-is for v1
+            _check_group_bounds(fld, raw, key, errors)
+            clean[key] = raw  # group deep-validation beyond bounds: follow-up
             continue
         try:
             clean[key] = validate_value(fld, raw)

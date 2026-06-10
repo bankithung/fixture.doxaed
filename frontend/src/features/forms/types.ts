@@ -82,6 +82,9 @@ export interface Field {
   fields?: Field[];
   /** `type: "group"` → render as add/remove repeatable rows (array value). */
   repeatable?: boolean;
+  /** Repeatable group row bounds (W2-B roster limits, server-enforced). */
+  min_items?: number;
+  max_items?: number;
 }
 
 export interface Section {

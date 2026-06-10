@@ -16,12 +16,15 @@ import {
 import {
   tournamentsApi,
   type SportNode,
+  type SportNodeFormat,
   type TournamentSport,
 } from "@/api/tournaments";
 import { formsApi } from "@/api/forms";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament } from "@/lib/queryKeys";
@@ -50,6 +53,14 @@ function normNodes(raw: unknown): SportNode[] {
       return {
         ...(typeof o.key === "string" && o.key ? { key: o.key } : {}),
         name,
+        // kind/format carry the team-size rules (W2-B) — round-trip them or
+        // every save would wipe what the server stored.
+        ...(typeof o.kind === "string" && o.kind
+          ? { kind: o.kind as SportNode["kind"] }
+          : {}),
+        ...(o.format && typeof o.format === "object"
+          ? { format: o.format as SportNode["format"] }
+          : {}),
         children,
       };
     })
@@ -94,6 +105,96 @@ function withNodeRemoved(nodes: SportNode[], path: number[]): SportNode[] {
   );
 }
 
+function withNodePatched(
+  nodes: SportNode[],
+  path: number[],
+  patch: Partial<SportNode>,
+): SportNode[] {
+  const [head, ...rest] = path;
+  return nodes.map((n, i) =>
+    i === head
+      ? rest.length === 0
+        ? { ...n, ...patch }
+        : { ...n, children: withNodePatched(n.children ?? [], rest, patch) }
+      : n,
+  );
+}
+
+const NODE_KIND_OPTIONS = [
+  { value: "", label: t("Category type…") },
+  { value: "age_group", label: t("Age group") },
+  { value: "gender", label: t("Gender") },
+  { value: "format", label: t("Format (team size)") },
+  { value: "level", label: t("Level") },
+  { value: "custom", label: t("Custom") },
+];
+
+/**
+ * Inline node "type & team size" editor (W2-B). Numbers commit on blur so the
+ * auto-saving PUT doesn't fire per keystroke. A "format" node's team-size
+ * rules become the generated team form's roster bounds (1v1 → exactly 1
+ * player; widen squad max for substitutes).
+ */
+function NodeKindEditor({
+  node,
+  onPatch,
+}: {
+  node: SportNode;
+  onPatch: (patch: Partial<SportNode>) => void;
+}): React.ReactElement {
+  const fmt = node.format ?? {};
+  const num = (v: string): number | undefined => {
+    const n = Number(v);
+    return v !== "" && Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
+  };
+  const patchFormat = (k: keyof SportNodeFormat, v: string): void => {
+    const next = { ...fmt, [k]: num(v) };
+    const clean = Object.fromEntries(
+      Object.entries(next).filter(([, val]) => val !== undefined),
+    ) as SportNodeFormat;
+    onPatch({ format: Object.keys(clean).length ? clean : undefined });
+  };
+  const showSize = node.kind === "format" || fmt.players_per_side != null;
+  return (
+    <div className="ml-3 flex flex-wrap items-end gap-2 rounded-md border border-border bg-muted/30 p-2">
+      <div className="flex w-40 flex-col gap-1">
+        <Label className="text-xs">{t("Type")}</Label>
+        <Select
+          aria-label={t(`Category type for ${node.name}`)}
+          value={node.kind ?? ""}
+          options={NODE_KIND_OPTIONS}
+          onChange={(v) =>
+            onPatch({ kind: (v || undefined) as SportNode["kind"] })
+          }
+          placeholder={t("Category type…")}
+        />
+      </div>
+      {showSize ? (
+        <>
+          {(
+            [
+              ["players_per_side", t("On field")],
+              ["squad_min", t("Squad min")],
+              ["squad_max", t("Squad max")],
+            ] as const
+          ).map(([k, label]) => (
+            <div key={k} className="flex w-20 flex-col gap-1">
+              <Label className="text-xs">{label}</Label>
+              <Input
+                inputMode="numeric"
+                defaultValue={fmt[k] ?? ""}
+                onBlur={(e) => patchFormat(k, e.target.value)}
+                className="h-9 font-tabular"
+                aria-label={`${label} — ${node.name}`}
+              />
+            </div>
+          ))}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function slugKey(name: string): string {
   return name
     .toLowerCase()
@@ -120,6 +221,8 @@ export function SportsTab(): React.ReactElement {
     key: "",
     value: "",
   });
+  // Which node's "type & team size" editor is open (same `${sport}:${path}` key).
+  const [kindOpenKey, setKindOpenKey] = useState<string>("");
   const [showSettings, setShowSettings] = useState(false);
   // Two-step sub-flow: pick sports → configure each one (focused, via tabs).
   const [step, setStep] = useState<"pick" | "configure">("pick");
@@ -237,6 +340,17 @@ export function SportsTab(): React.ReactElement {
     if (!sport) return;
     updateSport(sportKey, { nodes: withNodeRemoved(sport.nodes ?? [], path) });
   };
+  const patchNode = (
+    sportKey: string,
+    path: number[],
+    patch: Partial<SportNode>,
+  ): void => {
+    const sport = selected.find((s) => s.key === sportKey);
+    if (!sport) return;
+    updateSport(sportKey, {
+      nodes: withNodePatched(sport.nodes ?? [], path, patch),
+    });
+  };
 
   const q = search.trim().toLowerCase();
   const matches = useMemo(() => {
@@ -278,6 +392,7 @@ export function SportsTab(): React.ReactElement {
   ): React.ReactElement => {
     const draftKey = `${sport.key}:${path.join(".")}`;
     const adding = addDraft.key === draftKey;
+    const kindOpen = kindOpenKey === draftKey;
     return (
       <li key={node.key ?? `${path.join(".")}-${node.name}`} className="min-w-0">
         <div className="group flex items-center gap-1.5 rounded-md py-1 pl-2 pr-1 hover:bg-accent/60">
@@ -301,7 +416,33 @@ export function SportsTab(): React.ReactElement {
               {t("competition")}
             </span>
           ) : null}
+          {node.format?.players_per_side ? (
+            <span className="rounded bg-secondary px-1.5 font-tabular text-[0.625rem] font-medium text-secondary-foreground">
+              {node.format.players_per_side}{t("-a-side")}
+              {node.format.squad_max &&
+              node.format.squad_max !== node.format.players_per_side
+                ? ` · ${t("squad")} ${node.format.squad_min ?? node.format.players_per_side}–${node.format.squad_max}`
+                : ""}
+            </span>
+          ) : null}
           <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+            <button
+              type="button"
+              onClick={() =>
+                setKindOpenKey(kindOpen ? "" : draftKey)
+              }
+              aria-label={t(`Category type and team size for ${node.name}`)}
+              aria-expanded={kindOpen}
+              className={cn(
+                "inline-flex h-6 items-center gap-0.5 rounded px-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                kindOpen
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
+              )}
+            >
+              <SlidersHorizontal aria-hidden="true" className="h-3 w-3" />
+              {t("type")}
+            </button>
             <button
               type="button"
               onClick={() =>
@@ -325,6 +466,12 @@ export function SportsTab(): React.ReactElement {
             </button>
           </span>
         </div>
+        {kindOpen ? (
+          <NodeKindEditor
+            node={node}
+            onPatch={(patch) => patchNode(sport.key, path, patch)}
+          />
+        ) : null}
         {(node.children?.length || adding) ? (
           <ul className="ml-3 border-l border-border pl-2">
             {(node.children ?? []).map((c, i) =>
