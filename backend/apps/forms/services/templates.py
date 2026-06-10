@@ -65,6 +65,89 @@ BUILTIN_TEMPLATES: list[dict[str, Any]] = [
         },
     },
     {
+        "id": "template:multi-sport-institution",
+        "title": "Multi-sport institution registration",
+        "purpose": "organization_registration",
+        "description": (
+            "Schools pick a competition; the matching category questions appear "
+            "automatically (Sepak Takraw and/or Table Tennis). Fully editable."
+        ),
+        "schema": {
+            "version": 1,
+            "sections": [
+                {
+                    "key": "school",
+                    "title": "School details",
+                    "fields": [
+                        {"key": "school_name", "type": "short_text",
+                         "label": "School name", "required": True, "role": "title"},
+                        {"key": "contact_name", "type": "short_text",
+                         "label": "Your name", "required": True, "role": "name"},
+                        {"key": "contact_phone", "type": "phone",
+                         "label": "Contact number", "required": True, "role": "phone"},
+                        {"key": "contact_email", "type": "email",
+                         "label": "Email", "role": "email"},
+                    ],
+                },
+                {
+                    "key": "competition",
+                    "title": "Competition selection",
+                    "fields": [
+                        {"key": "competition", "type": "single_choice", "required": True,
+                         "label": "Which competition will your school participate in?",
+                         "options": [
+                             {"value": "sepak", "label": "Sepak Takraw only"},
+                             {"value": "tt", "label": "Table Tennis only"},
+                             {"value": "both", "label": "Both"},
+                             {"value": "none", "label": "Not participating"},
+                         ]},
+                        # Revealed inline when the answer is one of [sepak, both].
+                        {"key": "sepak_categories", "type": "multi_choice",
+                         "label": "Sepak Takraw categories",
+                         "visibility": {"field": "competition", "op": "in",
+                                        "value": ["sepak", "both"]},
+                         "options": [
+                             {"value": "u14_boys", "label": "U-14 Boys"},
+                             {"value": "u14_girls", "label": "U-14 Girls"},
+                         ]},
+                        # Revealed inline when the answer is one of [tt, both].
+                        {"key": "tt_categories", "type": "multi_choice",
+                         "label": "Table Tennis categories",
+                         "visibility": {"field": "competition", "op": "in",
+                                        "value": ["tt", "both"]},
+                         "options": [
+                             {"value": "u14_boys_singles", "label": "U-14 Boys Singles"},
+                             {"value": "u14_boys_doubles", "label": "U-14 Boys Doubles"},
+                             {"value": "u14_girls_singles", "label": "U-14 Girls Singles"},
+                             {"value": "u14_girls_doubles", "label": "U-14 Girls Doubles"},
+                             {"value": "a14_boys_singles", "label": "Above 14 Boys Singles"},
+                             {"value": "a14_boys_doubles", "label": "Above 14 Boys Doubles"},
+                             {"value": "a14_girls_singles", "label": "Above 14 Girls Singles"},
+                             {"value": "a14_girls_doubles", "label": "Above 14 Girls Doubles"},
+                         ]},
+                    ],
+                },
+                {
+                    "key": "confirm",
+                    "title": "Final confirmation",
+                    "fields": [
+                        {"key": "confirm_note", "type": "section_text",
+                         "label": ("Player names and documents must be submitted by "
+                                   "20 August 2026.")},
+                    ],
+                },
+            ],
+        },
+        "settings": {
+            "bindings": {
+                "institution_name": "school_name",
+                "contact_name": "contact_name",
+                "contact_phone": "contact_phone",
+                "contact_email": "contact_email",
+            }
+        },
+    },
+    {
         "id": "template:team-registration",
         "title": "Team registration",
         "purpose": "team_registration",

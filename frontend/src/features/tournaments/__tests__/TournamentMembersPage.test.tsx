@@ -179,4 +179,54 @@ describe("TournamentMembersPage", () => {
     expect(payload.role).toBe("team_manager");
     expect(payload.event_id).toBeTruthy();
   });
+
+  it("groups a person's multiple roles into one row and counts people", async () => {
+    // Same user_id holding two roles (e.g. created the tournament → admin, then
+    // accepted a team-manager invite) must render as ONE person, not two rows.
+    const multiRole: TournamentMember[] = [
+      {
+        id: "m-banki-admin",
+        user_id: "u-banki",
+        email: "banki@example.com",
+        full_name: "Bankithung",
+        role: "admin",
+        status: "active",
+        assigned_at: "2026-06-08T10:00:00Z",
+      },
+      {
+        id: "m-banki-tm",
+        user_id: "u-banki",
+        email: "banki@example.com",
+        full_name: "Bankithung",
+        role: "team_manager",
+        status: "active",
+        assigned_at: "2026-06-08T11:00:00Z",
+      },
+      {
+        id: "m-scorer",
+        user_id: "u-scorer",
+        email: "scorer@example.com",
+        full_name: "Sam Scorer",
+        role: "match_scorer",
+        status: "active",
+        assigned_at: "2026-06-09T10:00:00Z",
+      },
+    ];
+    vi.mocked(tournamentsApi.members).mockResolvedValue(multiRole);
+
+    renderPage();
+
+    await screen.findByText("banki@example.com");
+    // One row per person → the email appears once, not once per role.
+    expect(screen.getAllByText("banki@example.com")).toHaveLength(1);
+    // Two distinct people, not three membership rows.
+    expect(screen.getByText("2 members")).toBeInTheDocument();
+    // Both of Bankithung's roles are present as editable controls...
+    expect(
+      screen.getAllByRole("button", { name: /role for bankithung/i }),
+    ).toHaveLength(2);
+    // ...each independently removable by membership id.
+    expect(screen.getByTestId("revoke-m-banki-admin")).toBeInTheDocument();
+    expect(screen.getByTestId("revoke-m-banki-tm")).toBeInTheDocument();
+  });
 });

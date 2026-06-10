@@ -26,6 +26,20 @@ describe("builderStore", () => {
     expect(f[0].key).not.toBe(f[1].key);
   });
 
+  it("addField with a preset keeps a meaningful, stable key + de-dupes it", () => {
+    const add = useBuilderStore.getState().addField;
+    add("s1", "short_text", {
+      key: "school_name",
+      label: "School name",
+      role: "title",
+    });
+    add("s1", "short_text", { key: "school_name", label: "Another school" });
+    const f = useBuilderStore.getState().schema.sections[0].fields;
+    expect(f[0].key).toBe("school_name");
+    expect(f[0].role).toBe("title");
+    expect(f[1].key).toBe("school_name_2"); // collision → suffixed, never reused
+  });
+
   it("seeds options for choice field types", () => {
     useBuilderStore.getState().addField("s1", "single_choice");
     const f = useBuilderStore.getState().schema.sections[0].fields[0];

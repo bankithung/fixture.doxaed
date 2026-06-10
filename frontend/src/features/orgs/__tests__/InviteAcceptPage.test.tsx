@@ -7,10 +7,17 @@ import { orgsApi } from "@/api/orgs";
 import { ApiError } from "@/types/api";
 
 vi.mock("@/api/orgs");
-// Logged-out invitee: stub the auth store with no user.
+// Configurable auth-store stub: tests flip `authState.user` to simulate a
+// logged-out invitee vs. a signed-in (possibly wrong) account.
+const hoisted = vi.hoisted(() => ({
+  authState: {
+    user: null as { email: string } | null,
+    refreshMe: vi.fn(() => Promise.resolve()),
+    logout: vi.fn(() => Promise.resolve()),
+  },
+}));
 vi.mock("@/features/auth/authStore", () => ({
-  useAuthStore: (sel: (s: unknown) => unknown) =>
-    sel({ user: null, refreshMe: () => Promise.resolve() }),
+  useAuthStore: (sel: (s: unknown) => unknown) => sel(hoisted.authState),
 }));
 
 function renderPage(token = "tok-123") {
@@ -22,7 +29,10 @@ function renderPage(token = "tok-123") {
 }
 
 describe("InviteAcceptPage (logged out)", () => {
-  beforeEach(() => vi.resetAllMocks());
+  beforeEach(() => {
+    vi.resetAllMocks();
+    hoisted.authState.user = null;
+  });
 
   it("creates an account inline and accepts with a password", async () => {
     vi.mocked(orgsApi.acceptInvitation).mockResolvedValue({
@@ -65,5 +75,38 @@ describe("InviteAcceptPage (logged out)", () => {
     expect(
       await screen.findByRole("link", { name: /sign in to continue/i }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("InviteAcceptPage (signed in as the wrong account)", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    hoisted.authState.user = { email: "banki@example.com" };
+  });
+
+  it("warns and offers an account switch instead of silently accepting", async () => {
+    vi.mocked(orgsApi.acceptInvitation).mockRejectedValue(
+      new ApiError(409, {
+        detail: "email_mismatch",
+        invited_email: "meri@example.com",
+        current_email: "banki@example.com",
+      }),
+    );
+    renderPage();
+
+    // A signed-in user sees a direct "Accept invite" button.
+    await userEvent.click(
+      screen.getByRole("button", { name: /accept invite/i }),
+    );
+
+    // The backend refuses the cross-account accept → wrong-account warning.
+    expect(await screen.findByText(/meri@example.com/)).toBeInTheDocument();
+    expect(screen.getByText(/banki@example.com/)).toBeInTheDocument();
+
+    // Switching accounts signs the wrong account out.
+    await userEvent.click(
+      screen.getByRole("button", { name: /switch account/i }),
+    );
+    expect(hoisted.authState.logout).toHaveBeenCalled();
   });
 });

@@ -29,6 +29,9 @@ def _collect_fields(sections: list[dict]) -> dict[str, dict]:
         if field.get("type") == "group":
             for child in field.get("fields", []):
                 add(child)
+        for opt in field.get("options", []) or []:
+            for child in opt.get("fields", []) or []:
+                add(child)
 
     for sec in sections:
         for fld in sec.get("fields", []):
@@ -70,6 +73,21 @@ def _check_visibility(rule: Any, fields: dict[str, dict]) -> None:
         raise SchemaError(f"unknown visibility op: {rule['op']}")
 
 
+def _check_field_tree(
+    field: dict, section_keys: set[str], fields: dict[str, dict]
+) -> None:
+    """Validate a field, then recurse into each option's nested follow-up fields
+    (the choice→sub-question nesting). Mirrors the renderer/validator descent."""
+    _check_field(field)
+    _check_visibility(field.get("visibility"), fields)
+    for o in field.get("options", []) or []:
+        goto = o.get("goto")
+        if goto is not None and goto not in section_keys and goto != "_end":
+            raise SchemaError(f"option.goto targets unknown section: {goto}")
+        for child in o.get("fields", []) or []:
+            _check_field_tree(child, section_keys, fields)
+
+
 def validate_schema(schema: dict) -> None:
     """Raise SchemaError if invalid; return None if valid."""
     if not isinstance(schema, dict):
@@ -91,9 +109,4 @@ def validate_schema(schema: dict) -> None:
         if nxt is not None and nxt not in section_keys and nxt != "_end":
             raise SchemaError(f"section.next targets unknown section: {nxt}")
         for fld in sec.get("fields", []):
-            _check_field(fld)
-            _check_visibility(fld.get("visibility"), fields)
-            for o in fld.get("options", []):
-                goto = o.get("goto")
-                if goto is not None and goto not in section_keys and goto != "_end":
-                    raise SchemaError(f"option.goto targets unknown section: {goto}")
+            _check_field_tree(fld, section_keys, fields)

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -70,9 +71,27 @@ function FieldCard({
   const updateField = useBuilderStore((s) => s.updateField);
   const removeField = useBuilderStore((s) => s.removeField);
   const reorderFields = useBuilderStore((s) => s.reorderFields);
+  const clearSelection = useBuilderStore((s) => s.clearSelection);
   const selected = useBuilderStore((s) => s.selected);
   const isSelected =
     selected?.sectionKey === section.key && selected?.fieldKey === field.key;
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  // Click anywhere outside the open field card collapses it (deselect). Clicks
+  // inside the card — or inside a portal'd Select dropdown (role="listbox") —
+  // keep it open.
+  useEffect(() => {
+    if (!isSelected) return;
+    const onDown = (e: MouseEvent): void => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (cardRef.current?.contains(target)) return;
+      if (target instanceof Element && target.closest('[role="listbox"]')) return;
+      clearSelection();
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [isSelected, clearSelection]);
   const isChoice = CHOICE_TYPES.has(field.type);
   const hasBranching =
     !!field.visibility || (field.options ?? []).some((o) => !!o.goto);
@@ -134,7 +153,10 @@ function FieldCard({
 
   // -- Expanded (editing) card --------------------------------------------
   return (
-    <div className="rounded-xl border border-primary bg-card shadow-sm ring-1 ring-primary/20">
+    <div
+      ref={cardRef}
+      className="rounded-xl border border-primary bg-card shadow-sm ring-1 ring-primary/20"
+    >
       {/* Accent bar like Google Forms' active question. */}
       <div className="h-1.5 rounded-t-xl bg-primary" />
       <div className="flex flex-col gap-4 p-4">

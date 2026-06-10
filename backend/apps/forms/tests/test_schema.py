@@ -66,3 +66,40 @@ def test_choice_field_needs_options():
     ]}])
     with pytest.raises(SchemaError):
         validate_schema(s)
+
+
+def test_nested_option_fields_validated_and_keys_unique():
+    import pytest
+
+    from apps.forms.services.schema import SchemaError, validate_schema
+
+    good = {"version": 1, "sections": [
+        {"key": "s", "title": "S", "fields": [
+            {"key": "sport", "type": "single_choice", "label": "Sport", "options": [
+                {"value": "fb", "label": "Football", "fields": [
+                    {"key": "fmt", "type": "short_text", "label": "Format"},
+                ]},
+            ]},
+        ]},
+    ]}
+    validate_schema(good)  # nested option fields are valid
+
+    dupe = {"version": 1, "sections": [
+        {"key": "s", "title": "S", "fields": [
+            {"key": "shared", "type": "single_choice", "label": "X", "options": [
+                {"value": "a", "label": "A", "fields": [
+                    {"key": "shared", "type": "short_text", "label": "Y"},
+                ]},
+            ]},
+        ]},
+    ]}
+    with pytest.raises(SchemaError):
+        validate_schema(dupe)  # duplicate key across nesting is rejected
+
+
+def test_all_builtin_templates_have_valid_schemas():
+    from apps.forms.services.schema import validate_schema
+    from apps.forms.services.templates import BUILTIN_TEMPLATES
+
+    for t in BUILTIN_TEMPLATES:
+        validate_schema(t["schema"])  # must not raise

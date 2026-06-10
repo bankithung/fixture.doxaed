@@ -196,6 +196,14 @@ export function AppShell(): React.ReactElement {
       })
     : decorateInvitesBadge(computeWorkspaceNav(user, navSlug), pendingInviteCount);
 
+  // Onboarding flow: until the tournament is set up (stage reaches "ready",
+  // which requires fixtures to be generated), HIDE the sidebar and present each
+  // stage as a focused, full-width wizard — the main app surface (sidebar) only
+  // appears once setup is done, where the real match-day work lives. Default to
+  // wizard while the stage loads so the sidebar doesn't flash in for setups.
+  const setupMode =
+    inTournamentContext && (stageQuery.data?.stage ?? "setup") !== "ready";
+
   const handleSignOut = async (): Promise<void> => {
     setMenuOpen(false);
     await logout();
@@ -251,39 +259,45 @@ export function AppShell(): React.ReactElement {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <Sidebar
-        groups={navGroups}
-        collapsed={collapsed}
-        tournament={
-          inTournamentContext ? { name: tournamentName } : undefined
-        }
-      />
+      {setupMode ? null : (
+        <Sidebar
+          groups={navGroups}
+          collapsed={collapsed}
+          tournament={
+            inTournamentContext ? { name: tournamentName } : undefined
+          }
+        />
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header
           role="banner"
           className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur sm:px-6"
         >
-          <button
-            type="button"
-            aria-label={t("Open navigation menu")}
-            aria-expanded={drawerOpen}
-            aria-controls="mobile-nav-drawer"
-            onClick={() => setDrawerOpen(true)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
-          >
-            <Menu aria-hidden="true" className="h-5 w-5" />
-          </button>
+          {!setupMode ? (
+            <button
+              type="button"
+              aria-label={t("Open navigation menu")}
+              aria-expanded={drawerOpen}
+              aria-controls="mobile-nav-drawer"
+              onClick={() => setDrawerOpen(true)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+            >
+              <Menu aria-hidden="true" className="h-5 w-5" />
+            </button>
+          ) : null}
 
-          <button
-            type="button"
-            aria-label={collapsed ? t("Expand sidebar") : t("Collapse sidebar")}
-            aria-pressed={collapsed}
-            onClick={toggleCollapsed}
-            className="hidden h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:inline-flex"
-          >
-            <PanelLeft aria-hidden="true" className="h-5 w-5" />
-          </button>
+          {!setupMode ? (
+            <button
+              type="button"
+              aria-label={collapsed ? t("Expand sidebar") : t("Collapse sidebar")}
+              aria-pressed={collapsed}
+              onClick={toggleCollapsed}
+              className="hidden h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:inline-flex"
+            >
+              <PanelLeft aria-hidden="true" className="h-5 w-5" />
+            </button>
+          ) : null}
 
           <Link
             to={routes.landing()}

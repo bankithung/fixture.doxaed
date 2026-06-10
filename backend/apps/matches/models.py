@@ -80,6 +80,11 @@ class Match(models.Model):
     )
     home_score = models.PositiveSmallIntegerField(null=True, blank=True)
     away_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Multi-sport: which sport this match is (catalog key, e.g. "table_tennis").
+    # Blank = goal-based (football, default). Set-based sports also store per-set
+    # scores here; home_score/away_score then hold SETS won.
+    sport = models.CharField(max_length=40, blank=True)
+    set_scores = models.JSONField(default=list, blank=True)  # [[11,8],[9,11],...]
 
     scheduled_at = models.DateTimeField(null=True, blank=True)
     venue = models.CharField(max_length=120, blank=True)

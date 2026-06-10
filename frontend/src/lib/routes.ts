@@ -52,6 +52,10 @@ export const routes = {
   /** Tournament workspace — Overview tab (index of the tabbed workspace). */
   tournamentDetail: (id: string) => `/tournaments/${encodeURIComponent(id)}`,
   /** Workspace tabs (dedicated pages). */
+  tournamentOverview: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/overview`,
+  tournamentSports: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/sports`,
   tournamentInstitutions: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/institutions`,
   tournamentTeams: (id: string) => `/tournaments/${encodeURIComponent(id)}/teams`,

@@ -124,9 +124,12 @@ describe("ResponsesPage", () => {
     // Pre-condition: this row is "Submitted", not yet "Accepted".
     expect(within(firstRow).getByText(/^submitted$/i)).toBeInTheDocument();
 
-    // Click the row's Accept action.
+    // Open the row's actions menu, then click Accept (menu portals to body).
     await userEvent.click(
-      within(firstRow).getByRole("button", { name: /accept/i }),
+      within(firstRow).getByRole("button", { name: /change status/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: /accept/i }),
     );
 
     // The API was called with this row's id + the "accepted" status.

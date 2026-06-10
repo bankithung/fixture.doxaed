@@ -1,5 +1,6 @@
 import { useId } from "react";
-import { Star } from "lucide-react";
+import { Plus, Star, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
@@ -290,15 +291,79 @@ export function FieldRenderer({
           />
         );
       case "group": {
-        // v1: render the child fields once (a single row). Repeat-row UX is a
-        // follow-up; the backend stores the group answer as-is for now.
+        const children = field.fields ?? [];
+        // Repeatable group → an ARRAY of row objects with add/remove. Nesting
+        // works because each child renders through FieldRenderer, so a nested
+        // repeatable group (e.g. players inside a team) renders its own rows.
+        if (field.repeatable) {
+          const rows: Record<string, unknown>[] = Array.isArray(value)
+            ? (value as Record<string, unknown>[])
+            : [];
+          const rowLabel = t(field.label) || t("Item");
+          return (
+            <div className="flex flex-col gap-2">
+              {rows.map((row, i) => (
+                <div
+                  key={i}
+                  className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {rowLabel} {i + 1}
+                    </span>
+                    {!disabled ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onChange(rows.filter((_, k) => k !== i))
+                        }
+                        aria-label={t(`Remove ${rowLabel} ${i + 1}`)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <Trash2 aria-hidden="true" className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                  </div>
+                  {children.map((child) => (
+                    <FieldRenderer
+                      key={child.key}
+                      field={child}
+                      value={(row ?? {})[child.key]}
+                      disabled={disabled}
+                      onChange={(v) =>
+                        onChange(
+                          rows.map((r, k) =>
+                            k === i ? { ...r, [child.key]: v } : r,
+                          ),
+                        )
+                      }
+                    />
+                  ))}
+                </div>
+              ))}
+              {!disabled ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-fit"
+                  onClick={() => onChange([...rows, {}])}
+                >
+                  <Plus aria-hidden="true" className="h-4 w-4" />
+                  {t(`Add ${rowLabel}`)}
+                </Button>
+              ) : null}
+            </div>
+          );
+        }
+        // Non-repeatable group → a single object of child values.
         const obj =
           value && typeof value === "object" && !Array.isArray(value)
             ? (value as Record<string, unknown>)
             : {};
         return (
           <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3">
-            {(field.fields ?? []).map((child) => (
+            {children.map((child) => (
               <FieldRenderer
                 key={child.key}
                 field={child}
@@ -307,7 +372,7 @@ export function FieldRenderer({
                 onChange={(v) => onChange({ ...obj, [child.key]: v })}
               />
             ))}
-            {(field.fields ?? []).length === 0 ? (
+            {children.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 {t("No fields in this group yet.")}
               </p>

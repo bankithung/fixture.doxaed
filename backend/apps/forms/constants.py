@@ -23,6 +23,18 @@ class ResponseStatus(models.TextChoices):
     WAITLISTED = "waitlisted", _("Waitlisted")
 
 
+# Canonical map between a tournament setup STAGE and the registration form
+# PURPOSE that belongs to it. Single source of truth for: stage-binding at form
+# creation, auto-close/reopen on stage transitions, and team-form generation.
+# Stage keys are TournamentStage values, kept as plain string literals to avoid
+# a forms -> tournaments import cycle (tournaments already imports forms).
+STAGE_TO_PURPOSE: dict[str, str] = {
+    "org_registration": FormPurpose.ORGANIZATION_REGISTRATION.value,
+    "team_registration": FormPurpose.TEAM_REGISTRATION.value,
+}
+PURPOSE_TO_STAGE: dict[str, str] = {v: k for k, v in STAGE_TO_PURPOSE.items()}
+
+
 # Field types whose answers are simple scalars/lists. The registry in
 # services/fields.py is the source of truth for coerce/validate behaviour.
 FIELD_TYPES = frozenset({

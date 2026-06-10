@@ -71,6 +71,15 @@ def build_team_form_schema(org_form: Form | None) -> tuple[dict, dict]:
                     # registered institutions at fetch time (always up to date).
                     "data_source": {"type": "institution_list"},
                 },
+                # Contact carried over from Stage 1 (prefilled, editable) so a
+                # school confirms rather than re-enters it. Optional: a per-
+                # institution link prefills these; the public link leaves blank.
+                {"key": "contact_name", "type": "short_text",
+                 "label": "Contact person", "required": False},
+                {"key": "contact_email", "type": "email",
+                 "label": "Contact email", "required": False},
+                {"key": "contact_phone", "type": "phone",
+                 "label": "Contact phone", "required": False},
                 # The categories selector only exists when the org-reg form
                 # offered categories (otherwise an empty choice field is invalid).
                 *(
@@ -107,17 +116,26 @@ def build_team_form_schema(org_form: Form | None) -> tuple[dict, dict]:
                     {
                         "key": gkey,
                         "type": "group",
-                        "label": f"Team(s) for {lbl}",
+                        "label": "Team",
                         "repeatable": True,
                         "fields": [
                             {"key": tkey, "type": "short_text", "label": "Team name",
                              "required": True},
+                            {"key": f"players_{slug}", "type": "group",
+                             "label": "Player", "repeatable": True,
+                             "fields": [
+                                 {"key": f"player_name_{slug}", "type": "short_text",
+                                  "label": "Player name", "required": True},
+                             ]},
                         ],
                     }
                 ],
             }
         )
-        category_groups.append({"category": v, "group": gkey, "team_name": tkey})
+        category_groups.append({
+            "category": v, "group": gkey, "team_name": tkey,
+            "players_group": f"players_{slug}", "player_name": f"player_name_{slug}",
+        })
 
     # No categories detected → a single generic team-entry group so the form is
     # still usable; the admin can restructure it in the builder.
@@ -130,20 +148,35 @@ def build_team_form_schema(org_form: Form | None) -> tuple[dict, dict]:
                     {
                         "key": "teams_all",
                         "type": "group",
-                        "label": "Team(s)",
+                        "label": "Team",
                         "repeatable": True,
                         "fields": [
                             {"key": "team_name_all", "type": "short_text",
                              "label": "Team name", "required": True},
+                            {"key": "players_all", "type": "group",
+                             "label": "Player", "repeatable": True,
+                             "fields": [
+                                 {"key": "player_name_all", "type": "short_text",
+                                  "label": "Player name", "required": True},
+                             ]},
                         ],
                     }
                 ],
             }
         )
-        category_groups.append({"category": "", "group": "teams_all", "team_name": "team_name_all"})
+        category_groups.append({
+            "category": "", "group": "teams_all", "team_name": "team_name_all",
+            "players_group": "players_all", "player_name": "player_name_all",
+        })
 
     schema = {"version": 1, "sections": sections}
-    bindings = {"institution_id": "institution_id", "category_groups": category_groups}
+    bindings = {
+        "institution_id": "institution_id",
+        "contact_name": "contact_name",
+        "contact_email": "contact_email",
+        "contact_phone": "contact_phone",
+        "category_groups": category_groups,
+    }
     return schema, bindings
 
 
@@ -176,6 +209,101 @@ def generate_team_form_template(*, tournament, created_by=None, request=None) ->
         **(form.settings or {}),
         "bindings": bindings,
         "generated_from": str(org_form.id) if org_form else None,
+    }
+    form.save(update_fields=["settings"])
+    return form
+
+
+def build_institution_form_schema(sports: list[dict]) -> dict:
+    """Guided institution-registration form from the tournament's chosen sports:
+    school details, a sport-selection question, per-sport category questions that
+    reveal inline when that sport is picked, and a confirmation note. Fully
+    editable afterwards — driven entirely by the sports config, nothing hardcoded.
+    """
+    sections: list[dict] = [
+        {"key": "school", "title": "School details", "fields": [
+            {"key": "school_name", "type": "short_text", "label": "School name",
+             "required": True, "role": "title"},
+            {"key": "contact_name", "type": "short_text", "label": "Your name",
+             "required": True, "role": "name"},
+            {"key": "contact_phone", "type": "phone", "label": "Contact number",
+             "required": True, "role": "phone"},
+            {"key": "contact_email", "type": "email", "label": "Email",
+             "role": "email"},
+        ]},
+    ]
+    active = [s for s in (sports or []) if s.get("name") and s.get("key")]
+    if active:
+        fields: list[dict] = [
+            {"key": "sports", "type": "multi_choice", "required": True,
+             "label": "Which sport(s) will your school participate in?",
+             "options": [{"value": s["key"], "label": s["name"]} for s in active]},
+        ]
+        for s in active:
+            # Flatten category → subcategory into leaf options ("Cat — Sub").
+            # The chosen leaf is the registration bucket. Legacy string
+            # categories (no subcategories) become a single option.
+            leaves: list[str] = []
+            for c in s.get("categories") or []:
+                if isinstance(c, str):
+                    cname, subs = c.strip(), []
+                elif isinstance(c, dict):
+                    cname = str(c.get("name") or "").strip()
+                    subs = [
+                        str(x).strip()
+                        for x in (c.get("subcategories") or [])
+                        if str(x).strip()
+                    ]
+                else:
+                    continue
+                if not cname:
+                    continue
+                if subs:
+                    leaves.extend(f"{cname} — {sub}" for sub in subs)
+                else:
+                    leaves.append(cname)
+            if leaves:
+                fields.append({
+                    "key": f"categories_{s['key']}"[:60],
+                    "type": "multi_choice",
+                    "label": f"{s['name']} categories",
+                    # Revealed inline only when this sport is selected above.
+                    "visibility": {"field": "sports", "op": "includes",
+                                   "value": s["key"]},
+                    "options": [{"value": _slug(leaf, f"c{i}"), "label": leaf}
+                                for i, leaf in enumerate(leaves)],
+                })
+        sections.append({"key": "participation", "title": "Competition selection",
+                         "fields": fields})
+    sections.append({"key": "confirm", "title": "Final confirmation", "fields": [
+        {"key": "confirm_note", "type": "section_text",
+         "label": "Player names and documents must be submitted by the deadline."},
+    ]})
+    return {"version": 1, "sections": sections}
+
+
+def generate_institution_form(*, tournament, created_by=None, request=None) -> Form:
+    """Create a DRAFT institution-registration form from the tournament's sports,
+    for the admin to review/edit/publish."""
+    schema = build_institution_form_schema(tournament.sports or [])
+    form = create_form(
+        tournament=tournament,
+        title="Institution registration",
+        purpose=FormPurpose.ORGANIZATION_REGISTRATION,
+        stage="org_registration",
+        schema=schema,
+        created_by=created_by,
+        request=request,
+    )
+    form.settings = {
+        **(form.settings or {}),
+        "bindings": {
+            "institution_name": "school_name",
+            "contact_name": "contact_name",
+            "contact_phone": "contact_phone",
+            "contact_email": "contact_email",
+        },
+        "generated_from_sports": True,
     }
     form.save(update_fields=["settings"])
     return form

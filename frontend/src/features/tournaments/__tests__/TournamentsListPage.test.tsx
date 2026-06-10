@@ -27,6 +27,7 @@ const SAMPLE: Tournament = {
   status: "registration_open",
   organization_slug: "ws-1",
   sport_code: "football",
+  sports: [],
   time_zone: "Asia/Kolkata",
   created_at: "2026-06-05T00:00:00Z",
 };

@@ -142,6 +142,8 @@ describe("computeTournamentNav", () => {
     expect(groupKeys(groups)).toEqual(["manage"]);
     expect(flatKeys(groups)).toEqual([
       "overview",
+      "sports",
+      "forms",
       "institutions",
       "teams",
       "members",
@@ -157,7 +159,8 @@ describe("computeTournamentNav", () => {
       stage: STAGE,
     }).flatMap((g) => g.items);
     const byKey = Object.fromEntries(items.map((i) => [i.key, i]));
-    // At org_registration: institutions reachable; teams + fixtures locked.
+    // At org_registration: forms + institutions reachable; teams + fixtures locked.
+    expect(byKey.forms.locked).toBeFalsy();
     expect(byKey.institutions.locked).toBeFalsy();
     expect(byKey.teams.locked).toBe(true);
     expect(byKey.teams.lockLabel).toBe("Team registration");
@@ -181,7 +184,7 @@ describe("computeTournamentNav", () => {
       user: makeUser(["admin"], []),
       slug: "acme",
     }).flatMap((g) => g.items);
-    expect(items.find((i) => i.key === "overview")?.href).toBe(routes.tournamentDetail(TID));
+    expect(items.find((i) => i.key === "overview")?.href).toBe(routes.tournamentOverview(TID));
     expect(items.find((i) => i.key === "institutions")?.href).toBe(routes.tournamentInstitutions(TID));
     expect(items.find((i) => i.key === "teams")?.href).toBe(routes.tournamentTeams(TID));
     expect(items.find((i) => i.key === "members")?.href).toBe(routes.tournamentMembers(TID));

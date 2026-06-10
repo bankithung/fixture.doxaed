@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -7,6 +8,7 @@ import {
   Clock,
   Copy,
   Download,
+  MoreVertical,
   Send,
   X,
 } from "lucide-react";
@@ -144,6 +146,45 @@ function RowStatusActions({
 }): React.ReactElement {
   const qc = useQueryClient();
   const toast = useToast();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const wrapRef = useRef<HTMLSpanElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const openMenu = (): void => {
+    const r = wrapRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+    setMenuOpen(true);
+  };
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDoc = (e: MouseEvent): void => {
+      const target = e.target as Node;
+      if (
+        !wrapRef.current?.contains(target) &&
+        !menuRef.current?.contains(target)
+      ) {
+        setMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    // Menu is portaled with fixed position — close on scroll/resize so it can't
+    // drift away from its row.
+    const close = (): void => setMenuOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [menuOpen]);
 
   const setStatus = useMutation({
     mutationFn: (status: ResponseStatus) =>
@@ -179,24 +220,57 @@ function RowStatusActions({
   });
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {STATUS_ACTIONS.map(({ status, label, Icon }) => {
-        const active = row.status === status;
-        return (
-          <Button
-            key={status}
-            size="sm"
-            variant={active ? "default" : "outline"}
-            disabled={setStatus.isPending || active}
-            aria-pressed={active}
-            onClick={() => setStatus.mutate(status)}
-          >
-            <Icon aria-hidden="true" className="h-3.5 w-3.5" />
-            {t(label)}
-          </Button>
-        );
-      })}
-    </div>
+    <span ref={wrapRef} className="inline-block text-left">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        aria-label={t("Change status")}
+        disabled={setStatus.isPending}
+        onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
+      >
+        <MoreVertical aria-hidden="true" className="h-4 w-4" />
+      </Button>
+      {menuOpen && pos
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              style={{ position: "fixed", top: pos.top, right: pos.right }}
+              className="z-50 w-40 rounded-lg border border-border bg-popover p-1 text-sm text-popover-foreground shadow-md"
+            >
+              {STATUS_ACTIONS.map(({ status, label, Icon }) => {
+                const active = row.status === status;
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    role="menuitem"
+                    disabled={active}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setStatus.mutate(status);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
+                      active && "bg-accent font-medium text-foreground",
+                    )}
+                  >
+                    <Icon aria-hidden="true" className="h-3.5 w-3.5" />
+                    {t(label)}
+                    {active ? (
+                      <Check aria-hidden="true" className="ml-auto h-3.5 w-3.5" />
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>,
+            document.body,
+          )
+        : null}
+    </span>
   );
 }
 
@@ -476,7 +550,7 @@ export function ResponsesPage(): React.ReactElement {
   const total = responsesQuery.data?.length ?? 0;
 
   return (
-    <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
       {/* Header */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">

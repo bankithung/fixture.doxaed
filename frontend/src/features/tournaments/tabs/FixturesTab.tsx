@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, GitBranch, Wand2 } from "lucide-react";
+import { CalendarClock, GitBranch, Layers, Wand2 } from "lucide-react";
 import { tournamentsApi, type MatchRow } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -33,7 +33,7 @@ export function FixturesTab(): React.ReactElement {
   }, [matches.data]);
 
   const generate = useMutation({
-    mutationFn: (format: "round_robin" | "knockout") =>
+    mutationFn: (format: "round_robin" | "by_category" | "knockout") =>
       tournamentsApi.generateFixtures(id, { format }),
     onSuccess: () => {
       invalidateTournament(qc, id);
@@ -86,6 +86,15 @@ export function FixturesTab(): React.ReactElement {
               <Button onClick={() => generate.mutate("round_robin")} disabled={generate.isPending}>
                 <Wand2 aria-hidden="true" className="h-4 w-4" />
                 {t("Round-robin")}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => generate.mutate("by_category")}
+                disabled={generate.isPending}
+                title={t("Round-robin within each category — teams only play their own group")}
+              >
+                <Layers aria-hidden="true" className="h-4 w-4" />
+                {t("By category")}
               </Button>
               <Button
                 variant="outline"

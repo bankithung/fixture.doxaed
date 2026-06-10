@@ -8,7 +8,12 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from apps.teams.models import Institution, RegistrationLink, Team
+from apps.teams.models import (
+    Institution,
+    InstitutionStatus,
+    RegistrationLink,
+    Team,
+)
 from apps.teams.serializers import (
     InstitutionInSerializer,
     SchoolRegistrationSerializer,
@@ -279,6 +284,11 @@ class InstitutionDetailView(GenericAPIView):
         for field in ("name", "kind", "region", "short_name", "contact_name",
                       "contact_email", "contact_phone", "status"):
             if field in request.data:
+                if (
+                    field == "status"
+                    and request.data[field] not in InstitutionStatus.values
+                ):
+                    raise DRFValidationError({"detail": "invalid_status"})
                 setattr(inst, field, request.data[field])
                 changed.append(field)
         if changed:

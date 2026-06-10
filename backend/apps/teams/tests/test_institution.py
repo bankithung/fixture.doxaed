@@ -376,3 +376,31 @@ def test_org_registration_form_creates_institution():
     # replay is idempotent — no duplicate
     map_response(resp)
     assert Institution.objects.filter(tournament=t, name="Riverside College").count() == 1
+
+
+def test_patch_institution_status_review_and_validation():
+    from rest_framework.test import APIClient
+
+    admin = _admin()
+    t = create_tournament(user=admin, name="Cup")
+    register_school(tournament=t, school_name="Mount Hermon", teams=_teams("A"))
+    inst = Institution.objects.get(tournament=t, name="Mount Hermon")
+
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    url = f"/api/tournaments/{t.id}/institutions/{inst.id}/"
+
+    # Reject (review action) -> persists.
+    r = c.patch(url, {"status": "rejected"}, format="json")
+    assert r.status_code == 200, r.content
+    inst.refresh_from_db()
+    assert inst.status == "rejected"
+
+    # Invalid status is refused.
+    assert c.patch(url, {"status": "bogus"}, format="json").status_code == 400
+
+    # Outsider cannot review.
+    outsider = _admin("z@inst.test")
+    c2 = APIClient()
+    c2.force_authenticate(user=outsider)
+    assert c2.patch(url, {"status": "registered"}, format="json").status_code == 404

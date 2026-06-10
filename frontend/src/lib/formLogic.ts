@@ -12,7 +12,13 @@
  *   - "First goto-bearing single_choice/dropdown field in a section wins."
  *   - Display-only types (`section_text`) never produce an answer.
  */
-import type { FormSchema, Section, Visibility } from "@/features/forms/types";
+import type {
+  Field,
+  FormSchema,
+  Option,
+  Section,
+  Visibility,
+} from "@/features/forms/types";
 
 /** Display-only field types — mirrors backend `DISPLAY_TYPES`. */
 const DISPLAY_TYPES = new Set<string>(["section_text"]);
@@ -85,6 +91,52 @@ export function isVisible(
 }
 
 /**
+ * Is `option` of choice field `parent` currently chosen? single_choice/dropdown
+ * match by equality; multi_choice matches membership. Mirrors the backend
+ * `_option_selected`. Drives nested-option reveals.
+ */
+export function optionSelected(
+  parent: Field,
+  optionValue: string,
+  answers: Record<string, unknown>,
+): boolean {
+  const a = answers[parent.key];
+  if (Array.isArray(a)) return a.map(String).includes(String(optionValue));
+  return a != null && String(a) === String(optionValue);
+}
+
+/**
+ * Flatten a field list into the fields that are currently ACTIVE: each field's
+ * own `visibility` must pass, and a choice option's nested `fields` are included
+ * only while that option is selected (recursive). Additive — a form with no
+ * nested options yields exactly `fields.filter(visible)`.
+ */
+export function activeFieldsIn(
+  fields: Field[],
+  answers: Record<string, unknown>,
+): Field[] {
+  const out: Field[] = [];
+  for (const f of fields) {
+    if (!isVisible(f.visibility, answers)) continue;
+    out.push(f);
+    for (const o of (f.options ?? []) as Option[]) {
+      if (o.fields?.length && optionSelected(f, o.value, answers)) {
+        out.push(...activeFieldsIn(o.fields, answers));
+      }
+    }
+  }
+  return out;
+}
+
+/** Active fields within a section (visibility + nested-option reveals), flat. */
+export function sectionActiveFields(
+  section: Section,
+  answers: Record<string, unknown>,
+): Field[] {
+  return activeFieldsIn(section.fields, answers);
+}
+
+/**
  * Resolve a section's explicit next target: the first goto-bearing
  * single_choice/dropdown field whose chosen option has a `goto`, else
  * `section.next`. Returns undefined when neither applies (the caller then
@@ -138,9 +190,9 @@ export function reachableFieldKeys(
 ): string[] {
   const keys: string[] = [];
   for (const sec of reachableSections(schema, answers)) {
-    for (const f of sec.fields) {
+    for (const f of activeFieldsIn(sec.fields, answers)) {
       if (DISPLAY_TYPES.has(f.type)) continue;
-      if (isVisible(f.visibility, answers)) keys.push(f.key);
+      keys.push(f.key);
     }
   }
   return keys;
@@ -156,10 +208,8 @@ export function validateRequired(
 ): Record<string, string> {
   const errs: Record<string, string> = {};
   for (const sec of reachableSections(schema, answers)) {
-    for (const f of sec.fields) {
-      if (DISPLAY_TYPES.has(f.type) || !isVisible(f.visibility, answers)) {
-        continue;
-      }
+    for (const f of activeFieldsIn(sec.fields, answers)) {
+      if (DISPLAY_TYPES.has(f.type)) continue;
       if (f.required && isEmpty(answers[f.key])) errs[f.key] = "required";
     }
   }

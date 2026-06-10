@@ -20,6 +20,7 @@ from apps.matches.serializers import (
     MatchSerializer,
     RecordEventSerializer,
     RecordScoreSerializer,
+    RecordSetScoreSerializer,
     SetLineupSerializer,
     TransitionSerializer,
 )
@@ -83,6 +84,15 @@ def _can_score(user, match: Match) -> bool:
     ).exists()
 
 
+def _sport_override(match: Match) -> dict | None:
+    """Per-tournament scoring override for this match's sport, if the organizer
+    set one in the sports config (else None → engine defaults)."""
+    for s in match.tournament.sports or []:
+        if s.get("key") == match.sport:
+            return s.get("scoring")
+    return None
+
+
 class TournamentMatchListView(GenericAPIView):
     permission_classes = [IsAuthenticated]
 
@@ -142,6 +152,34 @@ class RecordScoreView(GenericAPIView):
         match = _match_or_404(request.user, match_id)
         if not _can_score(request.user, match):
             raise PermissionDenied("not_allowed_to_score")
+
+        # Set/game-based sports (Table Tennis, Sepak Takraw) submit per-set scores.
+        if "set_scores" in request.data:
+            from apps.matches.services.set_scoring import (
+                record_set_result,
+                scoring_rules,
+            )
+
+            rules = scoring_rules(match.sport, _sport_override(match))
+            if rules is None:
+                raise DRFValidationError({"detail": "not_a_set_based_sport"})
+            ser = RecordSetScoreSerializer(data=request.data)
+            ser.is_valid(raise_exception=True)
+            try:
+                record_set_result(
+                    match=match,
+                    set_scores=ser.validated_data["set_scores"],
+                    rules=rules,
+                    by=request.user,
+                    event_id=ser.validated_data.get("event_id"),
+                    request=request,
+                )
+            except ValidationError as e:
+                raise DRFValidationError(
+                    {"detail": getattr(e, "message", "invalid_set_scores")}
+                )
+            match.refresh_from_db()
+            return Response(MatchSerializer(match).data)
 
         ser = RecordScoreSerializer(data=request.data)
         ser.is_valid(raise_exception=True)

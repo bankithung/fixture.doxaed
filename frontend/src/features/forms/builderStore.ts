@@ -48,6 +48,28 @@ function defaultSchema(): FormSchema {
   };
 }
 
+/** Every field key in the schema (including nested group children). */
+function collectKeys(schema: FormSchema): Set<string> {
+  const keys = new Set<string>();
+  const walk = (fields: Field[]): void => {
+    for (const f of fields) {
+      keys.add(f.key);
+      if (f.fields) walk(f.fields);
+    }
+  };
+  schema.sections.forEach((s) => walk(s.fields));
+  return keys;
+}
+
+/** A stable, unique variable key from a desired base (suffix on collision). */
+function uniqueKey(schema: FormSchema, base: string): string {
+  const keys = collectKeys(schema);
+  if (!keys.has(base)) return base;
+  let n = 2;
+  while (keys.has(`${base}_${n}`)) n += 1;
+  return `${base}_${n}`;
+}
+
 interface BuilderState {
   schema: FormSchema;
   /** Currently-selected field (drives the inspector). */
@@ -58,7 +80,11 @@ interface BuilderState {
   addSection: () => void;
   removeSection: (key: string) => void;
   updateSection: (key: string, patch: Partial<Section>) => void;
-  addField: (sectionKey: string, type: FieldType) => void;
+  addField: (
+    sectionKey: string,
+    type: FieldType,
+    init?: Partial<Field>,
+  ) => void;
   updateField: (
     sectionKey: string,
     fieldKey: string,
@@ -124,9 +150,16 @@ export const useBuilderStore = create<BuilderState>((set) => ({
     set((st) => ({
       schema: mapSection(st.schema, key, (sec) => ({ ...sec, ...patch })),
     })),
-  addField: (sectionKey, type) =>
+  addField: (sectionKey, type, init) =>
     set((st) => {
       const field = newField(type);
+      if (init) {
+        const { key: initKey, ...rest } = init;
+        Object.assign(field, rest);
+        // A preset can request a meaningful variable key (e.g. "school_name");
+        // keep it stable + unique so it reads as a real variable.
+        if (initKey) field.key = uniqueKey(st.schema, initKey);
+      }
       return {
         schema: mapSection(st.schema, sectionKey, (sec) => ({
           ...sec,

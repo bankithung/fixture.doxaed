@@ -64,6 +64,49 @@ def _next_section(section: dict, answers: dict, sections: list[dict]) -> str | N
     return None
 
 
+def _option_selected(fld: dict, option: dict, answers: dict) -> bool:
+    """Is `option` of choice field `fld` currently chosen? Mirrors the frontend
+    `optionSelected`: single_choice/dropdown by equality, multi_choice by
+    membership. Drives nested-option descent."""
+    a = answers.get(fld["key"])
+    val = option.get("value")
+    if isinstance(a, list):
+        return any(str(x) == str(val) for x in a)
+    return a is not None and str(a) == str(val)
+
+
+def _validate_fields(
+    fields: list[dict], answers: dict, clean: dict, errors: dict
+) -> None:
+    """Validate a field list, descending into the nested follow-up fields of any
+    SELECTED option (recursive). Unselected/hidden branches are skipped, so their
+    answers are dropped — branching can't be bypassed by posting hidden values."""
+    for fld in fields:
+        ftype = fld["type"]
+        if ftype in DISPLAY_TYPES:
+            continue
+        if not _visible(fld.get("visibility"), answers):
+            continue
+        key = fld["key"]
+        raw = answers.get(key, None)
+        empty = raw in (None, "", [], {})
+        if empty:
+            if fld.get("required"):
+                errors[key] = "required"
+            continue
+        if ftype == "group":
+            clean[key] = raw  # group deep-validation: follow-up; store as-is for v1
+            continue
+        try:
+            clean[key] = validate_value(fld, raw)
+        except FieldError as e:
+            errors[key] = str(e)
+            continue
+        for o in fld.get("options", []) or []:
+            if o.get("fields") and _option_selected(fld, o, answers):
+                _validate_fields(o["fields"], answers, clean, errors)
+
+
 def validate_answers(schema: dict, answers: dict) -> dict:
     """Return a cleaned answers dict (only reached+visible fields, coerced).
     Raise AnswerError(errors) on any validation failure."""
@@ -88,26 +131,7 @@ def validate_answers(schema: dict, answers: dict) -> dict:
             break
 
         if _visible(section.get("visibility"), answers):
-            for fld in section.get("fields", []):
-                ftype = fld["type"]
-                if ftype in DISPLAY_TYPES:
-                    continue
-                if not _visible(fld.get("visibility"), answers):
-                    continue
-                key = fld["key"]
-                raw = answers.get(key, None)
-                empty = raw in (None, "", [], {})
-                if empty:
-                    if fld.get("required"):
-                        errors[key] = "required"
-                    continue
-                if ftype == "group":
-                    clean[key] = raw  # group deep-validation: follow-up; store as-is for v1
-                    continue
-                try:
-                    clean[key] = validate_value(fld, raw)
-                except FieldError as e:
-                    errors[key] = str(e)
+            _validate_fields(section.get("fields", []), answers, clean, errors)
 
         current = _next_section(section, answers, sections)
 
@@ -117,11 +141,18 @@ def validate_answers(schema: dict, answers: dict) -> dict:
 
 
 def promote(schema: dict, clean: dict) -> dict:
-    """Extract role->value (email/phone/name/title) for the FormResponse columns."""
+    """Extract role->value (email/phone/name/title) for the FormResponse columns.
+    Recurses into nested option fields so a promoted role can live anywhere."""
     out: dict[str, str] = {}
-    for sec in schema.get("sections", []):
-        for fld in sec.get("fields", []):
+
+    def walk(fields: list[dict]) -> None:
+        for fld in fields:
             role = fld.get("role")
             if role and fld["key"] in clean:
                 out[role] = str(clean[fld["key"]])
+            for o in fld.get("options", []) or []:
+                walk(o.get("fields", []) or [])
+
+    for sec in schema.get("sections", []):
+        walk(sec.get("fields", []))
     return out

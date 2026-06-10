@@ -31,6 +31,7 @@ class TournamentSerializer(serializers.ModelSerializer):
             "status",
             "organization_slug",
             "sport_code",
+            "sports",
             "time_zone",
             "created_at",
         ]

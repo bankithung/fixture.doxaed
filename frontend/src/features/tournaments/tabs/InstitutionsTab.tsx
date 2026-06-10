@@ -1,12 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Archive,
   Building2,
   Check,
+  Download,
   ExternalLink,
   Eye,
   Link2,
+  MoreVertical,
   Pencil,
   Plus,
   Search,
@@ -193,14 +197,29 @@ export function InstitutionsTab(): React.ReactElement {
                 )}
               </div>
             </div>
-            {isOpen ? (
-              <a href={directoryUrl} target="_blank" rel="noreferrer"
-                className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-primary hover:underline">
-                <Eye aria-hidden="true" className="h-3.5 w-3.5" />
-                {t("View public directory")}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-medium">
+              {isOpen ? (
+                <a href={directoryUrl} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-primary hover:underline">
+                  <Eye aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t("View public directory")}
+                  <ExternalLink aria-hidden="true" className="h-3 w-3" />
+                </a>
+              ) : null}
+              <button type="button"
+                onClick={() => navigate(routes.tournamentFormResponses(id, orgForm.id))}
+                className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground hover:underline">
+                {t("Review raw submissions")}
                 <ExternalLink aria-hidden="true" className="h-3 w-3" />
-              </a>
-            ) : null}
+              </button>
+              {orgForm.response_count > 0 ? (
+                <a href={formsApi.csvUrl(orgForm.id)} download
+                  className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground hover:underline">
+                  <Download aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t("Export CSV")}
+                </a>
+              ) : null}
+            </div>
           </div>
         )
       ) : null}
@@ -258,7 +277,12 @@ export function InstitutionsTab(): React.ReactElement {
             {t("No institutions match your filters.")}
           </p>
         ) : (
-          <InstitutionTable items={filteredItems} fields={fieldDefs} />
+          <InstitutionTable
+            items={filteredItems}
+            fields={fieldDefs}
+            tournamentId={id}
+            canManage={canManage}
+          />
         )}
       </div>
 
@@ -289,13 +313,158 @@ function StatusPill({ status }: { status: string }): React.ReactElement {
   );
 }
 
+const REVIEW_ACTIONS: { status: string; label: string; Icon: typeof Check }[] = [
+  { status: "registered", label: "Approve", Icon: Check },
+  { status: "rejected", label: "Reject", Icon: X },
+  { status: "withdrawn", label: "Withdraw", Icon: Archive },
+];
+
+/**
+ * Per-institution review menu (three-dots). Sets the institution status
+ * (Approve / Reject / Withdraw) — the institution-stage equivalent of the
+ * generic form Responses inbox. Portaled to body so the table's overflow can't
+ * clip it; optimistic so the pill flips instantly.
+ */
+function ReviewMenu({
+  tournamentId,
+  inst,
+}: {
+  tournamentId: string;
+  inst: Institution;
+}): React.ReactElement {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const wrapRef = useRef<HTMLSpanElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const openMenu = (): void => {
+    const r = wrapRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent): void => {
+      const tgt = e.target as Node;
+      if (!wrapRef.current?.contains(tgt) && !menuRef.current?.contains(tgt)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const close = (): void => setOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open]);
+
+  const review = useMutation({
+    mutationFn: (status: string) =>
+      institutionsApi.update(tournamentId, inst.id, { status }),
+    onMutate: async (status: string) => {
+      await qc.cancelQueries({ queryKey: ["t-institutions", tournamentId] });
+      const prev = qc.getQueryData<Institution[]>(["t-institutions", tournamentId]);
+      qc.setQueryData<Institution[]>(["t-institutions", tournamentId], (cur) =>
+        (cur ?? []).map((r) => (r.id === inst.id ? { ...r, status } : r)),
+      );
+      return { prev };
+    },
+    onError: (e, _status, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["t-institutions", tournamentId], ctx.prev);
+      toast.push({
+        kind: "error",
+        title: t("Could not update status"),
+        description: e instanceof ApiError ? (e.payload.detail ?? "") : "",
+      });
+    },
+    onSuccess: () => toast.push({ kind: "success", title: t("Status updated") }),
+    onSettled: () =>
+      qc.invalidateQueries({ queryKey: ["t-institutions", tournamentId] }),
+  });
+
+  return (
+    <span ref={wrapRef} className="inline-block">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={t(`Review ${inst.name}`)}
+        disabled={review.isPending}
+        onClick={() => (open ? setOpen(false) : openMenu())}
+      >
+        <MoreVertical aria-hidden="true" className="h-4 w-4" />
+      </Button>
+      {open && pos
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              style={{ position: "fixed", top: pos.top, right: pos.right }}
+              className="z-50 w-40 rounded-lg border border-border bg-popover p-1 text-sm text-popover-foreground shadow-md"
+            >
+              {REVIEW_ACTIONS.map(({ status, label, Icon }) => {
+                const active = inst.status === status;
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    role="menuitem"
+                    disabled={active}
+                    onClick={() => {
+                      setOpen(false);
+                      review.mutate(status);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
+                      active && "bg-accent font-medium text-foreground",
+                    )}
+                  >
+                    <Icon aria-hidden="true" className="h-3.5 w-3.5" />
+                    {t(label)}
+                    {active ? (
+                      <Check aria-hidden="true" className="ml-auto h-3.5 w-3.5" />
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>,
+            document.body,
+          )
+        : null}
+    </span>
+  );
+}
+
 /** Header cell — sticky to the top of the scroll container. */
 const TH =
   "sticky top-0 z-20 border-b border-border bg-muted px-3 py-2.5 text-left align-bottom font-medium";
 /** Body cell — bottom border + row-hover tint (works on sticky cells too). */
 const TD = "border-b border-border px-3 py-2.5 align-top group-hover:bg-accent/40";
 
-function InstitutionTable({ items, fields }: { items: Institution[]; fields: Field[] }): React.ReactElement {
+function InstitutionTable({
+  items,
+  fields,
+  tournamentId,
+  canManage,
+}: {
+  items: Institution[];
+  fields: Field[];
+  tournamentId: string;
+  canManage: boolean;
+}): React.ReactElement {
   return (
     <div className="max-h-[34rem] overflow-auto rounded-xl border border-border bg-card shadow-sm">
       <table className="w-full border-separate border-spacing-0 text-sm">
@@ -312,6 +481,11 @@ function InstitutionTable({ items, fields }: { items: Institution[]; fields: Fie
             ))}
             <th className={cn(TH, "text-right")}>{t("Teams")}</th>
             <th className={TH}>{t("Status")}</th>
+            {canManage ? (
+              <th className={cn(TH, "text-right")}>
+                <span className="sr-only">{t("Actions")}</span>
+              </th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
@@ -337,6 +511,11 @@ function InstitutionTable({ items, fields }: { items: Institution[]; fields: Fie
               <td className={TD}>
                 <StatusPill status={i.status} />
               </td>
+              {canManage ? (
+                <td className={cn(TD, "text-right")}>
+                  <ReviewMenu tournamentId={tournamentId} inst={i} />
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>

@@ -114,3 +114,53 @@ def test_generic_is_noop_mapping():
                                        title="Something")
     map_response(resp)
     assert Team.objects.filter(tournament=t).count() == 0
+
+
+def test_team_registration_multi_category_creates_teams_with_players():
+    """Auto-generated team form: one institution enters MULTIPLE teams per
+    category, each with its own nested player roster."""
+    from apps.teams.services.registration import get_or_create_institution
+
+    t = create_tournament(user=_verified("a@test.local"), name="Cup")
+    inst = get_or_create_institution(tournament=t, name="Mount Hermon")
+    f = Form.objects.create(
+        organization=t.organization, tournament=t, slug="multi", title="Teams",
+        purpose="team_registration",
+        settings={"bindings": {
+            "institution_id": "institution_id",
+            "category_groups": [
+                {"category": "u14", "group": "teams_u14", "team_name": "tn_u14",
+                 "players_group": "players_u14", "player_name": "pn_u14"},
+            ],
+        }},
+        schema={"version": 1, "sections": [{"key": "s", "title": "S", "fields": [
+            {"key": "teams_u14", "type": "group", "label": "Team", "repeatable": True,
+             "fields": [
+                 {"key": "tn_u14", "type": "short_text", "label": "Team name"},
+                 {"key": "players_u14", "type": "group", "label": "Player",
+                  "repeatable": True, "fields": [
+                      {"key": "pn_u14", "type": "short_text", "label": "Player name"}]},
+             ]}]}]},
+    )
+    resp = FormResponse.objects.create(
+        form=f, organization=t.organization, tournament=t, title="Mount Hermon",
+        answers={
+            "institution_id": str(inst.id),
+            "teams_u14": [
+                {"tn_u14": "MH A",
+                 "players_u14": [{"pn_u14": "Asha"}, {"pn_u14": "Beni"}]},
+                {"tn_u14": "MH B", "players_u14": [{"pn_u14": "Cara"}]},
+            ],
+        },
+    )
+    map_response(resp)
+
+    teams = Team.objects.filter(tournament=t).order_by("name")
+    assert [tm.name for tm in teams] == ["MH A", "MH B"]
+    assert all(tm.pool == "u14" for tm in teams)
+    mh_a = teams.get(name="MH A")
+    assert sorted(
+        p.person.full_name
+        for p in Player.objects.filter(team=mh_a).select_related("person")
+    ) == ["Asha", "Beni"]
+    assert Player.objects.filter(team=teams.get(name="MH B")).count() == 1

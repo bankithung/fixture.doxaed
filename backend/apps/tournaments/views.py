@@ -15,6 +15,7 @@ from apps.tournaments.models import (
     TournamentMembership,
     TournamentMembershipRole,
     TournamentMembershipStatus,
+    TournamentStatus,
 )
 from apps.tournaments.permissions import can_manage_tournament
 from apps.tournaments.scope import accessible_tournaments
@@ -79,6 +80,79 @@ def _get_tournament_or_404(user, tournament_id) -> Tournament:
     return tournament
 
 
+class TournamentDetailView(GenericAPIView):
+    """`DELETE /api/tournaments/{id}/` — soft-delete a tournament (e.g. created by
+    mistake). `PATCH {"active": bool}` — deactivate (archive) or reactivate it.
+
+    Manager-only (admin/co-organizer or org admin). 404 on no access (no leak).
+    Delete is blocked while the tournament is `live` (a match in progress)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, tournament_id):
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        if not can_manage_tournament(request.user, tournament):
+            raise PermissionDenied("not_tournament_manager")
+        if tournament.status == TournamentStatus.LIVE:
+            return Response({"detail": "tournament_live"}, status=409)
+
+        tournament.deleted_at = timezone.now()
+        tournament.save(update_fields=["deleted_at", "updated_at"])
+        from apps.audit.models import ActorRole
+        from apps.audit.services import emit_audit
+
+        emit_audit(
+            actor_user=request.user,
+            actor_role=ActorRole.ADMIN,
+            event_type="tournament_deleted",
+            target_type="tournament",
+            target_id=tournament.id,
+            organization_id=tournament.organization_id,
+            payload_before={"status": tournament.status, "name": tournament.name},
+            request=request,
+        )
+        return Response(status=204)
+
+    def patch(self, request, tournament_id):
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        if not can_manage_tournament(request.user, tournament):
+            raise PermissionDenied("not_tournament_manager")
+        active = request.data.get("active")
+        if not isinstance(active, bool):
+            raise DRFValidationError({"detail": "active_required"})
+
+        before = {"status": tournament.status}
+        meta = dict(tournament.stage_meta or {})
+        if active is False and tournament.status != TournamentStatus.ARCHIVED:
+            # Deactivate: remember where we were so reactivation restores it.
+            meta["status_before_archive"] = tournament.status
+            tournament.stage_meta = meta
+            tournament.status = TournamentStatus.ARCHIVED
+            tournament.save(update_fields=["status", "stage_meta", "updated_at"])
+        elif active is True and tournament.status == TournamentStatus.ARCHIVED:
+            restored = meta.pop("status_before_archive", None) or TournamentStatus.DRAFT
+            tournament.stage_meta = meta
+            tournament.status = restored
+            tournament.save(update_fields=["status", "stage_meta", "updated_at"])
+
+        if tournament.status != before["status"]:
+            from apps.audit.models import ActorRole
+            from apps.audit.services import emit_audit
+
+            emit_audit(
+                actor_user=request.user,
+                actor_role=ActorRole.ADMIN,
+                event_type="tournament_active_changed",
+                target_type="tournament",
+                target_id=tournament.id,
+                organization_id=tournament.organization_id,
+                payload_before=before,
+                payload_after={"status": tournament.status},
+                request=request,
+            )
+        return Response(TournamentSerializer(tournament).data)
+
+
 class TournamentInvitationCreateView(GenericAPIView):
     """`POST /api/tournaments/{id}/invitations/` — invite anyone by email to a
     tournament with a tournament-scoped role. The token is emailed, never returned.
@@ -121,6 +195,9 @@ def _settings_payload(tournament, user) -> dict:
         "rules_frozen_at": tournament.rules_frozen_at,
         "can_edit": can_edit_rules(tournament)
         and can_manage_tournament(user, tournament),
+        # Management rights independent of the rules-freeze gate — drives the
+        # archive/delete controls (you can archive/delete a frozen tournament).
+        "can_manage": can_manage_tournament(user, tournament),
     }
 
 
@@ -157,6 +234,95 @@ class TournamentSettingsView(GenericAPIView):
         except ValueError as exc:
             raise DRFValidationError({"detail": str(exc)})
         return Response(_settings_payload(tournament, request.user))
+
+
+def _sport_key(name: str) -> str:
+    """Stable slug key for a sport name (catalog code or custom)."""
+    s = "".join(c if c.isalnum() else "_" for c in (name or "").lower())
+    while "__" in s:
+        s = s.replace("__", "_")
+    return s.strip("_")[:40]
+
+
+class TournamentSportsView(GenericAPIView):
+    """`GET/PUT /api/tournaments/{id}/sports/` — the sports this tournament runs.
+
+    GET: any tournament member (access-scoped → 404 on no access). PUT:
+    manager-only; replaces the list. Items are normalized to {key, name, custom}
+    (blanks dropped, keys de-duplicated). Audited."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id):
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        return Response({"sports": tournament.sports or []})
+
+    def put(self, request, tournament_id):
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        if not can_manage_tournament(request.user, tournament):
+            raise PermissionDenied("not_tournament_manager")
+        raw = request.data.get("sports")
+        if not isinstance(raw, list):
+            raise DRFValidationError({"detail": "sports_must_be_list"})
+
+        cleaned: list[dict] = []
+        seen: set[str] = set()
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            key = _sport_key(str(item.get("key") or "")) or _sport_key(name)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            # Per-sport categories (each with optional subcategories) drive the
+            # generated forms + fixture buckets. Tolerates legacy string entries.
+            cats: list[dict] = []
+            seen_cat: set[str] = set()
+            for c in item.get("categories") or []:
+                if isinstance(c, str):
+                    cname, subs_raw = c.strip(), []
+                elif isinstance(c, dict):
+                    cname = str(c.get("name") or "").strip()
+                    subs_raw = c.get("subcategories") or []
+                else:
+                    continue
+                if not cname or cname in seen_cat:
+                    continue
+                seen_cat.add(cname)
+                subs: list[str] = []
+                for sub in subs_raw if isinstance(subs_raw, list) else []:
+                    sname = str(sub).strip()
+                    if sname and sname not in subs:
+                        subs.append(sname[:80])
+                cats.append({"name": cname[:80], "subcategories": subs})
+            cleaned.append({
+                "key": key,
+                "name": name[:80],
+                "custom": bool(item.get("custom")),
+                "categories": cats,
+            })
+
+        before = {"sports": tournament.sports or []}
+        tournament.sports = cleaned
+        tournament.save(update_fields=["sports", "updated_at"])
+        from apps.audit.models import ActorRole
+        from apps.audit.services import emit_audit
+
+        emit_audit(
+            actor_user=request.user,
+            actor_role=ActorRole.ADMIN,
+            event_type="tournament_sports_updated",
+            target_type="tournament",
+            target_id=tournament.id,
+            organization_id=tournament.organization_id,
+            payload_before=before,
+            payload_after={"sports": cleaned},
+            request=request,
+        )
+        return Response({"sports": cleaned})
 
 
 class ConstraintTypesView(GenericAPIView):

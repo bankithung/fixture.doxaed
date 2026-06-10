@@ -112,6 +112,11 @@ class Tournament(models.Model):
     # `rules` is editable in draft/published, frozen at registration_open (invariant 7).
     rules = models.JSONField(default=dict, blank=True)
     constraints = models.JSONField(default=list, blank=True)
+    # Multi-sport: the sports this tournament runs, chosen at SETUP. A list of
+    # {key, name, custom} (key = catalog code or a slug for custom sports). The
+    # legacy single `sport` FK above is kept for back-compat; per-sport config
+    # (categories/formats/constraints) layers on here later.
+    sports = models.JSONField(default=list, blank=True)
     rules_frozen_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

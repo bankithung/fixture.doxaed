@@ -17,11 +17,12 @@ import logging
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.audit.models import ActorRole, AuditEvent
 from apps.audit.services import emit_audit
-from apps.forms.constants import FormStatus
+from apps.forms.constants import FormPurpose, FormStatus, STAGE_TO_PURPOSE
 from apps.forms.models import Form
 from apps.forms.services.forms import close_form, is_open, publish_form
 from apps.matches.models import Match
@@ -145,29 +146,73 @@ def _counts_for(t: Tournament) -> dict[str, int]:
 
 
 # --------------------------------------------------------------------------- forms
-def _stage_form(t: Tournament, stage: str) -> Form | None:
+def _stage_forms(t: Tournament, stage: str):
+    """Every form that belongs to a setup ``stage``: those explicitly bound via
+    ``Form.stage``, PLUS legacy forms with a blank stage whose ``purpose`` maps
+    to this stage (created before stage-binding existed, so they'd otherwise slip
+    past auto-close). Ordered oldest-first."""
+    cond = Q(stage=stage)
+    purpose = STAGE_TO_PURPOSE.get(stage)
+    if purpose:
+        cond |= Q(stage="", purpose=purpose)
     return (
-        Form.objects.filter(tournament_id=t.id, stage=stage, deleted_at__isnull=True)
+        Form.objects.filter(tournament_id=t.id, deleted_at__isnull=True)
+        .filter(cond)
         .order_by("created_at")
-        .first()
     )
 
 
-def _close_stage_form(t: Tournament, stage: str, *, by=None, request=None) -> str | None:
-    form = _stage_form(t, stage)
-    if form is not None and form.status == FormStatus.OPEN:
-        close_form(form, user=by, request=request)
-        return str(form.id)
-    return str(form.id) if form is not None else None
+def _stage_form(t: Tournament, stage: str) -> Form | None:
+    """First form bound to a stage (single-form previews/warnings)."""
+    return _stage_forms(t, stage).first()
 
 
-def _reopen_stage_form(t: Tournament, stage: str, *, by=None, request=None) -> str | None:
-    form = _stage_form(t, stage)
-    if form is None:
-        return None
-    if form.status == FormStatus.CLOSED and form.schema.get("sections"):
-        publish_form(form, user=by, request=request)
-    return str(form.id)
+def _close_stage_form(t: Tournament, stage: str, *, by=None, request=None) -> list[str]:
+    """Close EVERY open form bound to the stage being left — not just the first —
+    so a stage with multiple registration forms (or a legacy blank-stage one) all
+    stop accepting submissions on advance."""
+    closed: list[str] = []
+    for form in _stage_forms(t, stage):
+        if form.status == FormStatus.OPEN:
+            close_form(form, user=by, request=request)
+            closed.append(str(form.id))
+    return closed
+
+
+def _reopen_stage_form(t: Tournament, stage: str, *, by=None, request=None) -> list[str]:
+    """Reopen every closed, non-empty form bound to the stage being reopened."""
+    reopened: list[str] = []
+    for form in _stage_forms(t, stage):
+        if form.status == FormStatus.CLOSED and form.schema.get("sections"):
+            publish_form(form, user=by, request=request)
+            reopened.append(str(form.id))
+    return reopened
+
+
+def _ensure_team_form(tournament_id, user_id) -> None:
+    """On entering ``team_registration``, auto-create a DRAFT team-registration
+    form (derived from the org form, with a live institution selector) when none
+    exists yet — so the admin finds a ready draft to review and publish. Runs
+    post-commit; idempotent (a no-op when a team form already exists, so going
+    back and re-advancing never duplicates)."""
+    from apps.forms.services.generation import generate_team_form_template
+
+    exists = (
+        Form.objects.filter(tournament_id=tournament_id, deleted_at__isnull=True)
+        .filter(Q(stage=G.TEAM_REGISTRATION) | Q(purpose=FormPurpose.TEAM_REGISTRATION))
+        .exists()
+    )
+    if exists:
+        return
+    tournament = Tournament.objects.filter(id=tournament_id).first()
+    if tournament is None:
+        return
+    user = None
+    if user_id is not None:
+        from django.contrib.auth import get_user_model
+
+        user = get_user_model().objects.filter(id=user_id).first()
+    generate_team_form_template(tournament=tournament, created_by=user)
 
 
 # --------------------------------------------------------------------------- previews
@@ -184,13 +229,14 @@ def preview_advance(t: Tournament, to_stage: str) -> dict:
     if to_stage == G.READY and counts["matches"] == 0:
         blockers.append("no_fixtures_generated")
 
-    # Soft consequences (require ack).
-    cur_form = _stage_form(t, frm)
-    if cur_form is not None and is_open(cur_form):
-        warnings.append(
-            {"code": "form_will_close", "form_id": str(cur_form.id),
-             "form_title": cur_form.title}
-        )
+    # Soft consequences (require ack). Warn for EVERY open form that will close
+    # when leaving the current stage — there can be more than one.
+    for cur_form in _stage_forms(t, frm):
+        if is_open(cur_form):
+            warnings.append(
+                {"code": "form_will_close", "form_id": str(cur_form.id),
+                 "form_title": cur_form.title}
+            )
     new_status = _lifecycle_for_stage(to_stage, t.status)
     if new_status is not None:
         warnings.append(
@@ -198,6 +244,14 @@ def preview_advance(t: Tournament, to_stage: str) -> dict:
         )
     if to_stage == G.TEAM_REGISTRATION and new_status == S.REGISTRATION_OPEN:
         warnings.append({"code": "rules_will_freeze"})
+    # Entering team registration auto-creates a team-form draft (WS-C) when none
+    # exists — surface it so the advance isn't a surprise.
+    if to_stage == G.TEAM_REGISTRATION and not _stage_forms(t, G.TEAM_REGISTRATION).exists():
+        warnings.append({"code": "team_form_will_be_created"})
+    # Nudge the admin to pick sports before opening institution registration —
+    # the sports drive the generated forms + fixtures.
+    if to_stage == G.ORG_REGISTRATION and not (t.sports or []):
+        warnings.append({"code": "no_sports_selected"})
 
     return {
         "from_stage": frm,
@@ -377,6 +431,14 @@ def transition_tournament(
         if (not is_forward) and _has_artifacts(consequences):
             tid = locked.id
             transaction.on_commit(lambda: _flag_regeneration(tid))
+
+        # Entering team registration: auto-create the team-form DRAFT (derived
+        # from the org form) for the admin to review & publish. Post-commit +
+        # idempotent, so it never blocks the transition or duplicates.
+        if is_forward and to_stage == G.TEAM_REGISTRATION:
+            tid_team = locked.id
+            actor_id = getattr(by, "id", None)
+            transaction.on_commit(lambda: _ensure_team_form(tid_team, actor_id))
 
     return locked
 

@@ -58,6 +58,21 @@ def test_public_get_closed_form_returns_closed():
     assert g.status_code == 200 and g.json().get("closed") is True
 
 
+def test_closed_org_form_exposes_directory():
+    """A closed institution-registration form points the public at its directory
+    of registered institutions instead of being a dead end."""
+    t = create_tournament(user=_verified("b@test.local"), name="Cup")
+    f = Form.objects.create(
+        organization=t.organization, tournament=t, slug="orgreg", title="Org reg",
+        purpose="organization_registration", stage="org_registration",
+        schema=SCHEMA, status="closed",
+    )
+    body = APIClient().get(f"/api/forms/{f.id}/public/").json()
+    assert body["closed"] is True
+    assert body["has_directory"] is True
+    assert body["form_id"] == str(f.id)
+
+
 def test_public_submit_to_closed_form_400():
     t = create_tournament(user=_verified("a@test.local"), name="Cup")
     f = Form.objects.create(organization=t.organization, tournament=t, slug="r", title="Reg",

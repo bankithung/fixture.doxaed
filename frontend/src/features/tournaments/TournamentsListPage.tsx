@@ -154,7 +154,7 @@ export function TournamentsListPage(): React.ReactElement {
   );
 
   return (
-    <div className="flex w-full flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{t("Your tournaments")}</h1>

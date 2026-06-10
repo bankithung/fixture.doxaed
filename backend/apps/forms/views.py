@@ -20,7 +20,13 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
-from apps.forms.constants import CHOICE_TYPES, FIELD_TYPES, FormStatus, ResponseStatus
+from apps.forms.constants import (
+    CHOICE_TYPES,
+    FIELD_TYPES,
+    FormPurpose,
+    FormStatus,
+    ResponseStatus,
+)
 from apps.forms.models import Form, FormFileUpload, FormResponse
 from apps.forms.serializers import (
     FormCreateSerializer,
@@ -37,7 +43,11 @@ from apps.forms.services.forms import (
     publish_form,
     update_form,
 )
-from apps.forms.services.links import create_share_link, resolve_share_link
+from apps.forms.services.links import (
+    create_share_link,
+    mint_institution_links,
+    resolve_share_link,
+)
 from apps.forms.services.responses import submit_response
 from apps.forms.services.validation import AnswerError
 from apps.forms.throttling import PublicFormThrottle
@@ -215,8 +225,8 @@ def _resolve_data_sources(schema: dict, tournament) -> dict:
     return resolved
 
 
-def _public_payload(form):
-    return {
+def _public_payload(form, link=None):
+    data = {
         "form": {
             "id": str(form.id),
             "title": form.title,
@@ -226,6 +236,27 @@ def _public_payload(form):
         },
         "tournament_name": form.tournament.name,
     }
+    # A bound/prefilled per-institution Stage-2 link carries initial answers + the
+    # institution it's fixed to, so the renderer pre-fills contact details and
+    # locks the institution (no dropdown to pick the wrong school).
+    if link is not None and (link.prefill or link.bound_entity):
+        if link.prefill:
+            data["prefill"] = link.prefill
+        bound_iid = (link.bound_entity or {}).get("institution_id")
+        if bound_iid:
+            from apps.teams.models import Institution
+
+            inst = Institution.objects.filter(id=bound_iid).first()
+            # Lock the institution field by THIS form's binding key (forms vary).
+            iid_key = (form.settings or {}).get("bindings", {}).get(
+                "institution_id", "institution_id"
+            )
+            data["locked"] = [iid_key]
+            data["bound"] = {
+                "institution_id": bound_iid,
+                "label": inst.name if inst is not None else "",
+            }
+    return data
 
 
 class PublicFormView(GenericAPIView):
@@ -253,10 +284,18 @@ class PublicFormView(GenericAPIView):
         return form, None
 
     def get(self, request, form_id=None, token=None):
-        form, _link = self._resolve(form_id, token)
+        form, link = self._resolve(form_id, token)
         if not is_open(form):
-            return Response({"closed": True, "tournament_name": form.tournament.name})
-        return Response(_public_payload(form))
+            return Response({
+                "closed": True,
+                "tournament_name": form.tournament.name,
+                "form_id": str(form.id),
+                # Institution-registration forms back a public directory of
+                # registrants that stays viewable after the stage advances and
+                # the form closes — surface it so a closed link isn't a dead end.
+                "has_directory": form.purpose == FormPurpose.ORGANIZATION_REGISTRATION,
+            })
+        return Response(_public_payload(form, link))
 
     def post(self, request, form_id=None, token=None):
         form, link = self._resolve(form_id, token)
@@ -264,10 +303,21 @@ class PublicFormView(GenericAPIView):
             raise DRFValidationError({"detail": "registration_closed"})
         ser = PublicSubmitSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
+        answers = ser.validated_data["answers"]
+        # A bound link is authoritative for its institution: stamp it server-side
+        # so the submission always maps to the right school, whatever the client
+        # sent for the (locked) institution field.
+        if link is not None:
+            bound_iid = (link.bound_entity or {}).get("institution_id")
+            if bound_iid:
+                iid_key = (form.settings or {}).get("bindings", {}).get(
+                    "institution_id", "institution_id"
+                )
+                answers = {**answers, iid_key: bound_iid}
         try:
             resp = submit_response(
                 form=form,
-                answers=ser.validated_data["answers"],
+                answers=answers,
                 event_id=ser.validated_data.get("event_id"),
                 share_link=link,
                 upload_refs=ser.validated_data.get("upload_refs"),
@@ -417,6 +467,34 @@ class FormSendStage2View(GenericAPIView):
         return Response({"sent": len(out), "links": out}, status=201)
 
 
+class InstitutionLinksView(GenericAPIView):
+    """`POST /api/forms/{id}:institution-links/` — mint one bound, prefilled
+    share-link per registered institution for this (team-registration) form.
+
+    Each link locks the institution and prefills its Stage-1 identity/contact, so
+    a school just confirms and adds teams. Idempotent: institutions that already
+    have a link are returned without a fresh token (tokens are hashed at rest, so
+    only newly-minted ones expose a path)."""
+
+    permission_classes: ClassVar[list[type[BasePermission]]] = [IsAuthenticated]
+
+    def post(self, request, form_id):
+        form = _get_manageable_form(request.user, form_id)
+        minted = mint_institution_links(form=form, created_by=request.user)
+        links = [
+            {
+                "institution_id": m["institution_id"],
+                "name": m["name"],
+                "minted": m["minted"],
+                **({"path": f"/r/{m['token']}"} if m.get("token") else {}),
+            }
+            for m in minted
+        ]
+        new_count = sum(1 for m in minted if m["minted"])
+        return Response({"minted": new_count, "total": len(links), "links": links},
+                        status=201)
+
+
 def _norm_option(o):
     if isinstance(o, dict):
         return {
@@ -522,6 +600,23 @@ class GenerateTeamFormView(GenericAPIView):
 
         t = _get_manageable_tournament(request.user, tournament_id)
         form = generate_team_form_template(
+            tournament=t, created_by=request.user, request=request
+        )
+        return Response(FormSerializer(form).data, status=201)
+
+
+class GenerateInstitutionFormView(GenericAPIView):
+    """`POST /api/tournaments/{id}/forms/generate-institution/` — auto-generate a
+    draft institution-registration form from the tournament's chosen sports (with
+    per-sport category questions). Manager-only. Returns the new form to review."""
+
+    permission_classes: ClassVar[list[type[BasePermission]]] = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        from apps.forms.services.generation import generate_institution_form
+
+        t = _get_manageable_tournament(request.user, tournament_id)
+        form = generate_institution_form(
             tournament=t, created_by=request.user, request=request
         )
         return Response(FormSerializer(form).data, status=201)

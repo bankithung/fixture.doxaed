@@ -4,7 +4,11 @@ from django.urls import path
 
 from apps.disputes.views import TournamentDisputeView
 from apps.fixtures.views import GenerateFixturesView, ScheduleFixturesView
-from apps.forms.views import GenerateTeamFormView, TournamentFormsView
+from apps.forms.views import (
+    GenerateInstitutionFormView,
+    GenerateTeamFormView,
+    TournamentFormsView,
+)
 from apps.matches.views import TournamentMatchListView, TournamentStandingsView
 from apps.teams.views import (
     InstitutionDetailView,
@@ -15,11 +19,13 @@ from apps.teams.views import (
 from apps.tournaments.views import (
     ConstraintTypesView,
     TournamentAuditView,
+    TournamentDetailView,
     TournamentInvitationCreateView,
     TournamentListCreateView,
     TournamentMemberDetailView,
     TournamentMembersView,
     TournamentSettingsView,
+    TournamentSportsView,
     TournamentStagePreviewView,
     TournamentStageView,
 )
@@ -32,9 +38,19 @@ urlpatterns = [
         name="tournament-constraint-types",
     ),
     path(
+        "<uuid:tournament_id>/",
+        TournamentDetailView.as_view(),
+        name="tournament-detail",
+    ),
+    path(
         "<uuid:tournament_id>/settings/",
         TournamentSettingsView.as_view(),
         name="tournament-settings",
+    ),
+    path(
+        "<uuid:tournament_id>/sports/",
+        TournamentSportsView.as_view(),
+        name="tournament-sports",
     ),
     path(
         "<uuid:tournament_id>/invitations/",
@@ -75,6 +91,11 @@ urlpatterns = [
         "<uuid:tournament_id>/forms/generate-team/",
         GenerateTeamFormView.as_view(),
         name="tournament-generate-team-form",
+    ),
+    path(
+        "<uuid:tournament_id>/forms/generate-institution/",
+        GenerateInstitutionFormView.as_view(),
+        name="tournament-generate-institution-form",
     ),
     path(
         "<uuid:tournament_id>/matches/",

@@ -34,6 +34,13 @@ import { t } from "@/lib/t";
  *   PATCH /api/tournaments/:id/members/:membershipId/   → role / status
  *   POST  /api/tournaments/:id/invitations/             → invite by email
  *
+ * A user may hold MORE THAN ONE tournament-scoped role (v1Users.md decision
+ * #91 / Q3 — "multiple roles allowed; permissions = union of all active
+ * roles' modules"). The backend therefore stores one `TournamentMembership`
+ * row per (user, role). This page GROUPS those rows BY PERSON so each human
+ * is one roster row carrying all of their roles — otherwise the same person
+ * appears once per role and the member count is inflated.
+ *
  * The roster + mutations are manager-gated on the server (404 on no-access,
  * 403 for non-managers); we surface those as friendly states. The last-admin
  * guard (`400 {detail:"last_admin"}`) becomes a clear inline error.
@@ -41,9 +48,95 @@ import { t } from "@/lib/t";
 
 /** The 6 tournament roles, presented as Select options. */
 const ROLE_OPTIONS = ROLE_KEYS.map((r) => ({
-  value: r,
+  value: r as string,
   label: t(r.replace(/_/g, " ")),
 }));
+
+/** Display rank so a person's roles sort consistently (admin first). */
+const ROLE_RANK: Record<string, number> = ROLE_KEYS.reduce(
+  (acc, r, i) => {
+    acc[r] = i;
+    return acc;
+  },
+  {} as Record<string, number>,
+);
+
+function roleLabel(role: string): string {
+  return t(role.replace(/_/g, " "));
+}
+
+/** One human in the roster + all of their tournament memberships (roles). */
+interface PersonGroup {
+  key: string;
+  email: string;
+  full_name: string;
+  /** Sorted by role rank (admin first). One entry per role. */
+  memberships: TournamentMember[];
+  /** Earliest assignment across the person's roles. */
+  joinedAt: string;
+  /** Active in the tournament if any role is active. */
+  active: boolean;
+}
+
+/**
+ * Collapse membership rows into one group per person. Keyed by `user_id`
+ * (falls back to email) so the same human never appears twice.
+ */
+function groupByPerson(members: TournamentMember[]): PersonGroup[] {
+  const byKey = new Map<string, TournamentMember[]>();
+  for (const m of members) {
+    const key = m.user_id || m.email;
+    const existing = byKey.get(key);
+    if (existing) existing.push(m);
+    else byKey.set(key, [m]);
+  }
+
+  const groups: PersonGroup[] = [];
+  for (const [key, ms] of byKey) {
+    const memberships = [...ms].sort(
+      (a, b) => (ROLE_RANK[a.role] ?? 99) - (ROLE_RANK[b.role] ?? 99),
+    );
+    const joinedAt = ms.reduce(
+      (min, m) => (m.assigned_at < min ? m.assigned_at : min),
+      ms[0].assigned_at,
+    );
+    groups.push({
+      key,
+      email: ms[0].email,
+      full_name: ms[0].full_name,
+      memberships,
+      joinedAt,
+      active: ms.some((m) => m.status === "active"),
+    });
+  }
+
+  // Stable roster order: earliest joiner first (mirrors the API's
+  // order_by("assigned_at")).
+  groups.sort((a, b) =>
+    a.joinedAt < b.joinedAt ? -1 : a.joinedAt > b.joinedAt ? 1 : 0,
+  );
+  return groups;
+}
+
+/**
+ * Role options for one membership's Select: every role, minus the OTHER roles
+ * this person already holds (so changing a role can't collide with one they
+ * already have — which the unique (user, tournament, role) constraint would
+ * otherwise reject). The membership's own current role is always kept.
+ */
+function roleOptionsFor(
+  group: PersonGroup,
+  membership: TournamentMember,
+): typeof ROLE_OPTIONS {
+  const heldByOthers = new Set(
+    group.memberships
+      .filter((m) => m.id !== membership.id && m.status !== "revoked")
+      .map((m) => m.role),
+  );
+  return ROLE_OPTIONS.filter(
+    (o) => o.value === membership.role || !heldByOthers.has(o.value),
+  );
+}
 
 /** Status pill presentation — token-only, with a leading status dot. */
 function statusMeta(status: string): {
@@ -104,32 +197,82 @@ function formatJoined(iso: string): string {
   });
 }
 
-interface RowProps {
-  member: TournamentMember;
+interface RoleControlProps {
+  group: PersonGroup;
+  membership: TournamentMember;
+  onRoleChange: (m: TournamentMember, role: string) => void;
+  onRevoke: (m: TournamentMember) => void;
+  busy: boolean;
+}
+
+/**
+ * One editable role for a person: a role Select plus a "remove this role"
+ * button. Removing the person's last active role removes them from the
+ * tournament (handled by the confirm dialog wording).
+ */
+function RoleControl({
+  group,
+  membership,
+  onRoleChange,
+  onRevoke,
+  busy,
+}: RoleControlProps): React.ReactElement {
+  const displayName = group.full_name?.trim() || group.email;
+  const revoked = membership.status === "revoked";
+  return (
+    <div className="flex items-center gap-1.5">
+      <Select
+        size="sm"
+        value={membership.role}
+        onChange={(v) => onRoleChange(membership, v)}
+        options={roleOptionsFor(group, membership)}
+        disabled={busy || revoked}
+        aria-label={t(`Role for ${displayName}`)}
+        className="w-40"
+      />
+      {!revoked ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          onClick={() => onRevoke(membership)}
+          data-testid={`revoke-${membership.id}`}
+          aria-label={t(`Remove ${roleLabel(membership.role)} role from ${displayName}`)}
+          className="px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+        >
+          <UserMinus className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+interface PersonProps {
+  group: PersonGroup;
   onRoleChange: (m: TournamentMember, role: string) => void;
   onRevoke: (m: TournamentMember) => void;
   busy: boolean;
 }
 
 function MemberRow({
-  member,
+  group,
   onRoleChange,
   onRevoke,
   busy,
-}: RowProps): React.ReactElement {
-  const displayName = member.full_name?.trim() || member.email;
-  const revoked = member.status === "revoked";
+}: PersonProps): React.ReactElement {
+  const displayName = group.full_name?.trim() || group.email;
   return (
     <tr
-      className="border-t border-border transition-colors hover:bg-accent/40"
-      data-testid={`member-row-${member.id}`}
+      className="border-t border-border align-top transition-colors hover:bg-accent/40"
+      data-testid={`member-row-${group.key}`}
     >
       <td className="px-4 py-3">
         <div className="flex items-center gap-3">
-          <Avatar email={member.email} name={member.full_name} />
+          <Avatar email={group.email} name={group.full_name} />
           <div className="min-w-0">
             <div className="truncate font-medium text-foreground">
-              {member.email}
+              {group.email}
             </div>
           </div>
         </div>
@@ -138,96 +281,72 @@ function MemberRow({
         <span className="truncate text-sm text-foreground">{displayName}</span>
       </td>
       <td className="px-4 py-3">
-        <Select
-          size="sm"
-          value={member.role}
-          onChange={(v) => onRoleChange(member, v)}
-          options={ROLE_OPTIONS}
-          disabled={busy || revoked}
-          aria-label={t(`Role for ${displayName}`)}
-          className="w-40"
-        />
+        <div className="flex flex-col gap-2">
+          {group.memberships.map((m) => (
+            <RoleControl
+              key={m.id}
+              group={group}
+              membership={m}
+              onRoleChange={onRoleChange}
+              onRevoke={onRevoke}
+              busy={busy}
+            />
+          ))}
+        </div>
       </td>
       <td className="px-4 py-3">
-        <StatusPill status={member.status} />
+        <StatusPill status={group.active ? "active" : "suspended"} />
       </td>
       <td className="px-4 py-3 font-tabular text-sm text-muted-foreground">
-        <span title={member.assigned_at}>{formatJoined(member.assigned_at)}</span>
-      </td>
-      <td className="px-4 py-3 text-right">
-        {!revoked ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={busy}
-            onClick={() => onRevoke(member)}
-            data-testid={`revoke-${member.id}`}
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-          >
-            <UserMinus className="h-4 w-4" aria-hidden="true" />
-            {t("Revoke")}
-          </Button>
-        ) : null}
+        <span title={group.joinedAt}>{formatJoined(group.joinedAt)}</span>
       </td>
     </tr>
   );
 }
 
 function MemberCard({
-  member,
+  group,
   onRoleChange,
   onRevoke,
   busy,
-}: RowProps): React.ReactElement {
-  const displayName = member.full_name?.trim() || member.email;
-  const revoked = member.status === "revoked";
+}: PersonProps): React.ReactElement {
+  const displayName = group.full_name?.trim() || group.email;
   return (
     <div
       className="rounded-xl border border-border bg-card p-4 shadow-sm"
-      data-testid={`member-row-${member.id}`}
+      data-testid={`member-row-${group.key}`}
     >
       <div className="flex items-start gap-3">
-        <Avatar email={member.email} name={member.full_name} />
+        <Avatar email={group.email} name={group.full_name} />
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium text-foreground">
             {displayName}
           </div>
           <div className="truncate text-xs text-muted-foreground">
-            {member.email}
+            {group.email}
           </div>
         </div>
-        <StatusPill status={member.status} />
+        <StatusPill status={group.active ? "active" : "suspended"} />
       </div>
-      <div className="mt-3 flex flex-col gap-1">
-        <Label className="text-xs text-muted-foreground">{t("Role")}</Label>
-        <Select
-          size="sm"
-          value={member.role}
-          onChange={(v) => onRoleChange(member, v)}
-          options={ROLE_OPTIONS}
-          disabled={busy || revoked}
-          aria-label={t(`Role for ${displayName}`)}
-        />
+      <div className="mt-3 flex flex-col gap-2">
+        <Label className="text-xs text-muted-foreground">
+          {group.memberships.length === 1 ? t("Role") : t("Roles")}
+        </Label>
+        {group.memberships.map((m) => (
+          <RoleControl
+            key={m.id}
+            group={group}
+            membership={m}
+            onRoleChange={onRoleChange}
+            onRevoke={onRevoke}
+            busy={busy}
+          />
+        ))}
       </div>
-      <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span className="font-tabular" title={member.assigned_at}>
-          {t("Joined")} {formatJoined(member.assigned_at)}
+      <div className="mt-3 text-xs text-muted-foreground">
+        <span className="font-tabular" title={group.joinedAt}>
+          {t("Joined")} {formatJoined(group.joinedAt)}
         </span>
-        {!revoked ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={busy}
-            onClick={() => onRevoke(member)}
-            data-testid={`revoke-${member.id}`}
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-          >
-            <UserMinus className="h-4 w-4" aria-hidden="true" />
-            {t("Revoke")}
-          </Button>
-        ) : null}
       </div>
     </div>
   );
@@ -275,7 +394,9 @@ function InvitePanel({ tournamentId }: { tournamentId: string }): React.ReactEle
       <div className="mb-3">
         <h2 className="text-sm font-semibold">{t("Invite a member")}</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          {t("They'll appear in the roster once they accept the invitation.")}
+          {t(
+            "They'll appear in the roster once they accept. Invite someone again with a different role to give them an extra role.",
+          )}
         </p>
       </div>
       <form
@@ -393,11 +514,25 @@ export function TournamentMembersPage(): React.ReactElement {
     setPendingRevoke(null);
   };
 
-  const members = membersQuery.data ?? [];
-  const total = members.length;
+  const groups = React.useMemo(
+    () => groupByPerson(membersQuery.data ?? []),
+    [membersQuery.data],
+  );
+  const total = groups.length;
   const busy = mutation.isPending;
+
+  // The person + role context for the pending revoke, so the confirm dialog
+  // can say "remove from the tournament" (last role) vs "remove this role".
+  const revokeGroup = pendingRevoke
+    ? groups.find((g) =>
+        g.memberships.some((m) => m.id === pendingRevoke.id),
+      )
+    : undefined;
   const pendingName =
-    pendingRevoke?.full_name?.trim() || pendingRevoke?.email || "";
+    revokeGroup?.full_name?.trim() || revokeGroup?.email || "";
+  const activeRoleCount =
+    revokeGroup?.memberships.filter((m) => m.status !== "revoked").length ?? 0;
+  const removesPerson = activeRoleCount <= 1;
 
   return (
     <div className="flex w-full flex-col gap-6">
@@ -483,10 +618,10 @@ export function TournamentMembersPage(): React.ReactElement {
               aria-label={t("Members table")}
               data-testid="members-table"
             >
-              {members.map((m) => (
+              {groups.map((g) => (
                 <MemberCard
-                  key={m.id}
-                  member={m}
+                  key={g.key}
+                  group={g}
                   onRoleChange={onRoleChange}
                   onRevoke={onRevoke}
                   busy={busy}
@@ -504,17 +639,16 @@ export function TournamentMembersPage(): React.ReactElement {
                   <tr className="text-left text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
                     <th className="px-4 py-2.5 font-medium">{t("Email")}</th>
                     <th className="px-4 py-2.5 font-medium">{t("Name")}</th>
-                    <th className="px-4 py-2.5 font-medium">{t("Role")}</th>
+                    <th className="px-4 py-2.5 font-medium">{t("Roles")}</th>
                     <th className="px-4 py-2.5 font-medium">{t("Status")}</th>
                     <th className="px-4 py-2.5 font-medium">{t("Joined")}</th>
-                    <th className="w-10 px-4 py-2.5" aria-hidden="true" />
                   </tr>
                 </thead>
                 <tbody>
-                  {members.map((m) => (
+                  {groups.map((g) => (
                     <MemberRow
-                      key={m.id}
-                      member={m}
+                      key={g.key}
+                      group={g}
                       onRoleChange={onRoleChange}
                       onRevoke={onRevoke}
                       busy={busy}
@@ -535,11 +669,17 @@ export function TournamentMembersPage(): React.ReactElement {
         ariaLabel={t("Revoke member")}
       >
         <DialogHeader>
-          <DialogTitle>{t("Revoke member")}</DialogTitle>
+          <DialogTitle>
+            {removesPerson ? t("Remove member") : t("Remove role")}
+          </DialogTitle>
           <DialogDescription>
-            {t(
-              `Remove ${pendingName} from this tournament? They'll lose access to all tournament surfaces.`,
-            )}
+            {removesPerson
+              ? t(
+                  `Remove ${pendingName} from this tournament? They'll lose access to all tournament surfaces.`,
+                )
+              : t(
+                  `Remove the ${roleLabel(pendingRevoke?.role ?? "")} role from ${pendingName}? They'll keep their other roles.`,
+                )}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -557,7 +697,7 @@ export function TournamentMembersPage(): React.ReactElement {
             data-testid="confirm-revoke"
           >
             <UserMinus className="h-4 w-4" aria-hidden="true" />
-            {t("Revoke")}
+            {removesPerson ? t("Remove") : t("Remove role")}
           </Button>
         </DialogFooter>
       </Dialog>

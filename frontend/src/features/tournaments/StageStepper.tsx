@@ -89,6 +89,10 @@ function warningText(w: StageConsequences["warnings"][number]): string {
       return t("The tournament status will change to") + ` "${String(w.to)}".`;
     case "rules_will_freeze":
       return t("Rules will be locked — later changes will need an amend reason.");
+    case "team_form_will_be_created":
+      return t("A team-registration form draft will be created for you to review.");
+    case "no_sports_selected":
+      return t("No sports selected yet — add them on the Sports tab first.");
     case "downstream_artifacts_exist":
       return (
         `${String(w.count)} ` +

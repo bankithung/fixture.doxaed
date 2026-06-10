@@ -13,7 +13,7 @@ from django.utils import timezone
 
 from apps.audit.models import ActorRole
 from apps.audit.services import emit_audit
-from apps.forms.constants import FormStatus
+from apps.forms.constants import FormStatus, PURPOSE_TO_STAGE
 from apps.forms.models import Form
 from apps.forms.services.schema import validate_schema
 
@@ -49,10 +49,16 @@ def create_form(*, tournament, title, purpose, schema=None, stage="",
     schema = schema or {"version": 1, "sections": []}
     if schema.get("sections"):
         validate_schema(schema)
+    # Bind the form to its setup stage from its purpose when the caller didn't
+    # specify one, so registration forms are ALWAYS stage-bound — the stage
+    # auto-close/reopen keys on `stage`, and a blank stage would silently slip
+    # past it. Explicit `stage` always wins. Driven by the canonical map, never
+    # hardcoded per call site.
+    resolved_stage = stage or PURPOSE_TO_STAGE.get(str(purpose), "")
     form = Form.objects.create(
         organization=tournament.organization, tournament=tournament,
         slug=_unique_slug(tournament, title), title=title[:200],
-        purpose=purpose, stage=stage or "", schema=schema, created_by=created_by,
+        purpose=purpose, stage=resolved_stage, schema=schema, created_by=created_by,
     )
     emit_audit(actor_user=created_by, actor_role=ActorRole.SYSTEM, event_type="form_created",
                target_type="form", target_id=form.id, organization_id=tournament.organization_id,

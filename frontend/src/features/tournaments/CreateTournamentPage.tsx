@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { tournamentsApi } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ type FormValues = z.infer<typeof schema>;
  */
 export function CreateTournamentPage(): React.ReactElement {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const form = useForm<FormValues>({
@@ -39,6 +41,8 @@ export function CreateTournamentPage(): React.ReactElement {
         name: values.name,
         event_id: newEventId(),
       });
+      // Refresh the list so the new tournament shows without a manual reload.
+      await qc.invalidateQueries({ queryKey: ["tournaments"] });
       navigate(routes.tournaments());
     } catch (e) {
       setError(
@@ -52,45 +56,49 @@ export function CreateTournamentPage(): React.ReactElement {
   };
 
   return (
-    <div className="w-full max-w-xl px-4 py-6 sm:px-6 lg:px-8">
-      <h1 className="mb-2 text-2xl font-semibold">{t("Start a tournament")}</h1>
-      <p className="mb-6 text-sm text-muted-foreground">
-        {t("Give it a name. You'll be its admin and can invite people next.")}
-      </p>
+    <div className="flex min-h-[80dvh] w-full items-center justify-center px-4 py-10">
+      <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-sm sm:p-8">
+        <h1 className="text-center text-2xl font-semibold tracking-tight">
+          {t("Start a tournament")}
+        </h1>
+        <p className="mt-2 text-center text-sm text-muted-foreground">
+          {t("Give it a name. You'll be its admin and can invite people next.")}
+        </p>
 
-      {error ? (
-        <div
-          role="alert"
-          className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        {error ? (
+          <div
+            role="alert"
+            className="mt-6 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {error}
+          </div>
+        ) : null}
+
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="mt-6 flex flex-col gap-4"
+          noValidate
         >
-          {error}
-        </div>
-      ) : null}
-
-      <form
-        onSubmit={form.handleSubmit(onSubmit)}
-        className="flex flex-col gap-4"
-        noValidate
-      >
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="name">{t("Tournament name")}</Label>
-          <Input
-            id="name"
-            autoFocus
-            placeholder={t("e.g. Kohima Premier League 2026")}
-            aria-invalid={!!form.formState.errors.name}
-            {...form.register("name")}
-          />
-          {form.formState.errors.name ? (
-            <p role="alert" className="text-xs text-destructive">
-              {form.formState.errors.name.message}
-            </p>
-          ) : null}
-        </div>
-        <Button type="submit" disabled={submitting} size="lg">
-          {submitting ? t("Creating...") : t("Create tournament")}
-        </Button>
-      </form>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="name">{t("Tournament name")}</Label>
+            <Input
+              id="name"
+              autoFocus
+              placeholder={t("e.g. Kohima Premier League 2026")}
+              aria-invalid={!!form.formState.errors.name}
+              {...form.register("name")}
+            />
+            {form.formState.errors.name ? (
+              <p role="alert" className="text-xs text-destructive">
+                {form.formState.errors.name.message}
+              </p>
+            ) : null}
+          </div>
+          <Button type="submit" disabled={submitting} size="lg" className="w-full">
+            {submitting ? t("Creating...") : t("Create tournament")}
+          </Button>
+        </form>
+      </div>
     </div>
   );
 }

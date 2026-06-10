@@ -224,7 +224,7 @@ export function FormBuilderPage(): React.ReactElement {
 
   if (query.isLoading) {
     return (
-      <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <div className="h-10 w-64 animate-pulse rounded-lg bg-card" />
         <div className="h-96 animate-pulse rounded-xl border border-border bg-card" />
       </div>
@@ -233,7 +233,7 @@ export function FormBuilderPage(): React.ReactElement {
 
   if (query.isError || !query.data) {
     return (
-      <div className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
         <p role="alert" className="text-sm text-destructive">
           {t("Could not load this form.")}
         </p>
@@ -248,7 +248,7 @@ export function FormBuilderPage(): React.ReactElement {
   const status = form.status;
 
   return (
-    <div className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
       {/* Header — compact. */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
@@ -325,11 +325,15 @@ export function FormBuilderPage(): React.ReactElement {
         </div>
       </div>
 
-      <SettingsPanel form={form} tournamentId={id} />
-
-      {/* Builder: inline-editable canvas + collapsible palette rail. */}
+      {/* Builder: the form column (settings + questions) capped + centered so it
+          reads like a real form, beside the collapsible palette rail. */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        <FormCanvas className="min-w-0 flex-1" />
+        <div className="min-w-0 flex-1">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+            <SettingsPanel form={form} tournamentId={id} />
+            <FormCanvas className="w-full" />
+          </div>
+        </div>
 
         {paletteOpen ? (
           <div className="lg:sticky lg:top-20 lg:w-72 lg:shrink-0">

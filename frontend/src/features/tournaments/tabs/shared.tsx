@@ -8,6 +8,8 @@ import {
 } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
+import { ApiError } from "@/types/api";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
@@ -58,6 +60,86 @@ export function Stat({
   );
 }
 
+// Set/game-based sports record per-set scores; mirror the backend defaults so the
+// entry UI knows how many sets to offer. Goal-based sports return null.
+const SET_RULES: Record<string, { best_of: number; points: number }> = {
+  table_tennis: { best_of: 3, points: 11 },
+  sepak_takraw: { best_of: 3, points: 21 },
+};
+function setRules(sport?: string): { best_of: number; points: number } | null {
+  return SET_RULES[(sport ?? "").replace(/-/g, "_").toLowerCase()] ?? null;
+}
+
+/** Compact set-by-set entry for racket/net sports (e.g. 11-8 9-11 11-6). */
+function SetScoreEntry({
+  match,
+  tournamentId,
+  rules,
+}: {
+  match: MatchRow;
+  tournamentId: string;
+  rules: { best_of: number; points: number };
+}): React.ReactElement {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [sets, setSets] = useState<string[][]>(() =>
+    Array.from({ length: rules.best_of }, () => ["", ""]),
+  );
+  const upd = (i: number, j: number, v: string): void =>
+    setSets((prev) =>
+      prev.map((s, k) => (k === i ? (j === 0 ? [v, s[1]] : [s[0], v]) : s)),
+    );
+  const filled = sets
+    .filter(([h, a]) => h !== "" && a !== "")
+    .map(([h, a]) => [Number(h), Number(a)]);
+  const save = useMutation({
+    mutationFn: () =>
+      tournamentsApi.scoreSets(match.id, {
+        set_scores: filled,
+        event_id: newEventId(),
+      }),
+    onSuccess: () => invalidateTournament(qc, tournamentId),
+    onError: (e) =>
+      toast.push({
+        kind: "error",
+        title: t("Check the set scores"),
+        description:
+          e instanceof ApiError ? (e.payload.detail ?? undefined) : undefined,
+      }),
+  });
+
+  return (
+    <span className="flex shrink-0 flex-wrap items-center justify-center gap-1.5">
+      {sets.map((s, i) => (
+        <span key={i} className="flex items-center gap-0.5" title={t(`Set ${i + 1}`)}>
+          <Input
+            aria-label={t(`Set ${i + 1} home`)}
+            inputMode="numeric"
+            value={s[0]}
+            onChange={(e) => upd(i, 0, e.target.value)}
+            className="h-8 w-9 px-1 text-center font-tabular"
+          />
+          <span className="text-xs text-muted-foreground">-</span>
+          <Input
+            aria-label={t(`Set ${i + 1} away`)}
+            inputMode="numeric"
+            value={s[1]}
+            onChange={(e) => upd(i, 1, e.target.value)}
+            className="h-8 w-9 px-1 text-center font-tabular"
+          />
+        </span>
+      ))}
+      <Button
+        size="sm"
+        disabled={filled.length < 2 || save.isPending}
+        onClick={() => save.mutate()}
+      >
+        {t("Save")}
+      </Button>
+    </span>
+  );
+}
+
 export function ScoreRow({
   match,
   tournamentId,
@@ -68,6 +150,7 @@ export function ScoreRow({
   const qc = useQueryClient();
   const [home, setHome] = useState("");
   const [away, setAway] = useState("");
+  const rules = setRules(match.sport);
   const save = useMutation({
     mutationFn: () =>
       tournamentsApi.score(match.id, {
@@ -80,6 +163,10 @@ export function ScoreRow({
     },
   });
   const done = match.status === "completed";
+  const setDetail =
+    rules && match.set_scores?.length
+      ? match.set_scores.map((s) => `${s[0]}-${s[1]}`).join(", ")
+      : "";
 
   return (
     <div className="flex items-center gap-2 border-t border-border py-2 text-sm first:border-t-0">
@@ -87,10 +174,19 @@ export function ScoreRow({
         {match.home_team?.name ?? t("TBD")}
       </span>
       {done ? (
-        <span className="w-16 shrink-0 text-center font-tabular text-base font-semibold">
-          {match.home_score} <span className="text-muted-foreground">–</span>{" "}
-          {match.away_score}
+        <span className="shrink-0 text-center">
+          <span className="block font-tabular text-base font-semibold">
+            {match.home_score} <span className="text-muted-foreground">–</span>{" "}
+            {match.away_score}
+          </span>
+          {setDetail ? (
+            <span className="block font-tabular text-[0.625rem] text-muted-foreground">
+              {setDetail}
+            </span>
+          ) : null}
         </span>
+      ) : rules ? (
+        <SetScoreEntry match={match} tournamentId={tournamentId} rules={rules} />
       ) : (
         <span className="flex shrink-0 items-center gap-1">
           <Input

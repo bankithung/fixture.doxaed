@@ -25,7 +25,13 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-type State = "idle" | "loading" | "ok" | "error" | "login_required";
+type State =
+  | "idle"
+  | "loading"
+  | "ok"
+  | "error"
+  | "login_required"
+  | "email_mismatch";
 
 /**
  * Invite-accept landing. AllowAny: a logged-out, brand-new invitee can create
@@ -38,10 +44,15 @@ export function InviteAcceptPage(): React.ReactElement {
   const token = params.get("token") ?? "";
   const navigate = useNavigate();
   const refreshMe = useAuthStore((s) => s.refreshMe);
+  const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
 
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [mismatch, setMismatch] = useState<{
+    invited: string;
+    current: string;
+  } | null>(null);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { name: "", password: "" },
@@ -73,6 +84,23 @@ export function InviteAcceptPage(): React.ReactElement {
         setState("login_required");
         return;
       }
+      if (
+        e instanceof ApiError &&
+        e.status === 409 &&
+        e.payload.detail === "email_mismatch"
+      ) {
+        const invited =
+          typeof e.payload.invited_email === "string"
+            ? e.payload.invited_email
+            : "";
+        const current =
+          typeof e.payload.current_email === "string"
+            ? e.payload.current_email
+            : (user?.email ?? "");
+        setMismatch({ invited, current });
+        setState("email_mismatch");
+        return;
+      }
       setState("error");
       setError(
         e instanceof ApiError
@@ -83,6 +111,43 @@ export function InviteAcceptPage(): React.ReactElement {
   };
 
   const signInHref = `${routes.login()}?next=${encodeURIComponent(routes.inviteAccept(token))}`;
+
+  const handleSwitchAccount = async (): Promise<void> => {
+    await logout();
+    await refreshMe();
+    navigate(signInHref);
+  };
+
+  if (state === "email_mismatch" && mismatch) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>{t("Wrong account")}</CardTitle>
+            <CardDescription>
+              {t("This invitation is for a different account.")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              {t(
+                `This invitation was sent to ${mismatch.invited}, but you're signed in as ${mismatch.current}. Switch accounts to accept it.`,
+              )}
+            </p>
+            <Button onClick={handleSwitchAccount}>
+              {t("Sign out & switch account")}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => navigate(routes.tournaments())}
+            >
+              {t("Cancel")}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (state === "ok") {
     return (

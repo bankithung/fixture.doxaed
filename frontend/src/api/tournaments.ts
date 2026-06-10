@@ -2,6 +2,35 @@ import { api } from "./client";
 import type { AuditEvent } from "./audit";
 
 /** Tournament row as returned by `GET /api/tournaments/` and create (201). */
+/** A category within a sport, with optional subcategories (2-level bucket). */
+export interface SportCategory {
+  name: string;
+  subcategories: string[];
+}
+
+/** A sport the tournament runs (catalog code or a custom one). */
+export interface TournamentSport {
+  key: string;
+  name: string;
+  custom?: boolean;
+  /**
+   * Categories for this sport, each with optional subcategories — e.g.
+   * "Singles" → ["U-14 Boys", "U-14 Girls"]. Drives the generated forms +
+   * fixture buckets. (Legacy data may be a plain string[]; the UI coerces it.)
+   */
+  categories?: SportCategory[];
+}
+
+/** A sport from the global catalog (GET /api/sports/). */
+export interface SportCatalogItem {
+  code: string;
+  name: string;
+  category: string;
+  icon: string;
+  is_team_sport: boolean;
+  status: string;
+}
+
 export interface Tournament {
   id: string;
   slug: string;
@@ -9,6 +38,7 @@ export interface Tournament {
   status: string;
   organization_slug: string;
   sport_code: string | null;
+  sports: TournamentSport[];
   time_zone: string;
   created_at: string;
 }
@@ -79,6 +109,10 @@ export interface MatchRow {
   away_team: MiniTeam | null;
   home_score: number | null;
   away_score: number | null;
+  /** Sport key (e.g. "table_tennis"); "" = goal-based (football). */
+  sport: string;
+  /** Per-set [home, away] scores for set-based sports (home/away_score = sets won). */
+  set_scores: number[][];
   scheduled_at: string | null;
 }
 
@@ -161,7 +195,11 @@ export const tournamentsApi = {
     id: string,
     opts?: {
       groupSize?: number;
-      format?: "round_robin" | "knockout" | "knockout_from_groups";
+      format?:
+        | "round_robin"
+        | "by_category"
+        | "knockout"
+        | "knockout_from_groups";
     },
   ) =>
     api.post<{ generated: number; format?: string }>(
@@ -174,10 +212,15 @@ export const tournamentsApi = {
       `/api/tournaments/${id}/registration-link/`,
       { label: "" },
     ),
-  /** Record a match result (assigned scorer or manager). */
+  /** Record a goal-based match result (assigned scorer or manager). */
   score: (
     matchId: string,
     payload: { home_score: number; away_score: number; event_id: string },
+  ) => api.post<MatchRow>(`/api/matches/${matchId}/score/`, payload),
+  /** Record a set/game-based result (Table Tennis, Sepak Takraw). */
+  scoreSets: (
+    matchId: string,
+    payload: { set_scores: number[][]; event_id: string },
   ) => api.post<MatchRow>(`/api/matches/${matchId}/score/`, payload),
 
   // --- Setup-stage workflow (WS4) ---
@@ -198,6 +241,21 @@ export const tournamentsApi = {
     id: string,
     body: { rules?: Partial<TournamentRules>; amend?: boolean; reason?: string; event_id: string },
   ) => api.patch<TournamentSettings>(`/api/tournaments/${id}/settings/`, body),
+  /** The global sports catalog (for the picker). */
+  sportsCatalog: () => api.get<SportCatalogItem[]>("/api/sports/"),
+  /** This tournament's selected sports. */
+  sports: (id: string) =>
+    api.get<{ sports: TournamentSport[] }>(`/api/tournaments/${id}/sports/`),
+  /** Replace this tournament's selected sports (manager-only). */
+  setSports: (id: string, sports: TournamentSport[]) =>
+    api.put<{ sports: TournamentSport[] }>(`/api/tournaments/${id}/sports/`, {
+      sports,
+    }),
+  /** Soft-delete a tournament (manager-only; blocked while live). */
+  remove: (id: string) => api.delete<void>(`/api/tournaments/${id}/`),
+  /** Deactivate (archive) or reactivate a tournament. */
+  setActive: (id: string, active: boolean) =>
+    api.patch<Tournament>(`/api/tournaments/${id}/`, { active }),
 
   // --- Fixture generation + FET scheduling engine (WS6) ---
   constraintTypes: () =>
@@ -222,6 +280,8 @@ export interface TournamentSettings {
   constraints: unknown[];
   rules_frozen_at: string | null;
   can_edit: boolean;
+  /** Manager rights independent of the freeze gate (drives archive/delete). */
+  can_manage: boolean;
 }
 
 export interface ConstraintType {

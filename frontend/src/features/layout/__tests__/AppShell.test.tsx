@@ -189,6 +189,47 @@ describe("AppShell", () => {
       status: "draft",
       organization_slug: "acme",
       sport_code: "football",
+      sports: [],
+      time_zone: "Asia/Kolkata",
+      created_at: "2026-01-01T00:00:00Z",
+    } satisfies Tournament);
+    // A set-up tournament (stage "ready") shows the full sidebar app.
+    vi.spyOn(tournamentsApi, "stage").mockResolvedValue({
+      stage: "ready",
+      status: "scheduled",
+      order: ["setup", "org_registration", "team_registration", "members", "fixtures", "ready"],
+      allowed_to: [],
+      can_manage: true,
+      rules_frozen_at: null,
+      stages: [],
+    } as never);
+
+    useAuthStore.setState({
+      user: makeUser(["admin"], ["forms"]),
+      bootstrapped: true,
+    });
+    renderShellAt("/tournaments/t-123");
+
+    const primary = await screen.findByRole("navigation", { name: /primary/i });
+    // Inside a tournament the sidebar switches to that tournament's sections.
+    expect(primary.textContent).toMatch(/overview/i);
+    expect(primary.textContent).toMatch(/institutions/i);
+    expect(primary.textContent).toMatch(/fixtures/i);
+    // Name resolves into the rail identity header.
+    await waitFor(() =>
+      expect(screen.getAllByText(/spring cup/i).length).toBeGreaterThan(0),
+    );
+  });
+
+  it("hides the sidebar during setup (onboarding wizard mode)", async () => {
+    vi.spyOn(tournamentsApi, "get").mockResolvedValue({
+      id: "t-123",
+      slug: "spring-cup",
+      name: "Spring Cup",
+      status: "draft",
+      organization_slug: "acme",
+      sport_code: null,
+      sports: [],
       time_zone: "Asia/Kolkata",
       created_at: "2026-01-01T00:00:00Z",
     } satisfies Tournament);
@@ -208,15 +249,9 @@ describe("AppShell", () => {
     });
     renderShellAt("/tournaments/t-123");
 
-    const primary = screen.getByRole("navigation", { name: /primary/i });
-    // Inside a tournament the sidebar switches to that tournament's sections.
-    expect(primary.textContent).toMatch(/overview/i);
-    expect(primary.textContent).toMatch(/institutions/i);
-    expect(primary.textContent).toMatch(/fixtures/i);
-    // Name resolves into the rail identity header.
-    await waitFor(() =>
-      expect(screen.getAllByText(/spring cup/i).length).toBeGreaterThan(0),
-    );
+    // The name still resolves (breadcrumb), but the sidebar nav is withheld.
+    await screen.findByText(/spring cup/i);
+    expect(screen.queryByRole("navigation", { name: /primary/i })).toBeNull();
   });
 
   it("/tournaments/new is NOT treated as a tournament context", () => {

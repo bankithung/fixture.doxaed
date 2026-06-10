@@ -1,6 +1,7 @@
 import {
   Building2,
   CalendarClock,
+  FileText,
   LayoutDashboard,
   Mail,
   Settings,
@@ -140,8 +141,25 @@ export function computeTournamentNav(
     {
       key: "overview",
       label: t("Overview"),
-      href: routes.tournamentDetail(tournamentId),
+      href: routes.tournamentOverview(tournamentId),
       icon: LayoutDashboard,
+    },
+    {
+      // The sports this tournament runs — chosen at setup, drives forms +
+      // fixtures. Always available (it's the first setup step).
+      key: "sports",
+      label: t("Sports"),
+      href: routes.tournamentSports(tournamentId),
+      icon: Trophy,
+    },
+    {
+      // Registration-form builder — the mechanism that powers institution &
+      // team registration, so it unlocks with the first registration stage.
+      key: "forms",
+      label: t("Forms"),
+      href: routes.tournamentForms(tournamentId),
+      icon: FileText,
+      ...gate("org_registration"),
     },
     {
       key: "institutions",

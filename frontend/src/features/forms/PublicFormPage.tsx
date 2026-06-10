@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Lock, ShieldCheck } from "lucide-react";
@@ -6,7 +6,13 @@ import { formsApi } from "@/api/forms";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { newEventId } from "@/lib/eventId";
-import { isVisible, reachableSections, validateRequired } from "@/lib/formLogic";
+import {
+  isVisible,
+  optionSelected,
+  reachableSections,
+  sectionActiveFields,
+  validateRequired,
+} from "@/lib/formLogic";
 import { t } from "@/lib/t";
 import { Centered, PublicShell } from "@/features/registration/PublicShell";
 import { FieldRenderer } from "./fieldRenderers";
@@ -46,7 +52,10 @@ export function PublicFormPage(): React.ReactElement {
       token !== undefined
         ? formsApi.publicGetByToken(token)
         : formsApi.publicGet(formId ?? ""),
-    retry: false,
+    // Retry transient errors (network / brief server restart) so a deploy blip
+    // doesn't strand the page on "form not found"; a real 404 fails fast.
+    retry: (count, err) =>
+      count < 2 && !(err instanceof ApiError && err.status === 404),
   });
 
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
@@ -65,6 +74,22 @@ export function PublicFormPage(): React.ReactElement {
     const name = data?.tournament_name;
     if (name) document.title = form?.title ? `${name} · ${form.title}` : name;
   }, [data, form]);
+
+  // Per-institution link: seed answers from the link's prefill ONCE, so the
+  // school sees its carried-over details (and the locked institution) ready to
+  // confirm. User edits afterwards win (prefill never clobbers later input).
+  const prefillApplied = useRef(false);
+  useEffect(() => {
+    if (data?.prefill && !prefillApplied.current) {
+      prefillApplied.current = true;
+      setAnswers((a) => ({ ...data.prefill, ...a }));
+    }
+  }, [data]);
+
+  // Fields the link locks (e.g. the institution) are hidden from the wizard —
+  // their value rides along in `answers` and the server is authoritative anyway.
+  const lockedSet = useMemo(() => new Set(data?.locked ?? []), [data?.locked]);
+  const boundLabel = data?.bound?.label;
 
   const schema = useMemo(
     () => form?.schema ?? { version: 1, sections: [] },
@@ -112,7 +137,7 @@ export function PublicFormPage(): React.ReactElement {
         setErrors(fieldErrs);
         // Jump to the first reachable section that owns a failing field.
         const idx = sections.findIndex((s) =>
-          s.fields.some((f) => fieldErrs[f.key]),
+          sectionActiveFields(s, answers).some((f) => fieldErrs[f.key]),
         );
         if (idx >= 0) setStepIndex(idx);
       } else {
@@ -131,7 +156,8 @@ export function PublicFormPage(): React.ReactElement {
     if (!current) return true;
     const all = validateRequired(schema, answers);
     const here: Record<string, string> = {};
-    for (const f of current.fields) {
+    // Include nested (option-revealed) fields of the current section.
+    for (const f of sectionActiveFields(current, answers)) {
       if (all[f.key]) here[f.key] = all[f.key];
     }
     setErrors(here);
@@ -156,7 +182,9 @@ export function PublicFormPage(): React.ReactElement {
         ...all,
         __form: t("Please answer the required questions highlighted below."),
       });
-      const idx = sections.findIndex((s) => s.fields.some((f) => all[f.key]));
+      const idx = sections.findIndex((s) =>
+        sectionActiveFields(s, answers).some((f) => all[f.key]),
+      );
       if (idx >= 0) setStepIndex(idx);
       if (typeof window !== "undefined")
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -198,6 +226,14 @@ export function PublicFormPage(): React.ReactElement {
           <p role="status" className="mt-2 text-sm text-muted-foreground">
             {t("This form is no longer accepting submissions.")}
           </p>
+          {data.has_directory && data.form_id ? (
+            <a
+              href={`/f/${data.form_id}/directory`}
+              className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+            >
+              {t("View registered institutions")} →
+            </a>
+          ) : null}
         </Centered>
       </PublicShell>
     );
@@ -237,10 +273,38 @@ export function PublicFormPage(): React.ReactElement {
     );
   }
 
-  const visibleFields = current
-    ? current.fields.filter((f) => isVisible(f.visibility, answers))
-    : [];
   const formError = errors.__form;
+
+  // Render a field and, recursively, the nested follow-up fields of any selected
+  // option (indented). Returns null for hidden/locked fields.
+  const renderField = (f: Field): React.ReactNode => {
+    if (!isVisible(f.visibility, answers) || lockedSet.has(f.key)) return null;
+    const nested: React.ReactNode[] = [];
+    for (const o of f.options ?? []) {
+      if (o.fields?.length && optionSelected(f, o.value, answers)) {
+        for (const child of o.fields) {
+          const rendered = renderField(child);
+          if (rendered) nested.push(rendered);
+        }
+      }
+    }
+    return (
+      <div key={f.key} className="flex flex-col gap-5">
+        <FieldRenderer
+          field={f}
+          value={answers[f.key]}
+          error={errors[f.key]}
+          onChange={(v) => setAnswer(f.key, v)}
+          onUpload={handleUpload}
+        />
+        {nested.length ? (
+          <div className="ml-3 flex flex-col gap-5 border-l-2 border-border pl-4">
+            {nested}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
 
   return (
     <PublicShell tournamentName={data?.tournament_name}>
@@ -263,6 +327,17 @@ export function PublicFormPage(): React.ReactElement {
             {t("View registered organisations")} →
           </a>
         </div>
+
+        {/* Bound per-institution link: show who they're registering as. */}
+        {boundLabel ? (
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
+            <ShieldCheck aria-hidden="true" className="h-4 w-4 text-primary" />
+            <span>
+              {t("Registering as")}{" "}
+              <span className="font-medium text-foreground">{boundLabel}</span>
+            </span>
+          </div>
+        ) : null}
 
         {/* Step indicator */}
         {sections.length > 1 ? (
@@ -287,16 +362,7 @@ export function PublicFormPage(): React.ReactElement {
               ) : null}
             </div>
 
-            {visibleFields.map((f) => (
-              <FieldRenderer
-                key={f.key}
-                field={f}
-                value={answers[f.key]}
-                error={errors[f.key]}
-                onChange={(v) => setAnswer(f.key, v)}
-                onUpload={handleUpload}
-              />
-            ))}
+            {current.fields.map(renderField)}
           </section>
         ) : (
           <p className="text-sm text-muted-foreground">

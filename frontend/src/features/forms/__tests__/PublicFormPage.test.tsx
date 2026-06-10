@@ -103,6 +103,7 @@ function renderPage(path = "/f/form1") {
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/f/:formId" element={<PublicFormPage />} />
+          <Route path="/r/:token" element={<PublicFormPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -175,6 +176,59 @@ describe("PublicFormPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("prefills + locks the institution on a bound per-institution link", async () => {
+    vi.mocked(formsApi.publicGetByToken).mockResolvedValue({
+      tournament_name: "Cup",
+      form: {
+        id: "team1",
+        title: "Team registration",
+        description: "",
+        schema: {
+          version: 1,
+          sections: [
+            {
+              key: "inst",
+              title: "Your institution",
+              fields: [
+                {
+                  key: "institution_id",
+                  type: "dropdown",
+                  label: "Select your institution",
+                  required: true,
+                  options: [],
+                },
+                {
+                  key: "contact_email",
+                  type: "email",
+                  label: "Contact email",
+                  required: false,
+                },
+              ],
+            },
+          ],
+        },
+        confirmation_message: "",
+      },
+      prefill: { institution_id: "i-1", contact_email: "skinner@springfield.edu" },
+      locked: ["institution_id"],
+      bound: { institution_id: "i-1", label: "Springfield High" },
+    });
+
+    renderPage("/r/tok1");
+
+    // Banner names the bound institution.
+    expect(await screen.findByText(/registering as/i)).toBeInTheDocument();
+    expect(screen.getByText("Springfield High")).toBeInTheDocument();
+    // The locked institution dropdown is hidden...
+    expect(
+      screen.queryByLabelText(/select your institution/i),
+    ).toBeNull();
+    // ...and the carried-over contact is prefilled + editable.
+    expect(screen.getByLabelText(/contact email/i)).toHaveValue(
+      "skinner@springfield.edu",
+    );
+  });
+
   it("renders a closed state when the form is not accepting submissions", async () => {
     vi.mocked(formsApi.publicGet).mockResolvedValue({
       tournament_name: "Nagaland Schools Cup",
@@ -187,5 +241,20 @@ describe("PublicFormPage", () => {
     ).toBeInTheDocument();
     // No submit button on a closed form.
     expect(screen.queryByRole("button", { name: /submit/i })).toBeNull();
+  });
+
+  it("links to the directory from a closed institution form", async () => {
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "Cup",
+      closed: true,
+      has_directory: true,
+      form_id: "form-1",
+    });
+
+    renderPage();
+    const link = await screen.findByRole("link", {
+      name: /registered institutions/i,
+    });
+    expect(link).toHaveAttribute("href", "/f/form-1/directory");
   });
 });

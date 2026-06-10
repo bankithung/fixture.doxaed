@@ -67,6 +67,11 @@ def _number(field: dict, value: Any) -> float | int:
 
 def _single_choice(field: dict, value: Any) -> str:
     s = str(value)
+    # Data-bound choices (e.g. a live institution_list dropdown) carry NO static
+    # options — they're resolved at fetch time — so the static membership check
+    # can't apply. Accept the value; the binding/mapping is the source of truth.
+    if field.get("data_source"):
+        return s
     if s not in _opt_values(field):
         raise FieldError("not an allowed option")
     return s
@@ -75,10 +80,11 @@ def _single_choice(field: dict, value: Any) -> str:
 def _multi_choice(field: dict, value: Any) -> list[str]:
     if not isinstance(value, list):
         raise FieldError("expected a list")
-    allowed = _opt_values(field)
     out = [str(x) for x in value]
-    if any(x not in allowed for x in out):
-        raise FieldError("contains a disallowed option")
+    if not field.get("data_source"):  # static options only (see _single_choice)
+        allowed = _opt_values(field)
+        if any(x not in allowed for x in out):
+            raise FieldError("contains a disallowed option")
     v = _validation(field)
     if "maxSelections" in v and len(out) > v["maxSelections"]:
         raise FieldError("too many selections")

@@ -1,4 +1,6 @@
 import {
+  ArrowDown,
+  ArrowUp,
   CheckSquare,
   ChevronDownSquare,
   Circle,
@@ -76,6 +78,14 @@ export function FieldEditor({
     updateField(sectionKey, field.key, {
       options: options.filter((_, j) => j !== i),
     });
+  // Reorder options so the admin can place any choice at any position.
+  const moveOption = (i: number, dir: -1 | 1): void => {
+    const j = i + dir;
+    if (j < 0 || j >= options.length) return;
+    const next = [...options];
+    [next[i], next[j]] = [next[j], next[i]];
+    updateField(sectionKey, field.key, { options: next });
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -99,6 +109,24 @@ export function FieldEditor({
                 placeholder={t("value")}
                 className="w-24 font-tabular text-xs"
               />
+              <button
+                type="button"
+                disabled={i === 0}
+                onClick={() => moveOption(i, -1)}
+                aria-label={t("Move option up")}
+                className="inline-flex h-9 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"
+              >
+                <ArrowUp aria-hidden="true" className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                disabled={i === options.length - 1}
+                onClick={() => moveOption(i, 1)}
+                aria-label={t("Move option down")}
+                className="inline-flex h-9 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"
+              >
+                <ArrowDown aria-hidden="true" className="h-4 w-4" />
+              </button>
               {options.length > 1 ? (
                 <button
                   type="button"
@@ -225,6 +253,18 @@ export function FieldEditor({
       ) : null}
 
       <BranchingEditor sectionKey={sectionKey} field={field} />
+
+      {/* The field's stable variable — used to read its answers everywhere. It
+          never changes when you rename the label or switch the type. */}
+      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
+        <span className="font-medium">{t("Variable")}</span>
+        <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.6875rem] text-foreground">
+          {field.key}
+        </code>
+        <span>
+          {t("Stays the same if you rename the label or change the type.")}
+        </span>
+      </div>
     </div>
   );
 }

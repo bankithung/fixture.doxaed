@@ -1,10 +1,17 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Lock, ScrollText } from "lucide-react";
+import { ChevronRight, Lock, Power, ScrollText, Trash2 } from "lucide-react";
 import { tournamentsApi, type TournamentRules } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { newEventId } from "@/lib/eventId";
@@ -44,7 +51,9 @@ export function SettingsTab(): React.ReactElement {
   const { id = "" } = useParams();
   const qc = useQueryClient();
   const toast = useToast();
+  const navigate = useNavigate();
   const [draft, setDraft] = useState<Editable | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const settings = useQuery({
     queryKey: qk.settings(id),
@@ -74,6 +83,58 @@ export function SettingsTab(): React.ReactElement {
         title: t("Could not save settings"),
         description: e instanceof ApiError ? (e.payload.detail ?? "") : "",
       }),
+  });
+
+  // Tournament identity (cached by the workspace) — drives status + the
+  // archive/delete controls.
+  const tournament = useQuery({
+    queryKey: ["tournament", id],
+    queryFn: () => tournamentsApi.get(id),
+    enabled: Boolean(id),
+  });
+  const canManage = settings.data?.can_manage ?? false;
+  const archived = tournament.data?.status === "archived";
+
+  const setActive = useMutation({
+    mutationFn: (active: boolean) => tournamentsApi.setActive(id, active),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["tournament", id] });
+      qc.invalidateQueries({ queryKey: ["tournaments"] });
+      toast.push({
+        kind: "success",
+        title:
+          data.status === "archived"
+            ? t("Tournament deactivated")
+            : t("Tournament reactivated"),
+      });
+    },
+    onError: (e) =>
+      toast.push({
+        kind: "error",
+        title: t("Could not update the tournament"),
+        description: e instanceof ApiError ? (e.payload.detail ?? "") : "",
+      }),
+  });
+
+  const remove = useMutation({
+    mutationFn: () => tournamentsApi.remove(id),
+    onSuccess: () => {
+      setConfirmDelete(false);
+      qc.invalidateQueries({ queryKey: ["tournaments"] });
+      toast.push({ kind: "success", title: t("Tournament deleted") });
+      navigate(routes.tournaments());
+    },
+    onError: (e) => {
+      setConfirmDelete(false);
+      const live = e instanceof ApiError && e.payload.detail === "tournament_live";
+      toast.push({
+        kind: "error",
+        title: live
+          ? t("Can't delete a live tournament")
+          : t("Could not delete the tournament"),
+        description: live ? t("Finish or pause the live matches first.") : undefined,
+      });
+    },
   });
 
   const set = <G extends keyof Editable, K extends keyof Editable[G]>(
@@ -190,6 +251,70 @@ export function SettingsTab(): React.ReactElement {
       </Link>
 
       <DisputesPanel tournamentId={id} />
+
+      {/* Status + danger zone (managers only). */}
+      {canManage ? (
+        <section className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-card p-4 shadow-sm">
+          <div>
+            <h3 className="text-sm font-semibold">{t("Status & danger zone")}</h3>
+            <p className="text-xs text-muted-foreground">
+              {archived
+                ? t("This tournament is inactive (archived). Reactivate it to resume.")
+                : t("Deactivate to hide it without deleting, or delete it permanently if it was created by mistake.")}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              disabled={setActive.isPending}
+              onClick={() => setActive.mutate(archived ? true : false)}
+              data-testid="toggle-active"
+            >
+              <Power aria-hidden="true" className="h-4 w-4" />
+              {archived ? t("Reactivate") : t("Deactivate")}
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={remove.isPending}
+              onClick={() => setConfirmDelete(true)}
+              data-testid="delete-tournament"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Trash2 aria-hidden="true" className="h-4 w-4" />
+              {t("Delete tournament")}
+            </Button>
+          </div>
+        </section>
+      ) : null}
+
+      <Dialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        ariaLabel={t("Delete tournament")}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("Delete tournament")}</DialogTitle>
+          <DialogDescription>
+            {t(
+              "This removes the tournament and everything in it (forms, teams, fixtures) from your workspace. This can't be undone.",
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setConfirmDelete(false)}>
+            {t("Cancel")}
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={remove.isPending}
+            onClick={() => remove.mutate()}
+            data-testid="confirm-delete-tournament"
+          >
+            <Trash2 aria-hidden="true" className="h-4 w-4" />
+            {remove.isPending ? t("Deleting…") : t("Delete tournament")}
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   );
 }

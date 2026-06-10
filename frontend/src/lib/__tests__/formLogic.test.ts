@@ -238,3 +238,58 @@ describe("formLogic — section visibility 'Both' case (Sepak/TT)", () => {
     expect(keys).not.toContain("sepak");
   });
 });
+
+describe("nested options (option-revealed follow-up fields)", () => {
+  const nested: FormSchema = {
+    version: 1,
+    sections: [
+      {
+        key: "s",
+        title: "S",
+        fields: [
+          {
+            key: "sport",
+            type: "single_choice",
+            label: "Sport",
+            required: true,
+            options: [
+              {
+                value: "football",
+                label: "Football",
+                fields: [
+                  {
+                    key: "fmt",
+                    type: "single_choice",
+                    label: "Format",
+                    required: true,
+                    options: [
+                      { value: "5v5", label: "5v5" },
+                      { value: "11v11", label: "11v11" },
+                    ],
+                  },
+                ],
+              },
+              { value: "tt", label: "Table Tennis" },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  it("reveals + requires nested fields only when the option is selected", () => {
+    expect(reachableFieldKeys(nested, {})).toEqual(["sport"]);
+    expect(validateRequired(nested, { sport: "" })).toHaveProperty("sport");
+
+    expect(reachableFieldKeys(nested, { sport: "football" })).toEqual([
+      "sport",
+      "fmt",
+    ]);
+    expect(validateRequired(nested, { sport: "football" })).toEqual({
+      fmt: "required",
+    });
+
+    expect(reachableFieldKeys(nested, { sport: "tt" })).toEqual(["sport"]);
+    expect(validateRequired(nested, { sport: "tt" })).toEqual({});
+  });
+});

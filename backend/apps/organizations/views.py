@@ -525,6 +525,26 @@ class InvitationAcceptView(APIView):
                 user.email_verified_at = timezone.now()
                 user.save(update_fields=["email_verified_at"])
             login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+        else:
+            # Authenticated accept: the invitation is bound to a specific email.
+            # Refuse to bind it to a DIFFERENT signed-in account — otherwise
+            # whoever happens to be logged in on the device silently consumes the
+            # invite as the wrong person and the real invitee never gets in (the
+            # logged-out path already forces the identity to invite.email; this
+            # closes the same gap for the logged-in path). Surface both emails so
+            # the SPA can offer a "switch account" path. Mirrors the by-id
+            # accept's email-ownership guard.
+            if (user.email or "").strip().lower() != (
+                invite.email or ""
+            ).strip().lower():
+                return Response(
+                    {
+                        "detail": "email_mismatch",
+                        "invited_email": invite.email,
+                        "current_email": user.email,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
 
         try:
             membership = invitation_svc.accept_invitation(

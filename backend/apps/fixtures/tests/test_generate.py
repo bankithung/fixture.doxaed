@@ -66,3 +66,25 @@ def test_generate_is_idempotent():
 
     assert Match.objects.filter(tournament=t).count() == 6
     assert len(again) == 6
+
+
+def test_round_robin_by_category_buckets_by_pool_and_skips_singletons():
+    from apps.fixtures.services.generate import generate_round_robin_by_category
+    from apps.teams.models import Team
+
+    admin = _verified()
+    t = create_tournament(user=admin, name="Cup")
+    _register_n_teams(t, 5)
+    teams = list(Team.objects.filter(tournament=t).order_by("name"))
+    pools = ["U-14", "U-14", "U-16", "U-16", "U-19"]  # U-19 is a lone team
+    for tm, p in zip(teams, pools):
+        tm.pool = p
+        tm.save(update_fields=["pool"])
+
+    matches = generate_round_robin_by_category(tournament=t)
+
+    # U-14: C(2,2)=1, U-16: 1, U-19 skipped (single team) -> 2 matches total.
+    assert len(matches) == 2
+    for m in matches:
+        assert m.home_team.pool == m.away_team.pool  # never cross-category
+    assert {m.group_label for m in matches} == {"U-14", "U-16"}

@@ -22,7 +22,7 @@ class MatchSerializer(serializers.ModelSerializer):
         fields = [
             "id", "stage", "group_label", "round_no", "match_no", "status",
             "home_team", "away_team", "home_score", "away_score", "scheduled_at",
-            "current_period",
+            "current_period", "sport", "set_scores",
         ]
 
     @staticmethod
@@ -41,6 +41,20 @@ class MatchSerializer(serializers.ModelSerializer):
 class RecordScoreSerializer(serializers.Serializer):
     home_score = serializers.IntegerField(min_value=0, max_value=99)
     away_score = serializers.IntegerField(min_value=0, max_value=99)
+    event_id = serializers.UUIDField(required=False)
+
+
+class RecordSetScoreSerializer(serializers.Serializer):
+    """Set/game-based result: a list of [home, away] point pairs per set."""
+    set_scores = serializers.ListField(
+        child=serializers.ListField(
+            child=serializers.IntegerField(min_value=0, max_value=99),
+            min_length=2,
+            max_length=2,
+        ),
+        min_length=1,
+        max_length=9,
+    )
     event_id = serializers.UUIDField(required=False)
 
 

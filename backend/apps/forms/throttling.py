@@ -13,9 +13,14 @@ from rest_framework.throttling import SimpleRateThrottle
 
 class PublicFormThrottle(SimpleRateThrottle):
     scope = "public_form"
-    rate = "30/hour"
+    rate = "60/hour"
 
     def get_cache_key(self, request, view) -> str | None:
+        # Only throttle write attempts (submissions/uploads). Loading or
+        # previewing a form (GET/HEAD/OPTIONS) must NEVER count toward the
+        # anti-spam budget — otherwise viewing/testing a form exhausts it.
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return None
         ident = self.get_ident(request)
         if ident is None:
             return None

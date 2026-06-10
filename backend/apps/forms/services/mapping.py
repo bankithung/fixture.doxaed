@@ -149,6 +149,8 @@ def _map_team_registration_multi(resp, form, b, a) -> FormResponse:
     for cg in b.get("category_groups", []):
         group_key = cg.get("group")
         tname_key = cg.get("team_name")
+        players_group_key = cg.get("players_group")
+        pname_key = cg.get("player_name")
         category = cg.get("category") or ""
         rows = a.get(group_key, []) or []
         if not isinstance(rows, list):
@@ -157,8 +159,19 @@ def _map_team_registration_multi(resp, form, b, a) -> FormResponse:
             if not isinstance(row, dict):
                 continue
             name = row.get(tname_key)
-            if name:
-                teams_payload.append({"name": str(name), "pool": category, "players": []})
+            if not name:
+                continue
+            # Each team row carries its own nested, repeatable players group.
+            players: list[dict] = []
+            if players_group_key:
+                for pr in row.get(players_group_key, []) or []:
+                    if isinstance(pr, dict):
+                        pn = pr.get(pname_key)
+                        if pn:
+                            players.append({"full_name": str(pn)})
+            teams_payload.append(
+                {"name": str(name), "pool": category, "players": players}
+            )
 
     derived_event_id = uuid.uuid5(uuid.NAMESPACE_URL, f"formresp-teamreg:{resp.id}")
     teams = register_school(

@@ -108,3 +108,54 @@ def test_accept_does_not_reset_existing_users_password():
     assert victim.is_active is True
     assert victim.check_password("OriginalPass123!") is True  # unchanged
     assert victim.check_password("AttackerNewPass999!") is False  # body pw ignored
+
+
+def test_authenticated_mismatched_email_is_blocked():
+    """A signed-in user must NOT consume an invite addressed to a DIFFERENT
+    email — otherwise whoever is logged in on the device silently gets the role
+    and the real invitee never gets in. The endpoint refuses with 409
+    email_mismatch (surfacing both emails for the switch-account UX); no
+    membership is created and the invite stays PENDING.
+    """
+    from apps.organizations.models import AdminInvitation, InviteStatus
+
+    admin = _verified("admin@test.local")
+    t = create_tournament(user=admin, name="Kohima Cup")
+    token = _invite(admin, t, "meri@test.local", role="team_manager")
+
+    banki = _verified("banki@test.local")
+    client = APIClient()
+    client.force_authenticate(user=banki)
+    resp = client.post(ACCEPT_URL, {"token": token}, format="json")
+
+    assert resp.status_code == 409, resp.content
+    body = resp.json()
+    assert body["detail"] == "email_mismatch"
+    assert body["invited_email"] == "meri@test.local"
+    assert body["current_email"] == "banki@test.local"
+    # Wrong account gets no membership; the invite is untouched.
+    assert not TournamentMembership.objects.filter(user=banki, tournament=t).exists()
+    assert (
+        AdminInvitation.objects.get(email="meri@test.local").status
+        == InviteStatus.PENDING
+    )
+
+
+def test_authenticated_matching_email_accepts():
+    """A signed-in user whose email matches the invite accepts normally (the
+    legitimate path — e.g. the invitee opens the link while already logged in
+    as the right account)."""
+    admin = _verified("admin@test.local")
+    t = create_tournament(user=admin, name="Kohima Cup")
+    invitee = _verified("meri@test.local")
+    token = _invite(admin, t, "meri@test.local", role="team_manager")
+
+    client = APIClient()
+    client.force_authenticate(user=invitee)
+    resp = client.post(ACCEPT_URL, {"token": token}, format="json")
+
+    assert resp.status_code == 200, resp.content
+    assert resp.json()["tournament_id"] == str(t.id)
+    assert TournamentMembership.objects.filter(
+        user=invitee, tournament=t, status=TournamentMembershipStatus.ACTIVE
+    ).exists()

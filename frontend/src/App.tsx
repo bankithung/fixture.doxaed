@@ -17,6 +17,8 @@ import { CreateTournamentPage } from "@/features/tournaments/CreateTournamentPag
 import { TournamentsListPage } from "@/features/tournaments/TournamentsListPage";
 import { TournamentWorkspace } from "@/features/tournaments/TournamentWorkspace";
 import { OverviewTab } from "@/features/tournaments/tabs/OverviewTab";
+import { FlowLanding } from "@/features/tournaments/FlowLanding";
+import { SportsTab } from "@/features/tournaments/tabs/SportsTab";
 import { InstitutionsTab } from "@/features/tournaments/tabs/InstitutionsTab";
 import { TeamsTab } from "@/features/tournaments/tabs/TeamsTab";
 import { FixturesTab } from "@/features/tournaments/tabs/FixturesTab";
@@ -157,7 +159,10 @@ export default function App(): React.ReactElement {
                   element={<CreateTournamentPage />}
                 />
                 <Route path="/tournaments/:id" element={<TournamentWorkspace />}>
-                  <Route index element={<OverviewTab />} />
+                  <Route index element={<FlowLanding />} />
+                  <Route path="overview" element={<OverviewTab />} />
+                  <Route path="sports" element={<SportsTab />} />
+                  <Route path="forms" element={<FormsListPage />} />
                   <Route path="institutions" element={<InstitutionsTab />} />
                   <Route path="teams" element={<TeamsTab />} />
                   <Route path="members" element={<TournamentMembersPage />} />
@@ -175,10 +180,6 @@ export default function App(): React.ReactElement {
                 <Route
                   path="/tournaments/:id/matches/:matchId"
                   element={<MatchConsolePage />}
-                />
-                <Route
-                  path="/tournaments/:id/forms"
-                  element={<FormsListPage />}
                 />
                 <Route
                   path="/tournaments/:id/forms/:formId/edit"

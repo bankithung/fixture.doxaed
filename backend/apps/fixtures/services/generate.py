@@ -87,6 +87,76 @@ def generate_round_robin(*, tournament, group_size: int = 5) -> list[Match]:
     return to_create
 
 
+def _sport_for_pool(tournament, pool: str) -> str:
+    """Map a pool (category) back to its sport key via the tournament's sports
+    config, so per-sport (set-based) scoring knows which rules apply. '' if the
+    category isn't tied to a configured sport (→ goal-based default)."""
+    for s in tournament.sports or []:
+        if pool in (s.get("categories") or []):
+            return str(s.get("key") or "")
+    return ""
+
+
+def generate_round_robin_by_category(*, tournament) -> list[Match]:
+    """Round-robin WITHIN each category bucket: a team only plays others in the
+    SAME pool (e.g. U-14 vs U-14), honoring the category each team registered
+    under — instead of re-grouping by size. Pools with <2 teams are skipped.
+    Idempotent: returns existing matches if any."""
+    existing = list(
+        Match.objects.filter(tournament=tournament, deleted_at__isnull=True)
+    )
+    if existing:
+        return existing
+
+    teams = list(
+        Team.objects.filter(
+            tournament=tournament, status=TeamStatus.REGISTERED, deleted_at__isnull=True
+        ).order_by("pool", "seed", "name")
+    )
+    if len(teams) < 2:
+        raise ValueError("Need at least 2 registered teams to generate fixtures.")
+
+    # Bucket by the team's existing pool (its category); blanks fall into "General".
+    from collections import OrderedDict
+
+    pools: "OrderedDict[str, list]" = OrderedDict()
+    for tm in teams:
+        pools.setdefault(tm.pool or "General", []).append(tm)
+
+    org = tournament.organization
+    to_create: list[Match] = []
+    match_no = 0
+    with transaction.atomic():
+        for label, group in pools.items():
+            if len(group) < 2:
+                continue  # a category with a single team has no matches
+            sport_key = _sport_for_pool(tournament, label)
+            ih = hashlib.sha256(
+                ",".join(sorted(str(t.id) for t in group)).encode()
+            ).hexdigest()
+            for round_no, home, away in _round_robin(group):
+                match_no += 1
+                to_create.append(
+                    Match(
+                        organization=org,
+                        tournament=tournament,
+                        stage="group",
+                        group_label=label,
+                        sport=sport_key,
+                        round_no=round_no,
+                        match_no=match_no,
+                        home_team=home,
+                        away_team=away,
+                        status=MatchStatus.SCHEDULED,
+                        inputs_hash=ih,
+                    )
+                )
+        if not to_create:
+            raise ValueError("No category has 2+ teams to schedule.")
+        Match.objects.bulk_create(to_create)
+    return to_create
+
+
 def generate_single_elimination(*, tournament, teams, stage: str = "knockout") -> list[Match]:
     """Generate a single-elimination bracket from `teams` (a power-of-2 count).
 

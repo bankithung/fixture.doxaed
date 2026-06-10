@@ -16,6 +16,17 @@ export interface PublicFormPayload {
   };
   tournament_name: string;
   closed?: boolean;
+  /** Present on a closed form: id + whether a public directory exists for it. */
+  form_id?: string;
+  has_directory?: boolean;
+  /**
+   * Per-institution bound link extras: `prefill` = initial answers (keyed by the
+   * form's own field keys), `locked` = field keys the respondent can't change
+   * (hidden; server-authoritative), `bound` = the fixed entity for a banner.
+   */
+  prefill?: Record<string, unknown>;
+  locked?: string[];
+  bound?: { institution_id: string; label: string };
 }
 
 export interface CopyableItem {
@@ -75,6 +86,12 @@ export const formsApi = {
   /** Auto-generate a draft team-registration form from the org-reg categories. */
   generateTeamForm: (tournamentId: string) =>
     api.post<FormSummary>(`/api/tournaments/${tournamentId}/forms/generate-team/`, {}),
+  /** Auto-generate a draft institution form from the tournament's chosen sports. */
+  generateInstitutionForm: (tournamentId: string) =>
+    api.post<FormSummary>(
+      `/api/tournaments/${tournamentId}/forms/generate-institution/`,
+      {},
+    ),
   /** Built-in templates + every form the user can access, for the copy picker. */
   copyable: () =>
     api.get<{ templates: CopyableItem[]; forms: CopyableItem[] }>(`/api/forms/copyable/`),
@@ -86,6 +103,8 @@ export const formsApi = {
   get: (formId: string) => api.get<FormSummary>(`/api/forms/${formId}/`),
   update: (formId: string, body: FormUpdateBody) =>
     api.patch<FormSummary>(`/api/forms/${formId}/`, body),
+  /** Soft-delete a form (DELETE /api/forms/{id}/ → sets deleted_at). */
+  remove: (formId: string) => api.delete<void>(`/api/forms/${formId}/`),
   publish: (formId: string) =>
     api.post<FormSummary>(`/api/forms/${formId}:publish/`, {}),
   close: (formId: string) =>
@@ -107,6 +126,22 @@ export const formsApi = {
       sent: number;
       links: { response_id: string; email: string; path: string }[];
     }>(`/api/forms/${formId}:send-stage2/`, { target_form_id: targetFormId }),
+  /**
+   * Mint a bound, prefilled share link per registered institution for this team
+   * form (POST /api/forms/{id}:institution-links/). Idempotent; only newly-minted
+   * links carry a `path` (tokens are hashed at rest).
+   */
+  institutionLinks: (formId: string) =>
+    api.post<{
+      minted: number;
+      total: number;
+      links: {
+        institution_id: string;
+        name: string;
+        minted: boolean;
+        path?: string;
+      }[];
+    }>(`/api/forms/${formId}:institution-links/`, {}),
   // Public (unauthenticated) endpoints — used by the renderer (Increment 7).
   publicGet: (formId: string) =>
     api.get<PublicFormPayload>(`/api/forms/${formId}/public/`),

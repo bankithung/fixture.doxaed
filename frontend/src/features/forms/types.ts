@@ -47,6 +47,13 @@ export interface Option {
   label: string;
   /** Branching: jump to this section key when this option is chosen. */
   goto?: string;
+  /**
+   * Nested follow-up questions revealed when this option is chosen (recursive —
+   * a nested choice field's options can themselves carry `fields`). Answers stay
+   * flat by key; a nested field is only active/required while its option is
+   * selected. Mirrors the backend validator's option-descent.
+   */
+  fields?: Field[];
 }
 
 export interface Validation {
@@ -73,6 +80,8 @@ export interface Field {
   visibility?: Visibility | null;
   /** Child fields for `type: "group"` (repeating subform). */
   fields?: Field[];
+  /** `type: "group"` → render as add/remove repeatable rows (array value). */
+  repeatable?: boolean;
 }
 
 export interface Section {

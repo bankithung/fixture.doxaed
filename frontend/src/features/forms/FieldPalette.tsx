@@ -1,11 +1,13 @@
 import {
   AlignLeft,
+  Building2,
   CalendarDays,
   CheckSquare,
   ChevronDownSquare,
   Circle,
   Clock,
   FileUp,
+  GraduationCap,
   Hash,
   Heading,
   ListChecks,
@@ -16,12 +18,36 @@ import {
   Star,
   ToggleLeft,
   Type,
+  User,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useBuilderStore } from "./builderStore";
-import type { FieldType } from "./types";
+import type { Field, FieldRole, FieldType } from "./types";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+
+/** One-click "common fields" — real, named variables with the right role + key,
+ *  so an admin builds a registration form fast without renaming everything. The
+ *  `key` is the stable variable; the store de-duplicates it if added twice. */
+const COMMON_FIELDS: {
+  init: Partial<Field>;
+  type: FieldType;
+  label: string;
+  icon: LucideIcon;
+}[] = [
+  { type: "short_text", label: "School name", icon: GraduationCap,
+    init: { key: "school_name", label: "School name", role: "title" as FieldRole } },
+  { type: "short_text", label: "College name", icon: Building2,
+    init: { key: "college_name", label: "College name", role: "title" as FieldRole } },
+  { type: "short_text", label: "Contact person", icon: User,
+    init: { key: "contact_name", label: "Contact person", role: "name" as FieldRole } },
+  { type: "email", label: "Email", icon: Mail,
+    init: { key: "contact_email", label: "Email", role: "email" as FieldRole } },
+  { type: "phone", label: "Phone", icon: Phone,
+    init: { key: "contact_phone", label: "Phone", role: "phone" as FieldRole } },
+  { type: "date", label: "Date", icon: CalendarDays,
+    init: { key: "date", label: "Date" } },
+];
 
 /** Field-type palette entries: icon + label. Order groups text / choice /
  *  scaled / special so the toolbox reads top-to-bottom sensibly. */
@@ -69,6 +95,24 @@ export function FieldPalette({
       )}
     >
       <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+        {t("Common fields")}
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        {COMMON_FIELDS.map(({ type, label, icon: Icon, init }) => (
+          <button
+            key={init.key}
+            type="button"
+            disabled={!target}
+            onClick={() => target && addField(target, type, init)}
+            className="flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-2 text-left text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          >
+            <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+            <span className="truncate">{t(label)}</span>
+          </button>
+        ))}
+      </div>
+
+      <p className="mt-1 text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
         {t("Add a field")}
       </p>
       <div className="grid grid-cols-2 gap-2">

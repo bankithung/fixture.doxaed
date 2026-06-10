@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from apps.fixtures.services.generate import (
     generate_knockout_from_groups,
     generate_round_robin,
+    generate_round_robin_by_category,
     generate_single_elimination,
 )
 from apps.fixtures.services.scheduler import apply_schedule
@@ -38,6 +39,8 @@ class GenerateFixturesView(GenericAPIView):
                 matches = generate_single_elimination(tournament=t, teams=teams)
             elif fmt == "knockout_from_groups":
                 matches = generate_knockout_from_groups(tournament=t)
+            elif fmt == "by_category":
+                matches = generate_round_robin_by_category(tournament=t)
             else:
                 matches = generate_round_robin(
                     tournament=t, group_size=int(request.data.get("group_size", 5))

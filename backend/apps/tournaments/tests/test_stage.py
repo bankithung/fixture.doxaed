@@ -14,6 +14,7 @@ from django.utils import timezone
 from apps.audit.models import AuditEvent
 from apps.forms.constants import FormPurpose, FormStatus
 from apps.forms.models import Form
+from apps.forms.services.forms import create_form, publish_form
 from apps.matches.models import Match
 from apps.teams.models import Team, TeamStatus
 from apps.tournaments.models import TournamentStage as G
@@ -146,6 +147,113 @@ def test_form_autoclose_on_advance():
     form.refresh_from_db()
     assert form.status == FormStatus.CLOSED
     assert AuditEvent.objects.filter(event_type="form_closed", target_id=form.id).exists()
+
+
+def test_create_form_binds_stage_from_purpose():
+    """A registration form created without an explicit stage is auto-bound to its
+    stage via its purpose, so the stage auto-close can find it. Generic forms are
+    never stage-bound."""
+    t = create_tournament(user=_admin(), name="Bind")
+    org = create_form(
+        tournament=t, title="School signup",
+        purpose=FormPurpose.ORGANIZATION_REGISTRATION,
+    )
+    team = create_form(
+        tournament=t, title="Team signup", purpose=FormPurpose.TEAM_REGISTRATION,
+    )
+    generic = create_form(tournament=t, title="Survey", purpose=FormPurpose.GENERIC)
+    assert org.stage == G.ORG_REGISTRATION
+    assert team.stage == G.TEAM_REGISTRATION
+    assert generic.stage == ""  # generic forms are never auto-closed
+
+
+def test_autoclose_closes_legacy_blank_stage_form():
+    """The reported bug: a registration form with a BLANK stage (created before
+    stage-binding) must still close on advance, matched by its purpose."""
+    t = create_tournament(user=_admin(), name="Legacy")
+    t = _advance(t, G.ORG_REGISTRATION)
+    legacy = Form.objects.create(
+        organization=t.organization, tournament=t, slug="legacy-org", title="Legacy",
+        purpose=FormPurpose.ORGANIZATION_REGISTRATION, stage="",  # blank — the bug
+        status=FormStatus.OPEN,
+        schema={"sections": [{"key": "s", "title": "S", "fields": []}]},
+    )
+    t = _advance(t, G.TEAM_REGISTRATION)
+    legacy.refresh_from_db()
+    assert legacy.status == FormStatus.CLOSED
+
+
+def test_autoclose_closes_all_open_stage_forms():
+    """Multiple open forms for the leaving stage are ALL closed, not just the
+    first — the old single-form behavior left siblings open."""
+    t = create_tournament(user=_admin(), name="Multi")
+    t = _advance(t, G.ORG_REGISTRATION)
+    schema = {"sections": [{"key": "s", "title": "S", "fields": []}]}
+    f1 = create_form(
+        tournament=t, title="Org form 1",
+        purpose=FormPurpose.ORGANIZATION_REGISTRATION, schema=schema,
+    )
+    f2 = create_form(
+        tournament=t, title="Org form 2",
+        purpose=FormPurpose.ORGANIZATION_REGISTRATION, schema=schema,
+    )
+    publish_form(f1)
+    publish_form(f2)
+    t = _advance(t, G.TEAM_REGISTRATION)
+    f1.refresh_from_db()
+    f2.refresh_from_db()
+    assert f1.status == FormStatus.CLOSED
+    assert f2.status == FormStatus.CLOSED
+
+
+def test_advance_to_team_registration_auto_creates_team_draft(
+    django_capture_on_commit_callbacks,
+):
+    """Entering team_registration auto-creates a DRAFT team form (derived from the
+    org form) for the admin to review and publish."""
+    t = create_tournament(user=_admin(), name="Auto")
+    t = _advance(t, G.ORG_REGISTRATION)
+    create_form(
+        tournament=t, title="Org reg",
+        purpose=FormPurpose.ORGANIZATION_REGISTRATION,
+        schema={"sections": [{"key": "s", "title": "S", "fields": []}]},
+    )
+    with django_capture_on_commit_callbacks(execute=True):
+        t = _advance(t, G.TEAM_REGISTRATION)
+
+    team = Form.objects.filter(
+        tournament=t, stage=G.TEAM_REGISTRATION, deleted_at__isnull=True
+    )
+    assert team.count() == 1
+    assert team.first().status == FormStatus.DRAFT
+
+
+def test_auto_create_team_form_is_idempotent_on_readvance(
+    django_capture_on_commit_callbacks,
+):
+    """Going back to org and re-advancing must not create a second team form."""
+    t = create_tournament(user=_admin(), name="IdemTeam")
+    t = _advance(t, G.ORG_REGISTRATION)
+    create_form(
+        tournament=t, title="Org reg",
+        purpose=FormPurpose.ORGANIZATION_REGISTRATION,
+        schema={"sections": [{"key": "s", "title": "S", "fields": []}]},
+    )
+    with django_capture_on_commit_callbacks(execute=True):
+        t = _advance(t, G.TEAM_REGISTRATION)
+    t = st.transition_tournament(
+        tournament=t, to_stage=G.ORG_REGISTRATION, ack_warnings=True
+    )
+    with django_capture_on_commit_callbacks(execute=True):
+        t = st.transition_tournament(
+            tournament=t, to_stage=G.TEAM_REGISTRATION, ack_warnings=True
+        )
+    assert (
+        Form.objects.filter(
+            tournament=t, purpose=FormPurpose.TEAM_REGISTRATION, deleted_at__isnull=True
+        ).count()
+        == 1
+    )
 
 
 # --------------------------------------------------------------------------- reversibility

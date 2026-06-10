@@ -1,10 +1,26 @@
-import { NavLink, Outlet, useLocation, useParams } from "react-router-dom";
+import {
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Lock, Trophy } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, Lock, Trophy } from "lucide-react";
 import { tournamentsApi } from "@/api/tournaments";
+import { StageContinue } from "./StageContinue";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+
+/** Each setup stage → its work page, for the clickable top stepper. */
+const STAGE_ROUTE: Record<string, (id: string) => string> = {
+  setup: routes.tournamentSports,
+  org_registration: routes.tournamentInstitutions,
+  team_registration: routes.tournamentTeams,
+  members: routes.tournamentMembers,
+  fixtures: routes.tournamentFixtures,
+};
 
 const STATUS_CLS: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -20,7 +36,12 @@ const STATUS_CLS: Record<string, string> = {
 // unlocks once the tournament reaches its stage — progressive disclosure so we
 // don't surface team/fixture work during institution registration.
 const TAB_DEFS = (id: string) => [
-  { to: routes.tournamentDetail(id), label: "Overview", end: true, stageKey: null },
+  { to: routes.tournamentOverview(id), label: "Overview", end: true, stageKey: null },
+  // Sports — the first setup step; always available.
+  { to: routes.tournamentSports(id), label: "Sports", stageKey: null },
+  // Forms is the registration-builder; it unlocks with the first registration
+  // stage (keep in sync with computeTournamentNav).
+  { to: routes.tournamentForms(id), label: "Forms", stageKey: "org_registration" },
   { to: routes.tournamentInstitutions(id), label: "Institutions", stageKey: "org_registration" },
   { to: routes.tournamentTeams(id), label: "Teams", stageKey: "team_registration" },
   // Members (invite people / assign roles) is always available — like Overview &
@@ -33,6 +54,7 @@ const TAB_DEFS = (id: string) => [
 export function TournamentWorkspace(): React.ReactElement {
   const { id = "" } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const tournament = useQuery({
     queryKey: ["tournament", id],
     queryFn: () => tournamentsApi.get(id),
@@ -46,10 +68,6 @@ export function TournamentWorkspace(): React.ReactElement {
   const status = tournament.data?.status ?? "draft";
   const stage = stageQ.data;
   const curIdx = stage ? stage.order.indexOf(stage.stage) : -1;
-  const nextLabel =
-    stage && curIdx >= 0 && curIdx < stage.order.length - 1
-      ? stage.stages[curIdx + 1]?.label
-      : null;
 
   // A tab is locked until the tournament reaches its stage. Until the stage
   // payload loads, nothing is locked (avoids a flash of all-locked tabs).
@@ -68,9 +86,13 @@ export function TournamentWorkspace(): React.ReactElement {
     .filter((tb) => location.pathname === tb.to || (!tb.end && location.pathname.startsWith(tb.to)))
     .sort((a, b) => b.to.length - a.to.length)[0];
   const activeLocked = activeTab ? isLocked(activeTab.stageKey) : false;
+  // The flow's "Continue" rides under stage WORK pages — Overview has the full
+  // stepper, and Settings/Forms aren't stages.
+  const flowPage =
+    !!activeTab && !["Overview", "Settings", "Forms"].includes(activeTab.label);
 
   return (
-    <div className="flex w-full flex-col px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-6 sm:px-6 lg:px-8">
       <NavLink
         to={routes.tournaments()}
         className="mb-4 inline-flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -99,25 +121,71 @@ export function TournamentWorkspace(): React.ReactElement {
         </div>
 
         {stage ? (
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1" aria-label={t("Setup progress")}>
-              {stage.order.map((s, i) => (
+          <nav
+            aria-label={t("Setup progress")}
+            className="flex flex-wrap items-center gap-x-1 gap-y-2"
+          >
+            {stage.order.map((s, i) => {
+              const info = stage.stages[i];
+              const reached = i <= curIdx;
+              const isCurrent = i === curIdx;
+              const dest = STAGE_ROUTE[s]?.(id);
+              const clickable = reached && !isCurrent && !!dest;
+              const chip = (
                 <span
-                  key={s}
-                  title={stage.stages[i]?.label}
                   className={cn(
-                    "h-1.5 rounded-full transition-colors",
-                    i === curIdx ? "w-7" : "w-5",
-                    i <= curIdx ? "bg-primary" : "bg-muted",
+                    "inline-flex items-center gap-1.5 rounded-full py-1 pl-1.5 pr-2.5 text-xs font-medium transition-colors",
+                    isCurrent
+                      ? "bg-primary text-primary-foreground"
+                      : reached
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted text-muted-foreground",
+                    clickable && "hover:bg-primary/20",
                   )}
-                />
-              ))}
-            </div>
-            <span className="whitespace-nowrap font-tabular text-xs font-medium text-muted-foreground">
-              {t("Step")} {curIdx + 1} {t("of")} {stage.order.length}
-              {nextLabel ? ` · ${t("Next")}: ${nextLabel}` : ` · ${t("Ready")}`}
-            </span>
-          </div>
+                >
+                  <span
+                    className={cn(
+                      "grid h-4 w-4 shrink-0 place-items-center rounded-full text-[0.625rem] font-semibold",
+                      isCurrent
+                        ? "bg-primary-foreground/20"
+                        : reached
+                          ? "bg-primary/20"
+                          : "bg-muted-foreground/15",
+                    )}
+                  >
+                    {i < curIdx ? (
+                      <Check aria-hidden="true" className="h-3 w-3" />
+                    ) : (
+                      i + 1
+                    )}
+                  </span>
+                  {info?.label}
+                </span>
+              );
+              return (
+                <span key={s} className="flex items-center">
+                  {clickable ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate(dest)}
+                      title={t(`Go to ${info?.label ?? ""}`)}
+                      className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {chip}
+                    </button>
+                  ) : (
+                    chip
+                  )}
+                  {i < stage.order.length - 1 ? (
+                    <ChevronRight
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40"
+                    />
+                  ) : null}
+                </span>
+              );
+            })}
+          </nav>
         ) : null}
       </div>
 
@@ -139,6 +207,8 @@ export function TournamentWorkspace(): React.ReactElement {
           <Outlet />
         )}
       </div>
+
+      {!activeLocked && flowPage ? <StageContinue tournamentId={id} /> : null}
     </div>
   );
 }
