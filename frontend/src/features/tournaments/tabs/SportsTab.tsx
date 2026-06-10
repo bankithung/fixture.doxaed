@@ -23,6 +23,12 @@ import {
 import { formsApi } from "@/api/forms";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
@@ -187,7 +193,7 @@ function AddNodeForm({
 
   return (
     <form
-      className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-2.5"
+      className="flex flex-col gap-3"
       onSubmit={(e) => {
         e.preventDefault();
         submit();
@@ -289,7 +295,7 @@ function NodeKindEditor({
   };
   const showSize = node.kind === "format" || fmt.players_per_side != null;
   return (
-    <div className="ml-3 flex flex-wrap items-end gap-2 rounded-md border border-border bg-muted/30 p-2">
+    <div className="flex flex-wrap items-end gap-2">
       <div className="flex w-40 flex-col gap-1">
         <Label className="text-xs">{t("Type")}</Label>
         <Select
@@ -352,13 +358,18 @@ export function SportsTab(): React.ReactElement {
   const toast = useToast();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  // One in-flight "add node" draft at a time, keyed by `${sportKey}:${path}`.
-  const [addDraft, setAddDraft] = useState<{ key: string; value: string }>({
-    key: "",
-    value: "",
-  });
-  // Which node's "type & team size" editor is open (same `${sport}:${path}` key).
-  const [kindOpenKey, setKindOpenKey] = useState<string>("");
+  // Add-category modal target: which sport + parent path it adds under
+  // (owner 2026-06-10: adding must be a popup carrying name/type/size).
+  const [addTarget, setAddTarget] = useState<{
+    sportKey: string;
+    path: number[];
+    label: string;
+  } | null>(null);
+  // Type & team-size modal target for an EXISTING node.
+  const [kindTarget, setKindTarget] = useState<{
+    sportKey: string;
+    path: number[];
+  } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   // Two-step sub-flow: pick sports → configure each one (focused, via tabs).
   const [step, setStep] = useState<"pick" | "configure">("pick");
@@ -481,7 +492,19 @@ export function SportsTab(): React.ReactElement {
     updateSport(sportKey, {
       nodes: withChildAdded(sport.nodes ?? [], path, node),
     });
-    setAddDraft({ key: "", value: "" });
+    setAddTarget(null);
+  };
+
+  /** The node a dialog target points at (live — optimistic edits included). */
+  const nodeAt = (sportKey: string, path: number[]): SportNode | null => {
+    let nodes = selected.find((s) => s.key === sportKey)?.nodes ?? [];
+    let node: SportNode | null = null;
+    for (const i of path) {
+      node = nodes[i] ?? null;
+      if (!node) return null;
+      nodes = node.children ?? [];
+    }
+    return node;
   };
   const removeNode = (sportKey: string, path: number[]): void => {
     const sport = selected.find((s) => s.key === sportKey);
@@ -543,9 +566,6 @@ export function SportsTab(): React.ReactElement {
     path: number[],
     depth: number,
   ): React.ReactElement => {
-    const draftKey = `${sport.key}:${path.join(".")}`;
-    const adding = addDraft.key === draftKey;
-    const kindOpen = kindOpenKey === draftKey;
     return (
       <li key={node.key ?? `${path.join(".")}-${node.name}`} className="min-w-0">
         <div className="group flex items-center gap-1.5 rounded-md py-1 pl-2 pr-1 hover:bg-accent/60">
@@ -586,17 +606,10 @@ export function SportsTab(): React.ReactElement {
           <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
             <button
               type="button"
-              onClick={() =>
-                setKindOpenKey(kindOpen ? "" : draftKey)
-              }
+              onClick={() => setKindTarget({ sportKey: sport.key, path })}
               aria-label={t(`Category type and team size for ${node.name}`)}
-              aria-expanded={kindOpen}
-              className={cn(
-                "inline-flex h-6 items-center gap-0.5 rounded px-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                kindOpen
-                  ? "bg-accent text-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
-              )}
+              aria-haspopup="dialog"
+              className="inline-flex h-6 items-center gap-0.5 rounded px-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <SlidersHorizontal aria-hidden="true" className="h-3 w-3" />
               {t("type")}
@@ -604,11 +617,10 @@ export function SportsTab(): React.ReactElement {
             <button
               type="button"
               onClick={() =>
-                setAddDraft(
-                  adding ? { key: "", value: "" } : { key: draftKey, value: "" },
-                )
+                setAddTarget({ sportKey: sport.key, path, label: node.name })
               }
               aria-label={t(`Add a level under ${node.name}`)}
+              aria-haspopup="dialog"
               className="inline-flex h-6 items-center gap-0.5 rounded px-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Plus aria-hidden="true" className="h-3 w-3" />
@@ -624,30 +636,20 @@ export function SportsTab(): React.ReactElement {
             </button>
           </span>
         </div>
-        {kindOpen ? (
-          <NodeKindEditor
-            node={node}
-            onPatch={(patch) => patchNode(sport.key, path, patch)}
-          />
-        ) : null}
-        {(node.children?.length || adding) ? (
+        {node.children?.length ? (
           <ul className="ml-3 border-l border-border pl-2">
             {(node.children ?? []).map((c, i) =>
               renderNode(sport, c, [...path, i], depth + 1),
             )}
-            {adding ? (
-              <li className="py-1">
-                <AddNodeForm
-                  onAdd={(n) => addNode(sport.key, path, n)}
-                  onCancel={() => setAddDraft({ key: "", value: "" })}
-                />
-              </li>
-            ) : null}
           </ul>
         ) : null}
       </li>
     );
   };
+
+  const kindNode = kindTarget
+    ? nodeAt(kindTarget.sportKey, kindTarget.path)
+    : null;
 
   return (
     <div className="flex w-full flex-col gap-6">
@@ -900,26 +902,24 @@ export function SportsTab(): React.ReactElement {
                     )}
                   </ul>
                 )}
-                {addDraft.key === `${activeSport.key}:root` ? (
-                  <AddNodeForm
-                    onAdd={(n) => addNode(activeSport.key, [], n)}
-                    onCancel={() => setAddDraft({ key: "", value: "" })}
-                  />
-                ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="w-fit"
-                    onClick={() =>
-                      setAddDraft({ key: `${activeSport.key}:root`, value: "" })
-                    }
-                    aria-label={t(`Add a category to ${activeSport.name}`)}
-                  >
-                    <Plus aria-hidden="true" className="h-4 w-4" />
-                    {t("Add category")}
-                  </Button>
-                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-fit"
+                  onClick={() =>
+                    setAddTarget({
+                      sportKey: activeSport.key,
+                      path: [],
+                      label: activeSport.name,
+                    })
+                  }
+                  aria-haspopup="dialog"
+                  aria-label={t(`Add a category to ${activeSport.name}`)}
+                >
+                  <Plus aria-hidden="true" className="h-4 w-4" />
+                  {t("Add category")}
+                </Button>
 
                 {/* Competitions preview — what registration + fixtures will see. */}
                 {activeLeaves.length > 0 ? (
@@ -1038,6 +1038,73 @@ export function SportsTab(): React.ReactElement {
           </section>
         </>
       )}
+
+      {/* Add-category modal — name, type and team size together. */}
+      <Dialog
+        open={addTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) setAddTarget(null);
+        }}
+        ariaLabel={t("Add category")}
+      >
+        {addTarget ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>
+                {addTarget.path.length === 0
+                  ? `${t("Add a category to")} ${addTarget.label}`
+                  : `${t("Add a level under")} ${addTarget.label}`}
+              </DialogTitle>
+              <DialogDescription>
+                {t("Name it, say what it is, and — for formats like 5v5 — set the team size. Every last level becomes one competition.")}
+              </DialogDescription>
+            </DialogHeader>
+            <AddNodeForm
+              onAdd={(n) => addNode(addTarget.sportKey, addTarget.path, n)}
+              onCancel={() => setAddTarget(null)}
+            />
+          </>
+        ) : null}
+      </Dialog>
+
+      {/* Type & team-size modal for an existing category. */}
+      <Dialog
+        open={kindTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) setKindTarget(null);
+        }}
+        ariaLabel={t("Category type and team size")}
+      >
+        {kindTarget && kindNode ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>
+                {t("Category type")} — {kindNode.name}
+              </DialogTitle>
+              <DialogDescription>
+                {t("Formats (1v1, 5v5…) carry a team size that the registration form enforces.")}
+              </DialogDescription>
+            </DialogHeader>
+            <NodeKindEditor
+              node={kindNode}
+              onPatch={(patch) => {
+                patchNode(kindTarget.sportKey, kindTarget.path, patch);
+                // Picking a non-format type is the whole job — close right
+                // away (owner 2026-06-10: the panel lingering read as "it
+                // didn't do anything"). Formats stay open for the sizes.
+                if (patch.kind !== undefined && patch.kind !== "format") {
+                  setKindTarget(null);
+                }
+              }}
+            />
+            <div className="flex justify-end">
+              <Button type="button" size="sm" onClick={() => setKindTarget(null)}>
+                {t("Done")}
+              </Button>
+            </div>
+          </>
+        ) : null}
+      </Dialog>
     </div>
   );
 }
