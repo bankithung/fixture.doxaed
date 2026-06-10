@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/tailwind";
+import { flipPlacement } from "@/lib/popover";
 
 export interface SelectOption {
   value: string;
@@ -43,21 +44,30 @@ export function Select({
 }: SelectProps): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [pos, setPos] = useState<{
+    top?: number;
+    bottom?: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const listId = useId();
   const selected = options.find((o) => o.value === value);
 
-  // Anchor the portaled listbox under the trigger, and keep it there as the
-  // page/containers scroll or the window resizes.
+  // Anchor the portaled listbox to the trigger (flipping above it when the
+  // viewport has more room there), and keep it placed as the page/containers
+  // scroll or the window resizes.
   useLayoutEffect(() => {
     if (!open) return;
     const place = (): void => {
       const el = ref.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      setPos({ top: r.bottom + 6, left: r.left, width: r.width });
+      // ~32px per option + list padding, capped at the old max-h-60 (240px).
+      const natural = Math.min(240, options.length * 32 + 10);
+      setPos({ ...flipPlacement(r, natural), left: r.left, width: r.width });
     };
     place();
     window.addEventListener("scroll", place, true);
@@ -66,7 +76,7 @@ export function Select({
       window.removeEventListener("scroll", place, true);
       window.removeEventListener("resize", place);
     };
-  }, [open]);
+  }, [open, options.length]);
 
   useEffect(() => {
     if (!open) return;
@@ -144,11 +154,13 @@ export function Select({
               style={{
                 position: "fixed",
                 top: pos.top,
+                bottom: pos.bottom,
                 left: pos.left,
                 minWidth: pos.width,
                 maxWidth: "min(20rem, calc(100vw - 1rem))",
+                maxHeight: pos.maxHeight,
               }}
-              className="z-[60] max-h-60 overflow-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in"
+              className="z-[60] overflow-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in"
             >
               {options.map((o, i) => (
                 <li

@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { useBreakpoint } from "@/lib/useBreakpoint";
+import { flipPlacement } from "@/lib/popover";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -147,13 +148,21 @@ function RowStatusActions({
   const qc = useQueryClient();
   const toast = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const [pos, setPos] = useState<{
+    top?: number;
+    bottom?: number;
+    right: number;
+  } | null>(null);
   const wrapRef = useRef<HTMLSpanElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const openMenu = (): void => {
     const r = wrapRef.current?.getBoundingClientRect();
-    if (r) setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+    if (r) {
+      // Flip above the trigger near the bottom of the viewport (~34px/item).
+      const { top, bottom } = flipPlacement(r, STATUS_ACTIONS.length * 34 + 10, 4);
+      setPos({ top, bottom, right: window.innerWidth - r.right });
+    }
     setMenuOpen(true);
   };
 
@@ -238,7 +247,12 @@ function RowStatusActions({
             <div
               ref={menuRef}
               role="menu"
-              style={{ position: "fixed", top: pos.top, right: pos.right }}
+              style={{
+                position: "fixed",
+                top: pos.top,
+                bottom: pos.bottom,
+                right: pos.right,
+              }}
               className="z-50 w-40 rounded-lg border border-border bg-popover p-1 text-sm text-popover-foreground shadow-md"
             >
               {STATUS_ACTIONS.map(({ status, label, Icon }) => {

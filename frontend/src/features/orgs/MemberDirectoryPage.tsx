@@ -79,6 +79,9 @@ function RowActions({
   onRemove,
 }: RowActionsProps): React.ReactElement {
   const [menuOpen, setMenuOpen] = React.useState(false);
+  // Flip the menu above the trigger when the row sits near the viewport
+  // bottom (otherwise the menu opens off-screen).
+  const [openUp, setOpenUp] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
@@ -112,14 +115,21 @@ function RowActions({
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         aria-label={t(`Actions for ${displayName}`)}
-        onClick={() => setMenuOpen((o) => !o)}
+        onClick={() => {
+          const r = menuRef.current?.getBoundingClientRect();
+          if (r) setOpenUp(window.innerHeight - r.bottom < 64);
+          setMenuOpen((o) => !o);
+        }}
       >
         <MoreVertical className="h-4 w-4" aria-hidden="true" />
       </Button>
       {menuOpen ? (
         <div
           role="menu"
-          className="absolute right-0 z-10 mt-1 w-44 rounded-lg border border-border bg-popover p-1 text-sm text-popover-foreground shadow-md"
+          className={cn(
+            "absolute right-0 z-10 w-44 rounded-lg border border-border bg-popover p-1 text-sm text-popover-foreground shadow-md",
+            openUp ? "bottom-full mb-1" : "top-full mt-1",
+          )}
         >
           <button
             type="button"
