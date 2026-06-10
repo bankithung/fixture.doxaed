@@ -215,12 +215,18 @@ def register_school(
                     status=TeamStatus.REGISTERED,
                     created_by=submitted_by,
                 )
+                # Persons already rostered on THIS team (this loop) — a name
+                # listed twice on one squad is two people (or a typo), never
+                # the same Person twice: re-using it would violate
+                # unique_person_per_team and roll back the whole submission
+                # (review W2-F, critical).
+                team_person_ids: set = set()
                 for pd in td.get("players", []):
                     # W2-D person dedupe: the same name registered before by
                     # THIS institution in THIS tournament is the same person,
                     # so a student entering football AND badminton shares one
                     # Person — that's what lets the scheduler keep their two
-                    # teams' matches from overlapping. (Exact-name homonyms
+                    # teams' matches from overlapping. (Cross-team homonyms
                     # within one school collapse; organisers can split them
                     # in the roster editor later.)
                     full_name = pd["full_name"][:200]
@@ -233,6 +239,7 @@ def register_school(
                                 players__team__institution=resolved,
                                 players__deleted_at__isnull=True,
                             )
+                            .exclude(id__in=team_person_ids)
                             .order_by("created_at")
                             .first()
                         )
@@ -243,6 +250,7 @@ def register_school(
                             dob_year=pd.get("dob_year"),
                             created_by=submitted_by,
                         )
+                    team_person_ids.add(person.id)
                     Player.objects.create(
                         organization=org,
                         tournament=tournament,

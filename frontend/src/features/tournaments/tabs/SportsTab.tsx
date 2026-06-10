@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
+  Check,
   ChevronLeft,
   ChevronRight,
   CornerDownRight,
@@ -86,15 +87,21 @@ function leafLabels(nodes: SportNode[], prefix: string[] = []): string[] {
 function withChildAdded(
   nodes: SportNode[],
   path: number[],
-  name: string,
+  node: SportNode,
 ): SportNode[] {
-  if (path.length === 0) return [...nodes, { name }];
+  if (path.length === 0) return [...nodes, node];
   const [head, ...rest] = path;
   return nodes.map((n, i) =>
     i === head
-      ? { ...n, children: withChildAdded(n.children ?? [], rest, name) }
+      ? { ...n, children: withChildAdded(n.children ?? [], rest, node) }
       : n,
   );
+}
+
+/** "5v5" / "3 vs 3" style names ⇒ players-per-side (mirrors the server). */
+function detectPerSide(name: string): number | undefined {
+  const m = /^\s*(\d{1,2})\s*[vV][sS]?\s*(\d{1,2})\s*$/.exec(name);
+  return m ? Number(m[1]) : undefined;
 }
 
 function withNodeRemoved(nodes: SportNode[], path: number[]): SportNode[] {
@@ -128,6 +135,132 @@ const NODE_KIND_OPTIONS = [
   { value: "level", label: t("Level") },
   { value: "custom", label: t("Custom") },
 ];
+
+const KIND_LABELS: Record<string, string> = {
+  age_group: "Age group",
+  gender: "Gender",
+  format: "Format",
+  level: "Level",
+  custom: "Custom",
+};
+
+/**
+ * Add-category form (W2 refinement, owner 2026-06-10): name, TYPE and team
+ * size are captured together at add time — the type chooser shows on every
+ * add instead of hiding behind a per-node button, and team-size fields are
+ * strict numbers (a "5 v 5" free-text size could never be compared; sizes
+ * are integers, "5v5" belongs in the NAME, where it auto-fills the numbers).
+ */
+function AddNodeForm({
+  onAdd,
+  onCancel,
+}: {
+  onAdd: (node: SportNode) => void;
+  onCancel: () => void;
+}): React.ReactElement {
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState<string>("");
+  const [pps, setPps] = useState<string>("");
+  const [squadMax, setSquadMax] = useState<string>("");
+
+  const detected = detectPerSide(name);
+  const effectiveKind = kind || (detected != null ? "format" : "");
+  const showSize = effectiveKind === "format";
+  const ppsValue = pps !== "" ? Number(pps) : detected;
+
+  const submit = (): void => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const node: SportNode = { name: trimmed };
+    if (effectiveKind) node.kind = effectiveKind as SportNode["kind"];
+    const fmt: SportNodeFormat = {};
+    if (ppsValue != null && Number.isInteger(ppsValue) && ppsValue > 0) {
+      fmt.players_per_side = ppsValue;
+    }
+    const sq = squadMax !== "" ? Number(squadMax) : undefined;
+    if (sq != null && Number.isInteger(sq) && sq > 0) {
+      fmt.squad_max = Math.max(sq, fmt.players_per_side ?? 1);
+    }
+    if (Object.keys(fmt).length) node.format = fmt;
+    onAdd(node);
+  };
+
+  return (
+    <form
+      className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-2.5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex min-w-[10rem] flex-1 flex-col gap-1">
+          <Label className="text-xs">{t("Name")}</Label>
+          <Input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("e.g. U-14, Girls, 5v5, Doubles")}
+            className="h-9"
+          />
+        </div>
+        <div className="flex w-44 flex-col gap-1">
+          <Label className="text-xs">{t("Type")}</Label>
+          <Select
+            aria-label={t("Category type")}
+            value={effectiveKind}
+            options={NODE_KIND_OPTIONS}
+            onChange={setKind}
+            placeholder={t("Category type…")}
+          />
+        </div>
+      </div>
+      {showSize ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex w-28 flex-col gap-1">
+            <Label className="text-xs">{t("Players on field")}</Label>
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              inputMode="numeric"
+              value={pps !== "" ? pps : (detected ?? "")}
+              onChange={(e) => setPps(e.target.value)}
+              className="h-9 font-tabular"
+              aria-label={t("Players on field")}
+            />
+          </div>
+          <div className="flex w-28 flex-col gap-1">
+            <Label className="text-xs">{t("Squad max")}</Label>
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              inputMode="numeric"
+              value={squadMax}
+              onChange={(e) => setSquadMax(e.target.value)}
+              placeholder={ppsValue != null ? String(ppsValue) : ""}
+              className="h-9 font-tabular"
+              aria-label={t("Squad max")}
+            />
+          </div>
+          <p className="flex-1 pb-1 text-xs text-muted-foreground">
+            {t("Teams register exactly this squad; raise Squad max to allow substitutes.")}
+          </p>
+        </div>
+      ) : null}
+      <div className="flex items-center gap-2">
+        <Button type="submit" size="sm" disabled={!name.trim()}>
+          <Plus aria-hidden="true" className="h-4 w-4" />
+          {t("Add category")}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+          {t("Cancel")}
+        </Button>
+      </div>
+    </form>
+  );
+}
 
 /**
  * Inline node "type & team size" editor (W2-B). Numbers commit on blur so the
@@ -178,9 +311,12 @@ function NodeKindEditor({
               ["squad_max", t("Squad max")],
             ] as const
           ).map(([k, label]) => (
-            <div key={k} className="flex w-20 flex-col gap-1">
+            <div key={k} className="flex w-24 flex-col gap-1">
               <Label className="text-xs">{label}</Label>
               <Input
+                type="number"
+                min={1}
+                step={1}
                 inputMode="numeric"
                 defaultValue={fmt[k] ?? ""}
                 onBlur={(e) => patchFormat(k, e.target.value)}
@@ -264,18 +400,31 @@ export function SportsTab(): React.ReactElement {
 
   const save = useMutation({
     mutationFn: (next: TournamentSport[]) => tournamentsApi.setSports(id, next),
+    // Optimistic: edits (category type, team size, add/remove) reflect
+    // immediately — waiting for PUT + refetch made the type Select feel dead
+    // (owner report 2026-06-10). Server response then reconciles.
+    onMutate: async (next: TournamentSport[]) => {
+      await qc.cancelQueries({ queryKey: ["tournament-sports", id] });
+      const prev = qc.getQueryData(["tournament-sports", id]);
+      qc.setQueryData(["tournament-sports", id], { sports: next });
+      return { prev };
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tournament-sports", id] });
       qc.invalidateQueries({ queryKey: ["tournament", id] });
     },
-    onError: (e) =>
+    onError: (e, _next, ctx) => {
+      if (ctx?.prev !== undefined) {
+        qc.setQueryData(["tournament-sports", id], ctx.prev);
+      }
       toast.push({
         kind: "error",
         title:
           e instanceof ApiError && e.payload.detail === "not_tournament_manager"
             ? t("Only managers can change sports")
             : t("Could not save sports"),
-      }),
+      });
+    },
   });
 
   // Generate the institution form (reusing an existing one) AND move the
@@ -326,12 +475,11 @@ export function SportsTab(): React.ReactElement {
   const updateSport = (key: string, patch: Partial<TournamentSport>): void =>
     save.mutate(selected.map((s) => (s.key === key ? { ...s, ...patch } : s)));
 
-  const addNode = (sportKey: string, path: number[], raw: string): void => {
-    const name = raw.trim();
+  const addNode = (sportKey: string, path: number[], node: SportNode): void => {
     const sport = selected.find((s) => s.key === sportKey);
-    if (!name || !sport) return;
+    if (!node.name.trim() || !sport) return;
     updateSport(sportKey, {
-      nodes: withChildAdded(sport.nodes ?? [], path, name),
+      nodes: withChildAdded(sport.nodes ?? [], path, node),
     });
     setAddDraft({ key: "", value: "" });
   };
@@ -353,18 +501,23 @@ export function SportsTab(): React.ReactElement {
   };
 
   const q = search.trim().toLowerCase();
+  // The server re-keys catalog codes ("sepak-takraw" → "sepak_takraw"), so
+  // selected-state must compare NORMALIZED keys — the raw-code comparison let
+  // already-added sports look addable (owner report 2026-06-10). Selected
+  // entries stay in the list with an explicit "Added ✓" state.
+  const isAdded = (code: string): boolean =>
+    selectedKeys.has(code) || selectedKeys.has(slugKey(code));
   const matches = useMemo(() => {
     const all = catalog.data ?? [];
     return all
       .filter(
         (c) =>
-          !selectedKeys.has(c.code) &&
-          (!q ||
-            c.name.toLowerCase().includes(q) ||
-            c.category.toLowerCase().includes(q)),
+          !q ||
+          c.name.toLowerCase().includes(q) ||
+          c.category.toLowerCase().includes(q),
       )
       .slice(0, 24);
-  }, [catalog.data, q, selectedKeys]);
+  }, [catalog.data, q]);
 
   const customName = search.trim();
   const customExists =
@@ -411,6 +564,11 @@ export function SportsTab(): React.ReactElement {
           >
             {node.name}
           </span>
+          {node.kind ? (
+            <span className="rounded bg-muted px-1.5 text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground">
+              {t(KIND_LABELS[node.kind] ?? node.kind)}
+            </span>
+          ) : null}
           {!node.children?.length ? (
             <span className="rounded bg-primary/10 px-1.5 text-[0.625rem] font-medium uppercase tracking-wide text-primary">
               {t("competition")}
@@ -478,31 +636,11 @@ export function SportsTab(): React.ReactElement {
               renderNode(sport, c, [...path, i], depth + 1),
             )}
             {adding ? (
-              <li>
-                <form
-                  className="flex items-center gap-1.5 py-1 pl-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    addNode(sport.key, path, addDraft.value);
-                  }}
-                >
-                  <Input
-                    autoFocus
-                    value={addDraft.value}
-                    onChange={(e) =>
-                      setAddDraft((d) => ({ ...d, value: e.target.value }))
-                    }
-                    onBlur={() => {
-                      if (!addDraft.value.trim()) setAddDraft({ key: "", value: "" });
-                    }}
-                    placeholder={t("e.g. Girls, 5v5, Doubles")}
-                    className="h-7 w-44 text-sm"
-                    aria-label={t(`New level under ${node.name}`)}
-                  />
-                  <Button type="submit" variant="outline" size="sm" className="h-7">
-                    {t("Add")}
-                  </Button>
-                </form>
+              <li className="py-1">
+                <AddNodeForm
+                  onAdd={(n) => addNode(sport.key, path, n)}
+                  onCancel={() => setAddDraft({ key: "", value: "" })}
+                />
               </li>
             ) : null}
           </ul>
@@ -612,24 +750,46 @@ export function SportsTab(): React.ReactElement {
             ) : null}
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {matches.map((c) => (
-                <button
-                  key={c.code}
-                  type="button"
-                  onClick={() => add({ key: c.code, name: c.name, custom: false })}
-                  className={cn(
-                    "flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-left text-sm transition-colors hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  )}
-                >
-                  <Plus aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{c.name}</span>
-                    <span className="block truncate text-xs capitalize text-muted-foreground">
-                      {c.category}
+              {matches.map((c) => {
+                const added = isAdded(c.code);
+                return (
+                  <button
+                    key={c.code}
+                    type="button"
+                    aria-pressed={added}
+                    onClick={() =>
+                      added
+                        ? remove(slugKey(c.code))
+                        : add({ key: slugKey(c.code), name: c.name, custom: false })
+                    }
+                    title={added ? t("Added — click to remove") : t("Add sport")}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      added
+                        ? "border-primary/50 bg-primary/10"
+                        : "border-border bg-background hover:border-primary/40 hover:bg-accent",
+                    )}
+                  >
+                    {added ? (
+                      <Check
+                        aria-hidden="true"
+                        className="h-4 w-4 shrink-0 text-primary"
+                      />
+                    ) : (
+                      <Plus
+                        aria-hidden="true"
+                        className="h-4 w-4 shrink-0 text-primary"
+                      />
+                    )}
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{c.name}</span>
+                      <span className="block truncate text-xs capitalize text-muted-foreground">
+                        {added ? t("added") : c.category}
+                      </span>
                     </span>
-                  </span>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
             {catalog.isLoading ? (
               <p className="text-sm text-muted-foreground">{t("Loading sports…")}</p>
@@ -740,33 +900,26 @@ export function SportsTab(): React.ReactElement {
                     )}
                   </ul>
                 )}
-                <form
-                  className="flex items-center gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    addNode(
-                      activeSport.key,
-                      [],
-                      addDraft.key === `${activeSport.key}:root` ? addDraft.value : "",
-                    );
-                  }}
-                >
-                  <Input
-                    value={
-                      addDraft.key === `${activeSport.key}:root` ? addDraft.value : ""
-                    }
-                    onChange={(e) =>
-                      setAddDraft({ key: `${activeSport.key}:root`, value: e.target.value })
-                    }
-                    placeholder={t("Add a category (e.g. U-14, Singles)")}
-                    className="h-8 max-w-xs text-sm"
-                    aria-label={t(`Add a category to ${activeSport.name}`)}
+                {addDraft.key === `${activeSport.key}:root` ? (
+                  <AddNodeForm
+                    onAdd={(n) => addNode(activeSport.key, [], n)}
+                    onCancel={() => setAddDraft({ key: "", value: "" })}
                   />
-                  <Button type="submit" variant="outline" size="sm">
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-fit"
+                    onClick={() =>
+                      setAddDraft({ key: `${activeSport.key}:root`, value: "" })
+                    }
+                    aria-label={t(`Add a category to ${activeSport.name}`)}
+                  >
                     <Plus aria-hidden="true" className="h-4 w-4" />
                     {t("Add category")}
                   </Button>
-                </form>
+                )}
 
                 {/* Competitions preview — what registration + fixtures will see. */}
                 {activeLeaves.length > 0 ? (

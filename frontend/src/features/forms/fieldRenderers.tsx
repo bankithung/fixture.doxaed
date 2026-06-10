@@ -437,9 +437,15 @@ export function FieldRenderer({
       {control}
       {error ? (
         <p role="alert" className="text-xs text-destructive">
-          {t("This field is required.")}
+          {t(ERROR_MESSAGES[error] ?? "This field is required.")}
         </p>
       ) : null}
     </div>
   );
 }
+
+/** Server validation codes → human messages (default: required). */
+const ERROR_MESSAGES: Record<string, string> = {
+  too_few_items: "Add the minimum number of entries (check the squad size).",
+  too_many_items: "Too many entries — remove some (check the squad size).",
+};

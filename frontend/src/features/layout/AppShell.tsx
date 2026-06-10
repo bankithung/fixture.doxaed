@@ -201,13 +201,17 @@ export function AppShell(): React.ReactElement {
   // the workspace renders the guided flow (stage chips, Continue, delete at
   // the top) like a job-site onboarding, and the full SaaS shell with the
   // sidebar appears once fixtures are generated and the tournament is ready.
-  // Members without manage rights always get the normal shell, and so do
-  // tournaments whose stage hasn't loaded yet (no flash of missing nav).
+  // Members without manage rights always get the normal shell. While the
+  // stage payload is still LOADING inside a tournament, render no sidebar —
+  // defaulting to "shown" flashed the rail for managers on every refresh
+  // (owner report 2026-06-10); members instead get a quiet pop-in. On query
+  // error, fail open to the normal shell.
   const setupMode =
     inTournamentContext &&
-    stageQuery.data != null &&
-    stageQuery.data.can_manage &&
-    stageQuery.data.stage !== "ready";
+    ((stageQuery.data == null && !stageQuery.isError) ||
+      (stageQuery.data != null &&
+        stageQuery.data.can_manage &&
+        stageQuery.data.stage !== "ready"));
 
   const handleSignOut = async (): Promise<void> => {
     setMenuOpen(false);

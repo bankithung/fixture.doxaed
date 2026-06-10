@@ -171,3 +171,110 @@ def test_separation_survives_status_filter():
     Team.objects.filter(name="SM A").update(status=TeamStatus.WITHDRAWN)
     with pytest.raises(ValueError):
         generate_round_robin_by_category(tournament=t, leaf_key="football.u15")
+
+
+# ----------------------------------------------------- review W2-F regressions
+
+
+def test_inverted_squad_bounds_are_clamped():
+    """A lone contradicting bound (squad_max < players-per-side, or squad_min
+    above an unset max) used to generate min_items > max_items — every roster
+    rejected. The resolver now clamps to a satisfiable range."""
+    from apps.tournaments.services.sports import leaf_roster_rules
+
+    cfg = normalize_sports([{"name": "Football", "nodes": [
+        {"name": "5v5", "format": {"players_per_side": 5, "squad_max": 4}},
+    ]}])
+    rules = leaf_roster_rules(cfg, "football.5v5")
+    assert rules["squad_min"] <= rules["squad_max"]
+    assert rules["squad_max"] >= 5  # a squad can't be smaller than the side
+
+    cfg2 = normalize_sports([{"name": "Football", "nodes": [
+        {"name": "5v5", "format": {"players_per_side": 5, "squad_min": 8}},
+    ]}])
+    rules2 = leaf_roster_rules(cfg2, "football.5v5")
+    assert rules2 == {"players_per_side": 5, "squad_min": 8, "squad_max": 8}
+
+
+def test_schema_validator_reaches_nested_group_bounds():
+    from apps.forms.services.schema import SchemaError, validate_schema
+
+    bad = {"version": 1, "sections": [{"key": "s", "title": "S", "fields": [
+        {"key": "teams", "type": "group", "label": "Team", "repeatable": True,
+         "fields": [
+             {"key": "players", "type": "group", "label": "Player",
+              "repeatable": True, "min_items": 5, "max_items": 4,
+              "fields": [{"key": "n", "type": "short_text", "label": "Name"}]},
+         ]},
+    ]}]}
+    with pytest.raises(SchemaError):
+        validate_schema(bad)
+
+
+def test_empty_group_still_fails_its_minimum():
+    """Zero rows used to pass a min_items bound while one row failed."""
+    from apps.forms.services.validation import AnswerError, validate_answers
+
+    schema = {"version": 1, "sections": [{"key": "s", "title": "S", "fields": [
+        {"key": "g", "type": "group", "label": "Row", "repeatable": True,
+         "min_items": 2,
+         "fields": [{"key": "n", "type": "short_text", "label": "Name"}]},
+    ]}]}
+    with pytest.raises(AnswerError) as exc:
+        validate_answers(schema, {})
+    assert "too_few_items" in str(exc.value)
+    with pytest.raises(AnswerError):
+        validate_answers(schema, {"g": [{"n": "one"}]})
+    assert validate_answers(schema, {"g": [{"n": "a"}, {"n": "b"}]})
+
+
+def test_nested_bounds_error_path_has_no_phantom_row_index():
+    """Non-repeatable parents key nested errors parent.child (the renderer
+    maps the prefix back onto the top-level field either way)."""
+    from apps.forms.services.validation import _check_group_bounds
+
+    fld = {"key": "roster", "type": "group", "label": "R", "fields": [
+        {"key": "players", "type": "group", "label": "P", "repeatable": True,
+         "min_items": 2, "fields": []},
+    ]}
+    errors: dict = {}
+    _check_group_bounds(fld, {"players": [{}]}, "roster", errors)
+    assert errors == {"roster.players": "too_few_items"}
+
+
+def test_duplicate_name_in_one_roster_registers_both_rows():
+    """CRITICAL regression: a name listed twice on one squad used to trip
+    unique_person_per_team, roll back the whole submission and replay to
+    an empty success."""
+    admin = _admin("dupname@test.local")
+    t = _cup(admin, "Dup Cup")
+    teams = register_school(
+        tournament=t, school_name="Don Bosco",
+        teams=[{"name": "DB A", "sport": "football", "leaf_key": "football.u15",
+                "players": [{"full_name": "Imna Jamir"},
+                            {"full_name": "Imna Jamir"}]}],
+    )
+    assert len(teams) == 1
+    assert Player.objects.filter(team=teams[0], deleted_at__isnull=True).count() == 2
+    # two distinct Persons — a duplicate row is two people (or a typo), never
+    # the same entry twice
+    assert Person.objects.filter(full_name="Imna Jamir").count() == 2
+
+
+def test_separation_never_introduces_conflicts_six_team_bracket():
+    """3 schools x 2 teams in a 6-team knockout: the deal used to land C1 vs
+    C2 in the LAST opening pair with no later pair to repair into."""
+    admin = _admin("sixko@test.local")
+    t = _cup(admin, "Six KO")
+    teams = _teams(t, [("A School", "A1"), ("A School", "A2"),
+                       ("B School", "B1"), ("B School", "B2"),
+                       ("C School", "C1"), ("C School", "C2")])
+    created = generate_single_elimination(
+        tournament=t, teams=teams, leaf_key="football.u15",
+    )
+    by_id = {tm.id: tm for tm in teams}
+    for m in _opening_matches(created):
+        home, away = by_id[m.home_team_id], by_id[m.away_team_id]
+        assert home.institution_id != away.institution_id, (
+            f"round 1 pairs {home.name} vs {away.name}"
+        )

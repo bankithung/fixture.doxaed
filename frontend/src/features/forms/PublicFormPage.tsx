@@ -21,14 +21,20 @@ import type { Field } from "./types";
 const OVERLINE =
   "text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground";
 
-/** Pull a DRF `{ errors: { field: msg } }` map off an ApiError, if present. */
+/** Pull a DRF `{ errors: { field: msg } }` map off an ApiError, if present.
+ * Nested-group errors arrive with dotted paths ("teams_u15.0.players_u15");
+ * they're mapped onto their TOP-LEVEL field key so the failing group
+ * highlights and the section jump works (review W2-F — dotted keys used to
+ * match nothing and the submit failed with zero visible feedback). */
 function serverFieldErrors(e: unknown): Record<string, string> {
   if (!(e instanceof ApiError)) return {};
   const raw = e.payload.errors;
   if (!raw || typeof raw !== "object") return {};
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    out[k] = Array.isArray(v) ? String(v[0]) : String(v);
+    const topKey = k.split(".")[0];
+    const msg = Array.isArray(v) ? String(v[0]) : String(v);
+    if (!(topKey in out)) out[topKey] = msg;
   }
   return out;
 }

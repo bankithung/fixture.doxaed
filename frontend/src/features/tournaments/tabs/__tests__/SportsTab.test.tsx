@@ -163,7 +163,9 @@ describe("SportsTab", () => {
     await userEvent.click(
       await screen.findByLabelText(/add a level under u-14/i),
     );
-    const input = await screen.findByLabelText(/new level under u-14/i);
+    // The add form captures name + type together (W2 refinement); an NvN
+    // name self-detects as a format with its players-per-side.
+    const input = await screen.findByPlaceholderText(/e\.g\. u-14, girls/i);
     await userEvent.type(input, "5v5{Enter}");
     await waitFor(() =>
       expect(tournamentsApi.setSports).toHaveBeenCalledWith("t1", [
@@ -172,7 +174,17 @@ describe("SportsTab", () => {
           name: "Football",
           custom: false,
           nodes: [
-            { key: "u_14", name: "U-14", children: [{ name: "5v5" }] },
+            {
+              key: "u_14",
+              name: "U-14",
+              children: [
+                {
+                  name: "5v5",
+                  kind: "format",
+                  format: { players_per_side: 5 },
+                },
+              ],
+            },
           ],
         },
       ]),

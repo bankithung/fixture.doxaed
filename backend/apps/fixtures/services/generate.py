@@ -94,29 +94,48 @@ def _separate_institutions(
 
     pairs = opening_pairs or [(i, i + 1) for i in range(0, len(out) - 1, 2)]
 
-    def inst(pos: int):
-        return out[pos].institution_id if pos < len(out) else None
+    def inst(arr: list[Team], pos: int):
+        return arr[pos].institution_id if pos < len(arr) else None
+
+    def conflicts(arr: list[Team]) -> int:
+        return sum(
+            1 for i, j in pairs
+            if inst(arr, i) is not None and inst(arr, i) == inst(arr, j)
+        )
 
     for pi, (i, j) in enumerate(pairs):
         if j >= len(out) or i >= len(out):
             continue  # bye slot
-        if not inst(i) or inst(i) != inst(j):
+        if not inst(out, i) or inst(out, i) != inst(out, j):
             continue
         fixed = False
-        for pj in range(pi + 1, len(pairs)):
+        # Search EVERY other pair (a conflict in the LAST pair used to be
+        # unfixable — review W2-F); the swap condition keeps the donor pair
+        # separated, so earlier repairs can't be undone.
+        for pj in range(len(pairs)):
+            if pj == pi:
+                continue
             a, b = pairs[pj]
             for k, other in ((a, b), (b, a)):
                 if k >= len(out):
                     continue
                 # swap out[j] <-> out[k]: both pairs must end separated
-                if inst(k) != inst(i) and (
-                    other >= len(out) or out[j].institution_id != inst(other)
+                if inst(out, k) != inst(out, i) and (
+                    other >= len(out)
+                    or out[j].institution_id != inst(out, other)
                 ):
                     out[j], out[k] = out[k], out[j]
                     fixed = True
                     break
             if fixed:
                 break
+
+    # Never make things worse: if the reshuffle still pairs more same-school
+    # opening matches than the caller's own order (possible when one school
+    # dominates), keep the input order — it also preserves explicit seeding.
+    if opening_pairs is not None and conflicts(out) >= 1 \
+            and conflicts(out) >= conflicts(list(teams)):
+        return list(teams)
     return out
 
 

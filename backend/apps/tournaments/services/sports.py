@@ -341,11 +341,17 @@ def leaf_roster_rules(sports: list[dict] | None, leaf_key: str) -> dict:
                     break
             break
     pps = fmt.get("players_per_side")
-    return {
-        "players_per_side": pps,
-        "squad_min": fmt.get("squad_min") or pps,
-        "squad_max": fmt.get("squad_max") or pps,
-    }
+    mn = fmt.get("squad_min") or pps
+    mx = fmt.get("squad_max") or pps
+    # Consistency clamps (review W2-F): a lone contradicting bound used to
+    # produce min_items > max_items on the generated form — every roster
+    # size rejected, the category unsubmittable. A squad can never be
+    # smaller than the on-field side, and max honors a larger explicit min.
+    if mx is not None and pps and mx < pps:
+        mx = pps
+    if mn is not None and mx is not None and mn > mx:
+        mx = mn
+    return {"players_per_side": pps, "squad_min": mn, "squad_max": mx}
 
 
 def sports_inputs_hash(sports: list[dict] | None) -> str:

@@ -223,7 +223,7 @@ export function FieldEditor({
                   min_items:
                     e.target.value === ""
                       ? undefined
-                      : Math.max(0, Number(e.target.value) || 0),
+                      : Math.max(0, Math.floor(Number(e.target.value) || 0)),
                 })
               }
               className="font-tabular"
@@ -240,7 +240,7 @@ export function FieldEditor({
                   max_items:
                     e.target.value === ""
                       ? undefined
-                      : Math.max(0, Number(e.target.value) || 0),
+                      : Math.max(0, Math.floor(Number(e.target.value) || 0)),
                 })
               }
               className="font-tabular"

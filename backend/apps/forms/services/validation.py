@@ -80,7 +80,12 @@ def _check_group_bounds(fld: dict, raw: Any, path: str, errors: dict) -> None:
     into child groups inside each row (W2-B: a 1v1 category's players group
     must hold exactly the configured squad). Bounds-less groups pass as
     before; a missing nested group counts as zero rows, so a team row that
-    lists no players fails its squad minimum."""
+    lists no players fails its squad minimum.
+
+    Error paths: nested errors are keyed ``parent.<row>.child`` for
+    repeatable parents and ``parent.child`` otherwise — and the public
+    renderer maps any dotted key back onto its top-level field (review
+    W2-F: dotted keys used to match nothing, failing with zero feedback)."""
     if fld.get("repeatable"):
         rows = raw if isinstance(raw, list) else (
             [] if raw in (None, "", {}) else [raw]
@@ -90,16 +95,22 @@ def _check_group_bounds(fld: dict, raw: Any, path: str, errors: dict) -> None:
             errors[path] = "too_few_items"
         elif isinstance(mx, int) and mx > 0 and len(rows) > mx:
             errors[path] = "too_many_items"
+        for child in fld.get("fields") or []:
+            if child.get("type") != "group":
+                continue
+            for i, row in enumerate(rows):
+                if isinstance(row, dict):
+                    _check_group_bounds(
+                        child, row.get(child["key"]),
+                        f"{path}.{i}.{child['key']}", errors,
+                    )
     else:
-        rows = [raw] if isinstance(raw, dict) else []
-    for child in fld.get("fields") or []:
-        if child.get("type") != "group":
-            continue
-        for i, row in enumerate(rows):
-            if isinstance(row, dict):
+        row = raw if isinstance(raw, dict) else {}
+        for child in fld.get("fields") or []:
+            if child.get("type") == "group":
                 _check_group_bounds(
                     child, row.get(child["key"]),
-                    f"{path}.{i}.{child['key']}", errors,
+                    f"{path}.{child['key']}", errors,
                 )
 
 
@@ -121,6 +132,11 @@ def _validate_fields(
         if empty:
             if fld.get("required"):
                 errors[key] = "required"
+            elif ftype == "group" and isinstance(fld.get("min_items"), int) \
+                    and fld["min_items"] > 0 and fld.get("repeatable"):
+                # An untouched group is zero rows — the minimum still applies
+                # (review W2-F: empty used to pass while one row failed).
+                errors[key] = "too_few_items"
             continue
         if ftype == "group":
             _check_group_bounds(fld, raw, key, errors)

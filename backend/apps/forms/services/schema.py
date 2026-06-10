@@ -86,9 +86,14 @@ def _check_field_tree(
     field: dict, section_keys: set[str], fields: dict[str, dict]
 ) -> None:
     """Validate a field, then recurse into each option's nested follow-up fields
-    (the choice→sub-question nesting). Mirrors the renderer/validator descent."""
+    (the choice→sub-question nesting) AND into a group's own children — the
+    generated roster bounds live on a players group nested inside the teams
+    group, which the old walk never reached (review W2-F)."""
     _check_field(field)
     _check_visibility(field.get("visibility"), fields)
+    if field.get("type") == "group":
+        for child in field.get("fields", []) or []:
+            _check_field_tree(child, section_keys, fields)
     for o in field.get("options", []) or []:
         goto = o.get("goto")
         if goto is not None and goto not in section_keys and goto != "_end":
