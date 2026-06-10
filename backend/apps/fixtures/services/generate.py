@@ -49,6 +49,77 @@ def _registered_teams(tournament, leaf_key: str | None = None) -> list[Team]:
     return list(qs.order_by("leaf_key", "pool", "seed", "name"))
 
 
+def _opening_pairs_circle(count: int) -> list[tuple[int, int]]:
+    """Round-1 position pairs of the circle method for `count` teams (a bye
+    slot is appended for odd counts, so a pair index may be == count)."""
+    n = count + (count % 2)
+    return [(i, n - 1 - i) for i in range(n // 2)]
+
+
+def _opening_pairs_bracket(count: int) -> list[tuple[int, int]]:
+    """Round-1 TEAM-INDEX pairs of a seeded bracket for `count` entrants
+    (indices >= count are byes)."""
+    size = 1
+    while size < count:
+        size *= 2
+    order = _bracket_order(size)
+    return [(order[p] - 1, order[p + 1] - 1) for p in range(0, size, 2)]
+
+
+def _separate_institutions(
+    teams: list[Team], opening_pairs: list[tuple[int, int]] | None = None
+) -> list[Team]:
+    """Spread same-institution teams across the seeding order so they don't
+    meet in the opening round (owner W2-D: "same schools should not be
+    playing against each other on the first matches") and land in different
+    round-robin pools. Groups by institution, deals one team per institution
+    per pass (largest contingents first), then repairs any same-institution
+    OPENING pair (the format's actual round-1 pairing, passed in) by swapping
+    with a later pair's slot when both pairs stay clean. Deterministic; takes
+    precedence over raw seed order within a competition (the trade-off school
+    tournaments here want; manual re-pairing stays possible, invariant 10)."""
+    if len(teams) < 3:
+        return list(teams)
+    groups: dict[object, list[Team]] = {}
+    for tm in teams:
+        groups.setdefault(tm.institution_id or tm.id, []).append(tm)
+    if len(groups) == len(teams):
+        return list(teams)  # all distinct institutions — nothing to spread
+    pools = sorted(groups.values(), key=len, reverse=True)
+    out: list[Team] = []
+    while any(pools):
+        for g in pools:
+            if g:
+                out.append(g.pop(0))
+
+    pairs = opening_pairs or [(i, i + 1) for i in range(0, len(out) - 1, 2)]
+
+    def inst(pos: int):
+        return out[pos].institution_id if pos < len(out) else None
+
+    for pi, (i, j) in enumerate(pairs):
+        if j >= len(out) or i >= len(out):
+            continue  # bye slot
+        if not inst(i) or inst(i) != inst(j):
+            continue
+        fixed = False
+        for pj in range(pi + 1, len(pairs)):
+            a, b = pairs[pj]
+            for k, other in ((a, b), (b, a)):
+                if k >= len(out):
+                    continue
+                # swap out[j] <-> out[k]: both pairs must end separated
+                if inst(k) != inst(i) and (
+                    other >= len(out) or out[j].institution_id != inst(other)
+                ):
+                    out[j], out[k] = out[k], out[j]
+                    fixed = True
+                    break
+            if fixed:
+                break
+    return out
+
+
 def _next_match_no(tournament) -> int:
     """Continue numbering after existing LIVE rows (soft-deleted ones excluded
     — they used to inflate the count and leave gaps)."""
@@ -75,6 +146,9 @@ def generate_round_robin(
     teams = _registered_teams(tournament, leaf_key)
     if len(teams) < 2:
         raise ValueError("Need at least 2 registered teams to generate fixtures.")
+    # Spread institutions across pools; per-group circle pairing is repaired
+    # again below once group membership is known.
+    teams = _separate_institutions(teams)
 
     sports_cfg = tournament.sports or []
     sport = sport_for_leaf(sports_cfg, leaf_key or "")
@@ -86,6 +160,9 @@ def generate_round_robin(
     with transaction.atomic():
         groups = [teams[i : i + group_size] for i in range(0, len(teams), group_size)]
         for gi, group in enumerate(groups):
+            group = _separate_institutions(
+                group, _opening_pairs_circle(len(group))
+            )
             label = f"{prefix}Group {_GROUP_LABELS[gi]}"[:80]
             ih = hashlib.sha256(
                 ",".join(sorted(str(t.id) for t in group)).encode()
@@ -159,6 +236,9 @@ def generate_round_robin_by_category(
                 continue
             if len(group) < 2:
                 continue  # a category with a single team has no matches
+            group = _separate_institutions(
+                group, _opening_pairs_circle(len(group))
+            )
             sport_key = (
                 sport_for_leaf(sports_cfg, bucket) or group[0].sport
                 if is_leaf
@@ -228,6 +308,9 @@ def generate_single_elimination(
 
     if not sport and leaf_key:
         sport = sport_for_leaf(tournament.sports or [], leaf_key)
+
+    # Same-institution teams don't meet in round 1 where avoidable (W2-D).
+    teams = _separate_institutions(list(teams), _opening_pairs_bracket(n))
 
     size = 1
     while size < n:

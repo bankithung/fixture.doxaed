@@ -58,6 +58,16 @@ SPORT_PROFILES: dict[str, dict] = {
         "duration_minutes": 45,
         "venue_type": "indoor_court",
     },
+    # BWF: every game to 21, win by 2, hard cap at 30 (29-all → next point
+    # wins). The deciding game scores identically (ends change at 11).
+    "badminton": {
+        "scoring": {
+            "type": "sets", "best_of": 3, "points": 21, "win_by": 2,
+            "cap": 30, "deciding": {"points": 21, "win_by": 2, "cap": 30},
+        },
+        "duration_minutes": 45,
+        "venue_type": "indoor_court",
+    },
 }
 
 # Back-compat alias: the set-scoring subset of the profiles.

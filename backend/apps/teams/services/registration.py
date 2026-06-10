@@ -216,12 +216,33 @@ def register_school(
                     created_by=submitted_by,
                 )
                 for pd in td.get("players", []):
-                    person = Person.objects.create(
-                        full_name=pd["full_name"][:200],
-                        display_name=(pd.get("display_name") or "")[:120],
-                        dob_year=pd.get("dob_year"),
-                        created_by=submitted_by,
-                    )
+                    # W2-D person dedupe: the same name registered before by
+                    # THIS institution in THIS tournament is the same person,
+                    # so a student entering football AND badminton shares one
+                    # Person — that's what lets the scheduler keep their two
+                    # teams' matches from overlapping. (Exact-name homonyms
+                    # within one school collapse; organisers can split them
+                    # in the roster editor later.)
+                    full_name = pd["full_name"][:200]
+                    person = None
+                    if resolved is not None and full_name.strip():
+                        person = (
+                            Person.objects.filter(
+                                full_name__iexact=full_name.strip(),
+                                players__tournament=tournament,
+                                players__team__institution=resolved,
+                                players__deleted_at__isnull=True,
+                            )
+                            .order_by("created_at")
+                            .first()
+                        )
+                    if person is None:
+                        person = Person.objects.create(
+                            full_name=full_name,
+                            display_name=(pd.get("display_name") or "")[:120],
+                            dob_year=pd.get("dob_year"),
+                            created_by=submitted_by,
+                        )
                     Player.objects.create(
                         organization=org,
                         tournament=tournament,

@@ -244,6 +244,7 @@ def _overlaps(busy: list[tuple[datetime, datetime]], start: datetime,
 def schedule_matches(
     matches: list[MatchSlotReq], cfg: ScheduleConfig,
     preoccupied: Preoccupied | None = None,
+    linked: dict[str, set[str]] | None = None,
 ) -> ScheduleResult:
     """Greedy constructive scheduler honouring HARD constraints:
 
@@ -255,6 +256,9 @@ def schedule_matches(
       * a match requiring a venue type only lands on venues of that type
       * only within available (date, window, venue) slots — a match must FIT
         its window given its own duration
+      * ``linked`` teams (sharing a rostered player — one student in U15
+        football AND badminton singles, W2-D) never play overlapping
+        matches; the rest gap applies across the link too
 
     Soft signals (preferred windows, venue balance, day spread) pick among
     feasible slots and feed ``soft_score``. ``preoccupied`` bookings (other
@@ -294,6 +298,11 @@ def schedule_matches(
                 return False
             if _overlaps(team_busy[t], dt, end, gap=rest):
                 return False
+            # Shared-player conflict: a team linked through a common player
+            # is busy whenever its partner team is (W2-D).
+            for lt in (linked or {}).get(t, ()):
+                if _overlaps(team_busy[lt], dt, end, gap=rest):
+                    return False
         return True
 
     def preference(dt: datetime, venue: str, teams: list[str]) -> float:
@@ -532,7 +541,22 @@ def apply_schedule(
         teams = [str(t) for t in (m.home_team_id, m.away_team_id) if t]
         preoccupied.append((m.venue, start, start + timedelta(minutes=dmin), teams))
 
-    result = schedule_matches(reqs, cfg, preoccupied=preoccupied)
+    # Teams sharing a rostered person (one student in two competitions) are
+    # linked: their matches must never overlap (W2-D).
+    from apps.teams.models import Player
+
+    by_person: dict[str, set[str]] = {}
+    for pid, tid in Player.objects.filter(
+        tournament=tournament, deleted_at__isnull=True
+    ).values_list("person_id", "team_id"):
+        by_person.setdefault(str(pid), set()).add(str(tid))
+    linked: dict[str, set[str]] = {}
+    for tids in by_person.values():
+        if len(tids) > 1:
+            for a in tids:
+                linked.setdefault(a, set()).update(tids - {a})
+
+    result = schedule_matches(reqs, cfg, preoccupied=preoccupied, linked=linked)
     result.explanation[1:1] = constraint_notes
 
     by_id = {str(m.id): m for m in targets}

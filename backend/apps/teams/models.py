@@ -217,10 +217,15 @@ class Player(models.Model):
                 condition=Q(deleted_at__isnull=True, jersey_no__isnull=False),
                 name="unique_jersey_per_team",
             ),
+            # W2-D: one entry per TEAM (not per tournament) — a student may
+            # legitimately play U15 football AND badminton singles. The
+            # scheduler treats teams sharing a person as linked (their
+            # matches never overlap); same-leaf double-entry is blocked in
+            # register_school.
             UniqueConstraint(
-                fields=["tournament", "person"],
+                fields=["team", "person"],
                 condition=Q(deleted_at__isnull=True),
-                name="unique_person_per_tournament",
+                name="unique_person_per_team",
             ),
             UniqueConstraint(
                 fields=["team"],
