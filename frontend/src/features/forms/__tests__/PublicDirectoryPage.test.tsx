@@ -63,6 +63,7 @@ const DATA = {
     },
   ],
   count: 2,
+  form_open: true,
 };
 
 function renderPage() {
@@ -111,6 +112,24 @@ describe("PublicDirectoryPage", () => {
     // The Breakdown tab is gone — only Directory + Competitions remain.
     expect(screen.queryByRole("tab", { name: "Breakdown" })).toBeNull();
     expect(screen.getAllByRole("tab")).toHaveLength(2);
+    // While the form is open the header links back to the registration form.
+    expect(
+      screen.getByRole("link", { name: /Register your institution/ }),
+    ).toHaveAttribute("href", "/f/form1");
+  });
+
+  it("hides the register CTA once the form has closed", async () => {
+    vi.mocked(formsApi.directory).mockResolvedValue({
+      ...DATA,
+      form_open: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    renderPage();
+    await screen.findByText("Grace High");
+
+    expect(
+      screen.queryByRole("link", { name: /Register your institution/ }),
+    ).toBeNull();
   });
 
   it("toggles between the competitions view and the directory list", async () => {

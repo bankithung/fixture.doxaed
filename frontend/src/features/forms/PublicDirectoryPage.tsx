@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Building2,
   ChevronRight,
+  ClipboardList,
   Search,
   SlidersHorizontal,
   Trophy,
@@ -407,14 +408,21 @@ function FilterPanel({
   );
 }
 
-function EmptyState({ message }: { message: string }): React.ReactElement {
+function EmptyState({
+  message,
+  action,
+}: {
+  message: string;
+  action?: React.ReactNode;
+}): React.ReactElement {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card py-14 text-center">
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card px-4 py-14 text-center">
       <Building2
         aria-hidden="true"
         className="h-8 w-8 text-muted-foreground/40"
       />
       <p className="text-sm text-muted-foreground">{message}</p>
+      {action}
     </div>
   );
 }
@@ -605,17 +613,29 @@ export function PublicDirectoryPage(): React.ReactElement {
   return (
     <PublicShell wide tournamentName={d.tournament_name}>
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 pb-24 pt-8 sm:px-6 lg:pb-8">
-        {/* Header — text only; all counts live in the KPI card row below. */}
-        <header className="min-w-0">
-          <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
-            {d.tournament_name}
-          </p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
-            {t("Registered institutions")}
-          </h1>
-          <p className="mt-1 truncate text-sm text-muted-foreground" title={d.form_title}>
-            {d.form_title}
-          </p>
+        {/* Header — counts live in the KPI card row below; while the form is
+            open, a register CTA links straight back to it. */}
+        <header className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
+              {d.tournament_name}
+            </p>
+            <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
+              {t("Registered institutions")}
+            </h1>
+            <p className="mt-1 truncate text-sm text-muted-foreground" title={d.form_title}>
+              {d.form_title}
+            </p>
+          </div>
+          {d.form_open ? (
+            <Link
+              to={`/f/${formId}`}
+              className="inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <ClipboardList aria-hidden="true" className="h-4 w-4" />
+              {t("Register your institution")}
+            </Link>
+          ) : null}
         </header>
 
         {/* Headline KPIs — the total plus per-MAIN-game counts (admins can
@@ -775,6 +795,17 @@ export function PublicDirectoryPage(): React.ReactElement {
               hasFilters
                 ? t("No institutions match your filters.")
                 : t("No institutions have registered yet.")
+            }
+            action={
+              !hasFilters && d.form_open ? (
+                <Link
+                  to={`/f/${formId}`}
+                  className="mt-1 inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <ClipboardList aria-hidden="true" className="h-4 w-4" />
+                  {t("Be the first to register")}
+                </Link>
+              ) : null
             }
           />
         ) : isMobile ? (

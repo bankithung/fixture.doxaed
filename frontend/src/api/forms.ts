@@ -69,6 +69,8 @@ export interface DirectoryPayload {
   count: number;
   /** Admin's headline-KPI choice: total + per-game (default) or total only. */
   kpi_mode?: "games" | "total";
+  /** True while the form still accepts submissions (drives the register CTA). */
+  form_open?: boolean;
 }
 
 export type FormUpdateBody = Partial<

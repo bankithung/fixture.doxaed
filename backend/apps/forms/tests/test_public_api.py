@@ -224,8 +224,16 @@ def test_directory_kpi_mode_setting_passthrough():
     )
     body = APIClient().get(f"/api/forms/{form.id}/directory/").json()
     assert body["kpi_mode"] == "total"
+    # An open form advertises itself so the directory can link back to it.
+    assert body["form_open"] is True
 
     form.settings = {"directory_kpis": "everything-bagel"}
     form.save(update_fields=["settings"])
     body = APIClient().get(f"/api/forms/{form.id}/directory/").json()
     assert body["kpi_mode"] == "games"
+
+    # Closed form: the directory stays public but stops advertising the form.
+    form.status = "closed"
+    form.save(update_fields=["status"])
+    body = APIClient().get(f"/api/forms/{form.id}/directory/").json()
+    assert body["form_open"] is False

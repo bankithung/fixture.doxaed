@@ -634,6 +634,9 @@ class PublicInstitutionDirectoryView(GenericAPIView):
                 "competitions": competitions,
                 "count": len(entries),
                 "kpi_mode": kpi_mode,
+                # Lets the directory page link back to the registration form
+                # while it is still accepting submissions.
+                "form_open": is_open(form),
             }
         )
 
