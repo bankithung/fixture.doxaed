@@ -25,3 +25,6 @@ Thumbs.db
 
 # Local production secrets (never commit)
 deploy/CREDENTIALS-PROD.md
+
+# Seeded demo/admin credentials — never commit
+backend/scripts/CREDENTIALS.md
