@@ -8,6 +8,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Check, ChevronRight, Lock, Trophy } from "lucide-react";
 import { tournamentsApi } from "@/api/tournaments";
+import { DeleteTournamentButton } from "./DeleteTournamentButton";
 import { StageContinue } from "./StageContinue";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
@@ -91,15 +92,24 @@ export function TournamentWorkspace(): React.ReactElement {
   const flowPage =
     !!activeTab && !["Overview", "Settings", "Forms"].includes(activeTab.label);
 
+  // Setup flow (W2-C): until the tournament is ready, managers work in a
+  // focused no-sidebar flow — delete must stay reachable from the top.
+  const setupMode = !!stage && stage.can_manage && stage.stage !== "ready";
+
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-      <NavLink
-        to={routes.tournaments()}
-        className="mb-4 inline-flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
-        {t("All tournaments")}
-      </NavLink>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <NavLink
+          to={routes.tournaments()}
+          className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
+          {t("All tournaments")}
+        </NavLink>
+        {setupMode ? (
+          <DeleteTournamentButton tournamentId={id} compact />
+        ) : null}
+      </div>
 
       {/* Identity + slim stage progress */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

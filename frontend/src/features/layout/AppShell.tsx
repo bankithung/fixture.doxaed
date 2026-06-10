@@ -196,14 +196,18 @@ export function AppShell(): React.ReactElement {
       })
     : decorateInvitesBadge(computeWorkspaceNav(user, navSlug), pendingInviteCount);
 
-  // Flow flexibility (owner request 2026-06-10): the sidebar is ALWAYS
-  // available — during setup the stage pages stay focused and the stepper
-  // guides the order, but navigation is never locked away. Sections the
-  // tournament hasn't reached render as visible-but-locked rows ("Unlocks
-  // at …"), and permission gating hides what the member's role can't use.
-  // (The old behavior hid the whole sidebar until stage "ready", stranding
-  // admins inside the wizard and leaving archived tournaments nav-less.)
-  const setupMode = false as boolean;
+  // Focused setup flow (owner W2-C, 2026-06-10): while a MANAGED tournament
+  // is still being set up (any stage before "ready"), the sidebar is hidden —
+  // the workspace renders the guided flow (stage chips, Continue, delete at
+  // the top) like a job-site onboarding, and the full SaaS shell with the
+  // sidebar appears once fixtures are generated and the tournament is ready.
+  // Members without manage rights always get the normal shell, and so do
+  // tournaments whose stage hasn't loaded yet (no flash of missing nav).
+  const setupMode =
+    inTournamentContext &&
+    stageQuery.data != null &&
+    stageQuery.data.can_manage &&
+    stageQuery.data.stage !== "ready";
 
   const handleSignOut = async (): Promise<void> => {
     setMenuOpen(false);

@@ -221,7 +221,7 @@ describe("AppShell", () => {
     );
   });
 
-  it("keeps the sidebar available during setup (flow stays flexible)", async () => {
+  it("hides the sidebar for a MANAGED tournament mid-setup (focused flow, W2-C)", async () => {
     vi.spyOn(tournamentsApi, "get").mockResolvedValue({
       id: "t-123",
       slug: "spring-cup",
@@ -249,11 +249,47 @@ describe("AppShell", () => {
     });
     renderShellAt("/tournaments/t-123");
 
-    // Mid-setup the rail still renders (owner request 2026-06-10): future
-    // stages show as locked rows, but navigation is never withheld.
+    // Mid-setup, managers get the focused flow: no sidebar until the
+    // tournament is ready (the previous test covers stage "ready" → full
+    // SaaS shell with the rail).
+    await screen.findAllByText(/spring cup/i);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("navigation", { name: /primary/i }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("keeps the sidebar for NON-managers even mid-setup", async () => {
+    vi.spyOn(tournamentsApi, "get").mockResolvedValue({
+      id: "t-123",
+      slug: "spring-cup",
+      name: "Spring Cup",
+      status: "draft",
+      organization_slug: "acme",
+      sport_code: null,
+      sports: [],
+      time_zone: "Asia/Kolkata",
+      created_at: "2026-01-01T00:00:00Z",
+    } satisfies Tournament);
+    vi.spyOn(tournamentsApi, "stage").mockResolvedValue({
+      stage: "org_registration",
+      status: "published",
+      order: ["setup", "org_registration", "team_registration", "members", "fixtures", "ready"],
+      allowed_to: [],
+      can_manage: false,
+      rules_frozen_at: null,
+      stages: [],
+    } as never);
+
+    useAuthStore.setState({
+      user: makeUser(["admin"], ["forms"]),
+      bootstrapped: true,
+    });
+    renderShellAt("/tournaments/t-123");
+
     await screen.findAllByText(/spring cup/i);
     const primary = screen.getByRole("navigation", { name: /primary/i });
-    expect(primary.textContent).toMatch(/manage/i);
     expect(primary.textContent).toMatch(/overview/i);
   });
 

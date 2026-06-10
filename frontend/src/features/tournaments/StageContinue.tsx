@@ -42,8 +42,6 @@ function warningText(w: StageConsequences["warnings"][number]): string {
       return t("The current stage's registration form will close.");
     case "lifecycle_will_change":
       return t("The tournament status will change to") + ` "${String(w.to)}".`;
-    case "rules_will_freeze":
-      return t("Rules will be locked — later changes will need an amend reason.");
     case "team_form_will_be_created":
       return t("A team-registration form draft will be created for you to review.");
     case "no_sports_selected":
@@ -121,7 +119,10 @@ export function StageContinue({
   const curIdx = data.order.indexOf(data.stage);
   const nextLabel = data.stages[curIdx + 1]?.label ?? t("next stage");
   const blockers = previewQ.data?.blockers ?? [];
-  const warnings = previewQ.data?.warnings ?? [];
+  // Freeze still happens server-side; the ack line is flow noise (W2-C).
+  const warnings = (previewQ.data?.warnings ?? []).filter(
+    (w) => w.code !== "rules_will_freeze",
+  );
 
   return (
     <div className="mt-6 flex flex-col gap-2 rounded-xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">

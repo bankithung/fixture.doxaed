@@ -1,23 +1,17 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Lock, Power, ScrollText, Trash2 } from "lucide-react";
+import { ChevronRight, Lock, Power, ScrollText } from "lucide-react";
 import { tournamentsApi, type TournamentRules } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
+import { DeleteTournamentButton } from "@/features/tournaments/DeleteTournamentButton";
 import { DisputesPanel } from "@/features/disputes/DisputesPanel";
 
 type Editable = Pick<TournamentRules, "points" | "match" | "squad">;
@@ -51,9 +45,7 @@ export function SettingsTab(): React.ReactElement {
   const { id = "" } = useParams();
   const qc = useQueryClient();
   const toast = useToast();
-  const navigate = useNavigate();
   const [draft, setDraft] = useState<Editable | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const settings = useQuery({
     queryKey: qk.settings(id),
@@ -114,27 +106,6 @@ export function SettingsTab(): React.ReactElement {
         title: t("Could not update the tournament"),
         description: e instanceof ApiError ? (e.payload.detail ?? "") : "",
       }),
-  });
-
-  const remove = useMutation({
-    mutationFn: () => tournamentsApi.remove(id),
-    onSuccess: () => {
-      setConfirmDelete(false);
-      qc.invalidateQueries({ queryKey: ["tournaments"] });
-      toast.push({ kind: "success", title: t("Tournament deleted") });
-      navigate(routes.tournaments());
-    },
-    onError: (e) => {
-      setConfirmDelete(false);
-      const live = e instanceof ApiError && e.payload.detail === "tournament_live";
-      toast.push({
-        kind: "error",
-        title: live
-          ? t("Can't delete a live tournament")
-          : t("Could not delete the tournament"),
-        description: live ? t("Finish or pause the live matches first.") : undefined,
-      });
-    },
   });
 
   const set = <G extends keyof Editable, K extends keyof Editable[G]>(
@@ -273,48 +244,10 @@ export function SettingsTab(): React.ReactElement {
               <Power aria-hidden="true" className="h-4 w-4" />
               {archived ? t("Reactivate") : t("Deactivate")}
             </Button>
-            <Button
-              variant="ghost"
-              disabled={remove.isPending}
-              onClick={() => setConfirmDelete(true)}
-              data-testid="delete-tournament"
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            >
-              <Trash2 aria-hidden="true" className="h-4 w-4" />
-              {t("Delete tournament")}
-            </Button>
+            <DeleteTournamentButton tournamentId={id} />
           </div>
         </section>
       ) : null}
-
-      <Dialog
-        open={confirmDelete}
-        onOpenChange={setConfirmDelete}
-        ariaLabel={t("Delete tournament")}
-      >
-        <DialogHeader>
-          <DialogTitle>{t("Delete tournament")}</DialogTitle>
-          <DialogDescription>
-            {t(
-              "This removes the tournament and everything in it (forms, teams, fixtures) from your workspace. This can't be undone.",
-            )}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setConfirmDelete(false)}>
-            {t("Cancel")}
-          </Button>
-          <Button
-            variant="destructive"
-            disabled={remove.isPending}
-            onClick={() => remove.mutate()}
-            data-testid="confirm-delete-tournament"
-          >
-            <Trash2 aria-hidden="true" className="h-4 w-4" />
-            {remove.isPending ? t("Deleting…") : t("Delete tournament")}
-          </Button>
-        </DialogFooter>
-      </Dialog>
     </div>
   );
 }

@@ -87,8 +87,6 @@ function warningText(w: StageConsequences["warnings"][number]): string {
       return t("This stage's registration form will re-open.");
     case "lifecycle_will_change":
       return t("The tournament status will change to") + ` "${String(w.to)}".`;
-    case "rules_will_freeze":
-      return t("Rules will be locked — later changes will need an amend reason.");
     case "team_form_will_be_created":
       return t("A team-registration form draft will be created for you to review.");
     case "no_sports_selected":
@@ -167,7 +165,12 @@ export function StageStepper({
 
   const consequences = previewQ.data;
   const blockers = consequences?.blockers ?? [];
-  const warnings = consequences?.warnings ?? [];
+  // The rules freeze still happens (and is audited) server-side — but
+  // constraints are chosen at fixture generation, so the flow doesn't make
+  // people acknowledge it (owner W2-C: "unnecessary").
+  const warnings = (consequences?.warnings ?? []).filter(
+    (w) => w.code !== "rules_will_freeze",
+  );
   const isReopen = target !== null && data.order.indexOf(target) < curIdx;
 
   const currentLabel = data.stages[curIdx]?.label ?? "";
