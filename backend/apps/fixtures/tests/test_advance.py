@@ -86,12 +86,34 @@ def test_knockout_from_groups_advances_top_two():
     assert all(m.home_team_id and m.away_team_id for m in r1)
 
 
-def test_single_elim_requires_power_of_two():
+def test_single_elim_non_power_of_two_gets_byes():
+    """3 teams → bracket of 4 with one bye: the top seed skips round 1 and
+    enters the final as a typed team pointer (spec 2026-06-10 P3)."""
     admin = _verified()
     t = create_tournament(user=admin, name="Cup")
     teams = register_school(
         tournament=t, school_name="S",
         teams=[{"name": f"T{i}", "players": []} for i in range(3)],
     )
-    with pytest.raises(ValueError):
-        generate_single_elimination(tournament=t, teams=teams)
+    matches = generate_single_elimination(tournament=t, teams=teams)
+    assert len(matches) == 2  # one semifinal + the final
+    semi = next(m for m in matches if m.round_no == 1)
+    final = next(m for m in matches if m.round_no == 2)
+    # seeds 2 and 3 play the semi; seed 1 (bye) is already in the final
+    assert {semi.home_team, semi.away_team} == {teams[1], teams[2]}
+    assert final.home_team == teams[0]
+    assert final.home_source == {"type": "team", "team_id": str(teams[0].id)}
+    assert final.away_source == {"type": "winner_of", "match_id": str(semi.id)}
+
+    # the bye team's opponent resolves on semi completion
+    record_score(match=semi, home_score=2, away_score=0, by=admin)
+    advance_from_match(semi.id)
+    final.refresh_from_db()
+    assert final.away_team == semi.home_team
+
+
+def test_single_elim_is_idempotent_per_scope():
+    admin = _verified()
+    _t, teams, matches = _bracket(admin, 4)
+    again = generate_single_elimination(tournament=_t, teams=teams)
+    assert {m.id for m in again} == {m.id for m in matches}  # no duplicates

@@ -151,6 +151,70 @@ def test_team_mapping_stamps_sport_and_leaf_then_fixtures_scope_per_leaf():
     assert pair == {"DB Girls A", "MH Girls A"}
 
 
+def test_leaves_generate_independently_via_api():
+    """Per-leaf generation (spec P3): drawing one competition never blocks the
+    others, repeats are idempotent, and formats can differ per leaf."""
+    from rest_framework.test import APIClient
+
+    admin, t = _tournament_with_sports()
+    generate_institution_form(tournament=t, created_by=admin)
+    team_form = generate_team_form_template(tournament=t, created_by=admin)
+    groups = {g["leaf_key"]: g for g in
+              team_form.settings["bindings"]["category_groups"]}
+    g5, gtt = groups[LEAF_5V5], groups[LEAF_TT]
+    for school, five, tts in (
+        ("A School", ["A1", "A2", "A3"], ["A TT"]),
+        ("B School", [], ["B TT"]),
+    ):
+        inst = Institution.objects.create(
+            organization=t.organization, tournament=t,
+            slug=school.lower().replace(" ", "-"), name=school,
+        )
+        resp = FormResponse.objects.create(
+            form=team_form, organization=t.organization, tournament=t,
+            title=school,
+            answers={
+                "institution_id": str(inst.id),
+                "categories": [LEAF_5V5, LEAF_TT],
+                g5["group"]: [{g5["team_name"]: n} for n in five],
+                gtt["group"]: [{gtt["team_name"]: n} for n in tts],
+            },
+        )
+        map_response(resp)
+
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    # knockout (with a bye: 3 teams) for the football leaf only
+    r1 = c.post(
+        f"/api/tournaments/{t.id}/generate-fixtures/",
+        {"format": "knockout", "leaf_key": LEAF_5V5},
+        format="json",
+    )
+    assert r1.status_code == 201, r1.content
+    assert r1.json()["generated"] == 2  # semi + final (one bye)
+    assert Match.objects.filter(tournament=t, leaf_key=LEAF_5V5).count() == 2
+
+    # the TT leaf still generates afterwards — round robin this time
+    r2 = c.post(
+        f"/api/tournaments/{t.id}/generate-fixtures/",
+        {"format": "by_category", "leaf_key": LEAF_TT},
+        format="json",
+    )
+    assert r2.status_code == 201, r2.content
+    tt_matches = Match.objects.filter(tournament=t, leaf_key=LEAF_TT)
+    assert tt_matches.count() == 1
+    assert tt_matches.first().sport == "table_tennis"
+
+    # repeating a leaf is idempotent — nothing duplicates
+    r3 = c.post(
+        f"/api/tournaments/{t.id}/generate-fixtures/",
+        {"format": "by_category", "leaf_key": LEAF_TT},
+        format="json",
+    )
+    assert r3.status_code == 201
+    assert Match.objects.filter(tournament=t).count() == 3
+
+
 def test_round_robin_no_longer_overwrites_team_pool():
     from apps.fixtures.services.generate import generate_round_robin
     from apps.teams.services.registration import register_school

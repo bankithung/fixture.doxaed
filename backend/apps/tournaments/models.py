@@ -113,10 +113,15 @@ class Tournament(models.Model):
     rules = models.JSONField(default=dict, blank=True)
     constraints = models.JSONField(default=list, blank=True)
     # Multi-sport: the sports this tournament runs, chosen at SETUP. A list of
-    # {key, name, custom} (key = catalog code or a slug for custom sports). The
-    # legacy single `sport` FK above is kept for back-compat; per-sport config
-    # (categories/formats/constraints) layers on here later.
+    # {key, name, custom, scoring?, scheduling?, nodes: [recursive category
+    # tree], categories: [legacy 2-level projection]} — normalized by
+    # apps.tournaments.services.sports (spec 2026-06-10 §3). The legacy single
+    # `sport` FK above is kept for back-compat.
     sports = models.JSONField(default=list, blank=True)
+    # Last-used scheduling wizard payload (dates, windows, venues, rest...) so
+    # re-runs prefill instead of retyping. Operational config, deliberately
+    # OUTSIDE `rules` (which freezes at registration_open — invariant 7).
+    scheduling_config = models.JSONField(default=dict, blank=True)
     rules_frozen_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

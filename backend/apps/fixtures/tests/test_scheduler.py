@@ -46,7 +46,7 @@ def test_excluded_dates_removed():
         daily_start=time(9, 0), daily_end=time(12, 0), slot_minutes=90,
         venues=["A"], excluded_dates={date(2026, 8, 2)},
     )
-    assert all(dt.date() == date(2026, 8, 1) for dt, _ in build_slots(cfg))
+    assert all(dt.date() == date(2026, 8, 1) for dt, _venue, _wend in build_slots(cfg))
 
 
 def _reqs(n):

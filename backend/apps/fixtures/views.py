@@ -29,25 +29,40 @@ class GenerateFixturesView(GenericAPIView):
         if not can_manage_tournament(request.user, t):
             raise PermissionDenied("not_tournament_manager")
         fmt = request.data.get("format", "round_robin")
+        # Optional competition scope (spec 2026-06-10): generate one category
+        # leaf's draw independently; omit for the legacy whole-tournament run.
+        leaf_key = str(request.data.get("leaf_key") or "")
         try:
             if fmt == "knockout":
-                teams = list(
-                    Team.objects.filter(
-                        tournament=t, status=TeamStatus.REGISTERED, deleted_at__isnull=True
-                    ).order_by("seed", "name")
+                teams_qs = Team.objects.filter(
+                    tournament=t, status=TeamStatus.REGISTERED, deleted_at__isnull=True
                 )
-                matches = generate_single_elimination(tournament=t, teams=teams)
+                if leaf_key:
+                    teams_qs = teams_qs.filter(leaf_key=leaf_key)
+                teams = list(teams_qs.order_by("seed", "name"))
+                matches = generate_single_elimination(
+                    tournament=t, teams=teams, leaf_key=leaf_key
+                )
             elif fmt == "knockout_from_groups":
-                matches = generate_knockout_from_groups(tournament=t)
+                matches = generate_knockout_from_groups(
+                    tournament=t, leaf_key=leaf_key or None
+                )
             elif fmt == "by_category":
-                matches = generate_round_robin_by_category(tournament=t)
+                matches = generate_round_robin_by_category(
+                    tournament=t, leaf_key=leaf_key or None
+                )
             else:
                 matches = generate_round_robin(
-                    tournament=t, group_size=int(request.data.get("group_size", 5))
+                    tournament=t,
+                    group_size=int(request.data.get("group_size", 5)),
+                    leaf_key=leaf_key or None,
                 )
         except (ValueError, TypeError) as e:
             raise DRFValidationError({"detail": str(e)})
-        return Response({"generated": len(matches), "format": fmt}, status=201)
+        return Response(
+            {"generated": len(matches), "format": fmt, "leaf_key": leaf_key},
+            status=201,
+        )
 
 
 class ScheduleFixturesView(GenericAPIView):
@@ -62,9 +77,13 @@ class ScheduleFixturesView(GenericAPIView):
         t = Tournament.objects.select_related("organization").get(id=tournament_id)
         if not can_manage_tournament(request.user, t):
             raise PermissionDenied("not_tournament_manager")
+        payload = dict(request.data or {})
+        # Optional competition scope: schedule one leaf around everything else.
+        leaf_key = str(payload.pop("leaf_key", "") or "")
         try:
             result = apply_schedule(
-                tournament=t, config=request.data or {}, by=request.user, request=request
+                tournament=t, config=payload, by=request.user, request=request,
+                leaf_key=leaf_key or None,
             )
         except (ValueError, TypeError) as e:
             raise DRFValidationError({"detail": str(e)})
@@ -74,5 +93,6 @@ class ScheduleFixturesView(GenericAPIView):
                 "unscheduled": result.unscheduled,
                 "soft_score": result.soft_score,
                 "explanation": result.explanation,
+                "leaf_key": leaf_key,
             }
         )

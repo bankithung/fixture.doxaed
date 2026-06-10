@@ -1,10 +1,12 @@
-"""Fixture generation — Phase A (structure) of v1Fixtures.md.
+"""Fixture generation — pairings/brackets per competition (category leaf).
 
-MVP: split registered teams into groups and generate a single round-robin per
-group via the circle method (each pair plays once, home/away alternated by
-round). Produces `matches.Match` rows in SCHEDULED state. Idempotent: if a
-tournament already has matches, returns them unchanged. The full data-driven
-constraint scheduler (v1Fixtures.md §3) layers on top later.
+Three formats (grouped round-robin, round-robin per category, single
+elimination with byes, plus groups→knockout), all leaf-aware (spec 2026-06-10
+§5 P3): pass ``leaf_key`` to generate ONE competition's draw independently;
+idempotency is scoped per leaf so generating Football U15 never blocks
+generating Table Tennis later. Produces `matches.Match` rows in SCHEDULED
+state carrying ``sport`` + ``leaf_key``; the scheduler (scheduler.py) then
+assigns times/venues. The full data-driven constraint scheduler layers on top.
 """
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ from django.db import transaction
 
 from apps.matches.models import Match, MatchStatus
 from apps.teams.models import Team, TeamStatus
+from apps.tournaments.services.sports import leaf_label, sport_for_leaf
 
 _GROUP_LABELS = [chr(ord("A") + i) for i in range(26)]
 
@@ -37,33 +40,53 @@ def _round_robin(teams: list) -> list[tuple]:
     return pairings
 
 
-def generate_round_robin(*, tournament, group_size: int = 5) -> list[Match]:
-    """Group the tournament's registered teams and generate round-robin matches."""
-    existing = list(
-        Match.objects.filter(tournament=tournament, deleted_at__isnull=True)
+def _registered_teams(tournament, leaf_key: str | None = None) -> list[Team]:
+    qs = Team.objects.filter(
+        tournament=tournament, status=TeamStatus.REGISTERED, deleted_at__isnull=True
     )
-    if existing:
-        return existing  # idempotent — already generated
+    if leaf_key:
+        qs = qs.filter(leaf_key=leaf_key)
+    return list(qs.order_by("leaf_key", "pool", "seed", "name"))
 
-    teams = list(
-        Team.objects.filter(
-            tournament=tournament, status=TeamStatus.REGISTERED, deleted_at__isnull=True
-        ).order_by("seed", "name")
-    )
+
+def _next_match_no(tournament) -> int:
+    """Continue numbering after existing LIVE rows (soft-deleted ones excluded
+    — they used to inflate the count and leave gaps)."""
+    return Match.objects.filter(
+        tournament=tournament, deleted_at__isnull=True
+    ).count()
+
+
+def generate_round_robin(
+    *, tournament, group_size: int = 5, leaf_key: str | None = None
+) -> list[Match]:
+    """Split registered teams into groups of ``group_size`` and round-robin each
+    group. With ``leaf_key``, only that competition's teams are drawn and the
+    idempotency check is scoped to it; otherwise the legacy whole-tournament
+    behavior applies. Group membership lives on Match.group_label — Team.pool
+    (the registered category) is never touched."""
+    existing_scope = Match.objects.filter(tournament=tournament, deleted_at__isnull=True)
+    if leaf_key:
+        existing_scope = existing_scope.filter(leaf_key=leaf_key)
+    existing = list(existing_scope)
+    if existing:
+        return existing  # idempotent — this scope is already generated
+
+    teams = _registered_teams(tournament, leaf_key)
     if len(teams) < 2:
         raise ValueError("Need at least 2 registered teams to generate fixtures.")
 
+    sports_cfg = tournament.sports or []
+    sport = sport_for_leaf(sports_cfg, leaf_key or "")
+    prefix = f"{leaf_label(sports_cfg, leaf_key)} — " if leaf_key else ""
+
     org = tournament.organization
     to_create: list[Match] = []
-    match_no = 0
+    match_no = _next_match_no(tournament)
     with transaction.atomic():
         groups = [teams[i : i + group_size] for i in range(0, len(teams), group_size)]
         for gi, group in enumerate(groups):
-            # Group membership lives on the Match rows (group_label) only —
-            # Team.pool is the team's registered category and must survive
-            # generation (it used to be overwritten here, destroying the
-            # registration bucket; spec 2026-06-10 §2).
-            label = f"Group {_GROUP_LABELS[gi]}"
+            label = f"{prefix}Group {_GROUP_LABELS[gi]}"[:80]
             ih = hashlib.sha256(
                 ",".join(sorted(str(t.id) for t in group)).encode()
             ).hexdigest()
@@ -75,6 +98,8 @@ def generate_round_robin(*, tournament, group_size: int = 5) -> list[Match]:
                         tournament=tournament,
                         stage="group",
                         group_label=label,
+                        sport=sport,
+                        leaf_key=leaf_key or "",
                         round_no=round_no,
                         match_no=match_no,
                         home_team=home,
@@ -87,58 +112,58 @@ def generate_round_robin(*, tournament, group_size: int = 5) -> list[Match]:
     return to_create
 
 
-def generate_round_robin_by_category(*, tournament) -> list[Match]:
+def generate_round_robin_by_category(
+    *, tournament, leaf_key: str | None = None
+) -> list[Match]:
     """Round-robin WITHIN each competition (category leaf): a team only plays
-    others registered into the SAME leaf (e.g. Football U-15 Girls vs same),
-    honoring the category each team registered under — instead of re-grouping
-    by size. Leaves with <2 teams are skipped. Idempotent: returns existing
-    matches if any.
-
-    Buckets key on the structural ``Team.leaf_key`` (stable, sport-prefixed),
-    falling back to the legacy ``pool`` label for teams registered before the
-    leaf registry existed; the match's sport comes from the leaf key via the
-    registry (replaces the broken pool-name→sport matching — spec 2026-06-10
-    B1)."""
-    from apps.tournaments.services.sports import leaf_label, sport_for_leaf
-
-    existing = list(
-        Match.objects.filter(tournament=tournament, deleted_at__isnull=True)
-    )
-    if existing:
-        return existing
-
-    teams = list(
-        Team.objects.filter(
-            tournament=tournament, status=TeamStatus.REGISTERED, deleted_at__isnull=True
-        ).order_by("leaf_key", "pool", "seed", "name")
-    )
+    others registered into the SAME leaf. Buckets key on the structural
+    ``Team.leaf_key`` (falling back to the legacy ``pool`` label); idempotency
+    is PER BUCKET, so each competition generates independently — pass
+    ``leaf_key`` to draw exactly one. Buckets with <2 teams are skipped."""
+    teams = _registered_teams(tournament, leaf_key)
+    if leaf_key and len(teams) < 2:
+        raise ValueError("Need at least 2 registered teams in this category.")
     if len(teams) < 2:
         raise ValueError("Need at least 2 registered teams to generate fixtures.")
 
-    # Bucket by leaf (legacy fallback: pool label); blanks fall into "General".
     from collections import OrderedDict
 
-    pools: "OrderedDict[str, list]" = OrderedDict()
+    pools: OrderedDict[str, list] = OrderedDict()
     for tm in teams:
         pools.setdefault(tm.leaf_key or tm.pool or "General", []).append(tm)
+
+    # Per-bucket idempotency: a bucket that already has matches is skipped
+    # (legacy "" leaf buckets share one scope keyed by group_label).
+    existing = list(
+        Match.objects.filter(tournament=tournament, deleted_at__isnull=True)
+    )
+    done_leafs = {m.leaf_key for m in existing if m.leaf_key}
+    done_labels = {m.group_label for m in existing if not m.leaf_key}
 
     sports_cfg = tournament.sports or []
     org = tournament.organization
     to_create: list[Match] = []
-    match_no = 0
+    skipped_existing: list[Match] = []
+    match_no = _next_match_no(tournament)
     with transaction.atomic():
         for bucket, group in pools.items():
+            is_leaf = bool(group[0].leaf_key)
+            label = (leaf_label(sports_cfg, bucket) if is_leaf else bucket)[:80]
+            if (is_leaf and bucket in done_leafs) or (
+                not is_leaf and label in done_labels
+            ):
+                skipped_existing.extend(
+                    m for m in existing
+                    if (m.leaf_key == bucket if is_leaf else m.group_label == label)
+                )
+                continue
             if len(group) < 2:
                 continue  # a category with a single team has no matches
-            is_leaf = bool(group[0].leaf_key)
             sport_key = (
                 sport_for_leaf(sports_cfg, bucket) or group[0].sport
                 if is_leaf
                 else group[0].sport
             )
-            label = (
-                leaf_label(sports_cfg, bucket) if is_leaf else bucket
-            )[:80]
             ih = hashlib.sha256(
                 ",".join(sorted(str(t.id) for t in group)).encode()
             ).hexdigest()
@@ -160,91 +185,145 @@ def generate_round_robin_by_category(*, tournament) -> list[Match]:
                         inputs_hash=ih,
                     )
                 )
-        if not to_create:
+        if not to_create and not skipped_existing:
             raise ValueError("No category has 2+ teams to schedule.")
         Match.objects.bulk_create(to_create)
-    return to_create
+    return [*skipped_existing, *to_create]
 
 
-def generate_single_elimination(*, tournament, teams, stage: str = "knockout") -> list[Match]:
-    """Generate a single-elimination bracket from `teams` (a power-of-2 count).
+def _bracket_order(size: int) -> list[int]:
+    """Standard seeded bracket positions (1-indexed seeds) — e.g. size 8 →
+    [1, 8, 4, 5, 2, 7, 3, 6]: seed 1 meets seed 2 only in the final."""
+    order = [1]
+    while len(order) < size:
+        n = len(order) * 2
+        order = [x for s in order for x in (s, n + 1 - s)]
+    return order
 
-    Round 1 pairs concrete teams; later rounds carry typed winner_of pointers
-    (invariant #9) that apps.fixtures.services.advance resolves on completion.
-    """
+
+def generate_single_elimination(
+    *, tournament, teams, stage: str = "knockout",
+    leaf_key: str = "", sport: str = "",
+) -> list[Match]:
+    """Generate a single-elimination bracket from ``teams`` (any count ≥ 2).
+
+    Non-power-of-2 counts get BYES: the bracket is padded to the next power of
+    two and the top seeds skip round 1 (standard seeding — 1 meets 2 only in
+    the final). Round 1 pairs concrete teams; later rounds carry typed
+    winner_of pointers (invariant #9) that apps.fixtures.services.advance
+    resolves on completion; bye teams enter round 2 as typed team pointers.
+    Idempotent per (stage, leaf): an existing bracket in scope is returned."""
     n = len(teams)
-    if n < 2 or (n & (n - 1)) != 0:
-        raise ValueError("single elimination requires a power-of-2 team count (>= 2)")
-
-    org = tournament.organization
-    created: list[Match] = []
-    # Continue match numbering after any existing (e.g. group-stage) matches.
-    match_no = Match.objects.filter(tournament=tournament).count()
-
-    with transaction.atomic():
-        round_matches: list[Match] = []
-        for i in range(0, n, 2):
-            match_no += 1
-            home, away = teams[i], teams[i + 1]
-            round_matches.append(
-                Match(
-                    organization=org, tournament=tournament, stage=stage,
-                    round_no=1, match_no=match_no,
-                    home_team=home, away_team=away,
-                    home_source={"type": "team", "team_id": str(home.id)},
-                    away_source={"type": "team", "team_id": str(away.id)},
-                    status=MatchStatus.SCHEDULED,
-                )
-            )
-        Match.objects.bulk_create(round_matches)
-        created.extend(round_matches)
-
-        prev = round_matches
-        round_no = 2
-        while len(prev) > 1:
-            nxt: list[Match] = []
-            for i in range(0, len(prev), 2):
-                match_no += 1
-                nxt.append(
-                    Match(
-                        organization=org, tournament=tournament, stage=stage,
-                        round_no=round_no, match_no=match_no,
-                        home_source={"type": "winner_of", "match_id": str(prev[i].id)},
-                        away_source={"type": "winner_of", "match_id": str(prev[i + 1].id)},
-                        status=MatchStatus.SCHEDULED,
-                    )
-                )
-            Match.objects.bulk_create(nxt)
-            created.extend(nxt)
-            prev = nxt
-            round_no += 1
-
-    return created
-
-
-def generate_knockout_from_groups(*, tournament, advance_per_group: int = 2) -> list[Match]:
-    """Advance the top `advance_per_group` of each group into a single-elimination
-    bracket (FIFA-style groups → knockout). Cross-seeds winners vs other groups'
-    runners-up. Idempotent: returns the existing knockout if already generated.
-    """
-    from apps.matches.services.standings import compute_standings
+    if n < 2:
+        raise ValueError("single elimination requires at least 2 teams")
 
     existing = list(
         Match.objects.filter(
-            tournament=tournament, stage="knockout", deleted_at__isnull=True
+            tournament=tournament, stage=stage, leaf_key=leaf_key or "",
+            deleted_at__isnull=True,
         )
     )
     if existing:
         return existing
 
+    if not sport and leaf_key:
+        sport = sport_for_leaf(tournament.sports or [], leaf_key)
+
+    size = 1
+    while size < n:
+        size *= 2
+    entrants = [teams[s - 1] if s <= n else None for s in _bracket_order(size)]
+
+    org = tournament.organization
+    created: list[Match] = []
+    match_no = _next_match_no(tournament)
+    common = {
+        "organization": org, "tournament": tournament, "stage": stage,
+        "sport": sport, "leaf_key": leaf_key or "",
+        "status": MatchStatus.SCHEDULED,
+    }
+
+    with transaction.atomic():
+        # Round 1: pairs with two teams play; a pair with a bye forwards its
+        # team straight to round 2 as a concrete slot.
+        slots: list[dict] = []  # {"match": Match} or {"team": Team}
+        round1: list[Match] = []
+        for i in range(0, size, 2):
+            home, away = entrants[i], entrants[i + 1]
+            if home is not None and away is not None:
+                match_no += 1
+                round1.append(
+                    Match(
+                        round_no=1, match_no=match_no,
+                        home_team=home, away_team=away,
+                        home_source={"type": "team", "team_id": str(home.id)},
+                        away_source={"type": "team", "team_id": str(away.id)},
+                        **common,
+                    )
+                )
+                slots.append({"match": round1[-1]})
+            else:
+                slots.append({"team": home or away})  # bye → advances directly
+        Match.objects.bulk_create(round1)
+        created.extend(round1)
+
+        def _side(slot: dict) -> tuple:
+            """(team_id, source) for a bracket slot."""
+            if "team" in slot:
+                tm = slot["team"]
+                return tm.id, {"type": "team", "team_id": str(tm.id)}
+            return None, {"type": "winner_of", "match_id": str(slot["match"].id)}
+
+        round_no = 2
+        while len(slots) > 1:
+            nxt_matches: list[Match] = []
+            nxt_slots: list[dict] = []
+            for i in range(0, len(slots), 2):
+                match_no += 1
+                home_id, home_src = _side(slots[i])
+                away_id, away_src = _side(slots[i + 1])
+                nxt_matches.append(
+                    Match(
+                        round_no=round_no, match_no=match_no,
+                        home_team_id=home_id, away_team_id=away_id,
+                        home_source=home_src, away_source=away_src,
+                        **common,
+                    )
+                )
+                nxt_slots.append({"match": nxt_matches[-1]})
+            Match.objects.bulk_create(nxt_matches)
+            created.extend(nxt_matches)
+            slots = nxt_slots
+            round_no += 1
+
+    return created
+
+
+def generate_knockout_from_groups(
+    *, tournament, advance_per_group: int = 2, leaf_key: str | None = None
+) -> list[Match]:
+    """Advance the top ``advance_per_group`` of each group into a single-
+    elimination bracket (FIFA-style groups → knockout), cross-seeding winners
+    against other groups' runners-up. Leaf-aware: with ``leaf_key`` only that
+    competition's groups feed its own bracket. Idempotent per leaf scope."""
+    from apps.matches.services.standings import compute_standings
+
+    ko_scope = Match.objects.filter(
+        tournament=tournament, stage="knockout", deleted_at__isnull=True
+    )
+    if leaf_key:
+        ko_scope = ko_scope.filter(leaf_key=leaf_key)
+    existing = list(ko_scope)
+    if existing:
+        return existing
+
+    group_scope = Match.objects.filter(
+        tournament=tournament, stage="group", deleted_at__isnull=True
+    )
+    if leaf_key:
+        group_scope = group_scope.filter(leaf_key=leaf_key)
     groups = sorted(
-        g
-        for g in Match.objects.filter(
-            tournament=tournament, stage="group", deleted_at__isnull=True
-        )
-        .values_list("group_label", flat=True)
-        .distinct()
-        if g
+        g for g in group_scope.values_list("group_label", flat=True).distinct() if g
     )
     if not groups:
         raise ValueError("No group stage to advance from.")
@@ -258,11 +337,19 @@ def generate_knockout_from_groups(*, tournament, advance_per_group: int = 2) -> 
         quals.append(ids)
 
     n = len(groups)
-    # Cross-seed: group i winner vs the next group's runner-up.
-    seed_ids: list[str] = []
-    for i in range(n):
-        seed_ids.append(quals[i][0])
-        seed_ids.append(quals[(i + 1) % n][1])
+    if n == 1:
+        # A single group (e.g. one category leaf) → its top teams seed the
+        # bracket directly in standings order.
+        seed_ids = quals[0]
+    else:
+        # Cross-seed: group i winner vs the next group's runner-up.
+        seed_ids = []
+        for i in range(n):
+            seed_ids.append(quals[i][0])
+            seed_ids.append(quals[(i + 1) % n][1])
 
     teams = [Team.objects.get(id=tid) for tid in seed_ids]
-    return generate_single_elimination(tournament=tournament, teams=teams, stage="knockout")
+    return generate_single_elimination(
+        tournament=tournament, teams=teams, stage="knockout",
+        leaf_key=leaf_key or "",
+    )
