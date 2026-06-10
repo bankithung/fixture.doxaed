@@ -232,6 +232,28 @@ export function FormBuilderPage(): React.ReactElement {
     },
   });
 
+  // Generated form whose sports/categories changed since generation: offer
+  // the rebuild right here (previously only the Sports page's Continue did
+  // it — a stale published form had no refresh path from the builder).
+  const regenerate = useMutation({
+    mutationFn: () => formsApi.regenerate(formId),
+    onSuccess: (fresh) => {
+      qc.invalidateQueries({ queryKey: ["form", formId] });
+      qc.invalidateQueries({ queryKey: ["forms", id] });
+      load(fresh.schema);
+      toast.push({
+        kind: "success",
+        title: t("Form rebuilt from the current categories"),
+      });
+    },
+    onError: (e) =>
+      toast.push({
+        kind: "error",
+        title: t("Could not rebuild the form"),
+        description: e instanceof ApiError ? (e.payload.detail ?? "") : "",
+      }),
+  });
+
   const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
   // Overflow (⋯) menu hosting the destructive action (W2-E).
@@ -420,6 +442,25 @@ export function FormBuilderPage(): React.ReactElement {
           </div>
         </div>
       </div>
+
+      {form.stale ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+          <p className="text-sm">
+            {t("The sports/categories changed after this form was generated — it may be missing competitions.")}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={regenerate.isPending}
+            onClick={() => regenerate.mutate()}
+            data-testid="builder-regenerate"
+          >
+            {regenerate.isPending
+              ? t("Rebuilding…")
+              : t("Rebuild from current categories")}
+          </Button>
+        </div>
+      ) : null}
 
       <Dialog
         open={confirmDelete}

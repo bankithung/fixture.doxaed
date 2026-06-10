@@ -467,9 +467,25 @@ def build_institution_form_schema(sports: list[dict]) -> tuple[dict, dict]:
     category_fields_all: dict[str, list[str]] = {}
     if active:
         used: set[str] = set()
+        from apps.tournaments.services.sports import sport_nodes
+
+        # Sports WITH categories ask follow-up questions; ones without are a
+        # single open competition — say so on the form, or ticking a
+        # category-less sport looks like "nothing happened" (owner 2026-06-10).
+        no_cat = [s["name"] for s in active if not sport_nodes(s)]
         fields: list[dict] = [
             {"key": "sports", "type": "multi_choice", "required": True,
              "label": "Which sport(s) will your school participate in?",
+             **(
+                 {"help": (
+                     "Sports with categories will ask follow-up questions. "
+                     + ", ".join(no_cat)
+                     + (" has" if len(no_cat) == 1 else " have")
+                     + " no categories — ticking it is your full entry."
+                 )}
+                 if no_cat
+                 else {}
+             ),
              "options": [{"value": s["key"], "label": s["name"]} for s in active]},
         ]
         for s in active:
