@@ -21,6 +21,7 @@ const STAGE_ROUTE: Record<string, (id: string) => string> = {
   team_registration: routes.tournamentTeams,
   members: routes.tournamentMembers,
   fixtures: routes.tournamentFixtures,
+  ready: routes.tournamentOverview,
 };
 
 const STATUS_CLS: Record<string, string> = {
@@ -143,7 +144,12 @@ export function TournamentWorkspace(): React.ReactElement {
               const reached = i <= curIdx;
               const isCurrent = i === curIdx;
               const dest = STAGE_ROUTE[s]?.(id);
-              const clickable = reached && !isCurrent && !!dest;
+              // Every reached stage (the CURRENT one included) navigates to
+              // its work page — from a sub-page like Forms, the current chip
+              // is the way back to the stage's main page. Only a chip whose
+              // page you're already on is inert.
+              const clickable =
+                reached && !!dest && location.pathname !== dest;
               const chip = (
                 <span
                   className={cn(
@@ -153,7 +159,7 @@ export function TournamentWorkspace(): React.ReactElement {
                       : reached
                         ? "bg-primary/10 text-primary"
                         : "bg-muted text-muted-foreground",
-                    clickable && "hover:bg-primary/20",
+                    clickable && (isCurrent ? "hover:bg-primary/85" : "hover:bg-primary/20"),
                   )}
                 >
                   <span

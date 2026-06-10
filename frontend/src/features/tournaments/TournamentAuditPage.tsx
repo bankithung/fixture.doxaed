@@ -1,13 +1,14 @@
 import * as React from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, ScrollText, ShieldAlert } from "lucide-react";
+import { ArrowLeft, RefreshCw, ScrollText, ShieldAlert } from "lucide-react";
 import { tournamentsApi } from "@/api/tournaments";
 import type { AuditEvent } from "@/api/audit";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/Select";
 import { useBreakpoint } from "@/lib/useBreakpoint";
+import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
@@ -183,6 +184,13 @@ export function TournamentAuditPage(): React.ReactElement {
 
   return (
     <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+      <Link
+        to={routes.tournamentOverview(id)}
+        className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
+        {t("Back to tournament")}
+      </Link>
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">

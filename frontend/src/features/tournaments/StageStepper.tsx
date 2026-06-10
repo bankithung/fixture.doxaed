@@ -38,6 +38,8 @@ import { t } from "@/lib/t";
 /** Where the "Open «stage»" button takes you (the dedicated tab for the work). */
 function stageRoute(id: string, key: string): string | null {
   switch (key) {
+    case "setup":
+      return routes.tournamentSports(id);
     case "org_registration":
       return routes.tournamentInstitutions(id);
     case "team_registration":
@@ -46,6 +48,7 @@ function stageRoute(id: string, key: string): string | null {
       return routes.tournamentMembers(id);
     case "fixtures":
       return routes.tournamentFixtures(id);
+    // "ready" stays null — Overview (where this hero lives) IS its page.
     default:
       return null;
   }
