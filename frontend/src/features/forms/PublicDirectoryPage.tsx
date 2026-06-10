@@ -45,95 +45,6 @@ function valueLabels(map: Map<string, string>, val: unknown): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Stats — computed entirely from the form's OWN filters + entries, so they
-// adapt to whatever fields each form defines (nothing hardcoded).
-// ---------------------------------------------------------------------------
-interface DimStat {
-  key: string;
-  label: string;
-  reported: number; // entries that answered this field
-  total: number; // total selections (multi-choice counts each)
-  max: number; // largest single-option count (for bar scale)
-  items: { value: string; label: string; count: number }[];
-}
-
-function computeStats(
-  filters: DirectoryFilter[],
-  entries: DirectoryEntry[],
-): DimStat[] {
-  return filters.map((f) => {
-    const counts = new Map<string, number>();
-    let reported = 0;
-    for (const e of entries) {
-      const v = e.values[f.key];
-      const arr = (Array.isArray(v) ? v : [v]).filter(
-        (x) => x != null && x !== "",
-      );
-      if (arr.length) reported += 1;
-      for (const x of arr)
-        counts.set(String(x), (counts.get(String(x)) ?? 0) + 1);
-    }
-    const items = f.options
-      .map((o) => ({ value: o.value, label: o.label, count: counts.get(o.value) ?? 0 }))
-      .filter((i) => i.count > 0)
-      .sort((a, b) => b.count - a.count);
-    const total = items.reduce((s, i) => s + i.count, 0);
-    return {
-      key: f.key,
-      label: f.label,
-      reported,
-      total,
-      max: Math.max(1, ...items.map((i) => i.count)),
-      items,
-    };
-  });
-}
-
-function DimensionCard({ stat }: { stat: DimStat }): React.ReactElement {
-  const shown = stat.items.slice(0, 6);
-  const more = stat.items.length - shown.length;
-  return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
-      <div className="flex items-baseline justify-between gap-2">
-        <h3
-          className="truncate text-sm font-medium text-foreground"
-          title={stat.label}
-        >
-          {stat.label}
-        </h3>
-        <span className="shrink-0 font-tabular text-xs text-muted-foreground">
-          {stat.reported} {t("replied")}
-        </span>
-      </div>
-      {shown.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{t("No responses yet.")}</p>
-      ) : (
-        <ul className="flex flex-col gap-1.5">
-          {shown.map((it) => (
-            <li
-              key={it.value}
-              className="flex items-center justify-between gap-2 text-sm"
-            >
-              <span className="truncate text-muted-foreground" title={it.label}>
-                {it.label}
-              </span>
-              <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-tabular text-xs font-medium text-foreground">
-                {it.count}
-              </span>
-            </li>
-          ))}
-          {more > 0 ? (
-            <li className="text-xs text-muted-foreground">
-              +{more} {t("more")}
-            </li>
-          ) : null}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // By competition (W2-E) — the structural view: every configured competition
 // (sport → category → sub-category leaf) with the institutions entered in it.
 // ---------------------------------------------------------------------------
@@ -517,10 +428,10 @@ export function PublicDirectoryPage(): React.ReactElement {
   const [compSel, setCompSel] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   // One view at a time, the DIRECTORY first (owner 2026-06-10: stacking the
-  // competitions report above the table buried the actual list).
-  const [view, setView] = useState<"table" | "competitions" | "stats">(
-    "table",
-  );
+  // competitions report above the table buried the actual list). The former
+  // "Breakdown" stats tab is gone — it duplicated the Competitions view
+  // (owner 2026-06-10).
+  const [view, setView] = useState<"table" | "competitions">("table");
   // Filter-tree expansion — sports start collapsed so the rail stays short.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // "View all competitions" modal for one institution's full entry list.
@@ -564,10 +475,6 @@ export function PublicDirectoryPage(): React.ReactElement {
 
   // Every view honours the active filters (owner 2026-06-10: the rail only
   // affecting the Directory table read as broken on the other tabs).
-  const stats = useMemo(
-    () => computeStats(dir.data?.filters ?? [], entries),
-    [dir.data, entries],
-  );
   const sportGroups = useMemo(() => {
     const all = dir.data?.competitions ?? [];
     const visible =
@@ -670,7 +577,7 @@ export function PublicDirectoryPage(): React.ReactElement {
   // The Competitions tab stays visible from the CONFIGURED catalog, not the
   // filtered groups — otherwise a strict filter would make the tab vanish.
   const hasCompetitions = (d.competitions ?? []).length > 0;
-  const tabsVisible = hasCompetitions || (stats.length > 0 && total > 0);
+  const tabsVisible = hasCompetitions;
   const activeFilterCount =
     (search.trim() !== "" ? 1 : 0) +
     compSel.size +
@@ -697,7 +604,7 @@ export function PublicDirectoryPage(): React.ReactElement {
 
   return (
     <PublicShell wide tournamentName={d.tournament_name}>
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 pb-24 pt-8 sm:px-6 lg:pb-8">
         {/* Header — text only; all counts live in the KPI card row below. */}
         <header className="min-w-0">
           <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
@@ -711,125 +618,129 @@ export function PublicDirectoryPage(): React.ReactElement {
           </p>
         </header>
 
-        {/* Headline KPI cards — the total plus one matching card per MAIN
-            game (admins can switch to total-only from the form builder).
-            Phones: ONE compact swipeable row so the stats never push the
-            list below the fold; sm+: the responsive grid. */}
-        <section
-          aria-label={t("Registration summary")}
-          className="-mx-4 -mt-2 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-4 xl:grid-cols-5"
-        >
-          <div className="flex shrink-0 items-center gap-2.5 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 sm:shrink sm:gap-3 sm:px-4 sm:py-2.5">
-            <Building2 aria-hidden="true" className="h-5 w-5 shrink-0 text-primary" />
-            <div className="min-w-0 leading-tight">
-              <div className="font-tabular text-lg font-semibold tracking-tight text-primary sm:text-2xl">
+        {/* Headline KPIs — the total plus per-MAIN-game counts (admins can
+            switch to total-only from the form builder). Phones get ONE
+            combined summary card (no swiping, no stacked card rows);
+            larger screens get the stat-card grid. */}
+        {isMobile ? (
+          <section
+            aria-label={t("Registration summary")}
+            className="-mt-2 rounded-xl border border-primary/30 bg-primary/5 p-3"
+          >
+            <div className="flex items-center gap-2.5">
+              <Building2 aria-hidden="true" className="h-5 w-5 shrink-0 text-primary" />
+              <span className="font-tabular text-xl font-semibold tracking-tight text-primary">
                 {total}
-              </div>
-              <div className="truncate text-xs text-muted-foreground">
+              </span>
+              <span className="text-sm text-muted-foreground">
                 {total === 1
                   ? t("institution registered")
                   : t("institutions registered")}
+              </span>
+            </div>
+            {(d.kpi_mode ?? "games") === "games" && gameStats.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 border-t border-primary/20 pt-2">
+                {gameStats.map((g) => (
+                  <span
+                    key={g.key}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 text-xs text-muted-foreground",
+                      g.count === 0 && "opacity-60",
+                    )}
+                  >
+                    {g.label}
+                    <span className="font-tabular text-sm font-semibold text-foreground">
+                      {g.count}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : (
+          <section
+            aria-label={t("Registration summary")}
+            className="-mt-2 grid grid-cols-3 gap-2 lg:grid-cols-4 xl:grid-cols-5"
+          >
+            <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5">
+              <Building2 aria-hidden="true" className="h-5 w-5 shrink-0 text-primary" />
+              <div className="min-w-0 leading-tight">
+                <div className="font-tabular text-2xl font-semibold tracking-tight text-primary">
+                  {total}
+                </div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {total === 1
+                    ? t("institution registered")
+                    : t("institutions registered")}
+                </div>
               </div>
             </div>
-          </div>
-          {(d.kpi_mode ?? "games") === "games"
-            ? gameStats.map((g) => (
-                <div
-                  key={g.key}
-                  className={cn(
-                    "flex shrink-0 items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2 shadow-sm sm:shrink sm:gap-3 sm:px-4 sm:py-2.5",
-                    g.count === 0 && "opacity-60",
-                  )}
-                >
-                  <Trophy
-                    aria-hidden="true"
-                    className="h-5 w-5 shrink-0 text-muted-foreground"
-                  />
-                  <div className="min-w-0 leading-tight">
-                    <div className="font-tabular text-lg font-semibold tracking-tight sm:text-2xl">
-                      {g.count}
-                    </div>
-                    <div
-                      className="truncate text-xs text-muted-foreground"
-                      title={g.label}
-                    >
-                      {g.label}
+            {(d.kpi_mode ?? "games") === "games"
+              ? gameStats.map((g) => (
+                  <div
+                    key={g.key}
+                    className={cn(
+                      "flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5 shadow-sm",
+                      g.count === 0 && "opacity-60",
+                    )}
+                  >
+                    <Trophy
+                      aria-hidden="true"
+                      className="h-5 w-5 shrink-0 text-muted-foreground"
+                    />
+                    <div className="min-w-0 leading-tight">
+                      <div className="font-tabular text-2xl font-semibold tracking-tight">
+                        {g.count}
+                      </div>
+                      <div
+                        className="truncate text-xs text-muted-foreground"
+                        title={g.label}
+                      >
+                        {g.label}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
-            : null}
-        </section>
+                ))
+              : null}
+          </section>
+        )}
 
         {/* Content + the Amazon-style filter rail (right on desktop). */}
         <div className="flex flex-col gap-6 lg:flex-row">
         <div className="flex min-w-0 flex-1 flex-col gap-6">
 
-        {/* Toolbar — view tabs + (on phones) the Filters button that opens
-            the bottom-sheet. Sticky below lg so filters stay reachable
-            mid-scroll; on desktop the rail is always visible, so it's static. */}
-        <div
-          className={cn(
-            "sticky top-0 z-30 -mx-4 flex items-center justify-between gap-2 bg-card/80 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6 lg:static lg:z-auto lg:mx-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none",
-            !tabsVisible && "lg:hidden",
-          )}
-        >
-          {tabsVisible ? (
-            // min-w-0 + overflow-x-auto: on narrow phones the tab row scrolls
-            // instead of shoving the Filters button off the right edge.
-            <div className="min-w-0 flex-1 overflow-x-auto">
-            <div
-              className="inline-flex w-max rounded-lg border border-border bg-muted/50 p-0.5 text-sm"
-              role="tablist"
-              aria-label={t("View")}
-            >
-              {(
-                [
-                  ["table", t("Directory")],
-                  ...(hasCompetitions
-                    ? ([["competitions", t("Competitions")]] as const)
-                    : []),
-                  ...(stats.length > 0 && total > 0
-                    ? ([["stats", t("Breakdown")]] as const)
-                    : []),
-                ] as readonly (readonly [string, string])[]
-              ).map(([v, label]) => (
-                <button
-                  key={v}
-                  type="button"
-                  role="tab"
-                  aria-selected={view === v}
-                  onClick={() => setView(v as typeof view)}
-                  className={cn(
-                    "whitespace-nowrap rounded-md px-3 py-1 font-medium transition-colors",
-                    view === v
-                      ? "bg-card text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            </div>
-          ) : (
-            <span aria-hidden="true" />
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setFilterSheet(true)}
-            className="shrink-0 lg:hidden"
+        {/* View tabs — a full-width segmented control on phones (two tabs
+            always fit; nothing scrolls), compact width on desktop. */}
+        {tabsVisible ? (
+          <div
+            className="flex w-full rounded-lg border border-border bg-muted/50 p-0.5 text-sm lg:w-fit"
+            role="tablist"
+            aria-label={t("View")}
           >
-            <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
-            {t("Filters")}
-            {activeFilterCount > 0 ? (
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 font-tabular text-[0.6875rem] font-semibold leading-none text-primary-foreground">
-                {activeFilterCount}
-              </span>
-            ) : null}
-          </Button>
-        </div>
+            {(
+              [
+                ["table", t("Directory")],
+                ["competitions", t("Competitions")],
+              ] as readonly (readonly [string, string])[]
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                type="button"
+                role="tab"
+                aria-selected={view === v}
+                onClick={() => setView(v as typeof view)}
+                className={cn(
+                  "flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-center font-medium transition-colors lg:flex-none lg:py-1",
+                  view === v
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         {/* Result count — applies to whichever view is active. */}
         {hasFilters ? (
@@ -853,21 +764,6 @@ export function PublicDirectoryPage(): React.ReactElement {
                   : t("No competitions configured yet.")
               }
             />
-          )
-        ) : null}
-
-        {/* Dynamic stats — one distribution card per form dimension. */}
-        {view === "stats" && stats.length > 0 && total > 0 ? (
-          entries.length === 0 && hasFilters ? (
-            <EmptyState message={t("No institutions match your filters.")} />
-          ) : (
-            <section aria-label={t("Registration breakdown")}>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {stats.map((s) => (
-                  <DimensionCard key={s.key} stat={s} />
-                ))}
-              </div>
-            </section>
           )
         ) : null}
 
@@ -1091,6 +987,22 @@ export function PublicDirectoryPage(): React.ReactElement {
           </div>
         </aside>
         </div>
+
+        {/* Floating Filters pill (phones/tablets) — always on-screen at the
+            bottom edge, opens the bottom-sheet. The desktop rail replaces it
+            at lg. */}
+        <Button
+          onClick={() => setFilterSheet(true)}
+          className="fixed bottom-5 left-1/2 z-40 -translate-x-1/2 rounded-full px-5 shadow-lg lg:hidden"
+        >
+          <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
+          {t("Filters")}
+          {activeFilterCount > 0 ? (
+            <span className="-mr-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-foreground/25 px-1.5 font-tabular text-[0.6875rem] font-semibold leading-none">
+              {activeFilterCount}
+            </span>
+          ) : null}
+        </Button>
 
         {/* Mobile filter bottom-sheet — same controls as the rail. */}
         <Dialog

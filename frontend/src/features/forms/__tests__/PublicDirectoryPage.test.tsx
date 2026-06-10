@@ -93,7 +93,7 @@ afterEach(() => {
 });
 
 describe("PublicDirectoryPage", () => {
-  it("renders the header, total, dynamic stat cards, and entries", async () => {
+  it("renders the header, total, filters, and entries", async () => {
     renderPage();
 
     expect(
@@ -101,27 +101,30 @@ describe("PublicDirectoryPage", () => {
     ).toBeInTheDocument();
     // Total stat tile (label unique to the hero count).
     expect(screen.getByText("institutions registered")).toBeInTheDocument();
-    // A distribution card per form dimension (label appears in card + filter).
+    // The form's own choice questions become rail filters.
     expect(screen.getAllByText("Which competition?").length).toBeGreaterThan(0);
-    // Distribution surfaces an option that was actually chosen.
+    // A chosen option surfaces in the table cells.
     expect(screen.getAllByText("U-14 Girls").length).toBeGreaterThan(0);
     // Entries table.
     expect(screen.getByText("Grace High")).toBeInTheDocument();
     expect(screen.getByText("Mount Hermon")).toBeInTheDocument();
+    // The Breakdown tab is gone — only Directory + Competitions remain.
+    expect(screen.queryByRole("tab", { name: "Breakdown" })).toBeNull();
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
   });
 
-  it("toggles between the breakdown and the directory list", async () => {
+  it("toggles between the competitions view and the directory list", async () => {
     renderPage();
-    await screen.findByText("Grace High"); // both shown by default
+    await screen.findByText("Grace High"); // table shown by default
+    expect(screen.getByRole("table")).toBeInTheDocument();
 
-    // Breakdown only → the table (entries) is hidden.
-    await userEvent.click(screen.getByRole("tab", { name: "Breakdown" }));
-    expect(screen.queryByText("Grace High")).toBeNull();
+    // Competitions view replaces the table with the sport → category report.
+    await userEvent.click(screen.getByRole("tab", { name: "Competitions" }));
+    expect(screen.queryByRole("table")).toBeNull();
 
-    // Directory only → the stat cards (".. replied") are hidden, list returns.
+    // Back to the directory list.
     await userEvent.click(screen.getByRole("tab", { name: "Directory" }));
-    expect(screen.getByText("Grace High")).toBeInTheDocument();
-    expect(screen.queryAllByText(/replied/i)).toHaveLength(0);
+    expect(screen.getByRole("table")).toBeInTheDocument();
   });
 
   it("filters the entries by search", async () => {
