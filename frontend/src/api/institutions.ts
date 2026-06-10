@@ -13,6 +13,8 @@ export interface Institution {
   team_count: number;
   /** The registration-form answers that created this row (empty for direct add). */
   answers: Record<string, unknown>;
+  /** The competitions (labelled category leaves) the institution entered. */
+  competitions?: { leaf_key: string; label: string }[];
 }
 
 export interface InstitutionInput {

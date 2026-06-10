@@ -253,6 +253,40 @@ def test_auto_generate_team_form_and_multi_category_mapping():
     assert set(made.values_list("pool", flat=True)) == {"U14"}
 
 
+def test_api_institution_list_includes_labelled_competitions():
+    """The admin list mirrors the public directory: each institution carries
+    its competitions (category leaves) labelled from the sports config, so
+    the Institutions tab can filter by competition instead of raw answers."""
+    from apps.forms.models import FormResponse
+    from apps.forms.services.generation import generate_institution_form
+    from apps.forms.services.mapping import map_response
+    from apps.tournaments.services.sports import normalize_sports
+
+    admin = _admin("comp@inst.test")
+    t = create_tournament(user=admin, name="Comp Cup")
+    t.sports = normalize_sports([
+        {"name": "Football", "nodes": [{"name": "U15"}]},
+        {"name": "Badminton"},
+    ])
+    t.save(update_fields=["sports"])
+    form = generate_institution_form(tournament=t, created_by=admin)
+    form.status = "open"
+    form.save(update_fields=["status"])
+    resp = FormResponse.objects.create(
+        form=form, organization=t.organization, tournament=t, title="Don Bosco",
+        answers={"school_name": "Don Bosco", "contact_name": "Fr. K",
+                 "contact_phone": "9876543210",
+                 "sports": ["football", "badminton"],
+                 "categories_football": ["football.u15"]},
+    )
+    map_response(resp)
+
+    rows = _client(admin).get(f"/api/tournaments/{t.id}/institutions/").json()
+    row = next(r for r in rows if r["name"] == "Don Bosco")
+    comps = {c["leaf_key"]: c["label"] for c in row["competitions"]}
+    assert comps == {"football.u15": "Football — U15", "badminton": "Badminton"}
+
+
 def test_form_create_rejects_invalid_stage():
     admin = _admin()
     t = create_tournament(user=admin, name="Cup")

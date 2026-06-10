@@ -185,7 +185,13 @@ class TournamentTeamsListView(GenericAPIView):
         )
 
 
-def _institution_dict(i: Institution, answers: dict | None = None) -> dict:
+def _institution_dict(
+    i: Institution,
+    answers: dict | None = None,
+    sports_cfg: list | None = None,
+) -> dict:
+    from apps.tournaments.services.sports import leaf_label
+
     return {
         "id": str(i.id),
         "name": i.name,
@@ -200,6 +206,13 @@ def _institution_dict(i: Institution, answers: dict | None = None) -> dict:
         # The registration-form answers that created this row (for the admin's
         # flexible table columns + filters). Empty for direct admin-added rows.
         "answers": answers or {},
+        # The competitions (category leaves) the institution entered, labelled
+        # from the live sports config — mirrors the public directory so the
+        # admin list can filter by competition instead of raw chain answers.
+        "competitions": [
+            {"leaf_key": lk, "label": leaf_label(sports_cfg or [], lk)}
+            for lk in (i.attributes or {}).get("leaves") or []
+        ],
     }
 
 
@@ -232,10 +245,18 @@ class InstitutionListCreateView(GenericAPIView):
             if resp_ids
             else {}
         )
+        sports_cfg = (
+            Tournament.objects.filter(id=tournament_id)
+            .values_list("sports", flat=True)
+            .first()
+            or []
+        )
         return Response(
             [
                 _institution_dict(
-                    i, answers_by_resp.get(i.source_response_id) if i.source_response_id else None
+                    i,
+                    answers_by_resp.get(i.source_response_id) if i.source_response_id else None,
+                    sports_cfg,
                 )
                 for i in institutions
             ]
