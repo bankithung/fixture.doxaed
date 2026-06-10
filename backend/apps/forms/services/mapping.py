@@ -104,9 +104,16 @@ def _map_organization_registration(resp: FormResponse) -> FormResponse:
 
 def _selected_leaves(settings: dict, answers: dict) -> list[str]:
     """Category-leaf keys an org-registration response selected, derived from
-    the generator's structural tags (sports_field + category_fields). A sport
-    selected without a category field contributes its sport-level leaf."""
+    the generator's structural tags. A sport selected without category fields
+    contributes its sport-level leaf.
+
+    Progressive-chain forms (W2-A: ``category_fields_all`` + ``leaf_values``)
+    collect answers across EVERY level's field and keep only values that are
+    real competitions — branch-level picks ("U19" when U19 has children) are
+    navigation, not entries. Single-level forms keep the legacy path."""
     cat_fields = settings.get("category_fields") or {}
+    all_fields = settings.get("category_fields_all") or {}
+    leaf_values = set(settings.get("leaf_values") or [])
     sports_field = settings.get("sports_field") or "sports"
     selected = answers.get(sports_field)
     if not isinstance(selected, list):
@@ -114,6 +121,17 @@ def _selected_leaves(settings: dict, answers: dict) -> list[str]:
     leaves: list[str] = []
     for skey in selected:
         skey = str(skey)
+        fkeys = all_fields.get(skey)
+        if fkeys and leaf_values:
+            picked: list[str] = []
+            for fk in fkeys:
+                vals = answers.get(fk)
+                if isinstance(vals, list):
+                    picked.extend(str(v) for v in vals if v)
+            leaves.extend(
+                v for v in picked if v in leaf_values and v not in leaves
+            )
+            continue
         fkey = cat_fields.get(skey)
         if fkey is None:
             leaves.append(skey)  # sport-level leaf (sport has no categories)

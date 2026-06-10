@@ -53,18 +53,39 @@ def _tournament_with_sports():
     return admin, t
 
 
-def test_institution_form_carries_leaf_keys_and_settings_tags():
+def test_institution_form_branches_per_level_with_settings_tags():
+    """W2-A: one question per BRANCH level (progressive disclosure), not one
+    flat field stacking every leaf."""
     admin, t = _tournament_with_sports()
     form = generate_institution_form(tournament=t, created_by=admin)
     fields = {f["key"]: f for sec in form.schema["sections"] for f in sec["fields"]}
-    fb = fields["categories_football"]
-    assert [o["value"] for o in fb["options"]] == [LEAF_5V5, LEAF_U17]
-    assert [o["label"] for o in fb["options"]] == ["U15 — Girls — 5v5", "U17"]
+
+    top = fields["categories_football"]
+    assert [o["value"] for o in top["options"]] == ["football.u15", LEAF_U17]
+    assert [o["label"] for o in top["options"]] == ["U15", "U17"]
+    assert top["visibility"] == {"field": "sports", "op": "includes",
+                                 "value": "football"}
+
+    mid = fields["categories_football_u15"]
+    assert [o["value"] for o in mid["options"]] == ["football.u15.girls"]
+    assert mid["visibility"] == {"field": "categories_football", "op": "includes",
+                                 "value": "football.u15"}
+
+    deep = fields["categories_football_u15_girls"]
+    assert [o["value"] for o in deep["options"]] == [LEAF_5V5]
+    assert deep["visibility"] == {"field": "categories_football_u15",
+                                  "op": "includes", "value": "football.u15.girls"}
+
     # sport without categories gets no category field (the sport IS the leaf)
     assert "categories_table_tennis" not in fields
     # structural tags for downstream consumers (no field-position guessing)
     assert form.settings["sports_field"] == "sports"
     assert form.settings["category_fields"] == {"football": "categories_football"}
+    assert form.settings["category_fields_all"] == {"football": [
+        "categories_football", "categories_football_u15",
+        "categories_football_u15_girls",
+    ]}
+    assert set(form.settings["leaf_values"]) == {LEAF_5V5, LEAF_U17, LEAF_TT}
 
 
 def test_org_response_mapping_persists_institution_leaves():
@@ -85,18 +106,66 @@ def test_org_response_mapping_persists_institution_leaves():
     assert inst.attributes["leaves"] == [LEAF_5V5, LEAF_U17, LEAF_TT]
 
 
+def test_branching_validates_required_on_visible_and_maps_deep_leaves():
+    """W2-A end-to-end: a respondent walks the chain (sport → U15 → Girls →
+    5v5); validation forces every OPENED branch to be answered; mapping keeps
+    only real leaves (branch picks are navigation, not entries)."""
+    from apps.forms.services.validation import AnswerError, validate_answers
+
+    admin, t = _tournament_with_sports()
+    form = generate_institution_form(tournament=t, created_by=admin)
+
+    full = {
+        "school_name": "St. Mary", "contact_name": "Sr. A",
+        "contact_phone": "9876543210",
+        "sports": ["football"],
+        "categories_football": ["football.u15", LEAF_U17],
+        "categories_football_u15": ["football.u15.girls"],
+        "categories_football_u15_girls": [LEAF_5V5],
+    }
+    clean = validate_answers(form.schema, full)
+    assert clean["categories_football_u15_girls"] == [LEAF_5V5]
+
+    # opened U15 but never picked within it → the visible chain field is
+    # required, so the submission is rejected (no silent half-entries)
+    partial = {**full}
+    del partial["categories_football_u15"], partial["categories_football_u15_girls"]
+    with pytest.raises(AnswerError):
+        validate_answers(form.schema, partial)
+
+    resp = FormResponse.objects.create(
+        form=form, organization=t.organization, tournament=t,
+        title="St. Mary", answers=clean,
+    )
+    map_response(resp)
+    inst = Institution.objects.get(tournament=t, name="St. Mary")
+    # football.u15 / football.u15.girls are branches — only leaves persist
+    # (field-walk order: the top-level pick lands before deeper ones)
+    assert inst.attributes["leaves"] == [LEAF_U17, LEAF_5V5]
+
+
 def test_team_form_sections_come_from_sports_config_not_field_order():
     admin, t = _tournament_with_sports()
     generate_institution_form(tournament=t, created_by=admin)
     team_form = generate_team_form_template(tournament=t, created_by=admin)
     fields = {f["key"]: f for sec in team_form.schema["sections"]
               for f in sec["fields"]}
-    cats = fields["categories"]
-    # B2 regression: options are category LEAVES, never sport keys
-    assert [o["value"] for o in cats["options"]] == [LEAF_5V5, LEAF_U17, LEAF_TT]
-    assert [o["label"] for o in cats["options"]] == [
-        "Football — U15 — Girls — 5v5", "Football — U17", "Table Tennis",
+    # W2-A: the selector is the progressive sport→category chain.
+    assert [o["value"] for o in fields["sports"]["options"]] == [
+        "football", "table_tennis",
     ]
+    deep = fields["categories_football_u15_girls"]
+    assert [o["value"] for o in deep["options"]] == [LEAF_5V5]
+    # Each leaf's team section gates on the DEEPEST field carrying that leaf.
+    by_vis = {
+        (s.get("visibility") or {}).get("value"): s
+        for s in team_form.schema["sections"]
+        if s.get("visibility")
+    }
+    assert by_vis[LEAF_5V5]["visibility"]["field"] == "categories_football_u15_girls"
+    assert by_vis[LEAF_U17]["visibility"]["field"] == "categories_football"
+    # Sport-level leaf: ticking the sport reveals its team section.
+    assert by_vis[LEAF_TT]["visibility"]["field"] == "sports"
     groups = team_form.settings["bindings"]["category_groups"]
     assert [(g["sport_key"], g["leaf_key"]) for g in groups] == [
         ("football", LEAF_5V5), ("football", LEAF_U17),

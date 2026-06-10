@@ -118,7 +118,9 @@ def test_categories_and_subcategories_preserved():
     ]
 
 
-def test_generate_institution_form_flattens_subcategories():
+def test_generate_institution_form_branches_subcategories():
+    """W2-A: subcategories become a follow-up question revealed by the parent
+    pick (progressive disclosure), not flattened labels in one field."""
     from apps.forms.services.generation import generate_institution_form
     from apps.forms.services.schema import validate_schema
 
@@ -140,10 +142,14 @@ def test_generate_institution_form_flattens_subcategories():
     assert form.stage == "org_registration"
     fields = {f["key"]: f for sec in form.schema["sections"] for f in sec["fields"]}
     assert "sports" in fields
-    # category → subcategory flattens to leaf options "Cat — Sub"
-    fb_labels = [o["label"] for o in fields["categories_football"]["options"]]
-    assert fb_labels == ["U-14 — 5v5", "U-14 — 11v11"]
-    # no subcategories → the category itself is the leaf
+    # top level offers the category; its subcategories live one level deeper
+    fb = fields["categories_football"]
+    assert [o["label"] for o in fb["options"]] == ["U-14"]
+    sub = fields["categories_football_u_14"]
+    assert [o["label"] for o in sub["options"]] == ["5v5", "11v11"]
+    assert sub["visibility"] == {"field": "categories_football",
+                                 "op": "includes", "value": "football.u_14"}
+    # no subcategories → the category itself is the leaf, single question
     sp_labels = [o["label"] for o in fields["categories_sepak_takraw"]["options"]]
     assert sp_labels == ["U-14 Boys"]
 

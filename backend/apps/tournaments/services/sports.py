@@ -184,6 +184,12 @@ def _sport_nodes(sport: dict) -> list[dict]:
     return nodes or []
 
 
+def sport_nodes(sport: dict) -> list[dict]:
+    """Public read accessor for a sport's node tree (legacy shapes coerced) —
+    the form generator walks this to emit one branching question per level."""
+    return _sport_nodes(sport)
+
+
 def _walk_leaves(
     out: list[dict], skey: str, sname: str,
     node: dict, key_path: list[str], name_path: list[str],

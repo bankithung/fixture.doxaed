@@ -69,6 +69,84 @@ def _find_categories_fields(org_form: Form | None) -> list[dict]:
     return [choice[0]] if choice else []
 
 
+def _category_chain(
+    sport: dict, *, used: set[str], sports_field: str = "sports"
+) -> tuple[list[dict], list[str], dict[str, str]]:
+    """One multi_choice per BRANCH node of a sport's category tree —
+    progressive disclosure to arbitrary depth (owner 2026-06-10: the old
+    generator stacked every leaf flat in a single per-sport field). Each
+    field's options are one node's children (values = stable path keys); its
+    ``visibility`` points at the PARENT field, so picking "U19" reveals the
+    U19 question, picking "Boys" reveals U19 — Boys, and so on. Plain
+    schema-data on the existing visibility primitive — the admin can edit or
+    rebuild the same logic in the builder (D-W2-1, nothing renderer-special).
+
+    Required-on-visible closes partial picks: the server validates only
+    visible fields, so every branch a respondent opens must be answered while
+    untouched branches stay silent.
+
+    Returns (fields, field_keys, leaf_fields) where leaf_fields maps each
+    LEAF path key -> the (deepest) field key carrying it as an option — what
+    per-leaf team sections gate on.
+    """
+    from apps.tournaments.services.sports import LEAF_SEP, sport_nodes
+
+    skey = sport["key"]
+    sname = sport.get("name") or skey
+    fields: list[dict] = []
+    keys: list[str] = []
+    leaf_fields: dict[str, str] = {}
+    nodes = sport_nodes(sport)
+    if not nodes:
+        return fields, keys, leaf_fields
+
+    def mint(path_keys: list[str]) -> str:
+        k = f"categories_{_slug('_'.join(path_keys), 'cat')}"[:60]
+        while k in used:
+            k += "_x"
+        used.add(k)
+        return k
+
+    def add_field(
+        children: list[dict],
+        parent_field: str | None,
+        parent_value: str | None,
+        path_keys: list[str],
+        path_names: list[str],
+    ) -> None:
+        fkey = mint(path_keys)
+        fields.append({
+            "key": fkey,
+            "type": "multi_choice",
+            "label": (
+                f"{sname} categories" if not path_names
+                else f"{sname} — {' — '.join(path_names)}"
+            ),
+            "required": True,
+            "visibility": (
+                {"field": sports_field, "op": "includes", "value": skey}
+                if parent_field is None
+                else {"field": parent_field, "op": "includes", "value": parent_value}
+            ),
+            "options": [
+                {"value": LEAF_SEP.join([*path_keys, c["key"]]), "label": c["name"]}
+                for c in children
+            ],
+        })
+        keys.append(fkey)
+        for c in children:
+            value = LEAF_SEP.join([*path_keys, c["key"]])
+            kids = c.get("children") or []
+            if kids:
+                add_field(kids, fkey, value,
+                          [*path_keys, c["key"]], [*path_names, c["name"]])
+            else:
+                leaf_fields[value] = fkey
+
+    add_field(nodes, None, None, [skey], [])
+    return fields, keys, leaf_fields
+
+
 def _leaf_options(tournament) -> list[tuple[str, str, dict]]:
     """(value, label, extra) category options straight from the tournament's
     sports config: value = stable leaf key, label = 'Sport — path', extra
@@ -98,8 +176,33 @@ def build_team_form_schema(
     (one section per category LEAF — the structural source of truth), else from
     the org form's category field(s) (hand-built Stage-1 forms)."""
     cat_opts: list[tuple[str, str, dict]] = []
+    # Progressive selector (sports config available): a sport question + one
+    # question per branch level, mirroring the institution form (W2-A). Each
+    # leaf section then gates on the DEEPEST field carrying that leaf.
+    chain_fields: list[dict] = []
+    leaf_gate: dict[str, dict] = {}
     if tournament is not None and getattr(tournament, "sports", None):
         cat_opts = _leaf_options(tournament)
+        active = [s for s in tournament.sports
+                  if s.get("name") and s.get("key")]
+        if active:
+            used: set[str] = set()
+            chain_fields.append({
+                "key": "sports", "type": "multi_choice", "required": True,
+                "label": "Which sport(s) are you entering teams for?",
+                "options": [{"value": s["key"], "label": s["name"]}
+                            for s in active],
+            })
+            for s in active:
+                cfields, _ckeys, leaf_fields = _category_chain(s, used=used)
+                chain_fields.extend(cfields)
+                for lk, fk in leaf_fields.items():
+                    leaf_gate[lk] = {"field": fk, "op": "includes", "value": lk}
+                if not leaf_fields:
+                    # Sport-level leaf: ticking the sport IS the selection.
+                    leaf_gate[s["key"]] = {
+                        "field": "sports", "op": "includes", "value": s["key"],
+                    }
     if not cat_opts:
         for cat_field in _find_categories_fields(org_form):
             for o in cat_field.get("options", []) or []:
@@ -136,10 +239,13 @@ def build_team_form_schema(
                  "label": "Contact email", "required": False},
                 {"key": "contact_phone", "type": "phone",
                  "label": "Contact phone", "required": False},
-                # The categories selector only exists when the org-reg form
-                # offered categories (otherwise an empty choice field is invalid).
+                # Competition selector: the progressive sport→category chain
+                # when the sports config drove generation (W2-A); else the
+                # flat categories multi-choice (hand-built Stage-1 forms).
                 *(
-                    [
+                    chain_fields
+                    if chain_fields
+                    else [
                         {
                             "key": "categories",
                             "type": "multi_choice",
@@ -159,18 +265,20 @@ def build_team_form_schema(
     ]
 
     category_groups: list[dict] = []
-    used: set[str] = set()
+    used_slugs: set[str] = set()
     for v, lbl, extra in cat_opts:
         slug = _slug(v, f"cat{len(category_groups)}")
-        while slug in used:
+        while slug in used_slugs:
             slug += "_x"
-        used.add(slug)
+        used_slugs.add(slug)
         gkey, tkey = f"teams_{slug}", f"team_name_{slug}"
         sections.append(
             {
                 "key": f"cat_{slug}",
                 "title": f"Teams — {lbl}",
-                "visibility": {"field": "categories", "op": "includes", "value": v},
+                "visibility": leaf_gate.get(
+                    v, {"field": "categories", "op": "includes", "value": v}
+                ),
                 "fields": [
                     {
                         "key": gkey,
@@ -281,19 +389,24 @@ def generate_team_form_template(*, tournament, created_by=None, request=None) ->
 
 def build_institution_form_schema(sports: list[dict]) -> tuple[dict, dict]:
     """Guided institution-registration form from the tournament's chosen sports:
-    school details, a sport-selection question, per-sport category questions that
-    reveal inline when that sport is picked, and a confirmation note. Fully
-    editable afterwards — driven entirely by the sports config, nothing hardcoded.
+    school details, a sport-selection question, then a PROGRESSIVE chain of
+    category questions — one per branch level — that reveal as the respondent
+    drills in (sport → U19 → Boys → 5v5), and a confirmation note. Fully
+    editable afterwards — driven entirely by the sports config + the standard
+    visibility primitive, nothing hardcoded.
 
-    Category options walk the recursive node tree down to its LEAVES; option
-    values are stable leaf keys ('football.u15.girls'), so renames never orphan
-    answers, and downstream mapping/fixtures get a structural reference instead
-    of a display-string slug.
+    Option values are stable path keys ('football.u15.girls'), so renames
+    never orphan answers, and downstream mapping/fixtures get a structural
+    reference instead of a display-string slug.
 
-    Returns (schema, category_fields) where category_fields maps sport_key →
-    the form field key carrying that sport's category selection (stored in
+    Returns (schema, meta) where meta carries the structural tags stored in
     Form.settings so team-form derivation and response mapping never guess by
-    field position again — spec 2026-06-10 B2/B4).
+    field position (spec 2026-06-10 B2/B4 + Wave 2 W2-A):
+      - category_fields:     sport_key → TOP category field key (back-compat)
+      - category_fields_all: sport_key → [every category field key, walk order]
+      - leaf_values:         snapshot of all leaf keys (mapping keeps only
+                             selected values that are real competitions;
+                             branch-level picks are navigation, not entries)
     """
     from apps.tournaments.services.sports import iter_leaves
 
@@ -311,45 +424,40 @@ def build_institution_form_schema(sports: list[dict]) -> tuple[dict, dict]:
     ]
     active = [s for s in (sports or []) if s.get("name") and s.get("key")]
     category_fields: dict[str, str] = {}
+    category_fields_all: dict[str, list[str]] = {}
     if active:
+        used: set[str] = set()
         fields: list[dict] = [
             {"key": "sports", "type": "multi_choice", "required": True,
              "label": "Which sport(s) will your school participate in?",
              "options": [{"value": s["key"], "label": s["name"]} for s in active]},
         ]
         for s in active:
-            # All category leaves of this sport (recursive tree → flat leaf
-            # list). A sport with no categories has only its sport-level leaf:
-            # ticking the sport IS the registration, so no extra field.
-            leaves = [lf for lf in iter_leaves([s]) if lf["path"]]
-            if leaves:
-                fkey = f"categories_{s['key']}"[:60]
-                category_fields[s["key"]] = fkey
-                fields.append({
-                    "key": fkey,
-                    "type": "multi_choice",
-                    "label": f"{s['name']} categories",
-                    # Revealed inline only when this sport is selected above.
-                    "visibility": {"field": "sports", "op": "includes",
-                                   "value": s["key"]},
-                    "options": [
-                        {"value": lf["leaf_key"], "label": lf["label"]}
-                        for lf in leaves
-                    ],
-                })
+            # A sport with no categories has only its sport-level leaf:
+            # ticking the sport IS the registration, so no extra fields.
+            cfields, ckeys, _leaf_fields = _category_chain(s, used=used)
+            if ckeys:
+                category_fields[s["key"]] = ckeys[0]
+                category_fields_all[s["key"]] = ckeys
+                fields.extend(cfields)
         sections.append({"key": "participation", "title": "Competition selection",
                          "fields": fields})
     sections.append({"key": "confirm", "title": "Final confirmation", "fields": [
         {"key": "confirm_note", "type": "section_text",
          "label": "Player names and documents must be submitted by the deadline."},
     ]})
-    return {"version": 1, "sections": sections}, category_fields
+    meta = {
+        "category_fields": category_fields,
+        "category_fields_all": category_fields_all,
+        "leaf_values": [lf["leaf_key"] for lf in iter_leaves(active)],
+    }
+    return {"version": 1, "sections": sections}, meta
 
 
 def generate_institution_form(*, tournament, created_by=None, request=None) -> Form:
     """Create a DRAFT institution-registration form from the tournament's sports,
     for the admin to review/edit/publish."""
-    schema, category_fields = build_institution_form_schema(tournament.sports or [])
+    schema, cat_meta = build_institution_form_schema(tournament.sports or [])
     form = create_form(
         tournament=tournament,
         title="Institution registration",
@@ -371,7 +479,7 @@ def generate_institution_form(*, tournament, created_by=None, request=None) -> F
         # Structural tags consumed by team-form derivation and response
         # mapping (no more guessing fields by position/type).
         "sports_field": "sports",
-        "category_fields": category_fields,
+        **cat_meta,
         # Staleness fingerprint (invariant 10): compared against the live
         # sports config to flag forms generated from an older category set.
         "inputs_hash": sports_inputs_hash(tournament.sports),

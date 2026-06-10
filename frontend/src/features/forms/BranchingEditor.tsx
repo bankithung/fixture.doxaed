@@ -35,7 +35,10 @@ export function BranchingEditor({
     { value: END_KEY, label: t("End of form") },
   ];
 
-  const triggers = priorFields(sections, sectionKey);
+  // Field-level rules may gate on earlier fields in the SAME section too —
+  // that's how the generated progressive category chain works, and how a
+  // user builds their own (W2-A).
+  const triggers = priorFields(sections, sectionKey, field.key);
 
   return (
     <div className="flex flex-col gap-4 border-t border-border pt-4">

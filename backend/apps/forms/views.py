@@ -732,11 +732,11 @@ class FormRegenerateView(GenericAPIView):
         t = form.tournament
 
         if form.purpose == FormPurpose.ORGANIZATION_REGISTRATION:
-            schema, category_fields = build_institution_form_schema(t.sports or [])
+            schema, cat_meta = build_institution_form_schema(t.sports or [])
             new_settings = {
                 **settings,
                 "sports_field": "sports",
-                "category_fields": category_fields,
+                **cat_meta,
                 "inputs_hash": sports_inputs_hash(t.sports),
             }
         elif form.purpose == FormPurpose.TEAM_REGISTRATION:
