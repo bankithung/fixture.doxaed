@@ -13,7 +13,6 @@ import {
   MoreVertical,
   Pencil,
   Plus,
-  Search,
   Send,
   X,
 } from "lucide-react";
@@ -21,10 +20,13 @@ import { institutionsApi, type Institution } from "@/api/institutions";
 import { formsApi } from "@/api/forms";
 import { tournamentsApi } from "@/api/tournaments";
 import type { Field } from "@/features/forms/types";
+import {
+  buildCompTree,
+  FilterPanel,
+  matchesCompPrefix,
+} from "@/features/forms/FilterPanel";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
 import { flipPlacement } from "@/lib/popover";
 import { invalidateTournament } from "@/lib/queryKeys";
@@ -96,71 +98,84 @@ export function InstitutionsTab(): React.ReactElement {
     }
   };
 
-  // Columns + filters are derived from the registration form's own fields —
-  // EXCLUDING the sport/category chain questions (same exclusion the public
-  // directory applies): with deep category trees they made one dropdown per
-  // sub-category, a wall of noise. The single Competition filter + the
-  // Competitions chips column cover them.
+  // Table COLUMNS come from every form field (as before); the rail's
+  // per-question FILTERS exclude the sport/category chain questions (same
+  // exclusion the public directory applies) — the competition tree covers
+  // those without a dropdown per sub-category.
   const fieldDefs = useMemo<Field[]>(() => {
-    const settings = (orgForm?.settings ?? {}) as {
-      bindings?: Record<string, string>;
-      category_fields?: Record<string, string>;
-      category_fields_all?: Record<string, string[]>;
-      sports_field?: string;
-    };
-    const nameKey = settings.bindings?.institution_name;
-    const chainKeys = new Set<string>([
-      ...Object.values(settings.category_fields ?? {}),
-      ...Object.values(settings.category_fields_all ?? {}).flat(),
-      ...(settings.sports_field ? [settings.sports_field] : []),
-    ]);
+    const bindings = (orgForm?.settings as { bindings?: Record<string, string> } | undefined)?.bindings ?? {};
+    const nameKey = bindings.institution_name;
     const out: Field[] = [];
     for (const s of orgForm?.schema?.sections ?? []) {
       for (const f of s.fields ?? []) {
         if (f.type === "section_text" || f.type === "group") continue;
         if (f.key === nameKey || NAME_KEYS.has(f.key)) continue; // shown as Name
-        if (chainKeys.has(f.key) || f.directory === false) continue;
         out.push(f);
       }
     }
     return out;
   }, [orgForm]);
-  const choiceFields = fieldDefs.filter((f) => CHOICE.has(f.type));
+  const chainKeys = useMemo(() => {
+    const settings = (orgForm?.settings ?? {}) as {
+      category_fields?: Record<string, string>;
+      category_fields_all?: Record<string, string[]>;
+      sports_field?: string;
+    };
+    return new Set<string>([
+      ...Object.values(settings.category_fields ?? {}),
+      ...Object.values(settings.category_fields_all ?? {}).flat(),
+      ...(settings.sports_field ? [settings.sports_field] : []),
+    ]);
+  }, [orgForm]);
+  const choiceFields = fieldDefs.filter(
+    (f) => CHOICE.has(f.type) && !chainKeys.has(f.key) && f.directory !== false,
+  );
 
   const items = list.data ?? [];
   const isOpen = orgForm?.status === "open";
 
-  // One Competition filter (like the public view): whole games first, then
-  // specific competitions; selecting a game matches everything under it.
-  const compOptions = useMemo(() => {
-    const sports = new Map<string, string>();
-    const leaves = new Map<string, string>();
+  // Hierarchical competition tree (same as the public directory's rail) —
+  // built from the registered institutions' labelled leaves; counts = entries
+  // per node. Selecting "Sepak Takraw" matches everything under it.
+  const compTree = useMemo(() => {
+    const counts = new Map<string, { label: string; count: number }>();
     for (const i of items) {
       for (const c of i.competitions ?? []) {
-        const sportKey = c.leaf_key.split(".")[0];
-        if (!sports.has(sportKey)) sports.set(sportKey, c.label.split(" — ")[0]);
-        if (c.leaf_key !== sportKey && !leaves.has(c.leaf_key))
-          leaves.set(c.leaf_key, c.label);
+        const cur = counts.get(c.leaf_key);
+        if (cur) cur.count += 1;
+        else counts.set(c.leaf_key, { label: c.label, count: 1 });
       }
     }
-    return [
-      ...[...sports.entries()].map(([value, label]) => ({ value, label })),
-      ...[...leaves.entries()]
-        .map(([value, label]) => ({ value, label }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    ];
+    return buildCompTree(
+      [...counts.entries()]
+        .map(([leaf_key, v]) => ({ leaf_key, label: v.label, count: v.count }))
+        .sort((a, b) => a.leaf_key.localeCompare(b.leaf_key)),
+    );
   }, [items]);
-  const [compFilter, setCompFilter] = useState("");
+  const [compSel, setCompSel] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleComp = (key: string, on: boolean): void =>
+    setCompSel((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  const toggleExpand = (key: string, open: boolean): void =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (open) next.add(key);
+      else next.delete(key);
+      return next;
+    });
 
   const q = search.trim().toLowerCase();
   const filteredItems = items.filter((i) => {
     if (q && !i.name.toLowerCase().includes(q) && !(i.region ?? "").toLowerCase().includes(q))
       return false;
     if (
-      compFilter &&
-      !(i.competitions ?? []).some(
-        (c) => c.leaf_key === compFilter || c.leaf_key.startsWith(`${compFilter}.`),
-      )
+      compSel.size > 0 &&
+      ![...compSel].some((p) => matchesCompPrefix(i.competitions ?? [], p))
     )
       return false;
     return Object.entries(filters).every(([k, val]) => {
@@ -170,10 +185,10 @@ export function InstitutionsTab(): React.ReactElement {
     });
   });
   const hasActiveFilters =
-    q !== "" || compFilter !== "" || Object.values(filters).some(Boolean);
+    q !== "" || compSel.size > 0 || Object.values(filters).some(Boolean);
   const clearFilters = (): void => {
     setFilters({});
-    setCompFilter("");
+    setCompSel(new Set());
     setSearch("");
   };
 
@@ -272,7 +287,9 @@ export function InstitutionsTab(): React.ReactElement {
         )
       ) : null}
 
-      {/* Registered institutions — flexible table driven by the form's fields. */}
+      {/* Registered institutions — flexible table driven by the form's fields,
+          with the directory-style filter rail on the side (right on desktop,
+          above the table on mobile). */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold">{t("Registered institutions")}</h3>
@@ -281,71 +298,73 @@ export function InstitutionsTab(): React.ReactElement {
           </span>
         </div>
 
-        {/* Filters — dynamic: search + one compact Select per choice field. */}
-        {items.length > 0 ? (
-          <div className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-muted/20 p-2.5">
-            <label className="relative min-w-[11rem] flex-1 sm:max-w-xs">
-              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)}
-                placeholder={t("Search name or region…")} className="h-9 pl-9" aria-label={t("Search")} />
-            </label>
-            {compOptions.length > 0 ? (
-              <label className="flex w-56 min-w-0 flex-col gap-1">
-                <span className="truncate text-[0.6875rem] font-medium text-muted-foreground">
-                  {t("Competition")}
-                </span>
-                <Select
-                  size="sm"
-                  value={compFilter}
-                  onChange={setCompFilter}
-                  options={[{ value: "", label: t("All") }, ...compOptions]}
-                  aria-label={t("Competition")}
+        <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+          {items.length > 0 ? (
+            <aside
+              aria-label={t("Filters")}
+              className="w-full shrink-0 lg:order-last lg:w-72"
+            >
+              <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold">{t("Filters")}</h4>
+                  {hasActiveFilters ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearFilters}
+                      className="h-7 px-2"
+                    >
+                      <X aria-hidden="true" className="h-3.5 w-3.5" />
+                      {t("Clear")}
+                    </Button>
+                  ) : null}
+                </div>
+                <FilterPanel
+                  search={search}
+                  onSearch={setSearch}
+                  compTree={compTree}
+                  compSel={compSel}
+                  onToggleComp={toggleComp}
+                  expanded={expanded}
+                  onExpand={toggleExpand}
+                  filters={choiceFields.map((f) => ({
+                    key: f.key,
+                    label: f.label,
+                    options: (f.options ?? []).map((o) => ({
+                      value: String(o.value),
+                      label: o.label,
+                    })),
+                  }))}
+                  values={filters}
+                  onValue={(key, v) => setFilters((s) => ({ ...s, [key]: v }))}
                 />
-              </label>
-            ) : null}
-            {choiceFields.map((f) => (
-              <label key={f.key} className="flex w-40 min-w-0 flex-col gap-1">
-                <span className="truncate text-[0.6875rem] font-medium text-muted-foreground" title={f.label}>
-                  {f.label}
-                </span>
-                <Select
-                  size="sm"
-                  value={filters[f.key] ?? ""}
-                  onChange={(v) => setFilters((s) => ({ ...s, [f.key]: v }))}
-                  options={[{ value: "", label: t("All") }, ...(f.options ?? [])]}
-                  aria-label={f.label}
-                />
-              </label>
-            ))}
-            {hasActiveFilters ? (
-              <Button size="sm" variant="ghost" className="h-9 text-muted-foreground" onClick={clearFilters}>
-                <X aria-hidden="true" className="h-4 w-4" />
-                {t("Clear")}
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
+              </div>
+            </aside>
+          ) : null}
 
-        {list.isLoading ? (
-          <div className="h-40 animate-pulse rounded-xl border border-border bg-muted" />
-        ) : items.length === 0 ? (
-          <EmptyState
-            icon={<Building2 className="h-8 w-8" />}
-            title={t("No institutions registered yet")}
-            hint={t("Share the form, or add a school yourself.")}
-          />
-        ) : filteredItems.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">
-            {t("No institutions match your filters.")}
-          </p>
-        ) : (
-          <InstitutionTable
-            items={filteredItems}
-            fields={fieldDefs}
-            tournamentId={id}
-            canManage={canManage}
-          />
-        )}
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            {list.isLoading ? (
+              <div className="h-40 animate-pulse rounded-xl border border-border bg-muted" />
+            ) : items.length === 0 ? (
+              <EmptyState
+                icon={<Building2 className="h-8 w-8" />}
+                title={t("No institutions registered yet")}
+                hint={t("Share the form, or add a school yourself.")}
+              />
+            ) : filteredItems.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">
+                {t("No institutions match your filters.")}
+              </p>
+            ) : (
+              <InstitutionTable
+                items={filteredItems}
+                fields={fieldDefs}
+                tournamentId={id}
+                canManage={canManage}
+              />
+            )}
+          </div>
+        </div>
       </div>
 
       <CreateFormDialog
@@ -540,7 +559,6 @@ function InstitutionTable({
   tournamentId: string;
   canManage: boolean;
 }): React.ReactElement {
-  const showComps = items.some((i) => (i.competitions ?? []).length > 0);
   return (
     <div className="max-h-[34rem] overflow-auto rounded-xl border border-border bg-card shadow-sm">
       <table className="w-full border-separate border-spacing-0 text-sm">
@@ -550,7 +568,6 @@ function InstitutionTable({
             <th className={cn(TH, "sticky left-0 z-30 px-4")}>{t("Institution")}</th>
             <th className={TH}>{t("Type")}</th>
             <th className={TH}>{t("Region")}</th>
-            {showComps ? <th className={TH}>{t("Competitions")}</th> : null}
             {fields.map((f) => (
               <th key={f.key} className={TH} title={f.label}>
                 <span className="block max-w-[11rem] truncate">{f.label}</span>
@@ -576,35 +593,6 @@ function InstitutionTable({
               </td>
               <td className={cn(TD, "capitalize text-muted-foreground")}>{t(i.kind)}</td>
               <td className={cn(TD, "text-muted-foreground")}>{i.region || "—"}</td>
-              {showComps ? (
-                <td className={TD}>
-                  {(i.competitions ?? []).length ? (
-                    <div className="flex max-w-[18rem] flex-wrap items-center gap-1">
-                      {(i.competitions ?? []).slice(0, 2).map((c) => (
-                        <span
-                          key={c.leaf_key}
-                          className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
-                        >
-                          {c.label}
-                        </span>
-                      ))}
-                      {(i.competitions ?? []).length > 2 ? (
-                        <span
-                          className="rounded-md px-1 py-0.5 font-tabular text-xs font-medium text-primary"
-                          title={(i.competitions ?? [])
-                            .slice(2)
-                            .map((c) => c.label)
-                            .join(", ")}
-                        >
-                          +{(i.competitions ?? []).length - 2}
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground/40">—</span>
-                  )}
-                </td>
-              ) : null}
               {fields.map((f) => {
                 const v = fmtAnswer(f, i.answers[f.key]);
                 return (
