@@ -253,6 +253,34 @@ def test_auto_generate_team_form_and_multi_category_mapping():
     assert set(made.values_list("pool", flat=True)) == {"U14"}
 
 
+def test_same_team_name_allowed_across_competitions_not_within_one():
+    """A school reuses its team name across categories (leaf scoping); within
+    ONE competition the name stays unique — and the failure RAISES instead of
+    silently returning [] (the owner's lost registration, 2026-06-10)."""
+    admin = _admin("names@inst.test")
+    t = create_tournament(user=admin, name="Names Cup")
+    inst = get_or_create_institution(tournament=t, name="Kikon")
+
+    a = register_school(
+        tournament=t, school_name="Kikon", institution=inst,
+        teams=[{"name": "Kikon A", "leaf_key": "tt.u16.male", "players": []}],
+        event_id=uuid.uuid4(),
+    )
+    b = register_school(
+        tournament=t, school_name="Kikon", institution=inst,
+        teams=[{"name": "Kikon A", "leaf_key": "basketball.u15", "players": []}],
+        event_id=uuid.uuid4(),
+    )
+    assert len(a) == 1 and len(b) == 1  # same name, different competitions
+
+    with pytest.raises(IntegrityError):
+        register_school(
+            tournament=t, school_name="Kikon", institution=inst,
+            teams=[{"name": "Kikon A", "leaf_key": "tt.u16.male", "players": []}],
+            event_id=uuid.uuid4(),
+        )
+
+
 def test_api_institution_list_includes_labelled_competitions():
     """The admin list mirrors the public directory: each institution carries
     its competitions (category leaves) labelled from the sports config, so

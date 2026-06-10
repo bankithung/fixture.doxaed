@@ -264,6 +264,93 @@ def test_team_form_scopes_competitions_to_selected_institution():
     assert len(body["competition_fields"]) >= 2  # sports + ≥1 chain level
 
 
+def test_team_submit_same_name_across_categories_ok_duplicates_rejected():
+    """One school reuses a team name across competitions (allowed since names
+    are unique per LEAF), while duplicates inside one competition — or a name
+    already taken there — fail the submit with a field error keyed by the
+    group, BEFORE any response is recorded (no more silent zero-team maps)."""
+    from apps.forms.services.generation import (
+        generate_institution_form,
+        generate_team_form_template,
+    )
+    from apps.forms.services.mapping import map_response
+    from apps.teams.models import Institution, Team
+    from apps.tournaments.services.sports import normalize_sports
+
+    admin = _verified("teams@test.local")
+    t = create_tournament(user=admin, name="Names Cup")
+    t.sports = normalize_sports([
+        {"name": "Football", "nodes": [{"name": "U15"}]},
+        {"name": "Badminton"},
+    ])
+    t.save(update_fields=["sports"])
+    org = generate_institution_form(tournament=t, created_by=admin)
+    org.status = "open"
+    org.save(update_fields=["status"])
+    resp = FormResponse.objects.create(
+        form=org, organization=t.organization, tournament=t, title="Don Bosco",
+        answers={"school_name": "Don Bosco", "contact_name": "Fr. K",
+                 "contact_phone": "9876543210",
+                 "sports": ["football", "badminton"],
+                 "categories_football": ["football.u15"]},
+    )
+    map_response(resp)
+    inst = Institution.objects.get(tournament=t, name="Don Bosco")
+
+    team_form = generate_team_form_template(tournament=t, created_by=admin)
+    team_form.status = "open"
+    team_form.save(update_fields=["status"])
+
+    answers = {
+        "institution_id": str(inst.id),
+        "sports": ["football", "badminton"],
+        "categories_football": ["football.u15"],
+        "teams_football_u15": [{
+            "team_name_football_u15": "Don Bosco A",
+            "players_football_u15": [{"player_name_football_u15": "P One"}],
+        }],
+        "teams_badminton": [{
+            "team_name_badminton": "Don Bosco A",
+            "players_badminton": [{"player_name_badminton": "P Two"}],
+        }],
+    }
+    r = APIClient().post(
+        f"/api/forms/{team_form.id}/public/",
+        {"answers": answers, "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 201, r.json()
+    assert Team.objects.filter(
+        tournament=t, name="Don Bosco A", deleted_at__isnull=True
+    ).count() == 2  # same name, two competitions
+
+    # Duplicate names INSIDE one competition → 400 keyed by the group field.
+    dup = {**answers, "teams_football_u15": [
+        {"team_name_football_u15": "Twins",
+         "players_football_u15": [{"player_name_football_u15": "A"}]},
+        {"team_name_football_u15": "Twins",
+         "players_football_u15": [{"player_name_football_u15": "B"}]},
+    ]}
+    r2 = APIClient().post(
+        f"/api/forms/{team_form.id}/public/",
+        {"answers": dup, "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r2.status_code == 400
+    assert "teams_football_u15" in r2.json()["errors"]
+
+    # A name already registered in that competition → 400 too.
+    r3 = APIClient().post(
+        f"/api/forms/{team_form.id}/public/",
+        {"answers": answers, "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r3.status_code == 400
+    assert Team.objects.filter(
+        tournament=t, deleted_at__isnull=True
+    ).count() == 2  # nothing extra slipped in
+
+
 def test_directory_kpi_mode_setting_passthrough():
     """The admin's `settings.directory_kpis` choice reaches the public payload;
     unknown values fall back to the 'games' default."""

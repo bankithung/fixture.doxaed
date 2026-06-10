@@ -29,6 +29,60 @@ from apps.teams.services.registration import (
 )
 
 
+def team_registration_field_errors(form, answers: dict) -> dict[str, str]:
+    """Pre-submit guard for generated team forms: team names must be unique
+    within each COMPETITION (mirrors ``unique_team_name_per_competition``),
+    checked against both the submission itself and already-registered teams —
+    so the respondent gets a clear field error instead of a silent failure.
+    Callers must skip this on idempotent replays (the teams already exist)."""
+    b = (form.settings or {}).get("bindings", {})
+    cgs = b.get("category_groups") or []
+    if not cgs:
+        return {}
+    from apps.teams.models import Team
+
+    errors: dict[str, str] = {}
+    for cg in cgs:
+        group_key, tname_key = cg.get("group"), cg.get("team_name")
+        leaf = cg.get("leaf_key") or cg.get("category") or ""
+        rows = answers.get(group_key) or []
+        if not isinstance(rows, list):
+            continue
+        names = [
+            str(r.get(tname_key)).strip()
+            for r in rows
+            if isinstance(r, dict) and str(r.get(tname_key) or "").strip()
+        ]
+        lowered = [n.lower() for n in names]
+        dup = next(
+            (n for i, n in enumerate(names) if lowered.index(n.lower()) != i),
+            None,
+        )
+        if dup:
+            errors[group_key] = (
+                f'Two of your teams here are both named "{dup}" — '
+                "give each team in a competition a distinct name."
+            )
+            continue
+        if names:
+            taken = (
+                Team.objects.filter(
+                    tournament=form.tournament,
+                    leaf_key=leaf,
+                    name__in=names,
+                    deleted_at__isnull=True,
+                )
+                .values_list("name", flat=True)
+                .first()
+            )
+            if taken:
+                errors[group_key] = (
+                    f'"{taken}" is already registered in this competition — '
+                    "pick another name."
+                )
+    return errors
+
+
 def map_response(resp: FormResponse) -> FormResponse:
     """Dispatch by purpose. No-op (early return) if already mapped — this makes
     a replayed submission safe: the public view calls map_response on every

@@ -369,19 +369,35 @@ class PublicFormView(GenericAPIView):
                     "institution_id", "institution_id"
                 )
                 answers = {**answers, iid_key: bound_iid}
+        from apps.forms.services.mapping import (  # local import (Increment 5)
+            map_response,
+            team_registration_field_errors,
+        )
+
+        # Duplicate team names within a competition fail HERE with a field
+        # error — before any response is recorded (the DB constraint would
+        # otherwise reject mapping after the "success" screen). Replays of an
+        # already-recorded submission skip the check (their teams exist).
+        event_id = ser.validated_data.get("event_id")
+        is_replay = (
+            event_id is not None
+            and FormResponse.objects.filter(form=form, event_id=event_id).exists()
+        )
+        if form.purpose == FormPurpose.TEAM_REGISTRATION and not is_replay:
+            errs = team_registration_field_errors(form, answers)
+            if errs:
+                raise DRFValidationError({"errors": errs})
         try:
             resp = submit_response(
                 form=form,
                 answers=answers,
-                event_id=ser.validated_data.get("event_id"),
+                event_id=event_id,
                 share_link=link,
                 upload_refs=ser.validated_data.get("upload_refs"),
                 request=request,
             )
         except AnswerError as e:
             raise DRFValidationError({"errors": e.errors}) from e
-        from apps.forms.services.mapping import map_response  # local import (Increment 5)
-
         map_response(resp)
         return Response(
             {"response_id": str(resp.id), "message": form.confirmation_message},

@@ -277,8 +277,13 @@ def register_school(
             )
     except IntegrityError:
         # A concurrent request with the same event_id won the race (its audit
-        # row's unique idempotency_key tripped ours). Return the winner's teams.
-        if event_id is not None:
+        # row's unique idempotency_key tripped ours). Return the winner's teams
+        # — but only after VERIFYING the winner exists: any other integrity
+        # failure (e.g. a duplicate team name) must surface, not silently
+        # return [] while the caller records "success" (owner 2026-06-10).
+        if event_id is not None and AuditEvent.objects.filter(
+            idempotency_key=event_id, event_type="school_registered"
+        ).exists():
             return _replay()
         raise
     return created

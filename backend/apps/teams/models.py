@@ -173,10 +173,15 @@ class Team(models.Model):
             UniqueConstraint(
                 fields=["tournament", "slug"], name="unique_team_slug_per_tournament"
             ),
+            # Names are unique PER COMPETITION (leaf), not per tournament — a
+            # school legitimately reuses "Kikon A" across its sports/categories
+            # (owner 2026-06-10: the per-tournament constraint silently ate a
+            # multi-category registration). Direct adds without a leaf share
+            # the "" bucket.
             UniqueConstraint(
-                fields=["tournament", "name"],
+                fields=["tournament", "leaf_key", "name"],
                 condition=Q(deleted_at__isnull=True),
-                name="unique_team_name_per_tournament",
+                name="unique_team_name_per_competition",
             ),
         ]
         indexes = [
