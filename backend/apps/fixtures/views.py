@@ -6,6 +6,7 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.fixtures.models import Venue
 from apps.fixtures.services.generate import (
     generate_knockout_from_groups,
     generate_round_robin,
@@ -80,6 +81,17 @@ class ScheduleFixturesView(GenericAPIView):
         payload = dict(request.data or {})
         # Optional competition scope: schedule one leaf around everything else.
         leaf_key = str(payload.pop("leaf_key", "") or "")
+        # No venues in the payload → the workspace's stored Venue records
+        # (with their types + availability windows) are the resource pool.
+        if not payload.get("venues"):
+            stored = [
+                {"name": v.name, "venue_type": v.venue_type, "windows": v.windows}
+                for v in Venue.objects.filter(
+                    organization=t.organization, deleted_at__isnull=True
+                ).order_by("name")
+            ]
+            if stored:
+                payload["venues"] = stored
         try:
             result = apply_schedule(
                 tournament=t, config=payload, by=request.user, request=request,
@@ -96,3 +108,105 @@ class ScheduleFixturesView(GenericAPIView):
                 "leaf_key": leaf_key,
             }
         )
+
+
+def _venue_payload(v: Venue) -> dict:
+    return {
+        "id": str(v.id), "name": v.name, "venue_type": v.venue_type,
+        "windows": v.windows or [],
+    }
+
+
+def _clean_windows(raw) -> list[dict]:
+    """Keep only {"from": "HH:MM", "to": "HH:MM"} shaped entries."""
+    out = []
+    for w in raw if isinstance(raw, list) else []:
+        if isinstance(w, dict) and w.get("from") and w.get("to"):
+            out.append({"from": str(w["from"])[:5], "to": str(w["to"])[:5]})
+    return out
+
+
+class TournamentVenuesView(GenericAPIView):
+    """`GET/POST /api/tournaments/{id}/venues/` — the workspace's venue pool
+    (shared across its tournaments). GET: any member; POST: manager-only.
+    The scheduler uses these (types + windows) when a run names no venues."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _tournament(self, request, tournament_id):
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        return Tournament.objects.select_related("organization").get(id=tournament_id)
+
+    def get(self, request, tournament_id):
+        t = self._tournament(request, tournament_id)
+        venues = Venue.objects.filter(
+            organization=t.organization, deleted_at__isnull=True
+        ).order_by("name")
+        return Response({"venues": [_venue_payload(v) for v in venues]})
+
+    def post(self, request, tournament_id):
+        t = self._tournament(request, tournament_id)
+        if not can_manage_tournament(request.user, t):
+            raise PermissionDenied("not_tournament_manager")
+        name = str(request.data.get("name") or "").strip()[:120]
+        if not name:
+            raise DRFValidationError({"detail": "name_required"})
+        if Venue.objects.filter(
+            organization=t.organization, name=name, deleted_at__isnull=True
+        ).exists():
+            raise DRFValidationError({"detail": "venue_name_taken"})
+        v = Venue.objects.create(
+            organization=t.organization,
+            name=name,
+            venue_type=str(request.data.get("venue_type") or "").strip()[:40],
+            windows=_clean_windows(request.data.get("windows")),
+            created_by=request.user,
+        )
+        return Response(_venue_payload(v), status=201)
+
+
+class TournamentVenueDetailView(GenericAPIView):
+    """`PATCH/DELETE /api/tournaments/{id}/venues/{venue_id}/` — manager-only."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _venue(self, request, tournament_id, venue_id) -> Venue:
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        if not can_manage_tournament(request.user, t):
+            raise PermissionDenied("not_tournament_manager")
+        v = Venue.objects.filter(
+            id=venue_id, organization=t.organization, deleted_at__isnull=True
+        ).first()
+        if v is None:
+            raise NotFound("venue_not_found")
+        return v
+
+    def patch(self, request, tournament_id, venue_id):
+        v = self._venue(request, tournament_id, venue_id)
+        if "name" in request.data:
+            name = str(request.data["name"] or "").strip()[:120]
+            if not name:
+                raise DRFValidationError({"detail": "name_required"})
+            clash = Venue.objects.filter(
+                organization=v.organization, name=name, deleted_at__isnull=True
+            ).exclude(id=v.id).exists()
+            if clash:
+                raise DRFValidationError({"detail": "venue_name_taken"})
+            v.name = name
+        if "venue_type" in request.data:
+            v.venue_type = str(request.data["venue_type"] or "").strip()[:40]
+        if "windows" in request.data:
+            v.windows = _clean_windows(request.data["windows"])
+        v.save(update_fields=["name", "venue_type", "windows", "updated_at"])
+        return Response(_venue_payload(v))
+
+    def delete(self, request, tournament_id, venue_id):
+        from django.utils import timezone as dj_tz
+
+        v = self._venue(request, tournament_id, venue_id)
+        v.deleted_at = dj_tz.now()
+        v.save(update_fields=["deleted_at", "updated_at"])
+        return Response(status=204)

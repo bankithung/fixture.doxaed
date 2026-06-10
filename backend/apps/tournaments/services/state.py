@@ -252,6 +252,29 @@ def preview_advance(t: Tournament, to_stage: str) -> dict:
     # the sports drive the generated forms + fixtures.
     if to_stage == G.ORG_REGISTRATION and not (t.sports or []):
         warnings.append({"code": "no_sports_selected"})
+    # The READY gate is whole-tournament (>=1 match); per-competition coverage
+    # is a warning — list category leaves that have teams but no draw yet
+    # (spec 2026-06-10: the old gate let one leaf go live with others empty).
+    if to_stage == G.READY:
+        from collections import Counter
+
+        leaf_teams = Counter(
+            Team.objects.filter(
+                tournament=t, status=TeamStatus.REGISTERED,
+                deleted_at__isnull=True,
+            ).exclude(leaf_key="").values_list("leaf_key", flat=True)
+        )
+        drawn = set(
+            Match.objects.filter(tournament=t, deleted_at__isnull=True)
+            .values_list("leaf_key", flat=True)
+        )
+        missing = sorted(
+            lk for lk, n in leaf_teams.items() if n >= 2 and lk not in drawn
+        )
+        if missing:
+            warnings.append(
+                {"code": "leaves_without_fixtures", "leaves": missing}
+            )
 
     return {
         "from_stage": frm,

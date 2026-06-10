@@ -217,3 +217,131 @@ def test_stored_tournament_constraints_reach_the_engine():
     (dt, _v), = res.assignments.values()
     assert dt.date() == date(2026, 8, 2)  # stored blackout respected
     assert any("blackout" in e.lower() for e in res.explanation)
+
+
+# ------------------------------------------------------------------ venues
+@pytest.mark.django_db
+def test_venue_crud_and_scheduler_defaults_to_stored_pool():
+    from rest_framework.test import APIClient
+
+    from apps.fixtures.models import Venue
+    from apps.fixtures.services.generate import generate_round_robin
+
+    admin = _admin("v@test.local")
+    t = create_tournament(user=admin, name="Venue Cup")
+    c = APIClient()
+    c.force_authenticate(user=admin)
+
+    r = c.post(
+        f"/api/tournaments/{t.id}/venues/",
+        {"name": "Indoor Hall", "venue_type": "indoor_court",
+         "windows": [{"from": "10:00", "to": "16:00"}]},
+        format="json",
+    )
+    assert r.status_code == 201, r.content
+    vid = r.json()["id"]
+    # duplicate name rejected
+    assert c.post(
+        f"/api/tournaments/{t.id}/venues/", {"name": "Indoor Hall"}, format="json"
+    ).status_code == 400
+    # list + patch + soft delete
+    assert c.get(f"/api/tournaments/{t.id}/venues/").json()["venues"][0]["name"] == "Indoor Hall"
+    assert c.patch(
+        f"/api/tournaments/{t.id}/venues/{vid}/", {"name": "Hall 1"}, format="json"
+    ).status_code == 200
+    # outsider isolation
+    outsider = _admin("z@test.local")
+    oc = APIClient()
+    oc.force_authenticate(user=outsider)
+    assert oc.get(f"/api/tournaments/{t.id}/venues/").status_code == 404
+
+    # scheduling with NO venues in the payload uses the stored pool
+    register_school(tournament=t, school_name="A", teams=[{"name": "A", "players": []}])
+    register_school(tournament=t, school_name="B", teams=[{"name": "B", "players": []}])
+    generate_round_robin(tournament=t, group_size=4)
+    rs = c.post(
+        f"/api/tournaments/{t.id}/schedule/",
+        {"date_start": "2026-08-01", "date_end": "2026-08-01"},
+        format="json",
+    )
+    assert rs.status_code == 200, rs.content
+    m = Match.objects.filter(tournament=t).first()
+    assert m.venue == "Hall 1"
+    # stored window honored: first slot at 10:00 local
+    local = m.scheduled_at.astimezone(ZoneInfo(t.time_zone))
+    assert (local.hour, local.minute) == (10, 0)
+    Venue.objects.all().delete()
+
+
+# ------------------------------------------------------------------ advancement
+@pytest.mark.django_db
+def test_group_position_pointers_resolve_when_group_completes():
+    from apps.fixtures.services.advance import advance_from_match
+    from apps.fixtures.services.generate import generate_round_robin
+    from apps.matches.services.scoring import record_score
+
+    admin = _admin("gp@test.local")
+    t = create_tournament(user=admin, name="GP Cup")
+    register_school(tournament=t, school_name="S", teams=[
+        {"name": "A", "players": []}, {"name": "B", "players": []},
+        {"name": "C", "players": []},
+    ])
+    generate_round_robin(tournament=t, group_size=3)
+    group = list(Match.objects.filter(tournament=t).order_by("match_no"))
+    label = group[0].group_label
+    final = Match.objects.create(
+        organization=t.organization, tournament=t, stage="knockout",
+        round_no=1, match_no=99,
+        home_source={"type": "group_position", "group_label": label, "position": 1},
+        away_source={"type": "group_position", "group_label": label, "position": 2},
+    )
+    # finish the group: A beats everyone, B beats C
+    by_name = {m: (m.home_team.name, m.away_team.name) for m in group}
+    for m, (h, _a) in by_name.items():
+        if h == "A":
+            record_score(match=m, home_score=2, away_score=0, by=admin)
+        elif by_name[m][1] == "A":
+            record_score(match=m, home_score=0, away_score=2, by=admin)
+        else:
+            record_score(match=m, home_score=1, away_score=0,
+                         by=admin) if h == "B" else record_score(
+                match=m, home_score=0, away_score=1, by=admin)
+        advance_from_match(m.id)
+    final.refresh_from_db()
+    assert final.home_team.name == "A"  # group winner
+    assert final.away_team.name == "B"  # runner-up
+
+
+# ------------------------------------------------------------------ ready gate
+@pytest.mark.django_db
+def test_ready_preview_warns_about_leaves_without_fixtures():
+    from apps.fixtures.services.generate import generate_round_robin_by_category
+    from apps.tournaments.services.state import preview_transition
+
+    admin = _admin("rg@test.local")
+    t = create_tournament(user=admin, name="Coverage Cup")
+    t.sports = normalize_sports([
+        {"name": "Football", "nodes": [{"name": "U15"}]},
+        {"name": "Table Tennis"},
+    ])
+    t.stage = "fixtures"
+    t.save(update_fields=["sports", "stage"])
+    register_school(tournament=t, school_name="A", teams=[
+        {"name": "FA", "sport": "football", "leaf_key": "football.u15", "players": []},
+        {"name": "TA", "sport": "table_tennis", "leaf_key": "table_tennis", "players": []},
+    ])
+    register_school(tournament=t, school_name="B", teams=[
+        {"name": "FB", "sport": "football", "leaf_key": "football.u15", "players": []},
+        {"name": "TB", "sport": "table_tennis", "leaf_key": "table_tennis", "players": []},
+    ])
+    generate_round_robin_by_category(tournament=t, leaf_key="football.u15")
+
+    preview = preview_transition(t, "ready")
+    codes = {w["code"]: w for w in preview["warnings"]}
+    assert codes["leaves_without_fixtures"]["leaves"] == ["table_tennis"]
+
+    generate_round_robin_by_category(tournament=t, leaf_key="table_tennis")
+    preview2 = preview_transition(t, "ready")
+    assert not any(
+        w["code"] == "leaves_without_fixtures" for w in preview2["warnings"]
+    )
