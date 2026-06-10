@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Building2, ChevronRight, Search, X } from "lucide-react";
+import {
+  Building2,
+  ChevronRight,
+  Search,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 import {
   formsApi,
   type DirectoryEntry,
@@ -19,6 +25,7 @@ import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/button";
 import { Centered, PublicShell } from "@/features/registration/PublicShell";
 import { cn } from "@/lib/tailwind";
+import { useBreakpoint } from "@/lib/useBreakpoint";
 import { t } from "@/lib/t";
 
 function matches(entry: DirectoryEntry, key: string, value: string): boolean {
@@ -387,6 +394,119 @@ function Cell({
   );
 }
 
+/**
+ * The one set of filter controls (search → competition tree → per-question
+ * selects). Rendered twice: in the desktop right rail and inside the mobile
+ * bottom-sheet — so both surfaces always stay in sync.
+ */
+function FilterPanel({
+  search,
+  onSearch,
+  compTree,
+  compSel,
+  onToggleComp,
+  expanded,
+  onExpand,
+  filters,
+  values,
+  onValue,
+}: {
+  search: string;
+  onSearch: (v: string) => void;
+  compTree: CompNode[];
+  compSel: Set<string>;
+  onToggleComp: (key: string, on: boolean) => void;
+  expanded: Set<string>;
+  onExpand: (key: string, open: boolean) => void;
+  filters: DirectoryFilter[];
+  values: Record<string, string>;
+  onValue: (key: string, v: string) => void;
+}): React.ReactElement {
+  return (
+    <>
+      <label className="relative block">
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+        />
+        <Input
+          value={search}
+          onChange={(e) => onSearch(e.target.value)}
+          placeholder={t("Search name or region…")}
+          className="h-9 pl-9"
+          aria-label={t("Search")}
+        />
+      </label>
+
+      {compTree.length > 0 ? (
+        <div className="flex flex-col gap-0.5 border-t border-border pt-3">
+          <button
+            type="button"
+            aria-expanded={!expanded.has("__comp_closed")}
+            onClick={() => onExpand("__comp_closed", !expanded.has("__comp_closed"))}
+            className="mb-1.5 flex items-center justify-between text-left text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground hover:text-foreground"
+          >
+            {t("Competitions")}
+            <ChevronRight
+              aria-hidden="true"
+              className={cn(
+                "h-3.5 w-3.5 transition-transform",
+                !expanded.has("__comp_closed") && "rotate-90",
+              )}
+            />
+          </button>
+          {!expanded.has("__comp_closed")
+            ? compTree.map((n) => (
+                <CompTreeRow
+                  key={n.key}
+                  node={n}
+                  depth={0}
+                  selected={compSel}
+                  onToggle={onToggleComp}
+                  expanded={expanded}
+                  onExpand={onExpand}
+                />
+              ))
+            : null}
+        </div>
+      ) : null}
+
+      {filters.map((f) => (
+        <label
+          key={f.key}
+          className="flex flex-col gap-1 border-t border-border pt-3"
+        >
+          <span
+            className="truncate text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+            title={f.label}
+          >
+            {f.label}
+          </span>
+          <Select
+            size="sm"
+            value={values[f.key] ?? ""}
+            onChange={(v) => onValue(f.key, v)}
+            options={[{ value: "", label: t("All") }, ...f.options]}
+            aria-label={f.label}
+          />
+        </label>
+      ))}
+    </>
+  );
+}
+
+function EmptyState({ message }: { message: string }): React.ReactElement {
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card py-14 text-center">
+      <Building2
+        aria-hidden="true"
+        className="h-8 w-8 text-muted-foreground/40"
+      />
+      <p className="text-sm text-muted-foreground">{message}</p>
+    </div>
+  );
+}
+
 export function PublicDirectoryPage(): React.ReactElement {
   const { formId = "" } = useParams();
   const [filters, setFilters] = useState<Record<string, string>>({});
@@ -404,6 +524,10 @@ export function PublicDirectoryPage(): React.ReactElement {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // "View all competitions" modal for one institution's full entry list.
   const [compModal, setCompModal] = useState<DirectoryEntry | null>(null);
+  // Mobile filter bottom-sheet (the rail is desktop-only; on phones the
+  // filters live behind a "Filters" button in the toolbar).
+  const [filterSheet, setFilterSheet] = useState(false);
+  const { isMobile } = useBreakpoint();
 
   const dir = useQuery({
     queryKey: ["form-directory", formId],
@@ -432,14 +556,33 @@ export function PublicDirectoryPage(): React.ReactElement {
     if (name) document.title = `${name} · ${t("Registered institutions")}`;
   }, [dir.data]);
 
+  const hasFilters =
+    search.trim() !== "" ||
+    compSel.size > 0 ||
+    Object.values(filters).some(Boolean);
+
+  // Every view honours the active filters (owner 2026-06-10: the rail only
+  // affecting the Directory table read as broken on the other tabs).
   const stats = useMemo(
-    () => computeStats(dir.data?.filters ?? [], dir.data?.entries ?? []),
-    [dir.data],
+    () => computeStats(dir.data?.filters ?? [], entries),
+    [dir.data, entries],
   );
-  const sportGroups = useMemo(
-    () => groupBySport(dir.data?.competitions ?? [], dir.data?.entries ?? []),
-    [dir.data],
-  );
+  const sportGroups = useMemo(() => {
+    const all = dir.data?.competitions ?? [];
+    const visible =
+      compSel.size === 0
+        ? all
+        : all.filter((c) =>
+            [...compSel].some(
+              (p) => c.leaf_key === p || c.leaf_key.startsWith(`${p}.`),
+            ),
+          );
+    const groups = groupBySport(visible, entries);
+    if (!hasFilters) return groups; // unfiltered → the full structure, zeros included
+    return groups
+      .map((g) => ({ ...g, rows: g.rows.filter((r) => r.institutions.length > 0) }))
+      .filter((g) => g.rows.length > 0);
+  }, [dir.data, entries, compSel, hasFilters]);
   const compTree = useMemo(
     () => buildCompTree(dir.data?.competitions ?? []),
     [dir.data],
@@ -495,10 +638,14 @@ export function PublicDirectoryPage(): React.ReactElement {
   const showRegion = d.entries.some((e) => (e.region ?? "").trim() !== "");
   const showType =
     new Set(d.entries.map((e) => e.kind).filter(Boolean)).size > 1;
-  const hasFilters =
-    search.trim() !== "" ||
-    compSel.size > 0 ||
-    Object.values(filters).some(Boolean);
+  // The Competitions tab stays visible from the CONFIGURED catalog, not the
+  // filtered groups — otherwise a strict filter would make the tab vanish.
+  const hasCompetitions = (d.competitions ?? []).length > 0;
+  const tabsVisible = hasCompetitions || (stats.length > 0 && total > 0);
+  const activeFilterCount =
+    (search.trim() !== "" ? 1 : 0) +
+    compSel.size +
+    Object.values(filters).filter(Boolean).length;
   const clearFilters = (): void => {
     setSearch("");
     setCompSel(new Set());
@@ -522,20 +669,33 @@ export function PublicDirectoryPage(): React.ReactElement {
   return (
     <PublicShell wide tournamentName={d.tournament_name}>
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6">
-        {/* Header */}
-        <header className="flex flex-wrap items-end justify-between gap-4">
+        {/* Header — compact on phones: the count collapses into an inline
+            pill next to the title instead of a second stacked card. */}
+        <header className="flex items-end justify-between gap-4">
           <div className="min-w-0">
             <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
               {d.tournament_name}
             </p>
-            <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
-              {t("Registered institutions")}
-            </h1>
+            <div className="mt-1 flex items-center gap-2">
+              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+                {t("Registered institutions")}
+              </h1>
+              <span
+                aria-label={`${total} ${
+                  total === 1
+                    ? t("institution registered")
+                    : t("institutions registered")
+                }`}
+                className="inline-flex shrink-0 items-center rounded-full bg-primary/10 px-2.5 py-0.5 font-tabular text-sm font-semibold text-primary sm:hidden"
+              >
+                {total}
+              </span>
+            </div>
             <p className="mt-1 truncate text-sm text-muted-foreground" title={d.form_title}>
               {d.form_title}
             </p>
           </div>
-          <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5">
+          <div className="hidden shrink-0 items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 sm:flex">
             <Building2 aria-hidden="true" className="h-5 w-5 shrink-0 text-primary" />
             <div className="leading-tight">
               <div className="font-tabular text-2xl font-semibold tracking-tight text-primary">
@@ -554,62 +714,69 @@ export function PublicDirectoryPage(): React.ReactElement {
         <div className="flex flex-col gap-6 lg:flex-row">
         <div className="flex min-w-0 flex-1 flex-col gap-6">
 
-        {/* View tabs — ONE view at a time, Directory (the table) first. */}
-        {sportGroups.length > 0 || (stats.length > 0 && total > 0) ? (
-          <div
-            className="inline-flex w-fit rounded-lg border border-border bg-muted/50 p-0.5 text-sm"
-            role="tablist"
-            aria-label={t("View")}
-          >
-            {(
-              [
-                ["table", t("Directory")],
-                ...(sportGroups.length > 0
-                  ? ([["competitions", t("Competitions")]] as const)
-                  : []),
-                ...(stats.length > 0 && total > 0
-                  ? ([["stats", t("Breakdown")]] as const)
-                  : []),
-              ] as readonly (readonly [string, string])[]
-            ).map(([v, label]) => (
-              <button
-                key={v}
-                type="button"
-                role="tab"
-                aria-selected={view === v}
-                onClick={() => setView(v as typeof view)}
-                className={cn(
-                  "rounded-md px-3 py-1 font-medium transition-colors",
-                  view === v
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        {/* Entries by competition — the sport → category structural view. */}
-        {view === "competitions" && sportGroups.length > 0 ? (
-          <CompetitionsSection groups={sportGroups} />
-        ) : null}
-
-        {/* Dynamic stats — one distribution card per form dimension. */}
-        {view === "stats" && stats.length > 0 && total > 0 ? (
-          <section aria-label={t("Registration breakdown")}>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {stats.map((s) => (
-                <DimensionCard key={s.key} stat={s} />
+        {/* Toolbar — view tabs + (on phones) the Filters button that opens
+            the bottom-sheet. Sticky below lg so filters stay reachable
+            mid-scroll; on desktop the rail is always visible, so it's static. */}
+        <div
+          className={cn(
+            "sticky top-0 z-30 -mx-4 flex items-center justify-between gap-2 bg-card/80 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6 lg:static lg:z-auto lg:mx-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none",
+            !tabsVisible && "lg:hidden",
+          )}
+        >
+          {tabsVisible ? (
+            <div
+              className="inline-flex w-fit rounded-lg border border-border bg-muted/50 p-0.5 text-sm"
+              role="tablist"
+              aria-label={t("View")}
+            >
+              {(
+                [
+                  ["table", t("Directory")],
+                  ...(hasCompetitions
+                    ? ([["competitions", t("Competitions")]] as const)
+                    : []),
+                  ...(stats.length > 0 && total > 0
+                    ? ([["stats", t("Breakdown")]] as const)
+                    : []),
+                ] as readonly (readonly [string, string])[]
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="tab"
+                  aria-selected={view === v}
+                  onClick={() => setView(v as typeof view)}
+                  className={cn(
+                    "rounded-md px-3 py-1 font-medium transition-colors",
+                    view === v
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {label}
+                </button>
               ))}
             </div>
-          </section>
-        ) : null}
+          ) : (
+            <span aria-hidden="true" />
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setFilterSheet(true)}
+            className="shrink-0 lg:hidden"
+          >
+            <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
+            {t("Filters")}
+            {activeFilterCount > 0 ? (
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 font-tabular text-[0.6875rem] font-semibold leading-none text-primary-foreground">
+                {activeFilterCount}
+              </span>
+            ) : null}
+          </Button>
+        </div>
 
-        {view === "table" ? (
-          <>
-        {/* Results */}
+        {/* Result count — applies to whichever view is active. */}
         {hasFilters ? (
           <p className="-mb-2 font-tabular text-xs text-muted-foreground">
             {entries.length === total
@@ -618,18 +785,124 @@ export function PublicDirectoryPage(): React.ReactElement {
           </p>
         ) : null}
 
-        {entries.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card py-14 text-center">
-            <Building2
-              aria-hidden="true"
-              className="h-8 w-8 text-muted-foreground/40"
+        {/* Entries by competition — the sport → category structural view
+            (built from the FILTERED entries, pruned to the selection). */}
+        {view === "competitions" ? (
+          sportGroups.length > 0 ? (
+            <CompetitionsSection groups={sportGroups} />
+          ) : (
+            <EmptyState
+              message={
+                hasFilters
+                  ? t("No institutions match your filters.")
+                  : t("No competitions configured yet.")
+              }
             />
-            <p className="text-sm text-muted-foreground">
-              {hasFilters
+          )
+        ) : null}
+
+        {/* Dynamic stats — one distribution card per form dimension. */}
+        {view === "stats" && stats.length > 0 && total > 0 ? (
+          entries.length === 0 && hasFilters ? (
+            <EmptyState message={t("No institutions match your filters.")} />
+          ) : (
+            <section aria-label={t("Registration breakdown")}>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {stats.map((s) => (
+                  <DimensionCard key={s.key} stat={s} />
+                ))}
+              </div>
+            </section>
+          )
+        ) : null}
+
+        {view === "table" ? (
+          <>
+        {entries.length === 0 ? (
+          <EmptyState
+            message={
+              hasFilters
                 ? t("No institutions match your filters.")
-                : t("No institutions have registered yet.")}
-            </p>
-          </div>
+                : t("No institutions have registered yet.")
+            }
+          />
+        ) : isMobile ? (
+          /* Phones: stacked cards (the wide table is unreadable at 360px). */
+          <ul className="flex flex-col gap-3">
+            {entries.map((e, i) => {
+              const answered = columns
+                .map((c) => ({
+                  key: c.key,
+                  label: c.label,
+                  labels: valueLabels(c.map, e.values[c.key]),
+                }))
+                .filter((a) => a.labels.length > 0);
+              const comps = e.competitions ?? [];
+              return (
+                <li
+                  key={i}
+                  className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4 shadow-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold" title={e.name}>
+                      {e.name}
+                    </p>
+                    {(showType && e.kind) || (showRegion && e.region) ? (
+                      <p className="mt-0.5 text-xs capitalize text-muted-foreground">
+                        {[
+                          showType && e.kind ? t(e.kind) : null,
+                          showRegion && e.region ? e.region : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    ) : null}
+                  </div>
+                  {comps.length > 0 ? (
+                    <div className="flex flex-wrap items-center gap-1">
+                      {comps.slice(0, 3).map((c) => (
+                        <span
+                          key={c.leaf_key}
+                          className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+                        >
+                          {c.label}
+                        </span>
+                      ))}
+                      {comps.length > 3 ? (
+                        <button
+                          type="button"
+                          onClick={() => setCompModal(e)}
+                          className="rounded-md px-1.5 py-0.5 text-xs font-medium text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {t("View all")} ({comps.length})
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {answered.length > 0 ? (
+                    <dl className="flex flex-col gap-1 border-t border-border/60 pt-2">
+                      {answered.map((a) => (
+                        <div
+                          key={a.key}
+                          className="flex items-baseline justify-between gap-3 text-xs"
+                        >
+                          <dt
+                            className="shrink-0 truncate text-muted-foreground"
+                            title={a.label}
+                          >
+                            {a.label}
+                          </dt>
+                          <dd className="min-w-0 text-right">
+                            {a.labels.join(", ")}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
         ) : (
           <div className="max-h-[34rem] overflow-auto rounded-xl border border-border bg-card shadow-sm">
             <table className="w-full border-separate border-spacing-0 text-sm">
@@ -726,12 +999,12 @@ export function PublicDirectoryPage(): React.ReactElement {
         ) : null}
         </div>
 
-        {/* Filter rail — right on desktop, above on mobile (W2: hierarchical
-            competition tree replaces both the flat dropdown and the wall of
-            per-question filters). */}
+        {/* Filter rail — desktop only. On phones the SAME panel opens from
+            the toolbar's Filters button as a bottom-sheet (the rail used to
+            render after the list, i.e. uselessly at the bottom of the page). */}
         <aside
           aria-label={t("Filters")}
-          className="flex w-full shrink-0 flex-col gap-4 lg:order-last lg:w-72"
+          className="hidden w-full shrink-0 flex-col gap-4 lg:order-last lg:flex lg:w-72"
         >
           <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
             <div className="flex items-center justify-between">
@@ -748,77 +1021,67 @@ export function PublicDirectoryPage(): React.ReactElement {
                 </Button>
               ) : null}
             </div>
-
-            <label className="relative block">
-              <Search
-                aria-hidden="true"
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={t("Search name or region…")}
-                className="h-9 pl-9"
-                aria-label={t("Search")}
-              />
-            </label>
-
-            {compTree.length > 0 ? (
-              <div className="flex flex-col gap-0.5 border-t border-border pt-3">
-                <button
-                  type="button"
-                  aria-expanded={!expanded.has("__comp_closed")}
-                  onClick={() => toggleExpand("__comp_closed", !expanded.has("__comp_closed"))}
-                  className="mb-1.5 flex items-center justify-between text-left text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground hover:text-foreground"
-                >
-                  {t("Competitions")}
-                  <ChevronRight
-                    aria-hidden="true"
-                    className={cn(
-                      "h-3.5 w-3.5 transition-transform",
-                      !expanded.has("__comp_closed") && "rotate-90",
-                    )}
-                  />
-                </button>
-                {!expanded.has("__comp_closed")
-                  ? compTree.map((n) => (
-                      <CompTreeRow
-                        key={n.key}
-                        node={n}
-                        depth={0}
-                        selected={compSel}
-                        onToggle={toggleComp}
-                        expanded={expanded}
-                        onExpand={toggleExpand}
-                      />
-                    ))
-                  : null}
-              </div>
-            ) : null}
-
-            {d.filters.map((f) => (
-              <label
-                key={f.key}
-                className="flex flex-col gap-1 border-t border-border pt-3"
-              >
-                <span
-                  className="truncate text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
-                  title={f.label}
-                >
-                  {f.label}
-                </span>
-                <Select
-                  size="sm"
-                  value={filters[f.key] ?? ""}
-                  onChange={(v) => setFilters((s) => ({ ...s, [f.key]: v }))}
-                  options={[{ value: "", label: t("All") }, ...f.options]}
-                  aria-label={f.label}
-                />
-              </label>
-            ))}
+            <FilterPanel
+              search={search}
+              onSearch={setSearch}
+              compTree={compTree}
+              compSel={compSel}
+              onToggleComp={toggleComp}
+              expanded={expanded}
+              onExpand={toggleExpand}
+              filters={d.filters}
+              values={filters}
+              onValue={(key, v) => setFilters((s) => ({ ...s, [key]: v }))}
+            />
           </div>
         </aside>
         </div>
+
+        {/* Mobile filter bottom-sheet — same controls as the rail. */}
+        <Dialog
+          open={filterSheet}
+          onOpenChange={setFilterSheet}
+          ariaLabel={t("Filters")}
+          variant="sheet"
+        >
+          <DialogHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <DialogTitle>{t("Filters")}</DialogTitle>
+              {hasFilters ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="h-7 px-2"
+                >
+                  <X aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t("Clear all")}
+                </Button>
+              ) : null}
+            </div>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <FilterPanel
+              search={search}
+              onSearch={setSearch}
+              compTree={compTree}
+              compSel={compSel}
+              onToggleComp={toggleComp}
+              expanded={expanded}
+              onExpand={toggleExpand}
+              filters={d.filters}
+              values={filters}
+              onValue={(key, v) => setFilters((s) => ({ ...s, [key]: v }))}
+            />
+          </div>
+          <Button
+            className="mt-4 w-full"
+            onClick={() => setFilterSheet(false)}
+          >
+            {t("Show")} {entries.length}{" "}
+            {entries.length === 1 ? t("institution") : t("institutions")}
+          </Button>
+        </Dialog>
 
         {/* One institution's full competition list, grouped by sport. */}
         <Dialog

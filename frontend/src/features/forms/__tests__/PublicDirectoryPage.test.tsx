@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -29,17 +29,36 @@ const DATA = {
       ],
     },
   ],
+  competitions: [
+    {
+      leaf_key: "sepak.u14.girls",
+      label: "Sepak Takraw — U-14 — Girls",
+      count: 2,
+    },
+    {
+      leaf_key: "sepak.u14.boys",
+      label: "Sepak Takraw — U-14 — Boys",
+      count: 1,
+    },
+  ],
   entries: [
     {
       name: "Grace High",
       region: "Kohima",
       kind: "school",
+      competitions: [
+        { leaf_key: "sepak.u14.girls", label: "Sepak Takraw — U-14 — Girls" },
+      ],
       values: { competition: "both", sepak_categories: ["u14_girls"] },
     },
     {
       name: "Mount Hermon",
       region: "",
       kind: "school",
+      competitions: [
+        { leaf_key: "sepak.u14.girls", label: "Sepak Takraw — U-14 — Girls" },
+        { leaf_key: "sepak.u14.boys", label: "Sepak Takraw — U-14 — Boys" },
+      ],
       values: { competition: "sepak", sepak_categories: ["u14_girls", "u14_boys"] },
     },
   ],
@@ -63,10 +82,15 @@ function renderPage() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  // Desktop width unless a test overrides it (mobile renders stacked cards).
+  window.innerWidth = 1024;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   vi.mocked(formsApi.directory).mockResolvedValue(DATA as any);
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  window.innerWidth = 1024;
+  vi.restoreAllMocks();
+});
 
 describe("PublicDirectoryPage", () => {
   it("renders the header, total, dynamic stat cards, and entries", async () => {
@@ -109,6 +133,44 @@ describe("PublicDirectoryPage", () => {
     await waitFor(() =>
       expect(screen.queryByText("Grace High")).toBeNull(),
     );
+    expect(screen.getByText("Mount Hermon")).toBeInTheDocument();
+  });
+
+  it("applies the active filters to the Competitions tab", async () => {
+    renderPage();
+    await screen.findByText("Grace High");
+
+    await userEvent.click(screen.getByRole("tab", { name: "Competitions" }));
+    // Unfiltered: both institutions appear as chips under their competitions.
+    expect(screen.getAllByText("Grace High").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Mount Hermon")).toHaveLength(2);
+
+    await userEvent.type(screen.getByLabelText("Search"), "Mount");
+
+    // The competitions view honours the search: Grace High's chip is gone,
+    // Mount Hermon stays listed under both of its competitions.
+    await waitFor(() => expect(screen.queryByText("Grace High")).toBeNull());
+    expect(screen.getAllByText("Mount Hermon")).toHaveLength(2);
+  });
+
+  it("renders stacked cards and a filter bottom-sheet on mobile", async () => {
+    window.innerWidth = 375;
+    renderPage();
+    await screen.findByText("Grace High");
+
+    // No table on phones — entries render as stacked cards.
+    expect(screen.queryByRole("table")).toBeNull();
+
+    // Filters live behind the toolbar button → bottom sheet.
+    await userEvent.click(screen.getByRole("button", { name: /Filters/ }));
+    const sheet = await screen.findByRole("dialog", { name: "Filters" });
+    await userEvent.type(within(sheet).getByLabelText("Search"), "Mount");
+    await userEvent.click(
+      within(sheet).getByRole("button", { name: /Show 1 institution/ }),
+    );
+
+    expect(screen.queryByRole("dialog", { name: "Filters" })).toBeNull();
+    expect(screen.queryByText("Grace High")).toBeNull();
     expect(screen.getByText("Mount Hermon")).toBeInTheDocument();
   });
 });

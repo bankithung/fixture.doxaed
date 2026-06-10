@@ -12,6 +12,9 @@ export interface DialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   ariaLabel: string;
+  /** "sheet" docks the panel to the bottom edge on small screens (a mobile
+   *  drawer); on sm+ it centers exactly like the default. */
+  variant?: "center" | "sheet";
   children: React.ReactNode;
 }
 
@@ -19,6 +22,7 @@ export function Dialog({
   open,
   onOpenChange,
   ariaLabel,
+  variant = "center",
   children,
 }: DialogProps): React.ReactElement | null {
   React.useEffect(() => {
@@ -36,12 +40,24 @@ export function Dialog({
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className={cn(
+        "fixed inset-0 z-50 flex bg-black/50",
+        variant === "sheet"
+          ? "items-end justify-center sm:items-center sm:p-4"
+          : "items-center justify-center p-4",
+      )}
       onClick={(e) => {
         if (e.target === e.currentTarget) onOpenChange(false);
       }}
     >
-      <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-lg">
+      <div
+        className={cn(
+          "w-full max-w-md border bg-card shadow-lg",
+          variant === "sheet"
+            ? "max-h-[85vh] overflow-y-auto rounded-t-2xl p-4 pb-6 sm:rounded-lg sm:p-6"
+            : "rounded-lg p-6",
+        )}
+      >
         {children}
       </div>
     </div>
