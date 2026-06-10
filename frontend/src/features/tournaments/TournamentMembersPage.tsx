@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { Avatar } from "@/components/ui/Avatar";
 import { ROLE_KEYS } from "@/components/ui/RoleBadge";
+import { PermissionsDialog } from "./PermissionsDialog";
 import { newEventId } from "@/lib/eventId";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { cn } from "@/lib/tailwind";
@@ -252,6 +253,7 @@ interface PersonProps {
   group: PersonGroup;
   onRoleChange: (m: TournamentMember, role: string) => void;
   onRevoke: (m: TournamentMember) => void;
+  onPermissions: (group: PersonGroup) => void;
   busy: boolean;
 }
 
@@ -259,6 +261,7 @@ function MemberRow({
   group,
   onRoleChange,
   onRevoke,
+  onPermissions,
   busy,
 }: PersonProps): React.ReactElement {
   const displayName = group.full_name?.trim() || group.email;
@@ -297,6 +300,15 @@ function MemberRow({
       <td className="px-4 py-3">
         <StatusPill status={group.active ? "active" : "suspended"} />
       </td>
+      <td className="px-4 py-3">
+        <button
+          type="button"
+          onClick={() => onPermissions(group)}
+          className="rounded-md px-1.5 py-0.5 text-xs font-medium text-primary hover:bg-accent/40 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {t("Access")}
+        </button>
+      </td>
       <td className="px-4 py-3 font-tabular text-sm text-muted-foreground">
         <span title={group.joinedAt}>{formatJoined(group.joinedAt)}</span>
       </td>
@@ -308,6 +320,7 @@ function MemberCard({
   group,
   onRoleChange,
   onRevoke,
+  onPermissions,
   busy,
 }: PersonProps): React.ReactElement {
   const displayName = group.full_name?.trim() || group.email;
@@ -327,6 +340,15 @@ function MemberCard({
           </div>
         </div>
         <StatusPill status={group.active ? "active" : "suspended"} />
+      </div>
+      <div className="mt-2 flex justify-end">
+        <button
+          type="button"
+          onClick={() => onPermissions(group)}
+          className="rounded-md px-1.5 py-0.5 text-xs font-medium text-primary hover:bg-accent/40 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {t("Access")}
+        </button>
       </div>
       <div className="mt-3 flex flex-col gap-2">
         <Label className="text-xs text-muted-foreground">
@@ -501,6 +523,9 @@ export function TournamentMembersPage(): React.ReactElement {
     mutation.mutate({ membershipId: m.id, body: { role } });
   };
 
+  const [permTarget, setPermTarget] = React.useState<PersonGroup | null>(null);
+  const onPermissions = (group: PersonGroup): void => setPermTarget(group);
+
   const onRevoke = (m: TournamentMember): void => {
     setPendingRevoke(m);
   };
@@ -624,6 +649,7 @@ export function TournamentMembersPage(): React.ReactElement {
                   group={g}
                   onRoleChange={onRoleChange}
                   onRevoke={onRevoke}
+                  onPermissions={onPermissions}
                   busy={busy}
                 />
               ))}
@@ -641,6 +667,7 @@ export function TournamentMembersPage(): React.ReactElement {
                     <th className="px-4 py-2.5 font-medium">{t("Name")}</th>
                     <th className="px-4 py-2.5 font-medium">{t("Roles")}</th>
                     <th className="px-4 py-2.5 font-medium">{t("Status")}</th>
+                    <th className="px-4 py-2.5 font-medium">{t("Access")}</th>
                     <th className="px-4 py-2.5 font-medium">{t("Joined")}</th>
                   </tr>
                 </thead>
@@ -651,6 +678,7 @@ export function TournamentMembersPage(): React.ReactElement {
                       group={g}
                       onRoleChange={onRoleChange}
                       onRevoke={onRevoke}
+                      onPermissions={onPermissions}
                       busy={busy}
                     />
                   ))}
@@ -660,6 +688,14 @@ export function TournamentMembersPage(): React.ReactElement {
           )}
         </div>
       </section>
+
+      <PermissionsDialog
+        tournamentId={id}
+        userId={permTarget?.memberships[0]?.user_id ?? ""}
+        email={permTarget?.email ?? ""}
+        open={permTarget !== null}
+        onClose={() => setPermTarget(null)}
+      />
 
       <Dialog
         open={pendingRevoke !== null}
