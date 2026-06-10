@@ -98,6 +98,18 @@ export interface MiniTeam {
   short_name: string;
 }
 
+/** Resolved set-scoring rules served by the backend (sport profile merged
+ * with any per-tournament override). null on a match = goal-based. */
+export interface SetScoringRules {
+  type: "sets";
+  best_of: number;
+  points: number;
+  win_by: number;
+  cap: number | null;
+  /** Deciding-set overrides (e.g. volleyball 5th set to 15). */
+  deciding?: { points?: number; win_by?: number; cap?: number | null };
+}
+
 export interface MatchRow {
   id: string;
   stage: string;
@@ -113,6 +125,11 @@ export interface MatchRow {
   sport: string;
   /** Per-set [home, away] scores for set-based sports (home/away_score = sets won). */
   set_scores: number[][];
+  /** Category-leaf this match belongs to ("" = whole-tournament draw). */
+  leaf_key: string;
+  venue: string;
+  /** Server-resolved set rules; null = goal-based. Render entry UIs from this. */
+  scoring: SetScoringRules | null;
   scheduled_at: string | null;
 }
 

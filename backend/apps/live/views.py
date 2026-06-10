@@ -9,6 +9,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from apps.matches.models import Match, MatchEvent, MatchEventType, MatchStatus
+from apps.matches.services.set_scoring import rules_for_match
 
 _ROSTER_VISIBLE = (MatchStatus.LIVE, MatchStatus.HALF_TIME, MatchStatus.COMPLETED)
 
@@ -49,7 +50,7 @@ class LiveMatchSnapshotView(GenericAPIView):
 
     def get(self, request, match_id):
         m = (
-            Match.objects.select_related("home_team", "away_team")
+            Match.objects.select_related("home_team", "away_team", "tournament")
             .filter(id=match_id, deleted_at__isnull=True)
             .first()
         )
@@ -85,6 +86,11 @@ class LiveMatchSnapshotView(GenericAPIView):
                     "away_team": _team(m.away_team, include_players),
                     "home_score": m.home_score,
                     "away_score": m.away_score,
+                    # Set-based sports: per-set scores + the resolved rules so
+                    # public viewers render sets (home/away_score = sets won).
+                    "sport": m.sport,
+                    "set_scores": m.set_scores,
+                    "scoring": rules_for_match(m),
                 },
                 "events": [
                     {

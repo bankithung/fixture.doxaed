@@ -16,14 +16,25 @@ from apps.matches.models import (
 class MatchSerializer(serializers.ModelSerializer):
     home_team = serializers.SerializerMethodField()
     away_team = serializers.SerializerMethodField()
+    scoring = serializers.SerializerMethodField()
 
     class Meta:
         model = Match
         fields = [
             "id", "stage", "group_label", "round_no", "match_no", "status",
             "home_team", "away_team", "home_score", "away_score", "scheduled_at",
-            "current_period", "sport", "set_scores",
+            "current_period", "sport", "set_scores", "leaf_key", "venue",
+            "scoring",
         ]
+
+    def get_scoring(self, obj):
+        """Resolved set-scoring rules (override → sport profile), or None for
+        goal-based matches — the FE entry UI renders from this instead of a
+        hand-mirrored copy of backend defaults. List views must
+        select_related("tournament") (the override lives on it)."""
+        from apps.matches.services.set_scoring import rules_for_match
+
+        return rules_for_match(obj)
 
     @staticmethod
     def _mini(team):

@@ -60,15 +60,10 @@ export function Stat({
   );
 }
 
-// Set/game-based sports record per-set scores; mirror the backend defaults so the
-// entry UI knows how many sets to offer. Goal-based sports return null.
-const SET_RULES: Record<string, { best_of: number; points: number }> = {
-  table_tennis: { best_of: 3, points: 11 },
-  sepak_takraw: { best_of: 3, points: 21 },
-};
-function setRules(sport?: string): { best_of: number; points: number } | null {
-  return SET_RULES[(sport ?? "").replace(/-/g, "_").toLowerCase()] ?? null;
-}
+// Set/game-based sports record per-set scores. The rules (sets to play, points
+// per set, deciding-set variations) are resolved SERVER-side per match —
+// sport profile merged with any organizer override — and arrive on
+// `match.scoring`; nothing is mirrored or hardcoded here.
 
 /** Compact set-by-set entry for racket/net sports (e.g. 11-8 9-11 11-6). */
 function SetScoreEntry({
@@ -150,7 +145,7 @@ export function ScoreRow({
   const qc = useQueryClient();
   const [home, setHome] = useState("");
   const [away, setAway] = useState("");
-  const rules = setRules(match.sport);
+  const rules = match.scoring;
   const save = useMutation({
     mutationFn: () =>
       tournamentsApi.score(match.id, {

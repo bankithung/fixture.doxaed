@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import uuid as _uuid
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Max
 
@@ -39,7 +40,12 @@ def publish_match_event(match_id, event_id) -> None:
                 f"match_{match_id}",
                 {
                     "type": "match.event",
-                    "data": {"match_id": str(match_id), "event_id": str(event_id)},
+                    "data": {
+                        "match_id": str(match_id),
+                        # None for non-event updates (e.g. a set result) — the
+                        # client refetches the snapshot either way.
+                        "event_id": str(event_id) if event_id else None,
+                    },
                 },
             )
     except Exception:  # pragma: no cover - delivery is best-effort
@@ -87,6 +93,19 @@ def record_match_event(
 
     with transaction.atomic():
         locked = Match.objects.select_for_update().get(pk=match.pk)
+        # Set-based matches derive their score from Match.set_scores, not the
+        # goal-event log — recording a scoring event here would clobber the
+        # sets-won mirror that standings/advancement read (spec 2026-06-10).
+        # Non-scoring events (cards, notes) remain allowed; recompute below is
+        # skipped for set sports so they can never touch the mirror either.
+        from apps.matches.services.set_scoring import rules_for_match
+
+        set_based = rules_for_match(locked) is not None
+        if set_based and (
+            event_type in SCORING_EVENT_TYPES
+            or event_type == MatchEventType.OWN_GOAL
+        ):
+            raise DjangoValidationError("set_based_sport_uses_set_scores")
         next_seq = (
             MatchEvent.objects.filter(match=locked).aggregate(m=Max("sequence_no"))["m"]
             or 0
@@ -107,7 +126,8 @@ def record_match_event(
             event_id=event_id,
             created_by=by,
         )
-        recompute_score(locked)
+        if not set_based:
+            recompute_score(locked)
         emit_audit(
             actor_user=by,
             actor_role=ActorRole.ADMIN,

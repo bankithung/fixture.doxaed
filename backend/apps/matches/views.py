@@ -84,13 +84,6 @@ def _can_score(user, match: Match) -> bool:
     ).exists()
 
 
-def _sport_override(match: Match) -> dict | None:
-    """Per-tournament scoring override for this match's sport, if the organizer
-    set one in the sports config (else None → engine defaults)."""
-    for s in match.tournament.sports or []:
-        if s.get("key") == match.sport:
-            return s.get("scoring")
-    return None
 
 
 class TournamentMatchListView(GenericAPIView):
@@ -100,7 +93,7 @@ class TournamentMatchListView(GenericAPIView):
         t = _accessible_tournament_or_404(request.user, tournament_id)
         qs = (
             Match.objects.filter(tournament=t, deleted_at__isnull=True)
-            .select_related("home_team", "away_team")
+            .select_related("home_team", "away_team", "tournament")
             .order_by("group_label", "match_no")
         )
         return Response(MatchSerializer(qs, many=True).data)
@@ -153,14 +146,16 @@ class RecordScoreView(GenericAPIView):
         if not _can_score(request.user, match):
             raise PermissionDenied("not_allowed_to_score")
 
-        # Set/game-based sports (Table Tennis, Sepak Takraw) submit per-set scores.
-        if "set_scores" in request.data:
-            from apps.matches.services.set_scoring import (
-                record_set_result,
-                scoring_rules,
-            )
+        from apps.matches.services.set_scoring import (
+            record_set_result,
+            rules_for_match,
+        )
 
-            rules = scoring_rules(match.sport, _sport_override(match))
+        rules = rules_for_match(match)
+        # Set/game-based sports (Volleyball, TT, Sepak Takraw) submit per-set
+        # scores — and ONLY per-set scores: a bare goal-style total would
+        # complete the match with point-like numbers and empty set_scores.
+        if "set_scores" in request.data:
             if rules is None:
                 raise DRFValidationError({"detail": "not_a_set_based_sport"})
             ser = RecordSetScoreSerializer(data=request.data)
@@ -181,6 +176,8 @@ class RecordScoreView(GenericAPIView):
             match.refresh_from_db()
             return Response(MatchSerializer(match).data)
 
+        if rules is not None:
+            raise DRFValidationError({"detail": "set_scores_required"})
         ser = RecordScoreSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         try:
@@ -244,17 +241,22 @@ class RecordMatchEventView(GenericAPIView):
                 raise DRFValidationError({"detail": "related_player_not_found"})
             if related_player.team_id not in (match.home_team_id, match.away_team_id):
                 raise DRFValidationError({"detail": "related_player_not_on_team"})
-        record_match_event(
-            match=match,
-            event_type=ser.validated_data["event_type"],
-            team=team,
-            player=player,
-            related_player=related_player,
-            minute=ser.validated_data.get("minute"),
-            by=request.user,
-            event_id=ser.validated_data.get("event_id"),
-            request=request,
-        )
+        try:
+            record_match_event(
+                match=match,
+                event_type=ser.validated_data["event_type"],
+                team=team,
+                player=player,
+                related_player=related_player,
+                minute=ser.validated_data.get("minute"),
+                by=request.user,
+                event_id=ser.validated_data.get("event_id"),
+                request=request,
+            )
+        except ValidationError as e:
+            raise DRFValidationError(
+                {"detail": getattr(e, "message", "invalid_event")}
+            ) from e
         match.refresh_from_db()
         return Response(MatchSerializer(match).data, status=201)
 

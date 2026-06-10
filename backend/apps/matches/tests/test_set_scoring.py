@@ -6,6 +6,7 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -85,6 +86,127 @@ def test_api_records_set_scores_for_tt_match():
     assert m.status == MatchStatus.COMPLETED
     assert (m.home_score, m.away_score) == (2, 1)  # sets won
     assert m.set_scores == [[11, 8], [9, 11], [11, 6]]
+
+
+VOLLEY = {"type": "sets", "points": 25, "win_by": 2, "cap": None, "best_of": 5,
+          "deciding": {"points": 15, "win_by": 2, "cap": None}}
+SEPAK_FULL = {"type": "sets", "points": 21, "win_by": 2, "cap": 25, "best_of": 3,
+              "deciding": {"points": 15, "win_by": 2, "cap": 17}}
+
+
+def test_volleyball_profile_exists_and_is_set_based():
+    from apps.matches.services.set_scoring import (
+        SPORT_PROFILES,
+        is_set_based,
+        scoring_rules,
+    )
+
+    assert is_set_based("volleyball")
+    rules = scoring_rules("volleyball")
+    assert rules["best_of"] == 5 and rules["points"] == 25
+    assert rules["deciding"]["points"] == 15
+    assert SPORT_PROFILES["football"]["scoring"]["type"] == "goals"
+    assert SPORT_PROFILES["sepak_takraw"]["scoring"]["deciding"] == {
+        "points": 15, "win_by": 2, "cap": 17,
+    }
+
+
+def test_deciding_set_uses_its_own_numbers():
+    # volleyball: 5th set to 15 (win by 2) — full-length deciders are valid
+    assert compute_sets(
+        [[25, 20], [20, 25], [25, 23], [23, 25], [15, 13]], VOLLEY
+    ) == (3, 2)
+    # a 13-point 5th set is below the deciding target
+    with pytest.raises(DjangoValidationError):
+        compute_sets([[25, 20], [20, 25], [25, 23], [23, 25], [13, 11]], VOLLEY)
+    # sepak takraw tiebreak: to 15 cap 17 — a 21-point 3rd set is illegal
+    assert compute_sets([[21, 18], [19, 21], [15, 13]], SEPAK_FULL) == (2, 1)
+    assert compute_sets([[21, 18], [19, 21], [17, 16]], SEPAK_FULL) == (2, 1)
+    with pytest.raises(DjangoValidationError):
+        compute_sets([[21, 18], [19, 21], [21, 19]], SEPAK_FULL)
+
+
+def test_sets_after_decision_rejected():
+    # 2-0 already decides a best-of-3; a third set is physically impossible
+    with pytest.raises(DjangoValidationError):
+        compute_sets([[11, 8], [11, 8], [11, 5]], TT)
+
+
+def test_set_sport_requires_set_scores_on_goal_path():
+    admin = _admin()
+    t = create_tournament(user=admin, name="TT Cup")
+    m = _match(t, sport="table_tennis")
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    r = c.post(
+        f"/api/matches/{m.id}/score/",
+        {"home_score": 2, "away_score": 1, "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "set_scores_required"
+    m.refresh_from_db()
+    assert m.status == MatchStatus.SCHEDULED  # untouched
+
+
+def test_goal_events_blocked_on_set_based_match():
+    admin = _admin()
+    t = create_tournament(user=admin, name="TT Cup")
+    m = _match(t, sport="table_tennis")
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    r = c.post(
+        f"/api/matches/{m.id}/events/",
+        {"event_type": "goal", "side": "home", "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 400
+    m.refresh_from_db()
+    assert (m.home_score, m.away_score) == (None, None)  # mirror not clobbered
+
+
+def test_tournament_override_changes_rules_and_serializer_exposes_them():
+    admin = _admin()
+    t = create_tournament(user=admin, name="VB Cup")
+    t.sports = [{"key": "volleyball", "name": "Volleyball", "custom": False,
+                 "scoring": {"type": "sets", "best_of": 3, "points": 25,
+                             "win_by": 2, "cap": None,
+                             "deciding": {"points": 15}}}]
+    t.save(update_fields=["sports"])
+    m = _match(t, sport="volleyball")
+    c = APIClient()
+    c.force_authenticate(user=admin)
+
+    # school short format (Bo3) from the override; 3rd set to 15
+    r = c.post(
+        f"/api/matches/{m.id}/score/",
+        {"set_scores": [[25, 20], [23, 25], [15, 11]],
+         "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 200, r.content
+    body = r.json()
+    assert body["scoring"]["best_of"] == 3  # resolved rules on the payload
+    m.refresh_from_db()
+    assert (m.home_score, m.away_score) == (2, 1)
+
+
+def test_set_result_publishes_live_update(django_capture_on_commit_callbacks):
+    from unittest import mock
+
+    from apps.matches.services.set_scoring import record_set_result
+
+    admin = _admin()
+    t = create_tournament(user=admin, name="TT Cup")
+    m = _match(t, sport="table_tennis")
+    with mock.patch(
+        "apps.matches.services.events.publish_match_event"
+    ) as pub:
+        with django_capture_on_commit_callbacks(execute=True):
+            record_set_result(
+                match=m, set_scores=[[11, 8], [11, 9]], rules=TT, by=admin,
+            )
+    pub.assert_called_once_with(m.id, None)
 
 
 def test_goal_sport_rejects_sets_but_goals_still_work():

@@ -17,6 +17,9 @@ function m(over: Partial<MatchRow>, id: string): MatchRow {
     away_score: null,
     sport: "",
     set_scores: [],
+    leaf_key: "",
+    venue: "",
+    scoring: null,
     scheduled_at: null,
     ...over,
   };
