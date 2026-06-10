@@ -85,6 +85,15 @@ export interface Field {
   /** Repeatable group row bounds (W2-B roster limits, server-enforced). */
   min_items?: number;
   max_items?: number;
+  /**
+   * Presentation grouping (W2): consecutive fields sharing `group` render
+   * inside one card titled `group_label`, indented by `indent` levels and
+   * labelled with `short_label`. Pure display metadata — never validated.
+   */
+  group?: string;
+  group_label?: string;
+  indent?: number;
+  short_label?: string;
 }
 
 export interface Section {

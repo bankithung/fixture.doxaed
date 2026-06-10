@@ -281,6 +281,57 @@ export function PublicFormPage(): React.ReactElement {
 
   const formError = errors.__form;
 
+  // Consecutive fields sharing `group` render inside ONE card titled by the
+  // group label, each question indented per `indent` and shown with its
+  // sport-less `short_label` (W2: the flat run of chained category questions
+  // was unreadable once several sports were selected). Ungrouped fields
+  // render exactly as before.
+  const renderGrouped = (fields: Field[]): React.ReactNode[] => {
+    const out: React.ReactNode[] = [];
+    let i = 0;
+    while (i < fields.length) {
+      const f = fields[i];
+      if (!f.group) {
+        out.push(renderField(f));
+        i += 1;
+        continue;
+      }
+      const group = f.group;
+      const chunk: Field[] = [];
+      while (i < fields.length && fields[i].group === group) {
+        chunk.push(fields[i]);
+        i += 1;
+      }
+      const visible = chunk.filter(
+        (c) => isVisible(c.visibility, answers) && !lockedSet.has(c.key),
+      );
+      if (!visible.length) continue;
+      out.push(
+        <div
+          key={`group-${group}`}
+          className="flex flex-col gap-4 rounded-lg border border-border bg-muted/20 p-4"
+        >
+          <h3 className="text-sm font-semibold">
+            {t(chunk[0].group_label ?? group)}
+          </h3>
+          {visible.map((c) => {
+            const depth = Math.min(c.indent ?? 0, 4);
+            return (
+              <div
+                key={c.key}
+                className={depth > 0 ? "border-l-2 border-border pl-3" : undefined}
+                style={depth > 0 ? { marginLeft: (depth - 1) * 16 } : undefined}
+              >
+                {renderField({ ...c, label: c.short_label ?? c.label })}
+              </div>
+            );
+          })}
+        </div>,
+      );
+    }
+    return out;
+  };
+
   // Render a field and, recursively, the nested follow-up fields of any selected
   // option (indented). Returns null for hidden/locked fields.
   const renderField = (f: Field): React.ReactNode => {
@@ -368,7 +419,7 @@ export function PublicFormPage(): React.ReactElement {
               ) : null}
             </div>
 
-            {current.fields.map(renderField)}
+            {renderGrouped(current.fields)}
           </section>
         ) : (
           <p className="text-sm text-muted-foreground">

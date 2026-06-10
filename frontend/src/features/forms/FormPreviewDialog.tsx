@@ -127,17 +127,79 @@ export function FormPreviewDialog({
               </div>
 
               <div className="flex flex-col gap-5 rounded-xl border border-border bg-card p-6">
-                {current.fields
-                  .filter((f) => isVisible(f.visibility, answers))
-                  .map((f) => (
-                    <div key={f.key} className="flex flex-col gap-1.5">
-                      <FieldRenderer
-                        field={f}
-                        value={answers[f.key]}
-                        onChange={(v) => set(f.key, v)}
-                      />
-                    </div>
-                  ))}
+                {(() => {
+                  // Mirror the public renderer's group cards (W2) so the
+                  // admin previews exactly what schools will see.
+                  const out: React.ReactNode[] = [];
+                  const fields = current.fields;
+                  let i = 0;
+                  while (i < fields.length) {
+                    const f = fields[i];
+                    if (!f.group) {
+                      if (isVisible(f.visibility, answers)) {
+                        out.push(
+                          <div key={f.key} className="flex flex-col gap-1.5">
+                            <FieldRenderer
+                              field={f}
+                              value={answers[f.key]}
+                              onChange={(v) => set(f.key, v)}
+                            />
+                          </div>,
+                        );
+                      }
+                      i += 1;
+                      continue;
+                    }
+                    const group = f.group;
+                    const chunk: typeof fields = [];
+                    while (i < fields.length && fields[i].group === group) {
+                      chunk.push(fields[i]);
+                      i += 1;
+                    }
+                    const visible = chunk.filter((c) =>
+                      isVisible(c.visibility, answers),
+                    );
+                    if (!visible.length) continue;
+                    out.push(
+                      <div
+                        key={`group-${group}`}
+                        className="flex flex-col gap-4 rounded-lg border border-border bg-muted/20 p-4"
+                      >
+                        <h3 className="text-sm font-semibold">
+                          {t(chunk[0].group_label ?? group)}
+                        </h3>
+                        {visible.map((c) => {
+                          const depth = Math.min(c.indent ?? 0, 4);
+                          return (
+                            <div
+                              key={c.key}
+                              className={
+                                depth > 0
+                                  ? "border-l-2 border-border pl-3"
+                                  : undefined
+                              }
+                              style={
+                                depth > 0
+                                  ? { marginLeft: (depth - 1) * 16 }
+                                  : undefined
+                              }
+                            >
+                              <FieldRenderer
+                                field={{
+                                  ...c,
+                                  label: c.short_label ?? c.label,
+                                }}
+                                value={answers[c.key]}
+                                onChange={(v) => set(c.key, v)}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>,
+                    );
+                  }
+                  return out;
+                })()}
               </div>
 
               <div className="flex items-center justify-between gap-2">

@@ -123,6 +123,17 @@ def _category_chain(
                 else f"{sname} — {' — '.join(path_names)}"
             ),
             "required": True,
+            # Presentation grouping (owner 2026-06-10: the flat run of chain
+            # questions was "very confusing") — renderers draw all of one
+            # sport's questions inside a single card, indented per level,
+            # using the sport-less short label. Pure metadata: validation,
+            # branching and the builder all keep using label/visibility.
+            "group": skey,
+            "group_label": sname,
+            "indent": len(path_keys) - 1,
+            "short_label": (
+                "Categories" if not path_names else " — ".join(path_names)
+            ),
             "visibility": (
                 {"field": sports_field, "op": "includes", "value": skey}
                 if parent_field is None
