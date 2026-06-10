@@ -2,7 +2,9 @@ import { Fragment, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Check,
   ChevronRight,
+  Clock,
   KeyRound,
   Link2,
   Pencil,
@@ -147,13 +149,52 @@ export function TeamsTab(): React.ReactElement {
     onError: () => toast.push({ kind: "error", title: t("Could not generate the team form") }),
   });
 
-  const grouped = useMemo(() => {
-    const g: Record<string, TeamRow[]> = {};
+  // Every registered school is a row — with a submitted / not-yet status —
+  // so the admin sees who has filled the team form and who hasn't. Teams are
+  // attached by institution id; any team with no matching institution (legacy
+  // direct adds) falls into its own trailing group.
+  const schoolGroups = useMemo<SchoolGroup[]>(() => {
+    const byInst = new Map<string, TeamRow[]>();
+    const orphans: TeamRow[] = [];
     for (const tm of teams.data ?? []) {
-      (g[tm.institution_name || tm.school || t("Unassigned")] ||= []).push(tm);
+      if (tm.institution_id) {
+        const list = byInst.get(tm.institution_id) ?? [];
+        list.push(tm);
+        byInst.set(tm.institution_id, list);
+      } else orphans.push(tm);
     }
-    return g;
-  }, [teams.data]);
+    const groups: SchoolGroup[] = (institutions.data ?? []).map((inst) => {
+      const rows = byInst.get(inst.id) ?? [];
+      return {
+        key: inst.id,
+        name: inst.name,
+        teams: rows,
+        submitted: rows.length > 0,
+        hasCode: !!inst.has_team_code,
+      };
+    });
+    // Stable order: not-yet-submitted first (the admin's follow-up list).
+    groups.sort((a, b) =>
+      a.submitted === b.submitted
+        ? a.name.localeCompare(b.name)
+        : a.submitted
+          ? 1
+          : -1,
+    );
+    if (orphans.length)
+      groups.push({
+        key: "__orphans",
+        name: t("Other teams"),
+        teams: orphans,
+        submitted: true,
+        hasCode: false,
+      });
+    return groups;
+  }, [teams.data, institutions.data]);
+  const submittedCount = schoolGroups.filter(
+    (g) => g.submitted && g.key !== "__orphans",
+  ).length;
+  const schoolCount = (institutions.data ?? []).length;
 
   const add = useMutation({
     mutationFn: () =>
@@ -177,7 +218,6 @@ export function TeamsTab(): React.ReactElement {
   });
 
   const instOptions = (institutions.data ?? []).map((i) => ({ value: i.id, label: i.name }));
-  const total = teams.data?.length ?? 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -255,18 +295,19 @@ export function TeamsTab(): React.ReactElement {
         </p>
       ) : null}
 
-      {total === 0 ? (
+      {schoolCount === 0 ? (
         <EmptyState
           icon={<Users className="h-8 w-8" />}
-          title={t("No teams yet")}
-          hint={
-            (institutions.data?.length ?? 0) === 0
-              ? t("Register an institution first, then add its teams.")
-              : t("Add a team directly, or share the registration form.")
-          }
+          title={t("No institutions yet")}
+          hint={t("Register an institution first, then collect its teams.")}
         />
       ) : (
-        <TeamsTable grouped={grouped} />
+        <>
+          <p className="font-tabular text-xs text-muted-foreground">
+            {submittedCount}/{schoolCount} {t("schools have submitted teams")}
+          </p>
+          <TeamsTable groups={schoolGroups} />
+        </>
       )}
 
       {/* Access codes — a per-school list: send to all at once, or send /
@@ -465,11 +506,36 @@ const TEAM_TD = "border-b border-border px-3 py-2.5 align-middle";
  * rows, and every team row expands to its full player roster inline. Phones
  * get the same hierarchy as stacked cards.
  */
-function TeamsTable({
-  grouped,
-}: {
-  grouped: Record<string, TeamRow[]>;
-}): React.ReactElement {
+interface SchoolGroup {
+  key: string;
+  name: string;
+  teams: TeamRow[];
+  submitted: boolean;
+  hasCode: boolean;
+}
+
+/** Submitted / not-yet pill — the admin's at-a-glance progress per school. */
+function SubmissionBadge({ submitted }: { submitted: boolean }): React.ReactElement {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium",
+        submitted
+          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+          : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+      )}
+    >
+      {submitted ? (
+        <Check aria-hidden="true" className="h-3 w-3" />
+      ) : (
+        <Clock aria-hidden="true" className="h-3 w-3" />
+      )}
+      {submitted ? t("Submitted") : t("Not submitted")}
+    </span>
+  );
+}
+
+function TeamsTable({ groups }: { groups: SchoolGroup[] }): React.ReactElement {
   const { isMobile } = useBreakpoint();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -487,55 +553,61 @@ function TeamsTable({
   if (isMobile) {
     return (
       <div className="flex flex-col gap-4">
-        {Object.entries(grouped).map(([inst, rows]) => (
-          <section key={inst} className="rounded-xl border border-border bg-card shadow-sm">
+        {groups.map((g) => (
+          <section key={g.key} className="rounded-xl border border-border bg-card shadow-sm">
             <button
               type="button"
-              aria-expanded={!collapsed.has(inst)}
-              onClick={() => flip(collapsed, setCollapsed, inst)}
+              aria-expanded={!collapsed.has(g.key)}
+              onClick={() => flip(collapsed, setCollapsed, g.key)}
               className="flex w-full items-center gap-2 px-4 py-3 text-left"
             >
               <ChevronRight
                 aria-hidden="true"
                 className={cn(
                   "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-                  !collapsed.has(inst) && "rotate-90",
+                  !collapsed.has(g.key) && "rotate-90",
                 )}
               />
-              <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{inst}</h3>
-              <span className="font-tabular text-xs text-muted-foreground">{rows.length}</span>
+              <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{g.name}</h3>
+              <SubmissionBadge submitted={g.submitted} />
             </button>
-            {!collapsed.has(inst) ? (
+            {!collapsed.has(g.key) ? (
               <div className="flex flex-col gap-2 border-t border-border p-3">
-                {rows.map((tm) => (
-                  <div key={tm.id} className="rounded-lg border border-border bg-background">
-                    <button
-                      type="button"
-                      aria-expanded={expanded.has(tm.id)}
-                      onClick={() => flip(expanded, setExpanded, tm.id)}
-                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
-                    >
-                      <ChevronRight
-                        aria-hidden="true"
-                        className={cn(
-                          "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
-                          expanded.has(tm.id) && "rotate-90",
-                        )}
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium">{tm.name}</span>
-                        <span className="mt-0.5 block truncate font-tabular text-xs text-muted-foreground">
-                          {tm.pool || t("Unseeded")} · {tm.player_count} {t("players")}
+                {g.teams.length === 0 ? (
+                  <p className="px-1 py-2 text-xs text-muted-foreground">
+                    {t("No teams registered yet.")}
+                  </p>
+                ) : (
+                  g.teams.map((tm) => (
+                    <div key={tm.id} className="rounded-lg border border-border bg-background">
+                      <button
+                        type="button"
+                        aria-expanded={expanded.has(tm.id)}
+                        onClick={() => flip(expanded, setExpanded, tm.id)}
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+                      >
+                        <ChevronRight
+                          aria-hidden="true"
+                          className={cn(
+                            "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
+                            expanded.has(tm.id) && "rotate-90",
+                          )}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">{tm.name}</span>
+                          <span className="mt-0.5 block truncate font-tabular text-xs text-muted-foreground">
+                            {tm.pool || t("Unseeded")} · {tm.player_count} {t("players")}
+                          </span>
                         </span>
-                      </span>
-                    </button>
-                    {expanded.has(tm.id) ? (
-                      <div className="border-t border-border/60 px-3 py-2.5">
-                        <Roster players={tm.players ?? []} />
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
+                      </button>
+                      {expanded.has(tm.id) ? (
+                        <div className="border-t border-border/60 px-3 py-2.5">
+                          <Roster players={tm.players ?? []} />
+                        </div>
+                      ) : null}
+                    </div>
+                  ))
+                )}
               </div>
             ) : null}
           </section>
@@ -557,32 +629,45 @@ function TeamsTable({
           </tr>
         </thead>
         <tbody>
-          {Object.entries(grouped).map(([inst, rows]) => (
-            <Fragment key={inst}>
+          {groups.map((g) => (
+            <Fragment key={g.key}>
               <tr>
                 <td colSpan={5} className="border-b border-border bg-muted/50 px-3 py-2">
                   <button
                     type="button"
-                    aria-expanded={!collapsed.has(inst)}
-                    onClick={() => flip(collapsed, setCollapsed, inst)}
+                    aria-expanded={!collapsed.has(g.key)}
+                    onClick={() => flip(collapsed, setCollapsed, g.key)}
                     className="flex w-full items-center gap-2 text-left"
                   >
                     <ChevronRight
                       aria-hidden="true"
                       className={cn(
                         "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-                        !collapsed.has(inst) && "rotate-90",
+                        !collapsed.has(g.key) && "rotate-90",
                       )}
                     />
-                    <span className="text-sm font-semibold">{inst}</span>
-                    <span className="font-tabular text-xs text-muted-foreground">
-                      {rows.length} {rows.length === 1 ? t("team") : t("teams")}
-                    </span>
+                    <span className="text-sm font-semibold">{g.name}</span>
+                    <SubmissionBadge submitted={g.submitted} />
+                    {g.teams.length > 0 ? (
+                      <span className="font-tabular text-xs text-muted-foreground">
+                        {g.teams.length} {g.teams.length === 1 ? t("team") : t("teams")}
+                      </span>
+                    ) : null}
                   </button>
                 </td>
               </tr>
-              {!collapsed.has(inst)
-                ? rows.map((tm) => (
+              {!collapsed.has(g.key) && g.teams.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="border-b border-border px-4 py-2.5 pl-12 text-xs text-muted-foreground"
+                  >
+                    {t("No teams registered yet.")}
+                  </td>
+                </tr>
+              ) : null}
+              {!collapsed.has(g.key)
+                ? g.teams.map((tm) => (
                     <Fragment key={tm.id}>
                       <tr
                         className="group cursor-pointer hover:bg-accent/40"
