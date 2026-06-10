@@ -86,7 +86,11 @@ function FieldCard({
       const target = e.target as Node | null;
       if (!target) return;
       if (cardRef.current?.contains(target)) return;
-      if (target instanceof Element && target.closest('[role="listbox"]')) return;
+      if (
+        target instanceof Element &&
+        target.closest('[role="listbox"], [data-select-panel]')
+      )
+        return;
       clearSelection();
     };
     document.addEventListener("mousedown", onDown);

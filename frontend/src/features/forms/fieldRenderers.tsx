@@ -1,5 +1,5 @@
-import { useId } from "react";
-import { Plus, Star, Trash2 } from "lucide-react";
+import { useId, useState } from "react";
+import { Plus, Search, Star, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,6 +54,38 @@ export function FieldRenderer({
   const labelId = `${id}-label`;
   const describedBy = field.help ? `${id}-help` : undefined;
   const options = field.options ?? [];
+
+  // Long choice lists (>5 options) get an inline search box so respondents
+  // can filter instead of scanning — radio/checkbox groups here; the dropdown
+  // type gets the same behaviour from the Select component itself.
+  const [optQuery, setOptQuery] = useState("");
+  const choiceSearch =
+    (field.type === "single_choice" || field.type === "multi_choice") &&
+    options.length > 5;
+  const q = optQuery.trim().toLowerCase();
+  const visibleOptions =
+    choiceSearch && q
+      ? options.filter((o) => t(o.label).toLowerCase().includes(q))
+      : options;
+  const optionFilter = choiceSearch ? (
+    <label className="relative block">
+      <Search
+        aria-hidden="true"
+        className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+      />
+      <Input
+        value={optQuery}
+        onChange={(e) => setOptQuery(e.target.value)}
+        placeholder={t("Search options…")}
+        aria-label={t(`Search ${field.label}`)}
+        className="h-9 pl-9"
+      />
+    </label>
+  ) : null;
+  const noMatches =
+    choiceSearch && visibleOptions.length === 0 ? (
+      <p className="text-sm text-muted-foreground">{t("No matches.")}</p>
+    ) : null;
 
   // section_text is display-only: render a static block with no control.
   if (field.type === "section_text") {
@@ -115,9 +147,11 @@ export function FieldRenderer({
                 { value: "yes", label: "Yes" },
                 { value: "no", label: "No" },
               ]
-            : options;
+            : visibleOptions;
         return (
           <div role="radiogroup" aria-labelledby={labelId} className="flex flex-col gap-2">
+            {optionFilter}
+            {noMatches}
             {opts.map((o) => {
               const oid = `${id}-${o.value}`;
               return (
@@ -147,7 +181,14 @@ export function FieldRenderer({
         const arr = asArray(value);
         return (
           <div role="group" aria-labelledby={labelId} className="flex flex-col gap-2">
-            {options.map((o) => {
+            {optionFilter}
+            {choiceSearch && q && arr.length > 0 ? (
+              <p className="font-tabular text-xs text-muted-foreground">
+                {arr.length} {t("selected (kept while you search)")}
+              </p>
+            ) : null}
+            {noMatches}
+            {visibleOptions.map((o) => {
               const oid = `${id}-${o.value}`;
               const checked = arr.includes(String(o.value));
               return (
