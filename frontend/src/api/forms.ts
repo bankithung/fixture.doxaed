@@ -33,6 +33,9 @@ export interface PublicFormPayload {
   /** Team forms: each repeatable team group + its team-name child field, for
    * inline duplicate-name validation while typing. */
   team_groups?: { group: string; field: string }[];
+  /** True when an authenticated manager loaded the form — the access-code
+   * gate is skipped (admin entry path). */
+  can_manage?: boolean;
 }
 
 export interface CopyableItem {

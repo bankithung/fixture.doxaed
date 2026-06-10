@@ -172,10 +172,12 @@ export function PublicFormPage(): React.ReactElement {
     return instField.options?.find((o) => String(o.value) === v) ?? null;
   }, [instField, answers]);
   // Bound links lock the institution and are their own secret — no code.
+  // An authenticated manager (admin "Add team" path) is never asked either.
   const needsCode =
     !!selectedInstOption?.requires_code &&
     !!instField &&
-    !lockedSet.has(instField.key);
+    !lockedSet.has(instField.key) &&
+    !data?.can_manage;
 
   const selectedInstValue = selectedInstOption?.value;
   useEffect(() => {
@@ -558,6 +560,18 @@ export function PublicFormPage(): React.ReactElement {
           </a>
         </div>
 
+        {/* Admin entry path: organizer filling the form — no access code. */}
+        {data?.can_manage ? (
+          <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+            <ShieldCheck aria-hidden="true" className="h-4 w-4 text-primary" />
+            <span>
+              {t(
+                "You're signed in as an organizer — add or replace any school's teams without a code.",
+              )}
+            </span>
+          </div>
+        ) : null}
+
         {/* Bound per-institution link: show who they're registering as. */}
         {boundLabel ? (
           <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
@@ -592,7 +606,15 @@ export function PublicFormPage(): React.ReactElement {
               ) : null}
             </div>
 
-            {renderGrouped(current.fields)}
+            {/* Until the access code is verified, the ONLY things on screen
+                are the school picker and the code panel — no prefilled
+                contacts, sports or categories leak to someone without the
+                code. */}
+            {renderGrouped(
+              codeGateOpen(current)
+                ? current.fields.filter((f) => f.key === instField?.key)
+                : current.fields,
+            )}
 
             {/* School access code — required before this school's teams can
                 be registered or edited (sent to the school's contact email

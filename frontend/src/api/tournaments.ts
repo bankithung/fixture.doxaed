@@ -269,14 +269,18 @@ export const tournamentsApi = {
     api.get<TournamentAuditResponse>(`/api/tournaments/${id}/audit/`),
   /** Registered teams for a tournament. */
   teams: (id: string) => api.get<TeamRow[]>(`/api/tournaments/${id}/teams/`),
-  /** (Re)email team-registration access codes (manager-only). */
-  issueTeamCodes: (id: string, force = false) =>
+  /** (Re)email team-registration access codes (manager-only). Pass
+   *  `institution_ids` to send/resend to specific schools only. */
+  issueTeamCodes: (
+    id: string,
+    opts: { force?: boolean; institution_ids?: string[] } = {},
+  ) =>
     api.post<{
       sent: number;
       no_email: number;
       skipped: number;
       no_email_institutions: { id: string; name: string }[];
-    }>(`/api/tournaments/${id}/team-codes/`, { force }),
+    }>(`/api/tournaments/${id}/team-codes/`, opts),
   /** All matches (the generated fixture). */
   matches: (id: string) => api.get<MatchRow[]>(`/api/tournaments/${id}/matches/`),
   /** Standings grouped by pool. */

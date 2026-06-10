@@ -44,16 +44,22 @@ def generate_code() -> str:
 
 
 def issue_team_access_codes(
-    *, tournament, form, only_missing: bool = True, request=None, actor=None,
+    *, tournament, form, only_missing: bool = True, institution_ids=None,
+    request=None, actor=None,
 ) -> dict:
-    """Generate + email an access code to every active institution contact.
+    """Generate + email an access code to active institution contacts.
 
     ``only_missing`` skips institutions that already hold a code (so a re-run
     after late registrations never invalidates codes already in inboxes);
-    pass False to rotate everyone. Returns counts for the admin UI."""
+    pass False to rotate. ``institution_ids`` (optional) restricts to a chosen
+    set AND forces a fresh code for each (an explicit per-school send/resend).
+    Returns counts for the admin UI."""
     qs = Institution.objects.filter(
         tournament=tournament, deleted_at__isnull=True
     ).exclude(status__in=["withdrawn", "rejected"])
+    if institution_ids:
+        qs = qs.filter(id__in=list(institution_ids))
+        only_missing = False  # an explicit pick always (re)issues
     sent, no_email, skipped = 0, 0, 0
     no_email_institutions: list[dict] = []
     base = getattr(django_settings, "PUBLIC_BASE_URL", "https://fixture.doxaed.com")

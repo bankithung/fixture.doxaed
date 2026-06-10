@@ -11,6 +11,8 @@ export interface Institution {
   contact_phone: string;
   status: string;
   team_count: number;
+  /** True once a team-registration access code has been issued to this school. */
+  has_team_code?: boolean;
   /** The registration-form answers that created this row (empty for direct add). */
   answers: Record<string, unknown>;
   /** The competitions (labelled category leaves) the institution entered. */

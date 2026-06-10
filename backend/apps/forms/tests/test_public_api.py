@@ -454,8 +454,13 @@ def test_team_access_verify_lockout_and_token(mailoutbox):
     cache.clear()
     ok = APIClient().post(url, {"institution_id": str(inst.id), "code": code}, format="json")
     assert ok.status_code == 200
-    assert ok.json()["access_token"]
-    assert ok.json()["editing"] is False and ok.json()["prefill"] is None
+    body = ok.json()
+    assert body["access_token"]
+    # First verification (no prior team submission): not editing, but the
+    # school's Stage-1 contact details prefill so they aren't re-typed.
+    assert body["editing"] is False
+    assert body["prefill"]["contact_name"] == "Fr. K"
+    assert body["prefill"]["contact_phone"] == "9876543210"
 
 
 def test_team_submit_requires_code_and_resubmit_supersedes(mailoutbox):

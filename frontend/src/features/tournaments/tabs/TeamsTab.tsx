@@ -51,30 +51,50 @@ export function TeamsTab(): React.ReactElement {
   // Access-codes dialog (Stage-2 security): send/re-send emailed codes and
   // recover schools without an email (manual entry or a temporary edit link).
   const [codesOpen, setCodesOpen] = useState(false);
-  const [codesResult, setCodesResult] = useState<{
-    sent: number;
-    skipped: number;
-    no_email: number;
-    no_email_institutions: { id: string; name: string }[];
-  } | null>(null);
   const [emailDrafts, setEmailDrafts] = useState<Record<string, string>>({});
 
-  const issueCodes = useMutation({
-    mutationFn: () => tournamentsApi.issueTeamCodes(id),
-    onSuccess: (r) => setCodesResult(r),
+  const refreshAfterCodes = (): void => {
+    qc.invalidateQueries({ queryKey: ["t-institutions", id] });
+  };
+  // Send to ALL schools still missing a code.
+  const issueAllCodes = useMutation({
+    mutationFn: () => tournamentsApi.issueTeamCodes(id, {}),
+    onSuccess: (r) => {
+      refreshAfterCodes();
+      toast.push({
+        kind: "success",
+        title:
+          r.sent > 0
+            ? t("Codes emailed")
+            : t("Every school with an email already has a code"),
+        description: `${r.sent} ${t("sent")} · ${r.no_email} ${t("without an email")}`,
+      });
+    },
     onError: () =>
       toast.push({ kind: "error", title: t("Could not send access codes") }),
+  });
+  // Send / resend to ONE chosen school (force-rotates that school's code).
+  const issueOneCode = useMutation({
+    mutationFn: (instId: string) =>
+      tournamentsApi.issueTeamCodes(id, { institution_ids: [instId] }),
+    onSuccess: (r) => {
+      refreshAfterCodes();
+      toast.push({
+        kind: r.no_email > 0 ? "error" : "success",
+        title: r.no_email > 0 ? t("No email on file") : t("Code emailed"),
+      });
+    },
+    onError: () => toast.push({ kind: "error", title: t("Could not send the code") }),
   });
   const saveEmailAndSend = useMutation({
     mutationFn: async (instId: string) => {
       await institutionsApi.update(id, instId, {
         contact_email: (emailDrafts[instId] ?? "").trim(),
       });
-      return tournamentsApi.issueTeamCodes(id);
+      return tournamentsApi.issueTeamCodes(id, { institution_ids: [instId] });
     },
-    onSuccess: (r) => {
-      setCodesResult(r);
-      qc.invalidateQueries({ queryKey: ["t-institutions", id] });
+    onSuccess: () => {
+      refreshAfterCodes();
       toast.push({ kind: "success", title: t("Code emailed") });
     },
     onError: () =>
@@ -207,9 +227,19 @@ export function TeamsTab(): React.ReactElement {
             )}
             <Button
               disabled={(institutions.data?.length ?? 0) === 0}
+              title={
+                (institutions.data?.length ?? 0) === 0
+                  ? t("Register an institution first")
+                  : undefined
+              }
               onClick={() => {
-                setInstitutionId(institutions.data?.[0]?.id ?? "");
-                setOpen(true);
+                // The team form IS the proper add page (full competition +
+                // roster). An organizer opens it signed in → no access code.
+                if (teamForm) navigate(routes.publicForm(teamForm.id));
+                else {
+                  setInstitutionId(institutions.data?.[0]?.id ?? "");
+                  setOpen(true);
+                }
               }}
             >
               <Plus aria-hidden="true" className="h-4 w-4" />
@@ -239,8 +269,8 @@ export function TeamsTab(): React.ReactElement {
         <TeamsTable grouped={grouped} />
       )}
 
-      {/* Access codes — send the emailed codes; surface schools without an
-          email so the admin can fix them on the spot. */}
+      {/* Access codes — a per-school list: send to all at once, or send /
+          resend to one; schools without an email get inline recovery. */}
       <Dialog
         open={codesOpen}
         onOpenChange={(o) => {
@@ -252,82 +282,91 @@ export function TeamsTab(): React.ReactElement {
           <DialogTitle>{t("Team access codes")}</DialogTitle>
           <DialogDescription>
             {t(
-              "Each registered school gets an emailed code; only the code-holder can add or edit that school's teams. Schools that already have a code are never re-sent.",
+              "Each school needs its emailed code before it can register or edit teams. Send to everyone at once, or to one school at a time.",
             )}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">
-          {codesResult === null ? (
-            <Button
-              disabled={issueCodes.isPending}
-              onClick={() => issueCodes.mutate()}
-            >
-              {issueCodes.isPending ? t("Sending…") : t("Email codes to all schools")}
-            </Button>
-          ) : (
-            <>
-              <p className="font-tabular text-sm text-muted-foreground">
-                {codesResult.sent} {t("sent")} · {codesResult.skipped}{" "}
-                {t("already had a code")} · {codesResult.no_email}{" "}
-                {t("without an email")}
-              </p>
-              {codesResult.no_email_institutions.length > 0 ? (
-                <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/20 p-3">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {t(
-                      "These schools have no contact email. Add one and send the code, or copy a temporary link (single-use, 7 days) they can use to fix their own details:",
-                    )}
-                  </p>
-                  {codesResult.no_email_institutions.map((inst) => (
-                    <div key={inst.id} className="flex flex-col gap-1.5">
-                      <span className="text-sm font-medium">{inst.name}</span>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Input
-                          type="email"
-                          value={emailDrafts[inst.id] ?? ""}
-                          onChange={(e) =>
-                            setEmailDrafts((d) => ({ ...d, [inst.id]: e.target.value }))
-                          }
-                          placeholder={t("contact@school.example")}
-                          className="h-9 max-w-[16rem]"
-                          aria-label={t(`Email for ${inst.name}`)}
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={
-                            saveEmailAndSend.isPending ||
-                            !(emailDrafts[inst.id] ?? "").includes("@")
-                          }
-                          onClick={() => saveEmailAndSend.mutate(inst.id)}
-                        >
-                          {t("Save & send code")}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={copyEditLink.isPending}
-                          onClick={() => copyEditLink.mutate(inst.id)}
-                        >
-                          <Link2 aria-hidden="true" className="h-3.5 w-3.5" />
-                          {t("Copy temp link")}
-                        </Button>
-                      </div>
+          <Button
+            disabled={issueAllCodes.isPending}
+            onClick={() => issueAllCodes.mutate()}
+          >
+            <KeyRound aria-hidden="true" className="h-4 w-4" />
+            {issueAllCodes.isPending
+              ? t("Sending…")
+              : t("Email codes to all schools without one")}
+          </Button>
+          <ul className="flex max-h-[22rem] flex-col divide-y divide-border overflow-y-auto rounded-lg border border-border">
+            {(institutions.data ?? []).map((inst) => {
+              const hasEmail = (inst.contact_email ?? "").includes("@");
+              return (
+                <li key={inst.id} className="flex flex-col gap-1.5 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="block truncate text-sm font-medium">
+                        {inst.name}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {inst.has_team_code
+                          ? t("Code sent")
+                          : hasEmail
+                            ? t("No code yet")
+                            : t("No contact email")}
+                        {hasEmail ? ` · ${inst.contact_email}` : ""}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              ) : null}
-            </>
-          )}
+                    {hasEmail ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={issueOneCode.isPending}
+                        onClick={() => issueOneCode.mutate(inst.id)}
+                      >
+                        {inst.has_team_code ? t("Resend") : t("Send code")}
+                      </Button>
+                    ) : null}
+                  </div>
+                  {!hasEmail ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Input
+                        type="email"
+                        value={emailDrafts[inst.id] ?? ""}
+                        onChange={(e) =>
+                          setEmailDrafts((d) => ({ ...d, [inst.id]: e.target.value }))
+                        }
+                        placeholder={t("contact@school.example")}
+                        className="h-9 max-w-[15rem]"
+                        aria-label={t(`Email for ${inst.name}`)}
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={
+                          saveEmailAndSend.isPending ||
+                          !(emailDrafts[inst.id] ?? "").includes("@")
+                        }
+                        onClick={() => saveEmailAndSend.mutate(inst.id)}
+                      >
+                        {t("Save & send")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={copyEditLink.isPending}
+                        onClick={() => copyEditLink.mutate(inst.id)}
+                      >
+                        <Link2 aria-hidden="true" className="h-3.5 w-3.5" />
+                        {t("Temp link")}
+                      </Button>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
         </div>
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setCodesOpen(false);
-              setCodesResult(null);
-            }}
-          >
+          <Button variant="outline" onClick={() => setCodesOpen(false)}>
             {t("Close")}
           </Button>
         </DialogFooter>

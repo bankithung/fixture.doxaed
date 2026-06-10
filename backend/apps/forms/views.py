@@ -375,20 +375,34 @@ class TeamAccessView(GenericAPIView):
         if not ok:
             # Same 403 body shape for both cases; `locked` lets the UI explain.
             return Response({"detail": err}, status=403)
-        # Latest previous submission for this institution → prefill for editing.
-        iid_key = (form.settings or {}).get("bindings", {}).get(
-            "institution_id", "institution_id"
-        )
+        # Prefill, revealed only AFTER the code verifies:
+        #  - the institution's Stage-1 contact details (so even a FIRST team
+        #    registration arrives with contact person/email/phone filled), then
+        #  - the school's most recent team submission overlaid on top (editing).
+        bindings = (form.settings or {}).get("bindings", {})
+        iid_key = bindings.get("institution_id", "institution_id")
+        prefill: dict = {iid_key: str(inst.id)}
+        for role, attr in (
+            ("contact_name", "contact_name"),
+            ("contact_email", "contact_email"),
+            ("contact_phone", "contact_phone"),
+        ):
+            key = bindings.get(role, role)
+            val = getattr(inst, attr, "")
+            if val:
+                prefill[key] = val
         prior = (
             FormResponse.objects.filter(form=form, **{f"answers__{iid_key}": str(inst.id)})
             .order_by("-created_at")
             .first()
         )
+        if prior is not None:
+            prefill = {**prefill, **(prior.answers or {})}
         return Response({
             "access_token": make_access_token(inst, form),
             "expires_in": 2 * 60 * 60,
             "editing": prior is not None,
-            "prefill": prior.answers if prior is not None else None,
+            "prefill": prefill,
         })
 
 
@@ -432,7 +446,15 @@ class PublicFormView(GenericAPIView):
                 # the form closes — surface it so a closed link isn't a dead end.
                 "has_directory": form.purpose == FormPurpose.ORGANIZATION_REGISTRATION,
             })
-        return Response(_public_payload(form, link))
+        payload = _public_payload(form, link)
+        # An authenticated manager loading the form is an admin entry path:
+        # the renderer skips the access-code gate (no credentials for the
+        # organizer's own tournament).
+        payload["can_manage"] = bool(
+            request.user.is_authenticated
+            and can_access_module(request.user, form.tournament, "forms")
+        )
+        return Response(payload)
 
     def post(self, request, form_id=None, token=None):
         form, link = self._resolve(form_id, token)
@@ -482,7 +504,13 @@ class PublicFormView(GenericAPIView):
                     ).first()
             except (ValueError, DjangoValidationError):
                 inst = None
-            if inst is not None and inst.team_code_hash:
+            # An authenticated tournament MANAGER needs no code — they own the
+            # tournament and use the same form as a "proper" admin entry page.
+            manager = (
+                request.user.is_authenticated
+                and can_access_module(request.user, form.tournament, "forms")
+            )
+            if inst is not None and inst.team_code_hash and not manager:
                 # An institution holding an access code is PROTECTED: only a
                 # valid signed token (from /team-access/) — or a per-
                 # institution bound link, which is its own secret — may
@@ -501,6 +529,10 @@ class PublicFormView(GenericAPIView):
                         or payload.get("f") != str(form.id)
                     ):
                         raise DRFValidationError({"detail": "team_access_required"})
+                authorized_inst_id = str(inst.id)
+            elif inst is not None and manager:
+                # A manager's full-form submission for a school REPLACES that
+                # school's set (same authoritative semantics as the code path).
                 authorized_inst_id = str(inst.id)
             errs = team_registration_field_errors(
                 form, answers, exclude_institution_id=authorized_inst_id

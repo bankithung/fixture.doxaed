@@ -229,6 +229,9 @@ def _institution_dict(
         "contact_phone": i.contact_phone,
         "status": i.status,
         "team_count": getattr(i, "team_count", 0),
+        # Whether a team-registration access code has been issued/emailed to
+        # this school (the admin's per-school send/resend UI keys off this).
+        "has_team_code": bool(i.team_code_hash),
         # The registration-form answers that created this row (for the admin's
         # flexible table columns + filters). Empty for direct admin-added rows.
         "answers": answers or {},
@@ -388,6 +391,7 @@ class TeamAccessCodesView(GenericAPIView):
         out = issue_team_access_codes(
             tournament=t, form=form,
             only_missing=not bool(request.data.get("force")),
+            institution_ids=request.data.get("institution_ids") or None,
             request=request, actor=request.user,
         )
         return Response(out)

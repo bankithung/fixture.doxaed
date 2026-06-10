@@ -49,6 +49,8 @@ export const routes = {
     `/o/${encodeURIComponent(slug)}/tournaments/${encodeURIComponent(id)}`,
   /** Public school self-registration via a shared link. */
   register: (token: string) => `/register/${encodeURIComponent(token)}`,
+  /** The standalone public form renderer (org/team registration). */
+  publicForm: (formId: string) => `/f/${encodeURIComponent(formId)}`,
   /** Tournament workspace — Overview tab (index of the tabbed workspace). */
   tournamentDetail: (id: string) => `/tournaments/${encodeURIComponent(id)}`,
   /** Workspace tabs (dedicated pages). */

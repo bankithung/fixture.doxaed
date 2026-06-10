@@ -403,6 +403,11 @@ describe("PublicFormPage", () => {
                 },
               ],
             },
+            {
+              key: "contact_name",
+              type: "short_text",
+              label: "Contact person",
+            },
           ],
         },
         {
@@ -461,8 +466,10 @@ describe("PublicFormPage", () => {
     );
     await userEvent.click(screen.getByRole("option", { name: "Don Bosco" }));
 
-    // The code panel appears; Next is blocked until verified.
+    // The code panel appears; everything else in the section is HIDDEN until
+    // verification (no prefilled details leak), and Next is blocked.
     expect(await screen.findByText("School access code")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/contact person/i)).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /next/i }));
     expect(
       screen.getByText(/enter your school's access code/i),
@@ -474,10 +481,11 @@ describe("PublicFormPage", () => {
       institution_id: "i1",
       code: "K7MWPX2A",
     });
-    // Edit mode confirmed + prior answers prefilled.
+    // Edit mode confirmed + prior answers prefilled + hidden fields return.
     expect(
       await screen.findByText(/editing your school's existing registration/i),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText(/contact person/i)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /next/i }));
     expect(screen.getByLabelText(/team name/i)).toHaveValue("Don Bosco Blue");
