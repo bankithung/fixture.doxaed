@@ -619,6 +619,12 @@ class PublicInstitutionDirectoryView(GenericAPIView):
             }
             for lf in iter_leaves(sports_cfg)
         ]
+        # Headline KPI preference (owner 2026-06-10): the public page defaults
+        # to the total PLUS per-game (top-level sport) registration counts;
+        # admins can reduce it to the total only from the builder's settings.
+        kpi_mode = settings.get("directory_kpis")
+        if kpi_mode not in ("games", "total"):
+            kpi_mode = "games"
         return Response(
             {
                 "tournament_name": form.tournament.name,
@@ -627,6 +633,7 @@ class PublicInstitutionDirectoryView(GenericAPIView):
                 "entries": entries,
                 "competitions": competitions,
                 "count": len(entries),
+                "kpi_mode": kpi_mode,
             }
         )
 

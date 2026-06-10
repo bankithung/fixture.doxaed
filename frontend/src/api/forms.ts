@@ -67,6 +67,8 @@ export interface DirectoryPayload {
   /** Every configured competition with its registration count (W2-E). */
   competitions: DirectoryCompetition[];
   count: number;
+  /** Admin's headline-KPI choice: total + per-game (default) or total only. */
+  kpi_mode?: "games" | "total";
 }
 
 export type FormUpdateBody = Partial<

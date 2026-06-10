@@ -588,6 +588,34 @@ export function PublicDirectoryPage(): React.ReactElement {
     [dir.data],
   );
 
+  // Headline KPIs — distinct institutions registered per MAIN game (top-level
+  // sport, never sub-categories), from ALL entries (filters don't move the
+  // headline). Catalog order; zero-entry games still show.
+  const gameStats = useMemo(() => {
+    const sports = new Map<string, string>();
+    for (const c of dir.data?.competitions ?? []) {
+      const key = c.leaf_key.split(".")[0];
+      if (!sports.has(key)) sports.set(key, c.label.split(" — ")[0]);
+    }
+    const byGame = new Map<string, Set<string>>();
+    for (const e of dir.data?.entries ?? []) {
+      for (const c of e.competitions ?? []) {
+        const key = c.leaf_key.split(".")[0];
+        let set = byGame.get(key);
+        if (!set) {
+          set = new Set();
+          byGame.set(key, set);
+        }
+        set.add(e.name);
+      }
+    }
+    return [...sports].map(([key, label]) => ({
+      key,
+      label,
+      count: byGame.get(key)?.size ?? 0,
+    }));
+  }, [dir.data]);
+
   if (dir.isLoading) {
     return (
       <PublicShell wide>
@@ -709,6 +737,35 @@ export function PublicDirectoryPage(): React.ReactElement {
             </div>
           </div>
         </header>
+
+        {/* Headline KPIs — registrations per MAIN game (admins can switch the
+            directory to total-only from the form builder's settings). */}
+        {(d.kpi_mode ?? "games") === "games" && gameStats.length > 0 ? (
+          <section
+            aria-label={t("Registrations by game")}
+            className="-mt-2 flex flex-wrap gap-2"
+          >
+            {gameStats.map((g) => (
+              <div
+                key={g.key}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 shadow-sm",
+                  g.count === 0 && "opacity-60",
+                )}
+              >
+                <span
+                  className="max-w-[10rem] truncate text-xs text-muted-foreground"
+                  title={g.label}
+                >
+                  {g.label}
+                </span>
+                <span className="font-tabular text-sm font-semibold">
+                  {g.count}
+                </span>
+              </div>
+            ))}
+          </section>
+        ) : null}
 
         {/* Content + the Amazon-style filter rail (right on desktop). */}
         <div className="flex flex-col gap-6 lg:flex-row">

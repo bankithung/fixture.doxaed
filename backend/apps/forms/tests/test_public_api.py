@@ -210,3 +210,22 @@ def test_directory_exposes_competitions_grouping():
     assert comps["football.u15"]["count"] == 1
     assert comps["football.u15"]["label"] == "Football — U15"
     assert comps["badminton"]["count"] == 1
+    # Default headline KPI preference: total + per-game registrations.
+    assert body["kpi_mode"] == "games"
+
+
+def test_directory_kpi_mode_setting_passthrough():
+    """The admin's `settings.directory_kpis` choice reaches the public payload;
+    unknown values fall back to the 'games' default."""
+    t = create_tournament(user=_verified("kpi@test.local"), name="KPI Cup")
+    form = Form.objects.create(
+        organization=t.organization, tournament=t, slug="kpi", title="Reg",
+        schema=SCHEMA, status="open", settings={"directory_kpis": "total"},
+    )
+    body = APIClient().get(f"/api/forms/{form.id}/directory/").json()
+    assert body["kpi_mode"] == "total"
+
+    form.settings = {"directory_kpis": "everything-bagel"}
+    form.save(update_fields=["settings"])
+    body = APIClient().get(f"/api/forms/{form.id}/directory/").json()
+    assert body["kpi_mode"] == "games"

@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
@@ -65,6 +66,12 @@ function SettingsPanel({
   const [title, setTitle] = useState(form.title);
   const [confirmation, setConfirmation] = useState(form.confirmation_message);
   const [closesAt, setClosesAt] = useState(toLocalInput(form.closes_at));
+  // Public-directory headline KPIs (org-registration forms only): default =
+  // total + per-game registrations; admins can reduce to the total only.
+  const hasDirectory = form.purpose === "organization_registration";
+  const [kpiMode, setKpiMode] = useState<string>(
+    form.settings?.directory_kpis === "total" ? "total" : "games",
+  );
 
   const save = useMutation({
     mutationFn: () =>
@@ -72,6 +79,9 @@ function SettingsPanel({
         title: title.trim(),
         confirmation_message: confirmation,
         closes_at: closesAt ? new Date(closesAt).toISOString() : null,
+        ...(hasDirectory
+          ? { settings: { ...(form.settings ?? {}), directory_kpis: kpiMode } }
+          : {}),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["form", form.id] });
@@ -132,6 +142,27 @@ function SettingsPanel({
               placeholder={t("Shown to respondents after they submit")}
             />
           </div>
+          {hasDirectory ? (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="form-kpis">{t("Directory headline stats")}</Label>
+              <Select
+                id="form-kpis"
+                value={kpiMode}
+                onChange={setKpiMode}
+                aria-label={t("Directory headline stats")}
+                options={[
+                  {
+                    value: "games",
+                    label: t("Total + registrations per game (default)"),
+                  },
+                  { value: "total", label: t("Total registrations only") },
+                ]}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("What the public directory shows at the top of the page.")}
+              </p>
+            </div>
+          ) : null}
           <div>
             <Button
               variant="outline"
