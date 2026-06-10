@@ -554,6 +554,9 @@ class PublicInstitutionDirectoryView(GenericAPIView):
         chain_keys = set((settings.get("category_fields") or {}).values())
         for keys in (settings.get("category_fields_all") or {}).values():
             chain_keys.update(keys)
+        # The generated sports selector duplicates the Competitions grouping.
+        if settings.get("sports_field"):
+            chain_keys.add(settings["sports_field"])
         cfields = [
             f for f in cfields
             if f.get("directory") is not False and f.get("key") not in chain_keys

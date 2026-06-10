@@ -488,7 +488,11 @@ def build_institution_form_schema(sports: list[dict]) -> tuple[dict, dict]:
         # category-less sport looks like "nothing happened" (owner 2026-06-10).
         no_cat = [s["name"] for s in active if not sport_nodes(s)]
         fields: list[dict] = [
+            # directory:False — the public directory's Competitions tree
+            # already groups by sport; a separate sports filter/column/stat
+            # duplicated it (owner 2026-06-10).
             {"key": "sports", "type": "multi_choice", "required": True,
+             "directory": False,
              "label": "Which sport(s) will your school participate in?",
              **(
                  {"help": (

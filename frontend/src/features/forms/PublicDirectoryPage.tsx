@@ -162,6 +162,9 @@ function CompetitionsSection({
 }: {
   groups: SportGroup[];
 }): React.ReactElement {
+  // Compact: one LINE per competition (owner 2026-06-10 — the per-row
+  // "No entries yet." cards made 21 empty competitions a wall of noise);
+  // institution chips appear only once a competition has entries.
   return (
     <section
       aria-label={t("Entries by competition")}
@@ -173,18 +176,28 @@ function CompetitionsSection({
           className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4 shadow-sm"
         >
           <h3 className="text-sm font-semibold">{g.sport}</h3>
-          <ul className="mt-1 flex flex-col divide-y divide-border">
+          <ul className="mt-1 flex flex-col divide-y divide-border/60">
             {g.rows.map((r) => (
-              <li key={r.leafKey} className="flex flex-col gap-1.5 py-2.5">
+              <li key={r.leafKey} className="flex flex-col gap-1 py-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-sm" title={r.label}>
+                  <span
+                    className={cn(
+                      "min-w-0 truncate text-sm",
+                      r.institutions.length === 0 && "text-muted-foreground",
+                    )}
+                    title={r.label}
+                  >
                     {r.label}
                   </span>
-                  <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-tabular text-xs font-medium">
-                    {r.institutions.length}{" "}
-                    {r.institutions.length === 1
-                      ? t("institution")
-                      : t("institutions")}
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-md px-1.5 py-0.5 font-tabular text-xs font-medium",
+                      r.institutions.length > 0
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted text-muted-foreground/60",
+                    )}
+                  >
+                    {r.institutions.length}
                   </span>
                 </div>
                 {r.institutions.length > 0 ? (
@@ -198,17 +211,111 @@ function CompetitionsSection({
                       </span>
                     ))}
                   </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground/70">
-                    {t("No entries yet.")}
-                  </p>
-                )}
+                ) : null}
               </li>
             ))}
           </ul>
         </div>
       ))}
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Filter rail (W2) — Amazon-style side rail with a HIERARCHICAL competition
+// tree (sport → category → sub-category, checkbox per level) instead of one
+// flat dropdown stacking 100 options.
+// ---------------------------------------------------------------------------
+interface CompNode {
+  key: string;
+  label: string;
+  count: number;
+  children: CompNode[];
+}
+
+function buildCompTree(
+  comps: { leaf_key: string; label: string; count: number }[],
+): CompNode[] {
+  const roots: CompNode[] = [];
+  const index = new Map<string, CompNode>();
+  for (const c of comps) {
+    const segs = c.leaf_key.split(".");
+    const labels = c.label.split(" — ");
+    let path = "";
+    let siblings = roots;
+    for (let i = 0; i < segs.length; i += 1) {
+      path = path ? `${path}.${segs[i]}` : segs[i];
+      let node = index.get(path);
+      if (!node) {
+        node = {
+          key: path,
+          label: labels[Math.min(i, labels.length - 1)] ?? segs[i],
+          count: 0,
+          children: [],
+        };
+        index.set(path, node);
+        siblings.push(node);
+      }
+      node.count += c.count;
+      siblings = node.children;
+    }
+  }
+  return roots;
+}
+
+/** True when an entry has any competition at or under the prefix. */
+function entryMatchesPrefix(e: DirectoryEntry, prefix: string): boolean {
+  return (e.competitions ?? []).some(
+    (c) => c.leaf_key === prefix || c.leaf_key.startsWith(`${prefix}.`),
+  );
+}
+
+function CompTreeRow({
+  node,
+  depth,
+  selected,
+  onToggle,
+}: {
+  node: CompNode;
+  depth: number;
+  selected: Set<string>;
+  onToggle: (key: string, on: boolean) => void;
+}): React.ReactElement {
+  return (
+    <>
+      <label
+        className="flex cursor-pointer items-center gap-2 py-0.5 text-sm"
+        style={{ paddingLeft: depth * 14 }}
+      >
+        <input
+          type="checkbox"
+          checked={selected.has(node.key)}
+          onChange={(e) => onToggle(node.key, e.target.checked)}
+          className="h-3.5 w-3.5 accent-[hsl(var(--primary))]"
+        />
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate",
+            depth === 0 ? "font-medium" : "text-muted-foreground",
+          )}
+          title={node.label}
+        >
+          {node.label}
+        </span>
+        <span className="shrink-0 font-tabular text-xs text-muted-foreground/70">
+          {node.count}
+        </span>
+      </label>
+      {node.children.map((c) => (
+        <CompTreeRow
+          key={c.key}
+          node={c}
+          depth={depth + 1}
+          selected={selected}
+          onToggle={onToggle}
+        />
+      ))}
+    </>
   );
 }
 
@@ -242,9 +349,10 @@ function Cell({
 export function PublicDirectoryPage(): React.ReactElement {
   const { formId = "" } = useParams();
   const [filters, setFilters] = useState<Record<string, string>>({});
-  // Built-in Competition filter (W2): ONE dropdown over the structural
-  // entries — replaces the per-chain-question filter wall.
-  const [competitionFilter, setCompetitionFilter] = useState("");
+  // Hierarchical competition selection (W2): a set of selected tree
+  // prefixes — picking "Sepak Takraw" matches everything under it, picking
+  // "u-17 — male" matches only that branch. Union across selections.
+  const [compSel, setCompSel] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   // What the viewer wants to see: competitions, the breakdown, the list, or both.
   const [view, setView] = useState<"both" | "competitions" | "stats" | "table">(
@@ -267,13 +375,11 @@ export function PublicDirectoryPage(): React.ReactElement {
         (!q ||
           e.name.toLowerCase().includes(q) ||
           (e.region ?? "").toLowerCase().includes(q)) &&
-        (!competitionFilter ||
-          (e.competitions ?? []).some(
-            (c) => c.leaf_key === competitionFilter,
-          )) &&
+        (compSel.size === 0 ||
+          [...compSel].some((p) => entryMatchesPrefix(e, p))) &&
         Object.entries(filters).every(([k, v]) => matches(e, k, v)),
     );
-  }, [dir.data, filters, search, competitionFilter]);
+  }, [dir.data, filters, search, compSel]);
 
   useEffect(() => {
     const name = dir.data?.tournament_name;
@@ -286,6 +392,10 @@ export function PublicDirectoryPage(): React.ReactElement {
   );
   const sportGroups = useMemo(
     () => groupBySport(dir.data?.competitions ?? [], dir.data?.entries ?? []),
+    [dir.data],
+  );
+  const compTree = useMemo(
+    () => buildCompTree(dir.data?.competitions ?? []),
     [dir.data],
   );
 
@@ -333,15 +443,28 @@ export function PublicDirectoryPage(): React.ReactElement {
     map: new Map(f.options.map((o) => [o.value, o.label])),
   }));
   const total = d.entries.length;
+  // Region/Type are fixed institution attributes, not form questions — only
+  // show their columns when the data actually carries them (owner
+  // 2026-06-10: a permanently empty Region column confused readers).
+  const showRegion = d.entries.some((e) => (e.region ?? "").trim() !== "");
+  const showType =
+    new Set(d.entries.map((e) => e.kind).filter(Boolean)).size > 1;
   const hasFilters =
     search.trim() !== "" ||
-    competitionFilter !== "" ||
+    compSel.size > 0 ||
     Object.values(filters).some(Boolean);
   const clearFilters = (): void => {
     setSearch("");
-    setCompetitionFilter("");
+    setCompSel(new Set());
     setFilters({});
   };
+  const toggleComp = (key: string, on: boolean): void =>
+    setCompSel((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(key);
+      else next.delete(key);
+      return next;
+    });
 
   return (
     <PublicShell tournamentName={d.tournament_name}>
@@ -373,6 +496,10 @@ export function PublicDirectoryPage(): React.ReactElement {
             </div>
           </div>
         </header>
+
+        {/* Content + the Amazon-style filter rail (right on desktop). */}
+        <div className="flex flex-col gap-6 lg:flex-row">
+        <div className="flex min-w-0 flex-1 flex-col gap-6">
 
         {/* View toggle — competitions, the breakdown, the list, or both. */}
         {stats.length > 0 || sportGroups.length > 0 ? (
@@ -413,8 +540,9 @@ export function PublicDirectoryPage(): React.ReactElement {
           <CompetitionsSection groups={sportGroups} />
         ) : null}
 
-        {/* Dynamic stats — one distribution card per form dimension. */}
-        {(view === "both" || view === "stats") && stats.length > 0 ? (
+        {/* Dynamic stats — one distribution card per form dimension. Hidden
+            until anyone has registered (a grid of "0 replied" is noise). */}
+        {(view === "both" || view === "stats") && stats.length > 0 && total > 0 ? (
           <section aria-label={t("Registration breakdown")}>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {stats.map((s) => (
@@ -426,71 +554,6 @@ export function PublicDirectoryPage(): React.ReactElement {
 
         {view === "both" || view === "table" ? (
           <>
-        {/* Filters */}
-        <div className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-3 shadow-sm">
-          <label className="relative min-w-[12rem] flex-1 sm:max-w-sm">
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("Search by name or region…")}
-              className="h-9 pl-9"
-              aria-label={t("Search")}
-            />
-          </label>
-          {(d.competitions ?? []).length > 0 ? (
-            <label className="flex w-56 min-w-0 flex-col gap-1">
-              <span className="truncate text-[0.6875rem] font-medium text-muted-foreground">
-                {t("Competition")}
-              </span>
-              <Select
-                size="sm"
-                value={competitionFilter}
-                onChange={setCompetitionFilter}
-                options={[
-                  { value: "", label: t("All competitions") },
-                  ...d.competitions.map((c) => ({
-                    value: c.leaf_key,
-                    label: c.label,
-                  })),
-                ]}
-                aria-label={t("Competition")}
-              />
-            </label>
-          ) : null}
-          {d.filters.map((f) => (
-            <label key={f.key} className="flex w-44 min-w-0 flex-col gap-1">
-              <span
-                className="truncate text-[0.6875rem] font-medium text-muted-foreground"
-                title={f.label}
-              >
-                {f.label}
-              </span>
-              <Select
-                size="sm"
-                value={filters[f.key] ?? ""}
-                onChange={(v) => setFilters((s) => ({ ...s, [f.key]: v }))}
-                options={[{ value: "", label: t("All") }, ...f.options]}
-                aria-label={f.label}
-              />
-            </label>
-          ))}
-          {hasFilters ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearFilters}
-              className="h-9 shrink-0"
-            >
-              <X aria-hidden="true" className="h-4 w-4" />
-              {t("Clear")}
-            </Button>
-          ) : null}
-        </div>
-
         {/* Results */}
         {hasFilters ? (
           <p className="-mb-2 font-tabular text-xs text-muted-foreground">
@@ -520,12 +583,16 @@ export function PublicDirectoryPage(): React.ReactElement {
                   <th className="sticky left-0 top-0 z-30 border-b border-border bg-muted px-4 py-2.5 font-medium">
                     {t("Institution")}
                   </th>
-                  <th className="sticky top-0 z-20 border-b border-border bg-muted px-3 py-2.5 font-medium">
-                    {t("Type")}
-                  </th>
-                  <th className="sticky top-0 z-20 border-b border-border bg-muted px-3 py-2.5 font-medium">
-                    {t("Region")}
-                  </th>
+                  {showType ? (
+                    <th className="sticky top-0 z-20 border-b border-border bg-muted px-3 py-2.5 font-medium">
+                      {t("Type")}
+                    </th>
+                  ) : null}
+                  {showRegion ? (
+                    <th className="sticky top-0 z-20 border-b border-border bg-muted px-3 py-2.5 font-medium">
+                      {t("Region")}
+                    </th>
+                  ) : null}
                   <th className="sticky top-0 z-20 border-b border-border bg-muted px-3 py-2.5 font-medium">
                     {t("Competitions")}
                   </th>
@@ -549,12 +616,16 @@ export function PublicDirectoryPage(): React.ReactElement {
                     >
                       <span className="block max-w-[14rem] truncate">{e.name}</span>
                     </td>
-                    <td className="border-b border-border px-3 py-2.5 align-top capitalize text-muted-foreground group-hover:bg-accent/40">
-                      {t(e.kind)}
-                    </td>
-                    <td className="border-b border-border px-3 py-2.5 align-top text-muted-foreground group-hover:bg-accent/40">
-                      {e.region || "—"}
-                    </td>
+                    {showType ? (
+                      <td className="border-b border-border px-3 py-2.5 align-top capitalize text-muted-foreground group-hover:bg-accent/40">
+                        {t(e.kind)}
+                      </td>
+                    ) : null}
+                    {showRegion ? (
+                      <td className="border-b border-border px-3 py-2.5 align-top text-muted-foreground group-hover:bg-accent/40">
+                        {e.region || "—"}
+                      </td>
+                    ) : null}
                     <td className="border-b border-border px-3 py-2.5 align-top group-hover:bg-accent/40">
                       {(e.competitions ?? []).length ? (
                         <div className="flex max-w-[20rem] flex-wrap gap-1">
@@ -594,6 +665,85 @@ export function PublicDirectoryPage(): React.ReactElement {
         )}
           </>
         ) : null}
+        </div>
+
+        {/* Filter rail — right on desktop, above on mobile (W2: hierarchical
+            competition tree replaces both the flat dropdown and the wall of
+            per-question filters). */}
+        <aside
+          aria-label={t("Filters")}
+          className="flex w-full shrink-0 flex-col gap-4 lg:order-last lg:w-72"
+        >
+          <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">{t("Filters")}</h2>
+              {hasFilters ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="h-7 px-2"
+                >
+                  <X aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t("Clear")}
+                </Button>
+              ) : null}
+            </div>
+
+            <label className="relative block">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t("Search name or region…")}
+                className="h-9 pl-9"
+                aria-label={t("Search")}
+              />
+            </label>
+
+            {compTree.length > 0 ? (
+              <fieldset className="flex flex-col gap-0.5 border-t border-border pt-3">
+                <legend className="mb-1.5 text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  {t("Competitions")}
+                </legend>
+                {compTree.map((n) => (
+                  <CompTreeRow
+                    key={n.key}
+                    node={n}
+                    depth={0}
+                    selected={compSel}
+                    onToggle={toggleComp}
+                  />
+                ))}
+              </fieldset>
+            ) : null}
+
+            {d.filters.map((f) => (
+              <label
+                key={f.key}
+                className="flex flex-col gap-1 border-t border-border pt-3"
+              >
+                <span
+                  className="truncate text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+                  title={f.label}
+                >
+                  {f.label}
+                </span>
+                <Select
+                  size="sm"
+                  value={filters[f.key] ?? ""}
+                  onChange={(v) => setFilters((s) => ({ ...s, [f.key]: v }))}
+                  options={[{ value: "", label: t("All") }, ...f.options]}
+                  aria-label={f.label}
+                />
+              </label>
+            ))}
+          </div>
+        </aside>
+        </div>
       </div>
     </PublicShell>
   );
