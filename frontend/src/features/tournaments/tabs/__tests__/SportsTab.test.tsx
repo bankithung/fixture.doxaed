@@ -208,6 +208,11 @@ describe("SportsTab", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /next: set up categories/i }),
     );
+    // The flow now walks every sport, then REVIEWS, then generates (no
+    // jumping straight to the form while sports sit unconfigured).
+    await userEvent.click(
+      await screen.findByRole("button", { name: /review competitions/i }),
+    );
     await userEvent.click(
       await screen.findByTestId("generate-institution-form"),
     );

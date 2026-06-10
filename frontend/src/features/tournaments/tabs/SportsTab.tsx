@@ -514,7 +514,9 @@ export function SportsTab(): React.ReactElement {
   } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   // Two-step sub-flow: pick sports → configure each one (focused, via tabs).
-  const [step, setStep] = useState<"pick" | "configure">("pick");
+  // Three-step sub-flow (owner 2026-06-10): pick sports → configure each
+  // one's categories in turn → REVIEW everything before generating.
+  const [step, setStep] = useState<"pick" | "configure" | "review">("pick");
   const [activeKey, setActiveKey] = useState<string>("");
 
   const catalog = useQuery({
@@ -806,7 +808,9 @@ export function SportsTab(): React.ReactElement {
         <p className="mt-0.5 text-sm text-muted-foreground">
           {effectiveStep === "pick"
             ? t("Pick the sport(s) this tournament runs — you'll set up each one's categories next.")
-            : t("Build each sport's category tree. Every last level is one competition with its own entries and fixtures.")}
+            : effectiveStep === "configure"
+              ? t("Build each sport's category tree. Every last level is one competition with its own entries and fixtures.")
+              : t("Check every sport's competitions — once it all looks right, generate the registration form.")}
         </p>
         <div className="mt-2 flex items-center gap-1.5 text-xs font-medium">
           <span className={stepChip(effectiveStep === "pick")}>
@@ -815,6 +819,10 @@ export function SportsTab(): React.ReactElement {
           <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground/40" />
           <span className={stepChip(effectiveStep === "configure")}>
             2 · {t("Categories")}
+          </span>
+          <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground/40" />
+          <span className={stepChip(effectiveStep === "review")}>
+            3 · {t("Review & generate")}
           </span>
         </div>
       </div>
@@ -964,7 +972,7 @@ export function SportsTab(): React.ReactElement {
             </div>
           ) : null}
         </>
-      ) : (
+      ) : effectiveStep === "configure" ? (
         <>
           <button
             type="button"
@@ -1153,6 +1161,105 @@ export function SportsTab(): React.ReactElement {
               </div>
             </section>
           ) : null}
+
+          {/* Per-sport progression (owner 2026-06-10): walk every sport
+              before anything generates — no skipping straight to the form
+              while other sports sit unconfigured. */}
+          {(() => {
+            const idx = selected.findIndex((s) => s.key === activeSport?.key);
+            const nextSport = idx >= 0 ? selected[idx + 1] : undefined;
+            return (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {nextSport ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setStep("review")}
+                    >
+                      {t("Skip to review")}
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => setActiveKey(nextSport.key)}
+                    >
+                      {t("Next sport")}: {nextSport.name}
+                      <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button type="button" onClick={() => setStep("review")}>
+                    {t("Review competitions")}
+                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            );
+          })()}
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={() => setStep("configure")}
+            className="inline-flex w-fit items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ChevronLeft aria-hidden="true" className="h-3.5 w-3.5" />
+            {t("Back to categories")}
+          </button>
+
+          {/* Review — every sport's competitions, verified before generating. */}
+          <section className="flex flex-col gap-3">
+            {selected.map((s) => {
+              const leaves = leafLabels(s.nodes ?? []);
+              return (
+                <div
+                  key={s.key}
+                  className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4 shadow-sm"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold">
+                      <Trophy aria-hidden="true" className="h-4 w-4 text-primary" />
+                      {s.name}
+                      <span className="font-tabular font-normal text-muted-foreground">
+                        {leaves.length
+                          ? `${leaves.length} ${leaves.length === 1 ? t("competition") : t("competitions")}`
+                          : ""}
+                      </span>
+                    </h3>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setActiveKey(s.key);
+                        setStep("configure");
+                      }}
+                    >
+                      {t("Edit")}
+                    </Button>
+                  </div>
+                  {leaves.length ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {leaves.map((label) => (
+                        <span
+                          key={label}
+                          className="rounded-full bg-muted px-2.5 py-0.5 text-xs"
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+                      {t("No categories — the whole sport runs as ONE open competition. That's fine if intended; otherwise add age groups / formats via Edit.")}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </section>
 
           {/* Generate the form AND move into the institute-registration stage. */}
           <section className="flex flex-col gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">

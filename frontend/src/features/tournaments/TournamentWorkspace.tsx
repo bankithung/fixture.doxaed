@@ -87,10 +87,13 @@ export function TournamentWorkspace(): React.ReactElement {
     .filter((tb) => location.pathname === tb.to || (!tb.end && location.pathname.startsWith(tb.to)))
     .sort((a, b) => b.to.length - a.to.length)[0];
   const activeLocked = activeTab ? isLocked(activeTab.stageKey) : false;
-  // The flow's "Continue" rides under stage WORK pages — Overview has the full
-  // stepper, and Settings/Forms aren't stages.
+  // The flow's "Continue" rides under stage WORK pages — Overview has the
+  // full stepper, Settings/Forms aren't stages, and Sports carries its OWN
+  // staged continue (pick → categories → review → generate), so a second
+  // stage button there competed with the flow (owner 2026-06-10).
   const flowPage =
-    !!activeTab && !["Overview", "Settings", "Forms"].includes(activeTab.label);
+    !!activeTab &&
+    !["Overview", "Settings", "Forms", "Sports"].includes(activeTab.label);
 
   // Setup flow (W2-C): until the tournament is ready, managers work in a
   // focused no-sidebar flow — delete must stay reachable from the top.
