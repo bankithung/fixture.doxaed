@@ -43,7 +43,8 @@ _NVN = re.compile(r"^\s*(\d{1,2})\s*[vV][sS]?\s*(\d{1,2})\s*$")
 AGE_OPS = ("under", "over", "between")
 _AGE_UNDER = re.compile(r"^\s*(?:u\s*-?\s*|under\s+)(\d{1,2})\s*$", re.IGNORECASE)
 _AGE_OVER = re.compile(r"^\s*(?:over\s+)?(\d{1,2})\s*\+\s*$", re.IGNORECASE)
-_AGE_BETWEEN = re.compile(r"^\s*(\d{1,2})\s*[-–]\s*(\d{1,2})\s*$")
+# Accepts a hyphen or en dash between the two ages in typed names.
+_AGE_BETWEEN = re.compile(r"^\s*(\d{1,2})\s*[-–]\s*(\d{1,2})\s*$")  # noqa: RUF001
 
 
 def sport_key(name: str) -> str:
@@ -112,7 +113,7 @@ def _clean_age(raw: Any, name: str) -> dict | None:
 
 
 def age_rule_label(age: dict | None) -> str:
-    """Human label for an age rule: 'under 15', '16+', '12–14' ('' if none)."""
+    """Human label for an age rule: 'under 15', '16+', '12-14' ('' if none)."""
     if not isinstance(age, dict):
         return ""
     if age.get("op") == "under" and age.get("age"):
@@ -120,7 +121,7 @@ def age_rule_label(age: dict | None) -> str:
     if age.get("op") == "over" and age.get("age"):
         return f"{age['age']}+"
     if age.get("op") == "between" and age.get("min") and age.get("max"):
-        return f"{age['min']}–{age['max']}"
+        return f"{age['min']}-{age['max']}"
     return ""
 
 

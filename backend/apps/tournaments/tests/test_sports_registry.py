@@ -284,7 +284,7 @@ def test_age_groups_carry_structured_rules():
     assert leaf_age_rule(sports, "football.open") is None
     assert age_rule_label({"op": "under", "age": 15}) == "under 15"
     assert age_rule_label({"op": "over", "age": 16}) == "16+"
-    assert age_rule_label({"op": "between", "min": 18, "max": 35}) == "18–35"
+    assert age_rule_label({"op": "between", "min": 18, "max": 35}) == "18-35"
 
     # invalid shapes are dropped, never stored as garbage
     bad = normalize_sports([{"name": "F", "nodes": [
