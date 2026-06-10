@@ -37,6 +37,12 @@ export const institutionsApi = {
       `/api/tournaments/${tournamentId}/institutions/${id}/`,
       body,
     ),
+  /** Mint a temporary single-use link for a school to edit its own details. */
+  editLink: (tournamentId: string, institutionId: string) =>
+    api.post<{ path: string; expires_at: string }>(
+      `/api/tournaments/${tournamentId}/institutions/${institutionId}/edit-link/`,
+      {},
+    ),
   /** Admin direct-add of a team under an institution (Stage-2). */
   addTeam: (
     tournamentId: string,

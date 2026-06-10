@@ -25,3 +25,20 @@ class PublicFormThrottle(SimpleRateThrottle):
         if ident is None:
             return None
         return self.cache_format % {"scope": self.scope, "ident": ident}
+
+
+class TeamAccessThrottle(SimpleRateThrottle):
+    """Tighter budget for the access-code exchange — codes are short, so the
+    endpoint gets 15 attempts/hour per IP on top of the per-institution
+    failure lockout in ``apps.teams.services.access``."""
+
+    scope = "team_access"
+    rate = "15/hour"
+
+    def get_cache_key(self, request, view) -> str | None:
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return None
+        ident = self.get_ident(request)
+        if ident is None:
+            return None
+        return self.cache_format % {"scope": self.scope, "ident": ident}

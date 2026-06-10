@@ -354,6 +354,224 @@ def test_team_submit_same_name_across_categories_ok_duplicates_rejected():
     ).count() == 2  # nothing extra slipped in
 
 
+def _team_reg_fixture(email_suffix="access"):
+    """Tournament + mapped institution (with contact email) + OPEN team form."""
+    from apps.forms.services.generation import (
+        generate_institution_form,
+        generate_team_form_template,
+    )
+    from apps.forms.services.mapping import map_response
+    from apps.teams.models import Institution
+    from apps.tournaments.services.sports import normalize_sports
+
+    admin = _verified(f"{email_suffix}@test.local")
+    t = create_tournament(user=admin, name=f"{email_suffix} Cup")
+    t.sports = normalize_sports([
+        {"name": "Football", "nodes": [{"name": "U15"}]},
+    ])
+    t.save(update_fields=["sports"])
+    org = generate_institution_form(tournament=t, created_by=admin)
+    org.status = "open"
+    org.save(update_fields=["status"])
+    resp = FormResponse.objects.create(
+        form=org, organization=t.organization, tournament=t, title="Don Bosco",
+        answers={"school_name": "Don Bosco", "contact_name": "Fr. K",
+                 "contact_email": "school@test.local",
+                 "contact_phone": "9876543210",
+                 "sports": ["football"],
+                 "categories_football": ["football.u15"]},
+    )
+    map_response(resp)
+    inst = Institution.objects.get(tournament=t, name="Don Bosco")
+    team_form = generate_team_form_template(tournament=t, created_by=admin)
+    team_form.status = "open"
+    team_form.save(update_fields=["status"])
+    return admin, t, inst, team_form
+
+
+def _team_answers(inst, name="Don Bosco A", player="P One"):
+    return {
+        "institution_id": str(inst.id),
+        "sports": ["football"],
+        "categories_football": ["football.u15"],
+        "teams_football_u15": [{
+            "team_name_football_u15": name,
+            "players_football_u15": [{"player_name_football_u15": player}],
+        }],
+    }
+
+
+def test_team_access_codes_issue_hash_and_email(mailoutbox):
+    """Issuing codes stores ONLY a password hash (never plaintext) and emails
+    the contact the link + code; re-issue keeps existing codes."""
+    from apps.teams.services.access import issue_team_access_codes
+
+    _admin_user, t, inst, team_form = _team_reg_fixture("issue")
+    out = issue_team_access_codes(tournament=t, form=team_form)
+    assert out == {
+        "sent": 1, "no_email": 0, "skipped": 0, "no_email_institutions": [],
+    }
+    inst.refresh_from_db()
+    # Hashed with the configured Django hasher (Argon2id) — never plaintext.
+    from django.contrib.auth.hashers import identify_hasher
+
+    assert identify_hasher(inst.team_code_hash) is not None
+    assert len(inst.team_code_hash) > 40
+    assert inst.team_code_sent_at is not None
+    assert len(mailoutbox) == 1
+    body = mailoutbox[0].body
+    assert f"/f/{team_form.id}" in body and "access code" in body
+    # The emailed code is 8 chars from the unambiguous alphabet.
+    code_line = [ln.strip() for ln in body.splitlines() if ln.strip().isalnum() and len(ln.strip()) == 8]
+    assert code_line, body
+    # Idempotent re-issue: the code in the inbox stays valid.
+    out2 = issue_team_access_codes(tournament=t, form=team_form)
+    assert out2["skipped"] == 1 and out2["sent"] == 0
+
+
+def test_team_access_verify_lockout_and_token(mailoutbox):
+    """Wrong codes 403 then lock out; the right code returns a signed token
+    and the institution's previous submission for editing."""
+    from apps.teams.services.access import issue_team_access_codes
+
+    _a, t, inst, team_form = _team_reg_fixture("verify")
+    issue_team_access_codes(tournament=t, form=team_form)
+    code = next(
+        ln.strip() for ln in mailoutbox[0].body.splitlines()
+        if ln.strip().isalnum() and len(ln.strip()) == 8
+    )
+
+    url = f"/api/forms/{team_form.id}/team-access/"
+    bad = APIClient().post(url, {"institution_id": str(inst.id), "code": "WRONGCOD"}, format="json")
+    assert bad.status_code == 403 and bad.json()["detail"] == "invalid_code"
+    for _ in range(4):
+        APIClient().post(url, {"institution_id": str(inst.id), "code": "WRONGCOD"}, format="json")
+    locked = APIClient().post(url, {"institution_id": str(inst.id), "code": code}, format="json")
+    assert locked.status_code == 403 and locked.json()["detail"] == "locked"
+
+    # Clear the lockout (cache-backed) and verify the real code.
+    from django.core.cache import cache
+    cache.clear()
+    ok = APIClient().post(url, {"institution_id": str(inst.id), "code": code}, format="json")
+    assert ok.status_code == 200
+    assert ok.json()["access_token"]
+    assert ok.json()["editing"] is False and ok.json()["prefill"] is None
+
+
+def test_team_submit_requires_code_and_resubmit_supersedes(mailoutbox):
+    """With a code issued: submitting without the token is rejected; with the
+    token it succeeds; resubmitting REPLACES the previous teams (no
+    duplicates) and the verify endpoint returns the prior answers."""
+    from django.core.cache import cache
+
+    from apps.teams.models import Team
+    from apps.teams.services.access import issue_team_access_codes
+
+    _a, t, inst, team_form = _team_reg_fixture("edit")
+    issue_team_access_codes(tournament=t, form=team_form)
+    code = next(
+        ln.strip() for ln in mailoutbox[0].body.splitlines()
+        if ln.strip().isalnum() and len(ln.strip()) == 8
+    )
+    submit_url = f"/api/forms/{team_form.id}/public/"
+
+    # No token → rejected (anyone with the link can no longer impersonate).
+    r = APIClient().post(
+        submit_url,
+        {"answers": _team_answers(inst), "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 400 and r.json()["detail"] == "team_access_required"
+
+    cache.clear()  # earlier failed attempts in this test run
+    token = APIClient().post(
+        f"/api/forms/{team_form.id}/team-access/",
+        {"institution_id": str(inst.id), "code": code}, format="json",
+    ).json()["access_token"]
+    r2 = APIClient().post(
+        submit_url,
+        {"answers": _team_answers(inst, name="Don Bosco A"),
+         "event_id": str(uuid.uuid4()), "access_token": token},
+        format="json",
+    )
+    assert r2.status_code == 201, r2.json()
+    assert Team.objects.filter(tournament=t, deleted_at__isnull=True).count() == 1
+
+    # Resubmit with a different roster → previous teams superseded, not stacked.
+    r3 = APIClient().post(
+        submit_url,
+        {"answers": _team_answers(inst, name="Don Bosco Blue", player="P Two"),
+         "event_id": str(uuid.uuid4()), "access_token": token},
+        format="json",
+    )
+    assert r3.status_code == 201, r3.json()
+    live = Team.objects.filter(tournament=t, deleted_at__isnull=True)
+    assert [tm.name for tm in live] == ["Don Bosco Blue"]
+
+    # Verify now offers the latest answers as prefill for editing.
+    cache.clear()
+    v = APIClient().post(
+        f"/api/forms/{team_form.id}/team-access/",
+        {"institution_id": str(inst.id), "code": code}, format="json",
+    ).json()
+    assert v["editing"] is True
+    assert v["prefill"]["teams_football_u15"][0]["team_name_football_u15"] == "Don Bosco Blue"
+
+
+def test_institution_edit_link_prefills_updates_in_place_and_is_single_use():
+    """Admin mints a temporary edit link for a school: it opens the Stage-1
+    form (even after it closed) prefilled with the school's previous answers;
+    submitting UPDATES the same institution (rename included, no duplicate
+    row); the link is spent after one submission."""
+    from apps.teams.models import Institution
+
+    admin, t, inst, _team_form = _team_reg_fixture("editlink")
+    org = Form.objects.get(
+        tournament=t, purpose="organization_registration", deleted_at__isnull=True
+    )
+    org.status = "closed"
+    org.save(update_fields=["status"])
+
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    minted = c.post(
+        f"/api/tournaments/{t.id}/institutions/{inst.id}/edit-link/", {}, format="json"
+    )
+    assert minted.status_code == 201, minted.json()
+    token = minted.json()["path"].split("/r/")[1]
+
+    # The bound link opens the CLOSED form, prefilled with prior answers.
+    g = APIClient().get(f"/api/forms/r/{token}/").json()
+    assert "closed" not in g or not g["closed"]
+    assert g["prefill"]["school_name"] == "Don Bosco"
+
+    answers = {
+        **g["prefill"],
+        "school_name": "Don Bosco HSS",
+        "contact_email": "fixed@school.local",
+    }
+    r = APIClient().post(
+        f"/api/forms/r/{token}/",
+        {"answers": answers, "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 201, r.json()
+    inst.refresh_from_db()
+    assert inst.name == "Don Bosco HSS"
+    assert inst.contact_email == "fixed@school.local"
+    assert Institution.objects.filter(
+        tournament=t, deleted_at__isnull=True
+    ).count() == 1  # updated in place, never duplicated
+
+    # Single-use: a second submission through the same link is refused.
+    r2 = APIClient().post(
+        f"/api/forms/r/{token}/",
+        {"answers": answers, "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r2.status_code == 404
+
+
 def test_directory_kpi_mode_setting_passthrough():
     """The admin's `settings.directory_kpis` choice reaches the public payload;
     unknown values fall back to the 'games' default."""

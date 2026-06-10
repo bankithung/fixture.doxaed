@@ -29,7 +29,58 @@ from apps.teams.services.registration import (
 )
 
 
-def team_registration_field_errors(form, answers: dict) -> dict[str, str]:
+def supersede_team_registration(
+    form, institution_id, *, exclude_response_id=None, request=None
+) -> int:
+    """Soft-delete the teams (and their players) created by this institution's
+    PREVIOUS submissions of ``form`` — the new, code-authorized submission
+    replaces them wholesale. Returns the number of superseded teams."""
+    from django.utils import timezone
+
+    from apps.audit.models import ActorRole
+    from apps.audit.services import emit_audit
+    from apps.teams.models import Player, Team
+
+    iid_key = (form.settings or {}).get("bindings", {}).get(
+        "institution_id", "institution_id"
+    )
+    prior = FormResponse.objects.filter(
+        form=form, **{f"answers__{iid_key}": str(institution_id)}
+    )
+    if exclude_response_id is not None:
+        prior = prior.exclude(id=exclude_response_id)
+    team_ids: set[str] = set()
+    for r in prior:
+        team_ids.update((r.mapped_entities or {}).get("team_ids") or [])
+    if not team_ids:
+        return 0
+    now = timezone.now()
+    Player.objects.filter(team_id__in=team_ids, deleted_at__isnull=True).update(
+        deleted_at=now
+    )
+    n = Team.objects.filter(id__in=team_ids, deleted_at__isnull=True).update(
+        deleted_at=now
+    )
+    emit_audit(
+        actor_user=None,
+        actor_role=ActorRole.SYSTEM,
+        event_type="team_registration_superseded",
+        target_type="tournament",
+        target_id=form.tournament_id,
+        organization_id=form.organization_id,
+        payload_after={
+            "institution_id": str(institution_id),
+            "teams_removed": n,
+            "form_id": str(form.id),
+        },
+        request=request,
+    )
+    return n
+
+
+def team_registration_field_errors(
+    form, answers: dict, *, exclude_institution_id=None
+) -> dict[str, str]:
     """Pre-submit guard for generated team forms: team names must be unique
     within each COMPETITION (mirrors ``unique_team_name_per_competition``),
     checked against both the submission itself and already-registered teams —
@@ -65,16 +116,17 @@ def team_registration_field_errors(form, answers: dict) -> dict[str, str]:
             )
             continue
         if names:
-            taken = (
-                Team.objects.filter(
-                    tournament=form.tournament,
-                    leaf_key=leaf,
-                    name__in=names,
-                    deleted_at__isnull=True,
-                )
-                .values_list("name", flat=True)
-                .first()
+            qs = Team.objects.filter(
+                tournament=form.tournament,
+                leaf_key=leaf,
+                name__in=names,
+                deleted_at__isnull=True,
             )
+            # A code-authorized resubmission REPLACES the institution's own
+            # teams — its previous names must not block the update.
+            if exclude_institution_id is not None:
+                qs = qs.exclude(institution_id=exclude_institution_id)
+            taken = qs.values_list("name", flat=True).first()
             if taken:
                 errors[group_key] = (
                     f'"{taken}" is already registered in this competition — '
@@ -121,36 +173,90 @@ def _map_organization_registration(resp: FormResponse) -> FormResponse:
         "Institution",
     )
     kind = str(a.get(b.get("kind", "kind")) or "school").lower()
-    inst = get_or_create_institution(
-        tournament=form.tournament,
-        name=str(name),
-        kind=kind,
-        source_response_id=resp.id,
+
+    # An admin-minted BOUND link is an explicit edit grant for ONE existing
+    # institution: the resubmission is authoritative for that row (rename,
+    # overwrite contacts, replace competitions) — never a new institution.
+    bound_iid = (
+        (resp.submitted_via.bound_entity or {}).get("institution_id")
+        if resp.submitted_via_id
+        else None
     )
-    if inst is not None:
-        changed = []
-        for field, attr in (
-            ("contact_name", "contact_name"),
-            ("contact_email", "contact_email"),
-            ("contact_phone", "contact_phone"),
-            ("region", "region"),
-        ):
-            val = a.get(b.get(field, field))
-            if val and not getattr(inst, attr):
-                setattr(inst, attr, str(val)[:200])
-                changed.append(attr)
-        # Persist WHICH competitions (category leaves) the institution entered,
-        # as structured data — Stage 2 scoping and dashboards read this instead
-        # of re-parsing raw answers (spec 2026-06-10). Union on re-submission.
-        leaves = _selected_leaves(form.settings or {}, a)
-        if leaves:
-            existing = list((inst.attributes or {}).get("leaves") or [])
-            merged = existing + [lf for lf in leaves if lf not in existing]
-            if merged != existing:
-                inst.attributes = {**(inst.attributes or {}), "leaves": merged}
+    inst = None
+    if bound_iid:
+        from django.db import IntegrityError
+
+        from apps.teams.models import Institution
+
+        inst = Institution.objects.filter(
+            id=bound_iid, tournament=form.tournament, deleted_at__isnull=True
+        ).first()
+        if inst is not None:
+            changed: list[str] = []
+            if name and name != inst.name:
+                inst.name = str(name)[:200]
+                changed.append("name")
+            if kind and kind != inst.kind:
+                inst.kind = kind
+                changed.append("kind")
+            for field, attr in (
+                ("contact_name", "contact_name"),
+                ("contact_email", "contact_email"),
+                ("contact_phone", "contact_phone"),
+                ("region", "region"),
+            ):
+                val = a.get(b.get(field, field))
+                if val and str(val)[:200] != getattr(inst, attr):
+                    setattr(inst, attr, str(val)[:200])
+                    changed.append(attr)
+            leaves = _selected_leaves(form.settings or {}, a)
+            if leaves and leaves != list((inst.attributes or {}).get("leaves") or []):
+                inst.attributes = {**(inst.attributes or {}), "leaves": leaves}
                 changed.append("attributes")
-        if changed:
-            inst.save(update_fields=[*dict.fromkeys(changed), "updated_at"])
+            inst.source_response_id = resp.id
+            changed.append("source_response_id")
+            try:
+                inst.save(update_fields=[*dict.fromkeys(changed), "updated_at"])
+            except IntegrityError:
+                # Rename collided with another institution's name — keep the
+                # old name, persist everything else.
+                inst.refresh_from_db(fields=["name"])
+                rest = [c for c in dict.fromkeys(changed) if c != "name"]
+                if rest:
+                    inst.save(update_fields=[*rest, "updated_at"])
+
+    if inst is None:
+        inst = get_or_create_institution(
+            tournament=form.tournament,
+            name=str(name),
+            kind=kind,
+            source_response_id=resp.id,
+        )
+        if inst is not None:
+            changed = []
+            for field, attr in (
+                ("contact_name", "contact_name"),
+                ("contact_email", "contact_email"),
+                ("contact_phone", "contact_phone"),
+                ("region", "region"),
+            ):
+                val = a.get(b.get(field, field))
+                if val and not getattr(inst, attr):
+                    setattr(inst, attr, str(val)[:200])
+                    changed.append(attr)
+            # Persist WHICH competitions (category leaves) the institution
+            # entered, as structured data — Stage 2 scoping and dashboards read
+            # this instead of re-parsing raw answers (spec 2026-06-10). Union
+            # on re-submission.
+            leaves = _selected_leaves(form.settings or {}, a)
+            if leaves:
+                existing = list((inst.attributes or {}).get("leaves") or [])
+                merged = existing + [lf for lf in leaves if lf not in existing]
+                if merged != existing:
+                    inst.attributes = {**(inst.attributes or {}), "leaves": merged}
+                    changed.append("attributes")
+            if changed:
+                inst.save(update_fields=[*dict.fromkeys(changed), "updated_at"])
     resp.mapped_entities = {"institution_id": str(inst.id) if inst else None}
     resp.save(update_fields=["mapped_entities"])
     return resp

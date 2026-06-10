@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 from typing import ClassVar
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -138,6 +139,15 @@ class FormPublishView(GenericAPIView):
             form = publish_form(form, user=request.user, request=request)
         except FormEditError as e:
             raise DRFValidationError({"detail": str(e)}) from e
+        # Opening Stage-2: email every registered institution its access
+        # code + the form link (idempotent — existing codes are kept).
+        if form.purpose == FormPurpose.TEAM_REGISTRATION:
+            from apps.teams.services.access import issue_team_access_codes
+
+            issue_team_access_codes(
+                tournament=form.tournament, form=form,
+                only_missing=True, request=request, actor=request.user,
+            )
         return Response(FormSerializer(form).data)
 
 
@@ -214,11 +224,14 @@ def _resolve_data_sources(schema: dict, tournament) -> dict:
     # `leaves` = the competitions the institution registered at Stage 1; the
     # team form scopes its sport/category questions to them client-side
     # (competition keys are already public via the directory — no PII here).
+    # `requires_code` tells the renderer to demand the emailed access code
+    # before accepting/editing this institution's team registration.
     options = [
         {
             "value": str(i.id),
             "label": i.name,
             "leaves": (i.attributes or {}).get("leaves") or [],
+            "requires_code": bool(i.team_code_hash),
         }
         for i in insts
     ]
@@ -323,6 +336,62 @@ def _public_payload(form, link=None):
     return data
 
 
+class TeamAccessView(GenericAPIView):
+    """`POST /api/forms/{form_id}/team-access/` — exchange (institution,
+    access code) for a short-lived signed token + the institution's previous
+    submission for editing. AllowAny, but: per-IP throttle, per-institution
+    failure lockout, constant-time hash check, and the response only carries
+    data the code-holder is entitled to (their own previous answers)."""
+
+    permission_classes: ClassVar[list[type[BasePermission]]] = [AllowAny]
+
+    def get_throttles(self):
+        from apps.forms.throttling import TeamAccessThrottle
+
+        return [TeamAccessThrottle()]
+
+    def post(self, request, form_id):
+        from apps.teams.models import Institution
+        from apps.teams.services.access import (
+            make_access_token,
+            verify_team_code,
+        )
+
+        form = (
+            Form.objects.filter(id=form_id, deleted_at__isnull=True)
+            .select_related("tournament")
+            .first()
+        )
+        if form is None or form.purpose != FormPurpose.TEAM_REGISTRATION or not is_open(form):
+            raise NotFound("form_not_found")
+        inst = Institution.objects.filter(
+            id=str(request.data.get("institution_id") or ""),
+            tournament=form.tournament,
+            deleted_at__isnull=True,
+        ).first()
+        if inst is None:
+            raise NotFound("institution_not_found")
+        ok, err = verify_team_code(inst, str(request.data.get("code") or ""))
+        if not ok:
+            # Same 403 body shape for both cases; `locked` lets the UI explain.
+            return Response({"detail": err}, status=403)
+        # Latest previous submission for this institution → prefill for editing.
+        iid_key = (form.settings or {}).get("bindings", {}).get(
+            "institution_id", "institution_id"
+        )
+        prior = (
+            FormResponse.objects.filter(form=form, **{f"answers__{iid_key}": str(inst.id)})
+            .order_by("-created_at")
+            .first()
+        )
+        return Response({
+            "access_token": make_access_token(inst, form),
+            "expires_in": 2 * 60 * 60,
+            "editing": prior is not None,
+            "prefill": prior.answers if prior is not None else None,
+        })
+
+
 class PublicFormView(GenericAPIView):
     """`GET/POST /api/forms/{id}/public/` and `/api/forms/r/{token}/`.
 
@@ -349,7 +418,11 @@ class PublicFormView(GenericAPIView):
 
     def get(self, request, form_id=None, token=None):
         form, link = self._resolve(form_id, token)
-        if not is_open(form):
+        # A valid share link (active, unexpired, under its submission cap —
+        # resolve_share_link enforced all three) grants access even after the
+        # form closed: admin-minted links are explicit, expiring grants
+        # (e.g. "fix your school's details" after Stage 1 closed).
+        if not is_open(form) and link is None:
             return Response({
                 "closed": True,
                 "tournament_name": form.tournament.name,
@@ -363,7 +436,7 @@ class PublicFormView(GenericAPIView):
 
     def post(self, request, form_id=None, token=None):
         form, link = self._resolve(form_id, token)
-        if not is_open(form):
+        if not is_open(form) and link is None:
             raise DRFValidationError({"detail": "registration_closed"})
         ser = PublicSubmitSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -380,20 +453,58 @@ class PublicFormView(GenericAPIView):
                 answers = {**answers, iid_key: bound_iid}
         from apps.forms.services.mapping import (  # local import (Increment 5)
             map_response,
+            supersede_team_registration,
             team_registration_field_errors,
         )
 
-        # Duplicate team names within a competition fail HERE with a field
-        # error — before any response is recorded (the DB constraint would
-        # otherwise reject mapping after the "success" screen). Replays of an
-        # already-recorded submission skip the check (their teams exist).
+        # Team forms — access-code gate + duplicate-name validation, both
+        # BEFORE any response is recorded. Replays of an already-recorded
+        # submission skip everything (their teams exist).
         event_id = ser.validated_data.get("event_id")
         is_replay = (
             event_id is not None
             and FormResponse.objects.filter(form=form, event_id=event_id).exists()
         )
+        authorized_inst_id: str | None = None
         if form.purpose == FormPurpose.TEAM_REGISTRATION and not is_replay:
-            errs = team_registration_field_errors(form, answers)
+            from apps.teams.models import Institution
+            from apps.teams.services.access import read_access_token
+
+            iid_key = (form.settings or {}).get("bindings", {}).get(
+                "institution_id", "institution_id"
+            )
+            inst = None
+            try:
+                inst_id = str(answers.get(iid_key) or "")
+                if inst_id:
+                    inst = Institution.objects.filter(
+                        id=inst_id, tournament=form.tournament
+                    ).first()
+            except (ValueError, DjangoValidationError):
+                inst = None
+            if inst is not None and inst.team_code_hash:
+                # An institution holding an access code is PROTECTED: only a
+                # valid signed token (from /team-access/) — or a per-
+                # institution bound link, which is its own secret — may
+                # submit or update its teams.
+                bound_ok = (
+                    link is not None
+                    and (link.bound_entity or {}).get("institution_id") == str(inst.id)
+                )
+                if not bound_ok:
+                    payload = read_access_token(
+                        str(ser.validated_data.get("access_token") or "")
+                    )
+                    if (
+                        not payload
+                        or payload.get("i") != str(inst.id)
+                        or payload.get("f") != str(form.id)
+                    ):
+                        raise DRFValidationError({"detail": "team_access_required"})
+                authorized_inst_id = str(inst.id)
+            errs = team_registration_field_errors(
+                form, answers, exclude_institution_id=authorized_inst_id
+            )
             if errs:
                 raise DRFValidationError({"errors": errs})
         try:
@@ -407,6 +518,12 @@ class PublicFormView(GenericAPIView):
             )
         except AnswerError as e:
             raise DRFValidationError({"errors": e.errors}) from e
+        # A code-authorized (re)submission REPLACES the institution's previous
+        # team registration instead of stacking a duplicate set.
+        if authorized_inst_id is not None:
+            supersede_team_registration(
+                form, authorized_inst_id, exclude_response_id=resp.id, request=request
+            )
         map_response(resp)
         return Response(
             {"response_id": str(resp.id), "message": form.confirmation_message},

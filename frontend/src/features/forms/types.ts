@@ -50,6 +50,9 @@ export interface Option {
   /** institution_list options: the competition leaves the institution
    * registered at Stage 1 (drives team-form competition scoping). */
   leaves?: string[];
+  /** institution_list options: true when this school must enter its emailed
+   * access code before registering/editing teams. */
+  requires_code?: boolean;
   /**
    * Nested follow-up questions revealed when this option is chosen (recursive —
    * a nested choice field's options can themselves carry `fields`). Answers stay

@@ -169,12 +169,21 @@ export const formsApi = {
   // Public (unauthenticated) endpoints — used by the renderer (Increment 7).
   publicGet: (formId: string) =>
     api.get<PublicFormPayload>(`/api/forms/${formId}/public/`),
+  /** Exchange (institution, access code) for a signed token + prior answers. */
+  teamAccess: (formId: string, body: { institution_id: string; code: string }) =>
+    api.post<{
+      access_token: string;
+      expires_in: number;
+      editing: boolean;
+      prefill: Record<string, unknown> | null;
+    }>(`/api/forms/${formId}/team-access/`, body),
   publicSubmit: (
     formId: string,
     body: {
       answers: Record<string, unknown>;
       event_id: string;
       upload_refs?: Record<string, string>;
+      access_token?: string;
     },
   ) =>
     api.post<{ response_id: string; message: string }>(

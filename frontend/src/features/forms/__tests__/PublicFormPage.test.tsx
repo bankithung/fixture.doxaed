@@ -380,6 +380,115 @@ describe("PublicFormPage", () => {
     expect(screen.queryByLabelText("Sepak Takraw")).toBeNull();
   });
 
+  it("requires the school access code, prefills the prior registration, submits the token", async () => {
+    const teamSchema: FormSchema = {
+      version: 1,
+      sections: [
+        {
+          key: "institution",
+          title: "Your institution",
+          fields: [
+            {
+              key: "institution_id",
+              type: "dropdown",
+              label: "Select your institution",
+              required: true,
+              data_source: { type: "institution_list" },
+              options: [
+                {
+                  value: "i1",
+                  label: "Don Bosco",
+                  leaves: ["football.u15"],
+                  requires_code: true,
+                },
+              ],
+            },
+          ],
+        },
+        {
+          key: "cat",
+          title: "Teams — U15",
+          fields: [
+            {
+              key: "teams_u15",
+              type: "group",
+              label: "Team",
+              repeatable: true,
+              fields: [
+                {
+                  key: "team_name_u15",
+                  type: "short_text",
+                  label: "Team name",
+                  required: true,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "Anpsa",
+      competition_fields: [],
+      team_groups: [{ group: "teams_u15", field: "team_name_u15" }],
+      form: {
+        id: "form1",
+        title: "Team registration",
+        description: "",
+        schema: teamSchema,
+        confirmation_message: "",
+      },
+    });
+    vi.mocked(formsApi.teamAccess).mockResolvedValue({
+      access_token: "signed-token",
+      expires_in: 7200,
+      editing: true,
+      prefill: {
+        institution_id: "i1",
+        teams_u15: [{ team_name_u15: "Don Bosco Blue" }],
+      },
+    });
+    vi.mocked(formsApi.publicSubmit).mockResolvedValue({
+      response_id: "r1",
+      message: "Updated.",
+    });
+
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /select your institution/i }),
+    );
+    await userEvent.click(screen.getByRole("option", { name: "Don Bosco" }));
+
+    // The code panel appears; Next is blocked until verified.
+    expect(await screen.findByText("School access code")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /next/i }));
+    expect(
+      screen.getByText(/enter your school's access code/i),
+    ).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("Access code"), "K7MWPX2A");
+    await userEvent.click(screen.getByRole("button", { name: /verify code/i }));
+    expect(formsApi.teamAccess).toHaveBeenCalledWith("form1", {
+      institution_id: "i1",
+      code: "K7MWPX2A",
+    });
+    // Edit mode confirmed + prior answers prefilled.
+    expect(
+      await screen.findByText(/editing your school's existing registration/i),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /next/i }));
+    expect(screen.getByLabelText(/team name/i)).toHaveValue("Don Bosco Blue");
+
+    await userEvent.click(screen.getByRole("button", { name: /submit/i }));
+    await waitFor(() => expect(formsApi.publicSubmit).toHaveBeenCalled());
+    expect(vi.mocked(formsApi.publicSubmit).mock.calls[0][1].access_token).toBe(
+      "signed-token",
+    );
+  });
+
   it("flags duplicate team names inline and blocks submit", async () => {
     const teamSchema: FormSchema = {
       version: 1,

@@ -100,6 +100,11 @@ class Institution(models.Model):
     # Optional pointer to the Stage-1 form response that created this row (bare
     # UUID, no FK — avoids a teams→forms cycle; mirrors audit scope columns).
     source_response_id = models.UUIDField(null=True, blank=True)
+    # Team-registration access code (emailed to the contact when Stage 2
+    # opens). Only the Django password hash is stored — never the plaintext —
+    # so a DB leak exposes nothing usable (PBKDF2-SHA256, salted).
+    team_code_hash = models.TextField(blank=True, default="")
+    team_code_sent_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="institutions_created",

@@ -83,3 +83,6 @@ class PublicSubmitSerializer(serializers.Serializer):
     answers = serializers.DictField()
     event_id = serializers.UUIDField(required=False)
     upload_refs = serializers.DictField(required=False, default=dict)
+    # Team forms: the signed token from /team-access/ proving the submitter
+    # holds the institution's emailed access code.
+    access_token = serializers.CharField(required=False, allow_blank=True)

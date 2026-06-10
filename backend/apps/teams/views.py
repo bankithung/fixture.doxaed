@@ -351,3 +351,124 @@ class InstitutionDetailView(GenericAPIView):
             inst.save(update_fields=[*changed, "updated_at"])
         inst.team_count = inst.teams.filter(deleted_at__isnull=True).count()
         return Response(_institution_dict(inst))
+
+
+class TeamAccessCodesView(GenericAPIView):
+    """`POST /api/tournaments/{id}/team-codes/` — (re)issue team-registration
+    access codes to registered institutions (manager-only). Default fills only
+    institutions without a code (safe after late registrations); body
+    ``{"force": true}`` rotates every code."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        t = Tournament.objects.filter(
+            id=tournament_id, deleted_at__isnull=True
+        ).first()
+        if t is None or not accessible_tournaments(request.user).filter(
+            id=tournament_id
+        ).exists():
+            raise NotFound("tournament_not_found")
+        if not can_access_module(request.user, t, "forms"):
+            raise PermissionDenied("not_tournament_manager")
+        from apps.forms.models import Form
+
+        form = (
+            Form.objects.filter(
+                tournament=t, purpose="team_registration",
+                deleted_at__isnull=True, status="open",
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if form is None:
+            raise DRFValidationError({"detail": "no_open_team_form"})
+        from apps.teams.services.access import issue_team_access_codes
+
+        out = issue_team_access_codes(
+            tournament=t, form=form,
+            only_missing=not bool(request.data.get("force")),
+            request=request, actor=request.user,
+        )
+        return Response(out)
+
+
+class InstitutionEditLinkView(GenericAPIView):
+    """`POST /api/tournaments/{id}/institutions/{institution_id}/edit-link/` —
+    mint a TEMPORARY, single-submission link a school uses to add or edit its
+    OWN details on the Stage-1 form (manager-only).
+
+    The link opens the institution-registration form prefilled with the
+    school's previous answers, bound to the institution (a rename updates the
+    row, never duplicates it), works even after Stage 1 closed, expires in 7
+    days, and is spent after one submission. Re-issuing deactivates earlier
+    links for the same school — "resend" always means ONE live link."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id, institution_id):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        t = Tournament.objects.filter(
+            id=tournament_id, deleted_at__isnull=True
+        ).first()
+        if t is None or not accessible_tournaments(request.user).filter(
+            id=tournament_id
+        ).exists():
+            raise NotFound("tournament_not_found")
+        if not can_access_module(request.user, t, "forms"):
+            raise PermissionDenied("not_tournament_manager")
+        inst = Institution.objects.filter(
+            id=institution_id, tournament=t, deleted_at__isnull=True
+        ).first()
+        if inst is None:
+            raise NotFound("institution_not_found")
+
+        from apps.forms.models import Form, FormShareLink
+        from apps.forms.services.links import create_share_link, institution_prefill
+
+        org_form = (
+            Form.objects.filter(
+                tournament=t, purpose="organization_registration",
+                deleted_at__isnull=True,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if org_form is None:
+            raise DRFValidationError({"detail": "no_institution_form"})
+
+        # One live link per school: kill earlier grants before minting.
+        for old in FormShareLink.objects.filter(form=org_form, is_active=True):
+            if (old.bound_entity or {}).get("institution_id") == str(inst.id):
+                old.is_active = False
+                old.save(update_fields=["is_active"])
+
+        # Prefill with the school's full previous answers when we have them,
+        # else at least its identity/contact fields.
+        prefill = None
+        if inst.source_response_id:
+            from apps.forms.models import FormResponse
+
+            prior = FormResponse.objects.filter(id=inst.source_response_id).first()
+            prefill = prior.answers if prior is not None else None
+        if not prefill:
+            prefill, _label = institution_prefill(org_form, inst)
+            name_key = (org_form.settings or {}).get("bindings", {}).get(
+                "institution_name"
+            )
+            if name_key:
+                prefill[name_key] = inst.name
+
+        expires_at = timezone.now() + timedelta(days=7)
+        _link, token = create_share_link(
+            form=org_form, created_by=request.user, label=f"edit:{inst.name}",
+            expires_at=expires_at, max_submissions=1,
+            bound_entity={"institution_id": str(inst.id)}, prefill=prefill,
+        )
+        return Response(
+            {"path": f"/r/{token}", "expires_at": expires_at.isoformat()},
+            status=201,
+        )

@@ -22,7 +22,9 @@ from apps.matches.views import TournamentMatchListView, TournamentStandingsView
 from apps.teams.views import (
     InstitutionDetailView,
     InstitutionListCreateView,
+    InstitutionEditLinkView,
     RegistrationLinkCreateView,
+    TeamAccessCodesView,
     TournamentTeamsListView,
 )
 from apps.tournaments.views import (
@@ -90,6 +92,16 @@ urlpatterns = [
         "<uuid:tournament_id>/teams/",
         TournamentTeamsListView.as_view(),
         name="tournament-teams",
+    ),
+    path(
+        "<uuid:tournament_id>/institutions/<uuid:institution_id>/edit-link/",
+        InstitutionEditLinkView.as_view(),
+        name="tournament-institution-edit-link",
+    ),
+    path(
+        "<uuid:tournament_id>/team-codes/",
+        TeamAccessCodesView.as_view(),
+        name="tournament-team-codes",
     ),
     path(
         "<uuid:tournament_id>/forms/",

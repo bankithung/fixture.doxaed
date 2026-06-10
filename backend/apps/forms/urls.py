@@ -18,6 +18,7 @@ from apps.forms.views import (
     PublicFormView,
     PublicInstitutionDirectoryView,
     PublicUploadView,
+    TeamAccessView,
 )
 
 # Mounted at /api/forms/
@@ -30,6 +31,7 @@ urlpatterns = [
     path("<uuid:form_id>/directory/", PublicInstitutionDirectoryView.as_view(),
          name="form-directory"),
     path("<uuid:form_id>/uploads/", PublicUploadView.as_view(), name="form-upload"),
+    path("<uuid:form_id>/team-access/", TeamAccessView.as_view(), name="form-team-access"),
     # Responses API (organizer-only).
     path("<uuid:form_id>/responses/", FormResponsesView.as_view(), name="form-responses"),
     path("<uuid:form_id>/responses/<uuid:response_id>/",

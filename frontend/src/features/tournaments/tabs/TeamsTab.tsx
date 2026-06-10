@@ -1,7 +1,15 @@
 import { Fragment, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Pencil, Plus, Sparkles, Users } from "lucide-react";
+import {
+  ChevronRight,
+  KeyRound,
+  Link2,
+  Pencil,
+  Plus,
+  Sparkles,
+  Users,
+} from "lucide-react";
 import { institutionsApi } from "@/api/institutions";
 import { formsApi } from "@/api/forms";
 import {
@@ -40,6 +48,55 @@ export function TeamsTab(): React.ReactElement {
   const [createOpen, setCreateOpen] = useState(false);
   const [institutionId, setInstitutionId] = useState("");
   const [name, setName] = useState("");
+  // Access-codes dialog (Stage-2 security): send/re-send emailed codes and
+  // recover schools without an email (manual entry or a temporary edit link).
+  const [codesOpen, setCodesOpen] = useState(false);
+  const [codesResult, setCodesResult] = useState<{
+    sent: number;
+    skipped: number;
+    no_email: number;
+    no_email_institutions: { id: string; name: string }[];
+  } | null>(null);
+  const [emailDrafts, setEmailDrafts] = useState<Record<string, string>>({});
+
+  const issueCodes = useMutation({
+    mutationFn: () => tournamentsApi.issueTeamCodes(id),
+    onSuccess: (r) => setCodesResult(r),
+    onError: () =>
+      toast.push({ kind: "error", title: t("Could not send access codes") }),
+  });
+  const saveEmailAndSend = useMutation({
+    mutationFn: async (instId: string) => {
+      await institutionsApi.update(id, instId, {
+        contact_email: (emailDrafts[instId] ?? "").trim(),
+      });
+      return tournamentsApi.issueTeamCodes(id);
+    },
+    onSuccess: (r) => {
+      setCodesResult(r);
+      qc.invalidateQueries({ queryKey: ["t-institutions", id] });
+      toast.push({ kind: "success", title: t("Code emailed") });
+    },
+    onError: () =>
+      toast.push({ kind: "error", title: t("Could not save the email") }),
+  });
+  const copyEditLink = useMutation({
+    mutationFn: (instId: string) => institutionsApi.editLink(id, instId),
+    onSuccess: async (r) => {
+      try {
+        await navigator.clipboard.writeText(window.location.origin + r.path);
+        toast.push({
+          kind: "success",
+          title: t("Temporary link copied"),
+          description: t("Single-use; expires in 7 days. Share it with the school."),
+        });
+      } catch {
+        toast.push({ kind: "success", title: t("Link created"), description: r.path });
+      }
+    },
+    onError: () =>
+      toast.push({ kind: "error", title: t("Could not create the link") }),
+  });
 
   const teams = useQuery({ queryKey: ["t-teams", id], queryFn: () => tournamentsApi.teams(id) });
   const institutions = useQuery({
@@ -113,6 +170,12 @@ export function TeamsTab(): React.ReactElement {
         </div>
         {canManage ? (
           <div className="flex flex-wrap items-center gap-2">
+            {teamForm?.status === "open" ? (
+              <Button variant="outline" onClick={() => setCodesOpen(true)}>
+                <KeyRound aria-hidden="true" className="h-4 w-4" />
+                {t("Access codes")}
+              </Button>
+            ) : null}
             {teamForm ? (
               <Button
                 variant="outline"
@@ -175,6 +238,100 @@ export function TeamsTab(): React.ReactElement {
       ) : (
         <TeamsTable grouped={grouped} />
       )}
+
+      {/* Access codes — send the emailed codes; surface schools without an
+          email so the admin can fix them on the spot. */}
+      <Dialog
+        open={codesOpen}
+        onOpenChange={(o) => {
+          if (!o) setCodesOpen(false);
+        }}
+        ariaLabel={t("Team access codes")}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("Team access codes")}</DialogTitle>
+          <DialogDescription>
+            {t(
+              "Each registered school gets an emailed code; only the code-holder can add or edit that school's teams. Schools that already have a code are never re-sent.",
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          {codesResult === null ? (
+            <Button
+              disabled={issueCodes.isPending}
+              onClick={() => issueCodes.mutate()}
+            >
+              {issueCodes.isPending ? t("Sending…") : t("Email codes to all schools")}
+            </Button>
+          ) : (
+            <>
+              <p className="font-tabular text-sm text-muted-foreground">
+                {codesResult.sent} {t("sent")} · {codesResult.skipped}{" "}
+                {t("already had a code")} · {codesResult.no_email}{" "}
+                {t("without an email")}
+              </p>
+              {codesResult.no_email_institutions.length > 0 ? (
+                <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/20 p-3">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {t(
+                      "These schools have no contact email. Add one and send the code, or copy a temporary link (single-use, 7 days) they can use to fix their own details:",
+                    )}
+                  </p>
+                  {codesResult.no_email_institutions.map((inst) => (
+                    <div key={inst.id} className="flex flex-col gap-1.5">
+                      <span className="text-sm font-medium">{inst.name}</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Input
+                          type="email"
+                          value={emailDrafts[inst.id] ?? ""}
+                          onChange={(e) =>
+                            setEmailDrafts((d) => ({ ...d, [inst.id]: e.target.value }))
+                          }
+                          placeholder={t("contact@school.example")}
+                          className="h-9 max-w-[16rem]"
+                          aria-label={t(`Email for ${inst.name}`)}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            saveEmailAndSend.isPending ||
+                            !(emailDrafts[inst.id] ?? "").includes("@")
+                          }
+                          onClick={() => saveEmailAndSend.mutate(inst.id)}
+                        >
+                          {t("Save & send code")}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={copyEditLink.isPending}
+                          onClick={() => copyEditLink.mutate(inst.id)}
+                        >
+                          <Link2 aria-hidden="true" className="h-3.5 w-3.5" />
+                          {t("Copy temp link")}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setCodesOpen(false);
+              setCodesResult(null);
+            }}
+          >
+            {t("Close")}
+          </Button>
+        </DialogFooter>
+      </Dialog>
 
       <Dialog
         open={open}

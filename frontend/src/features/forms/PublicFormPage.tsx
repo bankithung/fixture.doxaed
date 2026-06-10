@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Lock, ShieldCheck } from "lucide-react";
+import { CheckCircle2, KeyRound, Lock, ShieldCheck } from "lucide-react";
 import { formsApi } from "@/api/forms";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { newEventId } from "@/lib/eventId";
 import {
   isVisible,
@@ -154,6 +155,62 @@ export function PublicFormPage(): React.ReactElement {
     setAnswers((a) => ({ ...a, ...next }));
   }, [answers, instField, compFieldKeys, schema]);
 
+  // --- School access code (team forms) --------------------------------------
+  // An institution holding an emailed code must verify it before its teams
+  // can be registered or edited. Verification returns a short-lived signed
+  // token (sent with the submission) plus the school's previous answers so
+  // a returning school EDITS its registration instead of starting fresh.
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [codeInput, setCodeInput] = useState("");
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [editingPrior, setEditingPrior] = useState(false);
+
+  const selectedInstOption = useMemo(() => {
+    if (!instField) return null;
+    const v = String(answers[instField.key] ?? "");
+    if (!v) return null;
+    return instField.options?.find((o) => String(o.value) === v) ?? null;
+  }, [instField, answers]);
+  // Bound links lock the institution and are their own secret — no code.
+  const needsCode =
+    !!selectedInstOption?.requires_code &&
+    !!instField &&
+    !lockedSet.has(instField.key);
+
+  const selectedInstValue = selectedInstOption?.value;
+  useEffect(() => {
+    // Switching school invalidates any prior verification.
+    setAccessToken(null);
+    setCodeInput("");
+    setCodeError(null);
+    setEditingPrior(false);
+  }, [selectedInstValue]);
+
+  const verifyCode = useMutation({
+    mutationFn: () =>
+      formsApi.teamAccess(form?.id ?? formId ?? "", {
+        institution_id: String(selectedInstValue ?? ""),
+        code: codeInput.trim(),
+      }),
+    onSuccess: (res) => {
+      setAccessToken(res.access_token);
+      setEditingPrior(res.editing);
+      setCodeError(null);
+      if (res.prefill) {
+        // Their saved registration becomes the working answers (edit mode).
+        setAnswers((a) => ({ ...a, ...res.prefill }));
+      }
+    },
+    onError: (e) =>
+      setCodeError(
+        e instanceof ApiError && e.status === 403
+          ? e.payload.detail === "locked"
+            ? t("Too many wrong attempts — try again in 15 minutes.")
+            : t("That code isn't right — check the email sent to your school.")
+          : t("Could not verify the code. Try again."),
+      ),
+  });
+
   // Inline duplicate-name guard (team forms): two rows of one team group
   // sharing a name show an error AS YOU TYPE and block Next/Submit — the
   // server enforces the same per-competition rule on submit.
@@ -211,7 +268,12 @@ export function PublicFormPage(): React.ReactElement {
 
   const submit = useMutation({
     mutationFn: () => {
-      const body = { answers, event_id: eventId, upload_refs: uploadRefs };
+      const body = {
+        answers,
+        event_id: eventId,
+        upload_refs: uploadRefs,
+        ...(accessToken ? { access_token: accessToken } : {}),
+      };
       return token !== undefined
         ? formsApi.publicSubmitByToken(token, { answers, event_id: eventId })
         : formsApi.publicSubmit(form?.id ?? formId ?? "", body);
@@ -251,7 +313,19 @@ export function PublicFormPage(): React.ReactElement {
     return Object.keys(here).length === 0;
   }
 
+  /** True when the visible section contains the institution picker and the
+   * selected school still has to verify its access code. */
+  const codeGateOpen = (section: typeof current): boolean =>
+    !!section &&
+    needsCode &&
+    !accessToken &&
+    section.fields.some((f) => f.key === instField?.key);
+
   function onNext() {
+    if (codeGateOpen(current)) {
+      setCodeError(t("Enter your school's access code to continue."));
+      return;
+    }
     if (!validateCurrent()) return;
     setStepIndex((i) => Math.min(i + 1, sections.length - 1));
   }
@@ -262,6 +336,14 @@ export function PublicFormPage(): React.ReactElement {
   }
 
   function onSubmit() {
+    if (needsCode && !accessToken) {
+      setCodeError(t("Enter your school's access code to continue."));
+      const idx = sections.findIndex((s) =>
+        s.fields.some((f) => f.key === instField?.key),
+      );
+      if (idx >= 0) setStepIndex(idx);
+      return;
+    }
     // Full-schema check across every reachable section so nothing slips by.
     const all = { ...dupErrors, ...validateRequired(schema, answers) };
     if (Object.keys(all).length) {
@@ -511,6 +593,62 @@ export function PublicFormPage(): React.ReactElement {
             </div>
 
             {renderGrouped(current.fields)}
+
+            {/* School access code — required before this school's teams can
+                be registered or edited (sent to the school's contact email
+                when team registration opened). */}
+            {needsCode && current.fields.some((f) => f.key === instField?.key) ? (
+              <div className="flex flex-col gap-2 rounded-lg border border-primary/25 bg-primary/5 p-4">
+                {accessToken ? (
+                  <div className="flex items-start gap-2 text-sm">
+                    <ShieldCheck
+                      aria-hidden="true"
+                      className="mt-0.5 h-4 w-4 shrink-0 text-primary"
+                    />
+                    <span>
+                      {editingPrior
+                        ? t(
+                            "Code verified — you're editing your school's existing registration. Submitting replaces it.",
+                          )
+                        : t("Code verified — you can register your teams.")}
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <KeyRound aria-hidden="true" className="h-4 w-4 text-primary" />
+                      {t("School access code")}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        "A code was emailed to your school's contact when team registration opened. Enter it to add or edit your teams. No code? Ask the organizer.",
+                      )}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Input
+                        value={codeInput}
+                        onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+                        placeholder="E.g. K7MWPX2A"
+                        className="h-9 max-w-[11rem] font-tabular uppercase"
+                        aria-label={t("Access code")}
+                      />
+                      <Button
+                        size="sm"
+                        disabled={verifyCode.isPending || codeInput.trim().length < 4}
+                        onClick={() => verifyCode.mutate()}
+                      >
+                        {verifyCode.isPending ? t("Checking…") : t("Verify code")}
+                      </Button>
+                    </div>
+                    {codeError ? (
+                      <p role="alert" className="text-xs text-destructive">
+                        {codeError}
+                      </p>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            ) : null}
           </section>
         ) : (
           <p className="text-sm text-muted-foreground">
