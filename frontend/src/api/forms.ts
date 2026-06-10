@@ -27,6 +27,9 @@ export interface PublicFormPayload {
   prefill?: Record<string, unknown>;
   locked?: string[];
   bound?: { institution_id: string; label: string };
+  /** Keys of choice fields whose options are competition keys — the renderer
+   * scopes them to the selected institution's registered leaves. */
+  competition_fields?: string[];
 }
 
 export interface CopyableItem {

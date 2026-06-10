@@ -214,6 +214,56 @@ def test_directory_exposes_competitions_grouping():
     assert body["kpi_mode"] == "games"
 
 
+def test_team_form_scopes_competitions_to_selected_institution():
+    """The public team-form payload carries (a) each institution option's
+    registered competition leaves and (b) the competition-scoped field keys,
+    so the renderer can show a school ONLY the sports/categories it
+    registered — pre-selected, no admin regeneration needed."""
+    from apps.forms.services.generation import (
+        generate_institution_form,
+        generate_team_form_template,
+    )
+    from apps.forms.services.mapping import map_response
+    from apps.tournaments.services.sports import normalize_sports
+
+    admin = _verified("scope@test.local")
+    t = create_tournament(user=admin, name="Scope Cup")
+    t.sports = normalize_sports([
+        {"name": "Football", "nodes": [{"name": "U15"}]},
+        {"name": "Badminton"},
+    ])
+    t.save(update_fields=["sports"])
+    org = generate_institution_form(tournament=t, created_by=admin)
+    org.status = "open"
+    org.save(update_fields=["status"])
+    resp = FormResponse.objects.create(
+        form=org, organization=t.organization, tournament=t, title="Don Bosco",
+        answers={"school_name": "Don Bosco", "contact_name": "Fr. K",
+                 "contact_phone": "9876543210",
+                 "sports": ["football"],
+                 "categories_football": ["football.u15"]},
+    )
+    map_response(resp)
+
+    team = generate_team_form_template(tournament=t, created_by=admin)
+    team.status = "open"
+    team.save(update_fields=["status"])
+
+    body = APIClient().get(f"/api/forms/{team.id}/public/").json()
+    # The institution dropdown options carry the registered leaves.
+    inst_field = next(
+        f
+        for s in body["form"]["schema"]["sections"]
+        for f in s["fields"]
+        if (f.get("data_source") or {}).get("type") == "institution_list"
+    )
+    opt = next(o for o in inst_field["options"] if o["label"] == "Don Bosco")
+    assert opt["leaves"] == ["football.u15"]
+    # The sport + category-chain questions are flagged as competition-scoped.
+    assert "sports" in body["competition_fields"]
+    assert len(body["competition_fields"]) >= 2  # sports + ≥1 chain level
+
+
 def test_directory_kpi_mode_setting_passthrough():
     """The admin's `settings.directory_kpis` choice reaches the public payload;
     unknown values fall back to the 'games' default."""

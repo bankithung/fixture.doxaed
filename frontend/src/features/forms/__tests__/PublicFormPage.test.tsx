@@ -243,6 +243,143 @@ describe("PublicFormPage", () => {
     expect(screen.queryByRole("button", { name: /submit/i })).toBeNull();
   });
 
+  it("scopes the team form's sports/categories to the selected school, pre-selected", async () => {
+    const teamSchema: FormSchema = {
+      version: 1,
+      sections: [
+        {
+          key: "institution",
+          title: "Your institution",
+          fields: [
+            {
+              key: "institution_id",
+              type: "dropdown",
+              label: "Select your institution",
+              required: true,
+              data_source: { type: "institution_list" },
+              options: [
+                { value: "i1", label: "Don Bosco", leaves: ["sepak.u17.male"] },
+                { value: "i2", label: "Grace High", leaves: ["tt.u15"] },
+              ],
+            },
+            {
+              key: "sports",
+              type: "multi_choice",
+              label: "Which sport(s) are you entering teams for?",
+              required: true,
+              options: [
+                { value: "sepak", label: "Sepak Takraw" },
+                { value: "tt", label: "Table Tennis" },
+              ],
+            },
+            {
+              key: "cats_sepak",
+              type: "multi_choice",
+              label: "Sepak categories",
+              required: true,
+              visibility: { field: "sports", op: "includes", value: "sepak" },
+              options: [
+                { value: "sepak.u17", label: "u-17" },
+                { value: "sepak.u16", label: "u16" },
+              ],
+            },
+            {
+              key: "cats_sepak_u17",
+              type: "multi_choice",
+              label: "u-17 groups",
+              required: true,
+              visibility: {
+                field: "cats_sepak",
+                op: "includes",
+                value: "sepak.u17",
+              },
+              options: [
+                { value: "sepak.u17.male", label: "male" },
+                { value: "sepak.u17.female", label: "female" },
+              ],
+            },
+          ],
+        },
+        {
+          key: "cat_su17m",
+          title: "Teams — Sepak u-17 male",
+          visibility: {
+            field: "cats_sepak_u17",
+            op: "includes",
+            value: "sepak.u17.male",
+          },
+          fields: [
+            {
+              key: "teams",
+              type: "group",
+              label: "Team",
+              repeatable: true,
+              fields: [
+                {
+                  key: "team_name",
+                  type: "short_text",
+                  label: "Team name",
+                  required: true,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "Anpsa",
+      competition_fields: ["sports", "cats_sepak", "cats_sepak_u17"],
+      form: {
+        id: "form1",
+        title: "Team registration",
+        description: "",
+        schema: teamSchema,
+        confirmation_message: "",
+      },
+    });
+
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+
+    // Before a school is chosen, the full catalog shows, nothing selected.
+    expect(screen.getByLabelText("Table Tennis")).not.toBeChecked();
+
+    // Pick Don Bosco (registered for sepak.u17.male only).
+    await userEvent.click(
+      screen.getByRole("button", { name: /select your institution/i }),
+    );
+    await userEvent.click(screen.getByRole("option", { name: "Don Bosco" }));
+
+    // Sports: only Sepak remains, pre-checked; Table Tennis is gone.
+    await waitFor(() =>
+      expect(screen.getByLabelText("Sepak Takraw")).toBeChecked(),
+    );
+    expect(screen.queryByLabelText("Table Tennis")).toBeNull();
+    // Chain levels: u-17 pre-checked, u16 filtered out; male only, checked.
+    expect(screen.getByLabelText("u-17")).toBeChecked();
+    expect(screen.queryByLabelText("u16")).toBeNull();
+    expect(screen.getByLabelText("male")).toBeChecked();
+    expect(screen.queryByLabelText("female")).toBeNull();
+
+    // Next → straight to the team/player section, no manual selection needed.
+    await userEvent.click(screen.getByRole("button", { name: /next/i }));
+    expect(
+      await screen.findByRole("heading", { name: /teams — sepak u-17 male/i }),
+    ).toBeInTheDocument();
+
+    // Switching school re-scopes: Grace High registered Table Tennis only.
+    await userEvent.click(screen.getByRole("button", { name: /back/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /select your institution/i }),
+    );
+    await userEvent.click(screen.getByRole("option", { name: "Grace High" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Table Tennis")).toBeChecked(),
+    );
+    expect(screen.queryByLabelText("Sepak Takraw")).toBeNull();
+  });
+
   it("links to the directory from a closed institution form", async () => {
     vi.mocked(formsApi.publicGet).mockResolvedValue({
       tournament_name: "Cup",

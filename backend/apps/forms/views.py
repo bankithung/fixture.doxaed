@@ -211,7 +211,17 @@ def _resolve_data_sources(schema: dict, tournament) -> dict:
         .exclude(status__in=["withdrawn", "rejected"])
         .order_by("name")
     )
-    options = [{"value": str(i.id), "label": i.name} for i in insts]
+    # `leaves` = the competitions the institution registered at Stage 1; the
+    # team form scopes its sport/category questions to them client-side
+    # (competition keys are already public via the directory — no PII here).
+    options = [
+        {
+            "value": str(i.id),
+            "label": i.name,
+            "leaves": (i.attributes or {}).get("leaves") or [],
+        }
+        for i in insts
+    ]
 
     resolved = _copy.deepcopy(schema)
 
@@ -227,6 +237,48 @@ def _resolve_data_sources(schema: dict, tournament) -> dict:
     return resolved
 
 
+def _competition_field_keys(form) -> list[str]:
+    """Keys of the choice fields whose options ARE competition keys (the
+    sport question + each category-chain level of a generated team form).
+
+    Detected structurally: a field counts when it sits in a section that has
+    an institution_list dropdown AND every option value lies in the sports
+    catalog's prefix space — so the public renderer can scope those questions
+    to the selected institution's registered competitions without the admin
+    regenerating the form."""
+    sports = getattr(form.tournament, "sports", None) or []
+    if not sports:
+        return []
+    from apps.tournaments.services.sports import iter_leaves
+
+    space: set[str] = set()
+    for lf in iter_leaves(sports):
+        parts = lf["leaf_key"].split(".")
+        for i in range(1, len(parts) + 1):
+            space.add(".".join(parts[:i]))
+    if not space:
+        return []
+
+    def _opt_val(o) -> str:
+        return str(o.get("value")) if isinstance(o, dict) else str(o)
+
+    out: list[str] = []
+    for s in (form.schema or {}).get("sections", []):
+        fields = s.get("fields", [])
+        if not any(
+            (f.get("data_source") or {}).get("type") == "institution_list"
+            for f in fields
+        ):
+            continue
+        for f in fields:
+            if f.get("type") not in ("multi_choice", "single_choice", "dropdown"):
+                continue
+            opts = [_opt_val(o) for o in f.get("options") or []]
+            if opts and all(v in space for v in opts):
+                out.append(f["key"])
+    return out
+
+
 def _public_payload(form, link=None):
     data = {
         "form": {
@@ -237,6 +289,7 @@ def _public_payload(form, link=None):
             "confirmation_message": form.confirmation_message,
         },
         "tournament_name": form.tournament.name,
+        "competition_fields": _competition_field_keys(form),
     }
     # A bound/prefilled per-institution Stage-2 link carries initial answers + the
     # institution it's fixed to, so the renderer pre-fills contact details and

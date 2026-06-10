@@ -47,6 +47,9 @@ export interface Option {
   label: string;
   /** Branching: jump to this section key when this option is chosen. */
   goto?: string;
+  /** institution_list options: the competition leaves the institution
+   * registered at Stage 1 (drives team-form competition scoping). */
+  leaves?: string[];
   /**
    * Nested follow-up questions revealed when this option is chosen (recursive —
    * a nested choice field's options can themselves carry `fields`). Answers stay
@@ -97,6 +100,9 @@ export interface Field {
   /** false = keep this choice field OUT of the public directory's
    * filters/breakdown (the generator opts chain questions out). */
   directory?: boolean;
+  /** Live-bound options resolved by the server at fetch time
+   * (e.g. {type: "institution_list"}). */
+  data_source?: { type: string };
 }
 
 export interface Section {

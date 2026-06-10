@@ -102,6 +102,58 @@ export function PublicFormPage(): React.ReactElement {
     [form?.schema],
   );
 
+  // --- Institution-aware competition scoping (team forms) ------------------
+  // Selecting a school narrows the sport/category questions to what IT
+  // registered at Stage 1 — pre-selected, so the next step goes straight to
+  // teams & players, with no admin regeneration of the form.
+  const instField = useMemo(() => {
+    for (const s of schema.sections ?? [])
+      for (const f of s.fields ?? [])
+        if (f.data_source?.type === "institution_list") return f;
+    return null;
+  }, [schema]);
+  const compFieldKeys = useMemo(
+    () => new Set(data?.competition_fields ?? []),
+    [data],
+  );
+  /** The selected school's registered leaves (null until a school with a
+   * registration is chosen → no scoping). */
+  const instLeaves = useMemo(() => {
+    if (!instField) return null;
+    const v = String(answers[instField.key] ?? "");
+    if (!v) return null;
+    const leaves = instField.options?.find((o) => String(o.value) === v)?.leaves;
+    return leaves && leaves.length > 0 ? leaves : null;
+  }, [instField, answers]);
+  const compAllowed = (value: string): boolean =>
+    !instLeaves ||
+    instLeaves.some((l) => l === value || l.startsWith(`${value}.`));
+
+  // On school change: pre-select every competition option implied by its
+  // registration (each chain level), replacing prior selections so a switch
+  // of school can't leave stale categories ticked.
+  const lastScopedInst = useRef<string | null>(null);
+  useEffect(() => {
+    if (!instField || compFieldKeys.size === 0) return;
+    const v = String(answers[instField.key] ?? "");
+    if (!v || v === lastScopedInst.current) return;
+    lastScopedInst.current = v;
+    const leaves =
+      instField.options?.find((o) => String(o.value) === v)?.leaves ?? [];
+    if (leaves.length === 0) return;
+    const next: Record<string, unknown> = {};
+    for (const s of schema.sections ?? []) {
+      for (const f of s.fields ?? []) {
+        if (!compFieldKeys.has(f.key)) continue;
+        const sel = (f.options ?? [])
+          .map((o) => String(o.value))
+          .filter((ov) => leaves.some((l) => l === ov || l.startsWith(`${ov}.`)));
+        next[f.key] = f.type === "multi_choice" ? sel : (sel[0] ?? "");
+      }
+    }
+    setAnswers((a) => ({ ...a, ...next }));
+  }, [answers, instField, compFieldKeys, schema]);
+
   // The reachable path is recomputed from answers on every render so picking an
   // option that changes branching immediately re-routes the wizard.
   const sections = useMemo(
@@ -333,9 +385,19 @@ export function PublicFormPage(): React.ReactElement {
   };
 
   // Render a field and, recursively, the nested follow-up fields of any selected
-  // option (indented). Returns null for hidden/locked fields.
-  const renderField = (f: Field): React.ReactNode => {
-    if (!isVisible(f.visibility, answers) || lockedSet.has(f.key)) return null;
+  // option (indented). Returns null for hidden/locked fields. Competition-scoped
+  // fields show ONLY the options the selected school registered for.
+  const renderField = (raw: Field): React.ReactNode => {
+    if (!isVisible(raw.visibility, answers) || lockedSet.has(raw.key)) return null;
+    const f =
+      instLeaves && compFieldKeys.has(raw.key)
+        ? {
+            ...raw,
+            options: (raw.options ?? []).filter((o) =>
+              compAllowed(String(o.value)),
+            ),
+          }
+        : raw;
     const nested: React.ReactNode[] = [];
     for (const o of f.options ?? []) {
       if (o.fields?.length && optionSelected(f, o.value, answers)) {
