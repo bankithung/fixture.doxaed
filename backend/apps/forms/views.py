@@ -52,7 +52,7 @@ from apps.forms.services.responses import submit_response
 from apps.forms.services.validation import AnswerError
 from apps.forms.throttling import PublicFormThrottle
 from apps.tournaments.models import Tournament
-from apps.tournaments.permissions import can_access_module, can_manage_tournament
+from apps.tournaments.permissions import can_access_module
 from apps.tournaments.scope import accessible_tournaments
 
 
@@ -87,7 +87,7 @@ class TournamentFormsView(GenericAPIView):
             raise NotFound("tournament_not_found")
         qs = Form.objects.filter(
             tournament_id=tournament_id, deleted_at__isnull=True
-        ).order_by("-created_at")
+        ).select_related("tournament").order_by("-created_at")
         return Response(FormSerializer(qs, many=True).data)
 
     def post(self, request, tournament_id):
@@ -705,4 +705,62 @@ class FormCopyFromView(GenericAPIView):
             merged["bindings"] = settings["bindings"]
         form.settings = merged
         form.save(update_fields=["schema", "settings", "updated_at"])
+        return Response(FormSerializer(form).data)
+
+
+class FormRegenerateView(GenericAPIView):
+    """`POST /api/forms/{id}:regenerate/` — rebuild a GENERATED form's schema
+    from the tournament's CURRENT sports/category config (invariant 10: the
+    regenerate half of regenerate/keep). Hand-built forms are refused — only
+    forms carrying the generator's settings tags can be rebuilt. Bindings,
+    structural tags and the staleness fingerprint are refreshed; title,
+    status and share links are preserved. Audited via update_form."""
+
+    permission_classes: ClassVar[list[type[BasePermission]]] = [IsAuthenticated]
+
+    def post(self, request, form_id):
+        from apps.forms.services.generation import (
+            build_institution_form_schema,
+            build_team_form_schema,
+        )
+        from apps.tournaments.services.sports import sports_inputs_hash
+
+        form = _get_manageable_form(request.user, form_id)
+        settings = form.settings or {}
+        if not (settings.get("generated_from_sports") or settings.get("generated_from")):
+            raise DRFValidationError({"detail": "not_a_generated_form"})
+        t = form.tournament
+
+        if form.purpose == FormPurpose.ORGANIZATION_REGISTRATION:
+            schema, category_fields = build_institution_form_schema(t.sports or [])
+            new_settings = {
+                **settings,
+                "sports_field": "sports",
+                "category_fields": category_fields,
+                "inputs_hash": sports_inputs_hash(t.sports),
+            }
+        elif form.purpose == FormPurpose.TEAM_REGISTRATION:
+            org_form = (
+                Form.objects.filter(
+                    tournament=t, stage="org_registration", deleted_at__isnull=True
+                ).order_by("created_at").first()
+                or Form.objects.filter(
+                    tournament=t,
+                    purpose=FormPurpose.ORGANIZATION_REGISTRATION,
+                    deleted_at__isnull=True,
+                ).order_by("created_at").first()
+            )
+            schema, bindings = build_team_form_schema(org_form, tournament=t)
+            new_settings = {
+                **settings,
+                "bindings": bindings,
+                "inputs_hash": sports_inputs_hash(t.sports),
+            }
+        else:
+            raise DRFValidationError({"detail": "unsupported_purpose"})
+
+        update_form(form, {"schema": schema}, user=request.user, request=request)
+        form.settings = new_settings
+        form.save(update_fields=["settings", "updated_at"])
+        form.refresh_from_db()
         return Response(FormSerializer(form).data)

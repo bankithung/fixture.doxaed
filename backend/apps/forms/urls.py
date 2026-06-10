@@ -10,6 +10,7 @@ from apps.forms.views import (
     FormDetailView,
     FormDuplicateView,
     FormPublishView,
+    FormRegenerateView,
     FormResponseDetailView,
     FormResponsesView,
     FormSendStage2View,
@@ -38,6 +39,8 @@ urlpatterns = [
          name="form-institution-links"),
     # Builder API (organizer-only).
     path("<uuid:form_id>/", FormDetailView.as_view(), name="form-detail"),
+    path("<uuid:form_id>:regenerate/", FormRegenerateView.as_view(),
+         name="form-regenerate"),
     path("<uuid:form_id>:publish/", FormPublishView.as_view(), name="form-publish"),
     path("<uuid:form_id>:close/", FormCloseView.as_view(), name="form-close"),
     path("<uuid:form_id>:duplicate/", FormDuplicateView.as_view(), name="form-duplicate"),

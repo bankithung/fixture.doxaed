@@ -119,6 +119,8 @@ export interface FormSummary {
   response_count: number;
   confirmation_message: string;
   settings: Record<string, unknown>;
+  /** Generated form whose sports/category inputs changed since generation. */
+  stale?: boolean;
   schema: FormSchema;
 }
 

@@ -107,6 +107,9 @@ export const formsApi = {
   remove: (formId: string) => api.delete<void>(`/api/forms/${formId}/`),
   publish: (formId: string) =>
     api.post<FormSummary>(`/api/forms/${formId}:publish/`, {}),
+  /** Rebuild a GENERATED form from the tournament's current categories. */
+  regenerate: (formId: string) =>
+    api.post<FormSummary>(`/api/forms/${formId}:regenerate/`, {}),
   close: (formId: string) =>
     api.post<FormSummary>(`/api/forms/${formId}:close/`, {}),
   duplicate: (formId: string) =>

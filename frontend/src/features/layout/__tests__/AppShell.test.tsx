@@ -221,7 +221,7 @@ describe("AppShell", () => {
     );
   });
 
-  it("hides the sidebar during setup (onboarding wizard mode)", async () => {
+  it("keeps the sidebar available during setup (flow stays flexible)", async () => {
     vi.spyOn(tournamentsApi, "get").mockResolvedValue({
       id: "t-123",
       slug: "spring-cup",
@@ -249,9 +249,12 @@ describe("AppShell", () => {
     });
     renderShellAt("/tournaments/t-123");
 
-    // The name still resolves (breadcrumb), but the sidebar nav is withheld.
-    await screen.findByText(/spring cup/i);
-    expect(screen.queryByRole("navigation", { name: /primary/i })).toBeNull();
+    // Mid-setup the rail still renders (owner request 2026-06-10): future
+    // stages show as locked rows, but navigation is never withheld.
+    await screen.findAllByText(/spring cup/i);
+    const primary = screen.getByRole("navigation", { name: /primary/i });
+    expect(primary.textContent).toMatch(/manage/i);
+    expect(primary.textContent).toMatch(/overview/i);
   });
 
   it("/tournaments/new is NOT treated as a tournament context", () => {

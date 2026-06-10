@@ -180,7 +180,13 @@ export function SportsTab(): React.ReactElement {
   // becomes that stage's registration form — the proper end-to-end flow.
   const generate = useMutation({
     mutationFn: async () => {
-      const form = orgForm ?? (await formsApi.generateInstitutionForm(id));
+      // A reused form generated from an OLDER category set is refreshed
+      // first, so the published form always matches what was configured here.
+      const form = orgForm
+        ? orgForm.stale
+          ? await formsApi.regenerate(orgForm.id)
+          : orgForm
+        : await formsApi.generateInstitutionForm(id);
       if (stage.data?.stage === "setup") {
         await tournamentsApi.transitionStage(id, {
           to_stage: "org_registration",
@@ -710,9 +716,9 @@ export function SportsTab(): React.ReactElement {
                   : t("Generate form & start registration")}
               </h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                {t(
-                  "Builds the registration form from these sports + categories and moves the tournament into the institute-registration stage. You can review and edit it before opening.",
-                )}
+                {orgForm?.stale
+                  ? t("Your category changes haven't reached the registration form yet — continuing refreshes it automatically.")
+                  : t("Builds the registration form from these sports + categories and moves the tournament into the institute-registration stage. You can review and edit it before opening.")}
               </p>
             </div>
             <Button

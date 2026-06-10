@@ -25,16 +25,28 @@ class FormSchemaField(serializers.JSONField):
 
 class FormSerializer(serializers.ModelSerializer):
     schema = FormSchemaField(required=False)
+    stale = serializers.SerializerMethodField()
 
     class Meta:
         model = Form
         fields = (
             "id", "slug", "title", "description", "purpose", "stage", "schema", "status",
             "opens_at", "closes_at", "version", "max_responses", "response_count",
-            "confirmation_message", "settings", "created_at", "updated_at",
+            "confirmation_message", "settings", "stale", "created_at", "updated_at",
         )
         read_only_fields = ("id", "slug", "stage", "status", "version", "response_count",
-                            "created_at", "updated_at")
+                            "stale", "created_at", "updated_at")
+
+    def get_stale(self, obj) -> bool:
+        """True for a GENERATED form whose inputs (the sports/category config)
+        changed after generation (invariant 10) — the UI offers a regenerate.
+        Hand-built forms are never stale."""
+        s = obj.settings or {}
+        if not (s.get("generated_from_sports") or s.get("generated_from")):
+            return False
+        from apps.tournaments.services.sports import sports_inputs_hash
+
+        return s.get("inputs_hash") != sports_inputs_hash(obj.tournament.sports)
 
 
 class FormCreateSerializer(serializers.Serializer):

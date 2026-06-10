@@ -196,13 +196,14 @@ export function AppShell(): React.ReactElement {
       })
     : decorateInvitesBadge(computeWorkspaceNav(user, navSlug), pendingInviteCount);
 
-  // Onboarding flow: until the tournament is set up (stage reaches "ready",
-  // which requires fixtures to be generated), HIDE the sidebar and present each
-  // stage as a focused, full-width wizard — the main app surface (sidebar) only
-  // appears once setup is done, where the real match-day work lives. Default to
-  // wizard while the stage loads so the sidebar doesn't flash in for setups.
-  const setupMode =
-    inTournamentContext && (stageQuery.data?.stage ?? "setup") !== "ready";
+  // Flow flexibility (owner request 2026-06-10): the sidebar is ALWAYS
+  // available — during setup the stage pages stay focused and the stepper
+  // guides the order, but navigation is never locked away. Sections the
+  // tournament hasn't reached render as visible-but-locked rows ("Unlocks
+  // at …"), and permission gating hides what the member's role can't use.
+  // (The old behavior hid the whole sidebar until stage "ready", stranding
+  // admins inside the wizard and leaving archived tournaments nav-less.)
+  const setupMode = false as boolean;
 
   const handleSignOut = async (): Promise<void> => {
     setMenuOpen(false);

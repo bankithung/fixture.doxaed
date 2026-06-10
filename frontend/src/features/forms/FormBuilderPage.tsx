@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
@@ -13,6 +13,7 @@ import {
   Save,
   Send,
   Settings2,
+  Trash2,
 } from "lucide-react";
 import { formsApi } from "@/api/forms";
 import type { FormSummary } from "./types";
@@ -23,6 +24,13 @@ import { FormCanvas } from "./FormCanvas";
 import { FormPreviewDialog } from "./FormPreviewDialog";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
@@ -222,6 +230,24 @@ export function FormBuilderPage(): React.ReactElement {
     },
   });
 
+  const navigate = useNavigate();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const remove = useMutation({
+    mutationFn: () => formsApi.remove(formId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["forms", id] });
+      toast.push({ kind: "success", title: t("Form deleted") });
+      navigate(routes.tournamentForms(id));
+    },
+    onError: (e) =>
+      toast.push({
+        kind: "error",
+        title: t("Could not delete the form"),
+        description:
+          e instanceof ApiError ? (e.payload.detail ?? undefined) : undefined,
+      }),
+  });
+
   if (query.isLoading) {
     return (
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
@@ -322,8 +348,48 @@ export function FormBuilderPage(): React.ReactElement {
               {t("Close")}
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setConfirmDelete(true)}
+            aria-label={t("Delete form")}
+            title={t("Delete form")}
+            data-testid="builder-delete-form"
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 aria-hidden="true" className="h-4 w-4" />
+          </Button>
         </div>
       </div>
+
+      <Dialog
+        open={confirmDelete}
+        onOpenChange={(o) => {
+          if (!o) setConfirmDelete(false);
+        }}
+        ariaLabel={t("Delete form")}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("Delete this form?")}</DialogTitle>
+          <DialogDescription>
+            {t("The form and its public link stop working immediately. Submitted responses are kept for your records.")}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setConfirmDelete(false)}>
+            {t("Keep form")}
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={remove.isPending}
+            onClick={() => remove.mutate()}
+            data-testid="builder-confirm-delete"
+          >
+            <Trash2 aria-hidden="true" className="h-4 w-4" />
+            {t("Delete form")}
+          </Button>
+        </DialogFooter>
+      </Dialog>
 
       {/* Builder: the form column (settings + questions) capped + centered so it
           reads like a real form, beside the collapsible palette rail. */}

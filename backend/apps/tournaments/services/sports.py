@@ -262,3 +262,15 @@ def leaf_label(sports: list[dict] | None, leaf_key: str, *, with_sport: bool = T
         return leaf["sport_name"]
     body = leaf["label"]
     return f"{leaf['sport_name']} — {body}" if with_sport else body
+
+
+def sports_inputs_hash(sports: list[dict] | None) -> str:
+    """Stable fingerprint of the sports config — generated artifacts (the
+    registration forms) stamp it at build time so staleness is detectable
+    after category edits (invariant 10)."""
+    import hashlib
+    import json
+
+    return hashlib.sha256(
+        json.dumps(sports or [], sort_keys=True).encode("utf-8")
+    ).hexdigest()

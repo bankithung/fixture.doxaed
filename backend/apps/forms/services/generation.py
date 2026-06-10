@@ -16,6 +16,7 @@ import re
 from apps.forms.constants import CHOICE_TYPES, FormPurpose
 from apps.forms.models import Form
 from apps.forms.services.forms import create_form
+from apps.tournaments.services.sports import sports_inputs_hash
 
 _SLUG = re.compile(r"[^a-z0-9]+")
 
@@ -272,6 +273,7 @@ def generate_team_form_template(*, tournament, created_by=None, request=None) ->
         **(form.settings or {}),
         "bindings": bindings,
         "generated_from": str(org_form.id) if org_form else None,
+        "inputs_hash": sports_inputs_hash(tournament.sports),
     }
     form.save(update_fields=["settings"])
     return form
@@ -370,6 +372,9 @@ def generate_institution_form(*, tournament, created_by=None, request=None) -> F
         # mapping (no more guessing fields by position/type).
         "sports_field": "sports",
         "category_fields": category_fields,
+        # Staleness fingerprint (invariant 10): compared against the live
+        # sports config to flag forms generated from an older category set.
+        "inputs_hash": sports_inputs_hash(tournament.sports),
     }
     form.save(update_fields=["settings"])
     return form
