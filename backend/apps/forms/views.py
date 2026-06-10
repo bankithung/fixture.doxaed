@@ -371,10 +371,17 @@ class TeamAccessView(GenericAPIView):
         ).first()
         if inst is None:
             raise NotFound("institution_not_found")
-        ok, err = verify_team_code(inst, str(request.data.get("code") or ""))
-        if not ok:
-            # Same 403 body shape for both cases; `locked` lets the UI explain.
-            return Response({"detail": err}, status=403)
+        # An authenticated manager needs no code — they get the same prefill so
+        # the admin "Add team" page arrives with the school's details filled.
+        manager = (
+            request.user.is_authenticated
+            and can_access_module(request.user, form.tournament, "forms")
+        )
+        if not manager:
+            ok, err = verify_team_code(inst, str(request.data.get("code") or ""))
+            if not ok:
+                # Same 403 shape for both cases; `locked` lets the UI explain.
+                return Response({"detail": err}, status=403)
         # Prefill, revealed only AFTER the code verifies:
         #  - the institution's Stage-1 contact details (so even a FIRST team
         #    registration arrives with contact person/email/phone filled), then

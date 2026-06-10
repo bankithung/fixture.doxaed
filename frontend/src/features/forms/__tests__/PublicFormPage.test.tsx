@@ -497,6 +497,76 @@ describe("PublicFormPage", () => {
     );
   });
 
+  it("manager path: no code panel, school details prefill on selection", async () => {
+    const teamSchema: FormSchema = {
+      version: 1,
+      sections: [
+        {
+          key: "institution",
+          title: "Your institution",
+          fields: [
+            {
+              key: "institution_id",
+              type: "dropdown",
+              label: "Select your institution",
+              required: true,
+              data_source: { type: "institution_list" },
+              options: [
+                {
+                  value: "i1",
+                  label: "Don Bosco",
+                  leaves: ["football.u15"],
+                  requires_code: true,
+                },
+              ],
+            },
+            { key: "contact_name", type: "short_text", label: "Contact person" },
+          ],
+        },
+      ],
+    };
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "Anpsa",
+      can_manage: true,
+      competition_fields: [],
+      form: {
+        id: "form1",
+        title: "Team registration",
+        description: "",
+        schema: teamSchema,
+        confirmation_message: "",
+      },
+    });
+    vi.mocked(formsApi.teamAccess).mockResolvedValue({
+      access_token: "mgr-token",
+      expires_in: 7200,
+      editing: false,
+      prefill: { institution_id: "i1", contact_name: "Fr. K" },
+    });
+
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+    // Organizer banner, no code prompt.
+    expect(screen.getByText(/signed in as an organizer/i)).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /select your institution/i }),
+    );
+    await userEvent.click(screen.getByRole("option", { name: "Don Bosco" }));
+
+    // Manager prefill fetched with an empty code; contact auto-fills.
+    await waitFor(() =>
+      expect(formsApi.teamAccess).toHaveBeenCalledWith("form1", {
+        institution_id: "i1",
+        code: "",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText(/contact person/i)).toHaveValue("Fr. K"),
+    );
+    expect(screen.queryByText("School access code")).toBeNull();
+  });
+
   it("flags duplicate team names inline and blocks submit", async () => {
     const teamSchema: FormSchema = {
       version: 1,

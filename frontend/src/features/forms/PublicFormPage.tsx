@@ -213,6 +213,31 @@ export function PublicFormPage(): React.ReactElement {
       ),
   });
 
+  // Admin "Add team" path: a manager needs no code, but should still get the
+  // school's details prefilled. When a manager picks a school, fetch the same
+  // prefill the code-exchange returns (the endpoint skips the code check for
+  // an authenticated manager) and overlay it onto the answers.
+  const lastManagerInst = useRef<string | null>(null);
+  const managerPrefill = useMutation({
+    mutationFn: (instId: string) =>
+      formsApi.teamAccess(form?.id ?? formId ?? "", {
+        institution_id: instId,
+        code: "",
+      }),
+    onSuccess: (res) => {
+      setEditingPrior(res.editing);
+      if (res.prefill) setAnswers((a) => ({ ...a, ...res.prefill }));
+    },
+  });
+  useEffect(() => {
+    if (!data?.can_manage || !instField) return;
+    const v = String(selectedInstValue ?? "");
+    if (!v || v === lastManagerInst.current) return;
+    lastManagerInst.current = v;
+    managerPrefill.mutate(v);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, instField, selectedInstValue]);
+
   // Inline duplicate-name guard (team forms): two rows of one team group
   // sharing a name show an error AS YOU TYPE and block Next/Submit — the
   // server enforces the same per-competition rule on submit.
