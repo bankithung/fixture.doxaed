@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Search,
   SlidersHorizontal,
+  Trophy,
   X,
 } from "lucide-react";
 import {
@@ -697,75 +698,66 @@ export function PublicDirectoryPage(): React.ReactElement {
   return (
     <PublicShell wide tournamentName={d.tournament_name}>
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6">
-        {/* Header — compact on phones: the count collapses into an inline
-            pill next to the title instead of a second stacked card. */}
-        <header className="flex items-end justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
-              {d.tournament_name}
-            </p>
-            <div className="mt-1 flex items-center gap-2">
-              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-                {t("Registered institutions")}
-              </h1>
-              <span
-                aria-label={`${total} ${
-                  total === 1
-                    ? t("institution registered")
-                    : t("institutions registered")
-                }`}
-                className="inline-flex shrink-0 items-center rounded-full bg-primary/10 px-2.5 py-0.5 font-tabular text-sm font-semibold text-primary sm:hidden"
-              >
-                {total}
-              </span>
-            </div>
-            <p className="mt-1 truncate text-sm text-muted-foreground" title={d.form_title}>
-              {d.form_title}
-            </p>
-          </div>
-          <div className="hidden shrink-0 items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 sm:flex">
+        {/* Header — text only; all counts live in the KPI card row below. */}
+        <header className="min-w-0">
+          <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
+            {d.tournament_name}
+          </p>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
+            {t("Registered institutions")}
+          </h1>
+          <p className="mt-1 truncate text-sm text-muted-foreground" title={d.form_title}>
+            {d.form_title}
+          </p>
+        </header>
+
+        {/* Headline KPI cards — the total plus one matching card per MAIN
+            game (admins can switch to total-only from the form builder). */}
+        <section
+          aria-label={t("Registration summary")}
+          className="-mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+        >
+          <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5">
             <Building2 aria-hidden="true" className="h-5 w-5 shrink-0 text-primary" />
-            <div className="leading-tight">
+            <div className="min-w-0 leading-tight">
               <div className="font-tabular text-2xl font-semibold tracking-tight text-primary">
                 {total}
               </div>
-              <div className="text-xs text-muted-foreground">
+              <div className="truncate text-xs text-muted-foreground">
                 {total === 1
                   ? t("institution registered")
                   : t("institutions registered")}
               </div>
             </div>
           </div>
-        </header>
-
-        {/* Headline KPIs — registrations per MAIN game (admins can switch the
-            directory to total-only from the form builder's settings). */}
-        {(d.kpi_mode ?? "games") === "games" && gameStats.length > 0 ? (
-          <section
-            aria-label={t("Registrations by game")}
-            className="-mt-2 flex flex-wrap gap-2"
-          >
-            {gameStats.map((g) => (
-              <div
-                key={g.key}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 shadow-sm",
-                  g.count === 0 && "opacity-60",
-                )}
-              >
-                <span
-                  className="max-w-[10rem] truncate text-xs text-muted-foreground"
-                  title={g.label}
+          {(d.kpi_mode ?? "games") === "games"
+            ? gameStats.map((g) => (
+                <div
+                  key={g.key}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5 shadow-sm",
+                    g.count === 0 && "opacity-60",
+                  )}
                 >
-                  {g.label}
-                </span>
-                <span className="font-tabular text-sm font-semibold">
-                  {g.count}
-                </span>
-              </div>
-            ))}
-          </section>
-        ) : null}
+                  <Trophy
+                    aria-hidden="true"
+                    className="h-5 w-5 shrink-0 text-muted-foreground"
+                  />
+                  <div className="min-w-0 leading-tight">
+                    <div className="font-tabular text-2xl font-semibold tracking-tight">
+                      {g.count}
+                    </div>
+                    <div
+                      className="truncate text-xs text-muted-foreground"
+                      title={g.label}
+                    >
+                      {g.label}
+                    </div>
+                  </div>
+                </div>
+              ))
+            : null}
+        </section>
 
         {/* Content + the Amazon-style filter rail (right on desktop). */}
         <div className="flex flex-col gap-6 lg:flex-row">

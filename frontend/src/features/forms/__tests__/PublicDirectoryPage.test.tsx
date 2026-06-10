@@ -136,21 +136,23 @@ describe("PublicDirectoryPage", () => {
     expect(screen.getByText("Mount Hermon")).toBeInTheDocument();
   });
 
-  it("shows per-main-game registration KPIs by default", async () => {
+  it("shows per-main-game registration KPI cards by default", async () => {
     renderPage();
     await screen.findByText("Grace High");
 
-    const strip = screen.getByRole("region", {
-      name: "Registrations by game",
+    const summary = screen.getByRole("region", {
+      name: "Registration summary",
     });
-    // Both institutions entered Sepak Takraw → 2 DISTINCT institutions
-    // (sub-categories never appear in the headline).
-    expect(within(strip).getByText("Sepak Takraw")).toBeInTheDocument();
-    expect(within(strip).getByText("2")).toBeInTheDocument();
-    expect(within(strip).queryByText(/U-14/)).toBeNull();
+    // The total card plus a matching card per game. Both institutions
+    // entered Sepak Takraw → 2 DISTINCT institutions (sub-categories never
+    // appear in the headline).
+    expect(within(summary).getByText("institutions registered")).toBeInTheDocument();
+    expect(within(summary).getByText("Sepak Takraw")).toBeInTheDocument();
+    expect(within(summary).getAllByText("2").length).toBeGreaterThan(0);
+    expect(within(summary).queryByText(/U-14/)).toBeNull();
   });
 
-  it("hides the per-game KPIs when the admin chose total-only", async () => {
+  it("hides the per-game KPI cards when the admin chose total-only", async () => {
     vi.mocked(formsApi.directory).mockResolvedValue({
       ...DATA,
       kpi_mode: "total",
@@ -159,9 +161,11 @@ describe("PublicDirectoryPage", () => {
     renderPage();
     await screen.findByText("Grace High");
 
-    expect(
-      screen.queryByRole("region", { name: "Registrations by game" }),
-    ).toBeNull();
+    const summary = screen.getByRole("region", {
+      name: "Registration summary",
+    });
+    expect(within(summary).getByText("institutions registered")).toBeInTheDocument();
+    expect(within(summary).queryByText("Sepak Takraw")).toBeNull();
   });
 
   it("applies the active filters to the Competitions tab", async () => {
