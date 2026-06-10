@@ -291,6 +291,15 @@ def _public_payload(form, link=None):
         "tournament_name": form.tournament.name,
         "competition_fields": _competition_field_keys(form),
     }
+    # Team forms: the (group, team-name field) pairs, so the renderer can
+    # flag duplicate team names within a competition AS THE USER TYPES
+    # (the submit endpoint enforces the same rule server-side).
+    if form.purpose == FormPurpose.TEAM_REGISTRATION:
+        data["team_groups"] = [
+            {"group": cg.get("group"), "field": cg.get("team_name")}
+            for cg in ((form.settings or {}).get("bindings", {}).get("category_groups") or [])
+            if cg.get("group") and cg.get("team_name")
+        ]
     # A bound/prefilled per-institution Stage-2 link carries initial answers + the
     # institution it's fixed to, so the renderer pre-fills contact details and
     # locks the institution (no dropdown to pick the wrong school).

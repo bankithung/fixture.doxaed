@@ -154,6 +154,34 @@ export function PublicFormPage(): React.ReactElement {
     setAnswers((a) => ({ ...a, ...next }));
   }, [answers, instField, compFieldKeys, schema]);
 
+  // Inline duplicate-name guard (team forms): two rows of one team group
+  // sharing a name show an error AS YOU TYPE and block Next/Submit — the
+  // server enforces the same per-competition rule on submit.
+  const dupErrors = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const tg of data?.team_groups ?? []) {
+      const rows = answers[tg.group];
+      if (!Array.isArray(rows)) continue;
+      const seen = new Set<string>();
+      for (const r of rows) {
+        const n = String(
+          (r as Record<string, unknown> | null)?.[tg.field] ?? "",
+        )
+          .trim()
+          .toLowerCase();
+        if (!n) continue;
+        if (seen.has(n)) {
+          out[tg.group] = t(
+            "Two teams here have the same name — give each team a different name.",
+          );
+          break;
+        }
+        seen.add(n);
+      }
+    }
+    return out;
+  }, [answers, data]);
+
   // The reachable path is recomputed from answers on every render so picking an
   // option that changes branching immediately re-routes the wizard.
   const sections = useMemo(
@@ -217,6 +245,7 @@ export function PublicFormPage(): React.ReactElement {
     // Include nested (option-revealed) fields of the current section.
     for (const f of sectionActiveFields(current, answers)) {
       if (all[f.key]) here[f.key] = all[f.key];
+      else if (dupErrors[f.key]) here[f.key] = dupErrors[f.key];
     }
     setErrors(here);
     return Object.keys(here).length === 0;
@@ -234,7 +263,7 @@ export function PublicFormPage(): React.ReactElement {
 
   function onSubmit() {
     // Full-schema check across every reachable section so nothing slips by.
-    const all = validateRequired(schema, answers);
+    const all = { ...dupErrors, ...validateRequired(schema, answers) };
     if (Object.keys(all).length) {
       setErrors({
         ...all,
@@ -412,7 +441,7 @@ export function PublicFormPage(): React.ReactElement {
         <FieldRenderer
           field={f}
           value={answers[f.key]}
-          error={errors[f.key]}
+          error={errors[f.key] ?? dupErrors[f.key]}
           onChange={(v) => setAnswer(f.key, v)}
           onUpload={handleUpload}
         />

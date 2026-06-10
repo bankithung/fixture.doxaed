@@ -478,7 +478,12 @@ export function FieldRenderer({
       {control}
       {error ? (
         <p role="alert" className="text-xs text-destructive">
-          {t(ERROR_MESSAGES[error] ?? "This field is required.")}
+          {/* Known codes map to copy; full sentences (inline/server
+              validation messages) display verbatim; bare codes fall back. */}
+          {t(
+            ERROR_MESSAGES[error] ??
+              (error.includes(" ") ? error : "This field is required."),
+          )}
         </p>
       ) : null}
     </div>

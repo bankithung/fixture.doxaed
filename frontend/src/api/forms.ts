@@ -30,6 +30,9 @@ export interface PublicFormPayload {
   /** Keys of choice fields whose options are competition keys — the renderer
    * scopes them to the selected institution's registered leaves. */
   competition_fields?: string[];
+  /** Team forms: each repeatable team group + its team-name child field, for
+   * inline duplicate-name validation while typing. */
+  team_groups?: { group: string; field: string }[];
 }
 
 export interface CopyableItem {

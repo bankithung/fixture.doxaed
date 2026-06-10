@@ -134,6 +134,14 @@ export interface TournamentAuditResponse {
   results: AuditEvent[];
 }
 
+export interface TeamPlayerRow {
+  id: string;
+  full_name: string;
+  jersey_no: number | null;
+  position: string;
+  captain: boolean;
+}
+
 export interface TeamRow {
   id: string;
   name: string;
@@ -147,6 +155,8 @@ export interface TeamRow {
   leaf_key: string;
   status: string;
   player_count: number;
+  /** Inline roster (Teams tab expands a team to show it). */
+  players?: TeamPlayerRow[];
 }
 
 export interface MiniTeam {

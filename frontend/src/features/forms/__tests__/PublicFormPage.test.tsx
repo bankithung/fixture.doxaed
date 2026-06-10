@@ -380,6 +380,69 @@ describe("PublicFormPage", () => {
     expect(screen.queryByLabelText("Sepak Takraw")).toBeNull();
   });
 
+  it("flags duplicate team names inline and blocks submit", async () => {
+    const teamSchema: FormSchema = {
+      version: 1,
+      sections: [
+        {
+          key: "cat",
+          title: "Teams — U15",
+          fields: [
+            {
+              key: "teams_u15",
+              type: "group",
+              label: "Team",
+              repeatable: true,
+              fields: [
+                {
+                  key: "team_name_u15",
+                  type: "short_text",
+                  label: "Team name",
+                  required: true,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "Anpsa",
+      team_groups: [{ group: "teams_u15", field: "team_name_u15" }],
+      form: {
+        id: "form1",
+        title: "Team registration",
+        description: "",
+        schema: teamSchema,
+        confirmation_message: "",
+      },
+    });
+
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+
+    // Add two teams with the same name.
+    await userEvent.click(screen.getByRole("button", { name: /add team/i }));
+    await userEvent.click(screen.getByRole("button", { name: /add team/i }));
+    const names = screen.getAllByLabelText(/team name/i);
+    await userEvent.type(names[0], "Tigers");
+    await userEvent.type(names[1], "Tigers");
+
+    // Inline error appears while typing...
+    expect(
+      await screen.findByText(/two teams here have the same name/i),
+    ).toBeInTheDocument();
+    // ...and submit is blocked client-side.
+    await userEvent.click(screen.getByRole("button", { name: /submit/i }));
+    expect(formsApi.publicSubmit).not.toHaveBeenCalled();
+
+    // Renaming clears the error.
+    await userEvent.type(names[1], " Two");
+    expect(
+      screen.queryByText(/two teams here have the same name/i),
+    ).toBeNull();
+  });
+
   it("links to the directory from a closed institution form", async () => {
     vi.mocked(formsApi.publicGet).mockResolvedValue({
       tournament_name: "Cup",

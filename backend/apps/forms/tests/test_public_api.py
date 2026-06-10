@@ -262,6 +262,9 @@ def test_team_form_scopes_competitions_to_selected_institution():
     # The sport + category-chain questions are flagged as competition-scoped.
     assert "sports" in body["competition_fields"]
     assert len(body["competition_fields"]) >= 2  # sports + ≥1 chain level
+    # Team-name field pairs ride along for inline duplicate validation.
+    assert body["team_groups"], "expected team_groups for a team form"
+    assert all(g["group"] and g["field"] for g in body["team_groups"])
 
 
 def test_team_submit_same_name_across_categories_ok_duplicates_rejected():

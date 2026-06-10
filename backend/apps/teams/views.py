@@ -152,12 +152,25 @@ class TournamentTeamsListView(GenericAPIView):
     def get(self, request, tournament_id):
         if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
             raise NotFound("tournament_not_found")
+        from django.db.models import Prefetch
+
+        from apps.teams.models import Player
+
         qs = (
             Team.objects.filter(tournament_id=tournament_id, deleted_at__isnull=True)
             .select_related("institution")
             .annotate(
                 player_count=Count(
                     "players", filter=Q(players__deleted_at__isnull=True)
+                )
+            )
+            .prefetch_related(
+                Prefetch(
+                    "players",
+                    queryset=Player.objects.filter(deleted_at__isnull=True)
+                    .select_related("person")
+                    .order_by("jersey_no", "created_at"),
+                    to_attr="roster",
                 )
             )
             .order_by("institution__name", "pool", "name")
@@ -179,6 +192,19 @@ class TournamentTeamsListView(GenericAPIView):
                     "leaf_key": t.leaf_key,
                     "status": t.status,
                     "player_count": t.player_count,
+                    # The roster inline (school-tournament scale): the Teams
+                    # tab expands a team to show its players with no extra
+                    # request.
+                    "players": [
+                        {
+                            "id": str(p.id),
+                            "full_name": p.person.full_name if p.person_id else "",
+                            "jersey_no": p.jersey_no,
+                            "position": p.position,
+                            "captain": p.captain,
+                        }
+                        for p in t.roster
+                    ],
                 }
                 for t in qs
             ]

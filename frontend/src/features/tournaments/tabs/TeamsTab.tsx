@@ -1,10 +1,14 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Sparkles, Users } from "lucide-react";
+import { ChevronRight, Pencil, Plus, Sparkles, Users } from "lucide-react";
 import { institutionsApi } from "@/api/institutions";
 import { formsApi } from "@/api/forms";
-import { tournamentsApi, type TeamRow } from "@/api/tournaments";
+import {
+  tournamentsApi,
+  type TeamPlayerRow,
+  type TeamRow,
+} from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +25,8 @@ import { FilePlus2 } from "lucide-react";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
+import { cn } from "@/lib/tailwind";
+import { useBreakpoint } from "@/lib/useBreakpoint";
 import { t } from "@/lib/t";
 import { CreateFormDialog } from "../CreateFormDialog";
 import { EmptyState } from "./shared";
@@ -167,29 +173,7 @@ export function TeamsTab(): React.ReactElement {
           }
         />
       ) : (
-        <div className="flex flex-col gap-4">
-          {Object.entries(grouped).map(([inst, rows]) => (
-            <section key={inst} className="rounded-xl border border-border bg-card shadow-sm">
-              <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-                <h3 className="text-sm font-semibold">{inst}</h3>
-                <span className="font-tabular text-xs text-muted-foreground">{rows.length}</span>
-              </div>
-              <div className="grid gap-2 p-4 sm:grid-cols-2 lg:grid-cols-3">
-                {rows.map((tm) => (
-                  <div
-                    key={tm.id}
-                    className="rounded-lg border border-border bg-background px-3 py-2.5"
-                  >
-                    <div className="truncate text-sm font-medium">{tm.name}</div>
-                    <div className="mt-0.5 font-tabular text-xs text-muted-foreground">
-                      {tm.pool || t("Unseeded")} · {tm.player_count} {t("players")}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
+        <TeamsTable grouped={grouped} />
       )}
 
       <Dialog
@@ -246,6 +230,213 @@ export function TeamsTab(): React.ReactElement {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
       />
+    </div>
+  );
+}
+
+/** Compact roster chips: jersey no · name · captain badge. */
+function Roster({ players }: { players: TeamPlayerRow[] }): React.ReactElement {
+  if (!players.length)
+    return <p className="text-xs text-muted-foreground">{t("No players yet.")}</p>;
+  return (
+    <ol className="flex flex-wrap gap-1.5">
+      {players.map((p, i) => (
+        <li
+          key={p.id}
+          className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-xs"
+        >
+          <span className="font-tabular text-muted-foreground">
+            {p.jersey_no ?? i + 1}
+          </span>
+          <span className="font-medium">{p.full_name || t("Unnamed")}</span>
+          {p.captain ? (
+            <span className="rounded bg-primary/15 px-1 font-tabular font-semibold text-primary">
+              C
+            </span>
+          ) : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+const TEAM_TH =
+  "sticky top-0 z-10 border-b border-border bg-muted px-3 py-2.5 text-left text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground";
+const TEAM_TD = "border-b border-border px-3 py-2.5 align-middle";
+
+/**
+ * Teams as a proper TABLE (owner 2026-06-10): collapsible institution group
+ * rows, and every team row expands to its full player roster inline. Phones
+ * get the same hierarchy as stacked cards.
+ */
+function TeamsTable({
+  grouped,
+}: {
+  grouped: Record<string, TeamRow[]>;
+}): React.ReactElement {
+  const { isMobile } = useBreakpoint();
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const flip = (
+    set: Set<string>,
+    update: (next: Set<string>) => void,
+    key: string,
+  ): void => {
+    const next = new Set(set);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    update(next);
+  };
+
+  if (isMobile) {
+    return (
+      <div className="flex flex-col gap-4">
+        {Object.entries(grouped).map(([inst, rows]) => (
+          <section key={inst} className="rounded-xl border border-border bg-card shadow-sm">
+            <button
+              type="button"
+              aria-expanded={!collapsed.has(inst)}
+              onClick={() => flip(collapsed, setCollapsed, inst)}
+              className="flex w-full items-center gap-2 px-4 py-3 text-left"
+            >
+              <ChevronRight
+                aria-hidden="true"
+                className={cn(
+                  "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                  !collapsed.has(inst) && "rotate-90",
+                )}
+              />
+              <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{inst}</h3>
+              <span className="font-tabular text-xs text-muted-foreground">{rows.length}</span>
+            </button>
+            {!collapsed.has(inst) ? (
+              <div className="flex flex-col gap-2 border-t border-border p-3">
+                {rows.map((tm) => (
+                  <div key={tm.id} className="rounded-lg border border-border bg-background">
+                    <button
+                      type="button"
+                      aria-expanded={expanded.has(tm.id)}
+                      onClick={() => flip(expanded, setExpanded, tm.id)}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+                    >
+                      <ChevronRight
+                        aria-hidden="true"
+                        className={cn(
+                          "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
+                          expanded.has(tm.id) && "rotate-90",
+                        )}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{tm.name}</span>
+                        <span className="mt-0.5 block truncate font-tabular text-xs text-muted-foreground">
+                          {tm.pool || t("Unseeded")} · {tm.player_count} {t("players")}
+                        </span>
+                      </span>
+                    </button>
+                    {expanded.has(tm.id) ? (
+                      <div className="border-t border-border/60 px-3 py-2.5">
+                        <Roster players={tm.players ?? []} />
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-h-[36rem] overflow-auto rounded-xl border border-border bg-card shadow-sm">
+      <table className="w-full border-separate border-spacing-0 text-sm">
+        <thead>
+          <tr>
+            <th className={cn(TEAM_TH, "w-8")} aria-label={t("Expand")} />
+            <th className={TEAM_TH}>{t("Team")}</th>
+            <th className={TEAM_TH}>{t("Competition")}</th>
+            <th className={cn(TEAM_TH, "text-right")}>{t("Players")}</th>
+            <th className={TEAM_TH}>{t("Status")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Object.entries(grouped).map(([inst, rows]) => (
+            <Fragment key={inst}>
+              <tr>
+                <td colSpan={5} className="border-b border-border bg-muted/50 px-3 py-2">
+                  <button
+                    type="button"
+                    aria-expanded={!collapsed.has(inst)}
+                    onClick={() => flip(collapsed, setCollapsed, inst)}
+                    className="flex w-full items-center gap-2 text-left"
+                  >
+                    <ChevronRight
+                      aria-hidden="true"
+                      className={cn(
+                        "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                        !collapsed.has(inst) && "rotate-90",
+                      )}
+                    />
+                    <span className="text-sm font-semibold">{inst}</span>
+                    <span className="font-tabular text-xs text-muted-foreground">
+                      {rows.length} {rows.length === 1 ? t("team") : t("teams")}
+                    </span>
+                  </button>
+                </td>
+              </tr>
+              {!collapsed.has(inst)
+                ? rows.map((tm) => (
+                    <Fragment key={tm.id}>
+                      <tr
+                        className="group cursor-pointer hover:bg-accent/40"
+                        onClick={() => flip(expanded, setExpanded, tm.id)}
+                      >
+                        <td className={cn(TEAM_TD, "pl-4")}>
+                          <button
+                            type="button"
+                            aria-expanded={expanded.has(tm.id)}
+                            aria-label={t(`Show players of ${tm.name}`)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              flip(expanded, setExpanded, tm.id);
+                            }}
+                            className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                          >
+                            <ChevronRight
+                              aria-hidden="true"
+                              className={cn(
+                                "h-3.5 w-3.5 transition-transform",
+                                expanded.has(tm.id) && "rotate-90",
+                              )}
+                            />
+                          </button>
+                        </td>
+                        <td className={cn(TEAM_TD, "font-medium")}>{tm.name}</td>
+                        <td className={cn(TEAM_TD, "text-muted-foreground")}>
+                          {tm.pool || t("Unseeded")}
+                        </td>
+                        <td className={cn(TEAM_TD, "text-right font-tabular")}>
+                          {tm.player_count}
+                        </td>
+                        <td className={cn(TEAM_TD, "capitalize text-muted-foreground")}>
+                          {t(tm.status)}
+                        </td>
+                      </tr>
+                      {expanded.has(tm.id) ? (
+                        <tr>
+                          <td colSpan={5} className="border-b border-border bg-muted/20 px-4 py-3 pl-12">
+                            <Roster players={tm.players ?? []} />
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  ))
+                : null}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
