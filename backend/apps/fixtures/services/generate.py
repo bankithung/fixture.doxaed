@@ -59,11 +59,11 @@ def generate_round_robin(*, tournament, group_size: int = 5) -> list[Match]:
     with transaction.atomic():
         groups = [teams[i : i + group_size] for i in range(0, len(teams), group_size)]
         for gi, group in enumerate(groups):
+            # Group membership lives on the Match rows (group_label) only —
+            # Team.pool is the team's registered category and must survive
+            # generation (it used to be overwritten here, destroying the
+            # registration bucket; spec 2026-06-10 §2).
             label = f"Group {_GROUP_LABELS[gi]}"
-            for team in group:
-                if team.pool != label:
-                    team.pool = label
-                    team.save(update_fields=["pool", "updated_at"])
             ih = hashlib.sha256(
                 ",".join(sorted(str(t.id) for t in group)).encode()
             ).hexdigest()
@@ -87,21 +87,20 @@ def generate_round_robin(*, tournament, group_size: int = 5) -> list[Match]:
     return to_create
 
 
-def _sport_for_pool(tournament, pool: str) -> str:
-    """Map a pool (category) back to its sport key via the tournament's sports
-    config, so per-sport (set-based) scoring knows which rules apply. '' if the
-    category isn't tied to a configured sport (→ goal-based default)."""
-    for s in tournament.sports or []:
-        if pool in (s.get("categories") or []):
-            return str(s.get("key") or "")
-    return ""
-
-
 def generate_round_robin_by_category(*, tournament) -> list[Match]:
-    """Round-robin WITHIN each category bucket: a team only plays others in the
-    SAME pool (e.g. U-14 vs U-14), honoring the category each team registered
-    under — instead of re-grouping by size. Pools with <2 teams are skipped.
-    Idempotent: returns existing matches if any."""
+    """Round-robin WITHIN each competition (category leaf): a team only plays
+    others registered into the SAME leaf (e.g. Football U-15 Girls vs same),
+    honoring the category each team registered under — instead of re-grouping
+    by size. Leaves with <2 teams are skipped. Idempotent: returns existing
+    matches if any.
+
+    Buckets key on the structural ``Team.leaf_key`` (stable, sport-prefixed),
+    falling back to the legacy ``pool`` label for teams registered before the
+    leaf registry existed; the match's sport comes from the leaf key via the
+    registry (replaces the broken pool-name→sport matching — spec 2026-06-10
+    B1)."""
+    from apps.tournaments.services.sports import leaf_label, sport_for_leaf
+
     existing = list(
         Match.objects.filter(tournament=tournament, deleted_at__isnull=True)
     )
@@ -111,26 +110,35 @@ def generate_round_robin_by_category(*, tournament) -> list[Match]:
     teams = list(
         Team.objects.filter(
             tournament=tournament, status=TeamStatus.REGISTERED, deleted_at__isnull=True
-        ).order_by("pool", "seed", "name")
+        ).order_by("leaf_key", "pool", "seed", "name")
     )
     if len(teams) < 2:
         raise ValueError("Need at least 2 registered teams to generate fixtures.")
 
-    # Bucket by the team's existing pool (its category); blanks fall into "General".
+    # Bucket by leaf (legacy fallback: pool label); blanks fall into "General".
     from collections import OrderedDict
 
     pools: "OrderedDict[str, list]" = OrderedDict()
     for tm in teams:
-        pools.setdefault(tm.pool or "General", []).append(tm)
+        pools.setdefault(tm.leaf_key or tm.pool or "General", []).append(tm)
 
+    sports_cfg = tournament.sports or []
     org = tournament.organization
     to_create: list[Match] = []
     match_no = 0
     with transaction.atomic():
-        for label, group in pools.items():
+        for bucket, group in pools.items():
             if len(group) < 2:
                 continue  # a category with a single team has no matches
-            sport_key = _sport_for_pool(tournament, label)
+            is_leaf = bool(group[0].leaf_key)
+            sport_key = (
+                sport_for_leaf(sports_cfg, bucket) or group[0].sport
+                if is_leaf
+                else group[0].sport
+            )
+            label = (
+                leaf_label(sports_cfg, bucket) if is_leaf else bucket
+            )[:80]
             ih = hashlib.sha256(
                 ",".join(sorted(str(t.id) for t in group)).encode()
             ).hexdigest()
@@ -143,6 +151,7 @@ def generate_round_robin_by_category(*, tournament) -> list[Match]:
                         stage="group",
                         group_label=label,
                         sport=sport_key,
+                        leaf_key=bucket if is_leaf else "",
                         round_no=round_no,
                         match_no=match_no,
                         home_team=home,

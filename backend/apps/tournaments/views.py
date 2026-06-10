@@ -33,6 +33,8 @@ from apps.tournaments.services.rules import (
     merge_rules,
     update_settings,
 )
+from apps.tournaments.services.sports import normalize_sports
+from apps.tournaments.services.sports import sport_key as _sport_key  # noqa: F401 (re-export)
 from apps.tournaments.services.state import (
     StageTransitionError,
     build_stage_payload,
@@ -236,20 +238,13 @@ class TournamentSettingsView(GenericAPIView):
         return Response(_settings_payload(tournament, request.user))
 
 
-def _sport_key(name: str) -> str:
-    """Stable slug key for a sport name (catalog code or custom)."""
-    s = "".join(c if c.isalnum() else "_" for c in (name or "").lower())
-    while "__" in s:
-        s = s.replace("__", "_")
-    return s.strip("_")[:40]
-
-
 class TournamentSportsView(GenericAPIView):
     """`GET/PUT /api/tournaments/{id}/sports/` — the sports this tournament runs.
 
     GET: any tournament member (access-scoped → 404 on no access). PUT:
-    manager-only; replaces the list. Items are normalized to {key, name, custom}
-    (blanks dropped, keys de-duplicated). Audited."""
+    manager-only; replaces the list, normalized by the sports registry
+    (recursive category nodes with stable keys; legacy 2-level shape coerced;
+    per-sport scoring/scheduling config preserved). Audited."""
 
     permission_classes = [IsAuthenticated]
 
@@ -261,49 +256,10 @@ class TournamentSportsView(GenericAPIView):
         tournament = _get_tournament_or_404(request.user, tournament_id)
         if not can_manage_tournament(request.user, tournament):
             raise PermissionDenied("not_tournament_manager")
-        raw = request.data.get("sports")
-        if not isinstance(raw, list):
-            raise DRFValidationError({"detail": "sports_must_be_list"})
-
-        cleaned: list[dict] = []
-        seen: set[str] = set()
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-            name = str(item.get("name") or "").strip()
-            if not name:
-                continue
-            key = _sport_key(str(item.get("key") or "")) or _sport_key(name)
-            if not key or key in seen:
-                continue
-            seen.add(key)
-            # Per-sport categories (each with optional subcategories) drive the
-            # generated forms + fixture buckets. Tolerates legacy string entries.
-            cats: list[dict] = []
-            seen_cat: set[str] = set()
-            for c in item.get("categories") or []:
-                if isinstance(c, str):
-                    cname, subs_raw = c.strip(), []
-                elif isinstance(c, dict):
-                    cname = str(c.get("name") or "").strip()
-                    subs_raw = c.get("subcategories") or []
-                else:
-                    continue
-                if not cname or cname in seen_cat:
-                    continue
-                seen_cat.add(cname)
-                subs: list[str] = []
-                for sub in subs_raw if isinstance(subs_raw, list) else []:
-                    sname = str(sub).strip()
-                    if sname and sname not in subs:
-                        subs.append(sname[:80])
-                cats.append({"name": cname[:80], "subcategories": subs})
-            cleaned.append({
-                "key": key,
-                "name": name[:80],
-                "custom": bool(item.get("custom")),
-                "categories": cats,
-            })
+        try:
+            cleaned = normalize_sports(request.data.get("sports"))
+        except ValueError as exc:
+            raise DRFValidationError({"detail": str(exc)})
 
         before = {"sports": tournament.sports or []}
         tournament.sports = cleaned

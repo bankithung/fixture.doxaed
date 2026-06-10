@@ -85,6 +85,10 @@ class Match(models.Model):
     # scores here; home_score/away_score then hold SETS won.
     sport = models.CharField(max_length=40, blank=True)
     set_scores = models.JSONField(default=list, blank=True)  # [[11,8],[9,11],...]
+    # Category-leaf this match belongs to (spec 2026-06-10 §3) — fixtures are
+    # generated per leaf; standings/brackets filter on it. Blank = whole-
+    # tournament draw (legacy single-competition flow).
+    leaf_key = models.CharField(max_length=160, blank=True, db_index=True)
 
     scheduled_at = models.DateTimeField(null=True, blank=True)
     venue = models.CharField(max_length=120, blank=True)

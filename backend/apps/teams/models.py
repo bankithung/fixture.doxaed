@@ -147,7 +147,13 @@ class Team(models.Model):
     short_name = models.CharField(max_length=40, blank=True)
     school = models.CharField(max_length=200, blank=True)
     region = models.CharField(max_length=120, blank=True)
-    pool = models.CharField(max_length=80, blank=True)  # group/category
+    pool = models.CharField(max_length=80, blank=True)  # display label (group/category)
+    # Structural competition binding (spec 2026-06-10 §3): the sport key and
+    # the category-leaf key ("football.u15.girls.5v5") this team registered
+    # into. `pool` stays as the human-readable label; these are the machine
+    # references fixtures/scoring scope by. Blank = uncategorized.
+    sport = models.CharField(max_length=40, blank=True)
+    leaf_key = models.CharField(max_length=160, blank=True, db_index=True)
     seed = models.PositiveSmallIntegerField(null=True, blank=True)
     status = models.CharField(
         max_length=24, choices=TeamStatus.choices, default=TeamStatus.REGISTERED,

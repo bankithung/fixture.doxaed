@@ -85,11 +85,43 @@ def _map_organization_registration(resp: FormResponse) -> FormResponse:
             if val and not getattr(inst, attr):
                 setattr(inst, attr, str(val)[:200])
                 changed.append(attr)
+        # Persist WHICH competitions (category leaves) the institution entered,
+        # as structured data — Stage 2 scoping and dashboards read this instead
+        # of re-parsing raw answers (spec 2026-06-10). Union on re-submission.
+        leaves = _selected_leaves(form.settings or {}, a)
+        if leaves:
+            existing = list((inst.attributes or {}).get("leaves") or [])
+            merged = existing + [lf for lf in leaves if lf not in existing]
+            if merged != existing:
+                inst.attributes = {**(inst.attributes or {}), "leaves": merged}
+                changed.append("attributes")
         if changed:
-            inst.save(update_fields=[*changed, "updated_at"])
+            inst.save(update_fields=[*dict.fromkeys(changed), "updated_at"])
     resp.mapped_entities = {"institution_id": str(inst.id) if inst else None}
     resp.save(update_fields=["mapped_entities"])
     return resp
+
+
+def _selected_leaves(settings: dict, answers: dict) -> list[str]:
+    """Category-leaf keys an org-registration response selected, derived from
+    the generator's structural tags (sports_field + category_fields). A sport
+    selected without a category field contributes its sport-level leaf."""
+    cat_fields = settings.get("category_fields") or {}
+    sports_field = settings.get("sports_field") or "sports"
+    selected = answers.get(sports_field)
+    if not isinstance(selected, list):
+        return []
+    leaves: list[str] = []
+    for skey in selected:
+        skey = str(skey)
+        fkey = cat_fields.get(skey)
+        if fkey is None:
+            leaves.append(skey)  # sport-level leaf (sport has no categories)
+            continue
+        vals = answers.get(fkey)
+        if isinstance(vals, list):
+            leaves.extend(str(v) for v in vals if v)
+    return leaves
 
 
 def _map_team_registration(resp: FormResponse) -> FormResponse:
@@ -169,9 +201,15 @@ def _map_team_registration_multi(resp, form, b, a) -> FormResponse:
                         pn = pr.get(pname_key)
                         if pn:
                             players.append({"full_name": str(pn)})
-            teams_payload.append(
-                {"name": str(name), "pool": category, "players": players}
-            )
+            teams_payload.append({
+                "name": str(name),
+                # pool = human-readable label; sport/leaf_key = the structural
+                # competition binding fixtures scope by (spec 2026-06-10).
+                "pool": cg.get("label") or category,
+                "sport": cg.get("sport_key") or "",
+                "leaf_key": cg.get("leaf_key") or category,
+                "players": players,
+            })
 
     derived_event_id = uuid.uuid5(uuid.NAMESPACE_URL, f"formresp-teamreg:{resp.id}")
     teams = register_school(

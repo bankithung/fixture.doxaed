@@ -146,8 +146,12 @@ def register_school(
 ) -> list[Team]:
     """Create the school's teams + players. Returns the created Team rows.
 
-    `teams` = [{name, short_name?, region?, pool?, players: [
+    `teams` = [{name, short_name?, region?, pool?, sport?, leaf_key?, players: [
         {full_name, jersey_no?, position?, dob_year?, is_goalkeeper?, captain?}, ...]}]
+
+    ``sport``/``leaf_key`` are the structural competition binding (spec
+    2026-06-10): the category leaf the team registered into. ``pool`` remains
+    the display label.
 
     Resolves (or creates from ``school_name``) an Institution and links every
     created Team to it (Organization → Tournament → Institution → Team → Player).
@@ -206,6 +210,8 @@ def register_school(
                     school=school_label[:200],
                     region=(td.get("region") or "")[:120],
                     pool=(td.get("pool") or "")[:80],
+                    sport=(td.get("sport") or "")[:40],
+                    leaf_key=(td.get("leaf_key") or "")[:160],
                     status=TeamStatus.REGISTERED,
                     created_by=submitted_by,
                 )
