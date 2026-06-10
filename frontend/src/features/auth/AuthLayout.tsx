@@ -61,7 +61,7 @@ export function AuthLayout({
           <div className="lg:hidden mb-8 flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
             <span
               aria-hidden="true"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-emerald-700 text-white font-bold"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-primary font-bold text-primary-foreground"
             >
               F
             </span>

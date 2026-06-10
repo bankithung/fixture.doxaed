@@ -4,8 +4,9 @@
 
 @layer base {
   :root {
-    /* Surfaces */
-    --background: 0 0% 100%;
+    /* Surfaces — offwhite page, white cards float above (W2-E: light mode
+       was "all white" with zero background/card contrast) */
+    --background: 210 25% 97.5%;
     --foreground: 222 47% 11%;
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
@@ -40,7 +41,7 @@
     --info-muted: 215 60% 95%;
 
     /* Lines + focus */
-    --border: 214 32% 91%;
+    --border: 214 30% 89%;
     --input: 214 32% 91%;
     --ring: 160 84% 30%;
 

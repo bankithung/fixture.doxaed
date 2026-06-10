@@ -5,9 +5,11 @@ import {
   CheckCircle2,
   ChevronDown,
   ClipboardList,
+  ExternalLink,
   Eye,
   LayoutTemplate,
   Lock,
+  MoreVertical,
   PanelRightClose,
   PanelRightOpen,
   Save,
@@ -232,6 +234,30 @@ export function FormBuilderPage(): React.ReactElement {
 
   const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Overflow (⋯) menu hosting the destructive action (W2-E).
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDoc = (e: MouseEvent): void => {
+      if (
+        moreRef.current &&
+        e.target instanceof Node &&
+        !moreRef.current.contains(e.target)
+      ) {
+        setMoreOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [moreOpen]);
   const remove = useMutation({
     mutationFn: () => formsApi.remove(formId),
     onSuccess: () => {
@@ -338,27 +364,60 @@ export function FormBuilderPage(): React.ReactElement {
               {t("Publish")}
             </Button>
           ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={close.isPending}
-              onClick={() => close.mutate()}
-            >
-              <Lock aria-hidden="true" className="h-4 w-4" />
-              {t("Close")}
-            </Button>
+            <>
+              {/* Published → jump straight into the real public form (W2-E). */}
+              <a href={`/f/${form.id}`} target="_blank" rel="noreferrer">
+                <Button size="sm">
+                  <ExternalLink aria-hidden="true" className="h-4 w-4" />
+                  {t("View live form")}
+                </Button>
+              </a>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={close.isPending}
+                onClick={() => close.mutate()}
+              >
+                <Lock aria-hidden="true" className="h-4 w-4" />
+                {t("Close")}
+              </Button>
+            </>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setConfirmDelete(true)}
-            aria-label={t("Delete form")}
-            title={t("Delete form")}
-            data-testid="builder-delete-form"
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-          >
-            <Trash2 aria-hidden="true" className="h-4 w-4" />
-          </Button>
+          {/* Destructive action lives behind the overflow menu so it can't be
+              mis-clicked next to Publish (W2-E), still one confirm away. */}
+          <div ref={moreRef} className="relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={t("More actions")}
+              aria-haspopup="menu"
+              aria-expanded={moreOpen}
+              onClick={() => setMoreOpen((o) => !o)}
+            >
+              <MoreVertical aria-hidden="true" className="h-4 w-4" />
+            </Button>
+            {moreOpen ? (
+              <div
+                role="menu"
+                aria-label={t("More actions")}
+                className="absolute right-0 z-30 mt-1 w-44 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg"
+              >
+                <button
+                  role="menuitem"
+                  type="button"
+                  data-testid="builder-delete-form"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    setConfirmDelete(true);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-destructive hover:bg-destructive/10 focus-visible:bg-destructive/10 focus-visible:outline-none"
+                >
+                  <Trash2 aria-hidden="true" className="h-4 w-4" />
+                  {t("Delete form")}
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 

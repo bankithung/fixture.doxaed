@@ -165,3 +165,48 @@ def test_upload_to_closed_form_404():
     u = c.post(f"/api/forms/{f.id}/uploads/",
                {"file": pdf, "field_key": "doc"}, format="multipart")
     assert u.status_code == 404
+
+
+def test_directory_exposes_competitions_grouping():
+    """W2-E: the public directory carries each institution's competitions
+    (structural leaves, labelled) plus per-competition counts, so the page
+    can group by sport -> category without re-parsing answers."""
+    from apps.forms.services.generation import generate_institution_form
+    from apps.forms.services.mapping import map_response
+    from apps.tournaments.services.sports import normalize_sports
+
+    admin = _verified("dir@test.local")
+    t = create_tournament(user=admin, name="Dir Cup")
+    t.sports = normalize_sports([
+        {"name": "Football", "nodes": [{"name": "U15"}]},
+        {"name": "Badminton"},
+    ])
+    t.save(update_fields=["sports"])
+    form = generate_institution_form(tournament=t, created_by=admin)
+    form.status = "open"
+    form.save(update_fields=["status"])
+
+    resp = FormResponse.objects.create(
+        form=form, organization=t.organization, tournament=t, title="Don Bosco",
+        answers={"school_name": "Don Bosco", "contact_name": "Fr. K",
+                 "contact_phone": "9876543210",
+                 "sports": ["football", "badminton"],
+                 "categories_football": ["football.u15"]},
+    )
+    map_response(resp)
+    # link the institution to its source response so values/competitions join
+    from apps.teams.models import Institution
+    inst = Institution.objects.get(tournament=t, name="Don Bosco")
+    inst.source_response_id = resp.id
+    inst.save(update_fields=["source_response_id"])
+
+    body = APIClient().get(f"/api/forms/{form.id}/directory/").json()
+    assert body["count"] == 1
+    entry = body["entries"][0]
+    assert {c["leaf_key"] for c in entry["competitions"]} == {
+        "football.u15", "badminton",
+    }
+    comps = {c["leaf_key"]: c for c in body["competitions"]}
+    assert comps["football.u15"]["count"] == 1
+    assert comps["football.u15"]["label"] == "Football — U15"
+    assert comps["badminton"]["count"] == 1

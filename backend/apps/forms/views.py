@@ -566,11 +566,21 @@ class PublicInstitutionDirectoryView(GenericAPIView):
             if resp_ids
             else {}
         )
+        # Structural competition entries (W2-E): each institution's selected
+        # category leaves, labelled from the live sports config — the public
+        # page groups by sport → category without re-parsing raw answers.
+        from apps.tournaments.services.sports import iter_leaves, leaf_label
+
+        sports_cfg = form.tournament.sports or []
         entries = [
             {
                 "name": i.name,
                 "region": i.region,
                 "kind": i.kind,
+                "competitions": [
+                    {"leaf_key": lk, "label": leaf_label(sports_cfg, lk)}
+                    for lk in (i.attributes or {}).get("leaves") or []
+                ],
                 "values": {
                     k: answers.get(i.source_response_id, {}).get(k)
                     for k in choice_keys
@@ -579,12 +589,25 @@ class PublicInstitutionDirectoryView(GenericAPIView):
             }
             for i in insts
         ]
+        leaf_counts: dict[str, int] = {}
+        for e in entries:
+            for c in e["competitions"]:
+                leaf_counts[c["leaf_key"]] = leaf_counts.get(c["leaf_key"], 0) + 1
+        competitions = [
+            {
+                "leaf_key": lf["leaf_key"],
+                "label": leaf_label(sports_cfg, lf["leaf_key"]),
+                "count": leaf_counts.get(lf["leaf_key"], 0),
+            }
+            for lf in iter_leaves(sports_cfg)
+        ]
         return Response(
             {
                 "tournament_name": form.tournament.name,
                 "form_title": form.title,
                 "filters": filters,
                 "entries": entries,
+                "competitions": competitions,
                 "count": len(entries),
             }
         )

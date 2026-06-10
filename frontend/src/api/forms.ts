@@ -44,17 +44,28 @@ export interface DirectoryFilter {
   label: string;
   options: { value: string; label: string }[];
 }
+export interface DirectoryCompetitionRef {
+  leaf_key: string;
+  label: string;
+}
 export interface DirectoryEntry {
   name: string;
   region: string;
   kind: string;
+  /** The competitions (category leaves) this institution entered (W2-E). */
+  competitions: DirectoryCompetitionRef[];
   values: Record<string, unknown>;
+}
+export interface DirectoryCompetition extends DirectoryCompetitionRef {
+  count: number;
 }
 export interface DirectoryPayload {
   tournament_name: string;
   form_title: string;
   filters: DirectoryFilter[];
   entries: DirectoryEntry[];
+  /** Every configured competition with its registration count (W2-E). */
+  competitions: DirectoryCompetition[];
   count: number;
 }
 

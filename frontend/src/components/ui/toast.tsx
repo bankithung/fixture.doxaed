@@ -1,4 +1,5 @@
 import * as React from "react";
+import { AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
 import { cn } from "@/lib/tailwind";
 
 export type ToastKind = "info" | "success" | "error";
@@ -69,35 +70,57 @@ function ToastViewport({
       aria-label="Notifications"
       className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-96 max-w-[calc(100vw-2rem)] flex-col gap-2"
     >
-      {toasts.map((tm) => (
-        <div
-          key={tm.id}
-          role={tm.kind === "error" ? "alert" : "status"}
-          className={cn(
-            "pointer-events-auto rounded-md border p-3 shadow-md",
-            tm.kind === "error" && "border-destructive bg-destructive/10",
-            tm.kind === "success" && "border-grant bg-grant-muted",
-            tm.kind === "info" && "bg-card",
-          )}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className="text-sm">
-              <div className="font-medium">{tm.title}</div>
-              {tm.description ? (
-                <div className="text-muted-foreground">{tm.description}</div>
-              ) : null}
+      {toasts.map((tm) => {
+        // Opaque popover base in BOTH themes (the old translucent tints were
+        // unreadable over dark content); the kind shows as icon + border.
+        const KindIcon =
+          tm.kind === "error"
+            ? AlertTriangle
+            : tm.kind === "success"
+              ? CheckCircle2
+              : Info;
+        return (
+          <div
+            key={tm.id}
+            role={tm.kind === "error" ? "alert" : "status"}
+            className={cn(
+              "pointer-events-auto rounded-lg border bg-popover p-3 text-popover-foreground shadow-lg",
+              tm.kind === "error" && "border-destructive/50",
+              tm.kind === "success" && "border-emerald-500/50",
+              tm.kind === "info" && "border-border",
+            )}
+          >
+            <div className="flex items-start gap-2.5">
+              <KindIcon
+                aria-hidden="true"
+                className={cn(
+                  "mt-0.5 h-4 w-4 shrink-0",
+                  tm.kind === "error" && "text-destructive",
+                  tm.kind === "success" &&
+                    "text-emerald-600 dark:text-emerald-400",
+                  tm.kind === "info" && "text-primary",
+                )}
+              />
+              <div className="min-w-0 flex-1 text-sm">
+                <div className="font-medium">{tm.title}</div>
+                {tm.description ? (
+                  <div className="mt-0.5 text-muted-foreground">
+                    {tm.description}
+                  </div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                aria-label="Dismiss notification"
+                onClick={() => dismiss(tm.id)}
+                className="-m-1 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <X aria-hidden="true" className="h-4 w-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              aria-label="Dismiss notification"
-              onClick={() => dismiss(tm.id)}
-              className="rounded p-1 text-xs hover:bg-muted"
-            >
-              x
-            </button>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

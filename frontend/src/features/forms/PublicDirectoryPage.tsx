@@ -119,6 +119,99 @@ function DimensionCard({ stat }: { stat: DimStat }): React.ReactElement {
   );
 }
 
+// ---------------------------------------------------------------------------
+// By competition (W2-E) — the structural view: every configured competition
+// (sport → category → sub-category leaf) with the institutions entered in it.
+// ---------------------------------------------------------------------------
+interface SportGroup {
+  sport: string;
+  rows: { leafKey: string; label: string; institutions: string[] }[];
+}
+
+function groupBySport(
+  competitions: { leaf_key: string; label: string; count: number }[],
+  entries: DirectoryEntry[],
+): SportGroup[] {
+  const byLeaf = new Map<string, string[]>();
+  for (const e of entries) {
+    for (const c of e.competitions ?? []) {
+      const list = byLeaf.get(c.leaf_key) ?? [];
+      list.push(e.name);
+      byLeaf.set(c.leaf_key, list);
+    }
+  }
+  const groups = new Map<string, SportGroup>();
+  for (const c of competitions) {
+    const sport = c.label.split(" — ")[0];
+    const within = c.label.includes(" — ")
+      ? c.label.slice(sport.length + 3)
+      : t("Open competition");
+    const g = groups.get(sport) ?? { sport, rows: [] };
+    g.rows.push({
+      leafKey: c.leaf_key,
+      label: within,
+      institutions: byLeaf.get(c.leaf_key) ?? [],
+    });
+    groups.set(sport, g);
+  }
+  return [...groups.values()];
+}
+
+function CompetitionsSection({
+  groups,
+}: {
+  groups: SportGroup[];
+}): React.ReactElement {
+  return (
+    <section
+      aria-label={t("Entries by competition")}
+      className="grid gap-3 lg:grid-cols-2"
+    >
+      {groups.map((g) => (
+        <div
+          key={g.sport}
+          className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4 shadow-sm"
+        >
+          <h3 className="text-sm font-semibold">{g.sport}</h3>
+          <ul className="mt-1 flex flex-col divide-y divide-border">
+            {g.rows.map((r) => (
+              <li key={r.leafKey} className="flex flex-col gap-1.5 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-sm" title={r.label}>
+                    {r.label}
+                  </span>
+                  <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-tabular text-xs font-medium">
+                    {r.institutions.length}{" "}
+                    {r.institutions.length === 1
+                      ? t("institution")
+                      : t("institutions")}
+                  </span>
+                </div>
+                {r.institutions.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {r.institutions.map((name) => (
+                      <span
+                        key={name}
+                        className="rounded-md bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground"
+                      >
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground/70">
+                    {t("No entries yet.")}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 /** Multi-value answers render as compact chips; single values as text. */
 function Cell({
   map,
@@ -150,8 +243,10 @@ export function PublicDirectoryPage(): React.ReactElement {
   const { formId = "" } = useParams();
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
-  // What the viewer wants to see: the breakdown, the list, or both.
-  const [view, setView] = useState<"both" | "stats" | "table">("both");
+  // What the viewer wants to see: competitions, the breakdown, the list, or both.
+  const [view, setView] = useState<"both" | "competitions" | "stats" | "table">(
+    "both",
+  );
 
   const dir = useQuery({
     queryKey: ["form-directory", formId],
@@ -180,6 +275,10 @@ export function PublicDirectoryPage(): React.ReactElement {
 
   const stats = useMemo(
     () => computeStats(dir.data?.filters ?? [], dir.data?.entries ?? []),
+    [dir.data],
+  );
+  const sportGroups = useMemo(
+    () => groupBySport(dir.data?.competitions ?? [], dir.data?.entries ?? []),
     [dir.data],
   );
 
@@ -264,8 +363,8 @@ export function PublicDirectoryPage(): React.ReactElement {
           </div>
         </header>
 
-        {/* View toggle — show the breakdown, the list, or both. */}
-        {stats.length > 0 ? (
+        {/* View toggle — competitions, the breakdown, the list, or both. */}
+        {stats.length > 0 || sportGroups.length > 0 ? (
           <div
             className="inline-flex w-fit rounded-lg border border-border bg-muted/50 p-0.5 text-sm"
             role="tablist"
@@ -274,6 +373,7 @@ export function PublicDirectoryPage(): React.ReactElement {
             {(
               [
                 ["both", t("Both")],
+                ["competitions", t("Competitions")],
                 ["stats", t("Breakdown")],
                 ["table", t("Directory")],
               ] as const
@@ -297,8 +397,13 @@ export function PublicDirectoryPage(): React.ReactElement {
           </div>
         ) : null}
 
+        {/* Entries by competition — the sport → category structural view. */}
+        {(view === "both" || view === "competitions") && sportGroups.length > 0 ? (
+          <CompetitionsSection groups={sportGroups} />
+        ) : null}
+
         {/* Dynamic stats — one distribution card per form dimension. */}
-        {view !== "table" && stats.length > 0 ? (
+        {(view === "both" || view === "stats") && stats.length > 0 ? (
           <section aria-label={t("Registration breakdown")}>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {stats.map((s) => (
@@ -308,7 +413,7 @@ export function PublicDirectoryPage(): React.ReactElement {
           </section>
         ) : null}
 
-        {view !== "stats" ? (
+        {view === "both" || view === "table" ? (
           <>
         {/* Filters */}
         <div className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-3 shadow-sm">
