@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Phase 1B** is substantially built: tournaments + state, teams/players/registration, fixture generation (round-robin / knockout / groups→knockout), matches with an **event-sourced** scoring engine, live WebSocket/SSE delivery, brackets + standings, disputes, lineups, match-incident reports, notifications, and a data-driven **rules & constraints** backend.
 - The **frontend** has a complete design system + redesign (see "Frontend design system").
 
-Test status (keep green): **~448 backend** (pytest) + **~193 frontend** (vitest), tsc clean.
+Test status (keep green): **~710 backend** (pytest) + **~274 frontend** (vitest), tsc clean. **Caveat:** 13 `sadmin` tests fail on Python 3.14 — a pre-existing Django/env bug, *not* a regression; the green baseline is **710 passing**. Don't chase them.
 
 **Canonical specs live in `docs/superpowers/specs/`:**
 - `2026-04-30-fixture-platform-prd.md` (PRD, Draft v3) — vision, state machines (§5.2/§5.5), schema baseline, decisions log.
@@ -19,7 +19,9 @@ Test status (keep green): **~448 backend** (pytest) + **~193 frontend** (vitest)
 
 ## Commands
 
-Backend (Windows venv at `backend/.venv/`; the pytest config lives in `backend/pyproject.toml`, so always pass `-c`):
+> **Interpreter path differs by box.** The commands below show the **Windows** venv (`backend/.venv/Scripts/python.exe`). On the **Linux deploy server** (and any POSIX box) use `backend/.venv/bin/python` instead — same arguments. Check which exists before running.
+
+Backend (venv at `backend/.venv/`; the pytest config lives in `backend/pyproject.toml`, so always pass `-c`):
 
 ```bash
 # all backend tests
@@ -62,6 +64,8 @@ These patterns span many files; understand them before editing the domain layer.
 - **RBAC is two layers.** Module visibility (`apps/permissions/` — catalog + `MembershipModuleGrant` overrides + `effective_modules()` resolver) governs *surfaces*; the PRD §3.2 verb matrix governs *fine-grained verbs*. Tests parametrize over both.
 - **Data-driven rules/constraints.** `Tournament.rules` + `.constraints` are JSONB interpreted at runtime (FET-style), never hardcoded. `apps/tournaments/services/rules.py` (`DEFAULT_RULES`, `merge_rules`, freeze gate, `update_settings`) + `apps/fixtures/services/constraints.py` (catalog + validation). `compute_standings` reads `rules.points`/`rules.tiebreakers`.
 - **Live transport split.** SSE for one-way public viewers + the notification bell (`apps/live/`); WebSockets (`apps/live/consumers.py`, `routing.py`, `fixture/asgi.py` via `ProtocolTypeRouter`/`AuthMiddlewareStack`) only for the scorer/referee rooms.
+- **Data-driven registration forms** (`apps/forms/`). A JSONB `schema` (sections → fields, with branching/visibility, repeatable groups, `data_source` live-bound options) is rendered by ONE engine on both sides: `frontend/src/features/forms/fieldRenderers.tsx` + `PublicFormPage.tsx` use the SAME `lib/formLogic` traversal the backend validator uses, so client/server always agree on which fields are reachable/required. Generators (`services/generation.py`) build the institution- and team-registration forms from the tournament's sports/category tree; they tag `settings` (`category_fields*`, `sports_field`, `bindings`, `inputs_hash`) so forms stay regenerable (invariant 10) and the public directory/admin tabs know which questions are competition chains. `services/mapping.py::map_response` turns a submission into domain rows — institution (Stage 1) or teams+players (Stage 2) via `register_school` — and is **idempotent** (early-returns if `mapped_entities` set). The public team form scopes its sport/category questions to the selected school's registered leaves at fetch time (no regeneration).
+- **Team-registration access codes** (`apps/teams/services/access.py`). Opening the team form emails each institution's contact an 8-char code (Argon2id hash stored, never plaintext); `/team-access/` exchanges (institution, code) for a signed, expiring `django.core.signing` token under an IP throttle + per-institution lockout. The public submit endpoint requires that token (or a bound per-institution share link, or an authenticated manager) before accepting/editing a protected school's teams; a code-authorized resubmission **supersedes** (soft-deletes + replaces) the prior set. Admins bypass codes entirely. Team names are unique **per competition leaf**, not per tournament.
 
 ## Architectural invariants (apply to every file)
 
@@ -98,6 +102,15 @@ Up-front PRD decisions that shape the codebase. Do not relitigate; do not deviat
 - §5.2/§5.5 transition tables are binding: a new state transition = PRD edit first, code second.
 - New feature work goes through `superpowers:brainstorming` → `superpowers:writing-plans` → execute; specs are saved to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`.
 - **Tests-first for non-trivial logic.** Mandatory suites: the permission matrix (modules + verbs) and the state-machine suite (every transition + every blocked transition). Multi-tenancy isolation tests are not optional.
+
+## Deployment (this is a LIVE app)
+
+The platform runs in production at **fixture.doxaed.com**. Config + scripts live in `deploy/` (`README.md`, `gunicorn.conf.py`, `fixture.service`, `nginx-fixture.conf`; prod creds in `CREDENTIALS-PROD.md`).
+
+- **Topology:** nginx terminates TLS and serves the built SPA from `frontend/dist`; it reverse-proxies `^/(api|sadmin)/` and `/ws/` to the `fixture.service` systemd unit (gunicorn + uvicorn ASGI worker). `index.html` is served `no-cache` (so deploys land immediately); hashed `/assets/` are cached 1y immutable.
+- **Deploy a change:** `npm --prefix frontend run build` (updates `dist`) and/or `sudo systemctl restart fixture` for backend code. Verify the served bundle hash changed: `curl -sk https://127.0.0.1/ -H "Host: fixture.doxaed.com" | grep -o 'index-[^"]*\.js'`.
+- **Migrations run as the OWNER role**, not the app role (the app role is intentionally non-owner, e.g. it can't alter constraints): `DATABASE_URL="postgres://fixture_owner:<pw>@127.0.0.1:5432/fixturedb" .venv/bin/python manage.py migrate` (owner pw in `CREDENTIALS-PROD.md`). A migrate as `fixture_app` fails with `must be owner of table …`.
+- **Prod email is real** (SMTP configured) — `send_mail` actually delivers; dev uses the console backend.
 
 ## Dev gotchas (learned, easy to trip on)
 
