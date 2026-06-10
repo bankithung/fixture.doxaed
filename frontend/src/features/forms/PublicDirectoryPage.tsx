@@ -439,7 +439,7 @@ export function PublicDirectoryPage(): React.ReactElement {
 
   if (dir.isLoading) {
     return (
-      <PublicShell>
+      <PublicShell wide>
         <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
           <div className="h-7 w-56 animate-pulse rounded bg-muted" />
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -457,7 +457,7 @@ export function PublicDirectoryPage(): React.ReactElement {
   }
   if (dir.isError || !dir.data) {
     return (
-      <PublicShell>
+      <PublicShell wide>
         <Centered>
           <Building2
             aria-hidden="true"
@@ -512,7 +512,7 @@ export function PublicDirectoryPage(): React.ReactElement {
     });
 
   return (
-    <PublicShell tournamentName={d.tournament_name}>
+    <PublicShell wide tournamentName={d.tournament_name}>
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6">
         {/* Header */}
         <header className="flex flex-wrap items-end justify-between gap-4">

@@ -12,14 +12,23 @@ import { t } from "@/lib/t";
 export function PublicShell({
   children,
   tournamentName,
+  wide = false,
 }: {
   children: React.ReactNode;
   tournamentName?: string;
+  /** Match the top bar to a WIDE content column (e.g. the directory's
+   * max-w-6xl) instead of the form page's narrow max-w-3xl. */
+  wide?: boolean;
 }): React.ReactElement {
   return (
     <div className="min-h-screen bg-muted/30">
       <header className="border-b border-border bg-card">
-        <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-4 py-3 sm:px-6">
+        <div
+          className={cn(
+            "mx-auto flex w-full items-center gap-2 px-4 py-3 sm:px-6",
+            wide ? "max-w-6xl" : "max-w-3xl",
+          )}
+        >
           <span
             aria-hidden="true"
             className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-primary font-bold text-primary-foreground"
