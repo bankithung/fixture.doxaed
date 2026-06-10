@@ -132,10 +132,13 @@ class MeSerializer(serializers.ModelSerializer):
         )
 
     def _active_memberships(self, user):
-        from apps.organizations.models import OrganizationMembership
+        from apps.organizations.models import OrganizationMembership, OrgStatus
 
+        # Archived workspaces (e.g. emptied when their tournament was
+        # deleted) stay out of the switcher — they'd pile up as ghosts.
         return (
             OrganizationMembership.objects.filter(user=user, is_active=True)
+            .exclude(organization__status=OrgStatus.ARCHIVED)
             .select_related("organization")
         )
 

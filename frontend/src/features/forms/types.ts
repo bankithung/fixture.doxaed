@@ -94,6 +94,9 @@ export interface Field {
   group_label?: string;
   indent?: number;
   short_label?: string;
+  /** false = keep this choice field OUT of the public directory's
+   * filters/breakdown (the generator opts chain questions out). */
+  directory?: boolean;
 }
 
 export interface Section {

@@ -170,3 +170,24 @@ def test_generate_institution_endpoint_manager_only():
         f"/api/tournaments/{t.id}/forms/generate-institution/"
     )
     assert r2.status_code == 404
+
+
+def test_deleting_last_tournament_archives_workspace_and_hides_it():
+    """W2: the auto-provisioned workspace org dies with its last tournament —
+    no more ghost entries in the org switcher."""
+    from apps.organizations.models import OrgStatus
+
+    admin = _verified("ghost@test.local")
+    t = create_tournament(user=admin, name="Ghost Cup")
+    org = t.organization
+    c = _client(admin)
+
+    before = c.get("/api/accounts/me/").json()
+    assert any(m["org_slug"] == org.slug for m in before["memberships"])
+
+    assert c.delete(f"/api/tournaments/{t.id}/").status_code == 204
+    org.refresh_from_db()
+    assert org.status == OrgStatus.ARCHIVED
+
+    after = c.get("/api/accounts/me/").json()
+    assert not any(m["org_slug"] == org.slug for m in after["memberships"])

@@ -242,6 +242,9 @@ function Cell({
 export function PublicDirectoryPage(): React.ReactElement {
   const { formId = "" } = useParams();
   const [filters, setFilters] = useState<Record<string, string>>({});
+  // Built-in Competition filter (W2): ONE dropdown over the structural
+  // entries — replaces the per-chain-question filter wall.
+  const [competitionFilter, setCompetitionFilter] = useState("");
   const [search, setSearch] = useState("");
   // What the viewer wants to see: competitions, the breakdown, the list, or both.
   const [view, setView] = useState<"both" | "competitions" | "stats" | "table">(
@@ -264,9 +267,13 @@ export function PublicDirectoryPage(): React.ReactElement {
         (!q ||
           e.name.toLowerCase().includes(q) ||
           (e.region ?? "").toLowerCase().includes(q)) &&
+        (!competitionFilter ||
+          (e.competitions ?? []).some(
+            (c) => c.leaf_key === competitionFilter,
+          )) &&
         Object.entries(filters).every(([k, v]) => matches(e, k, v)),
     );
-  }, [dir.data, filters, search]);
+  }, [dir.data, filters, search, competitionFilter]);
 
   useEffect(() => {
     const name = dir.data?.tournament_name;
@@ -326,9 +333,13 @@ export function PublicDirectoryPage(): React.ReactElement {
     map: new Map(f.options.map((o) => [o.value, o.label])),
   }));
   const total = d.entries.length;
-  const hasFilters = search.trim() !== "" || Object.values(filters).some(Boolean);
+  const hasFilters =
+    search.trim() !== "" ||
+    competitionFilter !== "" ||
+    Object.values(filters).some(Boolean);
   const clearFilters = (): void => {
     setSearch("");
+    setCompetitionFilter("");
     setFilters({});
   };
 
@@ -430,6 +441,26 @@ export function PublicDirectoryPage(): React.ReactElement {
               aria-label={t("Search")}
             />
           </label>
+          {(d.competitions ?? []).length > 0 ? (
+            <label className="flex w-56 min-w-0 flex-col gap-1">
+              <span className="truncate text-[0.6875rem] font-medium text-muted-foreground">
+                {t("Competition")}
+              </span>
+              <Select
+                size="sm"
+                value={competitionFilter}
+                onChange={setCompetitionFilter}
+                options={[
+                  { value: "", label: t("All competitions") },
+                  ...d.competitions.map((c) => ({
+                    value: c.leaf_key,
+                    label: c.label,
+                  })),
+                ]}
+                aria-label={t("Competition")}
+              />
+            </label>
+          ) : null}
           {d.filters.map((f) => (
             <label key={f.key} className="flex w-44 min-w-0 flex-col gap-1">
               <span
@@ -495,6 +526,9 @@ export function PublicDirectoryPage(): React.ReactElement {
                   <th className="sticky top-0 z-20 border-b border-border bg-muted px-3 py-2.5 font-medium">
                     {t("Region")}
                   </th>
+                  <th className="sticky top-0 z-20 border-b border-border bg-muted px-3 py-2.5 font-medium">
+                    {t("Competitions")}
+                  </th>
                   {columns.map((c) => (
                     <th
                       key={c.key}
@@ -520,6 +554,27 @@ export function PublicDirectoryPage(): React.ReactElement {
                     </td>
                     <td className="border-b border-border px-3 py-2.5 align-top text-muted-foreground group-hover:bg-accent/40">
                       {e.region || "—"}
+                    </td>
+                    <td className="border-b border-border px-3 py-2.5 align-top group-hover:bg-accent/40">
+                      {(e.competitions ?? []).length ? (
+                        <div className="flex max-w-[20rem] flex-wrap gap-1">
+                          {e.competitions.slice(0, 4).map((c) => (
+                            <span
+                              key={c.leaf_key}
+                              className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+                            >
+                              {c.label}
+                            </span>
+                          ))}
+                          {e.competitions.length > 4 ? (
+                            <span className="text-xs text-muted-foreground">
+                              +{e.competitions.length - 4}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground/40">—</span>
+                      )}
                     </td>
                     {columns.map((c) => (
                       <td

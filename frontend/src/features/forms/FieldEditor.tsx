@@ -249,6 +249,31 @@ export function FieldEditor({
         </div>
       ) : null}
 
+      {/* Public-directory exposure (W2): each included choice field becomes
+          a filter + breakdown card on the public registered-institutions
+          page — too many gets noisy, so admins can opt fields out. The
+          generator already opts category-chain questions out by default. */}
+      {["single_choice", "multi_choice", "dropdown"].includes(field.type) ? (
+        <label className="flex cursor-pointer items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={field.directory !== false}
+            onChange={(e) =>
+              updateField(sectionKey, field.key, {
+                directory: e.target.checked ? undefined : false,
+              })
+            }
+            className="mt-0.5 h-4 w-4 accent-[hsl(var(--primary))]"
+          />
+          <span>
+            {t("Show in the public directory (filter + breakdown)")}
+            <span className="block text-xs text-muted-foreground">
+              {t("Every included field adds a filter on the public page — keep only the genuinely useful ones.")}
+            </span>
+          </span>
+        </label>
+      ) : null}
+
       {field.type === "multi_choice" ? (
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={`maxsel-${field.key}`}>{t("Max selections")}</Label>

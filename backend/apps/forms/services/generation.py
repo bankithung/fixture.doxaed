@@ -134,6 +134,9 @@ def _category_chain(
             "short_label": (
                 "Categories" if not path_names else " — ".join(path_names)
             ),
+            # Chain questions stay out of the public directory's filters/
+            # stats — the single Competition filter covers them (W2).
+            "directory": False,
             "visibility": (
                 {"field": sports_field, "op": "includes", "value": skey}
                 if parent_field is None

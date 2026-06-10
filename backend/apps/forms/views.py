@@ -543,6 +543,21 @@ class PublicInstitutionDirectoryView(GenericAPIView):
             raise NotFound("form_not_found")
 
         cfields = _choice_fields(form.schema or {})
+        # Directory opt-out (W2 owner report: with deep category trees, every
+        # chain question became its own filter/stat — 25 dropdowns of noise).
+        # A field is excluded when it says `directory: false` (the generator
+        # stamps that on chain questions; admins toggle it in the builder) or,
+        # for forms generated before the flag, when its key is a category
+        # chain field per the form's structural settings. The single
+        # "Competition" filter + the competitions payload cover those.
+        settings = form.settings or {}
+        chain_keys = set((settings.get("category_fields") or {}).values())
+        for keys in (settings.get("category_fields_all") or {}).values():
+            chain_keys.update(keys)
+        cfields = [
+            f for f in cfields
+            if f.get("directory") is not False and f.get("key") not in chain_keys
+        ]
         filters = [
             {
                 "key": f["key"],

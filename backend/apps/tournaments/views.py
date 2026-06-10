@@ -113,6 +113,32 @@ class TournamentDetailView(GenericAPIView):
             payload_before={"status": tournament.status, "name": tournament.name},
             request=request,
         )
+
+        # The hidden personal workspace was provisioned FOR this tournament;
+        # once its last live tournament is gone the workspace is dead weight
+        # that haunted the org switcher (owner 2026-06-10: "why all the
+        # deleted list are here"). Archive it — audited, reversible.
+        from apps.organizations.models import Organization, OrgStatus
+        from apps.tournaments.models import Tournament as T
+
+        org = tournament.organization
+        if org.status == OrgStatus.ACTIVE and not T.objects.filter(
+            organization=org, deleted_at__isnull=True
+        ).exists():
+            Organization.objects.filter(id=org.id).update(
+                status=OrgStatus.ARCHIVED
+            )
+            emit_audit(
+                actor_user=request.user,
+                actor_role=ActorRole.ADMIN,
+                event_type="organization_archived_empty_workspace",
+                target_type="organization",
+                target_id=org.id,
+                organization_id=org.id,
+                payload_before={"status": OrgStatus.ACTIVE},
+                payload_after={"status": OrgStatus.ARCHIVED},
+                request=request,
+            )
         return Response(status=204)
 
     def patch(self, request, tournament_id):
