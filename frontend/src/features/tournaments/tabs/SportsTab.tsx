@@ -17,6 +17,7 @@ import {
 import {
   tournamentsApi,
   type SportNode,
+  type SportNodeAge,
   type SportNodeFormat,
   type TournamentSport,
 } from "@/api/tournaments";
@@ -60,13 +61,16 @@ function normNodes(raw: unknown): SportNode[] {
       return {
         ...(typeof o.key === "string" && o.key ? { key: o.key } : {}),
         name,
-        // kind/format carry the team-size rules (W2-B) — round-trip them or
-        // every save would wipe what the server stored.
+        // kind/format/age carry the category's rules (W2) — round-trip them
+        // or every save would wipe what the server stored.
         ...(typeof o.kind === "string" && o.kind
           ? { kind: o.kind as SportNode["kind"] }
           : {}),
         ...(o.format && typeof o.format === "object"
           ? { format: o.format as SportNode["format"] }
+          : {}),
+        ...(o.age && typeof o.age === "object"
+          ? { age: o.age as SportNode["age"] }
           : {}),
         children,
       };
@@ -108,6 +112,114 @@ function withChildAdded(
 function detectPerSide(name: string): number | undefined {
   const m = /^\s*(\d{1,2})\s*[vV][sS]?\s*(\d{1,2})\s*$/.exec(name);
   return m ? Number(m[1]) : undefined;
+}
+
+/** "U15"/"Under 15" → under, "16+" → over, "12-14" → between (mirrors the
+ * server's name auto-detection). */
+function detectAge(name: string): SportNodeAge | undefined {
+  let m = /^\s*(?:u\s*-?\s*|under\s+)(\d{1,2})\s*$/i.exec(name);
+  if (m) return { op: "under", age: Number(m[1]) };
+  m = /^\s*(?:over\s+)?(\d{1,2})\s*\+\s*$/i.exec(name);
+  if (m) return { op: "over", age: Number(m[1]) };
+  m = /^\s*(\d{1,2})\s*[-–]\s*(\d{1,2})\s*$/.exec(name);
+  if (m && Number(m[1]) <= Number(m[2])) {
+    return { op: "between", min: Number(m[1]), max: Number(m[2]) };
+  }
+  return undefined;
+}
+
+function ageLabel(age: SportNodeAge | undefined): string {
+  if (!age) return "";
+  if (age.op === "under" && age.age) return `${t("under")} ${age.age}`;
+  if (age.op === "over" && age.age) return `${age.age}+`;
+  if (age.op === "between" && age.min && age.max) return `${age.min}–${age.max}`;
+  return "";
+}
+
+const AGE_OP_OPTIONS = [
+  { value: "under", label: t("Under (younger than)") },
+  { value: "over", label: t("And above (N+)") },
+  { value: "between", label: t("Between (range)") },
+];
+
+/** Operator + number inputs for an age rule — strict numbers (W2). */
+function AgeRuleFields({
+  value,
+  onChange,
+}: {
+  value: SportNodeAge | undefined;
+  onChange: (age: SportNodeAge | undefined) => void;
+}): React.ReactElement {
+  const op = value?.op ?? "under";
+  const num = (v: string): number | undefined => {
+    const n = Number(v);
+    return v !== "" && Number.isInteger(n) && n > 0 ? n : undefined;
+  };
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <div className="flex w-44 flex-col gap-1">
+        <Label className="text-xs">{t("Age rule")}</Label>
+        <Select
+          aria-label={t("Age operator")}
+          value={op}
+          options={AGE_OP_OPTIONS}
+          onChange={(v) =>
+            onChange({ op: v as SportNodeAge["op"] })
+          }
+        />
+      </div>
+      {op === "between" ? (
+        <>
+          <div className="flex w-24 flex-col gap-1">
+            <Label className="text-xs">{t("From age")}</Label>
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              inputMode="numeric"
+              value={value?.min ?? ""}
+              onChange={(e) =>
+                onChange({ op: "between", min: num(e.target.value), max: value?.max })
+              }
+              className="h-9 font-tabular"
+              aria-label={t("From age")}
+            />
+          </div>
+          <div className="flex w-24 flex-col gap-1">
+            <Label className="text-xs">{t("To age")}</Label>
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              inputMode="numeric"
+              value={value?.max ?? ""}
+              onChange={(e) =>
+                onChange({ op: "between", min: value?.min, max: num(e.target.value) })
+              }
+              className="h-9 font-tabular"
+              aria-label={t("To age")}
+            />
+          </div>
+        </>
+      ) : (
+        <div className="flex w-24 flex-col gap-1">
+          <Label className="text-xs">{t("Age")}</Label>
+          <Input
+            type="number"
+            min={1}
+            step={1}
+            inputMode="numeric"
+            value={value?.age ?? ""}
+            onChange={(e) =>
+              onChange({ op: op as SportNodeAge["op"], age: num(e.target.value) })
+            }
+            className="h-9 font-tabular"
+            aria-label={t("Age")}
+          />
+        </div>
+      )}
+    </div>
+  );
 }
 
 function withNodeRemoved(nodes: SportNode[], path: number[]): SportNode[] {
@@ -168,11 +280,18 @@ function AddNodeForm({
   const [kind, setKind] = useState<string>("");
   const [pps, setPps] = useState<string>("");
   const [squadMax, setSquadMax] = useState<string>("");
+  const [age, setAge] = useState<SportNodeAge | undefined>(undefined);
 
   const detected = detectPerSide(name);
-  const effectiveKind = kind || (detected != null ? "format" : "");
+  const detectedAge = detectAge(name);
+  const effectiveKind =
+    kind ||
+    (detected != null ? "format" : "") ||
+    (detectedAge ? "age_group" : "");
   const showSize = effectiveKind === "format";
+  const showAge = effectiveKind === "age_group";
   const ppsValue = pps !== "" ? Number(pps) : detected;
+  const effectiveAge = age ?? detectedAge;
 
   const submit = (): void => {
     const trimmed = name.trim();
@@ -188,6 +307,17 @@ function AddNodeForm({
       fmt.squad_max = Math.max(sq, fmt.players_per_side ?? 1);
     }
     if (Object.keys(fmt).length) node.format = fmt;
+    if (
+      showAge &&
+      effectiveAge &&
+      (effectiveAge.op === "between"
+        ? effectiveAge.min != null &&
+          effectiveAge.max != null &&
+          effectiveAge.min <= effectiveAge.max
+        : effectiveAge.age != null)
+    ) {
+      node.age = effectiveAge;
+    }
     onAdd(node);
   };
 
@@ -255,6 +385,9 @@ function AddNodeForm({
           </p>
         </div>
       ) : null}
+      {showAge ? (
+        <AgeRuleFields value={effectiveAge} onChange={setAge} />
+      ) : null}
       <div className="flex items-center gap-2">
         <Button type="submit" size="sm" disabled={!name.trim()}>
           <Plus aria-hidden="true" className="h-4 w-4" />
@@ -294,8 +427,10 @@ function NodeKindEditor({
     onPatch({ format: Object.keys(clean).length ? clean : undefined });
   };
   const showSize = node.kind === "format" || fmt.players_per_side != null;
+  const showAge = node.kind === "age_group" || node.age != null;
   return (
-    <div className="flex flex-wrap items-end gap-2">
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end gap-2">
       <div className="flex w-40 flex-col gap-1">
         <Label className="text-xs">{t("Type")}</Label>
         <Select
@@ -332,6 +467,13 @@ function NodeKindEditor({
             </div>
           ))}
         </>
+      ) : null}
+      </div>
+      {showAge ? (
+        <AgeRuleFields
+          value={node.age}
+          onChange={(a) => onPatch({ age: a })}
+        />
       ) : null}
     </div>
   );
@@ -587,6 +729,11 @@ export function SportsTab(): React.ReactElement {
           {node.kind ? (
             <span className="rounded bg-muted px-1.5 text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground">
               {t(KIND_LABELS[node.kind] ?? node.kind)}
+            </span>
+          ) : null}
+          {node.age ? (
+            <span className="rounded bg-secondary px-1.5 font-tabular text-[0.625rem] font-medium text-secondary-foreground">
+              {ageLabel(node.age)}
             </span>
           ) : null}
           {!node.children?.length ? (
@@ -1089,10 +1236,15 @@ export function SportsTab(): React.ReactElement {
               node={kindNode}
               onPatch={(patch) => {
                 patchNode(kindTarget.sportKey, kindTarget.path, patch);
-                // Picking a non-format type is the whole job — close right
-                // away (owner 2026-06-10: the panel lingering read as "it
-                // didn't do anything"). Formats stay open for the sizes.
-                if (patch.kind !== undefined && patch.kind !== "format") {
+                // Picking a plain type is the whole job — close right away
+                // (owner 2026-06-10: the panel lingering read as "it didn't
+                // do anything"). Formats and age groups stay open for their
+                // numbers (team size / age rule).
+                if (
+                  patch.kind !== undefined &&
+                  patch.kind !== "format" &&
+                  patch.kind !== "age_group"
+                ) {
                   setKindTarget(null);
                 }
               }}

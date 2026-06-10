@@ -30,11 +30,20 @@ LEAF_SEP = "."
 MAX_DEPTH = 6
 
 # What a category node IS (W2-B): drives downstream logic — a "format" node
-# (1v1, 5v5…) carries team-size rules the generated team form enforces.
+# (1v1, 5v5…) carries team-size rules the generated team form enforces; an
+# "age_group" node carries an age rule (operator + numbers).
 NODE_KINDS = ("age_group", "gender", "format", "level", "custom")
 
 # "1v1" / "5 v 5" / "3vs3" style names ⇒ players-per-side auto-detection.
 _NVN = re.compile(r"^\s*(\d{1,2})\s*[vV][sS]?\s*(\d{1,2})\s*$")
+
+# Age-rule operators (owner 2026-06-10: "under 15/16 … allow the user to
+# select any type of operators"). Numbers only, never free text — rules must
+# stay comparable (and future player-eligibility checks need integers).
+AGE_OPS = ("under", "over", "between")
+_AGE_UNDER = re.compile(r"^\s*(?:u\s*-?\s*|under\s+)(\d{1,2})\s*$", re.IGNORECASE)
+_AGE_OVER = re.compile(r"^\s*(?:over\s+)?(\d{1,2})\s*\+\s*$", re.IGNORECASE)
+_AGE_BETWEEN = re.compile(r"^\s*(\d{1,2})\s*[-–]\s*(\d{1,2})\s*$")
 
 
 def sport_key(name: str) -> str:
@@ -71,9 +80,53 @@ def _clean_format(raw: Any, name: str) -> dict | None:
     return out or None
 
 
+def _clean_age(raw: Any, name: str) -> dict | None:
+    """Per-node age rule ({op: under|over|between, age | min+max}),
+    auto-seeded from the name when not given explicitly ("U15"/"Under 15" →
+    under 15, "16+"/"Over 16" → over 16, "12-14" → between). Invalid shapes
+    are dropped; None when nothing valid remains (W2: age groups carry
+    NUMBERS, not just labels)."""
+    out: dict = {}
+    if isinstance(raw, dict) and raw.get("op") in AGE_OPS:
+        def _i(v: Any) -> int | None:
+            return int(v) if isinstance(v, (int, float)) and v is not True \
+                and int(v) > 0 else None
+        if raw["op"] == "between":
+            mn, mx = _i(raw.get("min")), _i(raw.get("max"))
+            if mn and mx and mn <= mx:
+                out = {"op": "between", "min": mn, "max": mx}
+        else:
+            age = _i(raw.get("age"))
+            if age:
+                out = {"op": raw["op"], "age": age}
+    if not out:
+        if m := _AGE_UNDER.match(name):
+            out = {"op": "under", "age": int(m.group(1))}
+        elif m := _AGE_OVER.match(name):
+            out = {"op": "over", "age": int(m.group(1))}
+        elif m := _AGE_BETWEEN.match(name):
+            lo, hi = int(m.group(1)), int(m.group(2))
+            if lo <= hi:
+                out = {"op": "between", "min": lo, "max": hi}
+    return out or None
+
+
+def age_rule_label(age: dict | None) -> str:
+    """Human label for an age rule: 'under 15', '16+', '12–14' ('' if none)."""
+    if not isinstance(age, dict):
+        return ""
+    if age.get("op") == "under" and age.get("age"):
+        return f"under {age['age']}"
+    if age.get("op") == "over" and age.get("age"):
+        return f"{age['age']}+"
+    if age.get("op") == "between" and age.get("min") and age.get("max"):
+        return f"{age['min']}–{age['max']}"
+    return ""
+
+
 def _normalize_nodes(raw: Any, depth: int = 0) -> list[dict]:
     """Recursively normalize a node list. Accepts the canonical shape
-    ({key, name, kind?, format?, children}), the legacy dict shape
+    ({key, name, kind?, format?, age?, children}), the legacy dict shape
     ({name, subcategories}) and plain strings. Blank names and duplicate keys
     (per level) are dropped."""
     if not isinstance(raw, list) or depth >= MAX_DEPTH:
@@ -83,7 +136,7 @@ def _normalize_nodes(raw: Any, depth: int = 0) -> list[dict]:
     for n in raw:
         if isinstance(n, str):
             name, key_raw, children_raw = n.strip(), "", []
-            kind_raw, format_raw = "", None
+            kind_raw, format_raw, age_raw = "", None, None
         elif isinstance(n, dict):
             name = str(n.get("name") or "").strip()
             key_raw = str(n.get("key") or "")
@@ -92,6 +145,7 @@ def _normalize_nodes(raw: Any, depth: int = 0) -> list[dict]:
                 children_raw = n.get("subcategories") or []
             kind_raw = str(n.get("kind") or "")
             format_raw = n.get("format")
+            age_raw = n.get("age")
         else:
             continue
         if not name:
@@ -106,13 +160,18 @@ def _normalize_nodes(raw: Any, depth: int = 0) -> list[dict]:
             "children": _normalize_nodes(children_raw, depth + 1),
         }
         fmt = _clean_format(format_raw, name)
+        age = _clean_age(age_raw, name)
         kind = kind_raw if kind_raw in NODE_KINDS else ""
         if not kind and fmt and "players_per_side" in fmt and _NVN.match(name):
             kind = "format"  # NvN names self-describe
+        if not kind and age:
+            kind = "age_group"  # "U15" / "16+" names self-describe
         if kind:
             entry["kind"] = kind
         if fmt:
             entry["format"] = fmt
+        if age:
+            entry["age"] = age
         out.append(entry)
     return out
 
@@ -311,6 +370,36 @@ def leaf_label(sports: list[dict] | None, leaf_key: str, *, with_sport: bool = T
     return f"{leaf['sport_name']} — {body}" if with_sport else body
 
 
+def _leaf_path_nodes(sports: list[dict] | None, leaf_key: str) -> list[dict]:
+    """The node objects along a leaf's path (shallow → deep), [] if unknown."""
+    parts = (leaf_key or "").split(LEAF_SEP)
+    if len(parts) < 2:
+        return []
+    for s in sports or []:
+        if s.get("key") != parts[0]:
+            continue
+        path_nodes: list[dict] = []
+        nodes = _sport_nodes(s)
+        for part in parts[1:]:
+            node = next((n for n in nodes if n.get("key") == part), None)
+            if node is None:
+                break
+            path_nodes.append(node)
+            nodes = node.get("children") or []
+        return path_nodes
+    return []
+
+
+def leaf_age_rule(sports: list[dict] | None, leaf_key: str) -> dict | None:
+    """The age rule governing one competition: nearest node on the path
+    carrying an ``age`` config wins (so football.u15.girls inherits U15's
+    'under 15'). None when the path has no age rule."""
+    for node in reversed(_leaf_path_nodes(sports, leaf_key)):
+        if node.get("age"):
+            return dict(node["age"])
+    return None
+
+
 def leaf_roster_rules(sports: list[dict] | None, leaf_key: str) -> dict:
     """Team-size rules for one competition (W2-B): walk the leaf's node path
     from DEEPEST to shallowest and take the nearest node carrying a
@@ -321,24 +410,10 @@ def leaf_roster_rules(sports: list[dict] | None, leaf_key: str) -> dict:
     size (squad_min == squad_max == players_per_side) — the generated team
     form starts strict and the admin widens it for substitutes in the
     builder (owner 2026-06-10)."""
-    parts = (leaf_key or "").split(LEAF_SEP)
     fmt: dict = {}
-    if len(parts) >= 2:
-        for s in sports or []:
-            if s.get("key") != parts[0]:
-                continue
-            path_nodes: list[dict] = []
-            nodes = _sport_nodes(s)
-            for part in parts[1:]:
-                node = next((n for n in nodes if n.get("key") == part), None)
-                if node is None:
-                    break
-                path_nodes.append(node)
-                nodes = node.get("children") or []
-            for node in reversed(path_nodes):
-                if node.get("format"):
-                    fmt = dict(node["format"])
-                    break
+    for node in reversed(_leaf_path_nodes(sports, leaf_key)):
+        if node.get("format"):
+            fmt = dict(node["format"])
             break
     pps = fmt.get("players_per_side")
     mn = fmt.get("squad_min") or pps

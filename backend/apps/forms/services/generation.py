@@ -301,10 +301,26 @@ def build_team_form_schema(
                     else f"{pps} players per side"
                 )
 
+        # Age rule (W2: age groups carry numbers) — shown to respondents so
+        # the eligibility expectation is explicit on the form itself.
+        age_line = ""
+        if tournament is not None and getattr(tournament, "sports", None):
+            from apps.tournaments.services.sports import (
+                age_rule_label,
+                leaf_age_rule,
+            )
+
+            age_line = age_rule_label(leaf_age_rule(tournament.sports, v))
+
         sections.append(
             {
                 "key": f"cat_{slug}",
                 "title": f"Teams — {lbl}",
+                **(
+                    {"description": f"Age limit: {age_line}."}
+                    if age_line
+                    else {}
+                ),
                 "visibility": leaf_gate.get(
                     v, {"field": "categories", "op": "includes", "value": v}
                 ),

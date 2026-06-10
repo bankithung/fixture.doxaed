@@ -23,12 +23,22 @@ export interface SportNodeFormat {
 
 export type SportNodeKind = "age_group" | "gender" | "format" | "level" | "custom";
 
+/** Structured age rule an "age_group" node carries — operator + numbers,
+ * never free text, so rules stay comparable (W2). */
+export interface SportNodeAge {
+  op: "under" | "over" | "between";
+  age?: number;
+  min?: number;
+  max?: number;
+}
+
 export interface SportNode {
   key?: string;
   name: string;
   /** What this category IS (drives team-size logic for "format" nodes). */
   kind?: SportNodeKind;
   format?: SportNodeFormat;
+  age?: SportNodeAge;
   children?: SportNode[];
 }
 

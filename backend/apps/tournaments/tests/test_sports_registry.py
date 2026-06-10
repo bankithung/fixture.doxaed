@@ -254,3 +254,57 @@ def test_generated_team_form_pins_roster_bounds_and_validator_enforces():
             g["group"]: [{g["team_name"]: "TT A"}],
         })
     assert "too_few_items" in str(exc.value)
+
+
+def test_age_groups_carry_structured_rules():
+    """W2: 'U15'-style names self-describe as age groups with NUMBERS, and
+    explicit operator rules round-trip; the nearest rule governs each leaf."""
+    from apps.tournaments.services.sports import (
+        age_rule_label,
+        leaf_age_rule,
+        normalize_sports,
+    )
+
+    sports = normalize_sports([{"name": "Football", "nodes": [
+        {"name": "U15", "children": [{"name": "Girls"}]},
+        {"name": "16+"},
+        {"name": "Seniors", "kind": "age_group",
+         "age": {"op": "between", "min": 18, "max": 35}},
+        {"name": "Open"},
+    ]}])
+    nodes = sports[0]["nodes"]
+    assert nodes[0]["kind"] == "age_group"
+    assert nodes[0]["age"] == {"op": "under", "age": 15}
+    assert nodes[1]["age"] == {"op": "over", "age": 16}
+    assert nodes[2]["age"] == {"op": "between", "min": 18, "max": 35}
+    assert "age" not in nodes[3]
+
+    # the deeper Girls leaf inherits U15's rule (nearest on the path)
+    assert leaf_age_rule(sports, "football.u15.girls") == {"op": "under", "age": 15}
+    assert leaf_age_rule(sports, "football.open") is None
+    assert age_rule_label({"op": "under", "age": 15}) == "under 15"
+    assert age_rule_label({"op": "over", "age": 16}) == "16+"
+    assert age_rule_label({"op": "between", "min": 18, "max": 35}) == "18–35"
+
+    # invalid shapes are dropped, never stored as garbage
+    bad = normalize_sports([{"name": "F", "nodes": [
+        {"name": "Cat", "age": {"op": "between", "min": 20, "max": 10}},
+        {"name": "Cat2", "age": {"op": "under", "age": "fifteen"}},
+    ]}])
+    assert "age" not in bad[0]["nodes"][0]
+    assert "age" not in bad[0]["nodes"][1]
+
+
+def test_generated_team_form_shows_age_limit():
+    from apps.forms.services.generation import generate_team_form_template
+
+    admin = _verified("age@test.local")
+    t = create_tournament(user=admin, name="Age Cup")
+    t.sports = normalize_sports([
+        {"name": "Football", "nodes": [{"name": "U15"}]},
+    ])
+    t.save(update_fields=["sports"])
+    form = generate_team_form_template(tournament=t, created_by=admin)
+    sec = next(s for s in form.schema["sections"]
+               if (s.get("visibility") or {}).get("value") == "football.u15")
+    assert sec["description"] == "Age limit: under 15."
