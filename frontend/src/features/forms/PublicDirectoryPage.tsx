@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Building2, Search, X } from "lucide-react";
+import { Building2, ChevronRight, Search, X } from "lucide-react";
 import {
   formsApi,
   type DirectoryEntry,
@@ -275,46 +275,81 @@ function CompTreeRow({
   depth,
   selected,
   onToggle,
+  expanded,
+  onExpand,
 }: {
   node: CompNode;
   depth: number;
   selected: Set<string>;
   onToggle: (key: string, on: boolean) => void;
+  expanded: Set<string>;
+  onExpand: (key: string, open: boolean) => void;
 }): React.ReactElement {
+  // Branches start COLLAPSED (Amazon-style) so a big catalog stays a short
+  // list of sports; the chevron drills in level by level.
+  const hasKids = node.children.length > 0;
+  const isOpen = expanded.has(node.key);
   return (
     <>
-      <label
-        className="flex cursor-pointer items-center gap-2 py-0.5 text-sm"
-        style={{ paddingLeft: depth * 14 }}
+      <div
+        className="flex items-center gap-1 py-0.5 text-sm"
+        style={{ paddingLeft: depth * 12 }}
       >
-        <input
-          type="checkbox"
-          checked={selected.has(node.key)}
-          onChange={(e) => onToggle(node.key, e.target.checked)}
-          className="h-3.5 w-3.5 accent-[hsl(var(--primary))]"
-        />
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate",
-            depth === 0 ? "font-medium" : "text-muted-foreground",
-          )}
-          title={node.label}
-        >
-          {node.label}
-        </span>
-        <span className="shrink-0 font-tabular text-xs text-muted-foreground/70">
-          {node.count}
-        </span>
-      </label>
-      {node.children.map((c) => (
-        <CompTreeRow
-          key={c.key}
-          node={c}
-          depth={depth + 1}
-          selected={selected}
-          onToggle={onToggle}
-        />
-      ))}
+        {hasKids ? (
+          <button
+            type="button"
+            aria-label={
+              isOpen ? t(`Collapse ${node.label}`) : t(`Expand ${node.label}`)
+            }
+            aria-expanded={isOpen}
+            onClick={() => onExpand(node.key, !isOpen)}
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <ChevronRight
+              aria-hidden="true"
+              className={cn(
+                "h-3.5 w-3.5 transition-transform",
+                isOpen && "rotate-90",
+              )}
+            />
+          </button>
+        ) : (
+          <span className="h-5 w-5 shrink-0" aria-hidden="true" />
+        )}
+        <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            checked={selected.has(node.key)}
+            onChange={(e) => onToggle(node.key, e.target.checked)}
+            className="h-3.5 w-3.5 accent-[hsl(var(--primary))]"
+          />
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate",
+              depth === 0 ? "font-medium" : "text-muted-foreground",
+            )}
+            title={node.label}
+          >
+            {node.label}
+          </span>
+          <span className="shrink-0 font-tabular text-xs text-muted-foreground/70">
+            {node.count}
+          </span>
+        </label>
+      </div>
+      {isOpen
+        ? node.children.map((c) => (
+            <CompTreeRow
+              key={c.key}
+              node={c}
+              depth={depth + 1}
+              selected={selected}
+              onToggle={onToggle}
+              expanded={expanded}
+              onExpand={onExpand}
+            />
+          ))
+        : null}
     </>
   );
 }
@@ -354,10 +389,13 @@ export function PublicDirectoryPage(): React.ReactElement {
   // "u-17 — male" matches only that branch. Union across selections.
   const [compSel, setCompSel] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
-  // What the viewer wants to see: competitions, the breakdown, the list, or both.
-  const [view, setView] = useState<"both" | "competitions" | "stats" | "table">(
-    "both",
+  // One view at a time, the DIRECTORY first (owner 2026-06-10: stacking the
+  // competitions report above the table buried the actual list).
+  const [view, setView] = useState<"table" | "competitions" | "stats">(
+    "table",
   );
+  // Filter-tree expansion — sports start collapsed so the rail stays short.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const dir = useQuery({
     queryKey: ["form-directory", formId],
@@ -465,6 +503,13 @@ export function PublicDirectoryPage(): React.ReactElement {
       else next.delete(key);
       return next;
     });
+  const toggleExpand = (key: string, open: boolean): void =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (open) next.add(key);
+      else next.delete(key);
+      return next;
+    });
 
   return (
     <PublicShell tournamentName={d.tournament_name}>
@@ -501,8 +546,8 @@ export function PublicDirectoryPage(): React.ReactElement {
         <div className="flex flex-col gap-6 lg:flex-row">
         <div className="flex min-w-0 flex-1 flex-col gap-6">
 
-        {/* View toggle — competitions, the breakdown, the list, or both. */}
-        {stats.length > 0 || sportGroups.length > 0 ? (
+        {/* View tabs — ONE view at a time, Directory (the table) first. */}
+        {sportGroups.length > 0 || (stats.length > 0 && total > 0) ? (
           <div
             className="inline-flex w-fit rounded-lg border border-border bg-muted/50 p-0.5 text-sm"
             role="tablist"
@@ -510,18 +555,21 @@ export function PublicDirectoryPage(): React.ReactElement {
           >
             {(
               [
-                ["both", t("Both")],
-                ["competitions", t("Competitions")],
-                ["stats", t("Breakdown")],
                 ["table", t("Directory")],
-              ] as const
+                ...(sportGroups.length > 0
+                  ? ([["competitions", t("Competitions")]] as const)
+                  : []),
+                ...(stats.length > 0 && total > 0
+                  ? ([["stats", t("Breakdown")]] as const)
+                  : []),
+              ] as readonly (readonly [string, string])[]
             ).map(([v, label]) => (
               <button
                 key={v}
                 type="button"
                 role="tab"
                 aria-selected={view === v}
-                onClick={() => setView(v)}
+                onClick={() => setView(v as typeof view)}
                 className={cn(
                   "rounded-md px-3 py-1 font-medium transition-colors",
                   view === v
@@ -536,13 +584,12 @@ export function PublicDirectoryPage(): React.ReactElement {
         ) : null}
 
         {/* Entries by competition — the sport → category structural view. */}
-        {(view === "both" || view === "competitions") && sportGroups.length > 0 ? (
+        {view === "competitions" && sportGroups.length > 0 ? (
           <CompetitionsSection groups={sportGroups} />
         ) : null}
 
-        {/* Dynamic stats — one distribution card per form dimension. Hidden
-            until anyone has registered (a grid of "0 replied" is noise). */}
-        {(view === "both" || view === "stats") && stats.length > 0 && total > 0 ? (
+        {/* Dynamic stats — one distribution card per form dimension. */}
+        {view === "stats" && stats.length > 0 && total > 0 ? (
           <section aria-label={t("Registration breakdown")}>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {stats.map((s) => (
@@ -552,7 +599,7 @@ export function PublicDirectoryPage(): React.ReactElement {
           </section>
         ) : null}
 
-        {view === "both" || view === "table" ? (
+        {view === "table" ? (
           <>
         {/* Results */}
         {hasFilters ? (
@@ -705,20 +752,36 @@ export function PublicDirectoryPage(): React.ReactElement {
             </label>
 
             {compTree.length > 0 ? (
-              <fieldset className="flex flex-col gap-0.5 border-t border-border pt-3">
-                <legend className="mb-1.5 text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <div className="flex flex-col gap-0.5 border-t border-border pt-3">
+                <button
+                  type="button"
+                  aria-expanded={!expanded.has("__comp_closed")}
+                  onClick={() => toggleExpand("__comp_closed", !expanded.has("__comp_closed"))}
+                  className="mb-1.5 flex items-center justify-between text-left text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground hover:text-foreground"
+                >
                   {t("Competitions")}
-                </legend>
-                {compTree.map((n) => (
-                  <CompTreeRow
-                    key={n.key}
-                    node={n}
-                    depth={0}
-                    selected={compSel}
-                    onToggle={toggleComp}
+                  <ChevronRight
+                    aria-hidden="true"
+                    className={cn(
+                      "h-3.5 w-3.5 transition-transform",
+                      !expanded.has("__comp_closed") && "rotate-90",
+                    )}
                   />
-                ))}
-              </fieldset>
+                </button>
+                {!expanded.has("__comp_closed")
+                  ? compTree.map((n) => (
+                      <CompTreeRow
+                        key={n.key}
+                        node={n}
+                        depth={0}
+                        selected={compSel}
+                        onToggle={toggleComp}
+                        expanded={expanded}
+                        onExpand={toggleExpand}
+                      />
+                    ))
+                  : null}
+              </div>
             ) : null}
 
             {d.filters.map((f) => (
