@@ -8,6 +8,12 @@ import {
   type DirectoryFilter,
 } from "@/api/forms";
 import { ApiError } from "@/types/api";
+import {
+  Dialog,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/button";
@@ -396,6 +402,8 @@ export function PublicDirectoryPage(): React.ReactElement {
   );
   // Filter-tree expansion — sports start collapsed so the rail stays short.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // "View all competitions" modal for one institution's full entry list.
+  const [compModal, setCompModal] = useState<DirectoryEntry | null>(null);
 
   const dir = useQuery({
     queryKey: ["form-directory", formId],
@@ -675,8 +683,8 @@ export function PublicDirectoryPage(): React.ReactElement {
                     ) : null}
                     <td className="border-b border-border px-3 py-2.5 align-top group-hover:bg-accent/40">
                       {(e.competitions ?? []).length ? (
-                        <div className="flex max-w-[20rem] flex-wrap gap-1">
-                          {e.competitions.slice(0, 4).map((c) => (
+                        <div className="flex max-w-[20rem] flex-wrap items-center gap-1">
+                          {e.competitions.slice(0, 2).map((c) => (
                             <span
                               key={c.leaf_key}
                               className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
@@ -684,10 +692,14 @@ export function PublicDirectoryPage(): React.ReactElement {
                               {c.label}
                             </span>
                           ))}
-                          {e.competitions.length > 4 ? (
-                            <span className="text-xs text-muted-foreground">
-                              +{e.competitions.length - 4}
-                            </span>
+                          {e.competitions.length > 2 ? (
+                            <button
+                              type="button"
+                              onClick={() => setCompModal(e)}
+                              className="rounded-md px-1.5 py-0.5 text-xs font-medium text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              {t("View all")} ({e.competitions.length})
+                            </button>
                           ) : null}
                         </div>
                       ) : (
@@ -807,6 +819,59 @@ export function PublicDirectoryPage(): React.ReactElement {
           </div>
         </aside>
         </div>
+
+        {/* One institution's full competition list, grouped by sport. */}
+        <Dialog
+          open={compModal !== null}
+          onOpenChange={(o) => {
+            if (!o) setCompModal(null);
+          }}
+          ariaLabel={t("All competitions")}
+        >
+          {compModal ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{compModal.name}</DialogTitle>
+                <DialogDescription>
+                  {compModal.competitions.length}{" "}
+                  {compModal.competitions.length === 1
+                    ? t("competition entered")
+                    : t("competitions entered")}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto">
+                {[...new Map(
+                  compModal.competitions.map((c) => [
+                    c.label.split(" — ")[0],
+                    compModal.competitions.filter(
+                      (x) => x.label.split(" — ")[0] === c.label.split(" — ")[0],
+                    ),
+                  ]),
+                ).entries()].map(([sport, comps]) => (
+                  <div key={sport} className="flex flex-col gap-1.5">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {sport}
+                    </h3>
+                    <ul className="flex flex-col divide-y divide-border/60 rounded-lg border border-border">
+                      {comps.map((c) => (
+                        <li key={c.leaf_key} className="px-3 py-1.5 text-sm">
+                          {c.label.includes(" — ")
+                            ? c.label.slice(sport.length + 3)
+                            : t("Open competition")}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => setCompModal(null)}>
+                  {t("Close")}
+                </Button>
+              </div>
+            </>
+          ) : null}
+        </Dialog>
       </div>
     </PublicShell>
   );
