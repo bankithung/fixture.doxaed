@@ -56,10 +56,15 @@ export function ScheduleWizard({
   tournamentId,
   open,
   onClose,
+  leafKey,
+  leafLabel,
 }: {
   tournamentId: string;
   open: boolean;
   onClose: () => void;
+  /** Schedule ONE competition around everything else's bookings. */
+  leafKey?: string;
+  leafLabel?: string;
 }): React.ReactElement {
   const qc = useQueryClient();
   const toast = useToast();
@@ -92,6 +97,7 @@ export function ScheduleWizard({
           .filter(Boolean),
         rest_minutes: Number(form.rest_minutes),
         max_per_team_per_day: Number(form.max_per_team_per_day),
+        ...(leafKey ? { leaf_key: leafKey } : {}),
       }),
     onSuccess: (r) => {
       setResult(r);
@@ -123,7 +129,11 @@ export function ScheduleWizard({
       ariaLabel={t("Fixture generation wizard")}
     >
       <DialogHeader>
-        <DialogTitle>{t("Generate & schedule fixtures")}</DialogTitle>
+        <DialogTitle>
+          {leafLabel
+            ? t(`Schedule fixtures — ${leafLabel}`)
+            : t("Schedule fixtures")}
+        </DialogTitle>
         <DialogDescription>
           {t(
             "Set your constraints — the engine assigns every match a time and venue, honouring rest, venue and per-day limits.",
@@ -212,7 +222,7 @@ export function ScheduleWizard({
           <div className="flex flex-col gap-3">
             <Field
               label={t("Venues / grounds")}
-              hint={t("One per line (or comma-separated). More venues = more parallel matches.")}
+              hint={t("One per line (or comma-separated). Leave empty to use your saved venues with their availability windows.")}
             >
               <textarea
                 rows={3}

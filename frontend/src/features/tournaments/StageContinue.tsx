@@ -110,7 +110,7 @@ export function StageContinue({
   if (!canAdvance) {
     if (data.stage === "ready") {
       return (
-        <div className="mt-6 flex items-center justify-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 py-3 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+        <div className="mt-6 flex items-center justify-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 py-3 text-sm font-medium text-primary">
           <Check aria-hidden="true" className="h-4 w-4" />
           {t("Setup complete")}
         </div>

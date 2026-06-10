@@ -36,6 +36,9 @@ export interface NavStage {
   stage: string;
   order: string[];
   stages: { key: string; label: string }[];
+  /** Caller's manage flag + effective module codes (permission gating). */
+  can_manage?: boolean;
+  modules?: string[];
 }
 
 /**
@@ -98,24 +101,20 @@ export function computeWorkspaceNav(
 }
 
 /**
- * Pure function — the grouped TOURNAMENT navigation (the "Manage" group) the
- * AppShell renders when the route is under `/tournaments/:id`: Overview,
- * Registration forms (module-gated on `forms`), Fixtures & bracket, Members,
- * and Audit.
- *
- * Members + Audit are shown to anyone in tournament context — the pages
- * themselves enforce manager-only access (the Audit page renders a friendly
- * "managers only" state on a 403). `opts.user` + `opts.slug` resolve the
- * `forms` module the same way the workspace nav does; if membership can't be
- * resolved the forms item simply hides.
- */
-/**
  * Pure function — the CONTEXTUAL tournament rail shown inside `/tournaments/:id/*`.
- * Sections mirror the staged flow (Overview · Institutions · Teams · Members ·
- * Fixtures · Settings) and are **stage-gated**: a section is locked until the
- * tournament reaches its stage, computed from the passed `stage` payload (the
- * single source of truth, shared with the in-page lock states). No router/Zustand
- * reads — easy to unit-test.
+ * Sections mirror the staged flow (Overview · Sports · Forms · Institutions ·
+ * Teams · Members · Fixtures · Settings) and are gated on TWO axes from the
+ * stage payload (the single source of truth, shared with the in-page locks):
+ *
+ *  - **Stage**: a section is locked (visible, disabled, "Unlocks at …") until
+ *    the tournament reaches its stage.
+ *  - **Permission**: a section the caller's role/module set gives no access to
+ *    is HIDDEN — members only see what they can act on (spec 2026-06-10 P5).
+ *    Read surfaces (Overview, Fixtures, Teams, Institutions) stay visible to
+ *    every member; admin surfaces (Members, Settings) and editor surfaces
+ *    (Sports, Forms) require manage rights or the matching module.
+ *
+ * No router/Zustand reads — easy to unit-test.
  */
 export function computeTournamentNav(
   tournamentId: string,
@@ -126,6 +125,12 @@ export function computeTournamentNav(
   const stage = opts.stage ?? null;
   const order = stage?.order ?? [];
   const curIdx = stage ? order.indexOf(stage.stage) : -1;
+  // Until the payload resolves we show everything (no flash of missing nav);
+  // once it's here, gate by manage flag + effective modules.
+  const canManage = stage ? Boolean(stage.can_manage) : true;
+  const modules = stage ? new Set(stage.modules ?? []) : null;
+  const allowed = (moduleCode: string): boolean =>
+    canManage || modules === null || modules.has(moduleCode);
 
   // A section keyed to `stageKey` is locked until the tournament reaches it.
   const gate = (stageKey: string | null): Pick<NavItem, "locked" | "lockLabel"> => {
@@ -137,30 +142,32 @@ export function computeTournamentNav(
     return {};
   };
 
-  const manage: NavItem[] = [
+  const manage: (NavItem | null)[] = [
     {
       key: "overview",
       label: t("Overview"),
       href: routes.tournamentOverview(tournamentId),
       icon: LayoutDashboard,
     },
-    {
-      // The sports this tournament runs — chosen at setup, drives forms +
-      // fixtures. Always available (it's the first setup step).
-      key: "sports",
-      label: t("Sports"),
-      href: routes.tournamentSports(tournamentId),
-      icon: Trophy,
-    },
-    {
-      // Registration-form builder — the mechanism that powers institution &
-      // team registration, so it unlocks with the first registration stage.
-      key: "forms",
-      label: t("Forms"),
-      href: routes.tournamentForms(tournamentId),
-      icon: FileText,
-      ...gate("org_registration"),
-    },
+    // The sports this tournament runs — first setup step; editor surface.
+    allowed("tournament.editor")
+      ? {
+          key: "sports",
+          label: t("Sports"),
+          href: routes.tournamentSports(tournamentId),
+          icon: Trophy,
+        }
+      : null,
+    // Registration-form builder — unlocks with the first registration stage.
+    allowed("forms")
+      ? {
+          key: "forms",
+          label: t("Forms"),
+          href: routes.tournamentForms(tournamentId),
+          icon: FileText,
+          ...gate("org_registration"),
+        }
+      : null,
     {
       key: "institutions",
       label: t("Institutions"),
@@ -175,12 +182,15 @@ export function computeTournamentNav(
       icon: Users,
       ...gate("team_registration"),
     },
-    {
-      key: "members",
-      label: t("Members"),
-      href: routes.tournamentMembers(tournamentId),
-      icon: UserCog,
-    },
+    // Member/role administration — managers only.
+    canManage
+      ? {
+          key: "members",
+          label: t("Members"),
+          href: routes.tournamentMembers(tournamentId),
+          icon: UserCog,
+        }
+      : null,
     {
       key: "fixtures",
       label: t("Fixtures"),
@@ -188,13 +198,21 @@ export function computeTournamentNav(
       icon: CalendarClock,
       ...gate("fixtures"),
     },
-    {
-      key: "settings",
-      label: t("Settings"),
-      href: routes.tournamentSettings(tournamentId),
-      icon: Settings,
-    },
+    allowed("tournament.editor")
+      ? {
+          key: "settings",
+          label: t("Settings"),
+          href: routes.tournamentSettings(tournamentId),
+          icon: Settings,
+        }
+      : null,
   ];
 
-  return [{ key: "manage", label: t("Manage"), items: manage }];
+  return [
+    {
+      key: "manage",
+      label: t("Manage"),
+      items: manage.filter((i): i is NavItem => i !== null),
+    },
+  ];
 }

@@ -135,6 +135,24 @@ function SetScoreEntry({
   );
 }
 
+/** "Sat 1 Aug, 09:00 · Indoor Hall" — when the engine has scheduled a match. */
+function scheduleMeta(match: MatchRow): string {
+  const parts: string[] = [];
+  if (match.scheduled_at) {
+    parts.push(
+      new Date(match.scheduled_at).toLocaleString(undefined, {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    );
+  }
+  if (match.venue) parts.push(match.venue);
+  return parts.join(" · ");
+}
+
 export function ScoreRow({
   match,
   tournamentId,
@@ -146,6 +164,7 @@ export function ScoreRow({
   const [home, setHome] = useState("");
   const [away, setAway] = useState("");
   const rules = match.scoring;
+  const meta = scheduleMeta(match);
   const save = useMutation({
     mutationFn: () =>
       tournamentsApi.score(match.id, {
@@ -164,7 +183,13 @@ export function ScoreRow({
       : "";
 
   return (
-    <div className="flex items-center gap-2 border-t border-border py-2 text-sm first:border-t-0">
+    <div className="border-t border-border py-2 first:border-t-0">
+      {meta ? (
+        <p className="pb-1 text-center font-tabular text-[0.6875rem] text-muted-foreground">
+          {meta}
+        </p>
+      ) : null}
+      <div className="flex items-center gap-2 text-sm">
       <span className="flex-1 truncate text-right font-medium">
         {match.home_team?.name ?? t("TBD")}
       </span>
@@ -215,6 +240,7 @@ export function ScoreRow({
       >
         {t("Live")}
       </Link>
+      </div>
     </div>
   );
 }

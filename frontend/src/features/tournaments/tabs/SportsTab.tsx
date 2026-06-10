@@ -5,16 +5,17 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
+  CornerDownRight,
   FileText,
   Plus,
   Search,
-  Trash2,
+  SlidersHorizontal,
   Trophy,
   X,
 } from "lucide-react";
 import {
   tournamentsApi,
-  type SportCategory,
+  type SportNode,
   type TournamentSport,
 } from "@/api/tournaments";
 import { formsApi } from "@/api/forms";
@@ -28,21 +29,69 @@ import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
-/** Coerce categories to the 2-level shape, tolerating legacy plain-string data. */
-function normCats(raw: unknown): SportCategory[] {
+/** Coerce server data to the recursive node shape, tolerating the legacy
+ * 2-level `{name, subcategories}` and plain-string forms. Server-minted node
+ * `key`s are preserved — they are the stable identity registered teams hang
+ * off, so renames must round-trip them. */
+function normNodes(raw: unknown): SportNode[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((c) =>
-      typeof c === "string"
-        ? { name: c, subcategories: [] }
-        : {
-            name: String((c as SportCategory)?.name ?? ""),
-            subcategories: Array.isArray((c as SportCategory)?.subcategories)
-              ? (c as SportCategory).subcategories.map(String)
-              : [],
-          },
-    )
-    .filter((c) => c.name);
+    .map((n): SportNode | null => {
+      if (typeof n === "string") return n.trim() ? { name: n.trim() } : null;
+      if (typeof n !== "object" || n === null) return null;
+      const o = n as Record<string, unknown>;
+      const name = String(o.name ?? "").trim();
+      if (!name) return null;
+      const children = Array.isArray(o.children)
+        ? normNodes(o.children)
+        : Array.isArray(o.subcategories)
+          ? normNodes(o.subcategories)
+          : [];
+      return {
+        ...(typeof o.key === "string" && o.key ? { key: o.key } : {}),
+        name,
+        children,
+      };
+    })
+    .filter((n): n is SportNode => n !== null);
+}
+
+function sportNodes(s: TournamentSport): SportNode[] {
+  return normNodes(s.nodes ?? s.categories ?? []);
+}
+
+/** Every competition (leaf path) under a node list — "U15 — Girls — 5v5". */
+function leafLabels(nodes: SportNode[], prefix: string[] = []): string[] {
+  const out: string[] = [];
+  for (const n of nodes) {
+    const path = [...prefix, n.name];
+    if (n.children?.length) out.push(...leafLabels(n.children, path));
+    else out.push(path.join(" — "));
+  }
+  return out;
+}
+
+/** Immutable node-tree ops addressed by index path. */
+function withChildAdded(
+  nodes: SportNode[],
+  path: number[],
+  name: string,
+): SportNode[] {
+  if (path.length === 0) return [...nodes, { name }];
+  const [head, ...rest] = path;
+  return nodes.map((n, i) =>
+    i === head
+      ? { ...n, children: withChildAdded(n.children ?? [], rest, name) }
+      : n,
+  );
+}
+
+function withNodeRemoved(nodes: SportNode[], path: number[]): SportNode[] {
+  if (path.length === 1) return nodes.filter((_n, i) => i !== path[0]);
+  const [head, ...rest] = path;
+  return nodes.map((n, i) =>
+    i === head ? { ...n, children: withNodeRemoved(n.children ?? [], rest) } : n,
+  );
 }
 
 function slugKey(name: string): string {
@@ -54,9 +103,11 @@ function slugKey(name: string): string {
 }
 
 /**
- * SETUP step — choose the sport(s) this tournament runs and the categories for
- * each (e.g. U-14 Boys). The selection + categories drive the auto-generated
- * registration forms and, later, the per-sport fixtures/constraints. Auto-saves.
+ * SETUP step — choose the sport(s) this tournament runs and build each one's
+ * category tree (any depth: U15 → Girls → 5v5). Every LEAF of the tree is one
+ * competition: it appears on the auto-generated registration form, teams
+ * register into it, and it gets its own draw. Auto-saves; per-sport match
+ * settings (duration, venue type) feed the scheduler.
  */
 export function SportsTab(): React.ReactElement {
   const { id = "" } = useParams();
@@ -64,9 +115,12 @@ export function SportsTab(): React.ReactElement {
   const toast = useToast();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [catDraft, setCatDraft] = useState<Record<string, string>>({});
-  // Subcategory drafts keyed by `${sportKey}::${categoryName}`.
-  const [subDraft, setSubDraft] = useState<Record<string, string>>({});
+  // One in-flight "add node" draft at a time, keyed by `${sportKey}:${path}`.
+  const [addDraft, setAddDraft] = useState<{ key: string; value: string }>({
+    key: "",
+    value: "",
+  });
+  const [showSettings, setShowSettings] = useState(false);
   // Two-step sub-flow: pick sports → configure each one (focused, via tabs).
   const [step, setStep] = useState<"pick" | "configure">("pick");
   const [activeKey, setActiveKey] = useState<string>("");
@@ -97,10 +151,7 @@ export function SportsTab(): React.ReactElement {
 
   const selected = useMemo<TournamentSport[]>(
     () =>
-      (chosen.data?.sports ?? []).map((s) => ({
-        ...s,
-        categories: normCats(s.categories),
-      })),
+      (chosen.data?.sports ?? []).map((s) => ({ ...s, nodes: sportNodes(s) })),
     [chosen.data],
   );
   const selectedKeys = useMemo(
@@ -165,44 +216,20 @@ export function SportsTab(): React.ReactElement {
     save.mutate(selected.filter((s) => s.key !== key));
   const updateSport = (key: string, patch: Partial<TournamentSport>): void =>
     save.mutate(selected.map((s) => (s.key === key ? { ...s, ...patch } : s)));
-  const addCategory = (key: string, raw: string): void => {
+
+  const addNode = (sportKey: string, path: number[], raw: string): void => {
     const name = raw.trim();
-    const sport = selected.find((s) => s.key === key);
+    const sport = selected.find((s) => s.key === sportKey);
     if (!name || !sport) return;
-    if ((sport.categories ?? []).some((c) => c.name === name)) return;
-    updateSport(key, {
-      categories: [...(sport.categories ?? []), { name, subcategories: [] }],
+    updateSport(sportKey, {
+      nodes: withChildAdded(sport.nodes ?? [], path, name),
     });
-    setCatDraft((d) => ({ ...d, [key]: "" }));
+    setAddDraft({ key: "", value: "" });
   };
-  const removeCategory = (key: string, name: string): void => {
-    const sport = selected.find((s) => s.key === key);
-    updateSport(key, {
-      categories: (sport?.categories ?? []).filter((c) => c.name !== name),
-    });
-  };
-  const addSubcategory = (key: string, catName: string, raw: string): void => {
-    const sub = raw.trim();
-    const sport = selected.find((s) => s.key === key);
-    if (!sub || !sport) return;
-    updateSport(key, {
-      categories: (sport.categories ?? []).map((c) =>
-        c.name === catName && !c.subcategories.includes(sub)
-          ? { ...c, subcategories: [...c.subcategories, sub] }
-          : c,
-      ),
-    });
-    setSubDraft((d) => ({ ...d, [`${key}::${catName}`]: "" }));
-  };
-  const removeSubcategory = (key: string, catName: string, sub: string): void => {
-    const sport = selected.find((s) => s.key === key);
-    updateSport(key, {
-      categories: (sport?.categories ?? []).map((c) =>
-        c.name === catName
-          ? { ...c, subcategories: c.subcategories.filter((x) => x !== sub) }
-          : c,
-      ),
-    });
+  const removeNode = (sportKey: string, path: number[]): void => {
+    const sport = selected.find((s) => s.key === sportKey);
+    if (!sport) return;
+    updateSport(sportKey, { nodes: withNodeRemoved(sport.nodes ?? [], path) });
   };
 
   const q = search.trim().toLowerCase();
@@ -228,12 +255,108 @@ export function SportsTab(): React.ReactElement {
 
   const effectiveStep = selected.length === 0 ? "pick" : step;
   const activeSport = selected.find((s) => s.key === activeKey) ?? selected[0];
+  const activeLeaves = activeSport ? leafLabels(activeSport.nodes ?? []) : [];
 
   const stepChip = (active: boolean): string =>
     cn(
       "rounded-full px-2 py-0.5",
       active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
     );
+
+  /** One node row + its children, recursively. */
+  const renderNode = (
+    sport: TournamentSport,
+    node: SportNode,
+    path: number[],
+    depth: number,
+  ): React.ReactElement => {
+    const draftKey = `${sport.key}:${path.join(".")}`;
+    const adding = addDraft.key === draftKey;
+    return (
+      <li key={node.key ?? `${path.join(".")}-${node.name}`} className="min-w-0">
+        <div className="group flex items-center gap-1.5 rounded-md py-1 pl-2 pr-1 hover:bg-accent/60">
+          {depth > 0 ? (
+            <CornerDownRight
+              aria-hidden="true"
+              className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50"
+            />
+          ) : null}
+          <span
+            className={cn(
+              "min-w-0 truncate text-sm",
+              node.children?.length ? "font-medium" : "",
+            )}
+            title={node.name}
+          >
+            {node.name}
+          </span>
+          {!node.children?.length ? (
+            <span className="rounded bg-primary/10 px-1.5 text-[0.625rem] font-medium uppercase tracking-wide text-primary">
+              {t("competition")}
+            </span>
+          ) : null}
+          <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+            <button
+              type="button"
+              onClick={() =>
+                setAddDraft(
+                  adding ? { key: "", value: "" } : { key: draftKey, value: "" },
+                )
+              }
+              aria-label={t(`Add a level under ${node.name}`)}
+              className="inline-flex h-6 items-center gap-0.5 rounded px-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Plus aria-hidden="true" className="h-3 w-3" />
+              {t("level")}
+            </button>
+            <button
+              type="button"
+              onClick={() => removeNode(sport.key, path)}
+              aria-label={t(`Remove ${node.name}`)}
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <X aria-hidden="true" className="h-3.5 w-3.5" />
+            </button>
+          </span>
+        </div>
+        {(node.children?.length || adding) ? (
+          <ul className="ml-3 border-l border-border pl-2">
+            {(node.children ?? []).map((c, i) =>
+              renderNode(sport, c, [...path, i], depth + 1),
+            )}
+            {adding ? (
+              <li>
+                <form
+                  className="flex items-center gap-1.5 py-1 pl-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    addNode(sport.key, path, addDraft.value);
+                  }}
+                >
+                  <Input
+                    autoFocus
+                    value={addDraft.value}
+                    onChange={(e) =>
+                      setAddDraft((d) => ({ ...d, value: e.target.value }))
+                    }
+                    onBlur={() => {
+                      if (!addDraft.value.trim()) setAddDraft({ key: "", value: "" });
+                    }}
+                    placeholder={t("e.g. Girls, 5v5, Doubles")}
+                    className="h-7 w-44 text-sm"
+                    aria-label={t(`New level under ${node.name}`)}
+                  />
+                  <Button type="submit" variant="outline" size="sm" className="h-7">
+                    {t("Add")}
+                  </Button>
+                </form>
+              </li>
+            ) : null}
+          </ul>
+        ) : null}
+      </li>
+    );
+  };
 
   return (
     <div className="flex w-full flex-col gap-6">
@@ -243,7 +366,7 @@ export function SportsTab(): React.ReactElement {
         <p className="mt-0.5 text-sm text-muted-foreground">
           {effectiveStep === "pick"
             ? t("Pick the sport(s) this tournament runs — you'll set up each one's categories next.")
-            : t("Set up the categories and subcategories for each sport, one at a time.")}
+            : t("Build each sport's category tree. Every last level is one competition with its own entries and fixtures.")}
         </p>
         <div className="mt-2 flex items-center gap-1.5 text-xs font-medium">
           <span className={stepChip(effectiveStep === "pick")}>
@@ -272,29 +395,32 @@ export function SportsTab(): React.ReactElement {
               </p>
             ) : (
               <ul className="flex flex-wrap gap-2">
-                {selected.map((s) => (
-                  <li
-                    key={s.key}
-                    data-testid={`sport-${s.key}`}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card py-1 pl-3 pr-1.5 text-sm shadow-sm"
-                  >
-                    <Trophy aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
-                    <span className="font-medium">{s.name}</span>
-                    {(s.categories ?? []).length ? (
-                      <span className="font-tabular text-xs text-muted-foreground">
-                        · {(s.categories ?? []).length} {t("cat")}
-                      </span>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => remove(s.key)}
-                      aria-label={t(`Remove ${s.name}`)}
-                      className="ml-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                {selected.map((s) => {
+                  const leaves = leafLabels(s.nodes ?? []).length;
+                  return (
+                    <li
+                      key={s.key}
+                      data-testid={`sport-${s.key}`}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card py-1 pl-3 pr-1.5 text-sm shadow-sm"
                     >
-                      <X aria-hidden="true" className="h-3.5 w-3.5" />
-                    </button>
-                  </li>
-                ))}
+                      <Trophy aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
+                      <span className="font-medium">{s.name}</span>
+                      {(s.nodes ?? []).length ? (
+                        <span className="font-tabular text-xs text-muted-foreground">
+                          · {leaves} {t("comp")}
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => remove(s.key)}
+                        aria-label={t(`Remove ${s.name}`)}
+                        className="ml-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <X aria-hidden="true" className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </section>
@@ -390,7 +516,7 @@ export function SportsTab(): React.ReactElement {
           {/* Sport tabs — configure one sport at a time. */}
           <div role="tablist" aria-label={t("Sports")} className="flex flex-wrap gap-2">
             {selected.map((s) => {
-              const count = (s.categories ?? []).length;
+              const count = leafLabels(s.nodes ?? []).length;
               const isActive = activeSport?.key === s.key;
               return (
                 <button
@@ -408,7 +534,7 @@ export function SportsTab(): React.ReactElement {
                 >
                   <Trophy aria-hidden="true" className="h-3.5 w-3.5" />
                   {s.name}
-                  {count ? (
+                  {(s.nodes ?? []).length ? (
                     <span className="font-tabular opacity-70">({count})</span>
                   ) : null}
                 </button>
@@ -416,7 +542,7 @@ export function SportsTab(): React.ReactElement {
             })}
           </div>
 
-          {/* Active sport's categories → subcategories. */}
+          {/* Active sport's category tree (recursive, any depth). */}
           {activeSport ? (
             <section
               className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm"
@@ -447,98 +573,39 @@ export function SportsTab(): React.ReactElement {
                     {t("Categories")}
                   </span>
                   <span className="text-[0.6875rem] text-muted-foreground/70">
-                    {t("category → subcategories")}
+                    {t("nest levels as deep as you need — age, gender, format")}
                   </span>
                 </div>
-                {(activeSport.categories ?? []).length === 0 ? (
+                {(activeSport.nodes ?? []).length === 0 ? (
                   <p className="rounded-lg border border-dashed border-border bg-muted/20 px-3 py-4 text-center text-sm text-muted-foreground">
-                    {t("No categories yet — add one below (e.g. Singles, U-14).")}
+                    {t("No categories yet — the whole sport is one competition. Add levels below (e.g. U-15 → Girls → 5v5).")}
                   </p>
                 ) : (
-                  <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-                    {(activeSport.categories ?? []).map((c) => (
-                      <div
-                        key={c.name}
-                        className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5"
-                      >
-                        <span
-                          className="w-24 shrink-0 truncate text-sm font-medium"
-                          title={c.name}
-                        >
-                          {c.name}
-                        </span>
-                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                          {c.subcategories.map((sub) => (
-                            <span
-                              key={sub}
-                              className="inline-flex items-center gap-1 rounded-full bg-muted py-0.5 pl-2.5 pr-1 text-xs"
-                            >
-                              {sub}
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeSubcategory(activeSport.key, c.name, sub)
-                                }
-                                aria-label={t(`Remove ${sub}`)}
-                                className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                              >
-                                <X aria-hidden="true" className="h-3 w-3" />
-                              </button>
-                            </span>
-                          ))}
-                          <form
-                            className="contents"
-                            onSubmit={(e) => {
-                              e.preventDefault();
-                              addSubcategory(
-                                activeSport.key,
-                                c.name,
-                                subDraft[`${activeSport.key}::${c.name}`] ?? "",
-                              );
-                            }}
-                          >
-                            <Input
-                              value={subDraft[`${activeSport.key}::${c.name}`] ?? ""}
-                              onChange={(e) =>
-                                setSubDraft((d) => ({
-                                  ...d,
-                                  [`${activeSport.key}::${c.name}`]: e.target.value,
-                                }))
-                              }
-                              placeholder={t("+ subcategory")}
-                              className="h-7 w-32 text-sm"
-                              aria-label={t(`Add a subcategory to ${c.name}`)}
-                            />
-                          </form>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeCategory(activeSport.key, c.name)}
-                          aria-label={t(`Remove category ${c.name}`)}
-                          className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <Trash2 aria-hidden="true" className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  <ul className="rounded-lg border border-border px-1 py-1.5">
+                    {(activeSport.nodes ?? []).map((n, i) =>
+                      renderNode(activeSport, n, [i], 0),
+                    )}
+                  </ul>
                 )}
                 <form
                   className="flex items-center gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    addCategory(activeSport.key, catDraft[activeSport.key] ?? "");
+                    addNode(
+                      activeSport.key,
+                      [],
+                      addDraft.key === `${activeSport.key}:root` ? addDraft.value : "",
+                    );
                   }}
                 >
                   <Input
-                    value={catDraft[activeSport.key] ?? ""}
-                    onChange={(e) =>
-                      setCatDraft((d) => ({
-                        ...d,
-                        [activeSport.key]: e.target.value,
-                      }))
+                    value={
+                      addDraft.key === `${activeSport.key}:root` ? addDraft.value : ""
                     }
-                    placeholder={t("Add a category (e.g. Singles, U-14)")}
+                    onChange={(e) =>
+                      setAddDraft({ key: `${activeSport.key}:root`, value: e.target.value })
+                    }
+                    placeholder={t("Add a category (e.g. U-14, Singles)")}
                     className="h-8 max-w-xs text-sm"
                     aria-label={t(`Add a category to ${activeSport.name}`)}
                   />
@@ -547,6 +614,89 @@ export function SportsTab(): React.ReactElement {
                     {t("Add category")}
                   </Button>
                 </form>
+
+                {/* Competitions preview — what registration + fixtures will see. */}
+                {activeLeaves.length > 0 ? (
+                  <div className="flex flex-col gap-1.5 border-t border-border pt-2.5">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {t("Competitions")}{" "}
+                      <span className="font-tabular">({activeLeaves.length})</span>
+                      <span className="ml-1 font-normal text-muted-foreground/70">
+                        {t("— each gets its own entries and fixtures")}
+                      </span>
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {activeLeaves.map((label) => (
+                        <span
+                          key={label}
+                          className="rounded-full bg-muted px-2.5 py-0.5 text-xs"
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Match settings — feeds the scheduler (duration, venue type). */}
+              <div className="border-t border-border pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowSettings((v) => !v)}
+                  aria-expanded={showSettings}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t("Match settings")}
+                  <span className="font-normal text-muted-foreground/70">
+                    {activeSport.scheduling?.duration_minutes
+                      ? t(`${activeSport.scheduling.duration_minutes} min / match`)
+                      : t("(defaults from the sport profile)")}
+                  </span>
+                </button>
+                {showSettings ? (
+                  <div className="mt-2.5 grid max-w-md grid-cols-2 gap-3">
+                    <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                      {t("Match duration (minutes)")}
+                      <Input
+                        inputMode="numeric"
+                        defaultValue={activeSport.scheduling?.duration_minutes ?? ""}
+                        onBlur={(e) => {
+                          const v = parseInt(e.target.value, 10);
+                          updateSport(activeSport.key, {
+                            scheduling: {
+                              ...(activeSport.scheduling ?? {}),
+                              duration_minutes:
+                                Number.isFinite(v) && v > 0 ? v : undefined,
+                            },
+                          });
+                        }}
+                        placeholder={t("e.g. 90")}
+                        className="h-8 font-tabular"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                      {t("Venue type")}
+                      <Input
+                        defaultValue={activeSport.scheduling?.venue_type ?? ""}
+                        onBlur={(e) =>
+                          updateSport(activeSport.key, {
+                            scheduling: {
+                              ...(activeSport.scheduling ?? {}),
+                              venue_type: e.target.value.trim() || undefined,
+                            },
+                          })
+                        }
+                        placeholder={t("e.g. ground, indoor_court")}
+                        className="h-8"
+                      />
+                    </label>
+                    <p className="col-span-2 text-[0.6875rem] leading-relaxed text-muted-foreground/80">
+                      {t("Fixtures only land on venues of a matching type, and the calendar reserves this much time per match. Leave blank to use the sport's standard values.")}
+                    </p>
+                  </div>
+                ) : null}
               </div>
             </section>
           ) : null}

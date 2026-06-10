@@ -80,7 +80,7 @@ export function LandingPage(): React.ReactElement {
       </header>
 
       {/* Hero */}
-      <section className="relative overflow-hidden border-b border-border/60 bg-gradient-to-b from-muted/50 via-background to-background">
+      <section className="relative overflow-hidden border-b border-border/60 bg-muted/30">
         <span
           aria-hidden="true"
           className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-primary/10 blur-3xl"

@@ -36,6 +36,7 @@ const SETTINGS = {
     tiebreakers: [],
   },
   constraints: [],
+  modules: [],
   rules_frozen_at: null,
   can_edit: false,
   can_manage: true,

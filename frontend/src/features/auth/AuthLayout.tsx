@@ -25,17 +25,9 @@ export function AuthLayout({
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-background">
       <aside
-        className="hidden lg:flex flex-col justify-between bg-gradient-to-br from-emerald-700 via-teal-700 to-slate-900 p-12 text-white relative overflow-hidden"
+        className="hidden lg:flex flex-col justify-between bg-primary p-12 text-primary-foreground relative overflow-hidden"
         aria-hidden="true"
       >
-        {/* Decorative pattern: subtle radial highlights. */}
-        <div
-          className="pointer-events-none absolute inset-0 opacity-30"
-          style={{
-            background:
-              "radial-gradient(circle at 20% 20%, rgba(255,255,255,0.18), transparent 40%), radial-gradient(circle at 80% 70%, rgba(255,255,255,0.12), transparent 45%)",
-          }}
-        />
         <div className="relative z-10">
           <Link
             to="/"

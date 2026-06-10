@@ -175,6 +175,8 @@ class TournamentTeamsListView(GenericAPIView):
                     "institution_id": str(t.institution_id) if t.institution_id else None,
                     "institution_name": t.institution.name if t.institution_id else t.school,
                     "pool": t.pool,
+                    "sport": t.sport,
+                    "leaf_key": t.leaf_key,
                     "status": t.status,
                     "player_count": t.player_count,
                 }

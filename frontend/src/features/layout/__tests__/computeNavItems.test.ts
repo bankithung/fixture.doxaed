@@ -123,6 +123,8 @@ describe("computeTournamentNav", () => {
 
   const STAGE = {
     stage: "org_registration",
+    can_manage: true,
+    modules: [],
     order: ["setup", "org_registration", "team_registration", "members", "fixtures", "ready"],
     stages: [
       { key: "setup", label: "Setup" },
@@ -169,6 +171,42 @@ describe("computeTournamentNav", () => {
     expect(byKey.overview.locked).toBeFalsy();
     expect(byKey.members.locked).toBeFalsy();
     expect(byKey.settings.locked).toBeFalsy();
+  });
+
+  it("hides admin/editor sections from members whose modules don't cover them", () => {
+    // A match_scorer: no manage flag, scoring-console module only.
+    const items = computeTournamentNav(TID, {
+      user: makeUser(["match_scorer"], []),
+      slug: "acme",
+      stage: { ...STAGE, can_manage: false, modules: ["match.scoring_console"] },
+    }).flatMap((g) => g.items);
+    const keys = items.map((i) => i.key);
+    // read surfaces stay; admin/editor surfaces are hidden
+    expect(keys).toContain("overview");
+    expect(keys).toContain("fixtures");
+    expect(keys).toContain("teams");
+    expect(keys).not.toContain("members");
+    expect(keys).not.toContain("settings");
+    expect(keys).not.toContain("sports");
+    expect(keys).not.toContain("forms");
+  });
+
+  it("shows editor sections to module-granted members", () => {
+    // A game_coordinator: catalog grants editor/bracket/schedule/forms.
+    const items = computeTournamentNav(TID, {
+      user: makeUser(["game_coordinator"], []),
+      slug: "acme",
+      stage: {
+        ...STAGE,
+        can_manage: false,
+        modules: ["tournament.editor", "forms", "tournament.bracket_editor"],
+      },
+    }).flatMap((g) => g.items);
+    const keys = items.map((i) => i.key);
+    expect(keys).toContain("sports");
+    expect(keys).toContain("forms");
+    expect(keys).toContain("settings");
+    expect(keys).not.toContain("members"); // manager-only stays hidden
   });
 
   it("locks nothing when no stage payload is provided", () => {

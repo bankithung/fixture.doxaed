@@ -2,10 +2,37 @@ import { api } from "./client";
 import type { AuditEvent } from "./audit";
 
 /** Tournament row as returned by `GET /api/tournaments/` and create (201). */
-/** A category within a sport, with optional subcategories (2-level bucket). */
+/** Legacy 2-level projection of a sport's category tree (server-derived). */
 export interface SportCategory {
   name: string;
   subcategories: string[];
+}
+
+/**
+ * A node in a sport's category tree (arbitrary depth: U15 → Girls → 5v5).
+ * `key` is the server-minted stable identity — ALWAYS round-trip it so
+ * renames don't orphan registered teams; omit it only for new nodes.
+ */
+export interface SportNode {
+  key?: string;
+  name: string;
+  children?: SportNode[];
+}
+
+/** Per-sport set-scoring override (server profile defaults apply when unset). */
+export interface SportScoringConfig {
+  type: "sets" | "goals";
+  best_of?: number;
+  points?: number;
+  win_by?: number;
+  cap?: number | null;
+  deciding?: { points?: number; win_by?: number; cap?: number | null };
+}
+
+/** Per-sport scheduling hints the fixture engine reads. */
+export interface SportSchedulingConfig {
+  duration_minutes?: number;
+  venue_type?: string;
 }
 
 /** A sport the tournament runs (catalog code or a custom one). */
@@ -14,11 +41,15 @@ export interface TournamentSport {
   name: string;
   custom?: boolean;
   /**
-   * Categories for this sport, each with optional subcategories — e.g.
-   * "Singles" → ["U-14 Boys", "U-14 Girls"]. Drives the generated forms +
-   * fixture buckets. (Legacy data may be a plain string[]; the UI coerces it.)
+   * The category tree (recursive; each LEAF = one competition with its own
+   * draw). Canonical — the generated forms, team registration and per-leaf
+   * fixtures all key off it.
    */
+  nodes?: SportNode[];
+  /** Legacy read-only 2-level projection (derived from `nodes` server-side). */
   categories?: SportCategory[];
+  scoring?: SportScoringConfig;
+  scheduling?: SportSchedulingConfig;
 }
 
 /** A sport from the global catalog (GET /api/sports/). */
@@ -88,6 +119,9 @@ export interface TeamRow {
   institution_id?: string | null;
   institution_name?: string;
   pool: string;
+  /** Sport key + category-leaf this team registered into ("" = uncategorized). */
+  sport: string;
+  leaf_key: string;
   status: string;
   player_count: number;
 }
@@ -207,7 +241,8 @@ export const tournamentsApi = {
   /** Standings grouped by pool. */
   standings: (id: string) =>
     api.get<{ groups: StandingsGroup[] }>(`/api/tournaments/${id}/standings/`),
-  /** Generate the fixture (manager only): round-robin groups or a knockout bracket. */
+  /** Generate a draw (bracket-editor module or manager). `leafKey` scopes the
+   * run to ONE competition (category leaf); omit for the whole tournament. */
   generateFixtures: (
     id: string,
     opts?: {
@@ -217,11 +252,37 @@ export const tournamentsApi = {
         | "by_category"
         | "knockout"
         | "knockout_from_groups";
+      leafKey?: string;
     },
   ) =>
-    api.post<{ generated: number; format?: string }>(
+    api.post<{ generated: number; format?: string; leaf_key?: string }>(
       `/api/tournaments/${id}/generate-fixtures/`,
-      { group_size: opts?.groupSize ?? 5, format: opts?.format ?? "round_robin" },
+      {
+        group_size: opts?.groupSize ?? 5,
+        format: opts?.format ?? "round_robin",
+        leaf_key: opts?.leafKey ?? "",
+      },
+    ),
+  /** The workspace's venue pool (types + availability windows). */
+  venues: (id: string) =>
+    api.get<{ venues: VenueRecord[] }>(`/api/tournaments/${id}/venues/`),
+  createVenue: (id: string, body: Omit<VenueRecord, "id">) =>
+    api.post<VenueRecord>(`/api/tournaments/${id}/venues/`, body),
+  updateVenue: (id: string, venueId: string, body: Partial<Omit<VenueRecord, "id">>) =>
+    api.patch<VenueRecord>(`/api/tournaments/${id}/venues/${venueId}/`, body),
+  deleteVenue: (id: string, venueId: string) =>
+    api.delete(`/api/tournaments/${id}/venues/${venueId}/`),
+  /** Member x module permission matrix (manager-only). */
+  permissionMatrix: (id: string) =>
+    api.get<PermissionMatrix>(`/api/tournaments/${id}/permissions/`),
+  /** Set one member's per-module override (manager-only; reason >= 20 chars). */
+  setPermission: (
+    id: string,
+    body: { user_id: string; module_code: string; state: "grant" | "deny" | "default"; reason: string },
+  ) =>
+    api.put<{ user_id: string; effective: string[] }>(
+      `/api/tournaments/${id}/permissions/grants/`,
+      body,
     ),
   /** Mint a shareable school-registration link (manager only). */
   createRegistrationLink: (id: string) =>
@@ -308,16 +369,39 @@ export interface ConstraintType {
   params_schema: Record<string, string>;
 }
 
+/** A stored venue: physical facility with a type + availability windows. */
+export interface VenueRecord {
+  id: string;
+  name: string;
+  venue_type: string;
+  windows: { from: string; to: string }[];
+}
+
+/** Member x module matrix from GET /api/tournaments/{id}/permissions/. */
+export interface PermissionMatrix {
+  modules: { code: string; name: string; category: string }[];
+  members: {
+    user_id: string;
+    email: string;
+    roles: string[];
+    effective: string[];
+    overrides: Record<string, string>;
+  }[];
+}
+
 export interface ScheduleRequest {
   date_start: string;
   date_end: string;
   daily_start?: string;
   daily_end?: string;
   slot_minutes?: number;
-  venues?: string[];
+  /** Plain names or rich records; omit entirely to use the stored venue pool. */
+  venues?: (string | { name: string; venue_type?: string; windows?: { from: string; to: string }[] })[];
   rest_minutes?: number;
   max_per_team_per_day?: number;
   excluded_dates?: string[];
+  /** Schedule ONE competition around everything else's bookings. */
+  leaf_key?: string;
 }
 
 export interface ScheduleResultDTO {
@@ -344,6 +428,8 @@ export interface StagePayload {
   order: string[];
   allowed_to: string[];
   can_manage: boolean;
+  /** The caller's effective module codes — nav/surfaces gate on this. */
+  modules: string[];
   rules_frozen_at: string | null;
   stages: StageInfo[];
 }

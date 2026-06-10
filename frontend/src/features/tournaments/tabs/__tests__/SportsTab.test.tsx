@@ -41,6 +41,7 @@ const SETUP_STAGE = {
   order: [],
   allowed_to: [],
   can_manage: true,
+  modules: [],
   rules_frozen_at: null,
   stages: [],
 };
@@ -122,9 +123,9 @@ describe("SportsTab", () => {
     );
   });
 
-  it("adds a category to a selected sport", async () => {
+  it("adds a top-level category node", async () => {
     vi.mocked(tournamentsApi.sports).mockResolvedValue({
-      sports: [{ key: "football", name: "Football", custom: false, categories: [] }],
+      sports: [{ key: "football", name: "Football", custom: false, nodes: [] }],
     });
     renderTab();
     await userEvent.click(
@@ -138,20 +139,20 @@ describe("SportsTab", () => {
           key: "football",
           name: "Football",
           custom: false,
-          categories: [{ name: "U-14 Boys", subcategories: [] }],
+          nodes: [{ name: "U-14 Boys" }],
         },
       ]),
     );
   });
 
-  it("adds a subcategory under a category", async () => {
+  it("nests a level under an existing node, round-tripping its key", async () => {
     vi.mocked(tournamentsApi.sports).mockResolvedValue({
       sports: [
         {
           key: "football",
           name: "Football",
           custom: false,
-          categories: [{ name: "U-14", subcategories: [] }],
+          nodes: [{ key: "u_14", name: "U-14", children: [] }],
         },
       ],
     });
@@ -159,7 +160,10 @@ describe("SportsTab", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /next: set up categories/i }),
     );
-    const input = await screen.findByLabelText(/add a subcategory to u-14/i);
+    await userEvent.click(
+      await screen.findByLabelText(/add a level under u-14/i),
+    );
+    const input = await screen.findByLabelText(/new level under u-14/i);
     await userEvent.type(input, "5v5{Enter}");
     await waitFor(() =>
       expect(tournamentsApi.setSports).toHaveBeenCalledWith("t1", [
@@ -167,7 +171,9 @@ describe("SportsTab", () => {
           key: "football",
           name: "Football",
           custom: false,
-          categories: [{ name: "U-14", subcategories: ["5v5"] }],
+          nodes: [
+            { key: "u_14", name: "U-14", children: [{ name: "5v5" }] },
+          ],
         },
       ]),
     );
