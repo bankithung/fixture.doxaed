@@ -135,3 +135,92 @@ def effective_modules(user, organization) -> frozenset[str]:
 def has_module(user, organization, module_code: str) -> bool:
     """Convenience: True iff `module_code` is in the user's effective set."""
     return module_code in effective_modules(user, organization)
+
+
+# --------------------------------------------------------------------------- tournament scope
+# The tournament-scoped twin (spec 2026-06-10 P5): same algorithm, with roles
+# read from ACTIVE TournamentMembership rows and overrides from
+# TournamentModuleGrant. This is what finally connects the module catalog to
+# the tournament workspace — tournament-only invitees used to resolve to an
+# empty set because only OrganizationMembership was consulted.
+
+TOURNAMENT_CACHE_KEY_PREFIX = "effective_tournament_modules"
+
+
+def tournament_cache_key(user_id: uuid.UUID, tournament_id: uuid.UUID) -> str:
+    return f"{TOURNAMENT_CACHE_KEY_PREFIX}:{user_id}:{tournament_id}"
+
+
+def invalidate_tournament_cache(user_id: uuid.UUID, tournament_id: uuid.UUID) -> None:
+    cache.delete(tournament_cache_key(user_id, tournament_id))
+
+
+def _tournament_active_roles(user, tournament) -> set[str]:
+    from apps.tournaments.models import (
+        TournamentMembership,
+        TournamentMembershipStatus,
+    )
+
+    return set(
+        TournamentMembership.objects.filter(
+            user=user,
+            tournament=tournament,
+            status=TournamentMembershipStatus.ACTIVE,
+        ).values_list("role", flat=True)
+    )
+
+
+def _apply_tournament_overrides(base: set[str], user, tournament) -> set[str]:
+    from apps.permissions.models import GrantState, TournamentModuleGrant
+
+    rows = TournamentModuleGrant.objects.filter(
+        user=user, tournament=tournament
+    ).values_list("module__code", "state")
+    out = set(base)
+    for code, state in rows:
+        if state == GrantState.GRANT:
+            out.add(code)
+        elif state == GrantState.DENY:
+            out.discard(code)
+    return out
+
+
+def effective_tournament_modules(user, tournament) -> frozenset[str]:
+    """Module codes the user can use inside this tournament: union of
+    ``default_for_roles`` over their active tournament roles, then per-member
+    TournamentModuleGrant overrides. Org-admins of the owning workspace get
+    the full catalog (they can manage everything anyway). Cached 5 minutes;
+    invalidated on every grant/membership write."""
+    if user is None or not getattr(user, "is_authenticated", True):
+        return frozenset()
+    user_id = getattr(user, "id", None)
+    trn_id = getattr(tournament, "id", None)
+    if user_id is None or trn_id is None:
+        return frozenset()
+
+    key = tournament_cache_key(user_id, trn_id)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+
+    from apps.organizations.models import MembershipRole, OrganizationMembership
+    from apps.permissions.models import Module
+
+    if OrganizationMembership.objects.filter(
+        user=user,
+        organization_id=tournament.organization_id,
+        role=MembershipRole.ADMIN,
+        is_active=True,
+    ).exists():
+        result = frozenset(Module.objects.values_list("code", flat=True))
+    else:
+        roles = _tournament_active_roles(user, tournament)
+        base = _base_modules_for_roles(roles)
+        result = frozenset(_apply_tournament_overrides(base, user, tournament))
+
+    cache.set(key, result, CACHE_TTL_SECONDS)
+    return result
+
+
+def has_tournament_module(user, tournament, module_code: str) -> bool:
+    return module_code in effective_tournament_modules(user, tournament)

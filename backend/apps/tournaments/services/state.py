@@ -498,12 +498,17 @@ def build_stage_payload(t: Tournament, user) -> dict:
                 "counts": _stage_counts(s, counts),
             }
         )
+    from apps.permissions.services.resolver import effective_tournament_modules
+
     return {
         "stage": t.stage,
         "status": t.status,
         "order": list(_ORDER),
         "allowed_to": sorted(ALLOWED_TRANSITIONS.get(t.stage, set())),
         "can_manage": can_manage_tournament(user, t),
+        # The caller's effective module set (role defaults ± per-member
+        # grants) — the FE gates nav/surfaces on this (spec 2026-06-10 P5).
+        "modules": sorted(effective_tournament_modules(user, t)),
         "rules_frozen_at": (
             t.rules_frozen_at.isoformat() if t.rules_frozen_at else None
         ),

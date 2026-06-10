@@ -17,7 +17,7 @@ from apps.tournaments.models import (
     TournamentMembershipStatus,
     TournamentStatus,
 )
-from apps.tournaments.permissions import can_manage_tournament
+from apps.tournaments.permissions import can_access_module, can_manage_tournament
 from apps.tournaments.scope import accessible_tournaments
 from apps.tournaments.serializers import (
     TournamentCreateSerializer,
@@ -254,7 +254,7 @@ class TournamentSportsView(GenericAPIView):
 
     def put(self, request, tournament_id):
         tournament = _get_tournament_or_404(request.user, tournament_id)
-        if not can_manage_tournament(request.user, tournament):
+        if not can_access_module(request.user, tournament, "tournament.editor"):
             raise PermissionDenied("not_tournament_manager")
         try:
             cleaned = normalize_sports(request.data.get("sports"))
@@ -378,6 +378,21 @@ class TournamentMemberDetailView(GenericAPIView):
             if not other_active_admins:
                 return Response({"detail": "last_admin"}, status=400)
 
+        # Duplicate-role guard: the person already holds the target role in an
+        # active row → 400, not an IntegrityError 500 (the unique constraint
+        # is unique_active_tournament_role).
+        if (
+            new_role is not None
+            and new_role != membership.role
+            and TournamentMembership.objects.filter(
+                tournament=tournament,
+                user=membership.user,
+                role=new_role,
+                status=TournamentMembershipStatus.ACTIVE,
+            ).exclude(id=membership.id).exists()
+        ):
+            return Response({"detail": "duplicate_role"}, status=400)
+
         before = {"role": membership.role, "status": membership.status}
         update_fields: list[str] = []
         if new_role is not None and new_role != membership.role:
@@ -392,6 +407,12 @@ class TournamentMemberDetailView(GenericAPIView):
 
         if update_fields:
             membership.save(update_fields=update_fields)
+            # Role/status changes alter the member's effective module set.
+            from apps.permissions.services.resolver import (
+                invalidate_tournament_cache,
+            )
+
+            invalidate_tournament_cache(membership.user_id, tournament.id)
             from apps.audit.models import ActorRole
             from apps.audit.services import emit_audit
 

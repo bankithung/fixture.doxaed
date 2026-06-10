@@ -16,7 +16,7 @@ from apps.fixtures.services.generate import (
 from apps.fixtures.services.scheduler import apply_schedule
 from apps.teams.models import Team, TeamStatus
 from apps.tournaments.models import Tournament
-from apps.tournaments.permissions import can_manage_tournament
+from apps.tournaments.permissions import can_access_module
 from apps.tournaments.scope import accessible_tournaments
 
 
@@ -27,7 +27,7 @@ class GenerateFixturesView(GenericAPIView):
         if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
             raise NotFound("tournament_not_found")
         t = Tournament.objects.select_related("organization").get(id=tournament_id)
-        if not can_manage_tournament(request.user, t):
+        if not can_access_module(request.user, t, "tournament.bracket_editor"):
             raise PermissionDenied("not_tournament_manager")
         fmt = request.data.get("format", "round_robin")
         # Optional competition scope (spec 2026-06-10): generate one category
@@ -76,7 +76,7 @@ class ScheduleFixturesView(GenericAPIView):
         if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
             raise NotFound("tournament_not_found")
         t = Tournament.objects.select_related("organization").get(id=tournament_id)
-        if not can_manage_tournament(request.user, t):
+        if not can_access_module(request.user, t, "tournament.schedule_editor"):
             raise PermissionDenied("not_tournament_manager")
         payload = dict(request.data or {})
         # Optional competition scope: schedule one leaf around everything else.
@@ -147,7 +147,7 @@ class TournamentVenuesView(GenericAPIView):
 
     def post(self, request, tournament_id):
         t = self._tournament(request, tournament_id)
-        if not can_manage_tournament(request.user, t):
+        if not can_access_module(request.user, t, "tournament.schedule_editor"):
             raise PermissionDenied("not_tournament_manager")
         name = str(request.data.get("name") or "").strip()[:120]
         if not name:
@@ -175,7 +175,7 @@ class TournamentVenueDetailView(GenericAPIView):
         if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
             raise NotFound("tournament_not_found")
         t = Tournament.objects.select_related("organization").get(id=tournament_id)
-        if not can_manage_tournament(request.user, t):
+        if not can_access_module(request.user, t, "tournament.schedule_editor"):
             raise PermissionDenied("not_tournament_manager")
         v = Venue.objects.filter(
             id=venue_id, organization=t.organization, deleted_at__isnull=True

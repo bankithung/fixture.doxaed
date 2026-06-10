@@ -34,3 +34,19 @@ def can_manage_tournament(user, tournament) -> bool:
         is_active=True,
         role=MembershipRole.ADMIN,
     ).exists()
+
+
+def can_access_module(user, tournament, module_code: str) -> bool:
+    """Two-layer verb gate (spec 2026-06-10 P5): managers can do everything
+    (escape hatch), and everyone else is checked against their effective
+    tournament module set (role defaults from the catalog ± per-member
+    grants). ADDITIVE relative to the old binary manager gate — it widens
+    access for the roles the catalog says should have it (e.g.
+    game_coordinator → bracket/schedule editing), never narrows."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if can_manage_tournament(user, tournament):
+        return True
+    from apps.permissions.services.resolver import effective_tournament_modules
+
+    return module_code in effective_tournament_modules(user, tournament)

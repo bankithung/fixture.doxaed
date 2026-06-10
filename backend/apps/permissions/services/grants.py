@@ -266,3 +266,70 @@ def clear_grants(
         invalidate_cache(user.id, organization.id)
 
     return deleted_count
+
+
+def set_tournament_grant(
+    *,
+    user,
+    tournament,
+    module,
+    state: str,
+    granted_by,
+    reason: str,
+    request: HttpRequest | None = None,
+    actor_role: str = ActorRole.ADMIN,
+) -> "TournamentModuleGrant | None":
+    """Upsert a single (user, tournament, module) grant — the tournament-
+    scoped twin of ``set_grant`` (spec 2026-06-10 P5). Same contract: state in
+    GrantState, reason >= 20 chars, `default` collapses to row deletion, one
+    audit row, resolver cache invalidated."""
+    from apps.permissions.models import TournamentModuleGrant
+    from apps.permissions.services.resolver import invalidate_tournament_cache
+
+    state = _validate_state(state)
+    module_obj = _resolve_module(module)
+
+    if not reason or len(reason.strip()) < MIN_REASON_LEN:
+        raise GrantValidationError(
+            f"Reason must be at least {MIN_REASON_LEN} characters (B.17)."
+        )
+
+    with transaction.atomic():
+        existing = TournamentModuleGrant.objects.filter(
+            user=user, tournament=tournament, module=module_obj
+        ).first()
+        prior_state = existing.state if existing else GrantState.DEFAULT
+
+        if state == GrantState.DEFAULT:
+            if existing:
+                existing.delete()
+            row = None
+        else:
+            row, _ = TournamentModuleGrant.objects.update_or_create(
+                user=user,
+                tournament=tournament,
+                module=module_obj,
+                defaults={
+                    "state": state,
+                    "granted_by": granted_by,
+                    "reason": reason,
+                },
+            )
+
+        invalidate_tournament_cache(user.id, tournament.id)
+
+        emit_audit(
+            actor_user=granted_by,
+            actor_role=actor_role,
+            event_type="tournament_module_grant_changed",
+            target_type="tournament_module_grant",
+            target_id=(row.id if row else uuid.uuid4()),
+            payload_before={"state": prior_state, "module_code": module_obj.code},
+            payload_after={"state": state, "module_code": module_obj.code},
+            reason=reason,
+            organization_id=tournament.organization_id,
+            tournament_id=tournament.id,
+            request=request,
+        )
+
+    return row

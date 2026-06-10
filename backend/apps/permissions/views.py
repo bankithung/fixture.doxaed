@@ -22,13 +22,18 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, status
+from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.organizations.permissions import IsOrgAdminOrOwner
 from apps.permissions.models import Module
-from apps.permissions.permissions import HasModule  # noqa: F401  (kept for back-compat / external imports)
+from apps.permissions.permissions import (
+    HasModule,  # noqa: F401  (kept for back-compat / external imports)
+)
 from apps.permissions.serializers import (
     BulkGrantsCellsSerializer,
     BulkGrantsSerializer,
@@ -369,3 +374,118 @@ class MatrixView(APIView):
         if org is None:
             raise Http404("Organization not found.")
         return Response(build_matrix(org))
+
+
+# --------------------------------------------------------------------------- tournament scope
+class TournamentPermissionMatrixView(GenericAPIView):
+    """`GET /api/tournaments/{id}/permissions/` — the member x module matrix
+    for this tournament (manager-only): every active member with their roles,
+    effective module set and explicit overrides. The Members page renders the
+    per-member permission editor from this (spec 2026-06-10 P5)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id):
+        from apps.permissions.models import Module, TournamentModuleGrant
+        from apps.permissions.services.resolver import (
+            effective_tournament_modules,
+        )
+        from apps.tournaments.models import (
+            Tournament,
+            TournamentMembership,
+            TournamentMembershipStatus,
+        )
+        from apps.tournaments.permissions import can_manage_tournament
+        from apps.tournaments.scope import accessible_tournaments
+
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        if not can_manage_tournament(request.user, t):
+            raise PermissionDenied("not_tournament_manager")
+
+        modules = [
+            {"code": m.code, "name": m.name, "category": m.category}
+            for m in Module.objects.filter(
+                category__in=["tournament_scoped", "match_scoped"]
+            ).order_by("category", "code")
+        ]
+        roles_by_user: dict = {}
+        users: dict = {}
+        for ms in TournamentMembership.objects.filter(
+            tournament=t, status=TournamentMembershipStatus.ACTIVE
+        ).select_related("user"):
+            roles_by_user.setdefault(ms.user_id, []).append(ms.role)
+            users[ms.user_id] = ms.user
+        overrides: dict = {}
+        for g in TournamentModuleGrant.objects.filter(
+            tournament=t
+        ).select_related("module"):
+            overrides.setdefault(g.user_id, {})[g.module.code] = g.state
+
+        members = [
+            {
+                "user_id": str(uid),
+                "email": u.email,
+                "roles": sorted(roles_by_user[uid]),
+                "effective": sorted(effective_tournament_modules(u, t)),
+                "overrides": overrides.get(uid, {}),
+            }
+            for uid, u in sorted(users.items(), key=lambda kv: kv[1].email)
+        ]
+        return Response({"modules": modules, "members": members})
+
+
+class TournamentGrantView(GenericAPIView):
+    """`PUT /api/tournaments/{id}/permissions/grants/` — set one member's
+    per-module override (grant/deny/default + mandatory reason). Manager-only;
+    target must be an active member. Audited; resolver cache invalidated."""
+
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, tournament_id):
+        from apps.accounts.models import User
+        from apps.permissions.services.grants import (
+            GrantValidationError,
+            set_tournament_grant,
+        )
+        from apps.tournaments.models import (
+            Tournament,
+            TournamentMembership,
+            TournamentMembershipStatus,
+        )
+        from apps.tournaments.permissions import can_manage_tournament
+        from apps.tournaments.scope import accessible_tournaments
+
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        if not can_manage_tournament(request.user, t):
+            raise PermissionDenied("not_tournament_manager")
+
+        target = User.objects.filter(id=request.data.get("user_id")).first()
+        if target is None or not TournamentMembership.objects.filter(
+            tournament=t, user=target,
+            status=TournamentMembershipStatus.ACTIVE,
+        ).exists():
+            raise DRFValidationError({"detail": "not_a_tournament_member"})
+        try:
+            set_tournament_grant(
+                user=target,
+                tournament=t,
+                module=str(request.data.get("module_code") or ""),
+                state=str(request.data.get("state") or ""),
+                granted_by=request.user,
+                reason=str(request.data.get("reason") or ""),
+                request=request,
+            )
+        except GrantValidationError as e:
+            raise DRFValidationError({"detail": str(e)}) from e
+        from apps.permissions.services.resolver import (
+            effective_tournament_modules,
+        )
+
+        return Response({
+            "user_id": str(target.id),
+            "effective": sorted(effective_tournament_modules(target, t)),
+        })

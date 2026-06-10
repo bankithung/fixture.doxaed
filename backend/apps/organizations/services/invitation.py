@@ -134,17 +134,26 @@ def create_invitation(
     if not email:
         raise ValidationError("Email is required.")
 
-    # Resolve the effective role.
+    # Resolve the effective role. Tournament-scoped invites validate against
+    # the TOURNAMENT role enum (the membership row they create) — the two
+    # enums share values today, but coupling them silently was a refactor trap
+    # (spec 2026-06-10 P5).
+    if tournament is not None:
+        from apps.tournaments.models import TournamentMembershipRole
+
+        valid_roles = TournamentMembershipRole.values
+    else:
+        valid_roles = MembershipRole.values
     if roles is not None:
         if not isinstance(roles, (list, tuple)) or len(roles) == 0:
             raise ValidationError("roles must be a non-empty list.")
         for r in roles:
-            if r not in MembershipRole.values:
+            if r not in valid_roles:
                 raise ValidationError(f"Invalid role '{r}'.")
         effective_role = _pick_highest_role(list(roles))
     else:
         effective_role = role if role is not None else MembershipRole.CO_ORGANIZER
-        if effective_role not in MembershipRole.values:
+        if effective_role not in valid_roles:
             raise ValidationError(f"Invalid role '{effective_role}'.")
 
     # Coerce event_id to UUID if given.

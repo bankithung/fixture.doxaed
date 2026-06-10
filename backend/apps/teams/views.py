@@ -26,8 +26,15 @@ from apps.teams.services.registration import (
 )
 from apps.teams.throttling import RegistrationRateThrottle
 from apps.tournaments.models import Tournament
-from apps.tournaments.permissions import can_manage_tournament
+from apps.tournaments.permissions import can_access_module
 from apps.tournaments.scope import accessible_tournaments
+
+
+def _can_register(user, tournament) -> bool:
+    """Team/institution writes: manager OR the tournament.team_registration
+    module (catalog default for game_coordinator/team_manager) — spec
+    2026-06-10 P5 two-layer gate."""
+    return can_access_module(user, tournament, "tournament.team_registration")
 
 
 class RegistrationLinkCreateView(GenericAPIView):
@@ -46,7 +53,7 @@ class RegistrationLinkCreateView(GenericAPIView):
             id=tournament_id
         ).exists():
             raise NotFound("tournament_not_found")
-        if not can_manage_tournament(request.user, tournament):
+        if not _can_register(request.user, tournament):
             raise PermissionDenied("not_tournament_manager")
         link, token = create_registration_link(
             tournament=tournament, created_by=request.user,
@@ -117,7 +124,7 @@ class TournamentTeamsListView(GenericAPIView):
             id=tournament_id
         ).exists():
             raise NotFound("tournament_not_found")
-        if not can_manage_tournament(request.user, tournament):
+        if not _can_register(request.user, tournament):
             raise PermissionDenied("not_tournament_manager")
         institution_id = request.data.get("institution_id")
         name = (request.data.get("name") or "").strip()
@@ -242,7 +249,7 @@ class InstitutionListCreateView(GenericAPIView):
             id=tournament_id
         ).exists():
             raise NotFound("tournament_not_found")
-        if not can_manage_tournament(request.user, tournament):
+        if not _can_register(request.user, tournament):
             raise PermissionDenied("not_tournament_manager")
         ser = InstitutionInSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -278,7 +285,7 @@ class InstitutionDetailView(GenericAPIView):
         ).select_related("tournament").first()
         if inst is None:
             raise NotFound("institution_not_found")
-        if not can_manage_tournament(request.user, inst.tournament):
+        if not _can_register(request.user, inst.tournament):
             raise PermissionDenied("not_tournament_manager")
         changed = []
         for field in ("name", "kind", "region", "short_name", "contact_name",

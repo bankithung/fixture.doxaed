@@ -52,7 +52,7 @@ from apps.forms.services.responses import submit_response
 from apps.forms.services.validation import AnswerError
 from apps.forms.throttling import PublicFormThrottle
 from apps.tournaments.models import Tournament
-from apps.tournaments.permissions import can_manage_tournament
+from apps.tournaments.permissions import can_access_module, can_manage_tournament
 from apps.tournaments.scope import accessible_tournaments
 
 
@@ -60,7 +60,9 @@ def _get_manageable_tournament(user, tournament_id):
     t = Tournament.objects.filter(id=tournament_id, deleted_at__isnull=True).first()
     if t is None or not accessible_tournaments(user).filter(id=tournament_id).exists():
         raise NotFound("tournament_not_found")
-    if not can_manage_tournament(user, t):
+    # Two-layer gate: manager OR the "forms" module (catalog default for
+    # game_coordinator/team_manager; per-member grants on top).
+    if not can_access_module(user, t, "forms"):
         raise PermissionDenied("not_tournament_manager")
     return t
 
@@ -70,7 +72,7 @@ def _get_manageable_form(user, form_id):
         "tournament", "organization").first()
     if f is None or not accessible_tournaments(user).filter(id=f.tournament_id).exists():
         raise NotFound("form_not_found")
-    if not can_manage_tournament(user, f.tournament):
+    if not can_access_module(user, f.tournament, "forms"):
         raise PermissionDenied("not_tournament_manager")
     return f
 

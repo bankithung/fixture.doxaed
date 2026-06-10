@@ -159,3 +159,55 @@ class MembershipModuleGrant(models.Model):
         return (
             f"{self.user_id}/{self.organization_id}/{self.module_id}={self.state}"
         )
+
+
+class TournamentModuleGrant(models.Model):
+    """Per-(user, tournament) module override — the tournament-scoped twin of
+    MembershipModuleGrant (spec 2026-06-10 P5). Lets an admin grant/deny a
+    single member one module inside ONE tournament (e.g. give a team_manager
+    the schedule editor for this event only), resolved on top of the role
+    defaults by ``effective_tournament_modules``."""
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="tournament_module_grants",
+    )
+    tournament = models.ForeignKey(
+        "tournaments.Tournament",
+        on_delete=models.CASCADE,
+        related_name="module_grants",
+    )
+    module = models.ForeignKey(
+        Module, on_delete=models.PROTECT, related_name="tournament_grants",
+    )
+    state = models.CharField(
+        max_length=16, choices=GrantState.choices, default=GrantState.DEFAULT,
+    )
+    granted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="tournament_grants_made",
+    )
+    # Mandatory at the service layer (>=20 chars, audited) like the org twin.
+    reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "permissions_app"
+        db_table = "permissions_tournament_module_grant"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "tournament", "module"],
+                name="unique_grant_per_user_trn_module",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["user", "tournament"], name="perm_tgrant_user_trn_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.user_id}/{self.tournament_id}/{self.module_id}={self.state}"

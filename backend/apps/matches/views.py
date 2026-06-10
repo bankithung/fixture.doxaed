@@ -76,12 +76,20 @@ def _can_score(user, match: Match) -> bool:
         return True
     if match.scorer_id == user.id:
         return True
-    return TournamentMembership.objects.filter(
+    if TournamentMembership.objects.filter(
         user=user,
         tournament=match.tournament,
         role=TournamentMembershipRole.MATCH_SCORER,
         status=TournamentMembershipStatus.ACTIVE,
-    ).exists()
+    ).exists():
+        return True
+    # Module layer: a per-member grant of the scoring console also qualifies
+    # (spec 2026-06-10 P5).
+    from apps.permissions.services.resolver import effective_tournament_modules
+
+    return "match.scoring_console" in effective_tournament_modules(
+        user, match.tournament
+    )
 
 
 

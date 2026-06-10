@@ -9,6 +9,10 @@ from apps.fixtures.views import (
     TournamentVenueDetailView,
     TournamentVenuesView,
 )
+from apps.permissions.views import (
+    TournamentGrantView,
+    TournamentPermissionMatrixView,
+)
 from apps.forms.views import (
     GenerateInstitutionFormView,
     GenerateTeamFormView,
@@ -121,6 +125,16 @@ urlpatterns = [
         "<uuid:tournament_id>/schedule/",
         ScheduleFixturesView.as_view(),
         name="tournament-schedule-fixtures",
+    ),
+    path(
+        "<uuid:tournament_id>/permissions/",
+        TournamentPermissionMatrixView.as_view(),
+        name="tournament-permission-matrix",
+    ),
+    path(
+        "<uuid:tournament_id>/permissions/grants/",
+        TournamentGrantView.as_view(),
+        name="tournament-permission-grants",
     ),
     path(
         "<uuid:tournament_id>/venues/",
