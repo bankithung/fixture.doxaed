@@ -712,15 +712,17 @@ export function PublicDirectoryPage(): React.ReactElement {
         </header>
 
         {/* Headline KPI cards — the total plus one matching card per MAIN
-            game (admins can switch to total-only from the form builder). */}
+            game (admins can switch to total-only from the form builder).
+            Phones: ONE compact swipeable row so the stats never push the
+            list below the fold; sm+: the responsive grid. */}
         <section
           aria-label={t("Registration summary")}
-          className="-mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+          className="-mx-4 -mt-2 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-4 xl:grid-cols-5"
         >
-          <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5">
+          <div className="flex shrink-0 items-center gap-2.5 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 sm:shrink sm:gap-3 sm:px-4 sm:py-2.5">
             <Building2 aria-hidden="true" className="h-5 w-5 shrink-0 text-primary" />
             <div className="min-w-0 leading-tight">
-              <div className="font-tabular text-2xl font-semibold tracking-tight text-primary">
+              <div className="font-tabular text-lg font-semibold tracking-tight text-primary sm:text-2xl">
                 {total}
               </div>
               <div className="truncate text-xs text-muted-foreground">
@@ -735,7 +737,7 @@ export function PublicDirectoryPage(): React.ReactElement {
                 <div
                   key={g.key}
                   className={cn(
-                    "flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5 shadow-sm",
+                    "flex shrink-0 items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2 shadow-sm sm:shrink sm:gap-3 sm:px-4 sm:py-2.5",
                     g.count === 0 && "opacity-60",
                   )}
                 >
@@ -744,7 +746,7 @@ export function PublicDirectoryPage(): React.ReactElement {
                     className="h-5 w-5 shrink-0 text-muted-foreground"
                   />
                   <div className="min-w-0 leading-tight">
-                    <div className="font-tabular text-2xl font-semibold tracking-tight">
+                    <div className="font-tabular text-lg font-semibold tracking-tight sm:text-2xl">
                       {g.count}
                     </div>
                     <div
@@ -773,8 +775,11 @@ export function PublicDirectoryPage(): React.ReactElement {
           )}
         >
           {tabsVisible ? (
+            // min-w-0 + overflow-x-auto: on narrow phones the tab row scrolls
+            // instead of shoving the Filters button off the right edge.
+            <div className="min-w-0 flex-1 overflow-x-auto">
             <div
-              className="inline-flex w-fit rounded-lg border border-border bg-muted/50 p-0.5 text-sm"
+              className="inline-flex w-max rounded-lg border border-border bg-muted/50 p-0.5 text-sm"
               role="tablist"
               aria-label={t("View")}
             >
@@ -796,7 +801,7 @@ export function PublicDirectoryPage(): React.ReactElement {
                   aria-selected={view === v}
                   onClick={() => setView(v as typeof view)}
                   className={cn(
-                    "rounded-md px-3 py-1 font-medium transition-colors",
+                    "whitespace-nowrap rounded-md px-3 py-1 font-medium transition-colors",
                     view === v
                       ? "bg-card text-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground",
@@ -805,6 +810,7 @@ export function PublicDirectoryPage(): React.ReactElement {
                   {label}
                 </button>
               ))}
+            </div>
             </div>
           ) : (
             <span aria-hidden="true" />
