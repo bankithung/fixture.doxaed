@@ -231,3 +231,62 @@ describe("SportsTab", () => {
     );
   });
 });
+
+describe("SportsTab — copy categories across sports", () => {
+  beforeEach(() => {
+    vi.mocked(tournamentsApi.sportsCatalog).mockResolvedValue(CATALOG as never);
+    vi.mocked(tournamentsApi.stage).mockResolvedValue(SETUP_STAGE as never);
+    vi.mocked(formsApi.list).mockResolvedValue([]);
+    vi.mocked(tournamentsApi.setSports).mockImplementation(
+      async (_id, sports) => ({ sports }) as never,
+    );
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("applies one sport's tree to selected sports (deep copy, replace)", async () => {
+    vi.mocked(tournamentsApi.sports).mockResolvedValue({
+      sports: [
+        {
+          key: "football",
+          name: "Football",
+          custom: false,
+          nodes: [
+            {
+              key: "u15",
+              name: "U15",
+              kind: "age_group",
+              age: { op: "under", age: 15 },
+              children: [],
+            },
+          ],
+        },
+        { key: "sepak_takraw", name: "Sepak Takraw", custom: false, nodes: [] },
+      ],
+    });
+    renderTab();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /next: set up categories/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: /copy categories to/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: /all other sports/i }),
+    );
+    await userEvent.click(await screen.findByTestId("apply-copy-categories"));
+    await waitFor(() => {
+      const call = vi.mocked(tournamentsApi.setSports).mock.calls.at(-1);
+      expect(call?.[1][1]).toMatchObject({
+        key: "sepak_takraw",
+        nodes: [
+          {
+            key: "u15",
+            name: "U15",
+            kind: "age_group",
+            age: { op: "under", age: 15 },
+          },
+        ],
+      });
+    });
+  });
+});

@@ -6,6 +6,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Copy as CopyIcon,
   CornerDownRight,
   FileText,
   Plus,
@@ -512,6 +513,10 @@ export function SportsTab(): React.ReactElement {
     sportKey: string;
     path: number[];
   } | null>(null);
+  // "Copy categories to other sports" modal (owner 2026-06-10: set one sport
+  // up, then apply the same tree to all/selected others).
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copyTargets, setCopyTargets] = useState<Set<string>>(new Set());
   const [showSettings, setShowSettings] = useState(false);
   // Two-step sub-flow: pick sports → configure each one (focused, via tabs).
   // Three-step sub-flow (owner 2026-06-10): pick sports → configure each
@@ -637,6 +642,26 @@ export function SportsTab(): React.ReactElement {
       nodes: withChildAdded(sport.nodes ?? [], path, node),
     });
     setAddTarget(null);
+  };
+
+  /** Apply the active sport's category tree to the chosen sports (deep copy
+   * — kinds, team sizes and age rules travel with it). Replaces the targets'
+   * existing categories; one PUT covers every target. */
+  const applyCopy = (): void => {
+    const src = activeSport?.nodes ?? [];
+    if (!activeSport || src.length === 0 || copyTargets.size === 0) return;
+    save.mutate(
+      selected.map((s) =>
+        copyTargets.has(s.key)
+          ? { ...s, nodes: JSON.parse(JSON.stringify(src)) as SportNode[] }
+          : s,
+      ),
+    );
+    setCopyOpen(false);
+    toast.push({
+      kind: "success",
+      title: t(`Categories copied to ${copyTargets.size} sport(s)`),
+    });
   };
 
   /** The node a dialog target points at (live — optimistic edits included). */
@@ -1028,13 +1053,29 @@ export function SportsTab(): React.ReactElement {
                     </span>
                   ) : null}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => remove(activeSport.key)}
-                  className="text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
-                >
-                  {t("Remove sport")}
-                </button>
+                <div className="flex items-center gap-3">
+                  {(activeSport.nodes ?? []).length > 0 && selected.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCopyTargets(new Set());
+                        setCopyOpen(true);
+                      }}
+                      aria-haspopup="dialog"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <CopyIcon aria-hidden="true" className="h-3.5 w-3.5" />
+                      {t("Copy categories to…")}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => remove(activeSport.key)}
+                    className="text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
+                  >
+                    {t("Remove sport")}
+                  </button>
+                </div>
               </div>
 
               <div className="flex flex-col gap-2.5">
@@ -1292,6 +1333,96 @@ export function SportsTab(): React.ReactElement {
           </section>
         </>
       )}
+
+      {/* Copy-categories modal — apply one sport's tree to all/selected. */}
+      <Dialog
+        open={copyOpen}
+        onOpenChange={(o) => {
+          if (!o) setCopyOpen(false);
+        }}
+        ariaLabel={t("Copy categories to other sports")}
+      >
+        {activeSport ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>
+                {t("Copy")} {activeSport.name} {t("categories to…")}
+              </DialogTitle>
+              <DialogDescription>
+                {t("Applies the whole tree — age groups, genders, formats and team sizes — to the sports you pick. Their existing categories are replaced.")}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-2">
+              <label className="flex cursor-pointer items-center gap-2 border-b border-border pb-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={
+                    copyTargets.size === selected.length - 1 &&
+                    selected.length > 1
+                  }
+                  onChange={(e) =>
+                    setCopyTargets(
+                      e.target.checked
+                        ? new Set(
+                            selected
+                              .filter((s) => s.key !== activeSport.key)
+                              .map((s) => s.key),
+                          )
+                        : new Set(),
+                    )
+                  }
+                  className="h-4 w-4 accent-[hsl(var(--primary))]"
+                />
+                {t("All other sports")}
+              </label>
+              {selected
+                .filter((s) => s.key !== activeSport.key)
+                .map((s) => {
+                  const existing = leafLabels(s.nodes ?? []).length;
+                  return (
+                    <label
+                      key={s.key}
+                      className="flex cursor-pointer items-center gap-2 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={copyTargets.has(s.key)}
+                        onChange={(e) =>
+                          setCopyTargets((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(s.key);
+                            else next.delete(s.key);
+                            return next;
+                          })
+                        }
+                        className="h-4 w-4 accent-[hsl(var(--primary))]"
+                      />
+                      <span className="flex-1">{s.name}</span>
+                      {existing > 0 ? (
+                        <span className="text-xs text-amber-600 dark:text-amber-400">
+                          {existing} {t("existing — will be replaced")}
+                        </span>
+                      ) : null}
+                    </label>
+                  );
+                })}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setCopyOpen(false)}>
+                {t("Cancel")}
+              </Button>
+              <Button
+                disabled={copyTargets.size === 0}
+                onClick={applyCopy}
+                data-testid="apply-copy-categories"
+              >
+                <CopyIcon aria-hidden="true" className="h-4 w-4" />
+                {t("Apply")}
+              </Button>
+            </div>
+          </>
+        ) : null}
+      </Dialog>
 
       {/* Add-category modal — name, type and team size together. */}
       <Dialog
