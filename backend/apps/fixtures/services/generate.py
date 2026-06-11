@@ -11,6 +11,7 @@ assigns times/venues. The full data-driven constraint scheduler layers on top.
 from __future__ import annotations
 
 import hashlib
+import json
 import random
 from dataclasses import dataclass
 
@@ -397,6 +398,62 @@ def _group_hash(group: list) -> str:
     ).hexdigest()
 
 
+# Bookkeeping keys excluded from the v2 inputs hash: the replay seed is
+# persisted BY generation (hashing it would flip "inputs changed" the moment
+# a previewed random draw is accepted) and the reviewed-at stamp is process
+# state, not a generation input.
+_HASH_EXCLUDED_KEYS = ("seed", "constraints_reviewed_at")
+
+
+def pairing_scope_constraints(
+    tournament, leaf_key: str | None, sport: str = "",
+) -> list[dict]:
+    """The stored constraint records the PAIRING layer consumes for one draw
+    scope (redesign §2.5) — today that is ``keep_apart_until_round`` in scope.
+    Slot-time records never enter the draw hash."""
+    from apps.fixtures.services.constraints import scope_matches
+
+    if not sport and leaf_key:
+        sport = sport_for_leaf(tournament.sports or [], leaf_key)
+    return [
+        c for c in tournament.constraints or []
+        if isinstance(c, dict)
+        and c.get("type") == "keep_apart_until_round"
+        and scope_matches(c.get("scope"), sport=sport, leaf_key=leaf_key or "")
+    ]
+
+
+def compute_inputs_hash(tournament, leaf_key: str | None = None) -> str:
+    """inputs_hash v2 (redesign spec §2.5, invariant 10) for one draw scope:
+
+        sha256(sorted team ids + canonical effective draw config
+               + canonical pairing-scope constraint records)
+
+    Computed from STORED tournament state (no request overrides) so preview,
+    the accept endpoints' ``expected_inputs_hash`` guard and the readiness
+    staleness check all agree. Matches stamped with a v1 (team-ids-only)
+    hash read as "inputs changed" — correct per spec D9."""
+    from apps.fixtures.services.draw_config import effective_draw_config
+
+    cfg = {
+        k: v
+        for k, v in effective_draw_config(tournament, leaf_key).items()
+        if k not in _HASH_EXCLUDED_KEYS
+    }
+    payload = json.dumps(
+        {
+            "teams": sorted(
+                str(t.id) for t in _registered_teams(tournament, leaf_key)
+            ),
+            "draw_config": cfg,
+            "pairing_constraints": pairing_scope_constraints(tournament, leaf_key),
+        },
+        sort_keys=True,
+        default=str,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 # ----------------------------------------------------------- pure pairing core
 # (redesign spec §4.1) plan_* functions decide WHO plays WHOM with ZERO DB
 # access; generate_* below are thin persistence wrappers. The preview endpoint
@@ -665,6 +722,9 @@ def generate_round_robin(
         ),
         warnings=warnings,
     )
+    ih = compute_inputs_hash(tournament, leaf_key)  # v2 hash (§2.5)
+    for p in plans:
+        p.inputs_hash = ih
     with transaction.atomic():
         created = _persist_plans(tournament, plans)
         if generated_seed is not None:
@@ -731,6 +791,7 @@ def generate_round_robin_by_category(
             if is_leaf
             else group[0].sport
         )
+        before = len(plans)
         plans.extend(
             plan_round_robin_pool(
                 group, label=label, leaf_key=bucket if is_leaf else "",
@@ -743,6 +804,12 @@ def generate_round_robin_by_category(
                 warnings=warnings,
             )
         )
+        if is_leaf:
+            # v2 hash (§2.5) per competition scope; legacy ""-leaf buckets
+            # keep the plan's team-ids hash (no leaf scope to key on).
+            ih = compute_inputs_hash(tournament, bucket)
+            for p in plans[before:]:
+                p.inputs_hash = ih
     if not plans and not skipped_existing:
         raise ValueError("No category has 2+ teams to schedule.")
     with transaction.atomic():
@@ -812,6 +879,9 @@ def generate_single_elimination(
         ),
         warnings=warnings,
     )
+    ih = compute_inputs_hash(tournament, leaf_key or None)  # v2 hash (§2.5)
+    for p in plans:
+        p.inputs_hash = ih
     with transaction.atomic():
         created = _persist_plans(tournament, plans)
         if generated_seed is not None:

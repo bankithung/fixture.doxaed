@@ -19,6 +19,7 @@ from apps.fixtures.services.generate import (
     generate_round_robin_by_category,
     generate_single_elimination,
 )
+from apps.fixtures.services.readiness import fixture_readiness
 from apps.fixtures.services.scheduler import apply_schedule
 from apps.teams.models import Team, TeamStatus
 from apps.tournaments.models import Tournament
@@ -158,6 +159,20 @@ class ScheduleFixturesView(GenericAPIView):
                 "leaf_key": leaf_key,
             }
         )
+
+
+class TournamentFixtureReadinessView(GenericAPIView):
+    """`GET /api/tournaments/{id}/fixture-readiness/` — the server-computed
+    per-leaf readiness checklist (redesign spec §5.1). Gate: any tournament
+    member (read-only; the FE never replicates the checks)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id):
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        return Response(fixture_readiness(t))
 
 
 class TournamentDrawConfigView(GenericAPIView):
