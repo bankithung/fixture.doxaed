@@ -355,11 +355,9 @@ def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> l
             )
         elif ctype in ("even_spacing", "avoid_back_to_back"):
             notes.append(f"'{ctype}' is optimised by the built-in day-spread scoring.")
-        elif ctype == "keep_apart_until_round":
-            notes.append(
-                "'keep_apart_until_round' applies at pairing generation, not "
-                "slot assignment — it does not alter this schedule."
-            )
+        # keep_apart_until_round is a PAIRING-layer record — generate.py
+        # enforces it when forming groups/brackets (redesign §4.6), so it is
+        # silently out of scope for slot assignment.
         # no_double_booking_team / venue_single_use are always-on hard rules.
     return notes
 

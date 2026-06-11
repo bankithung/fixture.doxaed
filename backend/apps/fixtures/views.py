@@ -54,6 +54,9 @@ class GenerateFixturesView(GenericAPIView):
         fmt = str(cfg.get("format") or "round_robin")
         seeding = str(cfg.get("seeding") or "registration")
         seed = int(cfg["seed"]) if cfg.get("seed") is not None else None
+        # Pairing-layer warnings (redesign §4.6): keep-apart records that had
+        # to relax (best-effort) or skipped teams missing the key datum.
+        warnings: list[dict] = []
         try:
             if fmt == "knockout":
                 teams_qs = Team.objects.filter(
@@ -65,7 +68,7 @@ class GenerateFixturesView(GenericAPIView):
                 matches = generate_single_elimination(
                     tournament=t, teams=teams, leaf_key=leaf_key,
                     third_place=bool(cfg.get("third_place")),
-                    seeding=seeding, seed=seed,
+                    seeding=seeding, seed=seed, warnings=warnings,
                 )
             elif fmt == "knockout_from_groups":
                 matches = generate_knockout_from_groups(
@@ -73,12 +76,13 @@ class GenerateFixturesView(GenericAPIView):
                     advance_per_group=int(cfg["advance_per_group"]),
                     leaf_key=leaf_key or None,
                     third_place=bool(cfg.get("third_place")),
+                    warnings=warnings,
                 )
             elif fmt == "by_category":
                 matches = generate_round_robin_by_category(
                     tournament=t, leaf_key=leaf_key or None,
                     legs=int(cfg["legs"]),
-                    seeding=seeding, seed=seed,
+                    seeding=seeding, seed=seed, warnings=warnings,
                 )
             else:
                 # "round_robin" and "groups_knockout" (the stored-config name)
@@ -89,7 +93,7 @@ class GenerateFixturesView(GenericAPIView):
                     group_size=int(cfg["group_size"]),
                     leaf_key=leaf_key or None,
                     legs=int(cfg["legs"]),
-                    seeding=seeding, seed=seed,
+                    seeding=seeding, seed=seed, warnings=warnings,
                 )
         except (ValueError, TypeError) as e:
             raise DRFValidationError({"detail": str(e)})
@@ -102,7 +106,7 @@ class GenerateFixturesView(GenericAPIView):
         return Response(
             {
                 "generated": len(matches), "format": fmt, "leaf_key": leaf_key,
-                "seed": seed_used,
+                "seed": seed_used, "warnings": warnings,
             },
             status=201,
         )

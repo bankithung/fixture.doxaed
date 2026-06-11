@@ -173,25 +173,45 @@ def _opening_pairs_bracket(count: int) -> list[tuple[int, int]]:
     return [(order[p] - 1, order[p + 1] - 1) for p in range(0, size, 2)]
 
 
-def _separate_institutions(
-    teams: list[Team], opening_pairs: list[tuple[int, int]] | None = None
+def _separate_by_key(
+    teams: list[Team],
+    opening_pairs: list[tuple[int, int]] | None = None,
+    key_map: dict | None = None,
 ) -> list[Team]:
-    """Spread same-institution teams across the seeding order so they don't
-    meet in the opening round (owner W2-D: "same schools should not be
-    playing against each other on the first matches") and land in different
-    round-robin pools. Groups by institution, deals one team per institution
-    per pass (largest contingents first), then repairs any same-institution
-    OPENING pair (the format's actual round-1 pairing, passed in) by swapping
-    with a later pair's slot when both pairs stay clean. Deterministic; takes
-    precedence over raw seed order within a competition (the trade-off school
-    tournaments here want; manual re-pairing stays possible, invariant 10)."""
+    """Spread same-KEY teams across the seeding order so they don't meet in
+    the opening round and land in different round-robin pools (redesign spec
+    §4.6 — the generalization of the owner W2-D school rule to the
+    ``keep_apart_until_round`` key grammar).
+
+    ``key_map`` maps team.id -> separation key; ``None`` values are EXCLUDED
+    from the constraint (§9 A8 — e.g. an institution that never answered the
+    district question). Without a key_map the institution is the key (the
+    built-in school pass). Groups by key, deals one team per key bucket per
+    pass (largest contingents first), then repairs any same-key OPENING pair
+    (the format's actual round-1 pairing, passed in) by swapping with a later
+    pair's slot when both pairs stay clean. Deterministic; best-effort — it
+    never raises and never makes the input order worse."""
     if len(teams) < 3:
         return list(teams)
+
+    def bucket(tm: Team) -> object:
+        """Grouping key — excluded teams stay unique (their own id)."""
+        if key_map is not None:
+            v = key_map.get(tm.id)
+            return ("k", v) if v is not None else ("u", tm.id)
+        return tm.institution_id or tm.id
+
+    def ckey(tm: Team) -> object | None:
+        """Conflict key — None never conflicts."""
+        if key_map is not None:
+            return key_map.get(tm.id)
+        return tm.institution_id
+
     groups: dict[object, list[Team]] = {}
     for tm in teams:
-        groups.setdefault(tm.institution_id or tm.id, []).append(tm)
+        groups.setdefault(bucket(tm), []).append(tm)
     if len(groups) == len(teams):
-        return list(teams)  # all distinct institutions — nothing to spread
+        return list(teams)  # all distinct keys — nothing to spread
     pools = sorted(groups.values(), key=len, reverse=True)
     out: list[Team] = []
     while any(pools):
@@ -201,8 +221,8 @@ def _separate_institutions(
 
     pairs = opening_pairs or [(i, i + 1) for i in range(0, len(out) - 1, 2)]
 
-    def inst(arr: list[Team], pos: int):
-        return arr[pos].institution_id if pos < len(arr) else None
+    def inst(arr: list[Team], pos: int) -> object | None:
+        return ckey(arr[pos]) if pos < len(arr) else None
 
     def conflicts(arr: list[Team]) -> int:
         return sum(
@@ -229,7 +249,7 @@ def _separate_institutions(
                 # swap out[j] <-> out[k]: both pairs must end separated
                 if inst(out, k) != inst(out, i) and (
                     other >= len(out)
-                    or out[j].institution_id != inst(out, other)
+                    or ckey(out[j]) != inst(out, other)
                 ):
                     out[j], out[k] = out[k], out[j]
                     fixed = True
@@ -237,13 +257,129 @@ def _separate_institutions(
             if fixed:
                 break
 
-    # Never make things worse: if the reshuffle still pairs more same-school
-    # opening matches than the caller's own order (possible when one school
+    # Never make things worse: if the reshuffle still pairs more same-key
+    # opening matches than the caller's own order (possible when one key
     # dominates), keep the input order — it also preserves explicit seeding.
     if opening_pairs is not None and conflicts(out) >= 1 \
             and conflicts(out) >= conflicts(list(teams)):
         return list(teams)
     return out
+
+
+def _separate_institutions(
+    teams: list[Team], opening_pairs: list[tuple[int, int]] | None = None
+) -> list[Team]:
+    """The built-in school pass (owner W2-D: "same schools should not be
+    playing against each other on the first matches") — always on, no stored
+    record needed. ``_separate_by_key`` with the institution as the key."""
+    return _separate_by_key(teams, opening_pairs)
+
+
+def _keep_apart_key_map(
+    tournament, teams: list[Team], key: str, warnings: list,
+) -> dict | None:
+    """Resolve one ``keep_apart_until_round`` key into team.id -> separation
+    key (spec §4.6 grammar): ``school`` -> institution, ``district`` -> the
+    Stage-1 institution answer (attributes["district"], falling back to
+    region), ``seed_pot`` -> Team.seed quartile (1-4), ``tag:<k>`` ->
+    institution attribute ``k``. ``None`` values exclude the team from the
+    constraint; missing data emits a NAMED warning (§9 A8), never an error."""
+    from apps.teams.models import Institution
+
+    key = str(key or "").strip()
+    if key == "school":
+        return {t.id: (t.institution_id or t.id) for t in teams}
+    if key == "district":
+        inst_ids = {t.institution_id for t in teams if t.institution_id}
+        by_inst: dict[object, str] = {}
+        for inst in Institution.objects.filter(id__in=inst_ids):
+            district = (inst.attributes or {}).get("district") or inst.region
+            if district:
+                by_inst[inst.id] = str(district).strip().lower()
+        out = {t.id: by_inst.get(t.institution_id) for t in teams}
+        missing = sorted(t.name for t in teams if out[t.id] is None)
+        if missing:
+            warnings.append(
+                {"code": "keep_apart_missing_district", "teams": missing}
+            )
+        return out
+    if key == "seed_pot":
+        seeded = sorted(
+            (t for t in teams if t.seed is not None),
+            key=lambda t: (t.seed, t.name),
+        )
+        out = dict.fromkeys((t.id for t in teams), None)
+        for idx, t in enumerate(seeded):
+            out[t.id] = 1 + (4 * idx) // len(seeded)
+        missing = sorted(t.name for t in teams if t.seed is None)
+        if missing:
+            warnings.append({"code": "keep_apart_missing_seed", "teams": missing})
+        return out
+    if key.startswith("tag:"):
+        tag = key[4:].strip()
+        inst_ids = {t.institution_id for t in teams if t.institution_id}
+        attr = {
+            inst.id: (inst.attributes or {}).get(tag)
+            for inst in Institution.objects.filter(id__in=inst_ids)
+        }
+        return {
+            t.id: (
+                str(attr[t.institution_id]).strip().lower()
+                if t.institution_id in attr
+                and attr[t.institution_id] not in (None, "")
+                else None
+            )
+            for t in teams
+        }
+    warnings.append({"code": "keep_apart_unknown_key", "key": key})
+    return None
+
+
+def _keep_apart_separators(
+    tournament, teams: list[Team], leaf_key: str, sport: str, warnings: list,
+) -> list[tuple[dict, dict]]:
+    """Stored ``keep_apart_until_round`` records in scope for this draw,
+    resolved into (record, key_map) pairs the pure plan_* core applies after
+    seeding. ``school`` records are skipped — the built-in pass already
+    separates institutions."""
+    from apps.fixtures.services.constraints import scope_matches
+
+    out: list[tuple[dict, dict]] = []
+    for c in tournament.constraints or []:
+        if not isinstance(c, dict) or c.get("type") != "keep_apart_until_round":
+            continue
+        if not scope_matches(c.get("scope"), sport=sport or "",
+                             leaf_key=leaf_key or ""):
+            continue
+        key = str((c.get("params") or {}).get("key") or "school")
+        if key == "school":
+            continue  # built-in
+        key_map = _keep_apart_key_map(tournament, teams, key, warnings)
+        if key_map:
+            out.append((c, key_map))
+    return out
+
+
+def _warn_keep_apart_conflicts(
+    record: dict, key_map: dict, teams: list[Team],
+    pairs: list[tuple[int, int]], warnings: list,
+) -> None:
+    """Best-effort contract (§4.6): a record whose opening pairs still
+    conflict after the repair pass is demoted to soft FOR THIS RUN via a
+    named warning listing the surviving same-key pairs."""
+    conflict_pairs = []
+    for i, j in pairs:
+        if i < len(teams) and j < len(teams):
+            ka, kb = key_map.get(teams[i].id), key_map.get(teams[j].id)
+            if ka is not None and ka == kb:
+                conflict_pairs.append(sorted([teams[i].name, teams[j].name]))
+    if conflict_pairs:
+        warnings.append({
+            "code": "keep_apart_relaxed",
+            "key": (record.get("params") or {}).get("key"),
+            "scope": record.get("scope", "all"),
+            "pairs": sorted(conflict_pairs),
+        })
 
 
 def _next_match_no(tournament) -> int:
@@ -269,10 +405,22 @@ def _group_hash(group: list) -> str:
 def _plan_pool(
     group: list, *, label: str, leaf_key: str, sport: str, legs: int,
     small_group_max: int, start_ref: int,
+    separators: list[tuple[dict, dict]] | None = None,
+    warnings: list | None = None,
 ) -> list[MatchPlan]:
     """Circle-method plans for ONE round-robin pool (opening-pair repair,
-    inputs_hash, small-group leg doubling)."""
-    group = _separate_institutions(group, _opening_pairs_circle(len(group)))
+    inputs_hash, small-group leg doubling). ``separators`` are the stored
+    keep-apart records (record, key_map) applied after the built-in school
+    pass (§4.6) — surviving conflicts emit a named warning."""
+    pairs = _opening_pairs_circle(len(group))
+    group = _separate_institutions(group, pairs)
+    for _record, key_map in separators or []:
+        group = _separate_by_key(group, pairs, key_map)
+    for record, key_map in separators or []:
+        _warn_keep_apart_conflicts(
+            record, key_map, group, pairs,
+            warnings if warnings is not None else [],
+        )
     ih = _group_hash(group)
     group_legs = _legs_for_group(len(group), legs, small_group_max)
     plans: list[MatchPlan] = []
@@ -292,6 +440,8 @@ def plan_round_robin(
     teams: list, *, group_size: int = 5, leaf_key: str = "", sport: str = "",
     label_prefix: str = "", legs: int = 1, seeding: str = "registration",
     seed: int | None = None, small_group_max: int = 0,
+    separators: list[tuple[dict, dict]] | None = None,
+    warnings: list | None = None,
 ) -> list[MatchPlan]:
     """Pure pairing core for the grouped round-robin: seed order, institution
     spread, chunk/snake grouping, per-group circle pairing. Zero DB writes."""
@@ -299,9 +449,12 @@ def plan_round_robin(
         raise ValueError("Need at least 2 registered teams to generate fixtures.")
     teams = _seed_order(list(teams), seeding=seeding, seed=seed)
     # Constraint-repair pass AFTER seeding (§4.3): spread institutions across
-    # pools; each pool's circle pairing is repaired again in _plan_pool once
-    # group membership is known.
+    # pools — then the stored keep-apart keys (§4.6, applied last so the
+    # explicit records win); each pool's circle pairing is repaired again in
+    # _plan_pool once group membership is known.
     teams = _separate_institutions(teams)
+    for _record, key_map in separators or []:
+        teams = _separate_by_key(teams, None, key_map)
     if seeding == "snake":
         groups = _snake_groups(teams, group_size)
     else:
@@ -315,6 +468,7 @@ def plan_round_robin(
             _plan_pool(
                 group, label=label, leaf_key=leaf_key, sport=sport, legs=legs,
                 small_group_max=small_group_max, start_ref=len(plans),
+                separators=separators, warnings=warnings,
             )
         )
     return plans
@@ -324,6 +478,8 @@ def plan_round_robin_pool(
     teams: list, *, label: str, leaf_key: str = "", sport: str = "",
     legs: int = 1, seeding: str = "registration", seed: int | None = None,
     small_group_max: int = 0, start_ref: int = 0,
+    separators: list[tuple[dict, dict]] | None = None,
+    warnings: list | None = None,
 ) -> list[MatchPlan]:
     """Pure pairing core for ONE category bucket (by-category round-robin):
     seed order within the bucket, opening-pair repair, circle pairing. Zero
@@ -332,6 +488,7 @@ def plan_round_robin_pool(
     return _plan_pool(
         teams, label=label, leaf_key=leaf_key, sport=sport, legs=legs,
         small_group_max=small_group_max, start_ref=start_ref,
+        separators=separators, warnings=warnings,
     )
 
 
@@ -339,6 +496,8 @@ def plan_single_elimination(
     teams: list, *, stage: str = "knockout", leaf_key: str = "",
     sport: str = "", third_place: bool = False,
     seeding: str = "registration", seed: int | None = None,
+    separators: list[tuple[dict, dict]] | None = None,
+    warnings: list | None = None,
 ) -> list[MatchPlan]:
     """Pure pairing core for a single-elimination bracket (byes, winner_of /
     loser_of pointers as plan refs, optional 3rd-place playoff — §4.4). Zero
@@ -349,8 +508,17 @@ def plan_single_elimination(
 
     teams = _seed_order(list(teams), seeding=seeding, seed=seed)
     # Constraint repair AFTER seeding (§4.3): same-institution teams don't
-    # meet in round 1 where avoidable (W2-D).
-    teams = _separate_institutions(list(teams), _opening_pairs_bracket(n))
+    # meet in round 1 where avoidable (W2-D), then the stored keep-apart
+    # keys (§4.6) — surviving conflicts emit a named warning, never an error.
+    pairs = _opening_pairs_bracket(n)
+    teams = _separate_institutions(list(teams), pairs)
+    for _record, key_map in separators or []:
+        teams = _separate_by_key(teams, pairs, key_map)
+    for record, key_map in separators or []:
+        _warn_keep_apart_conflicts(
+            record, key_map, teams, pairs,
+            warnings if warnings is not None else [],
+        )
 
     size = 1
     while size < n:
@@ -457,6 +625,7 @@ def _persist_plans(tournament, plans: list[MatchPlan]) -> list[Match]:
 def generate_round_robin(
     *, tournament, group_size: int = 5, leaf_key: str | None = None,
     legs: int = 1, seeding: str = "registration", seed: int | None = None,
+    warnings: list | None = None,
 ) -> list[Match]:
     """Split registered teams into groups of ``group_size`` and round-robin each
     group. With ``leaf_key``, only that competition's teams are drawn and the
@@ -476,19 +645,25 @@ def generate_round_robin(
     teams = _registered_teams(tournament, leaf_key)
     if len(teams) < 2:
         raise ValueError("Need at least 2 registered teams to generate fixtures.")
+    warnings = [] if warnings is None else warnings
     generated_seed: int | None = None
     if seeding == "random" and seed is None:
         seed = generated_seed = _new_seed()
 
     sports_cfg = tournament.sports or []
+    sport = sport_for_leaf(sports_cfg, leaf_key or "")
     plans = plan_round_robin(
         teams,
         group_size=group_size,
         leaf_key=leaf_key or "",
-        sport=sport_for_leaf(sports_cfg, leaf_key or ""),
+        sport=sport,
         label_prefix=f"{leaf_label(sports_cfg, leaf_key)} — " if leaf_key else "",
         legs=legs, seeding=seeding, seed=seed,
         small_group_max=_small_group_max(tournament),
+        separators=_keep_apart_separators(
+            tournament, teams, leaf_key or "", sport, warnings,
+        ),
+        warnings=warnings,
     )
     with transaction.atomic():
         created = _persist_plans(tournament, plans)
@@ -500,6 +675,7 @@ def generate_round_robin(
 def generate_round_robin_by_category(
     *, tournament, leaf_key: str | None = None, legs: int = 1,
     seeding: str = "registration", seed: int | None = None,
+    warnings: list | None = None,
 ) -> list[Match]:
     """Round-robin WITHIN each competition (category leaf): a team only plays
     others registered into the SAME leaf. Buckets key on the structural
@@ -531,6 +707,7 @@ def generate_round_robin_by_category(
 
     sports_cfg = tournament.sports or []
     small_max = _small_group_max(tournament)
+    warnings = [] if warnings is None else warnings
     generated_seed: int | None = None
     if seeding == "random" and seed is None:
         seed = generated_seed = _new_seed()
@@ -559,6 +736,11 @@ def generate_round_robin_by_category(
                 group, label=label, leaf_key=bucket if is_leaf else "",
                 sport=sport_key, legs=legs, seeding=seeding, seed=seed,
                 small_group_max=small_max, start_ref=len(plans),
+                separators=_keep_apart_separators(
+                    tournament, group, bucket if is_leaf else "", sport_key,
+                    warnings,
+                ),
+                warnings=warnings,
             )
         )
     if not plans and not skipped_existing:
@@ -584,6 +766,7 @@ def generate_single_elimination(
     *, tournament, teams, stage: str = "knockout",
     leaf_key: str = "", sport: str = "", third_place: bool = False,
     seeding: str = "registration", seed: int | None = None,
+    warnings: list | None = None,
 ) -> list[Match]:
     """Generate a single-elimination bracket from ``teams`` (any count ≥ 2).
 
@@ -617,12 +800,17 @@ def generate_single_elimination(
     if not sport and leaf_key:
         sport = sport_for_leaf(tournament.sports or [], leaf_key)
 
+    warnings = [] if warnings is None else warnings
     generated_seed: int | None = None
     if seeding == "random" and seed is None:
         seed = generated_seed = _new_seed()
     plans = plan_single_elimination(
         list(teams), stage=stage, leaf_key=leaf_key or "", sport=sport,
         third_place=third_place, seeding=seeding, seed=seed,
+        separators=_keep_apart_separators(
+            tournament, list(teams), leaf_key or "", sport, warnings,
+        ),
+        warnings=warnings,
     )
     with transaction.atomic():
         created = _persist_plans(tournament, plans)
@@ -680,7 +868,7 @@ def _cross_seed(quals: list[list[str]]) -> list[str]:
 
 def generate_knockout_from_groups(
     *, tournament, advance_per_group: int = 2, leaf_key: str | None = None,
-    third_place: bool = False,
+    third_place: bool = False, warnings: list | None = None,
 ) -> list[Match]:
     """Advance the top ``advance_per_group`` of each group into a single-
     elimination bracket (FIFA-style groups → knockout), cross-seeding winners
@@ -734,5 +922,5 @@ def generate_knockout_from_groups(
     teams = [Team.objects.get(id=tid) for tid in seed_ids]
     return generate_single_elimination(
         tournament=tournament, teams=teams, stage="knockout",
-        leaf_key=leaf_key or "", third_place=third_place,
+        leaf_key=leaf_key or "", third_place=third_place, warnings=warnings,
     )
