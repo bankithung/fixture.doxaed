@@ -116,6 +116,34 @@ describe("OrgChooserPage (Dashboard)", () => {
     expect(screen.queryByText("Welcome to Fixture")).not.toBeInTheDocument();
   });
 
+  it("never surfaces the org/workspace concept, even for workspace owners", async () => {
+    // Root pages are individual-level (owner decision 2026-06-11): orgs are a
+    // hidden implementation detail — no Workspaces section, no /o/ slugs.
+    useAuthStore.setState({
+      user: makeUser([
+        {
+          org_id: "o9",
+          org_slug: "test-2",
+          org_name: "test",
+          roles: ["admin"] as never,
+          is_org_owner: true,
+          effective_modules: [],
+        },
+      ]),
+      bootstrapped: true,
+    });
+    vi.mocked(tournamentsApi.list).mockResolvedValue([
+      { ...INVITED_TOURNAMENT, id: "t-1", name: "test", origin: "owner", my_roles: ["admin"] },
+    ]);
+    vi.mocked(invitationsApi.myInvitations).mockResolvedValue([]);
+
+    renderPage();
+
+    await screen.findByTestId("dashboard-tournament-t-1");
+    expect(screen.queryByText("Workspaces")).not.toBeInTheDocument();
+    expect(screen.queryByText(/\/o\/test-2/)).not.toBeInTheDocument();
+  });
+
   it("surfaces a pending-invites callout linking to the inbox", async () => {
     vi.mocked(tournamentsApi.list).mockResolvedValue([]);
     vi.mocked(invitationsApi.myInvitations).mockResolvedValue([

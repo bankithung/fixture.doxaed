@@ -336,7 +336,10 @@ export function AppShell(): React.ReactElement {
                 {tournamentName ?? t("Tournament")}
               </span>
             </nav>
-          ) : orgName ? (
+          ) : orgSlug && orgName ? (
+            // Workspace breadcrumb only INSIDE org-scoped pages (/o/:slug/*).
+            // Root pages are individual-level (owner decision 2026-06-11) —
+            // the org is a hidden workspace, so it never labels the topbar there.
             <nav
               aria-label={t("Breadcrumb")}
               className="hidden items-center gap-1.5 text-sm md:flex"
@@ -353,7 +356,7 @@ export function AppShell(): React.ReactElement {
           <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
             <NotificationBell />
             <ThemeToggle />
-            <OrgSwitcher />
+            {orgSlug ? <OrgSwitcher /> : null}
 
             <div ref={menuRef} className="relative">
               <button
