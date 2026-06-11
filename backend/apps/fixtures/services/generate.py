@@ -302,7 +302,7 @@ def _bracket_order(size: int) -> list[int]:
 
 def generate_single_elimination(
     *, tournament, teams, stage: str = "knockout",
-    leaf_key: str = "", sport: str = "",
+    leaf_key: str = "", sport: str = "", third_place: bool = False,
 ) -> list[Match]:
     """Generate a single-elimination bracket from ``teams`` (any count ≥ 2).
 
@@ -311,7 +311,14 @@ def generate_single_elimination(
     the final). Round 1 pairs concrete teams; later rounds carry typed
     winner_of pointers (invariant #9) that apps.fixtures.services.advance
     resolves on completion; bye teams enter round 2 as typed team pointers.
-    Idempotent per (stage, leaf): an existing bracket in scope is returned."""
+    Idempotent per (stage, leaf): an existing bracket in scope is returned.
+
+    ``third_place`` (redesign spec §4.4): when the bracket has two semifinals,
+    emit one extra match at the final's round_no, numbered BEFORE the final,
+    sourced from `loser_of` pointers — the first generator to emit the
+    pointer type advance.py already resolves. A bye straight into the final
+    (3 teams) has a single semi, so its loser is 3rd automatically — no
+    playoff is emitted."""
     n = len(teams)
     if n < 2:
         raise ValueError("single elimination requires at least 2 teams")
@@ -380,6 +387,26 @@ def generate_single_elimination(
         while len(slots) > 1:
             nxt_matches: list[Match] = []
             nxt_slots: list[dict] = []
+            if third_place and len(slots) == 2 \
+                    and all("match" in s for s in slots):
+                # 3rd-place playoff between the semifinal losers, placed
+                # before the final in match order (spec §4.4).
+                match_no += 1
+                nxt_matches.append(
+                    Match(
+                        round_no=round_no, match_no=match_no,
+                        group_label="3rd Place",
+                        home_source={
+                            "type": "loser_of",
+                            "match_id": str(slots[0]["match"].id),
+                        },
+                        away_source={
+                            "type": "loser_of",
+                            "match_id": str(slots[1]["match"].id),
+                        },
+                        **common,
+                    )
+                )
             for i in range(0, len(slots), 2):
                 match_no += 1
                 home_id, home_src = _side(slots[i])
@@ -449,7 +476,8 @@ def _cross_seed(quals: list[list[str]]) -> list[str]:
 
 
 def generate_knockout_from_groups(
-    *, tournament, advance_per_group: int = 2, leaf_key: str | None = None
+    *, tournament, advance_per_group: int = 2, leaf_key: str | None = None,
+    third_place: bool = False,
 ) -> list[Match]:
     """Advance the top ``advance_per_group`` of each group into a single-
     elimination bracket (FIFA-style groups → knockout), cross-seeding winners
@@ -503,5 +531,5 @@ def generate_knockout_from_groups(
     teams = [Team.objects.get(id=tid) for tid in seed_ids]
     return generate_single_elimination(
         tournament=tournament, teams=teams, stage="knockout",
-        leaf_key=leaf_key or "",
+        leaf_key=leaf_key or "", third_place=third_place,
     )

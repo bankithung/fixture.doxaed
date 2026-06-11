@@ -44,7 +44,7 @@ class GenerateFixturesView(GenericAPIView):
         # saved the format via the draw-config PATCH.
         overrides = {
             k: request.data.get(k)
-            for k in ("format", "group_size", "advance_per_group")
+            for k in ("format", "group_size", "advance_per_group", "third_place")
             if k in request.data
         }
         cfg = effective_draw_config(t, leaf_key or None, overrides=overrides)
@@ -58,13 +58,15 @@ class GenerateFixturesView(GenericAPIView):
                     teams_qs = teams_qs.filter(leaf_key=leaf_key)
                 teams = list(teams_qs.order_by("seed", "name"))
                 matches = generate_single_elimination(
-                    tournament=t, teams=teams, leaf_key=leaf_key
+                    tournament=t, teams=teams, leaf_key=leaf_key,
+                    third_place=bool(cfg.get("third_place")),
                 )
             elif fmt == "knockout_from_groups":
                 matches = generate_knockout_from_groups(
                     tournament=t,
                     advance_per_group=int(cfg["advance_per_group"]),
                     leaf_key=leaf_key or None,
+                    third_place=bool(cfg.get("third_place")),
                 )
             elif fmt == "by_category":
                 matches = generate_round_robin_by_category(
