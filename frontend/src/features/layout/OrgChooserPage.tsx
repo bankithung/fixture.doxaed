@@ -1,26 +1,42 @@
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Mail, Plus, Trophy } from "lucide-react";
-import { useAuthStore } from "@/features/auth/authStore";
-import { tournamentsApi } from "@/api/tournaments";
-import { invitationsApi } from "@/api/invitations";
-import { RoleBadge } from "@/components/ui/RoleBadge";
 import {
-  Monogram,
-  StatusPill,
-} from "@/features/tournaments/TournamentsListPage";
+  ArrowDownUp,
+  ChevronRight,
+  ListChecks,
+  Mail,
+  Plus,
+  Search,
+  Trophy,
+} from "lucide-react";
+import { useAuthStore } from "@/features/auth/authStore";
+import { tournamentsApi, type Tournament } from "@/api/tournaments";
+import { invitationsApi } from "@/api/invitations";
+import { Select } from "@/components/ui/Select";
+import { Input } from "@/components/ui/input";
+import {
+  Kpi,
+  STATUS_FILTER,
+  relativeTime,
+  statusMeta,
+} from "@/features/layout/OrgDashboardPage";
+import { useBreakpoint } from "@/lib/useBreakpoint";
 import { routes } from "@/lib/routes";
+import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
 /**
- * The personal Dashboard — the same for every account (owner decision
- * 2026-06-11: root pages are individual-level; orgs are a hidden workspace
- * implementation detail and never surface here). Shows the tournaments the
- * user owns or was invited into plus a pending-invites callout. With nothing
- * to show, a single welcome CTA centered both vertically and horizontally.
+ * The personal Dashboard — the individual WORKSPACE view, identical for every
+ * account (owner decision 2026-06-11: root pages are individual-level; orgs
+ * are a hidden implementation detail and never surface here). KPI strip +
+ * tournaments table + next-match rail over everything the user is part of —
+ * owned or invited. With nothing to show, a single welcome CTA centered both
+ * vertically and horizontally.
  */
 export function OrgChooserPage(): React.ReactElement {
   const user = useAuthStore((s) => s.user);
+  const { isMobile } = useBreakpoint();
 
   const tournamentsQuery = useQuery({
     queryKey: ["tournaments"],
@@ -31,27 +47,62 @@ export function OrgChooserPage(): React.ReactElement {
     queryFn: invitationsApi.myInvitations,
   });
 
-  if (!user) return <div />;
-
-  const tournaments = tournamentsQuery.data ?? [];
+  const all: Tournament[] = useMemo(
+    () => tournamentsQuery.data ?? [],
+    [tournamentsQuery.data],
+  );
   const pendingInvites = (invitesQuery.data ?? []).filter(
     (inv) => inv.status === "pending",
   );
   const loading = tournamentsQuery.isLoading || invitesQuery.isLoading;
 
-  const startCta = (label: string): React.ReactElement => (
-    <Link
-      to={routes.tournamentNew()}
-      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-    >
-      <Plus aria-hidden="true" className="h-4 w-4" />
-      {label}
-    </Link>
-  );
+  const kpis = useMemo(() => {
+    const live = all.filter((x) => x.status.startsWith("live")).length;
+    const completed = all.filter((x) => x.status === "completed").length;
+    const draft = all.filter((x) => x.status === "draft").length;
+    return { total: all.length, live, completed, draft };
+  }, [all]);
+
+  // Featured match (one lazy matches() call on a live-or-first tournament).
+  const featured = all.find((x) => x.status.startsWith("live")) ?? all[0];
+  const matchesQuery = useQuery({
+    queryKey: ["t-matches", featured?.id],
+    queryFn: () => tournamentsApi.matches(featured!.id),
+    enabled: !!featured,
+  });
+  const featuredMatch = useMemo(() => {
+    const ms = matchesQuery.data ?? [];
+    return (
+      ms.find((m) => m.status.startsWith("live")) ??
+      ms.find((m) => m.status === "scheduled") ??
+      ms[0] ??
+      null
+    );
+  }, [matchesQuery.data]);
+
+  // Table filter + sort (client-side over list()).
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortAsc, setSortAsc] = useState(true);
+  const rows = useMemo(() => {
+    let r = all;
+    if (statusFilter !== "all") {
+      r = r.filter((x) =>
+        statusFilter === "live" ? x.status.startsWith("live") : x.status === statusFilter,
+      );
+    }
+    const q = search.trim().toLowerCase();
+    if (q) r = r.filter((x) => x.name.toLowerCase().includes(q));
+    return [...r].sort((a, b) =>
+      sortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name),
+    );
+  }, [all, statusFilter, search, sortAsc]);
+
+  if (!user) return <div />;
 
   if (loading) {
     return (
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <div
           className="h-56 animate-pulse rounded-xl border border-border bg-card"
           data-testid="dashboard-skeleton"
@@ -61,7 +112,7 @@ export function OrgChooserPage(): React.ReactElement {
   }
 
   // Nothing at all yet → one welcoming CTA, centered in the viewport.
-  if (tournaments.length === 0 && pendingInvites.length === 0) {
+  if (all.length === 0 && pendingInvites.length === 0) {
     return (
       <div className="flex w-full flex-1 items-center justify-center px-4 py-6 sm:px-6 lg:px-8">
         <div className="flex max-w-sm flex-col items-center gap-4 text-center">
@@ -78,24 +129,39 @@ export function OrgChooserPage(): React.ReactElement {
               )}
             </p>
           </div>
-          {startCta(t("Start your first tournament"))}
+          <Link
+            to={routes.tournamentNew()}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <Plus aria-hidden="true" className="h-4 w-4" />
+            {t("Start your first tournament")}
+          </Link>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">
+    <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            {isMobile
+              ? t("Welcome back")
+              : `${t("Welcome back")}${user.name ? `, ${user.name}` : ""}`}
+          </p>
+          <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight sm:text-3xl">
             {t("Dashboard")}
           </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {t(`Welcome back, ${user.name || user.email}.`)}
-          </p>
         </div>
-        {startCta(t("Start a tournament"))}
+        <Link
+          to={routes.tournamentNew()}
+          className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <Plus aria-hidden="true" className="h-4 w-4" />
+          {t("New tournament")}
+        </Link>
       </div>
 
       {pendingInvites.length > 0 ? (
@@ -126,51 +192,194 @@ export function OrgChooserPage(): React.ReactElement {
         </Link>
       ) : null}
 
-      {tournaments.length > 0 ? (
-        <section className="flex flex-col gap-3" aria-label={t("Your tournaments")}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold">{t("Your tournaments")}</h2>
-            <Link
-              to={routes.tournaments()}
-              className="text-xs font-medium text-primary hover:underline"
-            >
-              {t("View all")}
-            </Link>
-          </div>
-          <div className="flex flex-col gap-2">
-            {tournaments.map((tn) => (
-              <Link
-                key={tn.id}
-                to={routes.tournamentDetail(tn.id)}
-                data-testid={`dashboard-tournament-${tn.id}`}
-                className="flex items-center gap-3 rounded-xl border border-border bg-card p-3.5 shadow-sm transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <Monogram name={tn.name} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate font-medium">{tn.name}</span>
-                    <StatusPill status={tn.status} />
-                    {tn.origin === "owner" ? (
-                      <RoleBadge role="owner" />
-                    ) : (
-                      (tn.my_roles ?? []).map((role) => (
-                        <RoleBadge key={role} role={role} />
-                      ))
-                    )}
-                  </div>
-                  <div className="mt-0.5 truncate font-tabular text-xs text-muted-foreground">
-                    {tn.slug}
-                  </div>
-                </div>
-                <ChevronRight
-                  aria-hidden="true"
-                  className="h-4 w-4 shrink-0 text-muted-foreground/50"
+      {/* KPI strip */}
+      <div
+        className="grid grid-cols-2 divide-x divide-y divide-border rounded-xl border border-border bg-card shadow-sm md:grid-cols-4 md:divide-y-0"
+        data-testid="kpi-strip"
+      >
+        <Kpi label={t("Tournaments")} value={kpis.total} sub={t("you're part of")} />
+        <Kpi label={t("Live now")} value={kpis.live} live={kpis.live > 0} sub={t("matches in progress")} />
+        <Kpi label={t("Completed")} value={kpis.completed} sub={kpis.total ? `${Math.round((kpis.completed / kpis.total) * 100)}% ${t("of all")}` : undefined} />
+        <Kpi label={t("Drafts")} value={kpis.draft} sub={t("not yet published")} />
+      </div>
+
+      {/* Main grid */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Tournaments table (spine) */}
+        <section className="lg:col-span-2" aria-label={t("Tournaments")}>
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
+              <h2 className="mr-auto text-sm font-semibold">{t("Tournaments")}</h2>
+              <div className="relative">
+                <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label={t("Search tournaments")}
+                  placeholder={t("Search…")}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-9 w-40 pl-8 sm:w-52"
                 />
-              </Link>
-            ))}
+              </div>
+              <Select
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={STATUS_FILTER}
+                aria-label={t("Filter by status")}
+                className="w-40"
+              />
+            </div>
+
+            {rows.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+                <Trophy aria-hidden="true" className="h-8 w-8 text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">
+                  {all.length === 0 ? t("No tournaments yet.") : t("No tournaments match your filters.")}
+                </p>
+              </div>
+            ) : isMobile ? (
+              <div className="space-y-2 p-3">
+                {rows.map((tn) => {
+                  const sm = statusMeta(tn.status);
+                  return (
+                    <Link
+                      key={tn.id}
+                      to={routes.tournamentDetail(tn.id)}
+                      data-testid={`dashboard-tournament-${tn.id}`}
+                      className="block rounded-lg border border-border p-3 transition-colors hover:bg-accent/40"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate font-medium">{tn.name}</span>
+                        <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", sm.badge)}>
+                          <span className={cn("h-1.5 w-1.5 rounded-full", sm.dot)} />
+                          {t(sm.label)}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {tn.slug} · {relativeTime(tn.created_at)}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-[0.6875rem] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-4 py-2.5 font-medium">
+                        <button
+                          type="button"
+                          onClick={() => setSortAsc((v) => !v)}
+                          className="inline-flex items-center gap-1 hover:text-foreground"
+                        >
+                          {t("Name")}
+                          <ArrowDownUp aria-hidden="true" className="h-3.5 w-3.5 opacity-50" />
+                        </button>
+                      </th>
+                      <th className="px-4 py-2.5 font-medium">{t("Status")}</th>
+                      <th className="px-4 py-2.5 font-medium">{t("Created")}</th>
+                      <th className="px-4 py-2.5" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((tn) => {
+                      const sm = statusMeta(tn.status);
+                      return (
+                        <tr
+                          key={tn.id}
+                          className="group border-t border-border transition-colors hover:bg-accent/40"
+                        >
+                          <td className="px-4 py-2.5">
+                            <Link
+                              to={routes.tournamentDetail(tn.id)}
+                              data-testid={`dashboard-tournament-${tn.id}`}
+                              className="flex flex-col"
+                            >
+                              <span className="font-medium text-foreground group-hover:text-primary">
+                                {tn.name}
+                              </span>
+                              <span className="text-xs text-muted-foreground">{tn.slug}</span>
+                            </Link>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", sm.badge)}>
+                              <span className={cn("h-1.5 w-1.5 rounded-full", sm.dot)} />
+                              {t(sm.label)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 font-tabular text-muted-foreground">
+                            {relativeTime(tn.created_at)}
+                          </td>
+                          <td className="px-4 py-2.5 text-right">
+                            <Link to={routes.tournamentDetail(tn.id)} aria-label={t("Open")}>
+                              <ChevronRight aria-hidden="true" className="ml-auto h-4 w-4 text-muted-foreground/40 group-hover:text-foreground" />
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </section>
-      ) : null}
+
+        {/* Right rail */}
+        <aside className="flex flex-col gap-6" aria-label={t("At a glance")}>
+          {/* Featured / live match */}
+          <div className="relative overflow-hidden rounded-xl border border-border bg-card p-5 shadow-sm">
+            <span aria-hidden="true" className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+            <div className="relative">
+              <p className="text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+                {featuredMatch && featuredMatch.status.startsWith("live") ? t("Live match") : t("Next match")}
+              </p>
+              {featured && featuredMatch ? (
+                <>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{featured.name}</p>
+                  <div className="mt-3 flex items-center justify-center gap-3 font-tabular text-2xl font-semibold">
+                    <span className="flex-1 truncate text-right">{featuredMatch.home_team?.short_name ?? featuredMatch.home_team?.name ?? t("TBD")}</span>
+                    <span className="shrink-0 tabular-nums">
+                      {featuredMatch.home_score ?? 0}–{featuredMatch.away_score ?? 0}
+                    </span>
+                    <span className="flex-1 truncate text-left">{featuredMatch.away_team?.short_name ?? featuredMatch.away_team?.name ?? t("TBD")}</span>
+                  </div>
+                  <Link
+                    to={routes.matchConsole(featured.id, featuredMatch.id)}
+                    className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-lg border border-input px-3 py-2 text-sm font-medium transition-colors hover:bg-accent"
+                  >
+                    {t("Open scorer")}
+                    <ChevronRight aria-hidden="true" className="h-4 w-4" />
+                  </Link>
+                </>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">
+                  {t("No live or upcoming match.")}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Quick actions */}
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <h2 className="mb-3 text-sm font-semibold">{t("Quick actions")}</h2>
+            <div className="grid grid-cols-1 gap-2">
+              <Link to={routes.tournaments()} className="flex items-center gap-3 rounded-lg border border-border/60 bg-background px-3 py-2.5 text-sm transition-colors hover:border-primary/40 hover:bg-accent">
+                <ListChecks aria-hidden="true" className="h-4 w-4 text-primary" />
+                {t("Browse tournaments")}
+              </Link>
+              <Link to={routes.tournamentNew()} className="flex items-center gap-3 rounded-lg border border-border/60 bg-background px-3 py-2.5 text-sm transition-colors hover:border-primary/40 hover:bg-accent">
+                <Plus aria-hidden="true" className="h-4 w-4 text-primary" />
+                {t("New tournament")}
+              </Link>
+              <Link to={routes.invites()} className="flex items-center gap-3 rounded-lg border border-border/60 bg-background px-3 py-2.5 text-sm transition-colors hover:border-primary/40 hover:bg-accent">
+                <Mail aria-hidden="true" className="h-4 w-4 text-primary" />
+                {t("Invitations")}
+              </Link>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }

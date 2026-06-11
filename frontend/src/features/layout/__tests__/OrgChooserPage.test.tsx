@@ -9,7 +9,7 @@ import { invitationsApi, type MyInvitation } from "@/api/invitations";
 import type { User } from "@/types/user";
 
 vi.mock("@/api/tournaments", () => ({
-  tournamentsApi: { list: vi.fn() },
+  tournamentsApi: { list: vi.fn(), matches: vi.fn() },
 }));
 vi.mock("@/api/invitations", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/invitations")>();
@@ -75,6 +75,7 @@ function renderPage(): void {
 
 beforeEach(() => {
   useAuthStore.setState({ user: makeUser([]), bootstrapped: true });
+  vi.mocked(tournamentsApi.matches).mockResolvedValue([] as never);
 });
 
 afterEach(() => {
@@ -100,14 +101,15 @@ describe("OrgChooserPage (Dashboard)", () => {
     expect(root?.className).toContain("justify-center");
   });
 
-  it("lists invited tournaments with role badges (no dead end after accepting)", async () => {
+  it("renders the workspace view (KPIs + table) for an invited user — no dead end", async () => {
     vi.mocked(tournamentsApi.list).mockResolvedValue([INVITED_TOURNAMENT]);
     vi.mocked(invitationsApi.myInvitations).mockResolvedValue([]);
 
     renderPage();
 
     expect(await screen.findByText("Anpsa")).toBeInTheDocument();
-    expect(screen.getByTestId("role-badge-match_scorer")).toBeInTheDocument();
+    // The individual workspace: KPI strip over everything the user is part of.
+    expect(screen.getByTestId("kpi-strip")).toBeInTheDocument();
     expect(screen.getByTestId("dashboard-tournament-t-9")).toHaveAttribute(
       "href",
       "/tournaments/t-9",

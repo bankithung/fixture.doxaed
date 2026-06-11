@@ -31,7 +31,8 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
 // --- status presentation (tokens guaranteed to exist) -----------------------
-function statusMeta(s: string): { label: string; badge: string; dot: string } {
+// Shared with the personal Dashboard (OrgChooserPage) — same workspace look.
+export function statusMeta(s: string): { label: string; badge: string; dot: string } {
   const live = s.startsWith("live");
   const map: Record<string, { label: string; badge: string; dot: string }> = {
     draft: { label: "Draft", badge: "bg-muted text-muted-foreground", dot: "bg-muted-foreground/40" },
@@ -45,7 +46,7 @@ function statusMeta(s: string): { label: string; badge: string; dot: string } {
   return map[s] ?? { label: s.replace(/_/g, " "), badge: "bg-muted text-muted-foreground", dot: "bg-muted-foreground/40" };
 }
 
-function relativeTime(iso: string): string {
+export function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const s = Math.round(diff / 1000);
   if (s < 60) return t("just now");
@@ -59,7 +60,7 @@ function relativeTime(iso: string): string {
   return mo < 12 ? `${mo}mo` : `${Math.round(mo / 12)}y`;
 }
 
-const STATUS_FILTER = [
+export const STATUS_FILTER = [
   { value: "all", label: "All statuses" },
   { value: "draft", label: "Draft" },
   { value: "published", label: "Published" },
@@ -69,7 +70,7 @@ const STATUS_FILTER = [
   { value: "completed", label: "Completed" },
 ];
 
-function Kpi({
+export function Kpi({
   label,
   value,
   sub,
