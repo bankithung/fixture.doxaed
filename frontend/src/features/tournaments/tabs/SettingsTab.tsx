@@ -84,7 +84,9 @@ export function SettingsTab(): React.ReactElement {
     queryFn: () => tournamentsApi.get(id),
     enabled: Boolean(id),
   });
-  const canManage = settings.data?.can_manage ?? false;
+  // Danger zone is ORGANIZER-only (creator / workspace admin) — invited
+  // managers can edit settings but never delete/deactivate (owner 2026-06-11).
+  const canDelete = settings.data?.can_delete ?? false;
   const archived = tournament.data?.status === "archived";
 
   const setActive = useMutation({
@@ -223,8 +225,8 @@ export function SettingsTab(): React.ReactElement {
 
       <DisputesPanel tournamentId={id} />
 
-      {/* Status + danger zone (managers only). */}
-      {canManage ? (
+      {/* Status + danger zone (organizer only — invited managers never see it). */}
+      {canDelete ? (
         <section className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-card p-4 shadow-sm">
           <div>
             <h3 className="text-sm font-semibold">{t("Status & danger zone")}</h3>

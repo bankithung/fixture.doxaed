@@ -40,6 +40,7 @@ const SETTINGS = {
   rules_frozen_at: null,
   can_edit: false,
   can_manage: true,
+  can_delete: true,
 };
 
 function tournament(status: string): Tournament {
@@ -126,11 +127,29 @@ describe("SettingsTab danger zone", () => {
     vi.mocked(tournamentsApi.settings).mockResolvedValue({
       ...SETTINGS,
       can_manage: false,
+      can_delete: false,
     } as unknown as TournamentSettings);
 
     renderTab();
 
     await screen.findByText(/scoring rules/i);
     expect(screen.queryByTestId("delete-tournament")).toBeNull();
+  });
+
+  it("hides the danger zone for INVITED managers (organizer-only)", async () => {
+    // An invited tournament-admin manages day-to-day (can_manage) but only
+    // the organizer may delete/deactivate (owner decision 2026-06-11).
+    vi.mocked(tournamentsApi.get).mockResolvedValue(tournament("published"));
+    vi.mocked(tournamentsApi.settings).mockResolvedValue({
+      ...SETTINGS,
+      can_manage: true,
+      can_delete: false,
+    } as unknown as TournamentSettings);
+
+    renderTab();
+
+    await screen.findByText(/scoring rules/i);
+    expect(screen.queryByTestId("delete-tournament")).toBeNull();
+    expect(screen.queryByTestId("toggle-active")).toBeNull();
   });
 });

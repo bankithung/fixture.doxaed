@@ -97,8 +97,10 @@ export function TournamentWorkspace(): React.ReactElement {
     !["Overview", "Settings", "Forms", "Sports"].includes(activeTab.label);
 
   // Setup flow (W2-C): until the tournament is ready, managers work in a
-  // focused no-sidebar flow — delete must stay reachable from the top.
+  // focused no-sidebar flow — delete must stay reachable from the top, but
+  // only for the ORGANIZER (invited managers can't delete; owner 2026-06-11).
   const setupMode = !!stage && stage.can_manage && stage.stage !== "ready";
+  const canDelete = !!stage?.can_delete;
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-6 sm:px-6 lg:px-8">
@@ -110,7 +112,7 @@ export function TournamentWorkspace(): React.ReactElement {
           <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
           {t("All tournaments")}
         </NavLink>
-        {setupMode ? (
+        {setupMode && canDelete ? (
           <DeleteTournamentButton tournamentId={id} compact />
         ) : null}
       </div>

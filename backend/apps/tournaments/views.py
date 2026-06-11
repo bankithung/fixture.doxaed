@@ -17,7 +17,11 @@ from apps.tournaments.models import (
     TournamentMembershipStatus,
     TournamentStatus,
 )
-from apps.tournaments.permissions import can_access_module, can_manage_tournament
+from apps.tournaments.permissions import (
+    can_access_module,
+    can_manage_tournament,
+    is_tournament_organizer,
+)
 from apps.tournaments.scope import accessible_tournaments
 from apps.tournaments.serializers import (
     TournamentCreateSerializer,
@@ -112,15 +116,17 @@ class TournamentDetailView(GenericAPIView):
     """`DELETE /api/tournaments/{id}/` — soft-delete a tournament (e.g. created by
     mistake). `PATCH {"active": bool}` — deactivate (archive) or reactivate it.
 
-    Manager-only (admin/co-organizer or org admin). 404 on no access (no leak).
+    ORGANIZER-only (the creator / workspace org admin — owner decision
+    2026-06-11): invited members, even tournament-admins, can manage but never
+    delete or deactivate. 404 on no access (no leak), 403 for invited managers.
     Delete is blocked while the tournament is `live` (a match in progress)."""
 
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, tournament_id):
         tournament = _get_tournament_or_404(request.user, tournament_id)
-        if not can_manage_tournament(request.user, tournament):
-            raise PermissionDenied("not_tournament_manager")
+        if not is_tournament_organizer(request.user, tournament):
+            raise PermissionDenied("not_tournament_organizer")
         if tournament.status == TournamentStatus.LIVE:
             return Response({"detail": "tournament_live"}, status=409)
 
@@ -169,8 +175,8 @@ class TournamentDetailView(GenericAPIView):
 
     def patch(self, request, tournament_id):
         tournament = _get_tournament_or_404(request.user, tournament_id)
-        if not can_manage_tournament(request.user, tournament):
-            raise PermissionDenied("not_tournament_manager")
+        if not is_tournament_organizer(request.user, tournament):
+            raise PermissionDenied("not_tournament_organizer")
         active = request.data.get("active")
         if not isinstance(active, bool):
             raise DRFValidationError({"detail": "active_required"})
@@ -249,9 +255,11 @@ def _settings_payload(tournament, user) -> dict:
         "rules_frozen_at": tournament.rules_frozen_at,
         "can_edit": can_edit_rules(tournament)
         and can_manage_tournament(user, tournament),
-        # Management rights independent of the rules-freeze gate — drives the
-        # archive/delete controls (you can archive/delete a frozen tournament).
+        # Management rights independent of the rules-freeze gate.
         "can_manage": can_manage_tournament(user, tournament),
+        # Destructive verbs (delete / deactivate) are the ORGANIZER's alone —
+        # invited managers never see the danger zone (owner 2026-06-11).
+        "can_delete": is_tournament_organizer(user, tournament),
     }
 
 

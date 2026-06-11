@@ -100,3 +100,61 @@ def test_patch_requires_active_boolean():
     t = create_tournament(user=admin, name="Cup")
     r = _client(admin).patch(f"/api/tournaments/{t.id}/", {}, format="json")
     assert r.status_code == 400
+
+
+def _invited_admin(t, inviter):
+    """An ACTIVE tournament-admin who joined via invite (no org membership)."""
+    from apps.tournaments.models import (
+        TournamentMembership,
+        TournamentMembershipRole,
+        TournamentMembershipStatus,
+    )
+
+    member = _verified("invited@test.local")
+    TournamentMembership.objects.create(
+        user=member,
+        tournament=t,
+        role=TournamentMembershipRole.ADMIN,
+        status=TournamentMembershipStatus.ACTIVE,
+        assigned_by=inviter,
+    )
+    return member
+
+
+def test_invited_admin_cannot_delete():
+    """Only the ORGANIZER may delete — an invited tournament-admin gets 403
+    (they can see the tournament, so 404 would be wrong)."""
+    organizer = _verified("a@test.local")
+    t = create_tournament(user=organizer, name="Cup")
+    member = _invited_admin(t, organizer)
+
+    r = _client(member).delete(f"/api/tournaments/{t.id}/")
+    assert r.status_code == 403
+    t.refresh_from_db()
+    assert t.deleted_at is None
+
+
+def test_invited_admin_cannot_deactivate():
+    organizer = _verified("a@test.local")
+    t = create_tournament(user=organizer, name="Cup")
+    member = _invited_admin(t, organizer)
+
+    r = _client(member).patch(
+        f"/api/tournaments/{t.id}/", {"active": False}, format="json"
+    )
+    assert r.status_code == 403
+    t.refresh_from_db()
+    assert t.status != TournamentStatus.ARCHIVED
+
+
+def test_settings_payload_separates_manage_from_delete():
+    """Invited admins manage (can_manage) but never delete (can_delete)."""
+    organizer = _verified("a@test.local")
+    t = create_tournament(user=organizer, name="Cup")
+    member = _invited_admin(t, organizer)
+
+    mine = _client(organizer).get(f"/api/tournaments/{t.id}/settings/").json()
+    assert mine["can_manage"] is True and mine["can_delete"] is True
+
+    theirs = _client(member).get(f"/api/tournaments/{t.id}/settings/").json()
+    assert theirs["can_manage"] is True and theirs["can_delete"] is False

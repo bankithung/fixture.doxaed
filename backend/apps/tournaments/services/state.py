@@ -470,7 +470,10 @@ def transition_tournament(
 def build_stage_payload(t: Tournament, user) -> dict:
     """The stepper payload (spec §6.1). FE renders order/allowed_to from here
     (never hardcodes) — the parity contract against ALLOWED_TRANSITIONS."""
-    from apps.tournaments.permissions import can_manage_tournament
+    from apps.tournaments.permissions import (
+        can_manage_tournament,
+        is_tournament_organizer,
+    )
 
     counts = _counts_for(t)
     cur_rank = _RANK[t.stage]
@@ -506,6 +509,9 @@ def build_stage_payload(t: Tournament, user) -> dict:
         "order": list(_ORDER),
         "allowed_to": sorted(ALLOWED_TRANSITIONS.get(t.stage, set())),
         "can_manage": can_manage_tournament(user, t),
+        # Organizer-only destructive rights (delete/deactivate) — the FE's
+        # workspace-header Delete button gates on this, not can_manage.
+        "can_delete": is_tournament_organizer(user, t),
         # The caller's effective module set (role defaults ± per-member
         # grants) — the FE gates nav/surfaces on this (spec 2026-06-10 P5).
         "modules": sorted(effective_tournament_modules(user, t)),

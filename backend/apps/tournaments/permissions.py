@@ -36,6 +36,25 @@ def can_manage_tournament(user, tournament) -> bool:
     ).exists()
 
 
+def is_tournament_organizer(user, tournament) -> bool:
+    """True only for the person who ORGANISED the tournament: its creator, or
+    an active org admin of the workspace it lives in. Invited members — even
+    tournament-scoped admins/co-organizers — are NOT organizers: they may
+    manage day-to-day, but destructive verbs (delete, deactivate) are the
+    organizer's alone (owner decision 2026-06-11).
+    """
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if tournament.created_by_id and tournament.created_by_id == user.id:
+        return True
+    return OrganizationMembership.objects.filter(
+        user=user,
+        organization_id=tournament.organization_id,
+        is_active=True,
+        role=MembershipRole.ADMIN,
+    ).exists()
+
+
 def can_access_module(user, tournament, module_code: str) -> bool:
     """Two-layer verb gate (spec 2026-06-10 P5): managers can do everything
     (escape hatch), and everyone else is checked against their effective

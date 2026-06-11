@@ -407,8 +407,11 @@ export interface TournamentSettings {
   constraints: unknown[];
   rules_frozen_at: string | null;
   can_edit: boolean;
-  /** Manager rights independent of the freeze gate (drives archive/delete). */
+  /** Manager rights independent of the freeze gate. */
   can_manage: boolean;
+  /** Organizer-only (creator / workspace admin): drives the danger zone —
+   * invited managers can manage but never delete/deactivate. */
+  can_delete: boolean;
 }
 
 export interface ConstraintType {
@@ -477,6 +480,8 @@ export interface StagePayload {
   order: string[];
   allowed_to: string[];
   can_manage: boolean;
+  /** Organizer-only (creator / workspace admin): gates the Delete button. */
+  can_delete?: boolean;
   /** The caller's effective module codes — nav/surfaces gate on this. */
   modules: string[];
   rules_frozen_at: string | null;
