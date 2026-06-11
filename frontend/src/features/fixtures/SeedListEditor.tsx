@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { t } from "@/lib/t";
 
@@ -22,22 +22,23 @@ export function SeedListEditor({
   onChange: (next: SeedTeam[]) => void;
 }): React.ReactElement {
   const rowRefs = useRef<(HTMLLIElement | null)[]>([]);
-  const [focusIdx, setFocusIdx] = useState<number | null>(null);
+  const pendingFocus = useRef<number | null>(null);
 
-  // After a keyboard move the row re-renders at its new index — chase it.
+  // After a keyboard move the row re-renders at its new index — chase it
+  // (a ref, not state: focusing the DOM needs no extra render).
   useEffect(() => {
-    if (focusIdx === null) return;
-    rowRefs.current[focusIdx]?.focus();
-    setFocusIdx(null);
-  }, [focusIdx, teams]);
+    if (pendingFocus.current === null) return;
+    rowRefs.current[pendingFocus.current]?.focus();
+    pendingFocus.current = null;
+  });
 
   const move = (i: number, delta: -1 | 1, follow = false): void => {
     const j = i + delta;
     if (j < 0 || j >= teams.length) return;
     const next = [...teams];
     [next[i], next[j]] = [next[j], next[i]];
+    if (follow) pendingFocus.current = j;
     onChange(next);
-    if (follow) setFocusIdx(j);
   };
 
   return (

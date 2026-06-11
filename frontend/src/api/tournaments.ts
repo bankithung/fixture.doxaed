@@ -490,8 +490,15 @@ export interface TournamentSettings {
 export interface ConstraintType {
   type: string;
   label: string;
+  /** Default enforcement (records may toggle hard/soft individually). */
   hard: boolean;
+  /** Param key → kind ("int" | "time" | "date" | "list" | "str") — drives
+   * the ConstraintRow field renderer (redesign §3). */
   params_schema: Record<string, string>;
+  /** Scope kinds this type meaningfully accepts ("all"|"sport"|"leaf"|"team"|"tag"). */
+  scopes: string[];
+  /** "S" = slot-time (scheduler), "P" = pairing-time (generator). */
+  layer: string;
 }
 
 /** A stored venue: physical facility with a type + availability windows. */

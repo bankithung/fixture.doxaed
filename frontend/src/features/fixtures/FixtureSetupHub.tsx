@@ -20,6 +20,7 @@ import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 import { AdvanceToKnockoutDialog } from "./AdvanceToKnockoutDialog";
 import { CompetitionFormatWizard } from "./CompetitionFormatWizard";
+import { ConstraintBuilder } from "./ConstraintBuilder";
 import { GlobalSetupCard } from "./GlobalSetupCard";
 import { GlobalSetupWizard } from "./GlobalSetupWizard";
 import { ReadinessChecklist } from "./ReadinessChecklist";
@@ -129,8 +130,12 @@ export function FixtureSetupHub({
   const onFix = (fix: string, leafKey: string): void => {
     if (fix === "settings") setSetup({ step: SETUP_STEP.calendar });
     else if (fix === "venues") setSetup({ step: SETUP_STEP.venues });
-    else if (fix === "constraints") setSetup({ step: SETUP_STEP.defaults });
-    else if (fix === "teams") navigate(routes.tournamentTeams(id));
+    else if (fix === "constraints") {
+      // The builder lives inline on this page (§6 screen 4) — jump to it.
+      document
+        .getElementById("constraint-builder")
+        ?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    } else if (fix === "teams") navigate(routes.tournamentTeams(id));
     else if (fix === "format") {
       const c = competitions.find((x) => x.leafKey === leafKey);
       if (c) setDraw({ leafKey, label: c.label, teams: c.teams });
@@ -293,6 +298,18 @@ export function FixtureSetupHub({
           );
         })
       )}
+
+      {canManage ? (
+        <ConstraintBuilder
+          tournamentId={id}
+          competitions={competitions
+            .filter((c) => c.leafKey)
+            .map((c) => ({ leafKey: c.leafKey, label: c.label }))}
+          teams={(teams.data ?? [])
+            .filter((tm) => tm.status === "registered")
+            .map((tm) => ({ id: tm.id, name: tm.name }))}
+        />
+      ) : null}
 
       {(standings.data?.groups.length ?? 0) > 0 ? (
         <section className="flex flex-col gap-3">
