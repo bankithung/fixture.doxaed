@@ -32,8 +32,30 @@ from datetime import date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from apps.fixtures.services.constraints import (
+    DEFAULT_WEIGHT,
+    normalize_scope,
+    parse_weight,
+    scope_matches,
+    scope_specificity,
+)
+
 
 # --------------------------------------------------------------------------- config
+@dataclass
+class ScopedRule:
+    """One stored constraint record resolved into the engine's runtime model
+    (redesign spec §2.2/§9 A3): scope filters WHICH ``MatchSlotReq`` it
+    applies to; ``weight`` multiplies soft scores; params are pre-parsed
+    (dates as ``date`` sets, times as ``time``, weekdays as ints)."""
+
+    type: str
+    scope: str = "all"
+    hard: bool = True
+    weight: int = DEFAULT_WEIGHT
+    params: dict[str, Any] = field(default_factory=dict)
+
+
 @dataclass
 class ScheduleConfig:
     """Resource model for a scheduling run (wizard payload + stored
@@ -59,6 +81,13 @@ class ScheduleConfig:
     # Soft: prefer starts inside these windows; balance load across venues.
     preferred_windows: list[tuple[time, time]] = field(default_factory=list)
     balance_venues: bool = False
+    # Scoped/weighted records resolved per MatchSlotReq (redesign spec §9 A3):
+    # the scalars above stay as the global ("all"-scope) defaults; records
+    # with a narrower scope land here and win by specificity.
+    constraint_rules: list[ScopedRule] = field(default_factory=list)
+    # team_id -> {tag_key: value} for tag:<k>=<v> scopes (resolved from
+    # institution data by the caller; empty = tag scopes match nothing).
+    team_tags: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 def _parse_date(v: Any) -> date | None:
@@ -78,6 +107,23 @@ def _parse_time(v: Any, default: time) -> time:
         h, m, *_ = [*v.split(":"), "0"]
         return time(int(h), int(m))
     return default
+
+
+_WEEKDAYS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
+
+
+def _parse_weekdays(v: Any) -> set[int] | None:
+    """Weekday list params ("days") → Python weekday ints (Mon=0). Accepts
+    ints 0-6 or names ("sun", "Sunday"). None/empty ⇒ all days (None)."""
+    if not v:
+        return None
+    out: set[int] = set()
+    for item in v if isinstance(v, list) else [v]:
+        if isinstance(item, int) and 0 <= item <= 6:
+            out.add(item)
+        elif isinstance(item, str) and item.strip()[:3].lower() in _WEEKDAYS:
+            out.add(_WEEKDAYS[item.strip()[:3].lower()])
+    return out or None
 
 
 def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
@@ -137,14 +183,35 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
 def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> list[str]:
     """Interpret the tournament's stored constraint records into the engine's
     resource model (the catalog in ``constraints.py`` defines the shapes).
-    Returns explanation lines for the run report."""
+    Returns explanation lines for the run report.
+
+    Scope + weight are REAL here (redesign spec §2.2/§9 A3): an "all"-scope
+    hard record keeps mutating the matching config scalar (legacy behavior);
+    a scoped (sport:/leaf:/team:/tag:) or soft record becomes a ``ScopedRule``
+    resolved per match inside ``schedule_matches``."""
     notes: list[str] = []
     for c in constraints or []:
         ctype = c.get("type")
         p = c.get("params") or {}
+        scope = normalize_scope(c.get("scope"))
+        hard = bool(c.get("hard", True))
+        try:
+            weight = parse_weight(c.get("weight"))
+        except ValueError:
+            weight = DEFAULT_WEIGHT
+        scoped = scope != "all"
+
         if ctype == "blackout_dates":
             dates = {x for x in (_parse_date(v) for v in p.get("dates", [])) if x}
-            if dates:
+            if not dates:
+                continue
+            if scoped:
+                cfg.constraint_rules.append(ScopedRule(
+                    "blackout_dates", scope, hard, weight, {"dates": dates}))
+                notes.append(
+                    f"Applied blackout dates ({scope}): {len(dates)} day(s)."
+                )
+            else:
                 cfg.excluded_dates |= dates
                 notes.append(f"Applied blackout dates: {len(dates)} day(s).")
         elif ctype == "team_unavailable":
@@ -155,21 +222,47 @@ def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> l
                 notes.append(f"Team {tid[:8]}… unavailable on {len(dates)} day(s).")
         elif ctype == "min_rest_minutes":
             minutes = int(p.get("minutes") or 0)
-            if minutes > cfg.rest_minutes:
+            if minutes <= 0:
+                continue
+            if scoped or not hard:
+                cfg.constraint_rules.append(ScopedRule(
+                    "min_rest_minutes", scope, hard, weight,
+                    {"minutes": minutes}))
+                notes.append(
+                    f"Rest gap of {minutes} minutes for {scope} "
+                    f"({'hard' if hard else 'soft'})."
+                )
+            elif minutes > cfg.rest_minutes:
                 cfg.rest_minutes = minutes
                 notes.append(f"Raised rest gap to {minutes} minutes (stored constraint).")
         elif ctype == "max_matches_per_team_per_day":
             count = int(p.get("count") or 0)
-            if count >= 1:
+            if count < 1:
+                continue
+            if scoped:
+                cfg.constraint_rules.append(ScopedRule(
+                    "max_matches_per_team_per_day", scope, hard, weight,
+                    {"count": count}))
+                notes.append(f"Max matches per team per day for {scope}: {count}.")
+            else:
                 cfg.max_per_team_per_day = count
                 notes.append(f"Max matches per team per day: {count} (stored constraint).")
-        elif ctype == "preferred_window":
-            win = (_parse_time(p.get("from"), cfg.daily_start),
-                   _parse_time(p.get("to"), cfg.daily_end))
-            cfg.preferred_windows.append(win)
-            notes.append("Preferring matches inside the stored preferred window.")
+        elif ctype in ("preferred_window", "category_session_window"):
+            cfg.constraint_rules.append(ScopedRule(ctype, scope, hard, weight, {
+                "days": _parse_weekdays(p.get("days")),
+                "from": _parse_time(p.get("from"), cfg.daily_start),
+                "to": _parse_time(p.get("to"), cfg.daily_end),
+            }))
+            notes.append(
+                "Preferring matches inside the stored preferred window."
+                if ctype == "preferred_window" and not hard
+                else f"'{ctype}' window for {scope} "
+                     f"({'hard grid filter' if hard else 'soft, weighted'})."
+            )
         elif ctype == "balance_venues":
             cfg.balance_venues = True
+            cfg.constraint_rules.append(ScopedRule(
+                "balance_venues", scope, False, weight, {}))
             notes.append("Balancing matches across venues (soft).")
         elif ctype in ("even_spacing", "avoid_back_to_back"):
             notes.append(f"'{ctype}' is optimised by the built-in day-spread scoring.")
@@ -274,11 +367,64 @@ def schedule_matches(
     unscheduled: list[str] = []
     rest = timedelta(minutes=cfg.rest_minutes)
 
+    # Scoped rule lists (redesign spec §9 A3) resolved per match below.
+    rules = cfg.constraint_rules
+    hard_rest_rules = [r for r in rules if r.type == "min_rest_minutes" and r.hard]
+    soft_rest_rules = [r for r in rules if r.type == "min_rest_minutes" and not r.hard]
+    day_rules = [r for r in rules
+                 if r.type == "max_matches_per_team_per_day" and r.hard]
+    blackout_rules = [r for r in rules if r.type == "blackout_dates" and r.hard]
+    window_types = ("preferred_window", "category_session_window")
+    hard_windows = [r for r in rules if r.type in window_types and r.hard]
+    soft_windows = [r for r in rules if r.type in window_types and not r.hard]
+    balance_rules = [r for r in rules if r.type == "balance_venues"]
+
     for venue, start, end, team_ids in preoccupied or []:
         venue_busy[venue].append((start, end))
         for t in team_ids:
             team_busy[t].append((start, end))
             team_day[(t, start.date())] += 1
+
+    def _scope_ok(rule: ScopedRule, m: MatchSlotReq, team_ids: tuple) -> bool:
+        return scope_matches(rule.scope, sport=m.sport, leaf_key=m.leaf_key,
+                             team_ids=team_ids, team_tags=cfg.team_tags)
+
+    def _rest_for(m: MatchSlotReq, t: str) -> timedelta:
+        """Effective hard rest gap for one team in one match: the
+        most-specific matching scoped rule wins (larger minutes break ties);
+        no match falls back to the global scalar."""
+        best: tuple[int, int] | None = None
+        for r in hard_rest_rules:
+            if _scope_ok(r, m, (t,)):
+                cand = (scope_specificity(r.scope),
+                        int(r.params.get("minutes") or 0))
+                if best is None or cand > best:
+                    best = cand
+        return timedelta(minutes=best[1]) if best else rest
+
+    def _day_cap(m: MatchSlotReq, t: str) -> int:
+        best: tuple[int, int] | None = None
+        for r in day_rules:
+            if _scope_ok(r, m, (t,)):
+                cand = (scope_specificity(r.scope), int(r.params.get("count") or 0))
+                if best is None or cand[0] > best[0]:
+                    best = cand
+        return best[1] if best else cfg.max_per_team_per_day
+
+    def _in_window(r: ScopedRule, dt: datetime) -> bool:
+        days = r.params.get("days")
+        if days and dt.weekday() not in days:
+            return False
+        return r.params["from"] <= dt.time() < r.params["to"]
+
+    def _fits_window(r: ScopedRule, dt: datetime, end: datetime) -> bool:
+        """Hard window: the whole match must sit inside the window on a
+        matching day (days listed ⇒ other days are out entirely)."""
+        days = r.params.get("days")
+        if days and dt.weekday() not in days:
+            return False
+        return (dt.time() >= r.params["from"]
+                and end <= datetime.combine(dt.date(), r.params["to"]))
 
     def feasible(m: MatchSlotReq, dt: datetime, venue: str, wend: datetime,
                  dur: timedelta, teams: list[str]) -> bool:
@@ -291,39 +437,84 @@ def schedule_matches(
             return False
         if _overlaps(venue_busy[venue], dt, end):
             return False
+        tkey = tuple(teams)
+        for r in blackout_rules:
+            if dt.date() in r.params["dates"] and _scope_ok(r, m, tkey):
+                return False
+        # Every matching hard window must contain the match (intersection
+        # semantics — two windows that jointly starve a leaf surface as a
+        # violation, §9 A8).
+        for r in hard_windows:
+            if _scope_ok(r, m, tkey) and not _fits_window(r, dt, end):
+                return False
         for t in teams:
             if dt.date() in cfg.team_blackouts.get(t, ()):  # blackout day
                 return False
-            if team_day[(t, dt.date())] >= cfg.max_per_team_per_day:
+            if team_day[(t, dt.date())] >= _day_cap(m, t):
                 return False
-            if _overlaps(team_busy[t], dt, end, gap=rest):
+            gap = _rest_for(m, t)
+            if _overlaps(team_busy[t], dt, end, gap=gap):
                 return False
             # Shared-player conflict: a team linked through a common player
             # is busy whenever its partner team is (W2-D).
             for lt in (linked or {}).get(t, ()):
-                if _overlaps(team_busy[lt], dt, end, gap=rest):
+                if _overlaps(team_busy[lt], dt, end, gap=gap):
                     return False
         return True
 
-    def preference(dt: datetime, venue: str, teams: list[str]) -> float:
+    def preference(m: MatchSlotReq, dt: datetime, venue: str,
+                   dur: timedelta, teams: list[str]) -> float:
         score = 0.0
+        tkey = tuple(teams)
         if cfg.preferred_windows and any(
             w_start <= dt.time() and dt.time() < w_end
             for w_start, w_end in cfg.preferred_windows
         ):
             score += 2.0
-        if cfg.balance_venues:
-            score += 1.0 / (1.0 + venue_load[venue])
+        for r in soft_windows:
+            if _scope_ok(r, m, tkey) and _in_window(r, dt):
+                score += 2.0 * r.weight / DEFAULT_WEIGHT
+        balance_w = sum(
+            r.weight / DEFAULT_WEIGHT
+            for r in balance_rules if _scope_ok(r, m, tkey)
+        )
+        if not balance_rules and cfg.balance_venues:
+            balance_w = 1.0
+        if balance_w:
+            score += balance_w / (1.0 + venue_load[venue])
+        end = dt + dur
+        for r in soft_rest_rules:
+            gap = timedelta(minutes=int(r.params.get("minutes") or 0))
+            for t in teams:
+                if _scope_ok(r, m, (t,)) and not _overlaps(
+                    team_busy[t], dt, end, gap=gap
+                ):
+                    score += 0.5 * r.weight / DEFAULT_WEIGHT
         # day spread: prefer a day the teams aren't already playing
         if teams and all(team_day[(t, dt.date())] == 0 for t in teams):
             score += 0.5
         return score
 
+    def _max_preference(m: MatchSlotReq, teams: list[str]) -> float:
+        """Best achievable soft-window score for a match — normalizes the
+        weighted satisfaction term in ``_score_soft``."""
+        tkey = tuple(teams)
+        mx = 2.0 if cfg.preferred_windows else 0.0
+        mx += sum(
+            2.0 * r.weight / DEFAULT_WEIGHT
+            for r in soft_windows if _scope_ok(r, m, tkey)
+        )
+        return mx
+
     # Earlier rounds first, then declared order — keeps a bracket chronological.
     # First feasible slot wins (deterministic, chronological packing) unless
     # soft preferences are active — then every feasible slot is scored and the
     # best (earliest on ties) is chosen.
-    soft_active = bool(cfg.preferred_windows) or cfg.balance_venues
+    soft_active = (
+        bool(cfg.preferred_windows) or cfg.balance_venues
+        or bool(soft_windows) or bool(soft_rest_rules) or bool(balance_rules)
+    )
+    window_sat = [0.0, 0.0]  # achieved, achievable (weighted windows)
     ordered = sorted(matches, key=lambda m: (m.round_no, m.match_no))
     for m in ordered:
         teams = [t for t in (m.home, m.away) if t]
@@ -336,7 +527,7 @@ def schedule_matches(
             if not soft_active:
                 chosen = (dt, venue)
                 break
-            score = preference(dt, venue, teams)
+            score = preference(m, dt, venue, dur, teams)
             if score > best_score:
                 best_score, chosen = score, (dt, venue)
         if chosen is None:
@@ -345,13 +536,26 @@ def schedule_matches(
         dt, venue = chosen
         end = dt + dur
         assignments[m.id] = (dt, venue)
+        mx = _max_preference(m, teams)
+        if mx > 0:
+            window_sat[1] += mx
+            achieved = 2.0 if cfg.preferred_windows and any(
+                ws <= dt.time() < we for ws, we in cfg.preferred_windows
+            ) else 0.0
+            achieved += sum(
+                2.0 * r.weight / DEFAULT_WEIGHT
+                for r in soft_windows
+                if _scope_ok(r, m, tuple(teams)) and _in_window(r, dt)
+            )
+            window_sat[0] += achieved
         venue_busy[venue].append((dt, end))
         venue_load[venue] += 1
         for t in teams:
             team_busy[t].append((dt, end))
             team_day[(t, dt.date())] += 1
 
-    soft, notes = _score_soft(assignments, team_busy, cfg, len(matches))
+    soft, notes = _score_soft(assignments, team_busy, cfg, len(matches),
+                              window_sat=window_sat)
     explanation = [
         f"{len(assignments)}/{len(matches)} matches scheduled across "
         f"{len(cfg.venues)} venue(s), {cfg.date_start}..{cfg.date_end}.",
@@ -365,9 +569,12 @@ def schedule_matches(
     return ScheduleResult(assignments, unscheduled, soft, explanation)
 
 
-def _score_soft(assignments, team_busy, cfg, total) -> tuple[float, list[str]]:
+def _score_soft(assignments, team_busy, cfg, total,
+                window_sat: list[float] | None = None) -> tuple[float, list[str]]:
     """Cheap soft score in [0,1]: reward even spacing (no team forced into
-    same-day clusters beyond the cap). Extendable per soft constraint."""
+    same-day clusters beyond the cap). When weighted soft windows are active
+    (``window_sat`` = [achieved, achievable]) their satisfaction ratio joins
+    the blend — constraint ``weight`` is the multiplier (spec §2.2)."""
     if not assignments:
         return 0.0, []
     notes: list[str] = []
@@ -383,7 +590,11 @@ def _score_soft(assignments, team_busy, cfg, total) -> tuple[float, list[str]]:
     if clustered:
         notes.append(f"{clustered} team(s) have multiple matches on a single day.")
     placed_ratio = len(assignments) / total if total else 1.0
-    score = round(0.7 * placed_ratio + 0.3 * spread, 3)
+    if window_sat and window_sat[1] > 0:
+        satisfaction = window_sat[0] / window_sat[1]
+        score = round(0.6 * placed_ratio + 0.2 * spread + 0.2 * satisfaction, 3)
+    else:
+        score = round(0.7 * placed_ratio + 0.3 * spread, 3)
     return score, notes
 
 
@@ -486,6 +697,15 @@ def apply_schedule(
         tz = ZoneInfo("UTC")
 
     cfg = config_from_dict(config)
+    # tag:<k>=<v> scopes resolve against institution/seed data — only hit the
+    # DB when a stored record actually uses one.
+    if any(
+        str(c.get("scope") or "").startswith("tag:")
+        for c in tournament.constraints or [] if isinstance(c, dict)
+    ):
+        from apps.fixtures.services.constraints import team_tag_map
+
+        cfg.team_tags = team_tag_map(tournament)
     constraint_notes = merge_stored_constraints(cfg, tournament.constraints)
 
     all_matches = list(
