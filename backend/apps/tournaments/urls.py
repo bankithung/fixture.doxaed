@@ -5,9 +5,11 @@ from django.urls import path
 from apps.disputes.views import TournamentDisputeView
 from apps.fixtures.views import (
     GenerateFixturesView,
+    PreviewFixturesView,
     ScheduleFixturesView,
     TournamentDrawConfigView,
     TournamentFixtureReadinessView,
+    TournamentFixturesView,
     TournamentVenueDetailView,
     TournamentVenuesView,
 )
@@ -155,6 +157,16 @@ urlpatterns = [
         "<uuid:tournament_id>/fixture-readiness/",
         TournamentFixtureReadinessView.as_view(),
         name="tournament-fixture-readiness",
+    ),
+    path(
+        "<uuid:tournament_id>/fixtures/",
+        TournamentFixturesView.as_view(),
+        name="tournament-fixtures",
+    ),
+    path(
+        "<uuid:tournament_id>/fixtures/preview/",
+        PreviewFixturesView.as_view(),
+        name="tournament-fixtures-preview",
     ),
     path(
         "<uuid:tournament_id>/permissions/",

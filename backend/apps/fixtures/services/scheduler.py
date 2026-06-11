@@ -1062,6 +1062,143 @@ def validate_schedule(
     return violations
 
 
+# --------------------------------------------------------------------------- inputs
+def _tournament_tz(tournament) -> ZoneInfo:
+    try:
+        return ZoneInfo(tournament.time_zone or "UTC")
+    except Exception:
+        return ZoneInfo("UTC")
+
+
+def build_schedule_inputs(
+    tournament, cfg: ScheduleConfig, *, leaf_key: str | None = None,
+    plans: list | None = None,
+) -> tuple[list[MatchSlotReq], Preoccupied, dict[str, set[str]]]:
+    """``(reqs, preoccupied, linked)`` — ONE input builder shared by
+    ``apply_schedule`` (commit) and the preview endpoint (redesign §9 A1), so
+    a preview sees exactly the bookings and shared-player links a commit
+    would (tenet 3: preview ≡ commit).
+
+    Without ``plans``, reqs come from the scope's persisted ``scheduled``-
+    status matches (the commit path — live/completed are never moved). With
+    ``plans`` (pure ``MatchPlan``s from the plan_* core), reqs are synthetic
+    ("p1"…) and the scope's own still-``scheduled`` rows are excluded from
+    ``preoccupied`` (an accepted re-draw replaces them); anything in flight
+    or in another competition still blocks the calendar.
+    """
+    from django.utils import timezone as dj_tz
+
+    from apps.matches.models import Match, MatchStatus
+    from apps.matches.services.set_scoring import sport_profile
+
+    tz = _tournament_tz(tournament)
+    sched_overrides = {
+        s.get("key"): (s.get("scheduling") or {}) for s in tournament.sports or []
+    }
+
+    def duration_for(sport: str) -> int | None:
+        o = sched_overrides.get(sport) or {}
+        if o.get("duration_minutes"):
+            return int(o["duration_minutes"])
+        prof = sport_profile(sport)
+        return int(prof["duration_minutes"]) if prof else None
+
+    def venue_type_for(sport: str) -> str:
+        o = sched_overrides.get(sport) or {}
+        if o.get("venue_type"):
+            return str(o["venue_type"])
+        prof = sport_profile(sport)
+        return str(prof["venue_type"]) if prof else ""
+
+    all_matches = list(
+        Match.objects.filter(tournament=tournament, deleted_at__isnull=True)
+    )
+    if plans is None:
+        targets = [
+            m for m in all_matches
+            if m.status == MatchStatus.SCHEDULED
+            and (not leaf_key or m.leaf_key == leaf_key)
+        ]
+        excluded_ids = {m.id for m in targets}
+        reqs = [
+            MatchSlotReq(
+                id=str(m.id),
+                round_no=m.round_no,
+                match_no=m.match_no,
+                home=str(m.home_team_id) if m.home_team_id else None,
+                away=str(m.away_team_id) if m.away_team_id else None,
+                leaf_key=m.leaf_key,
+                sport=m.sport,
+                duration_minutes=duration_for(m.sport),
+                venue_type=venue_type_for(m.sport),
+                stage=m.stage,
+            )
+            for m in targets
+        ]
+    else:
+        plan_leafs = {p.leaf_key for p in plans}
+        excluded_ids = {
+            m.id for m in all_matches
+            if m.status == MatchStatus.SCHEDULED
+            and m.leaf_key in plan_leafs
+            and (not leaf_key or m.leaf_key == leaf_key)
+        }
+        reqs = [
+            MatchSlotReq(
+                id=f"p{p.ref + 1}",
+                round_no=p.round_no,
+                match_no=p.ref + 1,
+                home=str(p.home_team_id) if p.home_team_id else None,
+                away=str(p.away_team_id) if p.away_team_id else None,
+                leaf_key=p.leaf_key,
+                sport=p.sport,
+                duration_minutes=duration_for(p.sport),
+                venue_type=venue_type_for(p.sport),
+                stage=p.stage,
+            )
+            for p in plans
+        ]
+
+    # Other matches' bookings (live, completed, other leaves) block the calendar.
+    preoccupied: Preoccupied = []
+    for m in all_matches:
+        if m.id in excluded_ids or m.scheduled_at is None:
+            continue
+        start = dj_tz.localtime(m.scheduled_at, tz).replace(tzinfo=None)
+        dmin = duration_for(m.sport) or cfg.slot_minutes
+        teams = [str(t) for t in (m.home_team_id, m.away_team_id) if t]
+        preoccupied.append((m.venue, start, start + timedelta(minutes=dmin), teams))
+
+    # Teams sharing a rostered person (one student in two competitions) are
+    # linked: their matches must never overlap (W2-D).
+    from apps.teams.models import Player
+
+    by_person: dict[str, set[str]] = {}
+    for pid, tid in Player.objects.filter(
+        tournament=tournament, deleted_at__isnull=True
+    ).values_list("person_id", "team_id"):
+        by_person.setdefault(str(pid), set()).add(str(tid))
+    linked: dict[str, set[str]] = {}
+    for tids in by_person.values():
+        if len(tids) > 1:
+            for a in tids:
+                linked.setdefault(a, set()).update(tids - {a})
+
+    return reqs, preoccupied, linked
+
+
+def resolve_team_tags(cfg: ScheduleConfig, tournament) -> None:
+    """tag:<k>=<v> scopes resolve against institution/seed data — only hit
+    the DB when a stored record actually uses one."""
+    if any(
+        str(c.get("scope") or "").startswith("tag:")
+        for c in tournament.constraints or [] if isinstance(c, dict)
+    ):
+        from apps.fixtures.services.constraints import team_tag_map
+
+        cfg.team_tags = team_tag_map(tournament)
+
+
 # --------------------------------------------------------------------------- apply
 def apply_schedule(
     *, tournament, config: dict[str, Any], by=None, request=None,
@@ -1084,99 +1221,25 @@ def apply_schedule(
 
     from apps.audit.models import ActorRole
     from apps.audit.services import emit_audit
-    from apps.matches.models import Match, MatchStatus
-    from apps.matches.services.set_scoring import sport_profile
+    from apps.matches.models import Match
 
-    try:
-        tz = ZoneInfo(tournament.time_zone or "UTC")
-    except Exception:
-        tz = ZoneInfo("UTC")
-
+    tz = _tournament_tz(tournament)
     cfg = config_from_dict(config)
-    # tag:<k>=<v> scopes resolve against institution/seed data — only hit the
-    # DB when a stored record actually uses one.
-    if any(
-        str(c.get("scope") or "").startswith("tag:")
-        for c in tournament.constraints or [] if isinstance(c, dict)
-    ):
-        from apps.fixtures.services.constraints import team_tag_map
-
-        cfg.team_tags = team_tag_map(tournament)
+    resolve_team_tags(cfg, tournament)
     constraint_notes = merge_stored_constraints(cfg, tournament.constraints)
 
-    all_matches = list(
-        Match.objects.filter(tournament=tournament, deleted_at__isnull=True)
+    reqs, preoccupied, linked = build_schedule_inputs(
+        tournament, cfg, leaf_key=leaf_key
     )
-    targets = [
-        m for m in all_matches
-        if m.status == MatchStatus.SCHEDULED
-        and (not leaf_key or m.leaf_key == leaf_key)
-    ]
-    target_ids = {m.id for m in targets}
-
-    sched_overrides = {
-        s.get("key"): (s.get("scheduling") or {}) for s in tournament.sports or []
-    }
-
-    def duration_for(m) -> int | None:
-        o = sched_overrides.get(m.sport) or {}
-        if o.get("duration_minutes"):
-            return int(o["duration_minutes"])
-        prof = sport_profile(m.sport)
-        return int(prof["duration_minutes"]) if prof else None
-
-    def venue_type_for(m) -> str:
-        o = sched_overrides.get(m.sport) or {}
-        if o.get("venue_type"):
-            return str(o["venue_type"])
-        prof = sport_profile(m.sport)
-        return str(prof["venue_type"]) if prof else ""
-
-    reqs = [
-        MatchSlotReq(
-            id=str(m.id),
-            round_no=m.round_no,
-            match_no=m.match_no,
-            home=str(m.home_team_id) if m.home_team_id else None,
-            away=str(m.away_team_id) if m.away_team_id else None,
-            leaf_key=m.leaf_key,
-            sport=m.sport,
-            duration_minutes=duration_for(m),
-            venue_type=venue_type_for(m),
-            stage=m.stage,
-        )
-        for m in targets
-    ]
-
-    # Other matches' bookings (live, completed, other leaves) block the calendar.
-    preoccupied: Preoccupied = []
-    for m in all_matches:
-        if m.id in target_ids or m.scheduled_at is None:
-            continue
-        start = dj_tz.localtime(m.scheduled_at, tz).replace(tzinfo=None)
-        dmin = duration_for(m) or cfg.slot_minutes
-        teams = [str(t) for t in (m.home_team_id, m.away_team_id) if t]
-        preoccupied.append((m.venue, start, start + timedelta(minutes=dmin), teams))
-
-    # Teams sharing a rostered person (one student in two competitions) are
-    # linked: their matches must never overlap (W2-D).
-    from apps.teams.models import Player
-
-    by_person: dict[str, set[str]] = {}
-    for pid, tid in Player.objects.filter(
-        tournament=tournament, deleted_at__isnull=True
-    ).values_list("person_id", "team_id"):
-        by_person.setdefault(str(pid), set()).add(str(tid))
-    linked: dict[str, set[str]] = {}
-    for tids in by_person.values():
-        if len(tids) > 1:
-            for a in tids:
-                linked.setdefault(a, set()).update(tids - {a})
-
     result = schedule_matches(reqs, cfg, preoccupied=preoccupied, linked=linked)
     result.explanation[1:1] = constraint_notes
 
-    by_id = {str(m.id): m for m in targets}
+    by_id = {
+        str(m.id): m
+        for m in Match.objects.filter(
+            tournament=tournament, id__in=[r.id for r in reqs]
+        )
+    }
     with transaction.atomic():
         for mid, (dt, venue) in result.assignments.items():
             m = by_id[mid]

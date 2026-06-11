@@ -14,17 +14,42 @@ from apps.fixtures.services.draw_config import (
     update_draw_config,
 )
 from apps.fixtures.services.generate import (
+    compute_inputs_hash,
     generate_knockout_from_groups,
     generate_round_robin,
     generate_round_robin_by_category,
     generate_single_elimination,
 )
+from apps.fixtures.services.preview import preview_fixtures, stored_venue_records
 from apps.fixtures.services.readiness import fixture_readiness
 from apps.fixtures.services.scheduler import apply_schedule
 from apps.teams.models import Team, TeamStatus
 from apps.tournaments.models import Tournament
 from apps.tournaments.permissions import can_access_module
 from apps.tournaments.scope import accessible_tournaments
+
+
+def _inputs_drift_409(request, tournament, leaf_key: str) -> Response | None:
+    """Optimistic-concurrency guard on the Accept path (redesign §9 A1/D10):
+    when the caller carries the previewed ``expected_inputs_hash`` and the
+    stored inputs have drifted since (new registration, config edit), answer
+    409 with the fresh hash + a readiness pointer instead of committing a
+    draw that no longer matches what was previewed."""
+    expected = str(request.data.get("expected_inputs_hash") or "")
+    if not expected:
+        return None
+    current = compute_inputs_hash(tournament, leaf_key or None)
+    if current == expected:
+        return None
+    return Response(
+        {
+            "detail": "inputs_changed",
+            "inputs_hash": current,
+            "leaf_key": leaf_key,
+            "readiness": f"/api/tournaments/{tournament.id}/fixture-readiness/",
+        },
+        status=409,
+    )
 
 
 class GenerateFixturesView(GenericAPIView):
@@ -39,6 +64,9 @@ class GenerateFixturesView(GenericAPIView):
         # Optional competition scope (spec 2026-06-10): generate one category
         # leaf's draw independently; omit for the legacy whole-tournament run.
         leaf_key = str(request.data.get("leaf_key") or "")
+        drifted = _inputs_drift_409(request, t, leaf_key)
+        if drifted is not None:
+            return drifted
         # Effective config layering (redesign spec §2.1/§4.5): defaults <
         # legacy rules keys < draw_config["*"] < draw_config[leaf] < explicit
         # request params. A bare body of {leaf_key} works once the wizard has
@@ -128,16 +156,14 @@ class ScheduleFixturesView(GenericAPIView):
         payload = dict(request.data or {})
         # Optional competition scope: schedule one leaf around everything else.
         leaf_key = str(payload.pop("leaf_key", "") or "")
+        drifted = _inputs_drift_409(request, t, leaf_key)
+        if drifted is not None:
+            return drifted
+        payload.pop("expected_inputs_hash", None)
         # No venues in the payload → the workspace's stored Venue records
         # (with their types + availability windows) are the resource pool.
         if not payload.get("venues"):
-            stored = [
-                {"name": v.name, "venue_type": v.venue_type,
-                 "windows": v.windows, "count": v.count}
-                for v in Venue.objects.filter(
-                    organization=t.organization, deleted_at__isnull=True
-                ).order_by("name")
-            ]
+            stored = stored_venue_records(t)
             if stored:
                 payload["venues"] = stored
         try:
@@ -173,6 +199,113 @@ class TournamentFixtureReadinessView(GenericAPIView):
             raise NotFound("tournament_not_found")
         t = Tournament.objects.select_related("organization").get(id=tournament_id)
         return Response(fixture_readiness(t))
+
+
+class PreviewFixturesView(GenericAPIView):
+    """`POST /api/tournaments/{id}/fixtures/preview/` — pure simulate
+    (redesign spec §5.2, D6): persists nothing, no `event_id` (read-only
+    POST). Gate: bracket_editor. Body `{leaf_key?, draw?, schedule?,
+    include_schedule}`."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        if not can_access_module(request.user, t, "tournament.bracket_editor"):
+            raise PermissionDenied("not_tournament_manager")
+        draw = request.data.get("draw")
+        schedule = request.data.get("schedule")
+        try:
+            data = preview_fixtures(
+                tournament=t,
+                leaf_key=str(request.data.get("leaf_key") or "") or None,
+                draw=draw if isinstance(draw, dict) else None,
+                schedule=schedule if isinstance(schedule, dict) else None,
+                include_schedule=bool(request.data.get("include_schedule", True)),
+            )
+        except (ValueError, TypeError) as e:
+            raise DRFValidationError({"detail": str(e)})
+        return Response(data)
+
+
+class TournamentFixturesView(GenericAPIView):
+    """`DELETE /api/tournaments/{id}/fixtures/?leaf_key=…&event_id=…` — the
+    accepted-the-wrong-draw escape hatch (redesign spec §5.3, D7).
+    Soft-deletes the scope's matches ONLY while every one is still
+    `scheduled` status (nothing live/completed); audited (`draw_deleted`),
+    idempotent on `event_id`. Gate: bracket_editor."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, tournament_id):
+        import uuid as _uuid
+
+        from django.db import transaction
+        from django.utils import timezone as dj_tz
+
+        from apps.audit.models import ActorRole, AuditEvent
+        from apps.audit.services import emit_audit
+        from apps.matches.models import Match, MatchStatus
+
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        if not can_access_module(request.user, t, "tournament.bracket_editor"):
+            raise PermissionDenied("not_tournament_manager")
+
+        leaf_key = str(request.query_params.get("leaf_key") or "")
+        event_id = None
+        raw_eid = request.query_params.get("event_id")
+        if raw_eid:
+            try:
+                event_id = _uuid.UUID(str(raw_eid))
+            except ValueError:
+                raise DRFValidationError({"detail": "invalid_event_id"})
+            prior = AuditEvent.objects.filter(
+                idempotency_key=event_id, event_type="draw_deleted"
+            ).first()
+            if prior is not None:  # replay (invariant 3)
+                payload = prior.payload_after or {}
+                return Response({
+                    "deleted": payload.get("deleted", 0),
+                    "leaf_key": payload.get("leaf_key", leaf_key),
+                })
+
+        scope = Match.objects.filter(tournament=t, deleted_at__isnull=True)
+        if leaf_key:
+            scope = scope.filter(leaf_key=leaf_key)
+        matches = list(scope)
+        locked = [m for m in matches if m.status != MatchStatus.SCHEDULED]
+        if locked:
+            return Response(
+                {
+                    "detail": "draw_locked",
+                    "leaf_key": leaf_key,
+                    "matches": [str(m.id) for m in locked],
+                },
+                status=409,
+            )
+        with transaction.atomic():
+            scope.update(deleted_at=dj_tz.now())
+            emit_audit(
+                actor_user=request.user,
+                actor_role=ActorRole.ADMIN,
+                event_type="draw_deleted",
+                target_type="tournament",
+                target_id=t.id,
+                organization_id=t.organization_id,
+                tournament_id=t.id,
+                idempotency_key=event_id,
+                payload_after={
+                    "leaf_key": leaf_key,
+                    "deleted": len(matches),
+                    "match_ids": [str(m.id) for m in matches],
+                },
+                request=request,
+            )
+        return Response({"deleted": len(matches), "leaf_key": leaf_key})
 
 
 class TournamentDrawConfigView(GenericAPIView):

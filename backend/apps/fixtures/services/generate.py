@@ -732,19 +732,16 @@ def generate_round_robin(
     return created
 
 
-def generate_round_robin_by_category(
-    *, tournament, leaf_key: str | None = None, legs: int = 1,
+def _plan_by_category(
+    tournament, leaf_key: str | None, *, legs: int = 1,
     seeding: str = "registration", seed: int | None = None,
     warnings: list | None = None,
-) -> list[Match]:
-    """Round-robin WITHIN each competition (category leaf): a team only plays
-    others registered into the SAME leaf. Buckets key on the structural
-    ``Team.leaf_key`` (falling back to the legacy ``pool`` label); idempotency
-    is PER BUCKET, so each competition generates independently — pass
-    ``leaf_key`` to draw exactly one. Buckets with <2 teams are skipped.
-    ``legs=2`` doubles each bucket's cycle (mirrored, spec §4.2);
-    rules.small_group_double_rr doubles only buckets at/under its max_size.
-    Thin persistence wrapper over ``plan_round_robin_pool`` (spec §4.1)."""
+) -> tuple[list[MatchPlan], list[Match]]:
+    """The pure planning core of ``generate_round_robin_by_category`` (also
+    the preview endpoint's path — spec §5.2): bucket registered teams per
+    competition, skip buckets that already have matches (per-bucket
+    idempotency), plan the rest. Returns ``(plans, skipped_existing)``.
+    Read-only — zero writes."""
     teams = _registered_teams(tournament, leaf_key)
     if leaf_key and len(teams) < 2:
         raise ValueError("Need at least 2 registered teams in this category.")
@@ -768,9 +765,6 @@ def generate_round_robin_by_category(
     sports_cfg = tournament.sports or []
     small_max = _small_group_max(tournament)
     warnings = [] if warnings is None else warnings
-    generated_seed: int | None = None
-    if seeding == "random" and seed is None:
-        seed = generated_seed = _new_seed()
     plans: list[MatchPlan] = []
     skipped_existing: list[Match] = []
     for bucket, group in pools.items():
@@ -810,6 +804,30 @@ def generate_round_robin_by_category(
             ih = compute_inputs_hash(tournament, bucket)
             for p in plans[before:]:
                 p.inputs_hash = ih
+    return plans, skipped_existing
+
+
+def generate_round_robin_by_category(
+    *, tournament, leaf_key: str | None = None, legs: int = 1,
+    seeding: str = "registration", seed: int | None = None,
+    warnings: list | None = None,
+) -> list[Match]:
+    """Round-robin WITHIN each competition (category leaf): a team only plays
+    others registered into the SAME leaf. Buckets key on the structural
+    ``Team.leaf_key`` (falling back to the legacy ``pool`` label); idempotency
+    is PER BUCKET, so each competition generates independently — pass
+    ``leaf_key`` to draw exactly one. Buckets with <2 teams are skipped.
+    ``legs=2`` doubles each bucket's cycle (mirrored, spec §4.2);
+    rules.small_group_double_rr doubles only buckets at/under its max_size.
+    Thin persistence wrapper over ``_plan_by_category`` (spec §4.1)."""
+    warnings = [] if warnings is None else warnings
+    generated_seed: int | None = None
+    if seeding == "random" and seed is None:
+        seed = generated_seed = _new_seed()
+    plans, skipped_existing = _plan_by_category(
+        tournament, leaf_key, legs=legs, seeding=seeding, seed=seed,
+        warnings=warnings,
+    )
     if not plans and not skipped_existing:
         raise ValueError("No category has 2+ teams to schedule.")
     with transaction.atomic():
@@ -936,27 +954,17 @@ def _cross_seed(quals: list[list[str]]) -> list[str]:
     return seeds
 
 
-def generate_knockout_from_groups(
-    *, tournament, advance_per_group: int = 2, leaf_key: str | None = None,
-    third_place: bool = False, warnings: list | None = None,
-) -> list[Match]:
-    """Advance the top ``advance_per_group`` of each group into a single-
-    elimination bracket (FIFA-style groups → knockout), cross-seeding winners
-    against other groups' runners-up. Leaf-aware: with ``leaf_key`` only that
-    competition's groups feed its own bracket. Idempotent per leaf scope."""
+def plan_knockout_qualifiers(
+    tournament, *, advance_per_group: int = 2, leaf_key: str | None = None,
+) -> list[Team]:
+    """Standings-ordered qualifier list for groups→knockout (shared with the
+    preview endpoint — spec §5.2): top ``advance_per_group`` per group,
+    cross-seeded across groups. Read-only; raises ValueError while groups
+    are unfinished."""
     from apps.matches.services.standings import compute_standings
 
     if advance_per_group < 1:
         raise ValueError("advance_per_group must be at least 1.")
-
-    ko_scope = Match.objects.filter(
-        tournament=tournament, stage="knockout", deleted_at__isnull=True
-    )
-    if leaf_key:
-        ko_scope = ko_scope.filter(leaf_key=leaf_key)
-    existing = list(ko_scope)
-    if existing:
-        return existing
 
     group_scope = Match.objects.filter(
         tournament=tournament, stage="group", deleted_at__isnull=True
@@ -988,8 +996,29 @@ def generate_knockout_from_groups(
             raise ValueError("Need at least 2 advancing teams for a knockout.")
     else:
         seed_ids = _cross_seed(quals)
+    return [Team.objects.get(id=tid) for tid in seed_ids]
 
-    teams = [Team.objects.get(id=tid) for tid in seed_ids]
+
+def generate_knockout_from_groups(
+    *, tournament, advance_per_group: int = 2, leaf_key: str | None = None,
+    third_place: bool = False, warnings: list | None = None,
+) -> list[Match]:
+    """Advance the top ``advance_per_group`` of each group into a single-
+    elimination bracket (FIFA-style groups → knockout), cross-seeding winners
+    against other groups' runners-up. Leaf-aware: with ``leaf_key`` only that
+    competition's groups feed its own bracket. Idempotent per leaf scope."""
+    ko_scope = Match.objects.filter(
+        tournament=tournament, stage="knockout", deleted_at__isnull=True
+    )
+    if leaf_key:
+        ko_scope = ko_scope.filter(leaf_key=leaf_key)
+    existing = list(ko_scope)
+    if existing:
+        return existing
+
+    teams = plan_knockout_qualifiers(
+        tournament, advance_per_group=advance_per_group, leaf_key=leaf_key
+    )
     return generate_single_elimination(
         tournament=tournament, teams=teams, stage="knockout",
         leaf_key=leaf_key or "", third_place=third_place, warnings=warnings,
