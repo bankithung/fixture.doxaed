@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import random
+from dataclasses import dataclass
 
 from django.db import transaction
 
@@ -20,6 +21,28 @@ from apps.teams.models import Team, TeamStatus
 from apps.tournaments.services.sports import leaf_label, sport_for_leaf
 
 _GROUP_LABELS = [chr(ord("A") + i) for i in range(26)]
+
+
+@dataclass
+class MatchPlan:
+    """One planned match from the pure pairing core (redesign spec §4.1) —
+    exactly what the persistence wrapper (or the preview endpoint) needs,
+    with no DB identity. ``ref`` is the plan's stable handle within a run;
+    cross-plan bracket pointers use ``{"type": "winner_of"|"loser_of",
+    "ref": <plan ref>}`` and the wrapper rewrites them into real match-id
+    pointers on persist."""
+
+    stage: str
+    round_no: int
+    group_label: str = ""
+    leaf_key: str = ""
+    sport: str = ""
+    home_team_id: object | None = None
+    away_team_id: object | None = None
+    home_source: dict | None = None
+    away_source: dict | None = None
+    inputs_hash: str = ""
+    ref: int = 0
 
 
 def _round_robin(teams: list, *, legs: int = 1) -> list[tuple]:
@@ -231,6 +254,206 @@ def _next_match_no(tournament) -> int:
     ).count()
 
 
+def _group_hash(group: list) -> str:
+    """Per-group inputs_hash (invariant 10): sha256 of the sorted team ids."""
+    return hashlib.sha256(
+        ",".join(sorted(str(t.id) for t in group)).encode()
+    ).hexdigest()
+
+
+# ----------------------------------------------------------- pure pairing core
+# (redesign spec §4.1) plan_* functions decide WHO plays WHOM with ZERO DB
+# access; generate_* below are thin persistence wrappers. The preview endpoint
+# calls plan_* directly.
+
+def _plan_pool(
+    group: list, *, label: str, leaf_key: str, sport: str, legs: int,
+    small_group_max: int, start_ref: int,
+) -> list[MatchPlan]:
+    """Circle-method plans for ONE round-robin pool (opening-pair repair,
+    inputs_hash, small-group leg doubling)."""
+    group = _separate_institutions(group, _opening_pairs_circle(len(group)))
+    ih = _group_hash(group)
+    group_legs = _legs_for_group(len(group), legs, small_group_max)
+    plans: list[MatchPlan] = []
+    for round_no, home, away in _round_robin(group, legs=group_legs):
+        plans.append(
+            MatchPlan(
+                stage="group", group_label=label, round_no=round_no,
+                leaf_key=leaf_key, sport=sport,
+                home_team_id=home.id, away_team_id=away.id,
+                inputs_hash=ih, ref=start_ref + len(plans),
+            )
+        )
+    return plans
+
+
+def plan_round_robin(
+    teams: list, *, group_size: int = 5, leaf_key: str = "", sport: str = "",
+    label_prefix: str = "", legs: int = 1, seeding: str = "registration",
+    seed: int | None = None, small_group_max: int = 0,
+) -> list[MatchPlan]:
+    """Pure pairing core for the grouped round-robin: seed order, institution
+    spread, chunk/snake grouping, per-group circle pairing. Zero DB writes."""
+    if len(teams) < 2:
+        raise ValueError("Need at least 2 registered teams to generate fixtures.")
+    teams = _seed_order(list(teams), seeding=seeding, seed=seed)
+    # Constraint-repair pass AFTER seeding (§4.3): spread institutions across
+    # pools; each pool's circle pairing is repaired again in _plan_pool once
+    # group membership is known.
+    teams = _separate_institutions(teams)
+    if seeding == "snake":
+        groups = _snake_groups(teams, group_size)
+    else:
+        groups = [
+            teams[i : i + group_size] for i in range(0, len(teams), group_size)
+        ]
+    plans: list[MatchPlan] = []
+    for gi, group in enumerate(groups):
+        label = f"{label_prefix}Group {_GROUP_LABELS[gi]}"[:80]
+        plans.extend(
+            _plan_pool(
+                group, label=label, leaf_key=leaf_key, sport=sport, legs=legs,
+                small_group_max=small_group_max, start_ref=len(plans),
+            )
+        )
+    return plans
+
+
+def plan_round_robin_pool(
+    teams: list, *, label: str, leaf_key: str = "", sport: str = "",
+    legs: int = 1, seeding: str = "registration", seed: int | None = None,
+    small_group_max: int = 0, start_ref: int = 0,
+) -> list[MatchPlan]:
+    """Pure pairing core for ONE category bucket (by-category round-robin):
+    seed order within the bucket, opening-pair repair, circle pairing. Zero
+    DB writes."""
+    teams = _seed_order(list(teams), seeding=seeding, seed=seed)
+    return _plan_pool(
+        teams, label=label, leaf_key=leaf_key, sport=sport, legs=legs,
+        small_group_max=small_group_max, start_ref=start_ref,
+    )
+
+
+def plan_single_elimination(
+    teams: list, *, stage: str = "knockout", leaf_key: str = "",
+    sport: str = "", third_place: bool = False,
+    seeding: str = "registration", seed: int | None = None,
+) -> list[MatchPlan]:
+    """Pure pairing core for a single-elimination bracket (byes, winner_of /
+    loser_of pointers as plan refs, optional 3rd-place playoff — §4.4). Zero
+    DB writes."""
+    n = len(teams)
+    if n < 2:
+        raise ValueError("single elimination requires at least 2 teams")
+
+    teams = _seed_order(list(teams), seeding=seeding, seed=seed)
+    # Constraint repair AFTER seeding (§4.3): same-institution teams don't
+    # meet in round 1 where avoidable (W2-D).
+    teams = _separate_institutions(list(teams), _opening_pairs_bracket(n))
+
+    size = 1
+    while size < n:
+        size *= 2
+    entrants = [teams[s - 1] if s <= n else None for s in _bracket_order(size)]
+
+    common = {"stage": stage, "leaf_key": leaf_key, "sport": sport}
+    plans: list[MatchPlan] = []
+    # Round 1: pairs with two teams play; a pair with a bye forwards its team
+    # straight to round 2 as a concrete slot.
+    slots: list[dict] = []  # {"plan": ref} or {"team": Team}
+    for i in range(0, size, 2):
+        home, away = entrants[i], entrants[i + 1]
+        if home is not None and away is not None:
+            plans.append(
+                MatchPlan(
+                    round_no=1,
+                    home_team_id=home.id, away_team_id=away.id,
+                    home_source={"type": "team", "team_id": str(home.id)},
+                    away_source={"type": "team", "team_id": str(away.id)},
+                    ref=len(plans), **common,
+                )
+            )
+            slots.append({"plan": plans[-1].ref})
+        else:
+            slots.append({"team": home or away})  # bye → advances directly
+
+    def _side(slot: dict) -> tuple:
+        """(team_id, source) for a bracket slot."""
+        if "team" in slot:
+            tm = slot["team"]
+            return tm.id, {"type": "team", "team_id": str(tm.id)}
+        return None, {"type": "winner_of", "ref": slot["plan"]}
+
+    round_no = 2
+    while len(slots) > 1:
+        nxt_slots: list[dict] = []
+        if third_place and len(slots) == 2 \
+                and all("plan" in s for s in slots):
+            # 3rd-place playoff between the semifinal losers, placed before
+            # the final in match order (spec §4.4).
+            plans.append(
+                MatchPlan(
+                    round_no=round_no, group_label="3rd Place",
+                    home_source={"type": "loser_of", "ref": slots[0]["plan"]},
+                    away_source={"type": "loser_of", "ref": slots[1]["plan"]},
+                    ref=len(plans), **common,
+                )
+            )
+        for i in range(0, len(slots), 2):
+            home_id, home_src = _side(slots[i])
+            away_id, away_src = _side(slots[i + 1])
+            plans.append(
+                MatchPlan(
+                    round_no=round_no,
+                    home_team_id=home_id, away_team_id=away_id,
+                    home_source=home_src, away_source=away_src,
+                    ref=len(plans), **common,
+                )
+            )
+            nxt_slots.append({"plan": plans[-1].ref})
+        slots = nxt_slots
+        round_no += 1
+    return plans
+
+
+def _resolve_source(src: dict | None, matches: list[Match]) -> dict | None:
+    """Rewrite a plan-ref bracket pointer into a real match-id pointer
+    (invariant 9 typed references). Refs always point at earlier plans, so
+    the target Match instance already exists (UUIDs are client-side)."""
+    if src and "ref" in src:
+        return {"type": src["type"], "match_id": str(matches[src["ref"]].id)}
+    return src
+
+
+def _persist_plans(tournament, plans: list[MatchPlan]) -> list[Match]:
+    """Persistence wrapper for the pure pairing core: plans → Match rows with
+    match_no continuation, SCHEDULED status and ref→match_id pointer rewrite —
+    exactly as the legacy inline creation did. The caller wraps this in a
+    transaction and has already enforced idempotency."""
+    org = tournament.organization
+    match_no = _next_match_no(tournament)
+    matches: list[Match] = []
+    for p in plans:
+        match_no += 1
+        m = Match(
+            organization=org, tournament=tournament, stage=p.stage,
+            group_label=p.group_label, sport=p.sport, leaf_key=p.leaf_key,
+            round_no=p.round_no, match_no=match_no,
+            home_team_id=p.home_team_id, away_team_id=p.away_team_id,
+            status=MatchStatus.SCHEDULED, inputs_hash=p.inputs_hash,
+        )
+        home_src = _resolve_source(p.home_source, matches)
+        away_src = _resolve_source(p.away_source, matches)
+        if home_src is not None:
+            m.home_source = home_src
+        if away_src is not None:
+            m.away_source = away_src
+        matches.append(m)
+    Match.objects.bulk_create(matches)
+    return matches
+
+
 def generate_round_robin(
     *, tournament, group_size: int = 5, leaf_key: str | None = None,
     legs: int = 1, seeding: str = "registration", seed: int | None = None,
@@ -241,7 +464,8 @@ def generate_round_robin(
     behavior applies. Group membership lives on Match.group_label — Team.pool
     (the registered category) is never touched. ``legs=2`` doubles every
     group's cycle (mirrored, spec §4.2); rules.small_group_double_rr doubles
-    only the groups at/under its max_size."""
+    only the groups at/under its max_size. Thin persistence wrapper over
+    ``plan_round_robin`` (spec §4.1)."""
     existing_scope = Match.objects.filter(tournament=tournament, deleted_at__isnull=True)
     if leaf_key:
         existing_scope = existing_scope.filter(leaf_key=leaf_key)
@@ -255,58 +479,22 @@ def generate_round_robin(
     generated_seed: int | None = None
     if seeding == "random" and seed is None:
         seed = generated_seed = _new_seed()
-    teams = _seed_order(teams, seeding=seeding, seed=seed)
-    # Constraint-repair pass AFTER seeding (§4.3): spread institutions across
-    # pools; per-group circle pairing is repaired again below once group
-    # membership is known.
-    teams = _separate_institutions(teams)
 
     sports_cfg = tournament.sports or []
-    sport = sport_for_leaf(sports_cfg, leaf_key or "")
-    prefix = f"{leaf_label(sports_cfg, leaf_key)} — " if leaf_key else ""
-
-    org = tournament.organization
-    small_max = _small_group_max(tournament)
-    to_create: list[Match] = []
-    match_no = _next_match_no(tournament)
+    plans = plan_round_robin(
+        teams,
+        group_size=group_size,
+        leaf_key=leaf_key or "",
+        sport=sport_for_leaf(sports_cfg, leaf_key or ""),
+        label_prefix=f"{leaf_label(sports_cfg, leaf_key)} — " if leaf_key else "",
+        legs=legs, seeding=seeding, seed=seed,
+        small_group_max=_small_group_max(tournament),
+    )
     with transaction.atomic():
-        if seeding == "snake":
-            groups = _snake_groups(teams, group_size)
-        else:
-            groups = [
-                teams[i : i + group_size] for i in range(0, len(teams), group_size)
-            ]
-        for gi, group in enumerate(groups):
-            group = _separate_institutions(
-                group, _opening_pairs_circle(len(group))
-            )
-            label = f"{prefix}Group {_GROUP_LABELS[gi]}"[:80]
-            ih = hashlib.sha256(
-                ",".join(sorted(str(t.id) for t in group)).encode()
-            ).hexdigest()
-            group_legs = _legs_for_group(len(group), legs, small_max)
-            for round_no, home, away in _round_robin(group, legs=group_legs):
-                match_no += 1
-                to_create.append(
-                    Match(
-                        organization=org,
-                        tournament=tournament,
-                        stage="group",
-                        group_label=label,
-                        sport=sport,
-                        leaf_key=leaf_key or "",
-                        round_no=round_no,
-                        match_no=match_no,
-                        home_team=home,
-                        away_team=away,
-                        status=MatchStatus.SCHEDULED,
-                        inputs_hash=ih,
-                    )
-                )
-        Match.objects.bulk_create(to_create)
+        created = _persist_plans(tournament, plans)
         if generated_seed is not None:
             _persist_draw_seed(tournament, leaf_key, generated_seed)
-    return to_create
+    return created
 
 
 def generate_round_robin_by_category(
@@ -319,7 +507,8 @@ def generate_round_robin_by_category(
     is PER BUCKET, so each competition generates independently — pass
     ``leaf_key`` to draw exactly one. Buckets with <2 teams are skipped.
     ``legs=2`` doubles each bucket's cycle (mirrored, spec §4.2);
-    rules.small_group_double_rr doubles only buckets at/under its max_size."""
+    rules.small_group_double_rr doubles only buckets at/under its max_size.
+    Thin persistence wrapper over ``plan_round_robin_pool`` (spec §4.1)."""
     teams = _registered_teams(tournament, leaf_key)
     if leaf_key and len(teams) < 2:
         raise ValueError("Need at least 2 registered teams in this category.")
@@ -341,65 +530,44 @@ def generate_round_robin_by_category(
     done_labels = {m.group_label for m in existing if not m.leaf_key}
 
     sports_cfg = tournament.sports or []
-    org = tournament.organization
     small_max = _small_group_max(tournament)
     generated_seed: int | None = None
     if seeding == "random" and seed is None:
         seed = generated_seed = _new_seed()
-    to_create: list[Match] = []
+    plans: list[MatchPlan] = []
     skipped_existing: list[Match] = []
-    match_no = _next_match_no(tournament)
+    for bucket, group in pools.items():
+        is_leaf = bool(group[0].leaf_key)
+        label = (leaf_label(sports_cfg, bucket) if is_leaf else bucket)[:80]
+        if (is_leaf and bucket in done_leafs) or (
+            not is_leaf and label in done_labels
+        ):
+            skipped_existing.extend(
+                m for m in existing
+                if (m.leaf_key == bucket if is_leaf else m.group_label == label)
+            )
+            continue
+        if len(group) < 2:
+            continue  # a category with a single team has no matches
+        sport_key = (
+            sport_for_leaf(sports_cfg, bucket) or group[0].sport
+            if is_leaf
+            else group[0].sport
+        )
+        plans.extend(
+            plan_round_robin_pool(
+                group, label=label, leaf_key=bucket if is_leaf else "",
+                sport=sport_key, legs=legs, seeding=seeding, seed=seed,
+                small_group_max=small_max, start_ref=len(plans),
+            )
+        )
+    if not plans and not skipped_existing:
+        raise ValueError("No category has 2+ teams to schedule.")
     with transaction.atomic():
-        for bucket, group in pools.items():
-            is_leaf = bool(group[0].leaf_key)
-            label = (leaf_label(sports_cfg, bucket) if is_leaf else bucket)[:80]
-            if (is_leaf and bucket in done_leafs) or (
-                not is_leaf and label in done_labels
-            ):
-                skipped_existing.extend(
-                    m for m in existing
-                    if (m.leaf_key == bucket if is_leaf else m.group_label == label)
-                )
-                continue
-            if len(group) < 2:
-                continue  # a category with a single team has no matches
-            group = _seed_order(group, seeding=seeding, seed=seed)
-            group = _separate_institutions(
-                group, _opening_pairs_circle(len(group))
-            )
-            sport_key = (
-                sport_for_leaf(sports_cfg, bucket) or group[0].sport
-                if is_leaf
-                else group[0].sport
-            )
-            ih = hashlib.sha256(
-                ",".join(sorted(str(t.id) for t in group)).encode()
-            ).hexdigest()
-            group_legs = _legs_for_group(len(group), legs, small_max)
-            for round_no, home, away in _round_robin(group, legs=group_legs):
-                match_no += 1
-                to_create.append(
-                    Match(
-                        organization=org,
-                        tournament=tournament,
-                        stage="group",
-                        group_label=label,
-                        sport=sport_key,
-                        leaf_key=bucket if is_leaf else "",
-                        round_no=round_no,
-                        match_no=match_no,
-                        home_team=home,
-                        away_team=away,
-                        status=MatchStatus.SCHEDULED,
-                        inputs_hash=ih,
-                    )
-                )
-        if not to_create and not skipped_existing:
-            raise ValueError("No category has 2+ teams to schedule.")
-        Match.objects.bulk_create(to_create)
-        if generated_seed is not None and to_create:
+        created = _persist_plans(tournament, plans)
+        if generated_seed is not None and created:
             _persist_draw_seed(tournament, leaf_key, generated_seed)
-    return [*skipped_existing, *to_create]
+    return [*skipped_existing, *created]
 
 
 def _bracket_order(size: int) -> list[int]:
@@ -431,9 +599,10 @@ def generate_single_elimination(
     sourced from `loser_of` pointers — the first generator to emit the
     pointer type advance.py already resolves. A bye straight into the final
     (3 teams) has a single semi, so its loser is 3rd automatically — no
-    playoff is emitted."""
-    n = len(teams)
-    if n < 2:
+    playoff is emitted.
+
+    Thin persistence wrapper over ``plan_single_elimination`` (spec §4.1)."""
+    if len(teams) < 2:
         raise ValueError("single elimination requires at least 2 teams")
 
     existing = list(
@@ -451,100 +620,14 @@ def generate_single_elimination(
     generated_seed: int | None = None
     if seeding == "random" and seed is None:
         seed = generated_seed = _new_seed()
-    teams = _seed_order(list(teams), seeding=seeding, seed=seed)
-    # Constraint repair AFTER seeding (§4.3): same-institution teams don't
-    # meet in round 1 where avoidable (W2-D).
-    teams = _separate_institutions(list(teams), _opening_pairs_bracket(n))
-
-    size = 1
-    while size < n:
-        size *= 2
-    entrants = [teams[s - 1] if s <= n else None for s in _bracket_order(size)]
-
-    org = tournament.organization
-    created: list[Match] = []
-    match_no = _next_match_no(tournament)
-    common = {
-        "organization": org, "tournament": tournament, "stage": stage,
-        "sport": sport, "leaf_key": leaf_key or "",
-        "status": MatchStatus.SCHEDULED,
-    }
-
+    plans = plan_single_elimination(
+        list(teams), stage=stage, leaf_key=leaf_key or "", sport=sport,
+        third_place=third_place, seeding=seeding, seed=seed,
+    )
     with transaction.atomic():
-        # Round 1: pairs with two teams play; a pair with a bye forwards its
-        # team straight to round 2 as a concrete slot.
-        slots: list[dict] = []  # {"match": Match} or {"team": Team}
-        round1: list[Match] = []
-        for i in range(0, size, 2):
-            home, away = entrants[i], entrants[i + 1]
-            if home is not None and away is not None:
-                match_no += 1
-                round1.append(
-                    Match(
-                        round_no=1, match_no=match_no,
-                        home_team=home, away_team=away,
-                        home_source={"type": "team", "team_id": str(home.id)},
-                        away_source={"type": "team", "team_id": str(away.id)},
-                        **common,
-                    )
-                )
-                slots.append({"match": round1[-1]})
-            else:
-                slots.append({"team": home or away})  # bye → advances directly
-        Match.objects.bulk_create(round1)
-        created.extend(round1)
-
-        def _side(slot: dict) -> tuple:
-            """(team_id, source) for a bracket slot."""
-            if "team" in slot:
-                tm = slot["team"]
-                return tm.id, {"type": "team", "team_id": str(tm.id)}
-            return None, {"type": "winner_of", "match_id": str(slot["match"].id)}
-
-        round_no = 2
-        while len(slots) > 1:
-            nxt_matches: list[Match] = []
-            nxt_slots: list[dict] = []
-            if third_place and len(slots) == 2 \
-                    and all("match" in s for s in slots):
-                # 3rd-place playoff between the semifinal losers, placed
-                # before the final in match order (spec §4.4).
-                match_no += 1
-                nxt_matches.append(
-                    Match(
-                        round_no=round_no, match_no=match_no,
-                        group_label="3rd Place",
-                        home_source={
-                            "type": "loser_of",
-                            "match_id": str(slots[0]["match"].id),
-                        },
-                        away_source={
-                            "type": "loser_of",
-                            "match_id": str(slots[1]["match"].id),
-                        },
-                        **common,
-                    )
-                )
-            for i in range(0, len(slots), 2):
-                match_no += 1
-                home_id, home_src = _side(slots[i])
-                away_id, away_src = _side(slots[i + 1])
-                nxt_matches.append(
-                    Match(
-                        round_no=round_no, match_no=match_no,
-                        home_team_id=home_id, away_team_id=away_id,
-                        home_source=home_src, away_source=away_src,
-                        **common,
-                    )
-                )
-                nxt_slots.append({"match": nxt_matches[-1]})
-            Match.objects.bulk_create(nxt_matches)
-            created.extend(nxt_matches)
-            slots = nxt_slots
-            round_no += 1
+        created = _persist_plans(tournament, plans)
         if generated_seed is not None:
             _persist_draw_seed(tournament, leaf_key, generated_seed)
-
     return created
 
 
