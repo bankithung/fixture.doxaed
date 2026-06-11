@@ -48,23 +48,26 @@ export function ProtectedRoute({
   }
 
   // Surfaces a brand-new (org-less) user must still reach: the chooser, the
-  // tournaments hub, the self-serve "start a tournament" page (which
-  // auto-provisions their workspace), their invites inbox, and their profile.
-  // Without this allowlist the zero-membership redirect traps new users in a
-  // loop — /orgs → "Start a tournament" → /tournaments/new → back to /orgs.
-  const ORG_OPTIONAL_PATHS = new Set<string>([
+  // whole tournaments area (hub, self-serve create, AND every tournament
+  // workspace — an invite-accepted user holds a TournamentMembership but, by
+  // design, no org membership), their invites inbox, and their profile.
+  // Prefix-matched: exact paths only would bounce /tournaments/:id back to
+  // /orgs, making invited tournaments unopenable. Org-scoped pages (/o/:slug)
+  // stay membership-gated. Server-side isolation (accessible_tournaments)
+  // remains the real access check — this gate is purely navigational.
+  const ORG_OPTIONAL_PREFIXES = [
     routes.orgChooser(),
     routes.tournaments(),
-    routes.tournamentNew(),
     routes.invites(),
     "/me",
-  ]);
+  ];
+  const orgOptional = ORG_OPTIONAL_PREFIXES.some(
+    (prefix) =>
+      location.pathname === prefix ||
+      location.pathname.startsWith(`${prefix}/`),
+  );
   const memberships = user.memberships ?? [];
-  if (
-    memberships.length === 0 &&
-    !user.is_superuser &&
-    !ORG_OPTIONAL_PATHS.has(location.pathname)
-  ) {
+  if (memberships.length === 0 && !user.is_superuser && !orgOptional) {
     return <Navigate to={routes.orgChooser()} replace />;
   }
 
