@@ -116,6 +116,22 @@ def test_constraints_reviewed_goes_stale_after_settings_change():
     assert chk["fix"] == "constraints"
 
 
+def test_calendar_set_accepts_wizard_saved_dates():
+    """§5.1: calendar_set passes on scheduling_config OR the global-setup
+    wizard's draw_config["*"].calendar dates."""
+    admin = _verified("a@test.local")
+    t = _tournament(admin)
+    update_draw_config(
+        tournament=t, leaf_key="*",
+        partial={"calendar": {"date_start": "2026-08-01",
+                              "date_end": "2026-08-05"}},
+        by=admin,
+    )
+    t.refresh_from_db()
+    assert _checks(fixture_readiness(t)["global"])[
+        "calendar_set"]["status"] == "ok"
+
+
 # ------------------------------------------------------------ per-competition
 def test_enough_teams_gates_and_summary_counts():
     admin = _verified("a@test.local")

@@ -36,6 +36,9 @@ DEFAULT_DRAW_CONFIG: dict[str, Any] = {
     "bye_policy": "seeded_byes",     # seeded_byes (preliminary_round deferred)
     "min_entries_action": "prompt",  # prompt | cancel (auto_champion deferred — §9 A6)
     "constraints_reviewed_at": None,  # ISO timestamp ("Mark reviewed" — §9 A10)
+    # Global-setup wizard calendar (§5.1 "wizard-saved dates"; only meaningful
+    # on the "*" layer): slot-time data, excluded from the draw inputs_hash.
+    "calendar": None,
 }
 
 _FORMATS = {"round_robin", "knockout", "groups_knockout"}
@@ -49,6 +52,43 @@ _LEGACY_RULES_KEYS = ("format", "group_size", "advance_per_group")
 
 def _is_int(v: Any) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
+
+
+_CALENDAR_KEYS = {"date_start", "date_end", "daily_start", "daily_end",
+                  "slot_minutes"}
+
+
+def _validate_calendar(cal: Any) -> None:
+    """The wizard-saved calendar: None or a sparse dict of ISO dates ("YYYY-
+    MM-DD"), wall-clock times ("HH:MM" — invariant 14 / §9 A4) and a positive
+    slot length."""
+    from datetime import date, time
+
+    if cal is None:
+        return
+    if not isinstance(cal, dict):
+        raise ValueError("calendar must be an object")
+    unknown = set(cal) - _CALENDAR_KEYS
+    if unknown:
+        raise ValueError(f"unknown calendar keys: {sorted(unknown)}")
+    for key, parse, what in (
+        ("date_start", date.fromisoformat, "an ISO date"),
+        ("date_end", date.fromisoformat, "an ISO date"),
+        ("daily_start", time.fromisoformat, "an HH:MM time"),
+        ("daily_end", time.fromisoformat, "an HH:MM time"),
+    ):
+        v = cal.get(key)
+        if v is None:
+            continue
+        try:
+            if not isinstance(v, str):
+                raise ValueError
+            parse(v)
+        except ValueError:
+            raise ValueError(f"calendar.{key} must be {what} string") from None
+    sm = cal.get("slot_minutes")
+    if sm is not None and (not _is_int(sm) or sm < 1):
+        raise ValueError("calendar.slot_minutes must be a positive integer")
 
 
 def _validate_layer(layer: dict[str, Any]) -> None:
@@ -75,6 +115,8 @@ def _validate_layer(layer: dict[str, Any]) -> None:
             and layer["constraints_reviewed_at"] is not None \
             and not isinstance(layer["constraints_reviewed_at"], str):
         raise ValueError("constraints_reviewed_at must be an ISO timestamp string")
+    if "calendar" in layer:
+        _validate_calendar(layer["calendar"])
 
     group_size = layer.get("group_size", DEFAULT_DRAW_CONFIG["group_size"])
     advance = layer.get("advance_per_group", DEFAULT_DRAW_CONFIG["advance_per_group"])

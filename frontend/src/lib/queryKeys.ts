@@ -21,6 +21,12 @@ export const qk = {
   disputes: (id: string) => ["disputes", id] as const,
   audit: (id: string) => ["audit", id] as const,
   settings: (id: string) => ["t-settings", id] as const,
+  /** Workspace venue pool (fixture-engine redesign §2.3). */
+  venues: (id: string) => ["t-venues", id] as const,
+  /** Per-competition draw configuration layers (§2.1). */
+  drawConfig: (id: string) => ["t-draw-config", id] as const,
+  /** Server-computed fixture-readiness checklist (§5.1). */
+  fixtureReadiness: (id: string) => ["t-fixture-readiness", id] as const,
 };
 
 /**
@@ -41,6 +47,9 @@ export function invalidateTournament(qc: QueryClient, id: string): void {
     qk.disputes(id),
     qk.audit(id),
     qk.settings(id),
+    qk.venues(id),
+    qk.drawConfig(id),
+    qk.fixtureReadiness(id),
   ];
   for (const key of keys) qc.invalidateQueries({ queryKey: key });
   // The tournaments hub may show this tournament's summary too.

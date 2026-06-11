@@ -90,7 +90,8 @@ def fixture_readiness(tournament) -> dict[str, Any]:
     changed_at = _latest_settings_change_at(tournament)
 
     # ----------------------------------------------------------------- global
-    if sched.get("date_start"):
+    wizard_calendar = (stored_cfg.get("*") or {}).get("calendar") or {}
+    if sched.get("date_start") or wizard_calendar.get("date_start"):
         calendar = _check("calendar_set", "ok")
     else:
         calendar = _check(

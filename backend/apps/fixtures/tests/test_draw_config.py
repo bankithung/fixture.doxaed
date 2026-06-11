@@ -334,3 +334,60 @@ def test_venue_count_field_defaults_to_one():
     t = _tournament(admin)
     v = Venue.objects.create(organization=t.organization, name="MP Hall")
     assert v.count == 1
+
+
+# ----------------------------------------------------------------- calendar
+def test_calendar_layer_round_trips():
+    """The global-setup wizard's calendar (spec §5.1 "wizard-saved dates")
+    persists into draw_config["*"].calendar — whitelist-validated."""
+    admin = _verified("a@test.local")
+    t = _tournament(admin)
+    update_draw_config(
+        tournament=t, leaf_key="*",
+        partial={"calendar": {
+            "date_start": "2026-08-01", "date_end": "2026-08-05",
+            "daily_start": "09:00", "daily_end": "17:00", "slot_minutes": 90,
+        }},
+        by=admin,
+    )
+    t.refresh_from_db()
+    assert t.draw_config["*"]["calendar"]["date_start"] == "2026-08-01"
+    assert effective_draw_config(t, LEAF_U15)["calendar"]["slot_minutes"] == 90
+
+
+@pytest.mark.parametrize(
+    "calendar",
+    [
+        "2026-08-01",                  # not an object
+        {"bogus": 1},                  # unknown subkey
+        {"date_start": "not-a-date"},
+        {"date_end": 20260801},
+        {"daily_start": "9am"},
+        {"slot_minutes": "ninety"},
+        {"slot_minutes": 0},
+    ],
+)
+def test_calendar_rejects_invalid_shapes(calendar):
+    with pytest.raises(ValueError):
+        merge_draw_config({"calendar": calendar})
+
+
+def test_calendar_excluded_from_inputs_hash():
+    """Calendar is slot-time data (§2.5): saving it must not flip the
+    already_generated staleness signal."""
+    from apps.fixtures.services.generate import compute_inputs_hash
+
+    admin = _verified("a@test.local")
+    t = _tournament(admin)
+    register_school(
+        tournament=t, school_name="S",
+        teams=[{"name": f"T{i}", "leaf_key": LEAF_U15, "sport": "football",
+                "players": []} for i in range(3)],
+    )
+    h0 = compute_inputs_hash(t, LEAF_U15)
+    update_draw_config(
+        tournament=t, leaf_key="*",
+        partial={"calendar": {"date_start": "2026-08-01"}}, by=admin,
+    )
+    t.refresh_from_db()
+    assert compute_inputs_hash(t, LEAF_U15) == h0

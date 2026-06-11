@@ -369,7 +369,13 @@ export const tournamentsApi = {
     api.get<TournamentSettings>(`/api/tournaments/${id}/settings/`),
   updateSettings: (
     id: string,
-    body: { rules?: Partial<TournamentRules>; amend?: boolean; reason?: string; event_id: string },
+    body: {
+      rules?: Partial<TournamentRules>;
+      constraints?: ConstraintDraft[];
+      amend?: boolean;
+      reason?: string;
+      event_id: string;
+    },
   ) => api.patch<TournamentSettings>(`/api/tournaments/${id}/settings/`, body),
   /** The global sports catalog (for the picker). */
   sportsCatalog: () => api.get<SportCatalogItem[]>("/api/sports/"),
@@ -392,6 +398,26 @@ export const tournamentsApi = {
     api.get<ConstraintType[]>(`/api/tournaments/constraint-types/`),
   scheduleFixtures: (id: string, config: ScheduleRequest) =>
     api.post<ScheduleResultDTO>(`/api/tournaments/${id}/schedule/`, config),
+
+  // --- Fixture-engine redesign (spec 2026-06-11) ---
+  /** Per-competition draw configuration (stored layers + canonical defaults). */
+  drawConfig: (id: string) =>
+    api.get<DrawConfigResponse>(`/api/tournaments/${id}/draw-config/`),
+  /** Whitelist-merge one layer (`leaf_key` or `"*"`); idempotent + audited. */
+  updateDrawConfig: (
+    id: string,
+    body: { leaf_key?: string; config: DrawConfigLayer; event_id: string },
+  ) =>
+    api.patch<{
+      leaf_key: string;
+      draw_config: Record<string, DrawConfigLayer>;
+      effective: DrawConfig;
+      /** A draw already exists in scope — show the invariant-10 banner. */
+      has_matches: boolean;
+    }>(`/api/tournaments/${id}/draw-config/`, body),
+  /** Server-computed readiness checklist (§5.1) — the FE never replicates it. */
+  fixtureReadiness: (id: string) =>
+    api.get<FixtureReadiness>(`/api/tournaments/${id}/fixture-readiness/`),
 };
 
 export interface TournamentRules {
@@ -405,9 +431,27 @@ export interface TournamentRules {
   discipline: { yellow_suspension_threshold: number; red_matches_banned: number };
 }
 
+/** A stored scheduling-constraint record (`{type, scope, hard, weight, params}`,
+ * redesign §2.2). The server normalizes scope/weight on write. */
+export interface ConstraintRecord {
+  type: string;
+  /** `"all" | "sport:<id>" | "leaf:<key>" | "team:<id>" | "tag:<k>=<v>"`. */
+  scope: string;
+  hard: boolean;
+  /** Soft-constraint multiplier 1–10 (hard records ignore it). */
+  weight: number;
+  params: Record<string, unknown>;
+}
+
+/** Write shape — the server fills scope/hard/weight defaults from the catalog. */
+export type ConstraintDraft = Partial<ConstraintRecord> & {
+  type: string;
+  params: Record<string, unknown>;
+};
+
 export interface TournamentSettings {
   rules: TournamentRules;
-  constraints: unknown[];
+  constraints: ConstraintRecord[];
   rules_frozen_at: string | null;
   can_edit: boolean;
   /** Manager rights independent of the freeze gate. */
@@ -430,6 +474,73 @@ export interface VenueRecord {
   name: string;
   venue_type: string;
   windows: { from: string; to: string }[];
+  /** Parallel courts/tables/pitches at this venue (redesign §2.3). */
+  count: number;
+}
+
+// --- Fixture-engine redesign types (spec 2026-06-11) ---
+
+/** Global-setup wizard calendar, stored on `draw_config["*"].calendar`
+ * (slot-time data — excluded from the draw inputs_hash). */
+export interface DrawCalendar {
+  date_start?: string | null;
+  date_end?: string | null;
+  daily_start?: string | null;
+  daily_end?: string | null;
+  slot_minutes?: number | null;
+}
+
+/** Effective per-competition draw configuration (generation inputs, §2.1). */
+export interface DrawConfig {
+  format: "round_robin" | "knockout" | "groups_knockout" | string;
+  group_size: number;
+  advance_per_group: number;
+  /** 1 | 2 (double round-robin). */
+  legs: number;
+  seeding: "registration" | "random" | "snake" | "seeded" | string;
+  /** RNG seed persisted on the first random draw (replayable). */
+  seed: number | null;
+  third_place: boolean;
+  bye_policy: string;
+  min_entries_action: string;
+  /** ISO timestamp of "Mark reviewed" (§9 A10). */
+  constraints_reviewed_at: string | null;
+  calendar?: DrawCalendar | null;
+}
+
+/** One stored layer is SPARSE — only the keys the organizer set. */
+export type DrawConfigLayer = Partial<DrawConfig>;
+
+export interface DrawConfigResponse {
+  /** Keyed by leaf key, with `"*"` = tournament-wide defaults layer. */
+  draw_config: Record<string, DrawConfigLayer>;
+  defaults: DrawConfig;
+}
+
+export type ReadinessStatus = "ok" | "warn" | "fail";
+
+/** One server-computed readiness check (§5.1). `fix` is a deep-link key the
+ * hub turns into an action (settings/venues/constraints/teams/format/seeds/diff). */
+export interface ReadinessCheck {
+  id: string;
+  status: ReadinessStatus;
+  hint?: string;
+  fix?: string;
+}
+
+export interface ReadinessCompetition {
+  leaf_key: string;
+  label: string;
+  /** No hard-fail checks — the dry-run/generate CTA may run. */
+  ready: boolean;
+  /** "3/5" — ok count over the gating checks. */
+  summary: string;
+  checks: ReadinessCheck[];
+}
+
+export interface FixtureReadiness {
+  global: { checks: ReadinessCheck[] };
+  competitions: ReadinessCompetition[];
 }
 
 /** Member x module matrix from GET /api/tournaments/{id}/permissions/. */

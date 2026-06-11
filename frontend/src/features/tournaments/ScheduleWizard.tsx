@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { StepRail } from "@/components/ui/StepRail";
 import { useToast } from "@/components/ui/toast";
 import { invalidateTournament } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
@@ -141,33 +142,7 @@ export function ScheduleWizard({
         </DialogDescription>
       </DialogHeader>
 
-      {/* step rail */}
-      <ol className="flex items-center gap-1 text-xs">
-        {STEPS.map((s, i) => (
-          <li key={s.key} className="flex flex-1 items-center gap-1.5">
-            <span
-              className={cn(
-                "grid h-6 w-6 shrink-0 place-items-center rounded-full",
-                i < step || result
-                  ? "bg-primary text-primary-foreground"
-                  : i === step
-                    ? "bg-primary/15 text-primary ring-1 ring-primary/40"
-                    : "bg-muted text-muted-foreground",
-              )}
-            >
-              {i < step || result ? <Check className="h-3.5 w-3.5" /> : i + 1}
-            </span>
-            <span
-              className={cn(
-                "hidden truncate sm:block",
-                i === step && !result ? "font-medium" : "text-muted-foreground",
-              )}
-            >
-              {t(s.label)}
-            </span>
-          </li>
-        ))}
-      </ol>
+      <StepRail steps={STEPS} current={step} complete={result !== null} />
 
       <div className="min-h-[12rem] py-1">
         {result ? (

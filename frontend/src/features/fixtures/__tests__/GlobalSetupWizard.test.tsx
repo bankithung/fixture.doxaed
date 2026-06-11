@@ -1,0 +1,239 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ToastProvider } from "@/components/ui/toast";
+import {
+  tournamentsApi,
+  type DrawConfig,
+  type TournamentSettings,
+} from "@/api/tournaments";
+import { GlobalSetupWizard } from "../GlobalSetupWizard";
+
+vi.mock("@/api/tournaments", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/api/tournaments")>();
+  return {
+    ...actual,
+    tournamentsApi: {
+      ...actual.tournamentsApi,
+      drawConfig: vi.fn(),
+      updateDrawConfig: vi.fn(),
+      venues: vi.fn(),
+      createVenue: vi.fn(),
+      updateVenue: vi.fn(),
+      deleteVenue: vi.fn(),
+      settings: vi.fn(),
+      updateSettings: vi.fn(),
+    },
+  };
+});
+
+const DEFAULTS = { format: "round_robin" } as unknown as DrawConfig;
+
+const SETTINGS = {
+  rules: {},
+  constraints: [],
+  rules_frozen_at: null,
+  can_edit: true,
+  can_manage: true,
+  can_delete: true,
+} as unknown as TournamentSettings;
+
+function wrap(ui: React.ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <ToastProvider>
+        <MemoryRouter>{ui}</MemoryRouter>
+      </ToastProvider>
+    </QueryClientProvider>,
+  );
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
+    draw_config: {},
+    defaults: DEFAULTS,
+  });
+  vi.mocked(tournamentsApi.venues).mockResolvedValue({ venues: [] });
+  vi.mocked(tournamentsApi.settings).mockResolvedValue(SETTINGS);
+  vi.mocked(tournamentsApi.updateSettings).mockResolvedValue(SETTINGS);
+  vi.mocked(tournamentsApi.updateDrawConfig).mockResolvedValue({
+    leaf_key: "*",
+    draw_config: {},
+    effective: DEFAULTS,
+    has_matches: false,
+  });
+  vi.mocked(tournamentsApi.createVenue).mockResolvedValue({
+    id: "v-new",
+    name: "MP Hall",
+    venue_type: "hall",
+    windows: [],
+    count: 4,
+  });
+});
+
+async function toStep(n: number): Promise<void> {
+  for (let i = 0; i < n; i++) {
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+  }
+}
+
+describe("GlobalSetupWizard", () => {
+  it("saves calendar, constraints and venues across the three channels", async () => {
+    wrap(
+      <GlobalSetupWizard tournamentId="t1" open onClose={() => {}} />,
+    );
+    // Step 0 — calendar + blackout chips.
+    fireEvent.change(await screen.findByLabelText("First match day"), {
+      target: { value: "2026-08-01" },
+    });
+    fireEvent.change(screen.getByLabelText("Last match day"), {
+      target: { value: "2026-08-05" },
+    });
+    fireEvent.change(screen.getByTestId("blackouts-input"), {
+      target: { value: "2026-08-02" },
+    });
+    await userEvent.click(screen.getByTestId("blackouts-add"));
+    expect(screen.getByTestId("blackouts")).toHaveTextContent("2026-08-02");
+
+    // Step 1 — add a venue with a count.
+    await toStep(1);
+    await userEvent.click(screen.getByTestId("add-venue"));
+    fireEvent.change(screen.getByTestId("venue-name-0"), {
+      target: { value: "MP Hall" },
+    });
+    fireEvent.change(screen.getByTestId("venue-count-0"), {
+      target: { value: "4" },
+    });
+
+    // Step 2 — defaults; Sunday church is ON by default (first run).
+    await toStep(1);
+    expect(screen.getByTestId("sunday-church")).toBeChecked();
+
+    // Step 3 — review + save.
+    await toStep(1);
+    await userEvent.click(screen.getByTestId("save-global-setup"));
+
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith("t1", {
+        leaf_key: "*",
+        config: {
+          calendar: {
+            date_start: "2026-08-01",
+            date_end: "2026-08-05",
+            daily_start: "09:00",
+            daily_end: "18:00",
+            slot_minutes: 90,
+          },
+        },
+        event_id: expect.any(String),
+      }),
+    );
+    expect(tournamentsApi.createVenue).toHaveBeenCalledWith("t1", {
+      name: "MP Hall",
+      venue_type: "ground",
+      windows: [],
+      count: 4,
+    });
+    const constraints =
+      vi.mocked(tournamentsApi.updateSettings).mock.calls[0][1].constraints!;
+    const byType = Object.fromEntries(constraints.map((c) => [c.type, c]));
+    expect(byType.blackout_dates.params).toEqual({ dates: ["2026-08-02"] });
+    expect(byType.recurring_blackout_window.params).toEqual({
+      days: ["sun"],
+      from: "00:00",
+      to: "13:00",
+    });
+    expect(byType.min_rest_minutes.params).toEqual({ minutes: 60 });
+    expect(byType.max_matches_per_team_per_day.params).toEqual({ count: 1 });
+  });
+
+  it("prefills stored values and preserves unmanaged constraint records", async () => {
+    vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
+      draw_config: {
+        "*": {
+          calendar: {
+            date_start: "2026-08-01",
+            date_end: "2026-08-03",
+            daily_start: "08:00",
+            daily_end: "17:00",
+            slot_minutes: 60,
+          },
+        },
+      },
+      defaults: DEFAULTS,
+    });
+    vi.mocked(tournamentsApi.settings).mockResolvedValue({
+      ...SETTINGS,
+      constraints: [
+        {
+          type: "team_unavailable",
+          scope: "team:abc",
+          hard: true,
+          weight: 5,
+          params: { team_id: "abc", dates: ["2026-08-02"] },
+        },
+        {
+          type: "blackout_dates",
+          scope: "all",
+          hard: true,
+          weight: 5,
+          params: { dates: ["2026-08-03"] },
+        },
+      ],
+    });
+    vi.mocked(tournamentsApi.venues).mockResolvedValue({
+      venues: [
+        { id: "v1", name: "Main Ground", venue_type: "ground", windows: [], count: 1 },
+      ],
+    });
+
+    wrap(<GlobalSetupWizard tournamentId="t1" open onClose={() => {}} />);
+    expect(await screen.findByLabelText("First match day")).toHaveValue(
+      "2026-08-01",
+    );
+    expect(screen.getByTestId("blackouts")).toHaveTextContent("2026-08-03");
+
+    // Walk through untouched and save.
+    await toStep(3);
+    // Stored calendar exists → church reflects the absent record (off).
+    await userEvent.click(screen.getByTestId("save-global-setup"));
+
+    await waitFor(() =>
+      expect(tournamentsApi.updateSettings).toHaveBeenCalled(),
+    );
+    const constraints =
+      vi.mocked(tournamentsApi.updateSettings).mock.calls[0][1].constraints!;
+    // Scoped record preserved verbatim; managed blackout re-emitted.
+    expect(
+      constraints.find((c) => c.type === "team_unavailable")?.scope,
+    ).toBe("team:abc");
+    expect(
+      constraints.find((c) => c.type === "blackout_dates")?.params.dates,
+    ).toEqual(["2026-08-03"]);
+    expect(
+      constraints.some((c) => c.type === "recurring_blackout_window"),
+    ).toBe(false);
+    // Unchanged venue → no writes, no deletes.
+    expect(tournamentsApi.updateVenue).not.toHaveBeenCalled();
+    expect(tournamentsApi.deleteVenue).not.toHaveBeenCalled();
+    expect(tournamentsApi.createVenue).not.toHaveBeenCalled();
+  });
+
+  it("opens at the deep-linked step", async () => {
+    wrap(
+      <GlobalSetupWizard
+        tournamentId="t1"
+        open
+        onClose={() => {}}
+        initialStep={1}
+      />,
+    );
+    expect(await screen.findByTestId("add-venue")).toBeInTheDocument();
+  });
+});

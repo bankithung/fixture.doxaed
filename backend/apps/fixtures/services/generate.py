@@ -400,9 +400,10 @@ def _group_hash(group: list) -> str:
 
 # Bookkeeping keys excluded from the v2 inputs hash: the replay seed is
 # persisted BY generation (hashing it would flip "inputs changed" the moment
-# a previewed random draw is accepted) and the reviewed-at stamp is process
-# state, not a generation input.
-_HASH_EXCLUDED_KEYS = ("seed", "constraints_reviewed_at")
+# a previewed random draw is accepted), the reviewed-at stamp is process
+# state, and the wizard-saved calendar is slot-time data (§2.5 — it hashes
+# into scheduling staleness, never the draw), not a generation input.
+_HASH_EXCLUDED_KEYS = ("seed", "constraints_reviewed_at", "calendar")
 
 
 def pairing_scope_constraints(
