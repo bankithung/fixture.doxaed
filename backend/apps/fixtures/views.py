@@ -45,12 +45,15 @@ class GenerateFixturesView(GenericAPIView):
         overrides = {
             k: request.data.get(k)
             for k in (
-                "format", "group_size", "advance_per_group", "third_place", "legs",
+                "format", "group_size", "advance_per_group", "third_place",
+                "legs", "seeding", "seed",
             )
             if k in request.data
         }
         cfg = effective_draw_config(t, leaf_key or None, overrides=overrides)
         fmt = str(cfg.get("format") or "round_robin")
+        seeding = str(cfg.get("seeding") or "registration")
+        seed = int(cfg["seed"]) if cfg.get("seed") is not None else None
         try:
             if fmt == "knockout":
                 teams_qs = Team.objects.filter(
@@ -62,6 +65,7 @@ class GenerateFixturesView(GenericAPIView):
                 matches = generate_single_elimination(
                     tournament=t, teams=teams, leaf_key=leaf_key,
                     third_place=bool(cfg.get("third_place")),
+                    seeding=seeding, seed=seed,
                 )
             elif fmt == "knockout_from_groups":
                 matches = generate_knockout_from_groups(
@@ -74,6 +78,7 @@ class GenerateFixturesView(GenericAPIView):
                 matches = generate_round_robin_by_category(
                     tournament=t, leaf_key=leaf_key or None,
                     legs=int(cfg["legs"]),
+                    seeding=seeding, seed=seed,
                 )
             else:
                 # "round_robin" and "groups_knockout" (the stored-config name)
@@ -84,11 +89,21 @@ class GenerateFixturesView(GenericAPIView):
                     group_size=int(cfg["group_size"]),
                     leaf_key=leaf_key or None,
                     legs=int(cfg["legs"]),
+                    seeding=seeding, seed=seed,
                 )
         except (ValueError, TypeError) as e:
             raise DRFValidationError({"detail": str(e)})
+        # The seed the draw used (random seeding persists a fresh one into
+        # draw_config — the generators update `t` in place) so callers can
+        # replay/dispute the draw (§4.3, tenet 3).
+        seed_used = seed
+        if seed_used is None and seeding == "random":
+            seed_used = ((t.draw_config or {}).get(leaf_key or "*") or {}).get("seed")
         return Response(
-            {"generated": len(matches), "format": fmt, "leaf_key": leaf_key},
+            {
+                "generated": len(matches), "format": fmt, "leaf_key": leaf_key,
+                "seed": seed_used,
+            },
             status=201,
         )
 

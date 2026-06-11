@@ -11,6 +11,7 @@ assigns times/venues. The full data-driven constraint scheduler layers on top.
 from __future__ import annotations
 
 import hashlib
+import random
 
 from django.db import transaction
 
@@ -61,6 +62,66 @@ def _small_group_max(tournament) -> int:
 
 def _legs_for_group(group_len: int, legs: int, small_max: int) -> int:
     return 2 if legs == 2 or (small_max and group_len <= small_max) else 1
+
+
+def _new_seed() -> int:
+    """A fresh RNG seed for a random draw — persisted so the draw is
+    replayable and disputable (redesign spec §4.3, tenet 3)."""
+    return random.SystemRandom().randrange(1, 2**31)
+
+
+def _seed_order(teams: list, *, seeding: str, seed: int | None) -> list:
+    """Order entrants per the seeding method (spec §4.3).
+
+    - ``registration`` (default) and ``snake`` keep the registration order
+      (seed field, then name) — snake is a GROUP-DISTRIBUTION rule, not an
+      entrant order (and for knockouts the standard seeded bracket already IS
+      the snake placement, so it aliases to registration order there).
+    - ``random``: ``random.Random(seed)`` shuffle (caller resolves the seed).
+    - ``seeded``: strict ``Team.seed`` order; every team must carry one.
+    """
+    if seeding == "random":
+        out = list(teams)
+        random.Random(seed).shuffle(out)
+        return out
+    if seeding == "seeded":
+        missing = sorted(t.name for t in teams if t.seed is None)
+        if missing:
+            raise ValueError(
+                "seeding is 'seeded' but these teams have no seed: "
+                + ", ".join(missing)
+            )
+        return sorted(teams, key=lambda t: (t.seed, t.name))
+    if seeding not in ("", "registration", "snake"):
+        raise ValueError(f"unknown seeding method: {seeding!r}")
+    return list(teams)
+
+
+def _snake_groups(teams: list, group_size: int) -> list[list]:
+    """Serpentine distribution (A,B,C,C,B,A,…) of a seed-ordered list into
+    ceil(n/group_size) groups — replaces plain chunking when
+    ``seeding="snake"`` (spec §4.3)."""
+    n_groups = max(1, -(-len(teams) // group_size))
+    groups: list[list] = [[] for _ in range(n_groups)]
+    idx, step = 0, 1
+    for tm in teams:
+        groups[idx].append(tm)
+        if not 0 <= idx + step < n_groups:
+            step = -step  # bounce at the rails (the edge group repeats)
+        else:
+            idx += step
+    return groups
+
+
+def _persist_draw_seed(tournament, leaf_key: str | None, seed: int) -> None:
+    """Store a freshly-generated RNG seed in ``draw_config`` (under the leaf,
+    or "*" for whole-tournament runs) so the draw can be reproduced (§4.3)."""
+    stored = dict(tournament.draw_config or {})
+    layer = dict(stored.get(leaf_key or "*") or {})
+    layer["seed"] = seed
+    stored[leaf_key or "*"] = layer
+    tournament.draw_config = stored
+    tournament.save(update_fields=["draw_config", "updated_at"])
 
 
 def _registered_teams(tournament, leaf_key: str | None = None) -> list[Team]:
@@ -172,7 +233,7 @@ def _next_match_no(tournament) -> int:
 
 def generate_round_robin(
     *, tournament, group_size: int = 5, leaf_key: str | None = None,
-    legs: int = 1,
+    legs: int = 1, seeding: str = "registration", seed: int | None = None,
 ) -> list[Match]:
     """Split registered teams into groups of ``group_size`` and round-robin each
     group. With ``leaf_key``, only that competition's teams are drawn and the
@@ -191,8 +252,13 @@ def generate_round_robin(
     teams = _registered_teams(tournament, leaf_key)
     if len(teams) < 2:
         raise ValueError("Need at least 2 registered teams to generate fixtures.")
-    # Spread institutions across pools; per-group circle pairing is repaired
-    # again below once group membership is known.
+    generated_seed: int | None = None
+    if seeding == "random" and seed is None:
+        seed = generated_seed = _new_seed()
+    teams = _seed_order(teams, seeding=seeding, seed=seed)
+    # Constraint-repair pass AFTER seeding (§4.3): spread institutions across
+    # pools; per-group circle pairing is repaired again below once group
+    # membership is known.
     teams = _separate_institutions(teams)
 
     sports_cfg = tournament.sports or []
@@ -204,7 +270,12 @@ def generate_round_robin(
     to_create: list[Match] = []
     match_no = _next_match_no(tournament)
     with transaction.atomic():
-        groups = [teams[i : i + group_size] for i in range(0, len(teams), group_size)]
+        if seeding == "snake":
+            groups = _snake_groups(teams, group_size)
+        else:
+            groups = [
+                teams[i : i + group_size] for i in range(0, len(teams), group_size)
+            ]
         for gi, group in enumerate(groups):
             group = _separate_institutions(
                 group, _opening_pairs_circle(len(group))
@@ -233,11 +304,14 @@ def generate_round_robin(
                     )
                 )
         Match.objects.bulk_create(to_create)
+        if generated_seed is not None:
+            _persist_draw_seed(tournament, leaf_key, generated_seed)
     return to_create
 
 
 def generate_round_robin_by_category(
     *, tournament, leaf_key: str | None = None, legs: int = 1,
+    seeding: str = "registration", seed: int | None = None,
 ) -> list[Match]:
     """Round-robin WITHIN each competition (category leaf): a team only plays
     others registered into the SAME leaf. Buckets key on the structural
@@ -269,6 +343,9 @@ def generate_round_robin_by_category(
     sports_cfg = tournament.sports or []
     org = tournament.organization
     small_max = _small_group_max(tournament)
+    generated_seed: int | None = None
+    if seeding == "random" and seed is None:
+        seed = generated_seed = _new_seed()
     to_create: list[Match] = []
     skipped_existing: list[Match] = []
     match_no = _next_match_no(tournament)
@@ -286,6 +363,7 @@ def generate_round_robin_by_category(
                 continue
             if len(group) < 2:
                 continue  # a category with a single team has no matches
+            group = _seed_order(group, seeding=seeding, seed=seed)
             group = _separate_institutions(
                 group, _opening_pairs_circle(len(group))
             )
@@ -319,6 +397,8 @@ def generate_round_robin_by_category(
         if not to_create and not skipped_existing:
             raise ValueError("No category has 2+ teams to schedule.")
         Match.objects.bulk_create(to_create)
+        if generated_seed is not None and to_create:
+            _persist_draw_seed(tournament, leaf_key, generated_seed)
     return [*skipped_existing, *to_create]
 
 
@@ -335,6 +415,7 @@ def _bracket_order(size: int) -> list[int]:
 def generate_single_elimination(
     *, tournament, teams, stage: str = "knockout",
     leaf_key: str = "", sport: str = "", third_place: bool = False,
+    seeding: str = "registration", seed: int | None = None,
 ) -> list[Match]:
     """Generate a single-elimination bracket from ``teams`` (any count ≥ 2).
 
@@ -367,7 +448,12 @@ def generate_single_elimination(
     if not sport and leaf_key:
         sport = sport_for_leaf(tournament.sports or [], leaf_key)
 
-    # Same-institution teams don't meet in round 1 where avoidable (W2-D).
+    generated_seed: int | None = None
+    if seeding == "random" and seed is None:
+        seed = generated_seed = _new_seed()
+    teams = _seed_order(list(teams), seeding=seeding, seed=seed)
+    # Constraint repair AFTER seeding (§4.3): same-institution teams don't
+    # meet in round 1 where avoidable (W2-D).
     teams = _separate_institutions(list(teams), _opening_pairs_bracket(n))
 
     size = 1
@@ -456,6 +542,8 @@ def generate_single_elimination(
             created.extend(nxt_matches)
             slots = nxt_slots
             round_no += 1
+        if generated_seed is not None:
+            _persist_draw_seed(tournament, leaf_key, generated_seed)
 
     return created
 

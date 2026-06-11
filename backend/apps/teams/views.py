@@ -108,6 +108,102 @@ class PublicRegistrationView(GenericAPIView):
         )
 
 
+class TeamSeedsView(GenericAPIView):
+    """`PUT /api/tournaments/{id}/teams/seeds/` — bulk seed assignment for a
+    competition (redesign spec §4.3: Team.seed finally becomes settable).
+    Body `{leaf_key?, seeds: [{team_id, seed|null}], event_id}`. Gate:
+    tournament.bracket_editor; idempotent on `event_id` (invariant 3);
+    audited (`team_seeds_updated`)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, tournament_id):
+        from django.db import transaction
+
+        from apps.audit.models import ActorRole, AuditEvent
+        from apps.audit.services import emit_audit
+
+        tournament = (
+            Tournament.objects.filter(id=tournament_id, deleted_at__isnull=True)
+            .select_related("organization")
+            .first()
+        )
+        if tournament is None or not accessible_tournaments(request.user).filter(
+            id=tournament_id
+        ).exists():
+            raise NotFound("tournament_not_found")
+        if not can_access_module(request.user, tournament, "tournament.bracket_editor"):
+            raise PermissionDenied("not_tournament_manager")
+
+        event_id = request.data.get("event_id")
+        if event_id:
+            prior = AuditEvent.objects.filter(
+                idempotency_key=event_id, event_type="team_seeds_updated"
+            ).first()
+            if prior is not None:  # replay (invariant 3)
+                payload = prior.payload_after or {}
+                return Response(
+                    {
+                        "updated": len(payload.get("seeds") or []),
+                        "leaf_key": payload.get("leaf_key", ""),
+                    }
+                )
+
+        leaf_key = str(request.data.get("leaf_key") or "")
+        rows = request.data.get("seeds")
+        if not isinstance(rows, list) or not rows:
+            raise DRFValidationError({"detail": "seeds_required"})
+        parsed: list[tuple[str, int | None]] = []
+        for row in rows:
+            if not isinstance(row, dict) or not row.get("team_id"):
+                raise DRFValidationError({"detail": "each row needs a team_id"})
+            seed = row.get("seed")
+            if seed is not None:
+                if isinstance(seed, bool) or not isinstance(seed, (int, str)):
+                    raise DRFValidationError({"detail": "invalid_seed"})
+                try:
+                    seed = int(seed)
+                except ValueError:
+                    raise DRFValidationError({"detail": "invalid_seed"})
+                if not 1 <= seed <= 32767:
+                    raise DRFValidationError({"detail": "invalid_seed"})
+            parsed.append((str(row["team_id"]), seed))
+
+        scope = Team.objects.filter(tournament=tournament, deleted_at__isnull=True)
+        if leaf_key:
+            scope = scope.filter(leaf_key=leaf_key)
+        by_id = {str(t.id): t for t in scope}
+        unknown = sorted(tid for tid, _ in parsed if tid not in by_id)
+        if unknown:
+            raise DRFValidationError(
+                {"detail": "unknown_team_ids", "team_ids": unknown}
+            )
+
+        with transaction.atomic():
+            for tid, seed in parsed:
+                team = by_id[tid]
+                team.seed = seed
+                team.save(update_fields=["seed", "updated_at"])
+            emit_audit(
+                actor_user=request.user,
+                actor_role=ActorRole.ADMIN,
+                event_type="team_seeds_updated",
+                target_type="tournament",
+                target_id=tournament.id,
+                organization_id=tournament.organization_id,
+                tournament_id=tournament.id,
+                idempotency_key=event_id,
+                payload_after={
+                    "leaf_key": leaf_key,
+                    "seeds": [
+                        {"team_id": tid, "seed": seed} for tid, seed in parsed
+                    ],
+                },
+                request=request,
+            )
+        return Response({"updated": len(parsed), "leaf_key": leaf_key})
+
+
 class TournamentTeamsListView(GenericAPIView):
     """`GET` registered teams (access-scoped); `POST` admin direct-add of a team
     under an institution (Stage-2; manager-only)."""
