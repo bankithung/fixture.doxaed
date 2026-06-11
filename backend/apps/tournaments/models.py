@@ -122,6 +122,13 @@ class Tournament(models.Model):
     # re-runs prefill instead of retyping. Operational config, deliberately
     # OUTSIDE `rules` (which freezes at registration_open — invariant 7).
     scheduling_config = models.JSONField(default=dict, blank=True)
+    # Per-competition draw configuration (fixture-engine redesign spec §2.1):
+    # {"<leaf_key>": DrawConfig, "*": DrawConfig} — generation inputs (format,
+    # group size, legs, seeding, third place). Deliberately OUTSIDE `rules`:
+    # draw config is finalized after registration closes and is governed by
+    # invariant 10 (inputs_hash staleness), not the invariant-7 freeze. See
+    # apps.fixtures.services.draw_config for the whitelist + layering.
+    draw_config = models.JSONField(default=dict, blank=True)
     rules_frozen_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

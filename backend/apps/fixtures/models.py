@@ -25,6 +25,9 @@ class Venue(models.Model):
     name = models.CharField(max_length=120)
     venue_type = models.CharField(max_length=40, blank=True)
     windows = models.JSONField(default=list, blank=True)
+    # Courts/tables/pitches at this venue (fixture-engine redesign §2.3): the
+    # scheduler expands count=4 into 4 parallel sub-venues ("MP Hall · T1"…).
+    count = models.PositiveSmallIntegerField(default=1)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="venues_created",

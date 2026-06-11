@@ -7,6 +7,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.fixtures.models import Venue
+from apps.fixtures.services.draw_config import (
+    DEFAULT_DRAW_CONFIG,
+    effective_draw_config,
+    leaf_has_matches,
+    update_draw_config,
+)
 from apps.fixtures.services.generate import (
     generate_knockout_from_groups,
     generate_round_robin,
@@ -29,10 +35,20 @@ class GenerateFixturesView(GenericAPIView):
         t = Tournament.objects.select_related("organization").get(id=tournament_id)
         if not can_access_module(request.user, t, "tournament.bracket_editor"):
             raise PermissionDenied("not_tournament_manager")
-        fmt = request.data.get("format", "round_robin")
         # Optional competition scope (spec 2026-06-10): generate one category
         # leaf's draw independently; omit for the legacy whole-tournament run.
         leaf_key = str(request.data.get("leaf_key") or "")
+        # Effective config layering (redesign spec §2.1/§4.5): defaults <
+        # legacy rules keys < draw_config["*"] < draw_config[leaf] < explicit
+        # request params. A bare body of {leaf_key} works once the wizard has
+        # saved the format via the draw-config PATCH.
+        overrides = {
+            k: request.data.get(k)
+            for k in ("format", "group_size", "advance_per_group")
+            if k in request.data
+        }
+        cfg = effective_draw_config(t, leaf_key or None, overrides=overrides)
+        fmt = str(cfg.get("format") or "round_robin")
         try:
             if fmt == "knockout":
                 teams_qs = Team.objects.filter(
@@ -47,7 +63,7 @@ class GenerateFixturesView(GenericAPIView):
             elif fmt == "knockout_from_groups":
                 matches = generate_knockout_from_groups(
                     tournament=t,
-                    advance_per_group=int(request.data.get("advance_per_group", 2)),
+                    advance_per_group=int(cfg["advance_per_group"]),
                     leaf_key=leaf_key or None,
                 )
             elif fmt == "by_category":
@@ -55,9 +71,12 @@ class GenerateFixturesView(GenericAPIView):
                     tournament=t, leaf_key=leaf_key or None
                 )
             else:
+                # "round_robin" and "groups_knockout" (the stored-config name)
+                # both draw the group stage now; the knockout is advanced later
+                # via format="knockout_from_groups" once groups complete.
                 matches = generate_round_robin(
                     tournament=t,
-                    group_size=int(request.data.get("group_size", 5)),
+                    group_size=int(cfg["group_size"]),
                     leaf_key=leaf_key or None,
                 )
         except (ValueError, TypeError) as e:
@@ -108,6 +127,55 @@ class ScheduleFixturesView(GenericAPIView):
                 "soft_score": result.soft_score,
                 "explanation": result.explanation,
                 "leaf_key": leaf_key,
+            }
+        )
+
+
+class TournamentDrawConfigView(GenericAPIView):
+    """`GET/PATCH /api/tournaments/{id}/draw-config/` — per-competition draw
+    configuration (redesign spec §2.1). GET: any tournament member. PATCH:
+    bracket-editor verb; body `{leaf_key|"*", config, event_id}`; whitelist
+    merge, idempotent on `event_id`, audited (`draw_config_updated`)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _tournament(self, request, tournament_id) -> Tournament:
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        return Tournament.objects.select_related("organization").get(id=tournament_id)
+
+    def get(self, request, tournament_id):
+        t = self._tournament(request, tournament_id)
+        return Response(
+            {"draw_config": t.draw_config or {}, "defaults": DEFAULT_DRAW_CONFIG}
+        )
+
+    def patch(self, request, tournament_id):
+        t = self._tournament(request, tournament_id)
+        if not can_access_module(request.user, t, "tournament.bracket_editor"):
+            raise PermissionDenied("not_tournament_manager")
+        leaf_key = str(request.data.get("leaf_key") or "*")
+        try:
+            t = update_draw_config(
+                tournament=t,
+                leaf_key=leaf_key,
+                partial=request.data.get("config") or {},
+                by=request.user,
+                event_id=request.data.get("event_id"),
+                request=request,
+            )
+        except ValueError as e:
+            raise DRFValidationError({"detail": str(e)})
+        return Response(
+            {
+                "leaf_key": leaf_key,
+                "draw_config": t.draw_config or {},
+                "effective": effective_draw_config(
+                    t, None if leaf_key == "*" else leaf_key
+                ),
+                # Per-leaf freeze signal (§2.1): edits stay allowed once a draw
+                # exists, but the UI shows the invariant-10 banner.
+                "has_matches": leaf_has_matches(t, leaf_key),
             }
         )
 

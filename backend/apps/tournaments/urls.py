@@ -6,6 +6,7 @@ from apps.disputes.views import TournamentDisputeView
 from apps.fixtures.views import (
     GenerateFixturesView,
     ScheduleFixturesView,
+    TournamentDrawConfigView,
     TournamentVenueDetailView,
     TournamentVenuesView,
 )
@@ -137,6 +138,11 @@ urlpatterns = [
         "<uuid:tournament_id>/schedule/",
         ScheduleFixturesView.as_view(),
         name="tournament-schedule-fixtures",
+    ),
+    path(
+        "<uuid:tournament_id>/draw-config/",
+        TournamentDrawConfigView.as_view(),
+        name="tournament-draw-config",
     ),
     path(
         "<uuid:tournament_id>/permissions/",
