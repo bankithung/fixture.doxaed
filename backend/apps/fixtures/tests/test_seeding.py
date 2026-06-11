@@ -240,6 +240,21 @@ def test_seeds_api_validates_and_scopes():
     ).status_code == 404
 
 
+def test_team_list_exposes_seed_for_the_seed_editor():
+    # The CompetitionFormatWizard's SeedListEditor prefills from stored seeds
+    # (redesign §6 screen 3) — the team list must surface them.
+    admin = _verified()
+    t, teams = _fresh(admin, 2)
+    teams[0].seed = 1
+    teams[0].save(update_fields=["seed"])
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    rows = c.get(f"/api/tournaments/{t.id}/teams/").json()
+    by_name = {r["name"]: r for r in rows}
+    assert by_name["Team 01"]["seed"] == 1
+    assert by_name["Team 02"]["seed"] is None
+
+
 def test_seeds_api_allows_clearing_with_null():
     admin = _verified()
     t, teams = _fresh(admin, 2)

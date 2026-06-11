@@ -158,6 +158,8 @@ export interface TeamRow {
   sport: string;
   leaf_key: string;
   status: string;
+  /** Current seed (nullable) — the SeedListEditor prefills from this. */
+  seed?: number | null;
   player_count: number;
   /** Inline roster (Teams tab expands a team to show it). */
   players?: TeamPlayerRow[];
@@ -291,12 +293,15 @@ export const tournamentsApi = {
   standings: (id: string) =>
     api.get<{ groups: StandingsGroup[] }>(`/api/tournaments/${id}/standings/`),
   /** Generate a draw (bracket-editor module or manager). `leafKey` scopes the
-   * run to ONE competition (category leaf); omit for the whole tournament. */
+   * run to ONE competition (category leaf); omit for the whole tournament.
+   * Omitted keys are NOT sent — the stored draw-config layers govern them
+   * (redesign §4.5: a bare `{leaf_key}` body works once the wizard saved the
+   * format); explicit params always win on the server. */
   generateFixtures: (
     id: string,
     opts?: {
       groupSize?: number;
-      /** Groups→knockout: how many advance from each group (default 2). */
+      /** Groups→knockout: how many advance from each group. */
       advancePerGroup?: number;
       format?:
         | "round_robin"
@@ -305,15 +310,36 @@ export const tournamentsApi = {
         | "knockout_from_groups";
       leafKey?: string;
     },
+  ) => {
+    const body: Record<string, unknown> = { leaf_key: opts?.leafKey ?? "" };
+    if (opts?.format !== undefined) body.format = opts.format;
+    if (opts?.groupSize !== undefined) body.group_size = opts.groupSize;
+    if (opts?.advancePerGroup !== undefined) {
+      body.advance_per_group = opts.advancePerGroup;
+    }
+    return api.post<{
+      generated: number;
+      format?: string;
+      leaf_key?: string;
+      /** The RNG seed the draw used (replayable — §4.3). */
+      seed?: number | null;
+      /** Pairing-layer warnings (relaxed keep-apart records, …). */
+      warnings?: unknown[];
+    }>(`/api/tournaments/${id}/generate-fixtures/`, body);
+  },
+  /** Bulk seed assignment for one competition (redesign §4.3 — drives the
+   * `seeding: "seeded"` method). `seed: null` clears a team's seed. */
+  setTeamSeeds: (
+    id: string,
+    body: {
+      leaf_key?: string;
+      seeds: { team_id: string; seed: number | null }[];
+      event_id: string;
+    },
   ) =>
-    api.post<{ generated: number; format?: string; leaf_key?: string }>(
-      `/api/tournaments/${id}/generate-fixtures/`,
-      {
-        group_size: opts?.groupSize ?? 5,
-        advance_per_group: opts?.advancePerGroup ?? 2,
-        format: opts?.format ?? "round_robin",
-        leaf_key: opts?.leafKey ?? "",
-      },
+    api.put<{ updated: number; leaf_key: string }>(
+      `/api/tournaments/${id}/teams/seeds/`,
+      body,
     ),
   /** The workspace's venue pool (types + availability windows). */
   venues: (id: string) =>

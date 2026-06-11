@@ -9,10 +9,6 @@ import {
   type TeamRow,
 } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
-import {
-  AdvanceToKnockoutDialog,
-  GenerateDrawWizard,
-} from "@/features/tournaments/GenerateDrawWizard";
 import { ScheduleWizard } from "@/features/tournaments/ScheduleWizard";
 import {
   EmptyState,
@@ -22,6 +18,8 @@ import {
 import { qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
+import { AdvanceToKnockoutDialog } from "./AdvanceToKnockoutDialog";
+import { CompetitionFormatWizard } from "./CompetitionFormatWizard";
 import { GlobalSetupCard } from "./GlobalSetupCard";
 import { GlobalSetupWizard } from "./GlobalSetupWizard";
 import { ReadinessChecklist } from "./ReadinessChecklist";
@@ -75,7 +73,7 @@ export function FixtureSetupHub({
   const [draw, setDraw] = useState<{
     leafKey: string;
     label: string;
-    teamCount: number;
+    teams: TeamRow[];
   } | null>(null);
   const [advanceDlg, setAdvanceDlg] = useState<{
     leafKey: string;
@@ -135,7 +133,7 @@ export function FixtureSetupHub({
     else if (fix === "teams") navigate(routes.tournamentTeams(id));
     else if (fix === "format") {
       const c = competitions.find((x) => x.leafKey === leafKey);
-      if (c) setDraw({ leafKey, label: c.label, teamCount: c.teams.length });
+      if (c) setDraw({ leafKey, label: c.label, teams: c.teams });
     }
   };
 
@@ -281,7 +279,7 @@ export function FixtureSetupHub({
                         setDraw({
                           leafKey: c.leafKey,
                           label: c.label,
-                          teamCount: c.teams.length,
+                          teams: c.teams,
                         })
                       }
                     >
@@ -323,16 +321,20 @@ export function FixtureSetupHub({
         leafLabel={wizard?.label}
       />
       {draw ? (
-        <GenerateDrawWizard
+        <CompetitionFormatWizard
           tournamentId={id}
           open
           onClose={() => setDraw(null)}
           leafKey={draw.leafKey}
           leafLabel={draw.label}
-          teamCount={draw.teamCount}
+          teams={draw.teams}
           onGenerated={({ leafKey, label }) =>
             setWizard(leafKey ? { leafKey, label } : {})
           }
+          onEditGlobals={() => {
+            setDraw(null);
+            setSetup({ step: SETUP_STEP.calendar });
+          }}
         />
       ) : null}
       {advanceDlg ? (

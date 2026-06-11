@@ -327,6 +327,9 @@ class TournamentTeamsListView(GenericAPIView):
                     "sport": t.sport,
                     "leaf_key": t.leaf_key,
                     "status": t.status,
+                    # Current seed (nullable) — the SeedListEditor prefills
+                    # its order from this (redesign §6 screen 3).
+                    "seed": t.seed,
                     "player_count": t.player_count,
                     # The roster inline (school-tournament scale): the Teams
                     # tab expands a team to show its players with no extra
