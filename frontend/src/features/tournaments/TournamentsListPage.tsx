@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ChevronRight, Plus, Search, Trophy } from "lucide-react";
 import { tournamentsApi, type Tournament } from "@/api/tournaments";
 import { Input } from "@/components/ui/input";
+import { RoleBadge } from "@/components/ui/RoleBadge";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -73,7 +74,7 @@ function sportLabel(code: string | null): string {
 }
 
 /** Square monogram tile anchoring each row/card, softly tinted per tournament. */
-function Monogram({ name }: { name: string }): React.ReactElement {
+export function Monogram({ name }: { name: string }): React.ReactElement {
   const initial = name.trim().charAt(0).toUpperCase() || "?";
   return (
     <span
@@ -87,7 +88,7 @@ function Monogram({ name }: { name: string }): React.ReactElement {
   );
 }
 
-function StatusPill({ status }: { status: string }): React.ReactElement {
+export function StatusPill({ status }: { status: string }): React.ReactElement {
   const s = statusStyle(status);
   return (
     <span
@@ -112,6 +113,22 @@ function Sport({ code }: { code: string | null }): React.ReactElement {
     <span className="capitalize text-muted-foreground">{sportLabel(code)}</span>
   ) : (
     <span className="text-muted-foreground/40">—</span>
+  );
+}
+
+/** How the user got this tournament: gold Owner chip (created it / owns the
+ * workspace) vs the tournament-scoped role(s) they were invited with. */
+function AccessBadge({ tn }: { tn: Tournament }): React.ReactElement {
+  if (tn.origin === "owner") return <RoleBadge role="owner" />;
+  const roles = tn.my_roles ?? [];
+  if (tn.origin !== "invited" || roles.length === 0)
+    return <span className="text-muted-foreground/40">—</span>;
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {roles.map((role) => (
+        <RoleBadge key={role} role={role} />
+      ))}
+    </span>
   );
 }
 
@@ -232,12 +249,13 @@ function TournamentTable({
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[42rem] text-sm">
+        <table className="w-full min-w-[48rem] text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/30 text-left text-[0.6875rem] uppercase tracking-wider text-muted-foreground">
               <th className="px-4 py-2.5 font-medium">{t("Tournament")}</th>
               <th className="px-3 py-2.5 font-medium">{t("Sport")}</th>
               <th className="px-3 py-2.5 font-medium">{t("Status")}</th>
+              <th className="px-3 py-2.5 font-medium">{t("Your role")}</th>
               <th className="px-3 py-2.5 font-medium">{t("Created")}</th>
               <th className="px-4 py-2.5">
                 <span className="sr-only">{t("Open")}</span>
@@ -274,6 +292,9 @@ function TournamentTable({
                 <td className="px-3 py-3">
                   <StatusPill status={tn.status} />
                 </td>
+                <td className="px-3 py-3">
+                  <AccessBadge tn={tn} />
+                </td>
                 <td className="whitespace-nowrap px-3 py-3 font-tabular text-muted-foreground">
                   {formatCreated(tn.created_at)}
                 </td>
@@ -303,9 +324,10 @@ function TournamentCards({ items }: { items: Tournament[] }): React.ReactElement
         >
           <Monogram name={tn.name} />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="truncate font-medium">{tn.name}</span>
               <StatusPill status={tn.status} />
+              <AccessBadge tn={tn} />
             </div>
             <div className="mt-0.5 truncate font-tabular text-xs text-muted-foreground">
               <span>{tn.slug}</span>

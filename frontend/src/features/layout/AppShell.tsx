@@ -184,7 +184,9 @@ export function AppShell(): React.ReactElement {
     queryFn: invitationsApi.myInvitations,
     staleTime: 30_000,
   });
-  const pendingInviteCount = invitesQuery.data?.length ?? 0;
+  // The endpoint returns the full history; only actionable ones badge.
+  const pendingInviteCount =
+    invitesQuery.data?.filter((inv) => inv.status === "pending").length ?? 0;
 
   // Contextual sidebar: inside a tournament it shows THAT tournament's sections
   // (stage-gated); at the workspace root it shows Dashboard/Tournaments/Invites.
@@ -522,7 +524,7 @@ export function AppShell(): React.ReactElement {
           </div>
         ) : null}
 
-        <main className="flex-1">
+        <main className="flex flex-1 flex-col">
           <Outlet />
         </main>
       </div>

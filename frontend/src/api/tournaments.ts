@@ -95,6 +95,10 @@ export interface Tournament {
   sports: TournamentSport[];
   time_zone: string;
   created_at: string;
+  /** How the current user relates to this tournament. Only the list endpoint
+   * fills these in; other endpoints return null/[]. */
+  origin?: "owner" | "invited" | null;
+  my_roles?: string[];
 }
 
 export interface TournamentInvitation {

@@ -92,6 +92,49 @@ describe("InvitesPage", () => {
     expect(
       await screen.findByText(/no pending invitations/i),
     ).toBeInTheDocument();
+    // No history section either.
+    expect(screen.queryByText("History")).not.toBeInTheDocument();
+  });
+
+  it("lists non-pending invites in a History section with status pills", async () => {
+    vi.mocked(invitationsApi.myInvitations).mockResolvedValue([
+      tournamentInvite,
+      {
+        ...tournamentInvite,
+        id: "inv-2",
+        status: "accepted",
+        tournament_name: "Knockout Cup",
+      },
+      {
+        ...tournamentInvite,
+        id: "inv-3",
+        status: "declined",
+        tournament_name: "Winter League",
+      },
+      {
+        ...tournamentInvite,
+        id: "inv-4",
+        status: "expired",
+        tournament_name: "Spring Sevens",
+      },
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByText("History")).toBeInTheDocument();
+    const history = screen.getByTestId("invites-history");
+    expect(within(history).getByText("Knockout Cup")).toBeInTheDocument();
+    expect(within(history).getByText("Accepted")).toBeInTheDocument();
+    expect(within(history).getByText("Declined")).toBeInTheDocument();
+    expect(within(history).getByText("Expired")).toBeInTheDocument();
+    // History rows carry no accept/decline actions.
+    expect(within(history).queryByTestId("accept-inv-2")).toBeNull();
+    // The pending invite stays in the actionable table, not in history.
+    const pendingTable = screen.getByTestId("invites-table");
+    expect(
+      within(pendingTable).getByText("Nagaland Schools Cup"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("accept-inv-1")).toBeInTheDocument();
   });
 
   it("accept calls acceptInvitation, invalidates tournaments, and navigates to the tournament", async () => {

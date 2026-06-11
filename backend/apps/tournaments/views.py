@@ -52,8 +52,34 @@ class TournamentListCreateView(GenericAPIView):
     serializer_class = TournamentCreateSerializer
 
     def get(self, request):
-        qs = accessible_tournaments(request.user).select_related("organization", "sport")
-        return Response(TournamentSerializer(qs, many=True).data)
+        from apps.organizations.models import MembershipRole, OrganizationMembership
+
+        tournaments = list(
+            accessible_tournaments(request.user).select_related("organization", "sport")
+        )
+        # Per-user access context so each row can say HOW the user got here:
+        # workspace owner/creator vs invited with tournament-scoped roles.
+        invited_roles: dict = {}
+        rows = TournamentMembership.objects.filter(
+            user=request.user,
+            status=TournamentMembershipStatus.ACTIVE,
+            tournament_id__in=[tn.id for tn in tournaments],
+        ).values_list("tournament_id", "role")
+        for tournament_id, role in rows:
+            invited_roles.setdefault(tournament_id, []).append(role)
+        admin_org_ids = set(
+            OrganizationMembership.objects.filter(
+                user=request.user, is_active=True, role=MembershipRole.ADMIN
+            ).values_list("organization_id", flat=True)
+        )
+        context = {
+            "access_user": request.user,
+            "invited_roles": invited_roles,
+            "admin_org_ids": admin_org_ids,
+        }
+        return Response(
+            TournamentSerializer(tournaments, many=True, context=context).data
+        )
 
     def post(self, request):
         if not request.user.email_verified_at:

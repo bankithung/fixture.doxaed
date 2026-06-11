@@ -30,6 +30,8 @@ const SAMPLE: Tournament = {
   sports: [],
   time_zone: "Asia/Kolkata",
   created_at: "2026-06-05T00:00:00Z",
+  origin: "owner",
+  my_roles: ["admin"],
 };
 
 describe("TournamentsListPage", () => {
@@ -59,6 +61,25 @@ describe("TournamentsListPage", () => {
     expect(
       screen.queryByRole("button", { name: /send invite/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("marks owned tournaments with the Owner chip and invited ones with the role", async () => {
+    vi.mocked(tournamentsApi.list).mockResolvedValue([
+      SAMPLE,
+      {
+        ...SAMPLE,
+        id: "t2",
+        slug: "guest-cup",
+        name: "Guest Cup",
+        origin: "invited",
+        my_roles: ["match_scorer"],
+      },
+    ]);
+    renderPage();
+    await screen.findByText("Kohima Cup");
+    expect(screen.getByTestId("role-badge-owner")).toBeInTheDocument();
+    expect(screen.getByTestId("role-badge-match_scorer")).toBeInTheDocument();
+    expect(screen.getByText("Match scorer")).toBeInTheDocument();
   });
 
   it("shows an empty state with a start CTA when there are none", async () => {

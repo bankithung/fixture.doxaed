@@ -109,10 +109,10 @@ def test_my_invitations_email_match_is_case_insensitive():
     assert {row["id"] for row in resp.data} == {str(inv.id)}
 
 
-def test_expired_excluded_from_list():
+def test_expired_listed_with_effective_expired_status():
     org = OrganizationFactory()
     me = UserFactory(email="me@example.test")
-    AdminInvitationFactory(
+    stale = AdminInvitationFactory(
         organization=org,
         email="me@example.test",
         expires_at=timezone.now() - dt.timedelta(days=1),
@@ -124,21 +124,39 @@ def test_expired_excluded_from_list():
     )
     resp = _api(me).get("/api/invitations/")
     assert resp.status_code == 200
-    assert {row["id"] for row in resp.data} == {str(live.id)}
+    by_id = {row["id"]: row for row in resp.data}
+    assert set(by_id) == {str(stale.id), str(live.id)}
+    # The stale row is still PENDING in the DB but reported as expired.
+    assert by_id[str(stale.id)]["status"] == InviteStatus.EXPIRED
+    assert by_id[str(live.id)]["status"] == InviteStatus.PENDING
 
 
-def test_accepted_and_declined_excluded_from_list():
+def test_history_listed_with_pending_first():
     org = OrganizationFactory()
     me = UserFactory(email="me@example.test")
-    AdminInvitationFactory(
+    accepted = AdminInvitationFactory(
         organization=org, email="me@example.test", status=InviteStatus.ACCEPTED
     )
-    AdminInvitationFactory(
+    declined = AdminInvitationFactory(
         organization=org, email="me@example.test", status=InviteStatus.DECLINED
+    )
+    revoked = AdminInvitationFactory(
+        organization=org, email="me@example.test", status=InviteStatus.REVOKED
     )
     pending = AdminInvitationFactory(organization=org, email="me@example.test")
     resp = _api(me).get("/api/invitations/")
-    assert {row["id"] for row in resp.data} == {str(pending.id)}
+    assert {row["id"] for row in resp.data} == {
+        str(accepted.id),
+        str(declined.id),
+        str(revoked.id),
+        str(pending.id),
+    }
+    # Actionable pending invites sort ahead of the history.
+    assert resp.data[0]["id"] == str(pending.id)
+    statuses = {row["id"]: row["status"] for row in resp.data}
+    assert statuses[str(accepted.id)] == InviteStatus.ACCEPTED
+    assert statuses[str(declined.id)] == InviteStatus.DECLINED
+    assert statuses[str(revoked.id)] == InviteStatus.REVOKED
 
 
 def test_my_invitations_requires_auth():

@@ -575,10 +575,13 @@ class InvitationAcceptView(APIView):
 class MyInvitationsView(APIView):
     """GET /api/invitations/
 
-    Returns the signed-in user's PENDING, non-expired invitations matched by
-    email (case-insensitive), enriched for the inbox UI. Tournament-scoped
-    invites carry a ``tournament_id`` + ``tournament_name``; org-level invites
-    have both null.
+    Returns ALL invitations addressed to the signed-in user's email
+    (case-insensitive), enriched for the inbox UI: actionable PENDING ones
+    first (newest first), then the history (accepted / declined / revoked /
+    expired). A PENDING invite past its expiry is reported as ``expired``
+    (effective status — the DB row is materialized lazily on accept).
+    Tournament-scoped invites carry a ``tournament_id`` + ``tournament_name``;
+    org-level invites have both null.
     """
 
     permission_classes = [IsAuthenticated]
@@ -590,20 +593,22 @@ class MyInvitationsView(APIView):
             return Response([])
         now = timezone.now()
         qs = (
-            AdminInvitation.objects.filter(
-                email__iexact=email,
-                status=InviteStatus.PENDING,
-                expires_at__gt=now,
-            )
+            AdminInvitation.objects.filter(email__iexact=email)
             .select_related("organization", "tournament", "invited_by")
             .order_by("-created_at")
         )
+
+        def effective_status(inv) -> str:
+            if inv.status == InviteStatus.PENDING and inv.expires_at <= now:
+                return InviteStatus.EXPIRED
+            return inv.status
+
         data = [
             {
                 "id": str(inv.id),
                 "email": inv.email,
                 "role": inv.role,
-                "status": inv.status,
+                "status": effective_status(inv),
                 "organization_name": inv.organization.name,
                 "tournament_id": (
                     str(inv.tournament_id) if inv.tournament_id else None
@@ -619,6 +624,9 @@ class MyInvitationsView(APIView):
             }
             for inv in qs
         ]
+        # Actionable invites first; both groups newest-first (qs order is
+        # stable through the sort).
+        data.sort(key=lambda row: row["status"] != InviteStatus.PENDING)
         return Response(data)
 
 

@@ -60,3 +60,34 @@ def test_get_tournaments_lists_only_accessible_ones():
     ids = [t["id"] for t in resp.json()]
     assert str(ta.id) in ids
     assert str(tb.id) not in ids
+
+
+def test_get_tournaments_marks_owner_vs_invited():
+    """The list says HOW the user got each tournament: created/owns the
+    workspace -> origin=owner; joined via invite -> origin=invited + roles."""
+    from apps.tournaments.models import (
+        TournamentMembership,
+        TournamentMembershipRole,
+        TournamentMembershipStatus,
+    )
+
+    owner = _verified("owner@test.local")
+    scorer = _verified("scorer@test.local")
+    tournament = create_tournament(user=owner, name="Origin Cup")
+    TournamentMembership.objects.create(
+        user=scorer,
+        tournament=tournament,
+        role=TournamentMembershipRole.MATCH_SCORER,
+        status=TournamentMembershipStatus.ACTIVE,
+        assigned_by=owner,
+    )
+
+    client = APIClient()
+    client.force_authenticate(user=owner)
+    row = client.get("/api/tournaments/").json()[0]
+    assert row["origin"] == "owner"
+
+    client.force_authenticate(user=scorer)
+    row = client.get("/api/tournaments/").json()[0]
+    assert row["origin"] == "invited"
+    assert row["my_roles"] == [TournamentMembershipRole.MATCH_SCORER]

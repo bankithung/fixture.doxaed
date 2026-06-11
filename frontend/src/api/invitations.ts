@@ -1,9 +1,19 @@
 import { api } from "./client";
 
+/** Effective invitation status as reported by `GET /api/invitations/` —
+ * a pending invite past its expiry comes back as `"expired"`. */
+export type MyInvitationStatus =
+  | "pending"
+  | "accepted"
+  | "declined"
+  | "revoked"
+  | "expired";
+
 /**
- * A pending invitation addressed to the *current* user, as returned by
- * `GET /api/invitations/` (Increment 13). The list is the signed-in user's
- * PENDING invites only; `tournament_id`/`tournament_name` are null for
+ * An invitation addressed to the *current* user, as returned by
+ * `GET /api/invitations/` (Increment 13). The list is the user's FULL invite
+ * history — pending (actionable) rows sort first, then accepted / declined /
+ * revoked / expired. `tournament_id`/`tournament_name` are null for
  * org-level invites.
  */
 export interface MyInvitation {
@@ -11,7 +21,7 @@ export interface MyInvitation {
   email: string;
   /** One of the 6 tournament roles (snake_case). */
   role: string;
-  status: string;
+  status: MyInvitationStatus;
   organization_name: string;
   /** Null for org-level invites. */
   tournament_id: string | null;
@@ -36,7 +46,7 @@ export interface DeclineInvitationResponse {
 }
 
 export const invitationsApi = {
-  /** The current user's pending invitations (email-scoped on the server). */
+  /** The current user's invitations, pending first (email-scoped on the server). */
   myInvitations: () => api.get<MyInvitation[]>("/api/invitations/"),
   /**
    * Accept an invitation (email-verified server-side). Returns the created

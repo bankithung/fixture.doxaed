@@ -21,6 +21,10 @@ class TournamentStageTransitionSerializer(serializers.Serializer):
 class TournamentSerializer(serializers.ModelSerializer):
     organization_slug = serializers.CharField(source="organization.slug", read_only=True)
     sport_code = serializers.CharField(source="sport.code", read_only=True, default=None)
+    # How the requesting user relates to this tournament. Populated only by the
+    # list endpoint (which builds the access context); null/[] elsewhere.
+    origin = serializers.SerializerMethodField()
+    my_roles = serializers.SerializerMethodField()
 
     class Meta:
         model = Tournament
@@ -35,8 +39,26 @@ class TournamentSerializer(serializers.ModelSerializer):
             "scheduling_config",
             "time_zone",
             "created_at",
+            "origin",
+            "my_roles",
         ]
         read_only_fields = fields
+
+    def get_origin(self, obj) -> str | None:
+        """``"owner"`` if the user created the tournament or admins its
+        workspace org; ``"invited"`` if they only hold tournament memberships."""
+        user = self.context.get("access_user")
+        if user is None:
+            return None
+        if (
+            obj.created_by_id == user.id
+            or obj.organization_id in self.context.get("admin_org_ids", set())
+        ):
+            return "owner"
+        return "invited"
+
+    def get_my_roles(self, obj) -> list[str]:
+        return self.context.get("invited_roles", {}).get(obj.id, [])
 
 
 class TournamentCreateSerializer(serializers.Serializer):
