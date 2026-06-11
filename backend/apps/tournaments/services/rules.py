@@ -24,10 +24,15 @@ DEFAULT_RULES: dict[str, Any] = {
     "match": {"halves": 2, "half_minutes": 45, "extra_time": False, "penalties": True},
     "squad": {"min_players": 7, "max_players": 23, "max_subs": 5},
     "discipline": {"yellow_suspension_threshold": 2, "red_matches_banned": 1},
+    # Fixture-engine redesign §2.6: groups at/under max_size auto-play double
+    # round-robin (0 = off). Participant-facing (changes competitive
+    # outcomes), so it correctly lives under the invariant-7 freeze; consumed
+    # by apps.fixtures.services.generate (ships with its consumer — §9 A7).
+    "small_group_double_rr": {"max_size": 0},
 }
 
 # Keys whose value is a dict and may be partially overridden (per-key merge).
-_NESTED = {"points", "match", "squad", "discipline"}
+_NESTED = {"points", "match", "squad", "discipline", "small_group_double_rr"}
 
 
 def merge_rules(

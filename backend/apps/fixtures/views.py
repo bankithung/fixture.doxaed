@@ -44,7 +44,9 @@ class GenerateFixturesView(GenericAPIView):
         # saved the format via the draw-config PATCH.
         overrides = {
             k: request.data.get(k)
-            for k in ("format", "group_size", "advance_per_group", "third_place")
+            for k in (
+                "format", "group_size", "advance_per_group", "third_place", "legs",
+            )
             if k in request.data
         }
         cfg = effective_draw_config(t, leaf_key or None, overrides=overrides)
@@ -70,7 +72,8 @@ class GenerateFixturesView(GenericAPIView):
                 )
             elif fmt == "by_category":
                 matches = generate_round_robin_by_category(
-                    tournament=t, leaf_key=leaf_key or None
+                    tournament=t, leaf_key=leaf_key or None,
+                    legs=int(cfg["legs"]),
                 )
             else:
                 # "round_robin" and "groups_knockout" (the stored-config name)
@@ -80,6 +83,7 @@ class GenerateFixturesView(GenericAPIView):
                     tournament=t,
                     group_size=int(cfg["group_size"]),
                     leaf_key=leaf_key or None,
+                    legs=int(cfg["legs"]),
                 )
         except (ValueError, TypeError) as e:
             raise DRFValidationError({"detail": str(e)})

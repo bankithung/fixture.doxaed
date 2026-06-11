@@ -21,8 +21,12 @@ from apps.tournaments.services.sports import leaf_label, sport_for_leaf
 _GROUP_LABELS = [chr(ord("A") + i) for i in range(26)]
 
 
-def _round_robin(teams: list) -> list[tuple]:
-    """Circle method → list of (round_no, home, away), each pair once."""
+def _round_robin(teams: list, *, legs: int = 1) -> list[tuple]:
+    """Circle method → list of (round_no, home, away), each pair once.
+
+    ``legs=2`` (redesign spec §4.2 double round-robin): append a mirrored
+    second cycle — the same pairings with home/away swapped ("inverted"
+    symmetry) and round_no continuing after the first cycle."""
     arr = list(teams)
     if len(arr) % 2:
         arr.append(None)  # bye marker
@@ -37,7 +41,26 @@ def _round_robin(teams: list) -> list[tuple]:
             pairings.append((r + 1, home, away) if r % 2 == 0 else (r + 1, away, home))
         # rotate, keeping the first element fixed
         arr = [arr[0]] + [arr[-1]] + arr[1:-1]
+    if legs == 2:
+        rounds = n - 1
+        pairings += [(r + rounds, away, home) for r, home, away in list(pairings)]
     return pairings
+
+
+def _small_group_max(tournament) -> int:
+    """rules.small_group_double_rr.max_size (0 = off): groups at/under this
+    size auto-play double round-robin so every team in e.g. a 3-team group
+    still gets a meaningful number of matches (spec §2.6/§4.2). A
+    participant-facing rule, so it lives under the invariant-7 freeze."""
+    cfg = (tournament.rules or {}).get("small_group_double_rr") or {}
+    try:
+        return max(0, int(cfg.get("max_size") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _legs_for_group(group_len: int, legs: int, small_max: int) -> int:
+    return 2 if legs == 2 or (small_max and group_len <= small_max) else 1
 
 
 def _registered_teams(tournament, leaf_key: str | None = None) -> list[Team]:
@@ -148,13 +171,16 @@ def _next_match_no(tournament) -> int:
 
 
 def generate_round_robin(
-    *, tournament, group_size: int = 5, leaf_key: str | None = None
+    *, tournament, group_size: int = 5, leaf_key: str | None = None,
+    legs: int = 1,
 ) -> list[Match]:
     """Split registered teams into groups of ``group_size`` and round-robin each
     group. With ``leaf_key``, only that competition's teams are drawn and the
     idempotency check is scoped to it; otherwise the legacy whole-tournament
     behavior applies. Group membership lives on Match.group_label — Team.pool
-    (the registered category) is never touched."""
+    (the registered category) is never touched. ``legs=2`` doubles every
+    group's cycle (mirrored, spec §4.2); rules.small_group_double_rr doubles
+    only the groups at/under its max_size."""
     existing_scope = Match.objects.filter(tournament=tournament, deleted_at__isnull=True)
     if leaf_key:
         existing_scope = existing_scope.filter(leaf_key=leaf_key)
@@ -174,6 +200,7 @@ def generate_round_robin(
     prefix = f"{leaf_label(sports_cfg, leaf_key)} — " if leaf_key else ""
 
     org = tournament.organization
+    small_max = _small_group_max(tournament)
     to_create: list[Match] = []
     match_no = _next_match_no(tournament)
     with transaction.atomic():
@@ -186,7 +213,8 @@ def generate_round_robin(
             ih = hashlib.sha256(
                 ",".join(sorted(str(t.id) for t in group)).encode()
             ).hexdigest()
-            for round_no, home, away in _round_robin(group):
+            group_legs = _legs_for_group(len(group), legs, small_max)
+            for round_no, home, away in _round_robin(group, legs=group_legs):
                 match_no += 1
                 to_create.append(
                     Match(
@@ -209,13 +237,15 @@ def generate_round_robin(
 
 
 def generate_round_robin_by_category(
-    *, tournament, leaf_key: str | None = None
+    *, tournament, leaf_key: str | None = None, legs: int = 1,
 ) -> list[Match]:
     """Round-robin WITHIN each competition (category leaf): a team only plays
     others registered into the SAME leaf. Buckets key on the structural
     ``Team.leaf_key`` (falling back to the legacy ``pool`` label); idempotency
     is PER BUCKET, so each competition generates independently — pass
-    ``leaf_key`` to draw exactly one. Buckets with <2 teams are skipped."""
+    ``leaf_key`` to draw exactly one. Buckets with <2 teams are skipped.
+    ``legs=2`` doubles each bucket's cycle (mirrored, spec §4.2);
+    rules.small_group_double_rr doubles only buckets at/under its max_size."""
     teams = _registered_teams(tournament, leaf_key)
     if leaf_key and len(teams) < 2:
         raise ValueError("Need at least 2 registered teams in this category.")
@@ -238,6 +268,7 @@ def generate_round_robin_by_category(
 
     sports_cfg = tournament.sports or []
     org = tournament.organization
+    small_max = _small_group_max(tournament)
     to_create: list[Match] = []
     skipped_existing: list[Match] = []
     match_no = _next_match_no(tournament)
@@ -266,7 +297,8 @@ def generate_round_robin_by_category(
             ih = hashlib.sha256(
                 ",".join(sorted(str(t.id) for t in group)).encode()
             ).hexdigest()
-            for round_no, home, away in _round_robin(group):
+            group_legs = _legs_for_group(len(group), legs, small_max)
+            for round_no, home, away in _round_robin(group, legs=group_legs):
                 match_no += 1
                 to_create.append(
                     Match(
