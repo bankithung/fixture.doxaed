@@ -34,6 +34,7 @@ def advance_from_match(match_id) -> list[Match]:
             if dep.id == m.id:
                 continue
             changed = False
+            vacated = False
             for side in ("home", "away"):
                 src = getattr(dep, f"{side}_source") or {}
                 if src.get("match_id") != mid:
@@ -42,17 +43,69 @@ def advance_from_match(match_id) -> list[Match]:
                     setattr(dep, f"{side}_team_id", winner_id)
                     changed = True
                 elif src.get("type") == "loser_of":
-                    setattr(dep, f"{side}_team_id", loser_id)
-                    changed = True
-            if changed:
-                dep.save(update_fields=["home_team", "away_team", "updated_at"])
+                    if m.status == MatchStatus.WALKOVER:
+                        # §9 A7: a walkover loser (withdrawal / no-show) never
+                        # occupies a loser_of slot — stamp the side vacated;
+                        # _settle_unopposed resolves the match for the other
+                        # side once it holds a real team.
+                        if not src.get("walkover_vacated"):
+                            setattr(
+                                dep, f"{side}_source",
+                                {**src, "walkover_vacated": True},
+                            )
+                            vacated = True
+                    else:
+                        setattr(dep, f"{side}_team_id", loser_id)
+                        changed = True
+            if changed or vacated:
+                fields = ["updated_at"]
+                if changed:
+                    fields += ["home_team", "away_team"]
+                if vacated:
+                    fields += ["home_source", "away_source"]
+                dep.save(update_fields=fields)
                 resolved.append(dep)
 
     # group_position pointers (invariant #9 — previously silently ignored):
     # once this match's GROUP is fully final, standings positions resolve any
     # dependents declaring {"type": "group_position", "group_label", "position"}.
     resolved.extend(_resolve_group_positions(m))
+    for dep in resolved:
+        _settle_unopposed(dep)
     return resolved
+
+
+def _settle_unopposed(dep: Match) -> None:
+    """Resolve a scheduled match one side of which cannot contest it — the
+    slot was walkover-vacated (§9 A7) or the placed team has withdrawn — as a
+    walkover for the other side, once that side holds a real team. Both sides
+    out (a double withdrawal) is left for the organizer."""
+    from apps.matches.services.state import WALKOVER_SCORE, transition_match
+    from apps.teams.models import TeamStatus
+
+    if dep.status != MatchStatus.SCHEDULED:
+        return
+
+    def _unopposed(side: str) -> bool:
+        if (getattr(dep, f"{side}_source") or {}).get("walkover_vacated"):
+            return True
+        team = getattr(dep, f"{side}_team", None)
+        return team is not None and team.status == TeamStatus.WITHDRAWN
+
+    home_out, away_out = _unopposed("home"), _unopposed("away")
+    if home_out == away_out:  # both fine, or both unopposed
+        return
+    win_side = "away" if home_out else "home"
+    if getattr(dep, f"{win_side}_team_id") is None:
+        return  # the surviving side isn't known yet — settle on its fill
+    dep.home_score, dep.away_score = (
+        (0, WALKOVER_SCORE) if home_out else (WALKOVER_SCORE, 0)
+    )
+    dep.save(update_fields=["home_score", "away_score", "updated_at"])
+    transition_match(
+        match=dep, to_status=MatchStatus.WALKOVER,
+        reason="unopposed: opponent withdrew or slot walkover-vacated",
+    )
 
 
 def _resolve_group_positions(m: Match) -> list[Match]:

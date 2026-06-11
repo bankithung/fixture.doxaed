@@ -29,10 +29,22 @@ DEFAULT_RULES: dict[str, Any] = {
     # outcomes), so it correctly lives under the invariant-7 freeze; consumed
     # by apps.fixtures.services.generate (ships with its consumer — §9 A7).
     "small_group_double_rr": {"max_size": 0},
+    # Fixture-engine redesign §2.6 + §9 A7: what happens when a team
+    # withdraws. `fixtures` is consumed by apps.teams.services.withdrawal
+    # (v1 executes "walkover" only); `rr_results` by
+    # apps.matches.services.standings (a withdrawn team's results are voided
+    # while it has played under half its matches, kept once at least half).
+    "withdrawal_policy": {
+        "fixtures": "walkover",
+        "rr_results": "void_if_under_half_played",
+    },
 }
 
 # Keys whose value is a dict and may be partially overridden (per-key merge).
-_NESTED = {"points", "match", "squad", "discipline", "small_group_double_rr"}
+_NESTED = {
+    "points", "match", "squad", "discipline", "small_group_double_rr",
+    "withdrawal_policy",
+}
 
 
 def merge_rules(

@@ -32,6 +32,11 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
 
 _TERMINAL_WITH_RESULT = (S.COMPLETED, S.WALKOVER)
 
+# Conventional walkover scoreline (football w/o award). Set on the match
+# BEFORE transitioning to WALKOVER so winner_id/loser_id resolve and the
+# advancement ripple (invariant #9) works unchanged.
+WALKOVER_SCORE = 3
+
 
 def can_transition(frm: str, to: str) -> bool:
     return to in ALLOWED_TRANSITIONS.get(frm, set())

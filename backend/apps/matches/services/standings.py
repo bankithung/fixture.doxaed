@@ -6,6 +6,8 @@ table without code changes. See the rules/constraints design spec.
 """
 from __future__ import annotations
 
+from django.db.models import Q
+
 from apps.matches.models import Match, MatchStatus
 
 
@@ -29,6 +31,40 @@ def _sort_key(row: dict, tiebreakers: list[str]):
     return tuple(key)
 
 
+def _voided_team_ids(tournament, matches, rules, group_label) -> set:
+    """``rules.withdrawal_policy.rr_results`` (redesign spec §2.6, §9 A7):
+    under ``void_if_under_half_played`` a WITHDRAWN team that completed fewer
+    than half of its (non-cancelled) matches in scope has ALL its results —
+    including opponents' walkover awards — annulled and drops off the table;
+    at half or more, everything (walkovers included) stands."""
+    from apps.teams.models import TeamStatus
+
+    policy = (rules.get("withdrawal_policy") or {}).get("rr_results")
+    if policy != "void_if_under_half_played":
+        return set()
+    withdrawn = {
+        team.id
+        for m in matches
+        for team in (m.home_team, m.away_team)
+        if team is not None and team.status == TeamStatus.WITHDRAWN
+    }
+    if not withdrawn:
+        return set()
+    scope = Match.objects.filter(
+        tournament=tournament, deleted_at__isnull=True
+    ).exclude(status=MatchStatus.CANCELLED)
+    if group_label is not None:
+        scope = scope.filter(group_label=group_label)
+    voided = set()
+    for tid in withdrawn:
+        mine = scope.filter(Q(home_team_id=tid) | Q(away_team_id=tid))
+        total = mine.count()
+        played = mine.filter(status=MatchStatus.COMPLETED).count()
+        if total and played * 2 < total:
+            voided.add(tid)
+    return voided
+
+
 def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
     from apps.tournaments.services.rules import merge_rules
 
@@ -37,14 +73,22 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
     win_pts, draw_pts, loss_pts = pts["win"], pts["draw"], pts["loss"]
     tiebreakers = rules["tiebreakers"]
 
+    # Walkovers enter the table only when they carry a scoreline (the
+    # withdrawal executor awards 3-0); legacy score-less walkovers keep
+    # falling through the None-score guard below — zero behavior change.
     qs = (
         Match.objects.filter(
-            tournament=tournament, status=MatchStatus.COMPLETED, deleted_at__isnull=True
+            tournament=tournament,
+            status__in=(MatchStatus.COMPLETED, MatchStatus.WALKOVER),
+            deleted_at__isnull=True,
         )
         .select_related("home_team", "away_team")
     )
     if group_label is not None:
         qs = qs.filter(group_label=group_label)
+
+    matches = list(qs)
+    voided = _voided_team_ids(tournament, matches, rules, group_label)
 
     table: dict = {}
 
@@ -62,7 +106,9 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
             table[team.id] = r
         return r
 
-    for m in qs:
+    for m in matches:
+        if voided and (m.home_team_id in voided or m.away_team_id in voided):
+            continue  # rules.withdrawal_policy.rr_results — results annulled
         h, a = row(m.home_team), row(m.away_team)
         if h is None or a is None or m.home_score is None or m.away_score is None:
             continue

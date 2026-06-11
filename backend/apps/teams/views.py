@@ -24,6 +24,7 @@ from apps.teams.services.registration import (
     register_school,
     resolve_registration_link,
 )
+from apps.teams.services.withdrawal import withdraw_team
 from apps.teams.throttling import RegistrationRateThrottle
 from apps.tournaments.models import Tournament
 from apps.tournaments.permissions import can_access_module
@@ -202,6 +203,45 @@ class TeamSeedsView(GenericAPIView):
                 request=request,
             )
         return Response({"updated": len(parsed), "leaf_key": leaf_key})
+
+
+class TeamWithdrawView(GenericAPIView):
+    """`POST /api/tournaments/{id}/teams/{team_id}/withdraw/` — minimal
+    withdrawal executor (redesign spec §7 inc 16, §9 A7): marks the team
+    withdrawn and walkovers its remaining scheduled matches. Body
+    `{event_id?, reason?}`. Gate: tournament.bracket_editor; idempotent
+    (invariant 3); audited (`team_withdrawn`)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id, team_id):
+        tournament = (
+            Tournament.objects.filter(id=tournament_id, deleted_at__isnull=True)
+            .select_related("organization")
+            .first()
+        )
+        if tournament is None or not accessible_tournaments(request.user).filter(
+            id=tournament_id
+        ).exists():
+            raise NotFound("tournament_not_found")
+        if not can_access_module(request.user, tournament, "tournament.bracket_editor"):
+            raise PermissionDenied("not_tournament_manager")
+        team = Team.objects.filter(
+            id=team_id, tournament=tournament, deleted_at__isnull=True
+        ).first()
+        if team is None:
+            raise NotFound("team_not_found")
+        try:
+            result = withdraw_team(
+                team=team,
+                by=request.user,
+                event_id=request.data.get("event_id") or None,
+                reason=str(request.data.get("reason") or ""),
+                request=request,
+            )
+        except ValueError as exc:
+            raise DRFValidationError({"detail": str(exc)}) from exc
+        return Response(result)
 
 
 class TournamentTeamsListView(GenericAPIView):
