@@ -127,7 +127,8 @@ class ScheduleFixturesView(GenericAPIView):
         # (with their types + availability windows) are the resource pool.
         if not payload.get("venues"):
             stored = [
-                {"name": v.name, "venue_type": v.venue_type, "windows": v.windows}
+                {"name": v.name, "venue_type": v.venue_type,
+                 "windows": v.windows, "count": v.count}
                 for v in Venue.objects.filter(
                     organization=t.organization, deleted_at__isnull=True
                 ).order_by("name")
@@ -147,6 +148,9 @@ class ScheduleFixturesView(GenericAPIView):
                 "unscheduled": result.unscheduled,
                 "soft_score": result.soft_score,
                 "explanation": result.explanation,
+                # Structured infeasibility (redesign §3): stable codes +
+                # concrete relaxations, localized client-side (§9 A5).
+                "violations": result.violations,
                 "leaf_key": leaf_key,
             }
         )
@@ -204,8 +208,16 @@ class TournamentDrawConfigView(GenericAPIView):
 def _venue_payload(v: Venue) -> dict:
     return {
         "id": str(v.id), "name": v.name, "venue_type": v.venue_type,
-        "windows": v.windows or [],
+        "windows": v.windows or [], "count": v.count,
     }
+
+
+def _clean_count(raw) -> int:
+    """Venue ``count`` (courts/tables, redesign §2.3): integer >= 1."""
+    try:
+        return max(1, min(64, int(raw)))
+    except (TypeError, ValueError):
+        return 1
 
 
 def _clean_windows(raw) -> list[dict]:
@@ -252,6 +264,7 @@ class TournamentVenuesView(GenericAPIView):
             name=name,
             venue_type=str(request.data.get("venue_type") or "").strip()[:40],
             windows=_clean_windows(request.data.get("windows")),
+            count=_clean_count(request.data.get("count", 1)),
             created_by=request.user,
         )
         return Response(_venue_payload(v), status=201)
@@ -291,7 +304,10 @@ class TournamentVenueDetailView(GenericAPIView):
             v.venue_type = str(request.data["venue_type"] or "").strip()[:40]
         if "windows" in request.data:
             v.windows = _clean_windows(request.data["windows"])
-        v.save(update_fields=["name", "venue_type", "windows", "updated_at"])
+        if "count" in request.data:
+            v.count = _clean_count(request.data["count"])
+        v.save(update_fields=["name", "venue_type", "windows", "count",
+                              "updated_at"])
         return Response(_venue_payload(v))
 
     def delete(self, request, tournament_id, venue_id):
