@@ -1,22 +1,21 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, GitBranch, Layers, Users, Wand2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { CalendarClock, GitBranch, Users, Wand2 } from "lucide-react";
 import {
   tournamentsApi,
   type MatchRow,
   type TeamRow,
 } from "@/api/tournaments";
-import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/ui/toast";
-import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 import { ScheduleWizard } from "../ScheduleWizard";
+import {
+  AdvanceToKnockoutDialog,
+  GenerateDrawWizard,
+} from "../GenerateDrawWizard";
 import { EmptyState, ScoreRow, StandingsTable } from "./shared";
-
-type GenFormat = "round_robin" | "by_category" | "knockout";
 
 /** One competition (category leaf) and everything in it. */
 interface Competition {
@@ -27,6 +26,19 @@ interface Competition {
   matches: MatchRow[];
 }
 
+const FINAL = new Set(["completed", "walkover"]);
+
+/** True when the competition has a finished group stage and no bracket yet —
+ * the moment "Advance to knockout" becomes possible. */
+function groupsDone(c: Competition): boolean {
+  const groups = c.matches.filter((m) => m.stage === "group");
+  return (
+    groups.length > 0 &&
+    groups.every((m) => FINAL.has(m.status)) &&
+    !c.matches.some((m) => m.stage === "knockout")
+  );
+}
+
 /**
  * The fixtures workspace, organized PER COMPETITION (category leaf): each
  * leaf — e.g. "Football — U15 — Girls — 5v5" — shows its registered teams,
@@ -35,11 +47,18 @@ interface Competition {
  */
 export function FixturesTab(): React.ReactElement {
   const { id = "" } = useParams();
-  const qc = useQueryClient();
-  const toast = useToast();
   const [wizard, setWizard] = useState<{ leafKey?: string; label?: string } | null>(
     null,
   );
+  const [draw, setDraw] = useState<{
+    leafKey: string;
+    label: string;
+    teamCount: number;
+  } | null>(null);
+  const [advanceDlg, setAdvanceDlg] = useState<{
+    leafKey: string;
+    label: string;
+  } | null>(null);
 
   const teams = useQuery({ queryKey: ["t-teams", id], queryFn: () => tournamentsApi.teams(id) });
   const matches = useQuery({ queryKey: ["t-matches", id], queryFn: () => tournamentsApi.matches(id) });
@@ -79,25 +98,6 @@ export function FixturesTab(): React.ReactElement {
       ...all.filter((c) => !c.leafKey),
     ];
   }, [teams.data, matches.data]);
-
-  const generate = useMutation({
-    mutationFn: (args: { format: GenFormat; leafKey?: string }) =>
-      tournamentsApi.generateFixtures(id, {
-        format: args.format,
-        leafKey: args.leafKey,
-      }),
-    onSuccess: () => {
-      invalidateTournament(qc, id);
-      toast.push({ kind: "success", title: t("Fixtures generated") });
-    },
-    onError: (e) =>
-      toast.push({
-        kind: "error",
-        title: t("Could not generate fixtures"),
-        description:
-          e instanceof ApiError ? (e.payload.detail ?? undefined) : undefined,
-      }),
-  });
 
   const teamCount = (teams.data ?? []).length;
   const matchCount = (matches.data ?? []).length;
@@ -182,6 +182,23 @@ export function FixturesTab(): React.ReactElement {
 
               {drawn ? (
                 <div className="px-4 py-2">
+                  {canManage && groupsDone(c) ? (
+                    <div className="flex items-center gap-3 border-b border-border py-2">
+                      <p className="text-sm text-muted-foreground">
+                        {t("Group stage complete — build the bracket from the standings.")}
+                      </p>
+                      <Button
+                        size="sm"
+                        data-testid={`advance-${c.leafKey || "general"}`}
+                        onClick={() =>
+                          setAdvanceDlg({ leafKey: c.leafKey, label: c.label })
+                        }
+                      >
+                        <GitBranch aria-hidden="true" className="h-3.5 w-3.5" />
+                        {t("Advance to knockout")}
+                      </Button>
+                    </div>
+                  ) : null}
                   {c.matches.map((m) => (
                     <ScoreRow key={m.id} match={m} tournamentId={id} />
                   ))}
@@ -190,53 +207,24 @@ export function FixturesTab(): React.ReactElement {
                 <div className="flex flex-wrap items-center gap-3 px-4 py-4">
                   <p className="text-sm text-muted-foreground">
                     {ready
-                      ? t("No draw yet — pick a format for this competition.")
+                      ? t("No draw yet — generate one; every competition picks its own format.")
                       : t("Needs at least 2 registered teams before a draw can be made.")}
                   </p>
                   {canManage && ready ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        size="sm"
-                        disabled={generate.isPending}
-                        onClick={() =>
-                          generate.mutate(
-                            c.leafKey
-                              ? { format: "by_category", leafKey: c.leafKey }
-                              : { format: "round_robin" },
-                          )
-                        }
-                      >
-                        <Wand2 aria-hidden="true" className="h-3.5 w-3.5" />
-                        {t("Round-robin")}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={generate.isPending}
-                        onClick={() =>
-                          generate.mutate({
-                            format: "knockout",
-                            leafKey: c.leafKey || undefined,
-                          })
-                        }
-                        title={t("Single elimination — byes are added automatically for odd team counts")}
-                      >
-                        <GitBranch aria-hidden="true" className="h-3.5 w-3.5" />
-                        {t("Knockout")}
-                      </Button>
-                      {!c.leafKey ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={generate.isPending}
-                          onClick={() => generate.mutate({ format: "by_category" })}
-                          title={t("Round-robin within each category — teams only play their own group")}
-                        >
-                          <Layers aria-hidden="true" className="h-3.5 w-3.5" />
-                          {t("By category")}
-                        </Button>
-                      ) : null}
-                    </div>
+                    <Button
+                      size="sm"
+                      data-testid={`generate-${c.leafKey || "general"}`}
+                      onClick={() =>
+                        setDraw({
+                          leafKey: c.leafKey,
+                          label: c.label,
+                          teamCount: c.teams.length,
+                        })
+                      }
+                    >
+                      <Wand2 aria-hidden="true" className="h-3.5 w-3.5" />
+                      {t("Generate draw")}
+                    </Button>
                   ) : null}
                 </div>
               )}
@@ -269,6 +257,28 @@ export function FixturesTab(): React.ReactElement {
         leafKey={wizard?.leafKey}
         leafLabel={wizard?.label}
       />
+      {draw ? (
+        <GenerateDrawWizard
+          tournamentId={id}
+          open
+          onClose={() => setDraw(null)}
+          leafKey={draw.leafKey}
+          leafLabel={draw.label}
+          teamCount={draw.teamCount}
+          onGenerated={({ leafKey, label }) =>
+            setWizard(leafKey ? { leafKey, label } : {})
+          }
+        />
+      ) : null}
+      {advanceDlg ? (
+        <AdvanceToKnockoutDialog
+          tournamentId={id}
+          open
+          onClose={() => setAdvanceDlg(null)}
+          leafKey={advanceDlg.leafKey}
+          leafLabel={advanceDlg.label}
+        />
+      ) : null}
     </div>
   );
 }

@@ -401,6 +401,53 @@ def generate_single_elimination(
     return created
 
 
+def _cross_seed(quals: list[list[str]]) -> list[str]:
+    """Strength-ordered seed list for groups→knockout that the seeded bracket
+    (1 meets the lowest seed, 2 the next-lowest, …) turns into CROSS-GROUP
+    round-1 pairs. Layered: all group winners (seeds 1..n in group order),
+    then all runners-up, then thirds, … Within the winners-vs-lowest-layer
+    pairing this meets w_i with the runner-up of a DIFFERENT group for even
+    group counts; a final repair pass swaps within a layer to fix the
+    leftover same-group pair odd group counts produce.
+
+    (The previous interleaved list [w0, r1, w1, r0] read as strength order
+    placed w0 vs r0 and w1 vs r1 in the semis — same-group rematches, the
+    opposite of the intended FIFA-style crossing.)
+    """
+    n = len(quals)
+    k = max(len(q) for q in quals)
+    layers: list[list[str]] = [
+        [q[p] for q in quals if p < len(q)] for p in range(k)
+    ]
+    seeds: list[str] = [tid for layer in layers for tid in layer]
+
+    group_of = {tid: gi for gi, q in enumerate(quals) for tid in q}
+    pairs = _opening_pairs_bracket(len(seeds))
+
+    def same_group(i: int, j: int) -> bool:
+        return (
+            i < len(seeds) and j < len(seeds)
+            and group_of[seeds[i]] == group_of[seeds[j]]
+        )
+
+    for i, j in pairs:
+        if not same_group(i, j):
+            continue
+        # Swap seeds[j] with another same-layer seed whose pair stays clean.
+        for a, b in pairs:
+            for cand, partner in ((a, b), (b, a)):
+                if cand in (i, j) or cand >= len(seeds):
+                    continue
+                seeds[j], seeds[cand] = seeds[cand], seeds[j]
+                if not same_group(i, j) and not same_group(cand, partner):
+                    break
+                seeds[j], seeds[cand] = seeds[cand], seeds[j]  # undo
+            else:
+                continue
+            break
+    return seeds
+
+
 def generate_knockout_from_groups(
     *, tournament, advance_per_group: int = 2, leaf_key: str | None = None
 ) -> list[Match]:
@@ -409,6 +456,9 @@ def generate_knockout_from_groups(
     against other groups' runners-up. Leaf-aware: with ``leaf_key`` only that
     competition's groups feed its own bracket. Idempotent per leaf scope."""
     from apps.matches.services.standings import compute_standings
+
+    if advance_per_group < 1:
+        raise ValueError("advance_per_group must be at least 1.")
 
     ko_scope = Match.objects.filter(
         tournament=tournament, stage="knockout", deleted_at__isnull=True
@@ -434,21 +484,21 @@ def generate_knockout_from_groups(
     for g in groups:
         rows = compute_standings(tournament, group_label=g)
         ids = [r["team_id"] for r in rows[:advance_per_group]]
-        if len(ids) < 2:
-            raise ValueError(f"Group {g} hasn't finished enough matches to advance teams.")
+        if len(ids) < advance_per_group:
+            raise ValueError(
+                f"Group {g} hasn't finished enough matches to advance "
+                f"{advance_per_group} team(s)."
+            )
         quals.append(ids)
 
-    n = len(groups)
-    if n == 1:
+    if len(groups) == 1:
         # A single group (e.g. one category leaf) → its top teams seed the
         # bracket directly in standings order.
         seed_ids = quals[0]
+        if len(seed_ids) < 2:
+            raise ValueError("Need at least 2 advancing teams for a knockout.")
     else:
-        # Cross-seed: group i winner vs the next group's runner-up.
-        seed_ids = []
-        for i in range(n):
-            seed_ids.append(quals[i][0])
-            seed_ids.append(quals[(i + 1) % n][1])
+        seed_ids = _cross_seed(quals)
 
     teams = [Team.objects.get(id=tid) for tid in seed_ids]
     return generate_single_elimination(

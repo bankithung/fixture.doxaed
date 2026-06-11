@@ -296,6 +296,8 @@ export const tournamentsApi = {
     id: string,
     opts?: {
       groupSize?: number;
+      /** Groups→knockout: how many advance from each group (default 2). */
+      advancePerGroup?: number;
       format?:
         | "round_robin"
         | "by_category"
@@ -308,6 +310,7 @@ export const tournamentsApi = {
       `/api/tournaments/${id}/generate-fixtures/`,
       {
         group_size: opts?.groupSize ?? 5,
+        advance_per_group: opts?.advancePerGroup ?? 2,
         format: opts?.format ?? "round_robin",
         leaf_key: opts?.leafKey ?? "",
       },

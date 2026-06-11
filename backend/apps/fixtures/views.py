@@ -46,7 +46,9 @@ class GenerateFixturesView(GenericAPIView):
                 )
             elif fmt == "knockout_from_groups":
                 matches = generate_knockout_from_groups(
-                    tournament=t, leaf_key=leaf_key or None
+                    tournament=t,
+                    advance_per_group=int(request.data.get("advance_per_group", 2)),
+                    leaf_key=leaf_key or None,
                 )
             elif fmt == "by_category":
                 matches = generate_round_robin_by_category(

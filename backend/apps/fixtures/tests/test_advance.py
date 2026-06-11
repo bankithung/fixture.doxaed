@@ -85,6 +85,46 @@ def test_knockout_from_groups_advances_top_two():
     r1 = [m for m in ko if m.round_no == 1]
     assert all(m.home_team_id and m.away_team_id for m in r1)
 
+    # FIFA-style crossing: each semi pairs teams from DIFFERENT groups (the
+    # interleaved seed list used to collapse into same-group rematches).
+    group_of = {}
+    for gm in Match.objects.filter(tournament=t, stage="group"):
+        group_of[gm.home_team_id] = gm.group_label
+        group_of[gm.away_team_id] = gm.group_label
+    for semi in r1:
+        assert group_of[semi.home_team_id] != group_of[semi.away_team_id]
+
+
+def test_knockout_from_groups_winners_only():
+    """advance_per_group=1 → only group winners enter the bracket."""
+    from apps.fixtures.services.generate import (
+        generate_knockout_from_groups,
+        generate_round_robin,
+    )
+    from apps.matches.models import Match
+    from apps.matches.services.scoring import record_score
+    from apps.matches.services.standings import compute_standings
+
+    admin = _verified()
+    t = create_tournament(user=admin, name="Winners KO")
+    register_school(
+        tournament=t, school_name="S",
+        teams=[{"name": f"T{i + 1}", "players": []} for i in range(8)],
+    )
+    generate_round_robin(tournament=t, group_size=4)
+    for i, m in enumerate(Match.objects.filter(tournament=t, stage="group").order_by("match_no")):
+        record_score(match=m, home_score=(i % 4) + 1, away_score=i % 3, by=admin)
+
+    ko = generate_knockout_from_groups(tournament=t, advance_per_group=1)
+    assert len(ko) == 1  # 2 winners -> a single final
+    final = ko[0]
+    winners = {
+        compute_standings(t, group_label=g)[0]["team_id"]
+        for g in Match.objects.filter(tournament=t, stage="group")
+        .values_list("group_label", flat=True).distinct()
+    }
+    assert {str(final.home_team_id), str(final.away_team_id)} == winners
+
 
 def test_single_elim_non_power_of_two_gets_byes():
     """3 teams → bracket of 4 with one bye: the top seed skips round 1 and
