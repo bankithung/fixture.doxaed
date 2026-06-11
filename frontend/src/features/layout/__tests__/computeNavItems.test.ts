@@ -43,13 +43,12 @@ function groupKeys(groups: NavGroup[]): string[] {
 
 describe("computeWorkspaceNav", () => {
   it("returns no groups when there is no user", () => {
-    expect(computeWorkspaceNav(null, "acme")).toEqual([]);
+    expect(computeWorkspaceNav(null)).toEqual([]);
   });
 
-  it("still shows the Workspace group when there is no slug (org-less user)", () => {
-    // A brand-new user with no org yet must keep a usable sidebar. Dashboard
-    // falls back to the workspace chooser; Tournaments + Invites are global.
-    const groups = computeWorkspaceNav(makeUser(["admin"], []), null);
+  it("shows the Workspace group for an org-less user", () => {
+    // A brand-new user with no org yet must keep a usable sidebar.
+    const groups = computeWorkspaceNav(makeUser(["admin"], []));
     expect(groupKeys(groups)).toEqual(["workspace"]);
     expect(flatKeys(groups)).toEqual(["dashboard", "tournaments", "invites"]);
     const dashboard = groups[0].items.find((i) => i.key === "dashboard");
@@ -61,14 +60,14 @@ describe("computeWorkspaceNav", () => {
     // removed from the primary nav — member/role management + audit now live
     // inside a tournament. Even an admin with every module sees just Workspace.
     const u = makeUser(["admin"], ["org.member_directory", "org.audit_log"]);
-    const groups = computeWorkspaceNav(u, "acme");
+    const groups = computeWorkspaceNav(u);
     expect(groupKeys(groups)).toEqual(["workspace"]);
     expect(flatKeys(groups)).toEqual(["dashboard", "tournaments", "invites"]);
   });
 
   it("never surfaces an Admin group or its items", () => {
     const u = makeUser(["admin"], ["org.member_directory", "org.audit_log"]);
-    const groups = computeWorkspaceNav(u, "acme");
+    const groups = computeWorkspaceNav(u);
     expect(groupKeys(groups)).not.toContain("admin");
     const keys = flatKeys(groups);
     expect(keys).not.toContain("members");
@@ -78,16 +77,18 @@ describe("computeWorkspaceNav", () => {
   });
 
   it("viewer with no modules sees only the Workspace group", () => {
-    const groups = computeWorkspaceNav(makeUser(["viewer"], []), "acme");
+    const groups = computeWorkspaceNav(makeUser(["viewer"], []));
     expect(groupKeys(groups)).toEqual(["workspace"]);
     expect(flatKeys(groups)).toEqual(["dashboard", "tournaments", "invites"]);
   });
 
-  it("dashboard links to the org dashboard; tournaments to the global hub", () => {
-    const groups = computeWorkspaceNav(makeUser(["admin"], []), "acme");
+  it("dashboard ALWAYS links to the personal dashboard, even for org admins", () => {
+    // Root pages are individual-level (owner decision 2026-06-11): the
+    // Dashboard never forks to the org-stats page based on memberships.
+    const groups = computeWorkspaceNav(makeUser(["admin"], []));
     const items = groups.flatMap((g) => g.items);
     expect(items.find((i) => i.key === "dashboard")?.href).toBe(
-      routes.orgDashboard("acme"),
+      routes.orgChooser(),
     );
     expect(items.find((i) => i.key === "tournaments")?.href).toBe(
       routes.tournaments(),
@@ -95,20 +96,12 @@ describe("computeWorkspaceNav", () => {
   });
 
   it("includes an Invites item (after Tournaments) linking to the invites inbox", () => {
-    const groups = computeWorkspaceNav(makeUser(["admin"], []), "acme");
+    const groups = computeWorkspaceNav(makeUser(["admin"], []));
     const keys = flatKeys(groups);
     // Invites comes immediately after Tournaments.
     expect(keys.indexOf("invites")).toBe(keys.indexOf("tournaments") + 1);
     const items = groups.flatMap((g) => g.items);
     expect(items.find((i) => i.key === "invites")?.href).toBe(routes.invites());
-  });
-
-  it("href slugs are URL-encoded", () => {
-    const u = makeUser(["admin"], ["org.member_directory"]);
-    const items = computeWorkspaceNav(u, "with space").flatMap((g) => g.items);
-    expect(items.find((i) => i.key === "dashboard")?.href).toBe(
-      "/o/with%20space/dashboard",
-    );
   });
 });
 

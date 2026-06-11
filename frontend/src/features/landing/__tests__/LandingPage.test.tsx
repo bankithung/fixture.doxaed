@@ -61,7 +61,7 @@ describe("LandingPage", () => {
     expect(screen.getByRole("link", { name: /^about$/i })).toBeInTheDocument();
   });
 
-  it("redirects authenticated users with last-active org slug to dashboard", () => {
+  it("redirects authenticated users to the personal dashboard (root pages are individual-level)", () => {
     const user: User = {
       id: "u1",
       email: "x@example.com",
@@ -86,7 +86,9 @@ describe("LandingPage", () => {
     };
     useAuthStore.setState({ user, bootstrapped: true });
     renderAt();
-    expect(screen.getByTestId("loc").textContent).toBe("/o/acme/dashboard");
+    // Even an org admin lands on the personal dashboard — roles only shape
+    // the experience inside a tournament (owner decision 2026-06-11).
+    expect(screen.getByTestId("loc").textContent).toBe("/orgs");
   });
 
   it("redirects authenticated users without an active slug to /orgs", () => {

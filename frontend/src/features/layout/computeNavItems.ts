@@ -55,29 +55,28 @@ export interface NavGroup {
 }
 
 /**
- * Pure function — given a hydrated `User` and the URL slug, returns the grouped
- * WORKSPACE navigation the AppShell renders when the route is NOT inside a
- * specific tournament. As of the tournament-scoped Members/Audit rework this is
+ * Pure function — given a hydrated `User`, returns the grouped WORKSPACE
+ * navigation the AppShell renders when the route is NOT inside a specific
+ * tournament. As of the tournament-scoped Members/Audit rework this is
  * intentionally just the "Workspace" group: Dashboard + Tournaments. The former
  * org-level Admin group (Members / Permissions / Audit / Settings) has been
  * removed from the primary nav — those org-scoped surfaces remain reachable by
  * URL, while member/role management + audit now live INSIDE a tournament. No
  * Zustand or router reads: easy to unit-test. Empty groups are omitted.
  */
-export function computeWorkspaceNav(
-  user: User | null,
-  slug: string | null,
-): NavGroup[] {
+export function computeWorkspaceNav(user: User | null): NavGroup[] {
   if (!user) return [];
 
-  // Workspace group — always shown so a brand-new (org-less) user still has a
-  // usable sidebar. Tournaments + Invites are global; Dashboard needs an org
-  // slug, so it falls back to the workspace chooser until one is in scope.
+  // Workspace group — the same for every account. Root pages are
+  // individual-level (owner decision 2026-06-11): accounts are personal, so
+  // Dashboard is ALWAYS the personal dashboard regardless of org memberships;
+  // roles only shape the experience inside a tournament. The org-stats view
+  // stays reachable via the dashboard's workspace cards / org switcher.
   const workspace: NavItem[] = [
     {
       key: "dashboard",
       label: t("Dashboard"),
-      href: slug ? routes.orgDashboard(slug) : routes.orgChooser(),
+      href: routes.orgChooser(),
       icon: LayoutDashboard,
     },
     {

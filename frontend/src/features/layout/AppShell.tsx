@@ -196,7 +196,7 @@ export function AppShell(): React.ReactElement {
         slug: navSlug,
         stage: stageQuery.data ?? null,
       })
-    : decorateInvitesBadge(computeWorkspaceNav(user, navSlug), pendingInviteCount);
+    : decorateInvitesBadge(computeWorkspaceNav(user), pendingInviteCount);
 
   // Focused setup flow (owner W2-C, 2026-06-10): while a MANAGED tournament
   // is still being set up (any stage before "ready"), the sidebar is hidden —
