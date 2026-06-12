@@ -397,6 +397,95 @@ class SwapFixtureSlotsView(GenericAPIView):
         })
 
 
+class ShiftFixturesDayView(GenericAPIView):
+    """`POST /api/tournaments/{id}/fixtures/shift-day/` — rain-day shift
+    (repair seam, increment D). Body `{from_date, to_date?, leaf_key?,
+    force?, event_id?}`. Gate: schedule_editor. Moves every movable
+    (scheduled/postponed, not locked) match on from_date to to_date keeping
+    time-of-day + venue; to_date omitted ⇒ first stored reserve day on/after
+    from_date (error `reserve_day_unavailable` if none). A reserve to_date
+    is ACTIVATED (scheduling_config["activated_reserve_days"]) so the grid
+    and future runs keep the day. Hard violations 409 with the structured
+    payload unless force; ONE `shift_day` audit row; idempotent on
+    event_id."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        import uuid as _uuid
+        from datetime import date as _date
+
+        from django.core.exceptions import ValidationError
+
+        from apps.audit.models import AuditEvent
+        from apps.fixtures.services.repair import RepairConflict, shift_day
+
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        if not can_access_module(request.user, t, "tournament.schedule_editor"):
+            raise PermissionDenied("not_tournament_manager")
+
+        def _parse(key: str, required: bool) -> _date | None:
+            raw = request.data.get(key)
+            if raw in (None, ""):
+                if required:
+                    raise DRFValidationError({"detail": f"{key}_required"})
+                return None
+            try:
+                return _date.fromisoformat(str(raw)[:10])
+            except ValueError:
+                raise DRFValidationError(
+                    {"detail": f"invalid_{key}"}
+                ) from None
+
+        from_date = _parse("from_date", required=True)
+        to_date = _parse("to_date", required=False)
+        event_id = None
+        raw_eid = request.data.get("event_id")
+        if raw_eid:
+            try:
+                event_id = _uuid.UUID(str(raw_eid))
+            except ValueError:
+                raise DRFValidationError({"detail": "invalid_event_id"}) from None
+            prior = AuditEvent.objects.filter(
+                idempotency_key=event_id, event_type="shift_day"
+            ).first()
+            if prior is not None:  # replay (invariant 3) — do NOT shift again
+                payload = prior.payload_after or {}
+                return Response({
+                    "moved": payload.get("moved", []),
+                    "violations": payload.get("violations", []),
+                    "to_date": payload.get("to_date"),
+                })
+
+        try:
+            moved, violations, resolved_to = shift_day(
+                tournament=t,
+                by=request.user,
+                from_date=from_date,
+                to_date=to_date,
+                leaf_key=str(request.data.get("leaf_key") or "") or None,
+                force=bool(request.data.get("force")),
+                event_id=event_id,
+                request=request,
+            )
+        except RepairConflict as e:
+            return Response(
+                {"detail": "schedule_conflicts", "violations": e.violations},
+                status=409,
+            )
+        except ValidationError as e:
+            raise DRFValidationError(
+                {"detail": getattr(e, "message", "invalid_shift")}
+            ) from e
+        return Response({
+            "moved": moved,
+            "violations": violations,
+            "to_date": resolved_to.isoformat(),
+        })
+
+
 class TournamentDrawConfigView(GenericAPIView):
     """`GET/PATCH /api/tournaments/{id}/draw-config/` — per-competition draw
     configuration (redesign spec §2.1). GET: any tournament member. PATCH:

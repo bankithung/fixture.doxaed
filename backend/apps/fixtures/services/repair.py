@@ -12,7 +12,7 @@ returns the violations as warnings. Every apply is audited and idempotent on
 from __future__ import annotations
 
 import uuid as _uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from django.core.exceptions import ValidationError
@@ -21,11 +21,13 @@ from django.utils import timezone as dj_tz
 
 from apps.fixtures.services.scheduler import (
     ScheduleConfig,
+    _parse_date,
     _tournament_tz,
     build_schedule_inputs,
     config_from_dict,
     merge_stored_constraints,
     resolve_team_tags,
+    stored_activated_reserve_days,
     validate_schedule,
 )
 
@@ -362,6 +364,168 @@ def delay_match(
             request=request,
         )
     return moved, violations
+
+
+def _reserve_day_records(tournament) -> list[tuple[set[date], str]]:
+    """``(dates, scope)`` per stored ``reserve_days`` constraint record."""
+    from apps.fixtures.services.constraints import normalize_scope
+
+    out: list[tuple[set[date], str]] = []
+    for c in tournament.constraints or []:
+        if not isinstance(c, dict) or c.get("type") != "reserve_days":
+            continue
+        dates = {
+            x for x in (
+                _parse_date(v)
+                for v in (c.get("params") or {}).get("dates", [])
+            ) if x
+        }
+        if dates:
+            out.append((dates, normalize_scope(c.get("scope"))))
+    return out
+
+
+def shift_day(
+    *,
+    tournament,
+    by,
+    from_date: date,
+    to_date: date | None = None,
+    leaf_key: str | None = None,
+    force: bool = False,
+    event_id: _uuid.UUID | None = None,
+    request=None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], date]:
+    """Rain-day shift (increment D): move every movable (scheduled/postponed,
+    not locked) match on ``from_date`` to ``to_date``, keeping each match's
+    time-of-day and venue. ``to_date`` omitted ⇒ the first stored reserve day
+    (constraint ``reserve_days``) on/after ``from_date`` that isn't already
+    in use — none ⇒ ``reserve_day_unavailable``. Landing on a reserve day
+    ACTIVATES it: persisted on ``scheduling_config["activated_reserve_days"]``
+    so the slot grid / validation / scheduler re-runs treat it as available.
+    The result set is validated against everything else on the calendar —
+    hard violations raise ``RepairConflict`` unless ``force``. ONE audit row
+    (``shift_day``) with per-match before/after; idempotent on ``event_id``.
+    Returns ``(moved, violations, to_date)``."""
+    from apps.audit.models import ActorRole
+    from apps.audit.services import emit_audit
+    from apps.fixtures.services.constraints import scope_matches
+    from apps.matches.models import Match
+
+    tz = _tournament_tz(tournament)
+    candidates = list(
+        Match.objects.filter(
+            tournament=tournament,
+            deleted_at__isnull=True,
+            scheduled_at__isnull=False,
+        )
+    )
+    if leaf_key:
+        candidates = [m for m in candidates if m.leaf_key == leaf_key]
+    movable = sorted(
+        (
+            m for m in candidates
+            if m.status in _movable_statuses() and m.locked_at is None
+            and _local(m.scheduled_at, tz).date() == from_date
+        ),
+        key=lambda m: (m.scheduled_at, m.match_no),
+    )
+    if not movable:
+        raise ValidationError("no_matches_to_move")
+
+    records = _reserve_day_records(tournament)
+    all_reserve: set[date] = set()
+    for dates, _scope in records:
+        all_reserve |= dates
+    if to_date is None:
+        activated = stored_activated_reserve_days(tournament)
+        eligible: set[date] = set()
+        for dates, scope in records:
+            if scope != "all" and not all(
+                scope_matches(
+                    scope, sport=m.sport, leaf_key=m.leaf_key,
+                    team_ids=tuple(
+                        str(x) for x in (m.home_team_id, m.away_team_id) if x
+                    ),
+                )
+                for m in movable
+            ):
+                continue  # a scoped reserve must cover every moved match
+            eligible |= dates
+        options = sorted(
+            d for d in eligible
+            if d >= from_date and d != from_date and d not in activated
+        )
+        if not options:
+            raise ValidationError("reserve_day_unavailable")
+        to_date = options[0]
+    if to_date == from_date:
+        raise ValidationError("invalid_to_date")
+
+    # CRITICAL pre-step: a reserve to_date re-joins the calendar BEFORE the
+    # move is validated/applied. Mutate the in-memory config now (validation
+    # reads it); persist only when the move actually applies.
+    activated_new = False
+    if to_date in all_reserve:
+        stored = dict(tournament.scheduling_config or {})
+        current = {str(v) for v in stored.get("activated_reserve_days") or []}
+        iso = to_date.isoformat()
+        if iso not in current:
+            stored["activated_reserve_days"] = sorted({*current, iso})
+            tournament.scheduling_config = stored
+            activated_new = True
+
+    changes = {
+        m.id: (
+            datetime.combine(to_date, _local(m.scheduled_at, tz).time()),
+            m.venue,
+        )
+        for m in movable
+    }
+    violations = validate_slot_changes(tournament, changes)
+    hard = [v for v in violations if v.get("hard", True)]
+    if hard and not force:
+        raise RepairConflict(violations)
+
+    moved: list[dict[str, Any]] = []
+    with transaction.atomic():
+        for m in movable:
+            old_iso = m.scheduled_at.isoformat()
+            m.scheduled_at = changes[m.id][0].replace(tzinfo=tz)
+            m.save(update_fields=["scheduled_at", "updated_at"])
+            moved.append({
+                "match_id": str(m.id),
+                "old": old_iso,
+                "new": m.scheduled_at.isoformat(),
+                "venue": m.venue,
+            })
+        if activated_new:
+            tournament.save(update_fields=["scheduling_config", "updated_at"])
+        emit_audit(
+            actor_user=by,
+            actor_role=ActorRole.ADMIN,
+            event_type="shift_day",
+            target_type="tournament",
+            target_id=tournament.id,
+            organization_id=tournament.organization_id,
+            tournament_id=tournament.id,
+            idempotency_key=event_id,
+            payload_before={
+                "from_date": from_date.isoformat(),
+                "leaf_key": leaf_key or "",
+            },
+            payload_after={
+                "from_date": from_date.isoformat(),
+                "to_date": to_date.isoformat(),
+                "leaf_key": leaf_key or "",
+                "moved": moved,
+                "forced": bool(hard),
+                "violations": violations,
+                "activated_reserve_day": activated_new,
+            },
+            request=request,
+        )
+    return moved, violations, to_date
 
 
 def _slot_payload(match) -> dict[str, Any]:

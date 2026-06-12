@@ -101,6 +101,12 @@ class ScheduleConfig:
     # (linked teams use the team rest gap, venue-agnostic).
     person_min_gap: int | None = None
     person_cross_venue_gap: int | None = None
+    # Reserve days the rain-day shift has put into use (repair seam,
+    # increment D): persisted on ``tournament.scheduling_config`` as
+    # ``activated_reserve_days`` and subtracted from every stored
+    # ``reserve_days`` record at merge time, so the grid/validation/re-runs
+    # treat the day as available once matches actually live on it.
+    activated_reserve_days: set[date] = field(default_factory=set)
 
 
 def _parse_date(v: Any) -> date | None:
@@ -185,6 +191,11 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
         venues = ["Main Ground"]
 
     excluded = {x for x in (_parse_date(e) for e in d.get("excluded_dates", [])) if x}
+    activated = {
+        x for x in (
+            _parse_date(e) for e in d.get("activated_reserve_days", [])
+        ) if x
+    }
     return ScheduleConfig(
         date_start=ds,
         date_end=de,
@@ -198,6 +209,7 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
         venue_windows=venue_windows,
         venue_types=venue_types,
         venue_counts=venue_counts,
+        activated_reserve_days=activated,
     )
 
 
@@ -309,7 +321,11 @@ def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> l
             }, record=c))
             notes.append(f"Ceremony block on {day} removed from the grid.")
         elif ctype == "reserve_days":
-            dates = {x for x in (_parse_date(v) for v in p.get("dates", [])) if x}
+            # Activated reserve days (rain-day shift, increment D) are in
+            # use — they re-join the calendar instead of being excluded.
+            dates = {
+                x for x in (_parse_date(v) for v in p.get("dates", [])) if x
+            } - cfg.activated_reserve_days
             if not dates:
                 continue
             if scoped:
@@ -1246,6 +1262,15 @@ def build_schedule_inputs(
     return reqs, preoccupied, linked
 
 
+def stored_activated_reserve_days(tournament) -> set[date]:
+    """Reserve days the rain-day shift has activated, as persisted on
+    ``tournament.scheduling_config["activated_reserve_days"]`` (increment D).
+    Every run path (apply/preview/repair validation) unions these into its
+    config so an in-use reserve day never falls back off the calendar."""
+    raw = (tournament.scheduling_config or {}).get("activated_reserve_days")
+    return {x for x in (_parse_date(v) for v in raw or []) if x}
+
+
 def resolve_team_tags(cfg: ScheduleConfig, tournament) -> None:
     """tag:<k>=<v> scopes resolve against institution/seed data — only hit
     the DB when a stored record actually uses one."""
@@ -1284,6 +1309,10 @@ def apply_schedule(
 
     tz = _tournament_tz(tournament)
     cfg = config_from_dict(config)
+    # The submitted payload rarely repeats the activated reserve days — the
+    # persisted set must survive any re-run (increment D), so union it in
+    # BEFORE the stored constraints are merged.
+    cfg.activated_reserve_days |= stored_activated_reserve_days(tournament)
     resolve_team_tags(cfg, tournament)
     constraint_notes = merge_stored_constraints(cfg, tournament.constraints)
 
@@ -1305,7 +1334,12 @@ def apply_schedule(
             m.scheduled_at = dj_tz.make_aware(dt, tz)
             m.venue = venue[:120]
             m.save(update_fields=["scheduled_at", "venue", "updated_at"])
-        tournament.scheduling_config = config or {}
+        stored_cfg = dict(config or {})
+        if cfg.activated_reserve_days:
+            stored_cfg["activated_reserve_days"] = sorted(
+                d.isoformat() for d in cfg.activated_reserve_days
+            )
+        tournament.scheduling_config = stored_cfg
         tournament.save(update_fields=["scheduling_config", "updated_at"])
         emit_audit(
             actor_user=by,

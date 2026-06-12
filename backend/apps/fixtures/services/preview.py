@@ -32,6 +32,7 @@ from apps.fixtures.services.scheduler import (
     merge_stored_constraints,
     resolve_team_tags,
     schedule_matches,
+    stored_activated_reserve_days,
 )
 from apps.tournaments.services.sports import leaf_label, sport_for_leaf
 
@@ -199,6 +200,11 @@ def preview_fixtures(
             if stored:
                 payload["venues"] = stored
         sched_cfg = config_from_dict(payload)  # ValueError → 400 in the view
+        # In-use reserve days stay on the calendar in preview too
+        # (increment D — preview ≡ commit, tenet 3).
+        sched_cfg.activated_reserve_days |= stored_activated_reserve_days(
+            tournament
+        )
         resolve_team_tags(sched_cfg, tournament)
         explanation = merge_stored_constraints(sched_cfg, tournament.constraints)
         reqs, preoccupied, linked = build_schedule_inputs(
