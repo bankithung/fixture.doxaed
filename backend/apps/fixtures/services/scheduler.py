@@ -27,6 +27,7 @@ without touching callers.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import Any
@@ -999,11 +1000,22 @@ def validate_schedule(
     assignments: dict[str, tuple[datetime, str]],
     matches: list[MatchSlotReq],
     cfg: ScheduleConfig,
+    *,
+    preoccupied: Preoccupied | None = None,
+    linked: dict[str, set[str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Return a list of HARD-constraint violations in a given assignment (used
-    to verify a manual edit). Empty list = a valid schedule. Durations are
-    per-match; venue conflicts are interval overlaps; the per-day check counts
-    against the configured cap (it used to be hardcoded to 2)."""
+    to verify a manual edit — the repair APIs' conflict check). Empty list = a
+    valid schedule. Durations are per-match; venue conflicts are interval
+    overlaps; the per-day check counts against the configured cap (it used to
+    be hardcoded to 2).
+
+    ``preoccupied`` bookings (live matches, other competitions) join the
+    venue/team interval sets but are never themselves reported — conflicts
+    against them land on the in-scope match. ``linked`` teams (shared rostered
+    player, W2-D) must not play overlapping matches; the rest gap applies
+    across the link, exactly as in ``schedule_matches``. Violations are
+    JSON-safe records with stable codes (FE localizes, §9 A5)."""
     by_id = {m.id: m for m in matches}
     violations: list[dict[str, Any]] = []
     rest = timedelta(minutes=cfg.rest_minutes)
@@ -1014,51 +1026,87 @@ def validate_schedule(
             minutes=(m.duration_minutes if m and m.duration_minutes else cfg.slot_minutes)
         )
 
-    venue_items: dict[str, list[tuple[datetime, str]]] = defaultdict(list)
-    team_items: dict[str, list[tuple[datetime, str]]] = defaultdict(list)
+    # (start, end, match_id|None) — None marks an immovable fixed booking.
+    Interval = tuple[datetime, datetime, "str | None"]
+    venue_items: dict[str, list[Interval]] = defaultdict(list)
+    team_items: dict[str, list[Interval]] = defaultdict(list)
     for mid, (dt, venue) in assignments.items():
-        venue_items[venue].append((dt, mid))
+        end = dt + dur_of(mid)
+        venue_items[venue].append((dt, end, mid))
         m = by_id.get(mid)
         if m:
             for t in (m.home, m.away):
                 if t:
-                    team_items[t].append((dt, mid))
+                    team_items[t].append((dt, end, mid))
                     if dt.date() in cfg.team_blackouts.get(t, ()):
-                        violations.append({"code": "team_blackout", "match_id": mid,
-                                           "team_id": t})
+                        violations.append({"code": "team_blackout", "hard": True,
+                                           "match_id": mid, "team_id": t})
+    for venue, start, end, team_ids in preoccupied or []:
+        venue_items[venue].append((start, end, None))
+        for t in team_ids:
+            team_items[t].append((start, end, None))
 
-    # Pairwise interval checks (a long match can overlap beyond its immediate
-    # neighbour, so consecutive-pair checks are not enough).
-    for venue, items in venue_items.items():
-        items.sort()
+    def overlap_pairs(
+        items: list[Interval], gap: timedelta = timedelta(0),
+    ) -> Iterator[tuple[str, str | None, datetime]]:
+        """Pairwise interval checks (a long match can overlap beyond its
+        immediate neighbour, so consecutive-pair checks are not enough).
+        Yields (subject, other, at) with the reportable match as subject."""
+        items.sort(key=lambda x: (x[0], x[1]))
         for i in range(len(items)):
-            dt_i, mid_i = items[i]
-            end_i = dt_i + dur_of(mid_i)
+            s_i, e_i, mid_i = items[i]
+            until = e_i + gap
             for j in range(i + 1, len(items)):
-                dt_j, mid_j = items[j]
-                if dt_j >= end_i:
+                s_j, _e_j, mid_j = items[j]
+                if s_j >= until:
                     break  # sorted: no later item can overlap i either
-                violations.append({"code": "venue_double_booked", "match_id": mid_j,
-                                   "venue": venue, "at": dt_j.isoformat()})
+                if mid_i is None and mid_j is None:
+                    continue  # two fixed bookings — not ours to flag
+                if mid_j is not None:
+                    yield mid_j, mid_i, s_j
+                else:
+                    yield mid_i, mid_j, s_i
+
+    for venue, items in venue_items.items():
+        for subject, other, at in overlap_pairs(items):
+            violations.append({"code": "venue_double_booked", "hard": True,
+                               "match_id": subject, "other_match_id": other,
+                               "venue": venue, "at": at.isoformat()})
 
     for team, items in team_items.items():
-        items.sort()
         per_day: dict[date, int] = defaultdict(int)
-        for dt, _mid in items:
-            per_day[dt.date()] += 1
+        for s, _e, _mid in items:
+            per_day[s.date()] += 1
         for d, count in per_day.items():
             if count > cfg.max_per_team_per_day:
-                violations.append({"code": "exceeds_max_per_day", "team_id": team,
-                                   "date": d.isoformat()})
-        for i in range(len(items)):
-            dt_i, mid_i = items[i]
-            until = dt_i + dur_of(mid_i) + rest
-            for j in range(i + 1, len(items)):
-                dt_j, mid_j = items[j]
-                if dt_j >= until:
-                    break
-                violations.append({"code": "insufficient_rest", "match_id": mid_j,
-                                   "team_id": team})
+                violations.append({"code": "exceeds_max_per_day", "hard": True,
+                                   "team_id": team, "date": d.isoformat()})
+        for subject, other, _at in overlap_pairs(items, gap=rest):
+            violations.append({"code": "insufficient_rest", "hard": True,
+                               "match_id": subject, "other_match_id": other,
+                               "team_id": team})
+
+    # Shared-player links (W2-D): linked teams never play overlapping
+    # matches; the rest gap applies across the link too.
+    for team, partners in (linked or {}).items():
+        for lt in partners:
+            if not team < lt:  # visit each unordered pair once
+                continue
+            for s_i, e_i, mid_i in team_items.get(team, ()):
+                for s_j, e_j, mid_j in team_items.get(lt, ()):
+                    if mid_i is None and mid_j is None:
+                        continue
+                    if mid_i is not None and mid_i == mid_j:
+                        continue  # one match fielding both linked teams
+                    if s_i < e_j + rest and s_j < e_i + rest:
+                        subject, other = (
+                            (mid_i, mid_j) if mid_i is not None else (mid_j, mid_i)
+                        )
+                        violations.append({
+                            "code": "shared_player_conflict", "hard": True,
+                            "match_id": subject, "other_match_id": other,
+                            "team_id": team, "linked_team_id": lt,
+                        })
     return violations
 
 
@@ -1072,19 +1120,22 @@ def _tournament_tz(tournament) -> ZoneInfo:
 
 def build_schedule_inputs(
     tournament, cfg: ScheduleConfig, *, leaf_key: str | None = None,
-    plans: list | None = None,
+    plans: list | None = None, include_ids: set | None = None,
 ) -> tuple[list[MatchSlotReq], Preoccupied, dict[str, set[str]]]:
     """``(reqs, preoccupied, linked)`` — ONE input builder shared by
-    ``apply_schedule`` (commit) and the preview endpoint (redesign §9 A1), so
-    a preview sees exactly the bookings and shared-player links a commit
-    would (tenet 3: preview ≡ commit).
+    ``apply_schedule`` (commit), the preview endpoint (redesign §9 A1) and
+    the manual repair APIs, so every path sees exactly the bookings and
+    shared-player links a commit would (tenet 3: preview ≡ commit).
 
     Without ``plans``, reqs come from the scope's persisted ``scheduled``-
     status matches (the commit path — live/completed are never moved). With
     ``plans`` (pure ``MatchPlan``s from the plan_* core), reqs are synthetic
     ("p1"…) and the scope's own still-``scheduled`` rows are excluded from
     ``preoccupied`` (an accepted re-draw replaces them); anything in flight
-    or in another competition still blocks the calendar.
+    or in another competition still blocks the calendar. ``include_ids``
+    forces specific matches into the reqs (and out of ``preoccupied``)
+    regardless of status/scope — the repair APIs validate moving e.g. a
+    ``postponed`` match through the same inputs.
     """
     from django.utils import timezone as dj_tz
 
@@ -1114,10 +1165,14 @@ def build_schedule_inputs(
         Match.objects.filter(tournament=tournament, deleted_at__isnull=True)
     )
     if plans is None:
+        include = include_ids or set()
         targets = [
             m for m in all_matches
-            if m.status == MatchStatus.SCHEDULED
-            and (not leaf_key or m.leaf_key == leaf_key)
+            if m.id in include
+            or (
+                m.status == MatchStatus.SCHEDULED
+                and (not leaf_key or m.leaf_key == leaf_key)
+            )
         ]
         excluded_ids = {m.id for m in targets}
         reqs = [

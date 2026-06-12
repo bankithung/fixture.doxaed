@@ -92,6 +92,23 @@ class RecordShootoutSerializer(serializers.Serializer):
         return attrs
 
 
+class RescheduleMatchSerializer(serializers.Serializer):
+    """Manual reslot (control-room repair): at least one of scheduled_at /
+    venue. ``scheduled_at`` stays a raw ISO string here — the service treats
+    naive values as tournament-local wall clock (invariant 14), which DRF's
+    DateTimeField would silently re-anchor to the server timezone."""
+
+    scheduled_at = serializers.CharField(required=False)
+    venue = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    force = serializers.BooleanField(required=False, default=False)
+    event_id = serializers.UUIDField(required=False)
+
+    def validate(self, attrs):
+        if "scheduled_at" not in attrs and "venue" not in attrs:
+            raise serializers.ValidationError("nothing_to_change")
+        return attrs
+
+
 class TransitionSerializer(serializers.Serializer):
     to_status = serializers.CharField(max_length=16)
     reason = serializers.CharField(required=False, allow_blank=True)

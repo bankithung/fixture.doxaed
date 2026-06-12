@@ -22,6 +22,7 @@ from apps.matches.serializers import (
     RecordScoreSerializer,
     RecordSetScoreSerializer,
     RecordShootoutSerializer,
+    RescheduleMatchSerializer,
     SetLineupSerializer,
     TransitionSerializer,
 )
@@ -334,6 +335,84 @@ class RecordShootoutView(GenericAPIView):
             mid = match.id
             transaction.on_commit(lambda: _fire_advancement(mid))
         return Response(MatchSerializer(match).data)
+
+
+class MatchScheduleView(GenericAPIView):
+    """`PATCH /api/matches/{id}/schedule/` — control-room manual reslot
+    (repair seam, increment A). Gate: the schedule_editor module (same as
+    ScheduleFixturesView). Only `scheduled`/`postponed` matches move; the
+    change is validated against the scheduler's constraint machinery (other
+    leaves' bookings + shared-player links count) — hard conflicts 409 with
+    the structured violations payload unless force=true (then applied, the
+    violations ride along as warnings). Idempotent on event_id; audited
+    (`match_rescheduled`, before/after slot)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, match_id):
+        from datetime import datetime as _datetime
+
+        from apps.audit.models import AuditEvent
+        from apps.fixtures.services.repair import RepairConflict, reschedule_match
+        from apps.tournaments.permissions import can_access_module
+
+        match = _match_or_404(request.user, match_id)
+        if not can_access_module(
+            request.user, match.tournament, "tournament.schedule_editor"
+        ):
+            raise PermissionDenied("not_schedule_editor")
+        ser = RescheduleMatchSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        event_id = ser.validated_data.get("event_id")
+        if event_id:
+            prior = AuditEvent.objects.filter(
+                idempotency_key=event_id, event_type="match_rescheduled"
+            ).first()
+            if prior is not None:  # replay (invariant 3)
+                return Response({
+                    "match": MatchSerializer(match).data,
+                    "violations": (prior.payload_after or {}).get("violations", []),
+                })
+
+        scheduled_at = None
+        raw = ser.validated_data.get("scheduled_at")
+        if raw is not None:
+            try:
+                scheduled_at = _datetime.fromisoformat(
+                    str(raw).replace("Z", "+00:00")
+                )
+            except ValueError as e:
+                raise DRFValidationError(
+                    {"detail": "invalid_scheduled_at"}
+                ) from e
+
+        try:
+            violations = reschedule_match(
+                match=match,
+                by=request.user,
+                scheduled_at=scheduled_at,
+                venue=ser.validated_data.get("venue"),
+                force=bool(ser.validated_data.get("force")),
+                event_id=event_id,
+                request=request,
+            )
+        except RepairConflict as e:
+            return Response(
+                {"detail": "schedule_conflicts", "violations": e.violations},
+                status=409,
+            )
+        except ValidationError as e:
+            code = getattr(e, "message", "invalid_reschedule")
+            if code == "match_not_movable":
+                return Response(
+                    {"detail": code, "status": match.status}, status=409
+                )
+            raise DRFValidationError({"detail": code}) from e
+        match.refresh_from_db()
+        return Response(
+            {"match": MatchSerializer(match).data, "violations": violations}
+        )
 
 
 class TransitionMatchView(GenericAPIView):

@@ -8,6 +8,7 @@ from apps.matches.views import (
     MatchEventsExportView,
     MatchIncidentView,
     MatchLineupView,
+    MatchScheduleView,
     RecordMatchEventView,
     RecordScoreView,
     RecordShootoutView,
@@ -23,6 +24,11 @@ urlpatterns = [
         name="match-shootout",
     ),
     path("<uuid:match_id>/scorer/", AssignScorerView.as_view(), name="match-assign-scorer"),
+    path(
+        "<uuid:match_id>/schedule/",
+        MatchScheduleView.as_view(),
+        name="match-schedule",
+    ),
     path("<uuid:match_id>/events/", RecordMatchEventView.as_view(), name="match-events"),
     path(
         "<uuid:match_id>/events/export/",
