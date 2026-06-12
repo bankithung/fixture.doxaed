@@ -645,6 +645,128 @@ class TournamentScheduleChangesView(GenericAPIView):
         })
 
 
+class ControlRoomDayView(GenericAPIView):
+    """`GET /api/tournaments/{id}/control-room/?day=YYYY-MM-DD` — the live-ops
+    cockpit's day-view aggregate (control room, spec 2026-06-12 §2.a): ONE
+    query over the schedule, grouped in Python by tournament-TZ day
+    (invariant 14) then venue, plus a cross-venue "next up" queue. Read-only;
+    ANY active member may read (404 idiom — no existence leak); writes stay
+    gated per action. Day defaults to today (tournament TZ) when it has
+    matches, else the next day with matches, else the last one. Delay
+    visibility stays client-side via the schedule-changes feed."""
+
+    _QUEUE_LIMIT = 10
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id):
+        from datetime import date as _date
+        from zoneinfo import ZoneInfo
+
+        from django.db.models import F as _F
+        from django.utils import timezone as dj_tz
+
+        from apps.matches.models import Match, MatchStatus
+        from apps.matches.serializers import MatchSerializer
+        from apps.tournaments.services.sports import leaf_label
+
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.get(id=tournament_id)
+        try:
+            tz = ZoneInfo(t.time_zone)
+        except (KeyError, ValueError):
+            tz = dj_tz.get_default_timezone()
+
+        day = None
+        raw_day = request.query_params.get("day")
+        if raw_day:
+            try:
+                day = _date.fromisoformat(str(raw_day))
+            except ValueError:
+                raise DRFValidationError({"detail": "invalid_day"}) from None
+
+        matches = list(
+            Match.objects.filter(tournament=t, deleted_at__isnull=True)
+            .select_related("home_team", "away_team", "tournament", "scorer")
+            .order_by(_F("scheduled_at").asc(nulls_last=True), "match_no")
+        )
+
+        by_day: dict[_date, list[Match]] = {}
+        for m in matches:
+            if m.scheduled_at is None:
+                continue  # not on the calendar — the fixtures hub covers these
+            local_day = dj_tz.localtime(m.scheduled_at, tz).date()
+            by_day.setdefault(local_day, []).append(m)
+
+        finished = (MatchStatus.COMPLETED, MatchStatus.WALKOVER)
+        in_play = (MatchStatus.LIVE, MatchStatus.HALF_TIME)
+        days = [
+            {
+                "date": d.isoformat(),
+                "counts": {
+                    "total": len(rows),
+                    "completed": sum(1 for m in rows if m.status in finished),
+                    "live": sum(1 for m in rows if m.status in in_play),
+                },
+            }
+            for d, rows in sorted(by_day.items())
+        ]
+
+        if day is None and by_day:
+            today = dj_tz.localtime(dj_tz.now(), tz).date()
+            upcoming = sorted(d for d in by_day if d >= today)
+            day = upcoming[0] if upcoming else max(by_day)
+
+        day_rows = by_day.get(day, [])  # already in scheduled_at order
+
+        labels: dict[str, str] = {}
+
+        def row(m: Match) -> dict:
+            if m.leaf_key and m.leaf_key not in labels:
+                labels[m.leaf_key] = leaf_label(t.sports, m.leaf_key)
+            data = MatchSerializer(m).data
+            data["leaf_label"] = labels.get(m.leaf_key, "")
+            data["scorer"] = (
+                {"id": str(m.scorer.id), "name": m.scorer.name or m.scorer.email}
+                if m.scorer is not None
+                else None
+            )
+            return data
+
+        lanes: dict[str, list[dict]] = {}
+        for m in day_rows:
+            lanes.setdefault(m.venue, []).append(row(m))
+
+        terminal = (
+            MatchStatus.COMPLETED, MatchStatus.WALKOVER,
+            MatchStatus.CANCELLED, MatchStatus.ABANDONED,
+        )
+        queue = [
+            row(m) for m in day_rows if m.status not in terminal
+        ][: self._QUEUE_LIMIT]
+
+        return Response({
+            "tournament": {
+                "id": str(t.id),
+                "name": t.name,
+                "slug": t.slug,
+                "status": t.status,
+                "time_zone": t.time_zone,
+            },
+            "days": days,
+            "day": day.isoformat() if day else None,
+            # Alphabetical lanes; the empty venue ("Unassigned" in the UI) last.
+            "venues": [
+                {"venue": v, "matches": rows}
+                for v, rows in sorted(
+                    lanes.items(), key=lambda kv: (kv[0] == "", kv[0])
+                )
+            ],
+            "queue": queue,
+        })
+
+
 class TournamentDrawConfigView(GenericAPIView):
     """`GET/PATCH /api/tournaments/{id}/draw-config/` — per-competition draw
     configuration (redesign spec §2.1). GET: any tournament member. PATCH:

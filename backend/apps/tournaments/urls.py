@@ -4,6 +4,7 @@ from django.urls import path
 
 from apps.disputes.views import TournamentDisputeView
 from apps.fixtures.views import (
+    ControlRoomDayView,
     GenerateFixturesView,
     PreviewFixturesView,
     ScheduleFixturesView,
@@ -11,15 +12,11 @@ from apps.fixtures.views import (
     SwapFixtureSlotsView,
     SwissNextRoundView,
     TournamentDrawConfigView,
-    TournamentScheduleChangesView,
     TournamentFixtureReadinessView,
     TournamentFixturesView,
+    TournamentScheduleChangesView,
     TournamentVenueDetailView,
     TournamentVenuesView,
-)
-from apps.permissions.views import (
-    TournamentGrantView,
-    TournamentPermissionMatrixView,
 )
 from apps.forms.views import (
     GenerateInstitutionFormView,
@@ -27,10 +24,14 @@ from apps.forms.views import (
     TournamentFormsView,
 )
 from apps.matches.views import TournamentMatchListView, TournamentStandingsView
+from apps.permissions.views import (
+    TournamentGrantView,
+    TournamentPermissionMatrixView,
+)
 from apps.teams.views import (
     InstitutionDetailView,
-    InstitutionListCreateView,
     InstitutionEditLinkView,
+    InstitutionListCreateView,
     RegistrationLinkCreateView,
     TeamAccessCodesView,
     TeamCalendarLinkView,
@@ -203,6 +204,11 @@ urlpatterns = [
         "<uuid:tournament_id>/schedule-changes/",
         TournamentScheduleChangesView.as_view(),
         name="tournament-schedule-changes",
+    ),
+    path(
+        "<uuid:tournament_id>/control-room/",
+        ControlRoomDayView.as_view(),
+        name="tournament-control-room",
     ),
     path(
         "<uuid:tournament_id>/permissions/",
