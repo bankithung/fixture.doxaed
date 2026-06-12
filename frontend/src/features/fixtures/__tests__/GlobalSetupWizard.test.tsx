@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -85,9 +85,7 @@ async function toStep(n: number): Promise<void> {
 
 describe("GlobalSetupWizard", () => {
   it("saves calendar, constraints and venues across the three channels", async () => {
-    wrap(
-      <GlobalSetupWizard tournamentId="t1" open onClose={() => {}} />,
-    );
+    wrap(<GlobalSetupWizard tournamentId="t1" onClose={() => {}} />);
     // Step 0 — calendar + blackout chips.
     fireEvent.change(await screen.findByLabelText("First match day"), {
       target: { value: "2026-08-01" },
@@ -193,7 +191,7 @@ describe("GlobalSetupWizard", () => {
       ],
     });
 
-    wrap(<GlobalSetupWizard tournamentId="t1" open onClose={() => {}} />);
+    wrap(<GlobalSetupWizard tournamentId="t1" onClose={() => {}} />);
     expect(await screen.findByLabelText("First match day")).toHaveValue(
       "2026-08-01",
     );
@@ -225,15 +223,16 @@ describe("GlobalSetupWizard", () => {
     expect(tournamentsApi.createVenue).not.toHaveBeenCalled();
   });
 
-  it("opens at the deep-linked step", async () => {
+  it("opens at the deep-linked step, rendered inline (not as a modal)", async () => {
     wrap(
-      <GlobalSetupWizard
-        tournamentId="t1"
-        open
-        onClose={() => {}}
-        initialStep={1}
-      />,
+      <GlobalSetupWizard tournamentId="t1" onClose={() => {}} initialStep={1} />,
     );
     expect(await screen.findByTestId("add-venue")).toBeInTheDocument();
+    // full-page panel: heading + reassurance line, zero Dialog chrome
+    const panel = screen.getByTestId("global-setup-inline");
+    expect(
+      within(panel).getByText("Step 1 · When & where"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

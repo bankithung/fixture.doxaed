@@ -9,12 +9,6 @@ import {
 } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { StepRail } from "@/components/ui/StepRail";
 import { useToast } from "@/components/ui/toast";
@@ -142,17 +136,20 @@ function Row({ k, v }: { k: string; v: string }): React.ReactElement {
  * the calendar into `draw_config["*"].calendar` — then never asks again:
  * every later wizard reads these as prefilled, edit-only context.
  *
- * Mount it CONDITIONALLY (`{setup ? <GlobalSetupWizard … /> : null}`) so each
- * opening starts at `initialStep` with a fresh seed from the stored data.
+ * Renders INLINE as the hub's page body (owner feedback: part of the full
+ * page, not a modal) — heading + reassurance line, the numbered step rail,
+ * the current step's fields at full width, Cancel/Back + Next/Save at the
+ * bottom. Mount it CONDITIONALLY (`{setup ? <GlobalSetupWizard … /> : null}`)
+ * so each opening starts at `initialStep` with a fresh seed from the stored
+ * data.
  */
 export function GlobalSetupWizard({
   tournamentId,
-  open,
   onClose,
   initialStep = 0,
 }: {
   tournamentId: string;
-  open: boolean;
+  /** Return to the hub view (Cancel, and after a successful save). */
   onClose: () => void;
   /** Deep-link target (a GlobalSetupCard pencil / readiness fix action). */
   initialStep?: number;
@@ -168,17 +165,14 @@ export function GlobalSetupWizard({
   const drawConfig = useQuery({
     queryKey: qk.drawConfig(tournamentId),
     queryFn: () => tournamentsApi.drawConfig(tournamentId),
-    enabled: open,
   });
   const venues = useQuery({
     queryKey: qk.venues(tournamentId),
     queryFn: () => tournamentsApi.venues(tournamentId),
-    enabled: open,
   });
   const settings = useQuery({
     queryKey: qk.settings(tournamentId),
     queryFn: () => tournamentsApi.settings(tournamentId),
-    enabled: open,
   });
 
   // Seed the form ONCE from the three stored sources (guarded render-phase
@@ -342,22 +336,21 @@ export function GlobalSetupWizard({
     step !== 0 || (form.date_start !== "" && form.date_end !== "");
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
-      variant="sheet"
-      ariaLabel={t("Step 1 · When & where")}
+    <section
+      aria-label={t("Step 1 · When & where")}
+      data-testid="global-setup-inline"
+      className="flex w-full flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6"
     >
-      <DialogHeader>
-        <DialogTitle>{t("Step 1 · When & where")}</DialogTitle>
-        <DialogDescription>
+      <div className="flex flex-col gap-1.5">
+        <h3 className="text-base font-semibold">
+          {t("Step 1 · When & where")}
+        </h3>
+        <p className="text-sm text-muted-foreground">
           {t(
             "Answer these once. Every competition's schedule is built from them, and you can come back and change them any time.",
           )}
-        </DialogDescription>
-      </DialogHeader>
+        </p>
+      </div>
 
       <StepRail steps={GLOBAL_SETUP_STEPS} current={step} />
 
@@ -558,7 +551,7 @@ export function GlobalSetupWizard({
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 border-t border-border pt-4">
         <Button variant="ghost" onClick={onClose}>
           {t("Cancel")}
         </Button>
@@ -587,6 +580,6 @@ export function GlobalSetupWizard({
           )}
         </div>
       </div>
-    </Dialog>
+    </section>
   );
 }

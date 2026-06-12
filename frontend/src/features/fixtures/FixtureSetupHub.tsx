@@ -214,6 +214,11 @@ function HubMoreMenu({
  * ONE sentence + ONE action (checklist only behind "See what's missing"),
  * a celebrate banner when everything is drawn, and the constraint builder /
  * change history / group tables behind a closed Advanced-tools disclosure.
+ *
+ * Step 1 is INLINE full-page content, not a modal (owner feedback): in the
+ * gate state the wizard IS the page body; editing later (receipt Edit, chips,
+ * fix deep-links) swaps the hub content for the same panel, and Cancel
+ * returns to the hub view.
  */
 export function FixtureSetupHub({
   tournamentId,
@@ -225,6 +230,9 @@ export function FixtureSetupHub({
   const qc = useQueryClient();
   const toast = useToast();
   const [setup, setSetup] = useState<{ step: number } | null>(null);
+  // Cancelled out of the gate's auto-opened Step 1 — fall back to the gate
+  // card until the next explicit open.
+  const [gateDismissed, setGateDismissed] = useState(false);
   const [wizard, setWizard] = useState<{ leafKey?: string; label?: string } | null>(
     null,
   );
@@ -426,6 +434,16 @@ export function FixtureSetupHub({
 
   const journey = journeyStep(readiness.data, competitions);
 
+  /** The Step 1 wizard renders INLINE as the page body, never as a modal:
+   * explicit opens (gate CTA, receipt Edit, chips, fix deep-links) win; in
+   * the gate state it IS the page until cancelled back to the gate card. */
+  const setupView =
+    setup ?? (globalsUnset && canManage && !gateDismissed ? { step: 0 } : null);
+  const closeSetup = (): void => {
+    setSetup(null);
+    setGateDismissed(true);
+  };
+
   /** Panels behind the Advanced disclosure — only the ones that render today. */
   const matchCount = (matches.data ?? []).length;
   const tabs: TabKey[] = [
@@ -485,8 +503,10 @@ export function FixtureSetupHub({
   const shareReady = Boolean(tournament.data?.slug);
   const showDoneBanner = journey === "done" && !doneDismissed;
   // ONE primary per view: while the celebrate banner carries Share, the
-  // toolbar offers only the overflow menu.
-  const showToolbar = canManage && !globalsUnset && journey === "done";
+  // toolbar offers only the overflow menu; while the inline Step 1 panel is
+  // open, the wizard's Next/Save is the page's only primary.
+  const showToolbar =
+    canManage && !globalsUnset && journey === "done" && !setupView;
 
   return (
     <div className="flex flex-col gap-5">
@@ -523,8 +543,9 @@ export function FixtureSetupHub({
       </div>
 
       {readiness.data ? (
+        /* Step 1 stays the active journey step while the inline setup is open. */
         <SetupJourneyHeader
-          step={journey}
+          step={setupView ? 1 : journey}
           onStepClick={canManage ? onStepClick : undefined}
         />
       ) : null}
@@ -538,6 +559,14 @@ export function FixtureSetupHub({
             />
           ))}
         </div>
+      ) : setupView ? (
+        /* Step 1 inline (owner feedback): the wizard IS the page body — the
+         * gate opens straight into it, edits swap the hub content for it. */
+        <GlobalSetupWizard
+          tournamentId={id}
+          initialStep={setupView.step}
+          onClose={closeSetup}
+        />
       ) : globalsUnset ? (
         /* §6.1 empty state — nothing else is actionable before dates + venues. */
         <section
@@ -802,14 +831,6 @@ export function FixtureSetupHub({
         </>
       )}
 
-      {setup ? (
-        <GlobalSetupWizard
-          tournamentId={id}
-          open
-          initialStep={setup.step}
-          onClose={() => setSetup(null)}
-        />
-      ) : null}
       {wizard ? (
         <ScheduleWizard
           tournamentId={id}

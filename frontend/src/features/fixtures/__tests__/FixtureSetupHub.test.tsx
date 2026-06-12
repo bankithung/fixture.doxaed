@@ -246,12 +246,17 @@ function mockDriftedU15(): void {
 }
 
 describe("FixtureSetupHub", () => {
-  it("stage-gates everything behind Step 1 until dates and venues exist", async () => {
+  it("stage-gates everything behind Step 1, rendering the wizard inline as the page body", async () => {
     mockGlobalsUnset();
     wrap(<FixtureSetupHub tournamentId="t1" />);
 
-    expect(await screen.findByTestId("global-setup-gate")).toBeInTheDocument();
-    expect(screen.getByText("Let's set up your fixtures")).toBeInTheDocument();
+    // globals not done → the inline Step 1 wizard IS the page (no modal)
+    const panel = await screen.findByTestId("global-setup-inline");
+    expect(
+      within(panel).getByText("Step 1 · When & where"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByTestId("global-setup-gate")).toBeNull();
     // the journey header points at step 1
     expect(screen.getByTestId("journey-next")).toHaveTextContent(
       "Next: set your tournament dates and venues.",
@@ -260,10 +265,17 @@ describe("FixtureSetupHub", () => {
     expect(screen.queryByTestId("competition-card-football.u15")).toBeNull();
     expect(screen.queryByTestId("global-setup-strip")).toBeNull();
     expect(screen.queryByTestId("advanced-tools")).toBeNull();
-    // the CTA opens the Step 1 wizard
+
+    // Cancel falls back to the gate card; its CTA reopens the inline wizard
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Cancel" }),
+    );
+    expect(screen.queryByTestId("global-setup-inline")).toBeNull();
+    expect(await screen.findByTestId("global-setup-gate")).toBeInTheDocument();
+    expect(screen.getByText("Let's set up your fixtures")).toBeInTheDocument();
     await userEvent.click(screen.getByTestId("global-setup-cta"));
     expect(
-      await screen.findByRole("dialog", { name: "Step 1 · When & where" }),
+      await screen.findByTestId("global-setup-inline"),
     ).toBeInTheDocument();
   });
 
@@ -353,18 +365,51 @@ describe("FixtureSetupHub", () => {
     ).toBeInTheDocument();
   });
 
-  it("deep-links a venues fix into the Step 1 wizard", async () => {
+  it("deep-links a venues fix into the inline Step 1 panel", async () => {
     wrap(<FixtureSetupHub tournamentId="t1" />);
     await userEvent.click(await screen.findByTestId("section-needs_teams"));
     await userEvent.click(screen.getByTestId("whats-missing-football.u17"));
     // U17 has two fixable fails (teams, venues) + a warn (constraints)
     const fixes = screen.getAllByRole("button", { name: "Fix this" });
     await userEvent.click(fixes[1]); // venues_defined
+    // the panel renders in place of the hub content, not as a modal
     expect(
-      await screen.findByRole("dialog", { name: "Step 1 · When & where" }),
+      await screen.findByTestId("global-setup-inline"),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByTestId("global-setup-strip")).toBeNull();
     // opened at the venues step
     expect(await screen.findByTestId("add-venue")).toBeInTheDocument();
+  });
+
+  it("Edit and the receipt chips open Step 1 inline over the hub; Cancel returns", async () => {
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+
+    await userEvent.click(await screen.findByTestId("global-setup-edit"));
+    const panel = await screen.findByTestId("global-setup-inline");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // the panel replaces the hub content (receipt strip + competition cards)
+    expect(screen.queryByTestId("global-setup-strip")).toBeNull();
+    expect(screen.queryByTestId("competition-card-football.u15")).toBeNull();
+    // the journey header keeps Step 1 active while the inline setup is open
+    expect(screen.getByTestId("journey-next")).toHaveTextContent(
+      "Next: set your tournament dates and venues.",
+    );
+
+    // Cancel returns to the hub view
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Cancel" }),
+    );
+    expect(screen.queryByTestId("global-setup-inline")).toBeNull();
+    expect(await screen.findByTestId("global-setup-strip")).toBeInTheDocument();
+    expect(screen.getByTestId("journey-next")).toHaveTextContent(
+      "Next: choose how each competition plays.",
+    );
+
+    // a receipt chip deep-links to its wizard step (Play times)
+    await userEvent.click(screen.getByTestId("setup-chip-play-times"));
+    expect(await screen.findByTestId("global-setup-inline")).toBeInTheDocument();
+    expect(await screen.findByTestId("sunday-church")).toBeInTheDocument();
   });
 
   it("deep-links a teams fix to the teams tab", async () => {
