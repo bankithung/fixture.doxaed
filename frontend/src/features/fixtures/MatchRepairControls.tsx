@@ -99,7 +99,7 @@ export function RepairViolationsList({
 }
 
 /** 409 `schedule_conflicts` → the violations payload; anything else → null. */
-function conflictsOf(e: unknown): RepairViolation[] | null {
+export function conflictsOf(e: unknown): RepairViolation[] | null {
   if (
     e instanceof ApiError &&
     e.status === 409 &&
@@ -110,13 +110,13 @@ function conflictsOf(e: unknown): RepairViolation[] | null {
   return null;
 }
 
-function errorDetail(e: unknown): string {
+export function errorDetail(e: unknown): string {
   return e instanceof ApiError ? String(e.payload.detail ?? "") : t("Try again.");
 }
 
 /** Footer shared by the repair dialogs: Cancel + the primary action, which
  * flips to a destructive "Force anyway" once hard conflicts came back. */
-function RepairFooter({
+export function RepairFooter({
   conflicts,
   busy,
   submitLabel,
@@ -159,7 +159,7 @@ function RepairFooter({
   );
 }
 
-function ConflictsBlock({
+export function ConflictsBlock({
   conflicts,
 }: {
   conflicts: RepairViolation[] | null;

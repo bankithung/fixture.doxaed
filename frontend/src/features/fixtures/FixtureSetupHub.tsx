@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarClock, GitBranch, Users, Wand2 } from "lucide-react";
+import { CalendarClock, CloudRain, GitBranch, Users, Wand2 } from "lucide-react";
 import {
   tournamentsApi,
   type MatchRow,
@@ -25,7 +25,9 @@ import { GlobalSetupCard } from "./GlobalSetupCard";
 import { GlobalSetupWizard } from "./GlobalSetupWizard";
 import { InputsChangedBanner } from "./InputsChangedBanner";
 import { ReadinessChecklist } from "./ReadinessChecklist";
+import { ScheduleChangesPanel } from "./ScheduleChangesPanel";
 import { SETUP_STEP } from "./setupSteps";
+import { ShiftDayDialog } from "./ShiftDayDialog";
 
 /** One competition (category leaf): teams + matches + server readiness. */
 interface Competition {
@@ -82,6 +84,7 @@ export function FixtureSetupHub({
     leafKey: string;
     label: string;
   } | null>(null);
+  const [shiftOpen, setShiftOpen] = useState(false);
   // "Keep" dismissals of the invariant-10 inputs-changed banner (per leaf).
   const [keptDraws, setKeptDraws] = useState<ReadonlySet<string>>(new Set());
 
@@ -172,6 +175,16 @@ export function FixtureSetupHub({
               <CalendarClock aria-hidden="true" className="h-4 w-4" />
               {t("Schedule all")}
             </Button>
+            {canRepair ? (
+              <Button
+                variant="outline"
+                data-testid="shift-day"
+                onClick={() => setShiftOpen(true)}
+              >
+                <CloudRain aria-hidden="true" className="h-4 w-4" />
+                {t("Shift a day")}
+              </Button>
+            ) : null}
             <Link
               to={routes.tournamentBracket(id)}
               className="inline-flex h-10 items-center gap-2 rounded-lg border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
@@ -341,6 +354,15 @@ export function FixtureSetupHub({
         />
       ) : null}
 
+      {matchCount > 0 ? (
+        <ScheduleChangesPanel
+          tournamentId={id}
+          competitions={competitions
+            .filter((c) => c.leafKey)
+            .map((c) => ({ leafKey: c.leafKey, label: c.label }))}
+        />
+      ) : null}
+
       {(standings.data?.groups.length ?? 0) > 0 ? (
         <section className="flex flex-col gap-3">
           <h2 className="text-lg font-semibold">{t("Standings")}</h2>
@@ -385,6 +407,16 @@ export function FixtureSetupHub({
             setDraw(null);
             setSetup({ step: SETUP_STEP.calendar });
           }}
+        />
+      ) : null}
+      {shiftOpen ? (
+        <ShiftDayDialog
+          tournamentId={id}
+          matches={matches.data ?? []}
+          competitions={competitions
+            .filter((c) => c.leafKey)
+            .map((c) => ({ leafKey: c.leafKey, label: c.label }))}
+          onClose={() => setShiftOpen(false)}
         />
       ) : null}
       {advanceDlg ? (

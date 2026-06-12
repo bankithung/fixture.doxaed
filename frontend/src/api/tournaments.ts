@@ -234,6 +234,35 @@ export interface MovedSlot {
   venue: string;
 }
 
+/** A slot in the schedule-change feed (null on lock/unlock entries). */
+export interface ScheduleChangeSlot {
+  scheduled_at: string | null;
+  venue: string | null;
+}
+
+/** One entry of the unified slot-change feed (trust layer, increment F) —
+ * flattened from the repair/scheduler audit rows, reverse-chrono. */
+export interface ScheduleChangeEntry {
+  match_id: string;
+  match_label: string;
+  leaf_key: string;
+  changed_at: string;
+  actor: { id: string; email: string } | null;
+  kind:
+    | "rescheduled"
+    | "delayed"
+    | "swapped"
+    | "day_shifted"
+    | "engine_rerun"
+    | "locked"
+    | "unlocked"
+    | string;
+  old: ScheduleChangeSlot | null;
+  new: ScheduleChangeSlot | null;
+  reason: string;
+  batch_id: string;
+}
+
 export interface StandingRow {
   team_id: string;
   name: string;
@@ -519,6 +548,39 @@ export const tournamentsApi = {
   /** Release a pinned slot. */
   unlockMatch: (matchId: string) =>
     api.delete<{ match: MatchRow }>(`/api/matches/${matchId}/lock/`),
+  /** Rain-day shift: move every movable match on `from_date` to `to_date`
+   * keeping time-of-day + venue. `to_date` omitted ⇒ the first stored
+   * reserve day (400 `reserve_day_unavailable` when none). 409 semantics
+   * like the other repair verbs. */
+  shiftDay: (
+    id: string,
+    body: {
+      from_date: string;
+      to_date?: string;
+      leaf_key?: string;
+      force?: boolean;
+      event_id: string;
+    },
+  ) =>
+    api.post<{
+      moved: MovedSlot[];
+      violations: RepairViolation[];
+      to_date: string;
+    }>(`/api/tournaments/${id}/fixtures/shift-day/`, body),
+  /** Unified reverse-chrono slot-change feed (any tournament member). */
+  scheduleChanges: (
+    id: string,
+    opts: { since?: string; leafKey?: string; limit?: number } = {},
+  ) => {
+    const q = new URLSearchParams();
+    if (opts.since) q.set("since", opts.since);
+    if (opts.leafKey) q.set("leaf_key", opts.leafKey);
+    if (opts.limit !== undefined) q.set("limit", String(opts.limit));
+    const qs = q.toString();
+    return api.get<{ results: ScheduleChangeEntry[] }>(
+      `/api/tournaments/${id}/schedule-changes/${qs ? `?${qs}` : ""}`,
+    );
+  },
   /** Exchange scheduled_at+venue between two movable matches. */
   swapSlots: (
     id: string,

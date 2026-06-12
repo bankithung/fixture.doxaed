@@ -31,6 +31,7 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       settings: vi.fn(),
       constraintTypes: vi.fn(),
       sports: vi.fn(),
+      scheduleChanges: vi.fn(),
     },
   };
 });
@@ -148,6 +149,7 @@ beforeEach(() => {
   } as unknown as TournamentSettings);
   vi.mocked(tournamentsApi.constraintTypes).mockResolvedValue([]);
   vi.mocked(tournamentsApi.sports).mockResolvedValue({ sports: [] });
+  vi.mocked(tournamentsApi.scheduleChanges).mockResolvedValue({ results: [] });
 });
 
 describe("FixtureSetupHub", () => {
