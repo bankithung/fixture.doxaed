@@ -64,7 +64,10 @@ export function ViolationsPanel({
         <p className="text-sm font-medium">
           {hard.length
             ? t(`${hard.length} problem(s) need fixing before you publish.`)
-            : t("This schedule works. No rules are broken.")}
+            : soft.length
+              ? /* Soft notes render below — "no rules broken" would contradict them. */
+                t("This schedule works. Some preferences could not be met (details below).")
+              : t("This schedule works. No rules are broken.")}
         </p>
         {hard.length && onFixRules ? (
           <button

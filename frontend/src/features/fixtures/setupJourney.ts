@@ -269,7 +269,10 @@ export function competitionSentence(
       actions: [{ label: t("Preview the draw"), kind: "primary", action: "preview" }],
       note: warned(c, "format_chosen")
         ? {
-            text: t("You haven't picked a format. Round robin will be used."),
+            // "League" (not "round robin") — the Step 2 wizard's name for it.
+            text: t(
+              "You haven't picked a format. League (everyone plays everyone once) will be used.",
+            ),
             actionLabel: t("Choose format"),
           }
         : undefined,

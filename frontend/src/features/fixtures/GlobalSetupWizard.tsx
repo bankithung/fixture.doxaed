@@ -99,6 +99,14 @@ function draftWindows(d: VenueDraft): { from: string; to: string }[] {
   return d.from && d.to ? [{ from: d.from, to: d.to }] : [];
 }
 
+/** "2026-06-12" → "Jun 12" — the review reads in words, not ISO. */
+function fmtDay(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 function Field({
   label,
   hint,
@@ -374,6 +382,12 @@ export function GlobalSetupWizard({
                 />
               </Field>
             </div>
+            {!form.date_start || !form.date_end ? (
+              /* Why the Next button is disabled — never leave it a mystery. */
+              <p className="text-xs text-muted-foreground">
+                {t("Pick the first and last match days to continue.")}
+              </p>
+            ) : null}
             <BlackoutDatesField
               label={t("Days off")}
               hint={t("No matches on these days (exams, holidays).")}
@@ -400,6 +414,9 @@ export function GlobalSetupWizard({
               onChange={(v) => set("closing", v)}
               testId="closing"
             />
+            <p className="text-xs text-muted-foreground">
+              {t("No matches are scheduled while a ceremony is on.")}
+            </p>
           </div>
         ) : step === 1 ? (
           <div className="flex flex-col gap-3">
@@ -502,7 +519,7 @@ export function GlobalSetupWizard({
           <dl className="grid gap-2 text-sm sm:grid-cols-2">
             <Row
               k={t("Dates")}
-              v={`${form.date_start || t("not set")} ${t("to")} ${form.date_end || t("not set")}`}
+              v={`${form.date_start ? fmtDay(form.date_start) : t("not set")} ${t("to")} ${form.date_end ? fmtDay(form.date_end) : t("not set")}`}
             />
             <Row
               k={t("Play times")}

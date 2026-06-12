@@ -185,7 +185,7 @@ function PrintSheet({
           className="break-after-page pb-6 last:break-after-auto"
         >
           <h1 className="text-lg font-bold">
-            {tournamentName} — {t("Order of play")}
+            {tournamentName} - {t("Order of play")}
           </h1>
           <p className="pb-3 text-sm">
             {fmtDay(day)} · {venue}
@@ -347,7 +347,7 @@ export function PublicSchedulePage(): React.ReactElement {
 
             {days.length === 0 && unscheduled.length === 0 ? (
               <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-                {t("No matches have been scheduled yet — check back soon.")}
+                {t("No matches have been scheduled yet. Check back soon.")}
               </p>
             ) : null}
 
@@ -378,7 +378,7 @@ export function PublicSchedulePage(): React.ReactElement {
                 className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
               >
                 <h2 className="border-b border-border bg-muted/40 px-4 py-2.5 text-sm font-semibold">
-                  {t("Awaiting a slot")}
+                  {t("Time to be announced")}
                 </h2>
                 <ul>
                   {unscheduled.map((m) => (

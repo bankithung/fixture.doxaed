@@ -108,7 +108,9 @@ describe("CompetitionCard", () => {
   it("format warn: quiet note with an inline Choose format button (primary stays preview)", async () => {
     const { onAction } = mount(comp([{ id: "format_chosen", status: "warn" }]));
     expect(
-      screen.getByText(/You haven't picked a format. Round robin will be used./),
+      screen.getByText(
+        /You haven't picked a format. League \(everyone plays everyone once\) will be used./,
+      ),
     ).toBeInTheDocument();
     expect(screen.getByTestId("generate-football.u15")).toBeInTheDocument();
     expect(screen.queryByTestId("change-format-football.u15")).toBeNull();

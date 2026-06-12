@@ -117,7 +117,7 @@ describe("PublicSchedulePage", () => {
     expect(m2).toHaveTextContent("Live");
   });
 
-  it("collects slotless matches under 'Awaiting a slot'", async () => {
+  it("collects unscheduled matches under 'Time to be announced'", async () => {
     mount();
     const bucket = await screen.findByTestId("public-unscheduled");
     expect(within(bucket).getByTestId("public-match-m4")).toBeInTheDocument();
@@ -141,7 +141,7 @@ describe("PublicSchedulePage", () => {
     // page-per-venue order-of-play for the default (first) day
     const venue = within(sheet).getByTestId("print-venue-Main Ground");
     expect(venue.className).toContain("break-after-page");
-    expect(venue).toHaveTextContent("Nagaland Schools Cup — Order of play");
+    expect(venue).toHaveTextContent("Nagaland Schools Cup - Order of play");
     const rows = within(venue).getAllByRole("row").slice(1); // skip header
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent("09:00"); // time-ordered

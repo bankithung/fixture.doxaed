@@ -62,6 +62,14 @@ function isAll(c: ConstraintRecord): boolean {
   return !c.scope || c.scope === "all";
 }
 
+/** "2026-06-12" → "Jun 12" — the confirm reads in words, not ISO. */
+function fmtDay(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 /**
  * Re-run the schedule (clarity rebuild §4.6): a single confirm screen,
  * PREFILLED from the stored Step 1 answers (`draw_config["*"].calendar`, the
@@ -224,6 +232,12 @@ export function ScheduleWizard({
                 <p className="text-xs text-muted-foreground">
                   {t("Schedule quality")}: {Math.round(result.soft_score * 100)}%
                 </p>
+                {result.unscheduled.length ? (
+                  /* Never strand the user on a partial result — say the fix. */
+                  <p className="text-xs text-muted-foreground">
+                    {t("Add another day or venue in Step 1, then run this again.")}
+                  </p>
+                ) : null}
               </div>
             </div>
             <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
@@ -243,7 +257,11 @@ export function ScheduleWizard({
             >
               <SummaryRow
                 k={t("Dates")}
-                v={`${form.date_start || t("not set")} ${t("to")} ${form.date_end || form.date_start || t("not set")}`}
+                v={`${form.date_start ? fmtDay(form.date_start) : t("not set")} ${t("to")} ${
+                  form.date_end || form.date_start
+                    ? fmtDay(form.date_end || form.date_start)
+                    : t("not set")
+                }`}
               />
               <SummaryRow
                 k={t("Play times")}

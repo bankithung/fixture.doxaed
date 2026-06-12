@@ -118,7 +118,7 @@ describe("ShiftDayDialog", () => {
   it("sends explicit to_date and leaf scope when chosen", async () => {
     mount();
     await userEvent.click(
-      screen.getByRole("button", { name: "Competition scope" }),
+      screen.getByRole("button", { name: "Which competitions" }),
     );
     await userEvent.click(screen.getByRole("option", { name: "Football · U17" }));
     await pickDay(/Jun 24/);

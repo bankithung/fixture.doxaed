@@ -638,7 +638,17 @@ export function FixtureSetupHub({
               icon={<Users className="h-8 w-8" />}
               title={t("No competitions yet")}
               hint={t("Add sports and categories in Settings. Teams then register into them, and each one gets its own draw here.")}
-            />
+            >
+              {canManage ? (
+                <Link
+                  to={routes.tournamentSettings(id)}
+                  data-testid="empty-open-settings"
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  {t("Open Settings")}
+                </Link>
+              ) : null}
+            </EmptyState>
           ) : (
             <div id="competition-list" className="flex flex-col gap-4">
               {GROUPS.map((g) => {

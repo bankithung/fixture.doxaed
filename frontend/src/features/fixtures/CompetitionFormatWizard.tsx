@@ -409,6 +409,19 @@ export function CompetitionFormatWizard({
   const title = leafLabel
     ? t(`Step 2 · How ${leafLabel} plays`)
     : t("Step 2 · How this competition plays");
+  // Under 2 teams the Preview/Create buttons are disabled — say why up front.
+  const description =
+    teamCount >= 2
+      ? t(
+          `${teamCount} teams are in. Pick how they play each other. Each competition can be different.`,
+        )
+      : teamCount === 1
+        ? t(
+            "1 team is in so far. A draw needs at least 2 teams, but you can pick the format now.",
+          )
+        : t(
+            "No teams are in yet. A draw needs at least 2 teams, but you can pick the format now.",
+          );
 
   return (
     <Dialog
@@ -421,11 +434,7 @@ export function CompetitionFormatWizard({
     >
       <DialogHeader>
         <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>
-          {t(
-            `${teamCount} teams are in. Pick how they play each other. Each competition can be different.`,
-          )}
-        </DialogDescription>
+        <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
 
       {/* The Step 1 receipt: read-only context, never re-asked (tenet 1). */}

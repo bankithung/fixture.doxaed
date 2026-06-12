@@ -118,7 +118,8 @@ export function DryRunPreviewPage(): React.ReactElement {
   );
   const label =
     readiness.data?.competitions.find((c) => c.leaf_key === leaf)?.label ??
-    (leaf || t("All competitions"));
+    // Raw leaf keys are internal codes — never flash one while loading.
+    (readiness.data === undefined ? "" : leaf || t("All competitions"));
 
   const rePreview = (): void => {
     setStale(false);

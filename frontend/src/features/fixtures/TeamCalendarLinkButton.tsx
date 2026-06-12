@@ -28,7 +28,7 @@ export function TeamCalendarLinkButton({
         toast.push({
           kind: "success",
           title: t("Calendar link copied"),
-          description: t("Subscribe to it in any calendar app — schedule changes update automatically."),
+          description: t("Subscribe to it in any calendar app. Schedule changes update automatically."),
         });
       } catch {
         toast.push({ kind: "info", title: t("Calendar link"), description: r.url });

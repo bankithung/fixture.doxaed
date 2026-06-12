@@ -484,7 +484,7 @@ describe("FixtureSetupHub", () => {
     // a single confirm with the stored answers — no date questions re-asked
     const summary = await screen.findByTestId("rerun-summary");
     await waitFor(() =>
-      expect(summary).toHaveTextContent("2026-08-01 to 2026-08-05"),
+      expect(summary).toHaveTextContent("Aug 1 to Aug 5"),
     );
     expect(summary).toHaveTextContent("08:00 to 17:00, 60 min per match");
     expect(summary).toHaveTextContent("45 min between matches, max 2 per day");

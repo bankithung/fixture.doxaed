@@ -10,6 +10,14 @@ function isAll(c: ConstraintRecord): boolean {
   return !c.scope || c.scope === "all";
 }
 
+/** "2026-06-12" → "Jun 12" — chips read in words, not ISO. */
+function fmtDay(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 /**
  * The Step 1 receipt (clarity rebuild §4.1/§7.4): a slim strip of everything
  * the Step 1 wizard captured, each value a chip that reopens the wizard at
@@ -66,7 +74,9 @@ export function GlobalSetupCard({
     {
       key: "dates",
       value: cal?.date_start
-        ? t(`Dates ${cal.date_start} to ${cal.date_end ?? cal.date_start}`)
+        ? t(
+            `Dates ${fmtDay(String(cal.date_start))} to ${fmtDay(String(cal.date_end ?? cal.date_start))}`,
+          )
         : t("Dates not set"),
       step: SETUP_STEP.calendar,
     },

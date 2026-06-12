@@ -147,6 +147,12 @@ export function ShiftDayDialog({
             options={dayOptions}
             placeholder={t("Pick a day…")}
           />
+          {dayOptions.length === 0 ? (
+            /* An empty picker with no explanation strands the user. */
+            <p className="text-xs text-muted-foreground">
+              {t("No day has matches that can move. Locked or finished matches stay where they are.")}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="shift-to">{t("Move to (optional)")}</Label>
@@ -166,10 +172,10 @@ export function ShiftDayDialog({
         </div>
         {competitions.length > 0 ? (
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="shift-leaf">{t("Competition scope")}</Label>
+            <Label htmlFor="shift-leaf">{t("Which competitions")}</Label>
             <Select
               id="shift-leaf"
-              aria-label={t("Competition scope")}
+              aria-label={t("Which competitions")}
               value={leaf}
               onChange={(v) => {
                 setLeaf(v);

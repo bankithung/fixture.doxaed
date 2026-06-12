@@ -222,7 +222,7 @@ describe("competitionSentence (§7.2, first match wins)", () => {
       "",
     );
     expect(noted.note).toEqual({
-      text: "You haven't picked a format. Round robin will be used.",
+      text: "You haven't picked a format. League (everyone plays everyone once) will be used.",
       actionLabel: "Choose format",
     });
   });

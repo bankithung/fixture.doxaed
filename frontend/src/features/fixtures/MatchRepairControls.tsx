@@ -330,7 +330,7 @@ function DelayMatchDialog({
       <DialogHeader>
         <DialogTitle>{t("Delay match")}</DialogTitle>
         <DialogDescription>
-          {t("Push the kick-off back. With cascade on, later matches at the same venue shift just enough to keep rest gaps.")}
+          {t("Push the kick-off back. Tick the box below to also push the later matches at this venue, keeping rest gaps.")}
         </DialogDescription>
       </DialogHeader>
       <div className="flex flex-col gap-3">

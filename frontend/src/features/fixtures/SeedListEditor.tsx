@@ -43,7 +43,7 @@ export function SeedListEditor({
 
   return (
     <ul
-      aria-label={t("Seed order — row 1 is the top seed")}
+      aria-label={t("Seed order. Row 1 is the top seed.")}
       className="flex flex-col gap-1"
     >
       {teams.map((tm, i) => (
@@ -53,7 +53,7 @@ export function SeedListEditor({
             rowRefs.current[i] = el;
           }}
           tabIndex={0}
-          aria-label={t(`${tm.name} — seed ${i + 1}`)}
+          aria-label={t(`${tm.name}, seed ${i + 1}`)}
           data-testid={`seed-row-${i}`}
           onKeyDown={(e) => {
             if (e.key === "ArrowUp") {

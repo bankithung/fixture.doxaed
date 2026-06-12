@@ -37,7 +37,7 @@ export function BlackoutDatesField({
         <Input
           type="date"
           value={draft}
-          aria-label={t(`Add a date — ${label}`)}
+          aria-label={t(`Add a date to ${label}`)}
           data-testid={testId ? `${testId}-input` : undefined}
           onChange={(e) => setDraft(e.target.value)}
           className="h-9 w-44"
