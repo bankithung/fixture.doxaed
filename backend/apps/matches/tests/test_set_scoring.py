@@ -206,7 +206,9 @@ def test_set_result_publishes_live_update(django_capture_on_commit_callbacks):
             record_set_result(
                 match=m, set_scores=[[11, 8], [11, 9]], rules=TT, by=admin,
             )
-    pub.assert_called_once_with(m.id, None)
+    # Dual fan-out (control room spec 2026-06-12 §2.c): the match WS room
+    # message (event_id=None → snapshot refetch) + a tournament "score" tick.
+    pub.assert_called_once_with(m.id, None, m.tournament_id, kind="score")
 
 
 def test_goal_sport_rejects_sets_but_goals_still_work():

@@ -50,6 +50,34 @@ def _movable_statuses() -> tuple[str, str]:
     return (MatchStatus.SCHEDULED, MatchStatus.POSTPONED)
 
 
+#: Past this many moved matches a cascade collapses to ONE batch tick
+#: (match_id=None) — clients refetch the whole day instead of N refetches.
+_TICK_BATCH_CAP = 10
+
+
+def _publish_schedule_ticks(tournament_id, match_ids: list) -> None:
+    """Queue post-commit ``schedule`` ticks (control room spec 2026-06-12
+    §2.c) — one per affected match, collapsed to a single batch tick when a
+    cascade moves more than ``_TICK_BATCH_CAP``. Call INSIDE the atomic
+    block so on_commit binds to the repair transaction."""
+    from apps.live.publish import publish_tournament_tick
+
+    ids = list(match_ids)
+    if not ids:
+        return
+    if len(ids) > _TICK_BATCH_CAP:
+        transaction.on_commit(
+            lambda: publish_tournament_tick(tournament_id, None, "schedule")
+        )
+        return
+
+    def _send() -> None:
+        for mid in ids:
+            publish_tournament_tick(tournament_id, mid, "schedule")
+
+    transaction.on_commit(_send)
+
+
 def _local(dt: datetime, tz) -> datetime:
     """Aware → naive tournament-local wall clock (the engine's time model)."""
     return dj_tz.localtime(dt, tz).replace(tzinfo=None)
@@ -208,6 +236,7 @@ def reschedule_match(
                 },
             }],
         )
+        _publish_schedule_ticks(match.tournament_id, [match.id])
     return violations
 
 
@@ -397,6 +426,9 @@ def delay_match(
                 for e in moved
             ],
         )
+        _publish_schedule_ticks(
+            match.tournament_id, [e["match_id"] for e in moved]
+        )
     return moved, violations
 
 
@@ -572,6 +604,7 @@ def shift_day(
                 for e in moved
             ],
         )
+        _publish_schedule_ticks(tournament.id, [e["match_id"] for e in moved])
     return moved, violations, to_date
 
 
@@ -673,4 +706,5 @@ def swap_slots(
                 for p in before
             ],
         )
+        _publish_schedule_ticks(tournament.id, [a.id, b.id])
     return a, b, violations

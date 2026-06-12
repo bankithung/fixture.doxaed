@@ -25,10 +25,12 @@ from apps.matches.models import (
 logger = logging.getLogger(__name__)
 
 
-def publish_match_event(match_id, event_id) -> None:
+def publish_match_event(match_id, event_id, tournament_id=None, kind="event") -> None:
     """Post-commit delivery (invariant #4/#11: publish AFTER the DB commit) —
     fan out to the match WebSocket room via the channel layer (Redis in prod,
-    in-memory in dev). Best-effort: delivery failure never affects the commit."""
+    in-memory in dev), and — when the caller passes ``tournament_id`` — dual
+    fan-out a thin tick to the ``tournament_<id>`` group (control room spec
+    2026-06-12 §2.c). Best-effort: delivery failure never affects the commit."""
     logger.info("match_event committed match=%s event=%s", match_id, event_id)
     try:
         from asgiref.sync import async_to_sync
@@ -50,6 +52,10 @@ def publish_match_event(match_id, event_id) -> None:
             )
     except Exception:  # pragma: no cover - delivery is best-effort
         logger.exception("publish_match_event fan-out failed")
+    if tournament_id is not None:
+        from apps.live.publish import publish_tournament_tick
+
+        publish_tournament_tick(tournament_id, match_id, kind)
 
 
 def recompute_score(match: Match) -> None:
@@ -143,8 +149,8 @@ def record_match_event(
             },
             request=request,
         )
-        eid, mid = ev.id, locked.id
-        transaction.on_commit(lambda: publish_match_event(mid, eid))
+        eid, mid, tid = ev.id, locked.id, locked.tournament_id
+        transaction.on_commit(lambda: publish_match_event(mid, eid, tid))
     return ev
 
 

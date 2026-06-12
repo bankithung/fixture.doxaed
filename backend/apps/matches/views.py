@@ -335,6 +335,10 @@ class RecordShootoutView(GenericAPIView):
         if match.status == MatchStatus.COMPLETED:
             mid = match.id
             transaction.on_commit(lambda: _fire_advancement(mid))
+        from apps.live.publish import publish_tournament_tick
+
+        tid, mid2 = match.tournament_id, match.id
+        transaction.on_commit(lambda: publish_tournament_tick(tid, mid2, "score"))
         return Response(MatchSerializer(match).data)
 
 
@@ -513,8 +517,14 @@ class MatchLockView(GenericAPIView):
         before = {
             "locked_at": match.locked_at.isoformat() if match.locked_at else None
         }
+        from django.db import transaction
+
+        from apps.live.publish import publish_tournament_tick
+
         match.locked_at = dj_tz.now() if locked else None
         match.save(update_fields=["locked_at", "updated_at"])
+        tid, mid = match.tournament_id, match.id
+        transaction.on_commit(lambda: publish_tournament_tick(tid, mid, "schedule"))
         emit_audit(
             actor_user=request.user,
             actor_role=ActorRole.ADMIN,
@@ -573,8 +583,14 @@ class MatchCallView(GenericAPIView):
         before = {
             "called_at": match.called_at.isoformat() if match.called_at else None
         }
+        from django.db import transaction
+
+        from apps.live.publish import publish_tournament_tick
+
         match.called_at = dj_tz.now() if called else None
         match.save(update_fields=["called_at", "updated_at"])
+        tid, mid = match.tournament_id, match.id
+        transaction.on_commit(lambda: publish_tournament_tick(tid, mid, "called"))
         emit_audit(
             actor_user=request.user,
             actor_role=ActorRole.ADMIN,

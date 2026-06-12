@@ -19,6 +19,7 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from apps.fixtures.views import PublicTournamentScheduleView
+from apps.live.sse import tournament_stream
 from apps.organizations.views import (  # noqa: E402
     InvitationAcceptByIdView,
     InvitationAcceptView,
@@ -79,6 +80,13 @@ api_v1 = [
         "public/tournaments/<slug:slug>/<uuid:tournament_id>/schedule/",
         PublicTournamentScheduleView.as_view(),
         name="public-tournament-schedule",
+    ),
+    # Control room (spec 2026-06-12 §2.c): public one-way SSE tick stream —
+    # UUIDs only, zero PII; same slug+status gating as the public schedule.
+    path(
+        "public/tournaments/<slug:slug>/<uuid:tournament_id>/stream/",
+        tournament_stream,
+        name="public-tournament-stream",
     ),
     path(
         "public/teams/<uuid:team_id>/calendar.ics",

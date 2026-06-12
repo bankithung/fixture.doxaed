@@ -225,7 +225,11 @@ def record_set_result(
         from apps.matches.services.events import publish_match_event
         from apps.matches.services.state import _fire_advancement
 
-        mid = locked.id
+        mid, tid = locked.id, locked.tournament_id
         transaction.on_commit(lambda: _fire_advancement(mid))
-        transaction.on_commit(lambda: publish_match_event(mid, None))
+        # Dual fan-out: the match WS room + a tournament "score" tick (spec
+        # 2026-06-12 §2.c) so the control room / public page refetch.
+        transaction.on_commit(
+            lambda: publish_match_event(mid, None, tid, kind="score")
+        )
     return locked

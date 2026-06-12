@@ -12,6 +12,7 @@ from django.db import transaction
 
 from apps.audit.models import ActorRole
 from apps.audit.services import emit_audit
+from apps.live.publish import publish_tournament_tick
 from apps.matches.models import Match, MatchStatus
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,12 @@ def transition_match(
         if to_status in _TERMINAL_WITH_RESULT:
             mid = locked.id
             transaction.on_commit(lambda: _fire_advancement(mid))
+        # Live delivery (spec 2026-06-12 §2.c): transitions used to publish
+        # NOTHING — the console polled. Thin post-commit "state" tick.
+        tick_mid, tick_tid = locked.id, locked.tournament_id
+        transaction.on_commit(
+            lambda: publish_tournament_tick(tick_tid, tick_mid, "state")
+        )
     return locked
 
 

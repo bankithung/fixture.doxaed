@@ -96,8 +96,12 @@ def record_score(
             request=request,
         )
         # Knockout advancement (invariant #9) — resolve dependents after commit.
+        from apps.live.publish import publish_tournament_tick
         from apps.matches.services.state import _fire_advancement
 
-        mid = locked.id
+        mid, tid = locked.id, locked.tournament_id
         transaction.on_commit(lambda: _fire_advancement(mid))
+        # Spec 2026-06-12 §2.c: record_score used to publish nothing — thin
+        # post-commit "score" tick for the control room / public stream.
+        transaction.on_commit(lambda: publish_tournament_tick(tid, mid, "score"))
     return locked
