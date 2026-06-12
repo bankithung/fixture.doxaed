@@ -18,6 +18,7 @@ from django.conf import settings
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from apps.fixtures.views import PublicTournamentScheduleView
 from apps.organizations.views import (  # noqa: E402
     InvitationAcceptByIdView,
     InvitationAcceptView,
@@ -25,6 +26,7 @@ from apps.organizations.views import (  # noqa: E402
     MyInvitationsView,
 )
 from apps.sadmin.views import FeedbackSubmitView  # noqa: E402
+from apps.teams.views import PublicTeamCalendarView
 
 api_v1 = [
     path("accounts/", include("apps.accounts.urls")),
@@ -72,6 +74,17 @@ api_v1 = [
     path("disputes/", include("apps.disputes.urls")),
     # Phase 1B: public live viewer snapshot (one-way; SSE upgrade later).
     path("live/", include("apps.live.urls")),
+    # Trust layer (increment H): public schedule + per-team iCal feed.
+    path(
+        "public/tournaments/<slug:slug>/<uuid:tournament_id>/schedule/",
+        PublicTournamentScheduleView.as_view(),
+        name="public-tournament-schedule",
+    ),
+    path(
+        "public/teams/<uuid:team_id>/calendar.ics",
+        PublicTeamCalendarView.as_view(),
+        name="public-team-calendar",
+    ),
     # Public feedback submit endpoint backing the SPA's feedback widget
     # (v1Users.md A.2 personal.feedback_widget). Throttled to 10/hr/user.
     path(

@@ -32,6 +32,7 @@ from apps.teams.views import (
     InstitutionEditLinkView,
     RegistrationLinkCreateView,
     TeamAccessCodesView,
+    TeamCalendarLinkView,
     TeamSeedsView,
     TeamWithdrawView,
     TournamentTeamsListView,
@@ -111,6 +112,11 @@ urlpatterns = [
         "<uuid:tournament_id>/teams/<uuid:team_id>/withdraw/",
         TeamWithdrawView.as_view(),
         name="tournament-team-withdraw",
+    ),
+    path(
+        "<uuid:tournament_id>/teams/<uuid:team_id>/calendar-link/",
+        TeamCalendarLinkView.as_view(),
+        name="tournament-team-calendar-link",
     ),
     path(
         "<uuid:tournament_id>/institutions/<uuid:institution_id>/edit-link/",

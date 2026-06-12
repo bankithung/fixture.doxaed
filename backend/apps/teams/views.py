@@ -615,3 +615,96 @@ class InstitutionEditLinkView(GenericAPIView):
             {"path": f"/r/{token}", "expires_at": expires_at.isoformat()},
             status=201,
         )
+
+
+class TeamCalendarLinkView(GenericAPIView):
+    """`POST /api/tournaments/{id}/teams/{team_id}/calendar-link/` — mint a
+    signed per-team iCal token (trust layer, increment H). Allowed for a
+    tournament manager OR the authenticated registered contact of the team's
+    institution (that team's authorized context); other members 403,
+    outsiders 404 (no existence leak). The token rides the public
+    `calendar.ics` URL — same `django.core.signing` pattern as the
+    team-access share links."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id, team_id):
+        from django.conf import settings as django_settings
+
+        from apps.teams.services.calendar import make_calendar_token
+        from apps.tournaments.permissions import can_manage_tournament
+
+        tournament = (
+            Tournament.objects.filter(id=tournament_id, deleted_at__isnull=True)
+            .select_related("organization")
+            .first()
+        )
+        if tournament is None:
+            raise NotFound("tournament_not_found")
+        team = (
+            Team.objects.filter(
+                id=team_id, tournament=tournament, deleted_at__isnull=True
+            )
+            .select_related("institution")
+            .first()
+        )
+        accessible = accessible_tournaments(request.user).filter(
+            id=tournament_id
+        ).exists()
+        if team is None:
+            if not accessible:
+                raise NotFound("tournament_not_found")
+            raise NotFound("team_not_found")
+        contact_email = (
+            (team.institution.contact_email or "")
+            if team.institution_id and team.institution
+            else ""
+        ).strip().lower()
+        is_contact = bool(contact_email) and request.user.email == contact_email
+        if not (can_manage_tournament(request.user, tournament) or is_contact):
+            if not accessible:
+                raise NotFound("tournament_not_found")
+            raise PermissionDenied("not_authorized_for_team")
+
+        token = make_calendar_token(team)
+        base = getattr(
+            django_settings, "PUBLIC_BASE_URL", "https://fixture.doxaed.com"
+        )
+        return Response({
+            "token": token,
+            "url": f"{base}/api/public/teams/{team.id}/calendar.ics?token={token}",
+        })
+
+
+class PublicTeamCalendarView(GenericAPIView):
+    """`GET /api/public/teams/{team_id}/calendar.ics?token=` — the team's
+    schedule as an iCal feed (trust layer, increment H). AllowAny but
+    capability-gated: a missing, tampered, or another team's token → 403."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, team_id):
+        from django.http import HttpResponse
+
+        from apps.teams.services.calendar import (
+            read_calendar_token,
+            team_calendar_ics,
+        )
+
+        token = str(request.query_params.get("token") or "")
+        if not token:
+            raise PermissionDenied("calendar_token_required")
+        payload = read_calendar_token(token)
+        if not payload or str(payload.get("t")) != str(team_id):
+            raise PermissionDenied("invalid_calendar_token")
+        team = (
+            Team.objects.filter(id=team_id, deleted_at__isnull=True)
+            .select_related("tournament", "institution")
+            .first()
+        )
+        if team is None:
+            raise NotFound("team_not_found")
+        return HttpResponse(
+            team_calendar_ics(team),
+            content_type="text/calendar; charset=utf-8",
+        )

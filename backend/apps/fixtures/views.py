@@ -3,7 +3,7 @@ from __future__ import annotations
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.generics import GenericAPIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from apps.fixtures.models import Venue
@@ -701,3 +701,95 @@ class TournamentVenueDetailView(GenericAPIView):
         v.deleted_at = dj_tz.now()
         v.save(update_fields=["deleted_at", "updated_at"])
         return Response(status=204)
+
+
+class PublicTournamentScheduleView(GenericAPIView):
+    """`GET /api/public/tournaments/{slug}/{id}/schedule/` — public read-only
+    schedule (trust layer, increment H). AllowAny; resolves the (slug, UUID)
+    pair (invariant 1 — wrong slug 404s) and answers ONLY while the
+    tournament status is public-facing (registration_open / scheduled /
+    live / completed). Flat match list with day/time/venue/teams/leaf — no
+    PII beyond team/school names."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, slug, tournament_id):
+        from zoneinfo import ZoneInfo
+
+        from django.db.models import F as _F
+        from django.utils import timezone as dj_tz
+
+        from apps.matches.models import Match
+        from apps.tournaments.models import TournamentStatus
+        from apps.tournaments.services.sports import leaf_label
+
+        public_statuses = (
+            TournamentStatus.REGISTRATION_OPEN,
+            TournamentStatus.SCHEDULED,
+            TournamentStatus.LIVE,
+            TournamentStatus.COMPLETED,
+        )
+        t = Tournament.objects.filter(
+            id=tournament_id,
+            slug=slug,
+            deleted_at__isnull=True,
+            status__in=public_statuses,
+        ).first()
+        if t is None:
+            raise NotFound("tournament_not_found")
+        try:
+            tz = ZoneInfo(t.time_zone)
+        except (KeyError, ValueError):
+            tz = dj_tz.get_default_timezone()
+
+        def side(team):
+            if team is None:
+                return None
+            return {
+                "id": str(team.id),
+                "name": team.name,
+                "short_name": team.short_name,
+                "school": team.school,
+            }
+
+        labels: dict[str, str] = {}
+        matches = []
+        for m in (
+            Match.objects.filter(tournament=t, deleted_at__isnull=True)
+            .select_related("home_team", "away_team")
+            .order_by(_F("scheduled_at").asc(nulls_last=True), "match_no")
+        ):
+            if m.leaf_key and m.leaf_key not in labels:
+                labels[m.leaf_key] = leaf_label(t.sports, m.leaf_key)
+            local = (
+                dj_tz.localtime(m.scheduled_at, tz) if m.scheduled_at else None
+            )
+            matches.append({
+                "id": str(m.id),
+                "leaf_key": m.leaf_key,
+                "leaf_label": labels.get(m.leaf_key, ""),
+                "stage": m.stage,
+                "group_label": m.group_label,
+                "round_no": m.round_no,
+                "match_no": m.match_no,
+                "status": m.status,
+                "day": local.date().isoformat() if local else None,
+                "scheduled_at": (
+                    m.scheduled_at.isoformat() if m.scheduled_at else None
+                ),
+                "venue": m.venue,
+                "home": side(m.home_team),
+                "away": side(m.away_team),
+                "home_score": m.home_score,
+                "away_score": m.away_score,
+            })
+        return Response({
+            "tournament": {
+                "id": str(t.id),
+                "slug": t.slug,
+                "name": t.name,
+                "status": t.status,
+                "time_zone": t.time_zone,
+            },
+            "matches": matches,
+        })
