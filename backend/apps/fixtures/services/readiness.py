@@ -85,20 +85,25 @@ def fixture_readiness(tournament) -> dict[str, Any]:
     from apps.teams.models import Team, TeamStatus
     from apps.tournaments.services.sports import iter_leaves, leaf_label
 
-    sched = tournament.scheduling_config or {}
     stored_cfg = tournament.draw_config or {}
     changed_at = _latest_settings_change_at(tournament)
 
     # ----------------------------------------------------------------- global
+    # Step 1 keys off the CANONICAL global-setup stores the Step-1 wizard
+    # writes: draw_config["*"].calendar dates + workspace Venue records.
+    # Legacy ``Tournament.scheduling_config`` (persisted by old ad-hoc
+    # schedule runs — dates + free-text venue names) deliberately does NOT
+    # satisfy these checks; it remains a fallback for the scheduler engine
+    # only (services/preview.py, repair.py).
     wizard_calendar = (stored_cfg.get("*") or {}).get("calendar") or {}
-    if sched.get("date_start") or wizard_calendar.get("date_start"):
+    if wizard_calendar.get("date_start"):
         calendar = _check("calendar_set", "ok")
     else:
         calendar = _check(
             "calendar_set", "fail",
             _("No tournament calendar yet — set the date range."), "settings",
         )
-    has_venues = bool(sched.get("venues")) or Venue.objects.filter(
+    has_venues = Venue.objects.filter(
         organization=tournament.organization, deleted_at__isnull=True
     ).exists()
     venues = (

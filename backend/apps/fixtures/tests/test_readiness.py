@@ -83,17 +83,62 @@ def test_global_checks_fail_on_empty_tournament():
 
 
 def test_global_checks_pass_when_configured():
+    """The canonical Step-1 stores — wizard-saved draw_config["*"].calendar
+    dates + a workspace Venue record — satisfy the global checks."""
     admin = _verified("a@test.local")
     t = _tournament(admin)
-    t.scheduling_config = {"date_start": "2026-08-01", "date_end": "2026-08-05"}
-    t.save(update_fields=["scheduling_config"])
     Venue.objects.create(organization=t.organization, name="Main Ground")
     update_draw_config(
         tournament=t, leaf_key="*",
-        partial={"constraints_reviewed_at": timezone.now().isoformat()}, by=admin,
+        partial={
+            "calendar": {"date_start": "2026-08-01", "date_end": "2026-08-05"},
+            "constraints_reviewed_at": timezone.now().isoformat(),
+        },
+        by=admin,
     )
     g = _checks(fixture_readiness(t)["global"])
     assert {c["status"] for c in g.values()} == {"ok"}
+
+
+def test_legacy_scheduling_config_does_not_satisfy_step_one():
+    """Owner bug (live): legacy ``scheduling_config`` persisted by old ad-hoc
+    schedule runs (dates + free-text venue names) must NOT pass the Step-1
+    gate — only the canonical stores the Step-1 wizard writes do. The legacy
+    blob stays a scheduler-engine fallback, but readiness ignores it."""
+    admin = _verified("a@test.local")
+    t = _tournament(admin)
+    _register(t, 2)
+    t.scheduling_config = {
+        "date_start": "2026-08-01", "date_end": "2026-08-05",
+        "venues": ["pitch 1"],
+    }
+    t.save(update_fields=["scheduling_config"])
+
+    body = fixture_readiness(t)
+    g = _checks(body["global"])
+    assert g["calendar_set"]["status"] == "fail"
+    assert g["calendar_set"]["fix"] == "settings"
+    assert g["venues_defined"]["status"] == "fail"
+    assert g["venues_defined"]["fix"] == "venues"
+    # the per-competition calendar check mirrors the global verdict, so the
+    # leaf can never read "ready" before Step 1 (no premature Preview)
+    u15 = _leaf(body, LEAF_U15)
+    assert _checks(u15)["calendar_set"]["status"] == "fail"
+    assert u15["ready"] is False
+
+    # writing the canonical stores (the wizard's save path) flips the gate
+    Venue.objects.create(organization=t.organization, name="Main Ground")
+    update_draw_config(
+        tournament=t, leaf_key="*",
+        partial={"calendar": {"date_start": "2026-08-01",
+                              "date_end": "2026-08-05"}},
+        by=admin,
+    )
+    body = fixture_readiness(t)
+    g = _checks(body["global"])
+    assert g["calendar_set"]["status"] == "ok"
+    assert g["venues_defined"]["status"] == "ok"
+    assert _leaf(body, LEAF_U15)["ready"] is True
 
 
 def test_constraints_reviewed_goes_stale_after_settings_change():
@@ -117,8 +162,8 @@ def test_constraints_reviewed_goes_stale_after_settings_change():
 
 
 def test_calendar_set_accepts_wizard_saved_dates():
-    """§5.1: calendar_set passes on scheduling_config OR the global-setup
-    wizard's draw_config["*"].calendar dates."""
+    """§5.1: calendar_set passes ONLY on the global-setup wizard's canonical
+    draw_config["*"].calendar dates."""
     admin = _verified("a@test.local")
     t = _tournament(admin)
     update_draw_config(
