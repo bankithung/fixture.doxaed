@@ -5,6 +5,7 @@ from django.urls import path
 from apps.matches.views import (
     AssignScorerView,
     ConfirmLineupView,
+    MatchCallView,
     MatchDelayView,
     MatchEventsExportView,
     MatchIncidentView,
@@ -35,6 +36,11 @@ urlpatterns = [
         "<uuid:match_id>/lock/",
         MatchLockView.as_view(),
         name="match-lock",
+    ),
+    path(
+        "<uuid:match_id>/call/",
+        MatchCallView.as_view(),
+        name="match-call",
     ),
     path(
         "<uuid:match_id>/delay/",

@@ -1,6 +1,6 @@
 # Fixture Platform — Product Requirements Document (PRD)
 
-> **Status:** Draft v4 — all logic-flow gaps folded in; v4 (2026-06-12) adds the `abandoned → scheduled` replay transition (§5.5, decision 71)
+> **Status:** Draft v5 — all logic-flow gaps folded in; v4 (2026-06-12) adds the `abandoned → scheduled` replay transition (§5.5, decision 71); v5 (2026-06-12) adds the `called_at` operational annotation note (§5.5, decision 72)
 > **Date:** 2026-04-30
 > **Owner:** graceschooledu@gmail.com (Super-admin)
 > **Working directory:** `C:\Users\Asus\Desktop\fixture.doxaed.com`
@@ -422,6 +422,10 @@ Side states (any active state):
 | `abandoned → scheduled` | Admin / Coordinator with reason (**required**) | Replay — the abandoned result is void: scores/pens/sets/period cleared; the original event log is retained (append-only, strikethrough in UI); advancement never fires from `abandoned` |
 | `* → cancelled` | Admin with reason | Bracket-aware: opponents in dependent matches get bye-equivalent or walkover |
 | `* → disputed` (overlay) | Dispute raised | Advancement paused |
+
+#### "Called" annotation (not a state)
+
+- The control room can mark a `scheduled` match as **called to its venue** (`Match.called_at`, decision 72). This is an operational *annotation of* `scheduled`, **not** a lifecycle state: it does not appear in the transition table above, never gates a transition, and the state machine is untouched. The UI renders "Called" while `status == scheduled` and `called_at` is set; the annotation auto-clears on the transition to live (kickoff consumes the call).
 
 #### Per-match rule freeze
 
@@ -1181,6 +1185,7 @@ All primary keys = **UUID v7** (time-ordered).
 | 69 | TZ change blocked after `scheduled` | Schedule integrity |
 | 70 | Audit log GDPR anonymization on user deletion (v1.5 prep) | Privacy + history |
 | 71 | `abandoned → scheduled` guarded replay transition (reason required; scores/pens/sets/period cleared; original events retained in the immutable log; no advancement from `abandoned`) — draft v4 | Real tournaments replay abandoned matches; without this the only escape was cancel + manually recreate, losing the match's history |
+| 72 | "Called to venue" is a nullable `Match.called_at` timestamp — an operational annotation of `scheduled`, NOT a new match status (§5.5 note); auto-clears on the transition to live — draft v5 | A `MatchStatus.CALLED` would ripple through every transition table, movability check, standings filter and status pill for what is presentation-only ops metadata; the control room needs only the flag |
 
 ---
 

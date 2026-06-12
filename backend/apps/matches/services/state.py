@@ -62,11 +62,18 @@ def transition_match(
             _reset_for_replay(locked, reason)
 
         locked.status = to_status
-        if to_status == S.LIVE and not locked.current_period:
-            locked.current_period = "first_half"
+        if to_status == S.LIVE:
+            if not locked.current_period:
+                locked.current_period = "first_half"
+            # Kickoff consumes the control-room "called" annotation —
+            # called_at auto-clears on the transition to live (owner
+            # decision 2026-06-12, spec 2026-06-12 §2.b).
+            locked.called_at = None
         elif to_status == S.HALF_TIME:
             locked.current_period = "half_time"
         update_fields = ["status", "current_period", "updated_at"]
+        if to_status == S.LIVE:
+            update_fields.append("called_at")
         if replay:
             update_fields += [
                 "home_score", "away_score", "home_pens", "away_pens",

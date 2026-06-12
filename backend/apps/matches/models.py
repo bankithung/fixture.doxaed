@@ -100,6 +100,13 @@ class Match(models.Model):
     # scheduler re-run — its (venue, time, teams) stays on the calendar as a
     # fixed busy booking. Set/cleared via POST/DELETE /api/matches/{id}/lock/.
     locked_at = models.DateTimeField(null=True, blank=True)
+    # Control-room "called to venue" annotation (spec 2026-06-12 §2.b): an
+    # operational sub-state of `scheduled`, NOT a lifecycle status (PRD §5.5
+    # note, decision 72) — the UI renders "Called" while status=="scheduled"
+    # and called_at is set. Stamped/cleared via POST/DELETE
+    # /api/matches/{id}/call/; auto-cleared on the transition to LIVE
+    # (owner decision 2026-06-12).
+    called_at = models.DateTimeField(null=True, blank=True)
     current_period = models.CharField(max_length=24, blank=True)  # e.g. "first_half"
     scorer = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,

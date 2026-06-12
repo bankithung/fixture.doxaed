@@ -11,7 +11,7 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.matches.models import Lineup, Match, MatchEvent, MatchIncident
+from apps.matches.models import Lineup, Match, MatchEvent, MatchIncident, MatchStatus
 from apps.matches.serializers import (
     ConfirmLineupSerializer,
     DelayMatchSerializer,
@@ -527,6 +527,66 @@ class MatchLockView(GenericAPIView):
             payload_before=before,
             payload_after={
                 "locked_at": match.locked_at.isoformat() if match.locked_at else None
+            },
+            request=request,
+        )
+        return Response({"match": MatchSerializer(match).data})
+
+
+class MatchCallView(GenericAPIView):
+    """`POST/DELETE /api/matches/{id}/call/` — mark / unmark a match as
+    called to its venue (control room, spec 2026-06-12 §2.b). `called_at` is
+    an operational annotation of `scheduled`, NOT a lifecycle state (PRD §5.5
+    note, decision 72) — the state machine is untouched, and kickoff clears
+    it (see transition_match). Gate: the schedule_editor module (mirrors
+    MatchLockView). Idempotent (a repeat call/un-call is a no-op); only legal
+    while the match is `scheduled` (409 otherwise); audited
+    (`match_called`/`match_call_cleared`)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, match_id):
+        return self._set(request, match_id, called=True)
+
+    def delete(self, request, match_id):
+        return self._set(request, match_id, called=False)
+
+    def _set(self, request, match_id, *, called: bool):
+        from django.utils import timezone as dj_tz
+
+        from apps.audit.models import ActorRole
+        from apps.audit.services import emit_audit
+        from apps.tournaments.permissions import can_access_module
+
+        match = _match_or_404(request.user, match_id)
+        if not can_access_module(
+            request.user, match.tournament, "tournament.schedule_editor"
+        ):
+            raise PermissionDenied("not_schedule_editor")
+        if match.status != MatchStatus.SCHEDULED:
+            return Response(
+                {"detail": "match_not_callable", "status": match.status},
+                status=409,
+            )
+        if bool(match.called_at) == called:  # idempotent no-op
+            return Response({"match": MatchSerializer(match).data})
+        before = {
+            "called_at": match.called_at.isoformat() if match.called_at else None
+        }
+        match.called_at = dj_tz.now() if called else None
+        match.save(update_fields=["called_at", "updated_at"])
+        emit_audit(
+            actor_user=request.user,
+            actor_role=ActorRole.ADMIN,
+            event_type="match_called" if called else "match_call_cleared",
+            target_type="match",
+            target_id=match.id,
+            organization_id=match.organization_id,
+            tournament_id=match.tournament_id,
+            match_id=match.id,
+            payload_before=before,
+            payload_after={
+                "called_at": match.called_at.isoformat() if match.called_at else None
             },
             request=request,
         )
