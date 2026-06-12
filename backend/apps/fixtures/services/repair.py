@@ -189,6 +189,181 @@ def reschedule_match(
     return violations
 
 
+def _duration_minutes(tournament, sport: str, default: int) -> int:
+    """Per-sport match duration (tournament override → sport profile →
+    the run's slot length) — the same resolution ``build_schedule_inputs``
+    applies, so the cascade sees the intervals validation will see."""
+    from apps.matches.services.set_scoring import sport_profile
+
+    override = next(
+        (
+            (s.get("scheduling") or {})
+            for s in tournament.sports or []
+            if s.get("key") == sport
+        ),
+        {},
+    )
+    if override.get("duration_minutes"):
+        return int(override["duration_minutes"])
+    prof = sport_profile(sport)
+    return int(prof["duration_minutes"]) if prof else default
+
+
+def delay_match(
+    *,
+    match,
+    by,
+    minutes: int,
+    cascade: bool = True,
+    force: bool = False,
+    event_id: _uuid.UUID | None = None,
+    request=None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Delay one match by ``minutes`` and cascade (increment C).
+
+    The target shifts rigidly by +minutes. With ``cascade`` (default) later
+    same-venue MOVABLE matches are pushed just enough — in scheduled_at
+    order — to restore venue non-overlap and team rest gaps against
+    everything already moved AND the fixed obstacles (live/completed/locked
+    matches never move; the cascade routes around them). Whatever moved is
+    re-validated through ``validate_slot_changes`` — a fixed obstacle the
+    rigid target now overlaps (a locked slot included) surfaces as a hard
+    violation: ``RepairConflict`` unless ``force``. ONE audit row
+    (``match_delay_cascade``) carries the full ``{match_id, old, new}``
+    list; idempotent on ``event_id``. Returns ``(moved, violations)``."""
+    from datetime import timedelta
+
+    from apps.audit.models import ActorRole
+    from apps.audit.services import emit_audit
+    from apps.matches.models import Match
+
+    if match.status not in _movable_statuses():
+        raise ValidationError("match_not_movable")
+    if match.locked_at is not None:
+        raise ValidationError("match_locked")
+    if match.scheduled_at is None:
+        raise ValidationError("match_not_scheduled")
+    minutes = int(minutes)
+    if not 1 <= minutes <= 480:
+        raise ValidationError("invalid_minutes")
+
+    tournament = match.tournament
+    tz = _tournament_tz(tournament)
+    cfg = _validation_config(tournament)
+    rest = timedelta(minutes=cfg.rest_minutes)
+
+    def dur(m) -> timedelta:
+        return timedelta(
+            minutes=_duration_minutes(tournament, m.sport, cfg.slot_minutes)
+        )
+
+    def teams_of(m) -> set[str]:
+        return {str(x) for x in (m.home_team_id, m.away_team_id) if x}
+
+    old_start = _local(match.scheduled_at, tz)
+    new_start = old_start + timedelta(minutes=minutes)
+    venue = match.venue
+
+    # (start, end, venue, team_ids) — the moving front the sweep packs behind.
+    new_starts: dict[Any, datetime] = {match.id: new_start}
+    moved_rows = [match]
+    moving = [(new_start, new_start + dur(match), venue, teams_of(match))]
+
+    if cascade:
+        others = list(
+            Match.objects.filter(
+                tournament=tournament,
+                deleted_at__isnull=True,
+                scheduled_at__isnull=False,
+            ).exclude(id=match.id)
+        )
+
+        def lstart(m) -> datetime:
+            assert m.scheduled_at is not None  # filtered scheduled_at__isnull=False
+            return _local(m.scheduled_at, tz)
+
+        def is_movable(m) -> bool:
+            return m.status in _movable_statuses() and m.locked_at is None
+
+        # Live/completed/locked matches are fixed obstacles — the cascade
+        # pushes movable matches PAST them, never onto them.
+        obstacles = [
+            (lstart(m), lstart(m) + dur(m), m.venue, teams_of(m))
+            for m in others
+            if not is_movable(m)
+        ]
+        queue = sorted(
+            (
+                m for m in others
+                if is_movable(m) and m.venue == venue
+                and lstart(m) >= old_start
+            ),
+            key=lambda m: (lstart(m), m.match_no),
+        )
+        for m in queue:
+            start = lstart(m)
+            d = dur(m)
+            mteams = teams_of(m)
+            required = start
+            for _ in range(100):  # settle past chained blockers
+                bumped = required
+                for s, e, v, ts in moving + obstacles:
+                    if v == m.venue and s < bumped + d and bumped < e:
+                        bumped = max(bumped, e)
+                    if ts & mteams and s < bumped + d + rest \
+                            and bumped < e + rest:
+                        bumped = max(bumped, e + rest)
+                if bumped == required:
+                    break
+                required = bumped
+            if required > start:
+                new_starts[m.id] = required
+                moved_rows.append(m)
+                moving.append((required, required + d, m.venue, mteams))
+
+    by_id = {m.id: m for m in moved_rows}
+    violations = validate_slot_changes(
+        tournament,
+        {mid: (st, by_id[mid].venue) for mid, st in new_starts.items()},
+    )
+    hard = [v for v in violations if v.get("hard", True)]
+    if hard and not force:
+        raise RepairConflict(violations)
+
+    moved: list[dict[str, Any]] = []
+    with transaction.atomic():
+        for m in moved_rows:
+            old_iso = m.scheduled_at.isoformat()
+            m.scheduled_at = new_starts[m.id].replace(tzinfo=tz)
+            m.save(update_fields=["scheduled_at", "updated_at"])
+            moved.append({
+                "match_id": str(m.id),
+                "old": old_iso,
+                "new": m.scheduled_at.isoformat(),
+            })
+        emit_audit(
+            actor_user=by,
+            actor_role=ActorRole.ADMIN,
+            event_type="match_delay_cascade",
+            target_type="match",
+            target_id=match.id,
+            organization_id=match.organization_id,
+            tournament_id=match.tournament_id,
+            match_id=match.id,
+            idempotency_key=event_id,
+            payload_before={"minutes": minutes, "cascade": bool(cascade)},
+            payload_after={
+                "minutes": minutes,
+                "cascade": bool(cascade),
+                "moved": moved,
+                "forced": bool(hard),
+                "violations": violations,
+            },
+            request=request,
+        )
+    return moved, violations
+
+
 def _slot_payload(match) -> dict[str, Any]:
     return {
         "match_id": str(match.id),

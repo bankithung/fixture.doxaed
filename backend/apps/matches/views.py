@@ -14,6 +14,7 @@ from rest_framework.response import Response
 from apps.matches.models import Lineup, Match, MatchEvent, MatchIncident
 from apps.matches.serializers import (
     ConfirmLineupSerializer,
+    DelayMatchSerializer,
     FileIncidentSerializer,
     LineupSerializer,
     MatchIncidentSerializer,
@@ -413,6 +414,71 @@ class MatchScheduleView(GenericAPIView):
         return Response(
             {"match": MatchSerializer(match).data, "violations": violations}
         )
+
+
+class MatchDelayView(GenericAPIView):
+    """`POST /api/matches/{id}/delay/` — delay cascade (repair seam,
+    increment C). Body `{minutes (1..480), cascade?=true, force?,
+    event_id?}`. Gate: the schedule_editor module. Shifts the match by
+    +minutes; with cascade, later same-venue movable matches are pushed just
+    enough (scheduled_at order) to restore venue non-overlap + rest gaps —
+    live/completed/locked matches never move (fixed obstacles). Everything
+    moved is re-validated; hard violations 409 with the structured payload
+    unless force. ONE `match_delay_cascade` audit row carries the full
+    {match_id, old, new} list; idempotent on event_id."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, match_id):
+        from apps.audit.models import AuditEvent
+        from apps.fixtures.services.repair import RepairConflict, delay_match
+        from apps.tournaments.permissions import can_access_module
+
+        match = _match_or_404(request.user, match_id)
+        if not can_access_module(
+            request.user, match.tournament, "tournament.schedule_editor"
+        ):
+            raise PermissionDenied("not_schedule_editor")
+        ser = DelayMatchSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        event_id = ser.validated_data.get("event_id")
+        if event_id:
+            prior = AuditEvent.objects.filter(
+                idempotency_key=event_id, event_type="match_delay_cascade"
+            ).first()
+            if prior is not None:  # replay (invariant 3) — do NOT shift again
+                payload = prior.payload_after or {}
+                return Response({
+                    "moved": payload.get("moved", []),
+                    "violations": payload.get("violations", []),
+                })
+
+        try:
+            moved, violations = delay_match(
+                match=match,
+                by=request.user,
+                minutes=ser.validated_data["minutes"],
+                cascade=ser.validated_data.get("cascade", True),
+                force=bool(ser.validated_data.get("force")),
+                event_id=event_id,
+                request=request,
+            )
+        except RepairConflict as e:
+            return Response(
+                {"detail": "schedule_conflicts", "violations": e.violations},
+                status=409,
+            )
+        except ValidationError as e:
+            code = getattr(e, "message", "invalid_delay")
+            if code == "match_not_movable":
+                return Response(
+                    {"detail": code, "status": match.status}, status=409
+                )
+            if code == "match_locked":
+                return Response({"detail": code}, status=409)
+            raise DRFValidationError({"detail": code}) from e
+        return Response({"moved": moved, "violations": violations})
 
 
 class MatchLockView(GenericAPIView):

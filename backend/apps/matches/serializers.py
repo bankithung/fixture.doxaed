@@ -109,6 +109,17 @@ class RescheduleMatchSerializer(serializers.Serializer):
         return attrs
 
 
+class DelayMatchSerializer(serializers.Serializer):
+    """Delay cascade (control-room repair, increment C): shift a match by
+    +minutes; cascade pushes later same-venue matches just enough to restore
+    venue non-overlap + rest gaps."""
+
+    minutes = serializers.IntegerField(min_value=1, max_value=480)
+    cascade = serializers.BooleanField(required=False, default=True)
+    force = serializers.BooleanField(required=False, default=False)
+    event_id = serializers.UUIDField(required=False)
+
+
 class TransitionSerializer(serializers.Serializer):
     to_status = serializers.CharField(max_length=16)
     reason = serializers.CharField(required=False, allow_blank=True)
