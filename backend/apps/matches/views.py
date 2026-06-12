@@ -95,6 +95,47 @@ def _can_score(user, match: Match) -> bool:
     )
 
 
+def _is_active_referee(user, tournament) -> bool:
+    return TournamentMembership.objects.filter(
+        user=user,
+        tournament=tournament,
+        role=TournamentMembershipRole.REFEREE,
+        status=TournamentMembershipStatus.ACTIVE,
+    ).exists()
+
+
+def _can_transition(user, match: Match) -> bool:
+    """State-machine gate (control room spec 2026-06-12 §2.e, owner decision
+    2026-06-12): the scoring gate, plus an active REFEREE may transition the
+    matches they are ASSIGNED to (Match.scorer) — start/half-time/complete
+    from the touchline. Walkover/replay are additionally manager-gated in
+    the view."""
+    if _can_score(user, match):
+        return True
+    return match.scorer_id == user.id and _is_active_referee(
+        user, match.tournament
+    )
+
+
+def _can_record_events(user, match: Match) -> bool:
+    """Event/VOID gate (owner decision 2026-06-12): the scoring gate, except
+    an active REFEREE never qualifies through assignment alone — referees
+    run the state machine on their matches (see _can_transition) but do not
+    write or void the event log. An explicit per-member scoring-console
+    grant (module layer) stays the escape hatch."""
+    if not _can_score(user, match):
+        return False
+    if can_manage_tournament(user, match.tournament):
+        return True
+    if not _is_active_referee(user, match.tournament):
+        return True
+    from apps.permissions.services.resolver import effective_tournament_modules
+
+    return "match.scoring_console" in effective_tournament_modules(
+        user, match.tournament
+    )
+
+
 
 
 class TournamentMatchListView(GenericAPIView):
@@ -214,7 +255,7 @@ class RecordMatchEventView(GenericAPIView):
 
     def post(self, request, match_id):
         match = _match_or_404(request.user, match_id)
-        if not _can_score(request.user, match):
+        if not _can_record_events(request.user, match):
             raise PermissionDenied("not_allowed_to_score")
         ser = RecordEventSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -617,10 +658,21 @@ class TransitionMatchView(GenericAPIView):
 
     def post(self, request, match_id):
         match = _match_or_404(request.user, match_id)
-        if not _can_score(request.user, match):
+        if not _can_transition(request.user, match):
             raise PermissionDenied("not_allowed_to_transition")
         ser = TransitionSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
+        to_status = ser.validated_data["to_status"]
+        # Owner decision 2026-06-12 (spec §2.e): awarding a walkover and
+        # replaying an abandoned match are MANAGER verbs, not scorer verbs.
+        replay = (
+            match.status == MatchStatus.ABANDONED
+            and to_status == MatchStatus.SCHEDULED
+        )
+        if (
+            to_status == MatchStatus.WALKOVER or replay
+        ) and not can_manage_tournament(request.user, match.tournament):
+            raise PermissionDenied("manager_only_transition")
         try:
             transition_match(
                 match=match,
