@@ -96,6 +96,10 @@ export function FixtureSetupHub({
   const canManage =
     (stage.data?.can_manage ?? false) ||
     (stage.data?.modules ?? []).includes("tournament.bracket_editor");
+  /** The repair verbs are gated by the schedule_editor module server-side. */
+  const canRepair =
+    (stage.data?.can_manage ?? false) ||
+    (stage.data?.modules ?? []).includes("tournament.schedule_editor");
 
   const competitions = useMemo<Competition[]>(() => {
     const by = new Map<string, Competition>();
@@ -288,7 +292,11 @@ export function FixtureSetupHub({
                   {/* Post-generation: the accepted draw, read-only (§6 screen
                       6 — score entry is the match console's job, not this
                       stage's). */}
-                  <CompetitionResultCard matches={c.matches} tournamentId={id} />
+                  <CompetitionResultCard
+                    matches={c.matches}
+                    tournamentId={id}
+                    canRepair={canRepair}
+                  />
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-3 px-4 py-3">

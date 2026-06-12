@@ -204,6 +204,34 @@ export interface MatchRow {
   /** Server-resolved set rules; null = goal-based. Render entry UIs from this. */
   scoring: SetScoringRules | null;
   scheduled_at: string | null;
+  /** Slot pinned by a schedule editor — repair verbs and scheduler re-runs
+   * never move a locked match. */
+  locked_at?: string | null;
+}
+
+/** One raw scheduler violation from the repair endpoints (`validate_schedule`
+ * shape — stable codes the FE localizes, §9 A5; distinct from the preview's
+ * `PreviewViolation`). */
+export interface RepairViolation {
+  code: string;
+  hard: boolean;
+  match_id?: string;
+  other_match_id?: string | null;
+  team_id?: string;
+  linked_team_id?: string;
+  venue?: string;
+  at?: string;
+  date?: string;
+  [k: string]: unknown;
+}
+
+/** One slot move in a delay-cascade / shift-day result (`moved` list). */
+export interface MovedSlot {
+  match_id: string;
+  /** Old/new scheduled_at ISO strings (venue unchanged by both verbs). */
+  old: string;
+  new: string;
+  venue: string;
 }
 
 export interface StandingRow {
@@ -453,6 +481,60 @@ export const tournamentsApi = {
   /** Server-computed readiness checklist (§5.1) — the FE never replicates it. */
   fixtureReadiness: (id: string) =>
     api.get<FixtureReadiness>(`/api/tournaments/${id}/fixture-readiness/`),
+  // --- Match-day repair seam (spec §7) ---
+  /** Move ONE match (time and/or venue). Naive `scheduled_at` is tournament-
+   * local wall clock (invariant 14). Hard conflicts → 409 `schedule_conflicts`
+   * with the structured violations unless `force`. Idempotent on `event_id`. */
+  rescheduleMatch: (
+    matchId: string,
+    body: {
+      scheduled_at?: string;
+      venue?: string;
+      force?: boolean;
+      event_id: string;
+    },
+  ) =>
+    api.patch<{ match: MatchRow; violations: RepairViolation[] }>(
+      `/api/matches/${matchId}/schedule/`,
+      body,
+    ),
+  /** Delay a match by +minutes; `cascade` (default true) pushes later
+   * same-venue movable matches just enough. 409 semantics like reschedule. */
+  delayMatch: (
+    matchId: string,
+    body: {
+      minutes: number;
+      cascade?: boolean;
+      force?: boolean;
+      event_id: string;
+    },
+  ) =>
+    api.post<{ moved: MovedSlot[]; violations: RepairViolation[] }>(
+      `/api/matches/${matchId}/delay/`,
+      body,
+    ),
+  /** Pin a match's slot — scheduler re-runs and cascades route around it. */
+  lockMatch: (matchId: string) =>
+    api.post<{ match: MatchRow }>(`/api/matches/${matchId}/lock/`),
+  /** Release a pinned slot. */
+  unlockMatch: (matchId: string) =>
+    api.delete<{ match: MatchRow }>(`/api/matches/${matchId}/lock/`),
+  /** Exchange scheduled_at+venue between two movable matches. */
+  swapSlots: (
+    id: string,
+    body: {
+      match_a: string;
+      match_b: string;
+      force?: boolean;
+      event_id: string;
+    },
+  ) =>
+    api.post<{
+      match_a: MatchRow | null;
+      match_b: MatchRow | null;
+      violations: RepairViolation[];
+    }>(`/api/tournaments/${id}/fixtures/swap-slots/`, body),
+
   /** Dry-run preview (§5.2, D6): a PURE simulate — persists nothing, takes
    * no event_id. Accept replays the returned `seed` + `inputs_hash`. */
   previewFixtures: (

@@ -1,9 +1,11 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { Lock } from "lucide-react";
 import type { MatchRow } from "@/api/tournaments";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { MatchRepairMenu } from "./MatchRepairControls";
 
 const FINAL = new Set(["completed", "walkover"]);
 
@@ -27,9 +29,13 @@ function meta(m: MatchRow): string {
 function Row({
   match,
   tournamentId,
+  canRepair,
+  siblings,
 }: {
   match: MatchRow;
   tournamentId: string;
+  canRepair: boolean;
+  siblings: MatchRow[];
 }): React.ReactElement {
   const done = FINAL.has(match.status);
   return (
@@ -40,6 +46,16 @@ function Row({
       <span className="w-8 shrink-0 font-tabular text-[0.6875rem] text-muted-foreground">
         {t("R")}{match.round_no}
       </span>
+      {match.locked_at ? (
+        <span
+          data-testid={`locked-${match.id}`}
+          title={t("Slot locked — re-runs and cascades will not move it")}
+          className="inline-flex shrink-0 items-center rounded-full bg-muted px-1 py-0.5 text-muted-foreground"
+        >
+          <Lock aria-hidden="true" className="h-3 w-3" />
+          <span className="sr-only">{t("Slot locked")}</span>
+        </span>
+      ) : null}
       <span className="flex-1 truncate text-right font-medium">
         {match.home_team?.name ?? t("TBD")}
       </span>
@@ -63,6 +79,13 @@ function Row({
       >
         {t("Console")}
       </Link>
+      {canRepair ? (
+        <MatchRepairMenu
+          tournamentId={tournamentId}
+          match={match}
+          siblings={siblings}
+        />
+      ) : null}
     </li>
   );
 }
@@ -76,9 +99,12 @@ function Row({
 export function CompetitionResultCard({
   matches,
   tournamentId,
+  canRepair = false,
 }: {
   matches: MatchRow[];
   tournamentId: string;
+  /** Schedule editors get the per-match repair menu (Move/Delay/Swap/Lock). */
+  canRepair?: boolean;
 }): React.ReactElement {
   const groups = useMemo(() => {
     const by = new Map<string, MatchRow[]>();
@@ -112,7 +138,13 @@ export function CompetitionResultCard({
             </h4>
             <ul>
               {ms.map((m) => (
-                <Row key={m.id} match={m} tournamentId={tournamentId} />
+                <Row
+                  key={m.id}
+                  match={m}
+                  tournamentId={tournamentId}
+                  canRepair={canRepair}
+                  siblings={matches}
+                />
               ))}
             </ul>
           </section>
