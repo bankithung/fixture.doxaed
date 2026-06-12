@@ -29,6 +29,7 @@ DEFAULT_DRAW_CONFIG: dict[str, Any] = {
     "format": "round_robin",         # round_robin | knockout | groups_knockout
     "group_size": 5,
     "advance_per_group": 2,
+    "advance_best_thirds": 0,        # best next-placed cross-group qualifiers
     "legs": 1,                       # 1 | 2 (double round-robin, mirrored 2nd cycle)
     "seeding": "registration",       # registration | random | snake | seeded
     "seed": None,                    # RNG seed; persisted on first random draw
@@ -127,6 +128,10 @@ def _validate_layer(layer: dict[str, Any]) -> None:
         raise ValueError("group_size must be an integer >= 2")  # §9 A8
     if "advance_per_group" in layer and (not _is_int(advance) or advance < 1):
         raise ValueError("advance_per_group must be an integer >= 1")
+    best_thirds = layer.get("advance_best_thirds")
+    if "advance_best_thirds" in layer \
+            and (not _is_int(best_thirds) or best_thirds < 0):
+        raise ValueError("advance_best_thirds must be an integer >= 0")
     if advance >= group_size:
         raise ValueError("advance_per_group must be smaller than group_size")  # §9 A8
 

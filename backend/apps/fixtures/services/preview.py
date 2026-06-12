@@ -103,6 +103,8 @@ def _plan_for_config(
         teams = plan_knockout_qualifiers(
             tournament, advance_per_group=int(cfg["advance_per_group"]),
             leaf_key=leaf_key,
+            advance_best_thirds=int(cfg.get("advance_best_thirds") or 0),
+            warnings=warnings,
         )
         plans = plan_single_elimination(
             teams, stage="knockout", leaf_key=leaf_key or "", sport=sport,

@@ -74,8 +74,9 @@ class GenerateFixturesView(GenericAPIView):
         overrides = {
             k: request.data.get(k)
             for k in (
-                "format", "group_size", "advance_per_group", "third_place",
-                "plate", "legs", "seeding", "seed",
+                "format", "group_size", "advance_per_group",
+                "advance_best_thirds", "third_place", "plate", "legs",
+                "seeding", "seed",
             )
             if k in request.data
         }
@@ -107,6 +108,7 @@ class GenerateFixturesView(GenericAPIView):
                     leaf_key=leaf_key or None,
                     third_place=bool(cfg.get("third_place")),
                     plate=bool(cfg.get("plate")),
+                    advance_best_thirds=int(cfg.get("advance_best_thirds") or 0),
                     warnings=warnings,
                 )
             elif fmt == "by_category":

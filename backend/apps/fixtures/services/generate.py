@@ -1075,7 +1075,17 @@ def generate_single_elimination(
     return created
 
 
-def _cross_seed(quals: list[list[str]]) -> list[str]:
+def _norm_rates(row: dict) -> tuple[float, float, float]:
+    """Per-game (points, GD, GF) rates from a standings row — cross-group
+    comparisons normalize by matches played because group sizes may differ
+    (increment N): 3 points over 2 games outranks 4 points over 3."""
+    p = row["P"] or 1
+    return (row["Pts"] / p, row["GD"] / p, row["GF"] / p)
+
+
+def _cross_seed(
+    quals: list[list[str]], extra: list[tuple[str, int]] | None = None,
+) -> list[str]:
     """Strength-ordered seed list for groups→knockout that the seeded bracket
     (1 meets the lowest seed, 2 the next-lowest, …) turns into CROSS-GROUP
     round-1 pairs. Layered: all group winners (seeds 1..n in group order),
@@ -1084,18 +1094,24 @@ def _cross_seed(quals: list[list[str]]) -> list[str]:
     group counts; a final repair pass swaps within a layer to fix the
     leftover same-group pair odd group counts produce.
 
+    ``extra`` (increment N): best-next-placed qualifiers as ``(team_id,
+    group_index)``, already strength-ordered — appended as the bottom layer
+    and covered by the same-group repair pass.
+
     (The previous interleaved list [w0, r1, w1, r0] read as strength order
     placed w0 vs r0 and w1 vs r1 in the semis — same-group rematches, the
     opposite of the intended FIFA-style crossing.)
     """
-    n = len(quals)
     k = max(len(q) for q in quals)
     layers: list[list[str]] = [
         [q[p] for q in quals if p < len(q)] for p in range(k)
     ]
+    if extra:
+        layers.append([tid for tid, _gi in extra])
     seeds: list[str] = [tid for layer in layers for tid in layer]
 
     group_of = {tid: gi for gi, q in enumerate(quals) for tid in q}
+    group_of.update(dict(extra or []))
     pairs = _opening_pairs_bracket(len(seeds))
 
     def same_group(i: int, j: int) -> bool:
@@ -1124,15 +1140,25 @@ def _cross_seed(quals: list[list[str]]) -> list[str]:
 
 def plan_knockout_qualifiers(
     tournament, *, advance_per_group: int = 2, leaf_key: str | None = None,
+    advance_best_thirds: int = 0, warnings: list | None = None,
 ) -> list[Team]:
     """Standings-ordered qualifier list for groups→knockout (shared with the
     preview endpoint — spec §5.2): top ``advance_per_group`` per group,
     cross-seeded across groups. Read-only; raises ValueError while groups
-    are unfinished."""
+    are unfinished.
+
+    ``advance_best_thirds`` (increment N): also qualify the best N
+    NEXT-PLACED teams — position ``advance_per_group + 1`` in each group —
+    ranked cross-group by per-game points/GD/GF (``_norm_rates``; group sizes
+    may differ) and appended as the bottom seed layer before cross-seeding.
+    Unequal group sizes emit a named normalization warning."""
     from apps.matches.services.standings import compute_standings
 
     if advance_per_group < 1:
         raise ValueError("advance_per_group must be at least 1.")
+    if advance_best_thirds < 0:
+        raise ValueError("advance_best_thirds must be 0 or more.")
+    warnings = [] if warnings is None else warnings
 
     group_scope = Match.objects.filter(
         tournament=tournament, stage="group", deleted_at__isnull=True
@@ -1146,8 +1172,11 @@ def plan_knockout_qualifiers(
         raise ValueError("No group stage to advance from.")
 
     quals: list[list[str]] = []
-    for g in groups:
+    sizes: dict[str, int] = {}
+    candidates: list[tuple[tuple, str, int]] = []  # (rank key, team_id, group)
+    for gi, g in enumerate(groups):
         rows = compute_standings(tournament, group_label=g)
+        sizes[g] = len(rows)
         ids = [r["team_id"] for r in rows[:advance_per_group]]
         if len(ids) < advance_per_group:
             raise ValueError(
@@ -1155,28 +1184,51 @@ def plan_knockout_qualifiers(
                 f"{advance_per_group} team(s)."
             )
         quals.append(ids)
+        if advance_best_thirds and len(rows) > advance_per_group:
+            row = rows[advance_per_group]  # position advance_per_group + 1
+            ppg, gdpg, gfpg = _norm_rates(row)
+            candidates.append(
+                ((-ppg, -gdpg, -gfpg, row["name"]), row["team_id"], gi)
+            )
+
+    extra: list[tuple[str, int]] = []
+    if advance_best_thirds:
+        if len(candidates) < advance_best_thirds:
+            raise ValueError(
+                f"advance_best_thirds is {advance_best_thirds} but only "
+                f"{len(candidates)} group(s) have a team at position "
+                f"{advance_per_group + 1}."
+            )
+        if len(set(sizes.values())) > 1:
+            warnings.append({
+                "code": "best_thirds_unequal_groups", "group_sizes": sizes,
+            })
+        candidates.sort(key=lambda c: c[0])
+        extra = [(tid, gi) for _key, tid, gi in candidates[:advance_best_thirds]]
 
     if len(groups) == 1:
         # A single group (e.g. one category leaf) → its top teams seed the
         # bracket directly in standings order.
-        seed_ids = quals[0]
+        seed_ids = quals[0] + [tid for tid, _gi in extra]
         if len(seed_ids) < 2:
             raise ValueError("Need at least 2 advancing teams for a knockout.")
     else:
-        seed_ids = _cross_seed(quals)
+        seed_ids = _cross_seed(quals, extra=extra)
     return [Team.objects.get(id=tid) for tid in seed_ids]
 
 
 def generate_knockout_from_groups(
     *, tournament, advance_per_group: int = 2, leaf_key: str | None = None,
     third_place: bool = False, plate: bool = False,
-    warnings: list | None = None,
+    advance_best_thirds: int = 0, warnings: list | None = None,
 ) -> list[Match]:
     """Advance the top ``advance_per_group`` of each group into a single-
     elimination bracket (FIFA-style groups → knockout), cross-seeding winners
     against other groups' runners-up. Leaf-aware: with ``leaf_key`` only that
     competition's groups feed its own bracket. Idempotent per leaf scope.
-    ``plate`` (increment M) adds the round-1 losers' consolation bracket."""
+    ``plate`` (increment M) adds the round-1 losers' consolation bracket;
+    ``advance_best_thirds`` (increment N) appends the best N next-placed
+    teams to the qualifier pool (per-game normalized ranking)."""
     ko_scope = Match.objects.filter(
         tournament=tournament, stage="knockout", deleted_at__isnull=True
     )
@@ -1192,7 +1244,8 @@ def generate_knockout_from_groups(
         return existing
 
     teams = plan_knockout_qualifiers(
-        tournament, advance_per_group=advance_per_group, leaf_key=leaf_key
+        tournament, advance_per_group=advance_per_group, leaf_key=leaf_key,
+        advance_best_thirds=advance_best_thirds, warnings=warnings,
     )
     return generate_single_elimination(
         tournament=tournament, teams=teams, stage="knockout",
