@@ -342,6 +342,7 @@ def delay_match(
                 "match_id": str(m.id),
                 "old": old_iso,
                 "new": m.scheduled_at.isoformat(),
+                "venue": m.venue,
             })
         emit_audit(
             actor_user=by,

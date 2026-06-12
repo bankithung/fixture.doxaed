@@ -486,6 +486,60 @@ class ShiftFixturesDayView(GenericAPIView):
         })
 
 
+class TournamentScheduleChangesView(GenericAPIView):
+    """`GET /api/tournaments/{id}/schedule-changes/?since=&leaf_key=` —
+    unified slot-change feed (trust layer, increment F). Flattens the
+    existing repair/scheduler audit rows (no new model) into reverse-chrono
+    per-match entries `{match_id, match_label, leaf_key, changed_at, actor,
+    kind, old, new, reason, batch_id}`. Visible to ANY accessible tournament
+    member (404 idiom — no existence leak)."""
+
+    _DEFAULT_LIMIT = 200
+    _MAX_LIMIT = 1000
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id):
+        from datetime import datetime as _datetime
+
+        from django.utils import timezone as dj_tz
+
+        from apps.fixtures.services.schedule_changes import schedule_changes
+
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.get(id=tournament_id)
+
+        since = None
+        raw_since = request.query_params.get("since")
+        if raw_since:
+            try:
+                since = _datetime.fromisoformat(
+                    str(raw_since).replace("Z", "+00:00")
+                )
+            except ValueError:
+                raise DRFValidationError({"detail": "invalid_since"}) from None
+            if dj_tz.is_naive(since):
+                since = dj_tz.make_aware(since, dj_tz.get_default_timezone())
+
+        try:
+            limit = int(
+                request.query_params.get("limit") or self._DEFAULT_LIMIT
+            )
+        except (TypeError, ValueError):
+            limit = self._DEFAULT_LIMIT
+        limit = max(1, min(limit, self._MAX_LIMIT))
+
+        return Response({
+            "results": schedule_changes(
+                t,
+                since=since,
+                leaf_key=str(request.query_params.get("leaf_key") or "") or None,
+                limit=limit,
+            )
+        })
+
+
 class TournamentDrawConfigView(GenericAPIView):
     """`GET/PATCH /api/tournaments/{id}/draw-config/` — per-competition draw
     configuration (redesign spec §2.1). GET: any tournament member. PATCH:

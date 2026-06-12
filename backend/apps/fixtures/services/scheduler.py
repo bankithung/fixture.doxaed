@@ -1333,11 +1333,32 @@ def apply_schedule(
             tournament=tournament, id__in=[r.id for r in reqs]
         )
     }
+    # Per-match before/after for every slot the run actually moved — the
+    # schedule-change feed (kind "engine_rerun") and the change notifier
+    # both read this off the audit row (trust layer, increments F/G).
+    changes: list[dict[str, Any]] = []
     with transaction.atomic():
         for mid, (dt, venue) in result.assignments.items():
             m = by_id[mid]
-            m.scheduled_at = dj_tz.make_aware(dt, tz)
-            m.venue = venue[:120]
+            new_dt = dj_tz.make_aware(dt, tz)
+            new_venue = venue[:120]
+            if m.scheduled_at != new_dt or m.venue != new_venue:
+                changes.append({
+                    "match_id": mid,
+                    "old": {
+                        "scheduled_at": (
+                            m.scheduled_at.isoformat()
+                            if m.scheduled_at else None
+                        ),
+                        "venue": m.venue,
+                    },
+                    "new": {
+                        "scheduled_at": new_dt.isoformat(),
+                        "venue": new_venue,
+                    },
+                })
+            m.scheduled_at = new_dt
+            m.venue = new_venue
             m.save(update_fields=["scheduled_at", "venue", "updated_at"])
         stored_cfg = dict(config or {})
         if cfg.activated_reserve_days:
@@ -1353,11 +1374,13 @@ def apply_schedule(
             target_type="tournament",
             target_id=tournament.id,
             organization_id=tournament.organization_id,
+            tournament_id=tournament.id,
             payload_after={
                 "scheduled": len(result.assignments),
                 "unscheduled": len(result.unscheduled),
                 "soft_score": result.soft_score,
                 "leaf_key": leaf_key or "",
+                "changes": changes,
             },
             request=request,
         )
