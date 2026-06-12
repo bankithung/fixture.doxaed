@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { FilePlus2 } from "lucide-react";
+import { TeamCalendarLinkButton } from "@/features/fixtures/TeamCalendarLinkButton";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
@@ -306,7 +307,11 @@ export function TeamsTab(): React.ReactElement {
           <p className="font-tabular text-xs text-muted-foreground">
             {submittedCount}/{schoolCount} {t("schools have submitted teams")}
           </p>
-          <TeamsTable groups={schoolGroups} />
+          <TeamsTable
+            groups={schoolGroups}
+            tournamentId={id}
+            canManage={canManage}
+          />
         </>
       )}
 
@@ -535,7 +540,16 @@ function SubmissionBadge({ submitted }: { submitted: boolean }): React.ReactElem
   );
 }
 
-function TeamsTable({ groups }: { groups: SchoolGroup[] }): React.ReactElement {
+function TeamsTable({
+  groups,
+  tournamentId,
+  canManage,
+}: {
+  groups: SchoolGroup[];
+  tournamentId: string;
+  /** Managers can mint the per-team iCal calendar link. */
+  canManage: boolean;
+}): React.ReactElement {
   const { isMobile } = useBreakpoint();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -601,8 +615,15 @@ function TeamsTable({ groups }: { groups: SchoolGroup[] }): React.ReactElement {
                         </span>
                       </button>
                       {expanded.has(tm.id) ? (
-                        <div className="border-t border-border/60 px-3 py-2.5">
+                        <div className="flex flex-col gap-2 border-t border-border/60 px-3 py-2.5">
                           <Roster players={tm.players ?? []} />
+                          {canManage ? (
+                            <TeamCalendarLinkButton
+                              tournamentId={tournamentId}
+                              teamId={tm.id}
+                              teamName={tm.name}
+                            />
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
@@ -707,7 +728,18 @@ function TeamsTable({ groups }: { groups: SchoolGroup[] }): React.ReactElement {
                       {expanded.has(tm.id) ? (
                         <tr>
                           <td colSpan={5} className="border-b border-border bg-muted/20 px-4 py-3 pl-12">
-                            <Roster players={tm.players ?? []} />
+                            <div className="flex flex-col gap-2">
+                              <Roster players={tm.players ?? []} />
+                              {canManage ? (
+                                <div>
+                                  <TeamCalendarLinkButton
+                                    tournamentId={tournamentId}
+                                    teamId={tm.id}
+                                    teamName={tm.name}
+                                  />
+                                </div>
+                              ) : null}
+                            </div>
                           </td>
                         </tr>
                       ) : null}

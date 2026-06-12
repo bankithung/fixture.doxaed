@@ -1,7 +1,14 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarClock, CloudRain, GitBranch, Users, Wand2 } from "lucide-react";
+import {
+  CalendarClock,
+  CloudRain,
+  GitBranch,
+  Share2,
+  Users,
+  Wand2,
+} from "lucide-react";
 import {
   tournamentsApi,
   type MatchRow,
@@ -9,6 +16,7 @@ import {
   type TeamRow,
 } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { ScheduleWizard } from "@/features/tournaments/ScheduleWizard";
 import {
   EmptyState,
@@ -71,6 +79,7 @@ export function FixtureSetupHub({
 }): React.ReactElement {
   const id = tournamentId;
   const navigate = useNavigate();
+  const toast = useToast();
   const [setup, setSetup] = useState<{ step: number } | null>(null);
   const [wizard, setWizard] = useState<{ leafKey?: string; label?: string } | null>(
     null,
@@ -88,6 +97,10 @@ export function FixtureSetupHub({
   // "Keep" dismissals of the invariant-10 inputs-changed banner (per leaf).
   const [keptDraws, setKeptDraws] = useState<ReadonlySet<string>>(new Set());
 
+  const tournament = useQuery({
+    queryKey: qk.tournament(id),
+    queryFn: () => tournamentsApi.get(id),
+  });
   const teams = useQuery({ queryKey: qk.teams(id), queryFn: () => tournamentsApi.teams(id) });
   const matches = useQuery({ queryKey: qk.matches(id), queryFn: () => tournamentsApi.matches(id) });
   const standings = useQuery({ queryKey: qk.standings(id), queryFn: () => tournamentsApi.standings(id) });
@@ -160,6 +173,23 @@ export function FixtureSetupHub({
   const matchCount = (matches.data ?? []).length;
   const isLoading = teams.isLoading || matches.isLoading || readiness.isLoading;
 
+  /** Copy the public read-only schedule URL (trust layer — share freely). */
+  const shareSchedule = async (): Promise<void> => {
+    const slug = tournament.data?.slug;
+    if (!slug) return;
+    const url = window.location.origin + routes.publicSchedule(slug, id);
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.push({
+        kind: "success",
+        title: t("Public schedule link copied"),
+        description: t("Anyone can open it — no login needed."),
+      });
+    } catch {
+      toast.push({ kind: "info", title: t("Public schedule link"), description: url });
+    }
+  };
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -185,6 +215,15 @@ export function FixtureSetupHub({
                 {t("Shift a day")}
               </Button>
             ) : null}
+            <Button
+              variant="outline"
+              data-testid="share-schedule"
+              disabled={!tournament.data?.slug}
+              onClick={() => void shareSchedule()}
+            >
+              <Share2 aria-hidden="true" className="h-4 w-4" />
+              {t("Share schedule")}
+            </Button>
             <Link
               to={routes.tournamentBracket(id)}
               className="inline-flex h-10 items-center gap-2 rounded-lg border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"

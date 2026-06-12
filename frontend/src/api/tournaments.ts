@@ -234,6 +234,45 @@ export interface MovedSlot {
   venue: string;
 }
 
+/** One side of a public-schedule match (no PII beyond team/school names). */
+export interface PublicScheduleSide {
+  id: string;
+  name: string;
+  short_name: string;
+  school: string;
+}
+
+/** One match of the public read-only schedule (trust layer, increment H). */
+export interface PublicScheduleMatch {
+  id: string;
+  leaf_key: string;
+  leaf_label: string;
+  stage: string;
+  group_label: string;
+  round_no: number;
+  match_no: number;
+  status: string;
+  /** Tournament-local date the match falls on; null = unscheduled. */
+  day: string | null;
+  scheduled_at: string | null;
+  venue: string;
+  home: PublicScheduleSide | null;
+  away: PublicScheduleSide | null;
+  home_score: number | null;
+  away_score: number | null;
+}
+
+export interface PublicSchedulePayload {
+  tournament: {
+    id: string;
+    slug: string;
+    name: string;
+    status: string;
+    time_zone: string;
+  };
+  matches: PublicScheduleMatch[];
+}
+
 /** A slot in the schedule-change feed (null on lock/unlock entries). */
 export interface ScheduleChangeSlot {
   scheduled_at: string | null;
@@ -567,6 +606,17 @@ export const tournamentsApi = {
       violations: RepairViolation[];
       to_date: string;
     }>(`/api/tournaments/${id}/fixtures/shift-day/`, body),
+  /** Public read-only schedule (AllowAny; (slug, UUID) pair — invariant 1). */
+  publicSchedule: (slug: string, id: string) =>
+    api.get<PublicSchedulePayload>(
+      `/api/public/tournaments/${encodeURIComponent(slug)}/${id}/schedule/`,
+    ),
+  /** Mint a signed per-team iCal URL (manager or the team's institution
+   * contact). The returned `url` is the shareable calendar feed. */
+  teamCalendarLink: (id: string, teamId: string) =>
+    api.post<{ token: string; url: string }>(
+      `/api/tournaments/${id}/teams/${teamId}/calendar-link/`,
+    ),
   /** Unified reverse-chrono slot-change feed (any tournament member). */
   scheduleChanges: (
     id: string,

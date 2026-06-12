@@ -21,6 +21,7 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
     ...actual,
     tournamentsApi: {
       ...actual.tournamentsApi,
+      get: vi.fn(),
       teams: vi.fn(),
       matches: vi.fn(),
       standings: vi.fn(),
@@ -126,6 +127,11 @@ function wrap(ui: React.ReactElement) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(tournamentsApi.get).mockResolvedValue({
+    id: "t1",
+    slug: "nagaland-cup",
+    name: "Nagaland Schools Cup",
+  } as Awaited<ReturnType<typeof tournamentsApi.get>>);
   vi.mocked(tournamentsApi.teams).mockResolvedValue(TEAMS);
   vi.mocked(tournamentsApi.matches).mockResolvedValue([]);
   vi.mocked(tournamentsApi.standings).mockResolvedValue({ groups: [] });
@@ -227,6 +233,34 @@ describe("FixtureSetupHub", () => {
     await waitFor(() =>
       expect(screen.getByTestId("preview-page")).toBeInTheDocument(),
     );
+  });
+
+  it("Share schedule copies the public schedule URL", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([
+      {
+        id: "m1", stage: "group", group_label: "Group A", round_no: 1,
+        match_no: 1, status: "scheduled",
+        home_team: { id: "tm1", name: "A FC", short_name: "A" },
+        away_team: { id: "tm2", name: "B FC", short_name: "B" },
+        home_score: null, away_score: null, sport: "football", set_scores: [],
+        leaf_key: "football.u15", venue: "", scoring: null, scheduled_at: null,
+      } as MatchRow,
+    ]);
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+
+    const share = await screen.findByTestId("share-schedule");
+    await waitFor(() => expect(share).toBeEnabled()); // slug resolved
+    await userEvent.click(share);
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("/t/nagaland-cup/t1/schedule"),
+      ),
+    );
+    expect(
+      await screen.findByText("Public schedule link copied"),
+    ).toBeInTheDocument();
   });
 
   it("the inputs-changed banner can be dismissed with Keep", async () => {

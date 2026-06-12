@@ -73,6 +73,9 @@ export const routes = {
     `/tournaments/${encodeURIComponent(id)}/settings`,
   /** Public, read-only live match viewer (no login). */
   liveViewer: (matchId: string) => `/m/${encodeURIComponent(matchId)}`,
+  /** Public, read-only tournament schedule (no login; slug+UUID pair). */
+  publicSchedule: (slug: string, id: string) =>
+    `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/schedule`,
   /** Live scorer console for a match. */
   matchConsole: (tournamentId: string, matchId: string) =>
     `/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}`,

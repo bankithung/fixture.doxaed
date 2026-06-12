@@ -29,6 +29,7 @@ import { TournamentAuditPage } from "@/features/tournaments/TournamentAuditPage"
 import { MatchConsolePage } from "@/features/matches/MatchConsolePage";
 import { BracketPage } from "@/features/tournaments/BracketPage";
 import { DryRunPreviewPage } from "@/features/fixtures/DryRunPreviewPage";
+import { PublicSchedulePage } from "@/features/fixtures/PublicSchedulePage";
 import { RegistrationFormPage } from "@/features/registration/RegistrationFormPage";
 import { FormsListPage } from "@/features/forms/FormsListPage";
 import { FormBuilderPage } from "@/features/forms/FormBuilderPage";
@@ -143,6 +144,8 @@ export default function App(): React.ReactElement {
               <Route path="/f/:formId" element={<PublicFormPage />} />
               <Route path="/r/:token" element={<PublicFormPage />} />
               <Route path="/m/:matchId" element={<LiveViewerPage />} />
+              {/* Public read-only tournament schedule (trust layer). */}
+              <Route path="/t/:slug/:id/schedule" element={<PublicSchedulePage />} />
 
               {/* Protected surfaces — share the AppShell chrome. */}
               <Route
