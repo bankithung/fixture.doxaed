@@ -26,7 +26,8 @@ from typing import Any
 from django.utils import timezone
 
 DEFAULT_DRAW_CONFIG: dict[str, Any] = {
-    "format": "round_robin",         # round_robin | knockout | groups_knockout | swiss
+    "format": "round_robin",         # round_robin | knockout | groups_knockout
+                                     # | swiss | double_elim
     "group_size": 5,
     "advance_per_group": 2,
     "advance_best_thirds": 0,        # best next-placed cross-group qualifiers
@@ -50,7 +51,8 @@ DEFAULT_DRAW_CONFIG: dict[str, Any] = {
     "calendar": None,
 }
 
-_FORMATS = {"round_robin", "knockout", "groups_knockout", "swiss"}
+_FORMATS = {"round_robin", "knockout", "groups_knockout", "swiss",
+            "double_elim"}
 _SEEDINGS = {"registration", "random", "snake", "seeded"}
 _KNOCKOUT_SEEDINGS = {"cross", "overall"}
 _BYE_POLICIES = {"seeded_byes"}

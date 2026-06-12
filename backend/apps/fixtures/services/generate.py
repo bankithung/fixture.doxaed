@@ -645,6 +645,111 @@ def plan_single_elimination(
     return plans
 
 
+def plan_double_elimination(
+    teams: list, *, leaf_key: str = "", sport: str = "",
+    seeding: str = "registration", seed: int | None = None,
+    separators: list[tuple[dict, dict]] | None = None,
+    warnings: list | None = None,
+) -> list[MatchPlan]:
+    """Pure pairing core for DOUBLE elimination (increment Q). The winners
+    bracket is the existing single-elim planner unchanged (stage="knockout");
+    the losers bracket (stage="losers") is wired entirely from ``loser_of``
+    pointers advance.py already resolves (invariant 9), in the standard
+    fold-in pattern:
+
+    - LB round 1 (minor) pairs the WB round-1 losers lane by lane;
+    - each later WB round's losers fold into the next LB round (major) in
+      REVERSED lane order — the conventional crossing that keeps a WB
+      rematch as late as possible;
+    - a minor LB round halves the survivors between fold-ins.
+
+    WB round-1 byes leave no loser to source (exactly like the plate), so
+    that lane FORWARDS: the lone pointer skips ahead to the next LB round
+    untouched.
+
+    The grand final (stage="grand_final", one match) meets the WB winner and
+    the LB winner ONCE — the bracket RESET (a second final when the LB side
+    wins, since the WB winner then has only one loss) is deliberately
+    SKIPPED in v1; whoever wins the single grand final is champion.
+
+    ``third_place`` deliberately does not exist here: the LB final IS the
+    third-place decider — its loser finishes 3rd (eliminated with the GF
+    berth on the line) — so the flag is ignored by the dispatch. 2n-2
+    matches in total. Zero DB writes."""
+    if len(teams) < 3:
+        raise ValueError("double elimination requires at least 3 teams")
+
+    plans = plan_single_elimination(
+        list(teams), stage="knockout", leaf_key=leaf_key, sport=sport,
+        seeding=seeding, seed=seed, separators=separators, warnings=warnings,
+    )
+    rounds: dict[int, list[MatchPlan]] = {}
+    for p in plans:
+        rounds.setdefault(p.round_no, []).append(p)
+    k = max(rounds)  # n >= 3 ⇒ k >= 2, so a WB round 2 always exists
+
+    # WB round-1 loser lanes, aligned to the bracket's PAIR SLOTS: round-2
+    # sources tell bye lanes ({"type": "team"}) apart from concrete round-1
+    # matches ({"type": "winner_of", ref}) whose loser feeds the LB.
+    r1_losers: list[dict | None] = []
+    for p in rounds[2]:
+        for src in (p.home_source, p.away_source):
+            if src and src.get("type") == "winner_of":
+                r1_losers.append({"type": "loser_of", "ref": src["ref"]})
+            else:
+                r1_losers.append(None)  # bye pair — no loser exists
+
+    common = {"stage": "losers", "leaf_key": leaf_key, "sport": sport}
+
+    def emit(round_no: int, home_src: dict, away_src: dict) -> dict:
+        plans.append(
+            MatchPlan(
+                round_no=round_no, home_source=home_src, away_source=away_src,
+                ref=len(plans), **common,
+            )
+        )
+        return {"type": "winner_of", "ref": plans[-1].ref}
+
+    # LB round 1 (minor): adjacent WB round-1 losers pair up; a lane with a
+    # bye on one side forwards the lone loser, a double-bye lane stays empty.
+    lb_round = 1
+    survivors: list[dict | None] = []
+    for i in range(0, len(r1_losers), 2):
+        a, b = r1_losers[i], r1_losers[i + 1]
+        survivors.append(emit(lb_round, a, b) if a and b else (a or b))
+
+    for r in range(2, k + 1):
+        # Major round: WB round-r losers fold in, reversed across the lanes.
+        wb_losers = [{"type": "loser_of", "ref": p.ref} for p in rounds[r]]
+        wb_losers.reverse()
+        lb_round += 1
+        survivors = [
+            emit(lb_round, s, w) if s is not None else w
+            for s, w in zip(survivors, wb_losers)
+        ]
+        if r < k and len(survivors) > 1:
+            # Minor round between fold-ins: survivors halve. Every lane holds
+            # a source after the first major round, so no byes remain here.
+            lb_round += 1
+            nxt: list[dict | None] = []
+            for i in range(0, len(survivors), 2):
+                a, b = survivors[i], survivors[i + 1]
+                nxt.append(emit(lb_round, a, b) if a and b else (a or b))
+            survivors = nxt
+
+    # Grand final — single match, NO bracket reset in v1 (see docstring).
+    plans.append(
+        MatchPlan(
+            stage="grand_final", group_label="Grand Final", round_no=1,
+            leaf_key=leaf_key, sport=sport,
+            home_source={"type": "winner_of", "ref": rounds[k][0].ref},
+            away_source=survivors[0],
+            ref=len(plans),
+        )
+    )
+    return plans
+
+
 def _plate_label(sports_cfg, leaf_key: str | None) -> str:
     """``"<leaf> — Plate"`` (increment M) — the same label grammar the grouped
     round-robin prefix uses; plain ``"Plate"`` for whole-tournament draws."""
@@ -1384,6 +1489,53 @@ def generate_single_elimination(
         created = _persist_plans(tournament, plans)
         if generated_seed is not None:
             _persist_draw_seed(tournament, leaf_key, generated_seed)
+    return created
+
+
+def generate_double_elimination(
+    *, tournament, teams, leaf_key: str = "", sport: str = "",
+    seeding: str = "registration", seed: int | None = None,
+    third_place: bool = False, warnings: list | None = None,
+) -> list[Match]:
+    """Double elimination (increment Q): winners bracket + ``loser_of``-wired
+    losers bracket + single grand final (no bracket reset in v1 — see
+    ``plan_double_elimination``). Idempotent per leaf scope across all three
+    stages. ``third_place`` is accepted-and-IGNORED: the LB final is the
+    third-place decider (its loser finishes 3rd), so a separate playoff would
+    be redundant — documented spec behavior, not an oversight. The plate is
+    likewise not offered here: the losers bracket IS the consolation path.
+    Thin persistence wrapper over ``plan_double_elimination`` (spec §4.1)."""
+    existing = list(
+        Match.objects.filter(
+            tournament=tournament,
+            stage__in=("knockout", "losers", "grand_final"),
+            leaf_key=leaf_key or "", deleted_at__isnull=True,
+        )
+    )
+    if existing:
+        return existing  # idempotent — this scope is already drawn
+
+    if not sport and leaf_key:
+        sport = sport_for_leaf(tournament.sports or [], leaf_key)
+    warnings = [] if warnings is None else warnings
+    generated_seed: int | None = None
+    if seeding == "random" and seed is None:
+        seed = generated_seed = _new_seed()
+    plans = plan_double_elimination(
+        list(teams), leaf_key=leaf_key or "", sport=sport,
+        seeding=seeding, seed=seed,
+        separators=_keep_apart_separators(
+            tournament, list(teams), leaf_key or "", sport, warnings,
+        ),
+        warnings=warnings,
+    )
+    ih = compute_inputs_hash(tournament, leaf_key or None)  # v2 hash (§2.5)
+    for p in plans:
+        p.inputs_hash = ih
+    with transaction.atomic():
+        created = _persist_plans(tournament, plans)
+        if generated_seed is not None:
+            _persist_draw_seed(tournament, leaf_key or None, generated_seed)
     return created
 
 

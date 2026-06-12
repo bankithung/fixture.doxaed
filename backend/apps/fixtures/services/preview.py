@@ -24,6 +24,7 @@ from apps.fixtures.services.generate import (
     _small_group_max,
     _swiss_label,
     compute_inputs_hash,
+    plan_double_elimination,
     plan_knockout_qualifiers,
     plan_plate_for_plans,
     plan_round_robin,
@@ -118,6 +119,24 @@ def _plan_for_config(
             warnings=warnings,
         )
         return _with_plate(plans, cfg, sports_cfg, leaf_key, sport, warnings)
+    if fmt == "double_elim":
+        # Double elimination (increment Q): third_place/plate ignored — the
+        # losers bracket is the consolation path and its final decides 3rd.
+        teams_qs = Team.objects.filter(
+            tournament=tournament, status=TeamStatus.REGISTERED,
+            deleted_at__isnull=True,
+        )
+        if leaf_key:
+            teams_qs = teams_qs.filter(leaf_key=leaf_key)
+        teams = list(teams_qs.order_by("seed", "name"))
+        return plan_double_elimination(
+            teams, leaf_key=leaf_key or "", sport=sport,
+            seeding=seeding, seed=seed,
+            separators=_keep_apart_separators(
+                tournament, teams, leaf_key or "", sport, warnings,
+            ),
+            warnings=warnings,
+        )
     if fmt == "swiss":
         # Swiss is round-at-a-time (increment P): preview shows round 1 only
         # (later rounds depend on results, which a pure simulate cannot know).

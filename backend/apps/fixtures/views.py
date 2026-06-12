@@ -15,6 +15,7 @@ from apps.fixtures.services.draw_config import (
 )
 from apps.fixtures.services.generate import (
     compute_inputs_hash,
+    generate_double_elimination,
     generate_knockout_from_groups,
     generate_round_robin,
     generate_round_robin_by_category,
@@ -113,6 +114,21 @@ class GenerateFixturesView(GenericAPIView):
                     advance_best_thirds=int(cfg.get("advance_best_thirds") or 0),
                     knockout_seeding=str(cfg.get("knockout_seeding") or "cross"),
                     warnings=warnings,
+                )
+            elif fmt == "double_elim":
+                # Double elimination (increment Q): WB + loser_of-wired LB +
+                # single grand final. third_place/plate are deliberately NOT
+                # passed — the LB final decides 3rd and the LB IS the
+                # consolation path (see generate_double_elimination).
+                teams_qs = Team.objects.filter(
+                    tournament=t, status=TeamStatus.REGISTERED, deleted_at__isnull=True
+                )
+                if leaf_key:
+                    teams_qs = teams_qs.filter(leaf_key=leaf_key)
+                teams = list(teams_qs.order_by("seed", "name"))
+                matches = generate_double_elimination(
+                    tournament=t, teams=teams, leaf_key=leaf_key,
+                    seeding=seeding, seed=seed, warnings=warnings,
                 )
             elif fmt == "swiss":
                 # Swiss is ROUND-AT-A-TIME (increment P): this draws round 1
