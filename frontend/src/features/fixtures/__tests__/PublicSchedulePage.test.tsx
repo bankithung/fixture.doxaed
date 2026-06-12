@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -16,9 +16,19 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
     tournamentsApi: {
       ...actual.tournamentsApi,
       publicSchedule: vi.fn(),
+      publicStandings: vi.fn(),
     },
   };
 });
+
+/** §2.d live-points fields every public match row now carries. */
+const LIVE_FIELDS = {
+  home_pens: null as number | null,
+  away_pens: null as number | null,
+  sport: "",
+  set_scores: [] as number[][],
+  current_period: "",
+};
 
 const PAYLOAD: PublicSchedulePayload = {
   tournament: {
@@ -37,6 +47,7 @@ const PAYLOAD: PublicSchedulePayload = {
       home: { id: "tm1", name: "Alpha FC", short_name: "A", school: "Alpha" },
       away: { id: "tm2", name: "Bravo FC", short_name: "B", school: "Bravo" },
       home_score: 2, away_score: 1,
+      ...LIVE_FIELDS, home_pens: 4, away_pens: 3,
     },
     {
       id: "m2", leaf_key: "football.u15", leaf_label: "Football · U15",
@@ -46,6 +57,7 @@ const PAYLOAD: PublicSchedulePayload = {
       home: { id: "tm3", name: "Carol FC", short_name: "C", school: "Carol" },
       away: { id: "tm4", name: "Delta FC", short_name: "D", school: "Delta" },
       home_score: 0, away_score: 0,
+      ...LIVE_FIELDS, current_period: "first_half",
     },
     {
       id: "m3", leaf_key: "football.u17", leaf_label: "Football · U17",
@@ -53,15 +65,83 @@ const PAYLOAD: PublicSchedulePayload = {
       status: "scheduled", day: "2026-06-21",
       scheduled_at: "2026-06-21T04:00:00Z", venue: "Side Pitch",
       home: null, away: null, home_score: null, away_score: null,
+      ...LIVE_FIELDS,
     },
     {
       id: "m4", leaf_key: "football.u17", leaf_label: "Football · U17",
       stage: "knockout", group_label: "", round_no: 2, match_no: 4,
       status: "scheduled", day: null, scheduled_at: null, venue: "",
       home: null, away: null, home_score: null, away_score: null,
+      ...LIVE_FIELDS,
+    },
+    {
+      // Set sport mid-match: home/away_score = sets won, per-set points along.
+      id: "m5", leaf_key: "tt.open", leaf_label: "Table Tennis · Open",
+      stage: "group", group_label: "Group T", round_no: 1, match_no: 5,
+      status: "live", day: "2026-06-20",
+      scheduled_at: "2026-06-20T06:30:00Z", venue: "Table Hall",
+      home: { id: "tm5", name: "Echo TT", short_name: "E", school: "Echo" },
+      away: { id: "tm6", name: "Foxtrot TT", short_name: "F", school: "Fox" },
+      home_score: 1, away_score: 1,
+      ...LIVE_FIELDS, sport: "table_tennis",
+      set_scores: [[11, 7], [8, 11]], current_period: "set_3",
     },
   ],
 };
+
+const STANDINGS = {
+  groups: [
+    {
+      group_label: "Group A",
+      rows: [
+        { team_id: "tm1", name: "Alpha FC", school: "Alpha",
+          P: 1, W: 1, D: 0, L: 0, GF: 2, GA: 1, GD: 1, Pts: 3 },
+        { team_id: "tm2", name: "Bravo FC", school: "Bravo",
+          P: 1, W: 0, D: 0, L: 1, GF: 1, GA: 2, GD: -1, Pts: 0 },
+      ],
+    },
+    { group_label: "", rows: [] }, // empty groups never render
+  ],
+};
+
+/** Minimal EventSource double: registry + manual open/tick/error firing. */
+class MockEventSource {
+  static instances: MockEventSource[] = [];
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSED = 2;
+  url: string;
+  readyState = 0;
+  onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  private listeners = new Map<string, ((e: MessageEvent) => void)[]>();
+
+  constructor(url: string) {
+    this.url = url;
+    MockEventSource.instances.push(this);
+  }
+
+  addEventListener(type: string, fn: (e: MessageEvent) => void): void {
+    const list = this.listeners.get(type) ?? [];
+    list.push(fn);
+    this.listeners.set(type, list);
+  }
+
+  close(): void {
+    this.readyState = 2;
+  }
+
+  open(): void {
+    this.readyState = 1;
+    this.onopen?.();
+  }
+
+  emit(type: string, data: unknown): void {
+    for (const fn of this.listeners.get(type) ?? []) {
+      fn({ data: JSON.stringify(data) } as MessageEvent);
+    }
+  }
+}
 
 function mount() {
   const client = new QueryClient({
@@ -81,6 +161,7 @@ function mount() {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(PAYLOAD);
+  vi.mocked(tournamentsApi.publicStandings).mockResolvedValue(STANDINGS);
 });
 
 describe("PublicSchedulePage", () => {
@@ -121,6 +202,55 @@ describe("PublicSchedulePage", () => {
     mount();
     const bucket = await screen.findByTestId("public-unscheduled");
     expect(within(bucket).getByTestId("public-match-m4")).toBeInTheDocument();
+  });
+
+  it("shows live match points: period chip, set scores and a shootout result", async () => {
+    mount();
+    // live football: the running period rides next to the status pill
+    const m2 = await screen.findByTestId("public-match-m2");
+    expect(within(m2).getByTestId("period-m2")).toHaveTextContent("first half");
+    // set sport: sets won as the score + per-set points underneath
+    const m5 = screen.getByTestId("public-match-m5");
+    expect(m5).toHaveTextContent("1 – 1");
+    expect(within(m5).getByTestId("points-m5")).toHaveTextContent("11-7 · 8-11");
+    expect(within(m5).getByTestId("period-m5")).toHaveTextContent("set 3");
+    // decided on penalties: the shootout result tags the final score
+    const m1 = screen.getByTestId("public-match-m1");
+    expect(within(m1).getByTestId("points-m1")).toHaveTextContent("(4–3 pens)");
+    // a plain scheduled match carries no points line
+    expect(
+      within(screen.getByTestId("public-match-m3")).queryByTestId("points-m3"),
+    ).toBeNull();
+  });
+
+  it("renders collapsible standings per group from the public endpoint", async () => {
+    mount();
+    const section = await screen.findByTestId("public-standings");
+    expect(tournamentsApi.publicStandings).toHaveBeenCalledWith(
+      "nagaland-cup",
+      "t1",
+    );
+    // collapsed by default — no rows on screen yet
+    expect(within(section).queryByTestId("standing-tm1")).toBeNull();
+    // empty groups never render a toggle
+    expect(within(section).queryByTestId("standings-toggle-Overall")).toBeNull();
+
+    await userEvent.click(
+      within(section).getByTestId("standings-toggle-Group A"),
+    );
+    expect(within(section).getByTestId("standing-tm1")).toHaveTextContent(
+      "Alpha FC",
+    );
+    expect(within(section).getByTestId("standing-tm1")).toHaveTextContent("3");
+  });
+
+  it("stays on the polling indicator when SSE is unavailable", async () => {
+    // jsdom has no EventSource — the page keeps today's 60 s poll behavior.
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+    expect(screen.getByTestId("stream-indicator")).toHaveTextContent(
+      "updates automatically",
+    );
   });
 
   it("renders a friendly error when the schedule is not public", async () => {
@@ -169,5 +299,75 @@ describe("PublicSchedulePage", () => {
 
     await userEvent.click(screen.getByTestId("print-button"));
     expect(print).toHaveBeenCalled();
+  });
+
+  describe("live over SSE", () => {
+    beforeEach(() => {
+      MockEventSource.instances = [];
+      vi.stubGlobal("EventSource", MockEventSource);
+    });
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("subscribes to the public stream and refetches on a tick", async () => {
+      mount();
+      await screen.findByTestId("public-day-2026-06-20");
+
+      await waitFor(() =>
+        expect(MockEventSource.instances.length).toBeGreaterThan(0),
+      );
+      const es = MockEventSource.instances[0];
+      expect(es.url).toBe("/api/public/tournaments/nagaland-cup/t1/stream/");
+
+      es.open();
+      await waitFor(() =>
+        expect(screen.getByTestId("stream-indicator")).toHaveTextContent(
+          "live updates",
+        ),
+      );
+
+      const scheduleCalls =
+        vi.mocked(tournamentsApi.publicSchedule).mock.calls.length;
+      const standingsCalls =
+        vi.mocked(tournamentsApi.publicStandings).mock.calls.length;
+      es.emit("tick", { tournament_id: "t1", match_id: "m2", kind: "score" });
+      // tick → debounced invalidation → schedule AND standings refetch
+      await waitFor(
+        () => {
+          expect(
+            vi.mocked(tournamentsApi.publicSchedule).mock.calls.length,
+          ).toBeGreaterThan(scheduleCalls);
+          expect(
+            vi.mocked(tournamentsApi.publicStandings).mock.calls.length,
+          ).toBeGreaterThan(standingsCalls);
+        },
+        { timeout: 2000 },
+      );
+    });
+
+    it("drops back to the poll indicator when the stream errors", async () => {
+      mount();
+      await screen.findByTestId("public-day-2026-06-20");
+      await waitFor(() =>
+        expect(MockEventSource.instances.length).toBeGreaterThan(0),
+      );
+      const es = MockEventSource.instances[0];
+
+      es.open();
+      await waitFor(() =>
+        expect(screen.getByTestId("stream-indicator")).toHaveTextContent(
+          "live updates",
+        ),
+      );
+
+      es.onerror?.();
+      // graceful fallback: exactly the pre-SSE page (60 s poll + plain copy)
+      await waitFor(() =>
+        expect(screen.getByTestId("stream-indicator")).toHaveTextContent(
+          "updates automatically",
+        ),
+      );
+    });
   });
 });

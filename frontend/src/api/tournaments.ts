@@ -307,6 +307,15 @@ export interface PublicScheduleMatch {
   away: PublicScheduleSide | null;
   home_score: number | null;
   away_score: number | null;
+  /** Live match points (control room spec §2.d): shootout result, sport +
+   * per-set scores (home/away_score = sets won for set sports) and the
+   * running period for the live pill. */
+  home_pens: number | null;
+  away_pens: number | null;
+  /** Sport key (e.g. "table_tennis"); "" = goal-based (football). */
+  sport: string;
+  set_scores: number[][];
+  current_period: string;
 }
 
 export interface PublicSchedulePayload {
@@ -659,6 +668,12 @@ export const tournamentsApi = {
   publicSchedule: (slug: string, id: string) =>
     api.get<PublicSchedulePayload>(
       `/api/public/tournaments/${encodeURIComponent(slug)}/${id}/schedule/`,
+    ),
+  /** Public read-only standings (AllowAny; same slug+UUID gating as the
+   * public schedule — control room spec §2.d). */
+  publicStandings: (slug: string, id: string) =>
+    api.get<{ groups: StandingsGroup[] }>(
+      `/api/public/tournaments/${encodeURIComponent(slug)}/${id}/standings/`,
     ),
   /** Control-room day aggregate: lanes by venue + day chips + up-next queue
    * (any tournament member; spec §2.a). Omit `day` for the server default

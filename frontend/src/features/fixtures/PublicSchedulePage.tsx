@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { Printer } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, Printer } from "lucide-react";
+import { liveApi } from "@/api/live";
 import {
   tournamentsApi,
   type PublicScheduleMatch,
+  type StandingsGroup,
 } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/Select";
@@ -12,6 +14,7 @@ import { ThemeToggle } from "@/features/theme/ThemeToggle";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { useEventStream } from "@/lib/useEventStream";
 
 const LIVE_STATUSES = new Set(["live", "half_time", "extra_time", "penalties"]);
 const FINAL_STATUSES = new Set(["completed", "walkover"]);
@@ -96,7 +99,10 @@ function MatchCard({
   match: PublicScheduleMatch;
   timeZone: string;
 }): React.ReactElement {
-  const done = FINAL_STATUSES.has(match.status) || LIVE_STATUSES.has(match.status);
+  const live = LIVE_STATUSES.has(match.status);
+  const done = FINAL_STATUSES.has(match.status) || live;
+  const sets = match.set_scores ?? [];
+  const hasPens = match.home_pens != null && match.away_pens != null;
   return (
     <li
       data-testid={`public-match-${match.id}`}
@@ -113,7 +119,16 @@ function MatchCard({
           </span>
         ) : null}
         {match.group_label ? <span>{match.group_label}</span> : null}
-        <span className="ml-auto">
+        <span className="ml-auto flex items-center gap-1.5">
+          {/* Running period on live cards (control room spec §2.d). */}
+          {live && match.current_period ? (
+            <span
+              data-testid={`period-${match.id}`}
+              className="rounded-full bg-primary/10 px-2 py-0.5 text-[0.6875rem] font-medium capitalize text-primary"
+            >
+              {t(match.current_period.replace(/_/g, " "))}
+            </span>
+          ) : null}
           <StatusPill status={match.status} />
         </span>
       </div>
@@ -135,7 +150,113 @@ function MatchCard({
           {match.away?.name ?? t("TBD")}
         </span>
       </div>
+      {/* Set points + shootout result (set sports / decided-on-pens). */}
+      {done && (sets.length > 0 || hasPens) ? (
+        <p
+          data-testid={`points-${match.id}`}
+          className="text-center font-tabular text-xs text-muted-foreground"
+        >
+          {sets.map(([h, a]) => `${h}-${a}`).join(" · ")}
+          {sets.length > 0 && hasPens ? " · " : ""}
+          {hasPens
+            ? `(${match.home_pens}–${match.away_pens} ${t("pens")})`
+            : ""}
+        </p>
+      ) : null}
     </li>
+  );
+}
+
+/**
+ * Mini standings (control room spec §3.3): one collapsible table per
+ * competition group, fed by the public standings endpoint. Screen-only —
+ * the print sheet stays an order-of-play.
+ */
+function PublicStandings({
+  groups,
+}: {
+  groups: StandingsGroup[];
+}): React.ReactElement | null {
+  const [open, setOpen] = useState<string | null>(null);
+  const visible = groups.filter((g) => g.rows.length > 0);
+  if (visible.length === 0) return null;
+  return (
+    <section
+      data-testid="public-standings"
+      className="flex flex-col gap-2 print:hidden"
+    >
+      <h2 className="text-sm font-semibold">{t("Standings")}</h2>
+      {visible.map((g) => {
+        const label = g.group_label || t("Overall");
+        const isOpen = open === label;
+        return (
+          <div
+            key={label}
+            className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+          >
+            <button
+              type="button"
+              data-testid={`standings-toggle-${label}`}
+              aria-expanded={isOpen}
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-left"
+              onClick={() => setOpen(isOpen ? null : label)}
+            >
+              <span className="text-sm font-semibold">{label}</span>
+              <span className="font-tabular text-xs text-muted-foreground">
+                {g.rows.length} {t("teams")}
+              </span>
+              <ChevronDown
+                aria-hidden="true"
+                className={cn(
+                  "ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                  isOpen && "rotate-180",
+                )}
+              />
+            </button>
+            {isOpen ? (
+              <div className="overflow-x-auto border-t border-border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[0.6875rem] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-4 py-2 font-medium">{t("Team")}</th>
+                      {["P", "W", "D", "L", "GD", "Pts"].map((h) => (
+                        <th key={h} className="px-2 py-2 text-right font-medium">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {g.rows.map((r) => (
+                      <tr
+                        key={r.team_id}
+                        data-testid={`standing-${r.team_id}`}
+                        className="border-t border-border"
+                      >
+                        <td className="px-4 py-2 font-medium">{r.name}</td>
+                        {[r.P, r.W, r.D, r.L, r.GD, r.Pts].map((v, i) => (
+                          <td
+                            key={i}
+                            className={cn(
+                              "px-2 py-2 text-right font-tabular",
+                              i === 5
+                                ? "font-semibold text-foreground"
+                                : "text-muted-foreground",
+                            )}
+                          >
+                            {v}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </section>
   );
 }
 
@@ -233,17 +354,54 @@ function PrintSheet({
 
 /**
  * Public, read-only tournament schedule (trust layer, increment H): grouped
- * by day, auto-refreshing every 60s, mobile-first and rendered in its own
+ * by day, live over the public SSE tick stream (control room spec §3.3) with
+ * a 60 s poll as the graceful fallback, mobile-first and rendered in its own
  * minimal chrome (no app sidebar — it lives outside the authenticated shell,
- * like the /m/ live viewer). A day picker + Print button render a per-venue
- * order-of-play through the print stylesheet (increment L).
+ * like the /m/ live viewer). Live cards carry points (sets/pens/period), a
+ * mini standings panel sits under the schedule, and a day picker + Print
+ * button render a per-venue order-of-play through the print stylesheet.
  */
 export function PublicSchedulePage(): React.ReactElement {
   const { slug = "", id = "" } = useParams();
+  const qc = useQueryClient();
+
+  // SSE ticks carry only ids — refetch on tick (debounced; a goal and its
+  // score tick land together).
+  const tickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onTick = useCallback(() => {
+    if (tickTimer.current) return;
+    tickTimer.current = setTimeout(() => {
+      tickTimer.current = null;
+      qc.invalidateQueries({ queryKey: ["public-schedule", slug, id] });
+      qc.invalidateQueries({ queryKey: ["public-standings", slug, id] });
+    }, 500);
+  }, [qc, slug, id]);
+  useEffect(
+    () => () => {
+      if (tickTimer.current) clearTimeout(tickTimer.current);
+    },
+    [],
+  );
+  const { connected } = useEventStream(
+    slug && id ? liveApi.streamUrl(slug, id) : null,
+    onTick,
+  );
+
   const query = useQuery({
     queryKey: ["public-schedule", slug, id],
     queryFn: () => tournamentsApi.publicSchedule(slug, id),
-    refetchInterval: 60_000,
+    // The 60 s poll is the fallback ONLY while the stream cannot deliver
+    // (no EventSource, connecting, or erroring) — SSE-down behavior is
+    // exactly the pre-SSE page.
+    refetchInterval: connected ? false : 60_000,
+  });
+
+  const standingsQ = useQuery({
+    queryKey: ["public-standings", slug, id],
+    queryFn: () => tournamentsApi.publicStandings(slug, id),
+    enabled: query.data !== undefined,
+    retry: false,
+    refetchInterval: connected ? false : 60_000,
   });
 
   const tz = query.data?.tournament.time_zone ?? "UTC";
@@ -314,9 +472,24 @@ export function PublicSchedulePage(): React.ReactElement {
               <h1 className="text-xl font-semibold tracking-tight">
                 {query.data.tournament.name}
               </h1>
-              <span className="font-tabular text-xs text-muted-foreground">
+              <span
+                data-testid="stream-indicator"
+                className="inline-flex items-center gap-1.5 font-tabular text-xs text-muted-foreground"
+              >
                 {query.data.matches.length} {t("matches")} ·{" "}
-                {t("updates automatically")}
+                {connected ? (
+                  <>
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                    </span>
+                    <span className="font-medium text-primary">
+                      {t("live updates")}
+                    </span>
+                  </>
+                ) : (
+                  t("updates automatically")
+                )}
               </span>
             </div>
 
@@ -388,6 +561,11 @@ export function PublicSchedulePage(): React.ReactElement {
               </section>
             ) : null}
             </div>
+
+            {/* Mini standings per competition group (spec §3.3). */}
+            {standingsQ.data ? (
+              <PublicStandings groups={standingsQ.data.groups} />
+            ) : null}
 
             {effectivePrintDay ? (
               <PrintSheet
