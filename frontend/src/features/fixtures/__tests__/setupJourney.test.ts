@@ -117,6 +117,18 @@ describe("statusOf / helpers", () => {
     ).toBe("needs_setup");
   });
 
+  it("never reads ready while Step 1 (dates + venues) is incomplete", () => {
+    // server says ready, but the tournament-level gate is unsatisfied
+    expect(statusOf(withChecks([], true), true)).toBe("needs_setup");
+    expect(statusOf(comp(), true)).toBe("needs_setup");
+    // drawn/live competitions are unaffected — existing draws stay visible
+    expect(statusOf(comp({ matches: [match({})] }), true)).toBe("drawn");
+    expect(
+      statusOf(comp({ matches: [match({ status: "live" })] }), true),
+    ).toBe("live");
+    expect(statusOf(comp({ teams: [team("a")] }), true)).toBe("needs_teams");
+  });
+
   it("enough_teams follows the server verdict over the local count", () => {
     // 5 teams but the server says fail → fail wins
     expect(
@@ -204,6 +216,20 @@ describe("competitionSentence (§7.2, first match wins)", () => {
     expect(p.actions[0]).toEqual({
       label: "Open Step 1", kind: "primary", action: "step1",
     });
+  });
+
+  it("U3b: a would-be-ready competition demotes while Step 1 is incomplete", () => {
+    const p = competitionSentence(withChecks([], true), "", false, true);
+    expect(p.sentence).toBe("Finish Step 1 (dates and venues) first.");
+    expect(p.actions[0]).toEqual({
+      label: "Open Step 1", kind: "primary", action: "step1",
+    });
+    expect(p.blocked).toBe(true);
+    // drawn competitions keep their drawn sentence (draws stay visible)
+    expect(
+      competitionSentence(comp({ matches: [match({})] }), "", false, true)
+        .sentence,
+    ).toContain("Drawn");
   });
 
   it("U4: ready, with the quiet format note on a format_chosen warn", () => {

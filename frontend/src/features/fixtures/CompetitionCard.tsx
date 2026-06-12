@@ -66,6 +66,7 @@ export function CompetitionCard({
   detailOpen,
   busy = false,
   fixable,
+  globalsUnset = false,
   onToggleDetail,
   onAction,
   onFix,
@@ -84,16 +85,18 @@ export function CompetitionCard({
   busy?: boolean;
   /** Fix keys the hub can act on (forwarded to the checklist). */
   fixable: ReadonlySet<string>;
+  /** Step 1 (dates + venues) unsatisfied — never offer Preview first. */
+  globalsUnset?: boolean;
   onToggleDetail: () => void;
   onAction: (action: CardAction) => void;
   onFix?: (fix: string, leafKey: string) => void;
 }): React.ReactElement {
   const key = c.leafKey || "general";
-  const st = statusOf(c);
+  const st = statusOf(c, globalsUnset);
   const drawn = c.matches.length > 0;
   // Viewers never see the stale banner (its verbs are manage-only) — fall
   // through to the plain drawn sentence instead.
-  const pres = competitionSentence(c, drawFormat, kept || !canManage);
+  const pres = competitionSentence(c, drawFormat, kept || !canManage, globalsUnset);
   const actions = pres.actions.filter(
     (a) => canManage || !MANAGE_ACTIONS.has(a.action),
   );

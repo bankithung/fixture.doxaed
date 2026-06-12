@@ -279,6 +279,34 @@ describe("FixtureSetupHub", () => {
     ).toBeInTheDocument();
   });
 
+  it("gate engages on legacy scheduling data: drawn matches + ready leaves never surface Preview before Step 1", async () => {
+    // The owner's scenario: old ad-hoc schedule runs left matches behind but
+    // the canonical globals (wizard dates + Venue records) were never set —
+    // the fixed backend reports the global checks as fail. Even with a
+    // competition the payload still calls ready, nothing offers Preview.
+    mockGlobalsUnset();
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([
+      groupMatch("m1", { leaf_key: "football.u17" }),
+    ]);
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+
+    // the inline Step 1 wizard IS the page — no funnel, no Preview anywhere
+    const panel = await screen.findByTestId("global-setup-inline");
+    expect(screen.queryByTestId("generate-football.u15")).toBeNull();
+    expect(screen.queryByTestId("section-ready")).toBeNull();
+    expect(screen.queryByTestId("competition-card-football.u15")).toBeNull();
+    expect(screen.queryByTestId("competition-card-football.u17")).toBeNull();
+
+    // even after dismissing the auto-opened wizard, the gate card holds —
+    // still no Preview and no "Ready to go" section before Step 1 is done
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Cancel" }),
+    );
+    expect(await screen.findByTestId("global-setup-gate")).toBeInTheDocument();
+    expect(screen.queryByTestId("generate-football.u15")).toBeNull();
+    expect(screen.queryByTestId("section-ready")).toBeNull();
+  });
+
   it("renders the journey, the Step 1 receipt and grouped competition cards (no raw n/5 badge)", async () => {
     wrap(<FixtureSetupHub tournamentId="t1" />);
     // globals set → receipt strip, not the gate

@@ -105,6 +105,22 @@ describe("CompetitionCard", () => {
     );
   });
 
+  it("globalsUnset demotes a ready card: Step 1 sentence + Open Step 1, never Preview", async () => {
+    const { onAction } = mount(comp([]), { globalsUnset: true });
+    expect(
+      screen.getByText("Finish Step 1 (dates and venues) first."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Action needed")).toBeInTheDocument();
+    expect(screen.queryByText("Ready")).toBeNull();
+    expect(screen.queryByText(/Ready to preview/)).toBeNull();
+    const primary = screen.getByTestId("card-action-football.u15");
+    expect(primary).toHaveTextContent("Open Step 1");
+    await userEvent.click(primary);
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "step1" }),
+    );
+  });
+
   it("format warn: quiet note with an inline Choose format button (primary stays preview)", async () => {
     const { onAction } = mount(comp([{ id: "format_chosen", status: "warn" }]));
     expect(

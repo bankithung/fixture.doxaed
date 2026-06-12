@@ -38,12 +38,16 @@ export type CompStatus =
   | "drawn"
   | "live";
 
-export function statusOf(c: Competition): CompStatus {
+/** `globalsUnset` = the tournament-level Step 1 gate (dates + venues) is not
+ * satisfied — an undrawn competition can never read "ready" before Step 1
+ * (belt-and-braces over the server's per-leaf calendar check). */
+export function statusOf(c: Competition, globalsUnset = false): CompStatus {
   if (c.matches.length > 0) {
     return c.matches.some((m) => LIVE.has(m.status)) ? "live" : "drawn";
   }
   if (!enoughTeams(c)) return "needs_teams";
-  const ready = c.readiness ? c.readiness.ready : c.teams.length >= 2;
+  const ready =
+    !globalsUnset && (c.readiness ? c.readiness.ready : c.teams.length >= 2);
   return ready ? "ready" : "needs_setup";
 }
 
@@ -148,12 +152,15 @@ function warned(c: Competition, id: string): boolean {
 
 /**
  * §7.2 sentence table, priority order, first match wins. `keptStale` is the
- * per-session "Keep this draw" dismissal of the inputs-changed banner.
+ * per-session "Keep this draw" dismissal of the inputs-changed banner;
+ * `globalsUnset` demotes a would-be-ready card while the tournament-level
+ * Step 1 gate (dates + venues) is unsatisfied — never offer Preview first.
  */
 export function competitionSentence(
   c: Competition,
   drawFormat: string,
   keptStale = false,
+  globalsUnset = false,
 ): CompetitionPresentation {
   const none: CompetitionPresentation = {
     sentence: "",
@@ -256,6 +263,16 @@ export function competitionSentence(
     return {
       ...none,
       sentence: t("Finish Step 1 first - dates or venues are missing."),
+      actions: [{ label: t("Open Step 1"), kind: "primary", action: "step1" }],
+      blocked: true,
+    };
+  }
+  // U3b — the tournament-level Step 1 gate is unsatisfied (belt-and-braces:
+  // a competition is never "Ready to preview" before dates + venues exist).
+  if (globalsUnset) {
+    return {
+      ...none,
+      sentence: t("Finish Step 1 (dates and venues) first."),
       actions: [{ label: t("Open Step 1"), kind: "primary", action: "step1" }],
       blocked: true,
     };

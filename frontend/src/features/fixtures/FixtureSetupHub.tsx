@@ -70,9 +70,11 @@ const GROUPS = [
 ] as const;
 type GroupKey = (typeof GROUPS)[number]["key"];
 
-/** Which funnel section a competition files under (live rows sit in Scheduled). */
-function groupOf(c: Competition): GroupKey {
-  const s = statusOf(c);
+/** Which funnel section a competition files under (live rows sit in
+ * Scheduled; nothing files under "Ready to go" while Step 1 is incomplete —
+ * `statusOf` demotes those to needs-setup). */
+function groupOf(c: Competition, globalsUnset: boolean): GroupKey {
+  const s = statusOf(c, globalsUnset);
   return s === "live" ? "drawn" : s;
 }
 
@@ -286,6 +288,15 @@ export function FixtureSetupHub({
     (stage.data?.can_manage ?? false) ||
     (stage.data?.modules ?? []).includes("tournament.schedule_editor");
 
+  /** Stage gate: the journey stays at Step 1 until the asked-once globals
+   * exist (server-computed off the CANONICAL stores the Step-1 wizard writes
+   * — `calendar_set` + `venues_defined` checks). */
+  const globalsUnset = (readiness.data?.global.checks ?? []).some(
+    (c) =>
+      (c.id === "calendar_set" || c.id === "venues_defined") &&
+      c.status === "fail",
+  );
+
   const competitions = useMemo<Competition[]>(() => {
     const by = new Map<string, Competition>();
     const ensure = (leafKey: string, label: string, sport: string): Competition => {
@@ -324,9 +335,9 @@ export function FixtureSetupHub({
     const by: Record<GroupKey, Competition[]> = {
       ready: [], needs_setup: [], drawn: [], needs_teams: [],
     };
-    for (const c of competitions) by[groupOf(c)].push(c);
+    for (const c of competitions) by[groupOf(c, globalsUnset)].push(c);
     return by;
-  }, [competitions]);
+  }, [competitions, globalsUnset]);
 
   /** Effective draw format for one leaf — the §2.1 single-key layering
    * (defaults < "*" < leaf); layers are sparse so a plain ?? chain resolves. */
@@ -423,14 +434,6 @@ export function FixtureSetupHub({
   };
 
   const isLoading = teams.isLoading || matches.isLoading || readiness.isLoading;
-
-  /** Stage gate: the journey stays at Step 1 until the asked-once globals
-   * exist (server-computed — `calendar_set` + `venues_defined` checks). */
-  const globalsUnset = (readiness.data?.global.checks ?? []).some(
-    (c) =>
-      (c.id === "calendar_set" || c.id === "venues_defined") &&
-      c.status === "fail",
-  );
 
   const journey = journeyStep(readiness.data, competitions);
 
@@ -727,6 +730,7 @@ export function FixtureSetupHub({
                               detailOpen={expanded === key}
                               busy={nextRound.isPending}
                               fixable={FIXABLE}
+                              globalsUnset={globalsUnset}
                               onToggleDetail={() =>
                                 setExpanded(expanded === key ? null : key)
                               }
