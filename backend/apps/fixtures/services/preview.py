@@ -19,10 +19,12 @@ from apps.fixtures.services.generate import (
     _keep_apart_separators,
     _new_seed,
     _plan_by_category,
+    _plate_label,
     _registered_teams,
     _small_group_max,
     compute_inputs_hash,
     plan_knockout_qualifiers,
+    plan_plate_for_plans,
     plan_round_robin,
     plan_single_elimination,
 )
@@ -52,6 +54,20 @@ def stored_venue_records(tournament) -> list[dict[str, Any]]:
     ]
 
 
+def _with_plate(
+    plans: list[MatchPlan], cfg: dict[str, Any], sports_cfg,
+    leaf_key: str | None, sport: str, warnings: list,
+) -> list[MatchPlan]:
+    """Append the consolation-plate plans (increment M) when the effective
+    config asks for them — preview ≡ commit on the plate too (tenet 3)."""
+    if not cfg.get("plate"):
+        return plans
+    return plans + plan_plate_for_plans(
+        plans, leaf_key=leaf_key or "", sport=sport,
+        label=_plate_label(sports_cfg, leaf_key), warnings=warnings,
+    )
+
+
 def _plan_for_config(
     tournament, leaf_key: str | None, cfg: dict[str, Any],
     *, seed: int | None, warnings: list,
@@ -73,7 +89,7 @@ def _plan_for_config(
         if leaf_key:
             teams_qs = teams_qs.filter(leaf_key=leaf_key)
         teams = list(teams_qs.order_by("seed", "name"))
-        return plan_single_elimination(
+        plans = plan_single_elimination(
             teams, stage="knockout", leaf_key=leaf_key or "", sport=sport,
             third_place=bool(cfg.get("third_place")),
             seeding=seeding, seed=seed,
@@ -82,12 +98,13 @@ def _plan_for_config(
             ),
             warnings=warnings,
         )
+        return _with_plate(plans, cfg, sports_cfg, leaf_key, sport, warnings)
     if fmt == "knockout_from_groups":
         teams = plan_knockout_qualifiers(
             tournament, advance_per_group=int(cfg["advance_per_group"]),
             leaf_key=leaf_key,
         )
-        return plan_single_elimination(
+        plans = plan_single_elimination(
             teams, stage="knockout", leaf_key=leaf_key or "", sport=sport,
             third_place=bool(cfg.get("third_place")),
             separators=_keep_apart_separators(
@@ -95,6 +112,7 @@ def _plan_for_config(
             ),
             warnings=warnings,
         )
+        return _with_plate(plans, cfg, sports_cfg, leaf_key, sport, warnings)
     if fmt == "by_category":
         plans, _skipped = _plan_by_category(
             tournament, leaf_key, legs=int(cfg["legs"]),

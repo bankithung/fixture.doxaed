@@ -33,6 +33,7 @@ DEFAULT_DRAW_CONFIG: dict[str, Any] = {
     "seeding": "registration",       # registration | random | snake | seeded
     "seed": None,                    # RNG seed; persisted on first random draw
     "third_place": False,            # knockout formats only
+    "plate": False,                  # consolation plate over round-1 losers
     "bye_policy": "seeded_byes",     # seeded_byes (preliminary_round deferred)
     "min_entries_action": "prompt",  # prompt | cancel (auto_champion deferred — §9 A6)
     "constraints_reviewed_at": None,  # ISO timestamp ("Mark reviewed" — §9 A10)
@@ -109,6 +110,8 @@ def _validate_layer(layer: dict[str, Any]) -> None:
         raise ValueError("legs must be 1 or 2")
     if "third_place" in layer and not isinstance(layer["third_place"], bool):
         raise ValueError("third_place must be a boolean")
+    if "plate" in layer and not isinstance(layer["plate"], bool):
+        raise ValueError("plate must be a boolean")
     if "seed" in layer and layer["seed"] is not None and not _is_int(layer["seed"]):
         raise ValueError("seed must be an integer")
     if "constraints_reviewed_at" in layer \

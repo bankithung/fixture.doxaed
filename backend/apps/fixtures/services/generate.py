@@ -643,6 +643,156 @@ def plan_single_elimination(
     return plans
 
 
+def _plate_label(sports_cfg, leaf_key: str | None) -> str:
+    """``"<leaf> — Plate"`` (increment M) — the same label grammar the grouped
+    round-robin prefix uses; plain ``"Plate"`` for whole-tournament draws."""
+    if leaf_key:
+        return f"{leaf_label(sports_cfg, leaf_key)} — Plate"[:80]
+    return "Plate"
+
+
+def plan_plate(
+    sources: list[dict], *, leaf_key: str = "", sport: str = "",
+    label: str = "Plate", start_ref: int = 0,
+) -> list[MatchPlan]:
+    """Pure pairing core for the consolation plate (increment M): a single-
+    elimination bracket whose ENTRANTS are ``loser_of`` pointers at the main
+    bracket's round-1 matches (plan refs or real match ids — advance.py
+    resolves either as results land, invariant 9). Non-power-of-2 source
+    counts get byes: the spare pointer forwards straight to round 2 untouched.
+    Zero DB writes."""
+    n = len(sources)
+    if n < 2:
+        raise ValueError("plate requires at least 2 round-1 loser sources")
+    size = 1
+    while size < n:
+        size *= 2
+    entrants = [sources[s - 1] if s <= n else None for s in _bracket_order(size)]
+
+    common = {"stage": "plate", "group_label": label,
+              "leaf_key": leaf_key, "sport": sport}
+    plans: list[MatchPlan] = []
+    # {"plan": ref} or {"src": <loser_of pointer>} (a bye forwards the pointer)
+    slots: list[dict] = []
+    for i in range(0, size, 2):
+        home, away = entrants[i], entrants[i + 1]
+        if home is not None and away is not None:
+            plans.append(
+                MatchPlan(
+                    round_no=1, home_source=home, away_source=away,
+                    ref=start_ref + len(plans), **common,
+                )
+            )
+            slots.append({"plan": plans[-1].ref})
+        else:
+            slots.append({"src": home or away})
+
+    def _side(slot: dict) -> dict:
+        if "src" in slot:
+            return slot["src"]
+        return {"type": "winner_of", "ref": slot["plan"]}
+
+    round_no = 2
+    while len(slots) > 1:
+        nxt_slots: list[dict] = []
+        for i in range(0, len(slots), 2):
+            plans.append(
+                MatchPlan(
+                    round_no=round_no,
+                    home_source=_side(slots[i]), away_source=_side(slots[i + 1]),
+                    ref=start_ref + len(plans), **common,
+                )
+            )
+            nxt_slots.append({"plan": plans[-1].ref})
+        slots = nxt_slots
+        round_no += 1
+    return plans
+
+
+def plan_plate_for_plans(
+    main_plans: list[MatchPlan], *, leaf_key: str = "", sport: str = "",
+    label: str = "Plate", warnings: list | None = None,
+) -> list[MatchPlan]:
+    """Plate plans over a freshly-planned main bracket (the fresh-generation
+    and preview paths): sources are plan REFS at the round-1 plans pairing two
+    concrete teams — a bye pair emits no round-1 plan, so its loser slot never
+    exists. Under 2 sources the plate is skipped with a named warning (i18n
+    code — §9 A5), never an error."""
+    sources = [
+        {"type": "loser_of", "ref": p.ref}
+        for p in main_plans
+        if p.round_no == 1 and p.stage != "plate"
+        and p.home_team_id is not None and p.away_team_id is not None
+    ]
+    if len(sources) < 2:
+        if warnings is not None:
+            warnings.append({
+                "code": "plate_skipped_insufficient_sources",
+                "leaf_key": leaf_key, "sources": len(sources),
+            })
+        return []
+    return plan_plate(
+        sources, leaf_key=leaf_key, sport=sport, label=label,
+        start_ref=len(main_plans),
+    )
+
+
+def generate_plate(
+    *, tournament, leaf_key: str = "", main_stage: str = "knockout",
+    warnings: list | None = None,
+) -> list[Match]:
+    """Consolation plate over an EXISTING main bracket (increment M): a
+    second-chance single-elimination for the round-1 losers, filled by
+    advance.py through ``loser_of`` pointers as results land. Idempotent per
+    (stage="plate", leaf). Round-1 byes in the main bracket mean that pair's
+    loser slot is empty, so the plate draws only over round-1 matches pairing
+    two concrete teams; under 2 sources it is skipped with a named warning.
+    Results that already landed backfill immediately."""
+    existing = list(
+        Match.objects.filter(
+            tournament=tournament, stage="plate", leaf_key=leaf_key or "",
+            deleted_at__isnull=True,
+        )
+    )
+    if existing:
+        return existing
+
+    warnings = [] if warnings is None else warnings
+    r1 = list(
+        Match.objects.filter(
+            tournament=tournament, stage=main_stage, leaf_key=leaf_key or "",
+            round_no=1, deleted_at__isnull=True,
+            home_team__isnull=False, away_team__isnull=False,
+        ).order_by("match_no")
+    )
+    sources = [{"type": "loser_of", "match_id": str(m.id)} for m in r1]
+    if len(sources) < 2:
+        warnings.append({
+            "code": "plate_skipped_insufficient_sources",
+            "leaf_key": leaf_key or "", "sources": len(sources),
+        })
+        return []
+
+    plans = plan_plate(
+        sources, leaf_key=leaf_key or "", sport=r1[0].sport,
+        label=_plate_label(tournament.sports or [], leaf_key or None),
+    )
+    ih = compute_inputs_hash(tournament, leaf_key or None)  # v2 hash (§2.5)
+    for p in plans:
+        p.inputs_hash = ih
+    with transaction.atomic():
+        created = _persist_plans(tournament, plans)
+    # Retro-fit: advance_from_match re-resolves dependents, so round-1
+    # results that landed BEFORE the plate existed fill it right away.
+    from apps.fixtures.services.advance import advance_from_match
+
+    final = (MatchStatus.COMPLETED, MatchStatus.WALKOVER)
+    for m in r1:
+        if m.status in final:
+            advance_from_match(m.id)
+    return created
+
+
 def _resolve_source(src: dict | None, matches: list[Match]) -> dict | None:
     """Rewrite a plan-ref bracket pointer into a real match-id pointer
     (invariant 9 typed references). Refs always point at earlier plans, so
@@ -851,7 +1001,7 @@ def _bracket_order(size: int) -> list[int]:
 def generate_single_elimination(
     *, tournament, teams, stage: str = "knockout",
     leaf_key: str = "", sport: str = "", third_place: bool = False,
-    seeding: str = "registration", seed: int | None = None,
+    plate: bool = False, seeding: str = "registration", seed: int | None = None,
     warnings: list | None = None,
 ) -> list[Match]:
     """Generate a single-elimination bracket from ``teams`` (any count ≥ 2).
@@ -870,6 +1020,12 @@ def generate_single_elimination(
     (3 teams) has a single semi, so its loser is 3rd automatically — no
     playoff is emitted.
 
+    ``plate`` (increment M): also draw a consolation single-elimination over
+    the round-1 losers — ``stage="plate"`` matches sourced from ``loser_of``
+    pointers, skipped with a named warning when fewer than 2 round-1 pairs
+    hold two concrete teams. Idempotent per (stage, leaf), so a plate can be
+    retro-fitted onto an existing bracket.
+
     Thin persistence wrapper over ``plan_single_elimination`` (spec §4.1)."""
     if len(teams) < 2:
         raise ValueError("single elimination requires at least 2 teams")
@@ -881,6 +1037,11 @@ def generate_single_elimination(
         )
     )
     if existing:
+        if plate:
+            return [*existing, *generate_plate(
+                tournament=tournament, leaf_key=leaf_key, main_stage=stage,
+                warnings=warnings,
+            )]
         return existing
 
     if not sport and leaf_key:
@@ -898,6 +1059,12 @@ def generate_single_elimination(
         ),
         warnings=warnings,
     )
+    if plate:
+        plans = plans + plan_plate_for_plans(
+            plans, leaf_key=leaf_key or "", sport=sport,
+            label=_plate_label(tournament.sports or [], leaf_key or None),
+            warnings=warnings,
+        )
     ih = compute_inputs_hash(tournament, leaf_key or None)  # v2 hash (§2.5)
     for p in plans:
         p.inputs_hash = ih
@@ -1002,12 +1169,14 @@ def plan_knockout_qualifiers(
 
 def generate_knockout_from_groups(
     *, tournament, advance_per_group: int = 2, leaf_key: str | None = None,
-    third_place: bool = False, warnings: list | None = None,
+    third_place: bool = False, plate: bool = False,
+    warnings: list | None = None,
 ) -> list[Match]:
     """Advance the top ``advance_per_group`` of each group into a single-
     elimination bracket (FIFA-style groups → knockout), cross-seeding winners
     against other groups' runners-up. Leaf-aware: with ``leaf_key`` only that
-    competition's groups feed its own bracket. Idempotent per leaf scope."""
+    competition's groups feed its own bracket. Idempotent per leaf scope.
+    ``plate`` (increment M) adds the round-1 losers' consolation bracket."""
     ko_scope = Match.objects.filter(
         tournament=tournament, stage="knockout", deleted_at__isnull=True
     )
@@ -1015,6 +1184,11 @@ def generate_knockout_from_groups(
         ko_scope = ko_scope.filter(leaf_key=leaf_key)
     existing = list(ko_scope)
     if existing:
+        if plate:
+            return [*existing, *generate_plate(
+                tournament=tournament, leaf_key=leaf_key or "",
+                warnings=warnings,
+            )]
         return existing
 
     teams = plan_knockout_qualifiers(
@@ -1022,5 +1196,6 @@ def generate_knockout_from_groups(
     )
     return generate_single_elimination(
         tournament=tournament, teams=teams, stage="knockout",
-        leaf_key=leaf_key or "", third_place=third_place, warnings=warnings,
+        leaf_key=leaf_key or "", third_place=third_place, plate=plate,
+        warnings=warnings,
     )

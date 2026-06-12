@@ -75,7 +75,7 @@ class GenerateFixturesView(GenericAPIView):
             k: request.data.get(k)
             for k in (
                 "format", "group_size", "advance_per_group", "third_place",
-                "legs", "seeding", "seed",
+                "plate", "legs", "seeding", "seed",
             )
             if k in request.data
         }
@@ -97,6 +97,7 @@ class GenerateFixturesView(GenericAPIView):
                 matches = generate_single_elimination(
                     tournament=t, teams=teams, leaf_key=leaf_key,
                     third_place=bool(cfg.get("third_place")),
+                    plate=bool(cfg.get("plate")),
                     seeding=seeding, seed=seed, warnings=warnings,
                 )
             elif fmt == "knockout_from_groups":
@@ -105,6 +106,7 @@ class GenerateFixturesView(GenericAPIView):
                     advance_per_group=int(cfg["advance_per_group"]),
                     leaf_key=leaf_key or None,
                     third_place=bool(cfg.get("third_place")),
+                    plate=bool(cfg.get("plate")),
                     warnings=warnings,
                 )
             elif fmt == "by_category":
