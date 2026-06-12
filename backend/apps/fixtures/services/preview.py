@@ -104,6 +104,7 @@ def _plan_for_config(
             tournament, advance_per_group=int(cfg["advance_per_group"]),
             leaf_key=leaf_key,
             advance_best_thirds=int(cfg.get("advance_best_thirds") or 0),
+            knockout_seeding=str(cfg.get("knockout_seeding") or "cross"),
             warnings=warnings,
         )
         plans = plan_single_elimination(

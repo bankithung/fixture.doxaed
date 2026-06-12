@@ -76,7 +76,7 @@ class GenerateFixturesView(GenericAPIView):
             for k in (
                 "format", "group_size", "advance_per_group",
                 "advance_best_thirds", "third_place", "plate", "legs",
-                "seeding", "seed",
+                "seeding", "knockout_seeding", "seed",
             )
             if k in request.data
         }
@@ -109,6 +109,7 @@ class GenerateFixturesView(GenericAPIView):
                     third_place=bool(cfg.get("third_place")),
                     plate=bool(cfg.get("plate")),
                     advance_best_thirds=int(cfg.get("advance_best_thirds") or 0),
+                    knockout_seeding=str(cfg.get("knockout_seeding") or "cross"),
                     warnings=warnings,
                 )
             elif fmt == "by_category":

@@ -32,6 +32,7 @@ DEFAULT_DRAW_CONFIG: dict[str, Any] = {
     "advance_best_thirds": 0,        # best next-placed cross-group qualifiers
     "legs": 1,                       # 1 | 2 (double round-robin, mirrored 2nd cycle)
     "seeding": "registration",       # registration | random | snake | seeded
+    "knockout_seeding": "cross",     # cross | overall (groups→knockout pool)
     "seed": None,                    # RNG seed; persisted on first random draw
     "third_place": False,            # knockout formats only
     "plate": False,                  # consolation plate over round-1 losers
@@ -45,6 +46,7 @@ DEFAULT_DRAW_CONFIG: dict[str, Any] = {
 
 _FORMATS = {"round_robin", "knockout", "groups_knockout"}
 _SEEDINGS = {"registration", "random", "snake", "seeded"}
+_KNOCKOUT_SEEDINGS = {"cross", "overall"}
 _BYE_POLICIES = {"seeded_byes"}
 _MIN_ENTRIES_ACTIONS = {"prompt", "cancel"}
 
@@ -100,6 +102,11 @@ def _validate_layer(layer: dict[str, Any]) -> None:
         raise ValueError(f"unknown draw format: {layer['format']!r}")
     if "seeding" in layer and layer["seeding"] not in _SEEDINGS:
         raise ValueError(f"unknown seeding method: {layer['seeding']!r}")
+    if "knockout_seeding" in layer \
+            and layer["knockout_seeding"] not in _KNOCKOUT_SEEDINGS:
+        raise ValueError(
+            f"unknown knockout_seeding: {layer['knockout_seeding']!r}"
+        )
     if "bye_policy" in layer and layer["bye_policy"] not in _BYE_POLICIES:
         raise ValueError(f"unsupported bye_policy: {layer['bye_policy']!r}")
     if "min_entries_action" in layer \

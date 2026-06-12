@@ -1112,6 +1112,15 @@ def _cross_seed(
 
     group_of = {tid: gi for gi, q in enumerate(quals) for tid in q}
     group_of.update(dict(extra or []))
+    _repair_same_group_pairs(seeds, group_of)
+    return seeds
+
+
+def _repair_same_group_pairs(seeds: list[str], group_of: dict) -> None:
+    """Same-group round-1 avoidance over a seed list — the repair pass
+    ``_cross_seed`` has always run, shared with ``knockout_seeding="overall"``
+    (increment O). Swaps a conflicting pair member with another seed whose
+    own pair stays clean. In place, deterministic, best-effort."""
     pairs = _opening_pairs_bracket(len(seeds))
 
     def same_group(i: int, j: int) -> bool:
@@ -1135,12 +1144,12 @@ def _cross_seed(
             else:
                 continue
             break
-    return seeds
 
 
 def plan_knockout_qualifiers(
     tournament, *, advance_per_group: int = 2, leaf_key: str | None = None,
-    advance_best_thirds: int = 0, warnings: list | None = None,
+    advance_best_thirds: int = 0, knockout_seeding: str = "cross",
+    warnings: list | None = None,
 ) -> list[Team]:
     """Standings-ordered qualifier list for groups→knockout (shared with the
     preview endpoint — spec §5.2): top ``advance_per_group`` per group,
@@ -1151,13 +1160,20 @@ def plan_knockout_qualifiers(
     NEXT-PLACED teams — position ``advance_per_group + 1`` in each group —
     ranked cross-group by per-game points/GD/GF (``_norm_rates``; group sizes
     may differ) and appended as the bottom seed layer before cross-seeding.
-    Unequal group sizes emit a named normalization warning."""
+    Unequal group sizes emit a named normalization warning.
+
+    ``knockout_seeding`` (increment O): ``"cross"`` (default) keeps the
+    positional layer order; ``"overall"`` strength-orders ALL qualifiers by
+    their aggregate record (the same per-game metric) regardless of finishing
+    position — same-group round-1 pairs still repaired by the existing pass."""
     from apps.matches.services.standings import compute_standings
 
     if advance_per_group < 1:
         raise ValueError("advance_per_group must be at least 1.")
     if advance_best_thirds < 0:
         raise ValueError("advance_best_thirds must be 0 or more.")
+    if knockout_seeding not in ("cross", "overall"):
+        raise ValueError(f"unknown knockout_seeding: {knockout_seeding!r}")
     warnings = [] if warnings is None else warnings
 
     group_scope = Match.objects.filter(
@@ -1173,10 +1189,14 @@ def plan_knockout_qualifiers(
 
     quals: list[list[str]] = []
     sizes: dict[str, int] = {}
+    rank_key: dict[str, tuple] = {}  # per-game strength key, all teams
     candidates: list[tuple[tuple, str, int]] = []  # (rank key, team_id, group)
     for gi, g in enumerate(groups):
         rows = compute_standings(tournament, group_label=g)
         sizes[g] = len(rows)
+        for row in rows:
+            ppg, gdpg, gfpg = _norm_rates(row)
+            rank_key[row["team_id"]] = (-ppg, -gdpg, -gfpg, row["name"])
         ids = [r["team_id"] for r in rows[:advance_per_group]]
         if len(ids) < advance_per_group:
             raise ValueError(
@@ -1186,10 +1206,7 @@ def plan_knockout_qualifiers(
         quals.append(ids)
         if advance_best_thirds and len(rows) > advance_per_group:
             row = rows[advance_per_group]  # position advance_per_group + 1
-            ppg, gdpg, gfpg = _norm_rates(row)
-            candidates.append(
-                ((-ppg, -gdpg, -gfpg, row["name"]), row["team_id"], gi)
-            )
+            candidates.append((rank_key[row["team_id"]], row["team_id"], gi))
 
     extra: list[tuple[str, int]] = []
     if advance_best_thirds:
@@ -1206,7 +1223,18 @@ def plan_knockout_qualifiers(
         candidates.sort(key=lambda c: c[0])
         extra = [(tid, gi) for _key, tid, gi in candidates[:advance_best_thirds]]
 
-    if len(groups) == 1:
+    if knockout_seeding == "overall":
+        # Aggregate-record seeding (increment O): the whole pool, strength-
+        # ordered by the normalized per-game metric, then the same round-1
+        # same-group repair pass cross-seeding runs.
+        pool = [tid for q in quals for tid in q] + [tid for tid, _gi in extra]
+        if len(pool) < 2:
+            raise ValueError("Need at least 2 advancing teams for a knockout.")
+        seed_ids = sorted(pool, key=lambda tid: rank_key[tid])
+        group_of = {tid: gi for gi, q in enumerate(quals) for tid in q}
+        group_of.update(dict(extra))
+        _repair_same_group_pairs(seed_ids, group_of)
+    elif len(groups) == 1:
         # A single group (e.g. one category leaf) → its top teams seed the
         # bracket directly in standings order.
         seed_ids = quals[0] + [tid for tid, _gi in extra]
@@ -1220,7 +1248,8 @@ def plan_knockout_qualifiers(
 def generate_knockout_from_groups(
     *, tournament, advance_per_group: int = 2, leaf_key: str | None = None,
     third_place: bool = False, plate: bool = False,
-    advance_best_thirds: int = 0, warnings: list | None = None,
+    advance_best_thirds: int = 0, knockout_seeding: str = "cross",
+    warnings: list | None = None,
 ) -> list[Match]:
     """Advance the top ``advance_per_group`` of each group into a single-
     elimination bracket (FIFA-style groups → knockout), cross-seeding winners
@@ -1228,7 +1257,9 @@ def generate_knockout_from_groups(
     competition's groups feed its own bracket. Idempotent per leaf scope.
     ``plate`` (increment M) adds the round-1 losers' consolation bracket;
     ``advance_best_thirds`` (increment N) appends the best N next-placed
-    teams to the qualifier pool (per-game normalized ranking)."""
+    teams to the qualifier pool (per-game normalized ranking);
+    ``knockout_seeding="overall"`` (increment O) seeds the pool by aggregate
+    record instead of finishing position."""
     ko_scope = Match.objects.filter(
         tournament=tournament, stage="knockout", deleted_at__isnull=True
     )
@@ -1245,7 +1276,8 @@ def generate_knockout_from_groups(
 
     teams = plan_knockout_qualifiers(
         tournament, advance_per_group=advance_per_group, leaf_key=leaf_key,
-        advance_best_thirds=advance_best_thirds, warnings=warnings,
+        advance_best_thirds=advance_best_thirds,
+        knockout_seeding=knockout_seeding, warnings=warnings,
     )
     return generate_single_elimination(
         tournament=tournament, teams=teams, stage="knockout",
