@@ -1030,6 +1030,15 @@ class PublicTournamentScheduleView(GenericAPIView):
                 "away": side(m.away_team),
                 "home_score": m.home_score,
                 "away_score": m.away_score,
+                # Live points (control room spec 2026-06-12 §2.d): shootout
+                # result, sport + per-set scores (home/away_score = sets won
+                # for set sports), and the period for the live pill. Team/
+                # school names only — same PII posture as the rest of the row.
+                "home_pens": m.home_pens,
+                "away_pens": m.away_pens,
+                "sport": m.sport,
+                "set_scores": m.set_scores,
+                "current_period": m.current_period,
             })
         return Response({
             "tournament": {
@@ -1041,3 +1050,44 @@ class PublicTournamentScheduleView(GenericAPIView):
             },
             "matches": matches,
         })
+
+
+class PublicTournamentStandingsView(GenericAPIView):
+    """`GET /api/public/tournaments/{slug}/{id}/standings/` — public
+    read-only standings (control room spec 2026-06-12 §2.d). AllowAny; same
+    (slug, UUID) + public-status gating as the public schedule. Body mirrors
+    TournamentStandingsView — `{groups: [{group_label, rows}]}` via
+    compute_standings verbatim (rows are team aggregates, public-safe)."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, slug, tournament_id):
+        from apps.matches.models import Match
+        from apps.matches.services.standings import compute_standings
+        from apps.tournaments.models import TournamentStatus
+
+        public_statuses = (
+            TournamentStatus.REGISTRATION_OPEN,
+            TournamentStatus.SCHEDULED,
+            TournamentStatus.LIVE,
+            TournamentStatus.COMPLETED,
+        )
+        t = Tournament.objects.filter(
+            id=tournament_id,
+            slug=slug,
+            deleted_at__isnull=True,
+            status__in=public_statuses,
+        ).first()
+        if t is None:
+            raise NotFound("tournament_not_found")
+        labels = sorted(
+            set(
+                Match.objects.filter(tournament=t, deleted_at__isnull=True)
+                .values_list("group_label", flat=True)
+            )
+        )
+        groups = [
+            {"group_label": lbl, "rows": compute_standings(t, group_label=lbl)}
+            for lbl in labels
+        ]
+        return Response({"groups": groups})

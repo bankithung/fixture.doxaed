@@ -124,3 +124,28 @@ def test_public_schedule_hidden_in_private_statuses(status):
 def test_wrong_slug_is_404():
     _admin, t, _matches = _setup()
     assert _get(t, slug="some-other-slug").status_code == 404
+
+
+def test_public_schedule_carries_live_points_fields():
+    """Control room increment 4 (spec 2026-06-12 §2.d): the public schedule
+    rows expose pens/sport/set_scores/current_period so the public page can
+    render shootout results + set points live. Same PII posture as before."""
+    _admin, t, matches = _setup(status=TournamentStatus.LIVE)
+    m = matches[0]
+    m.sport = "table_tennis"
+    m.set_scores = [[11, 8], [9, 11], [11, 7]]
+    m.home_score, m.away_score = 2, 1
+    m.home_pens, m.away_pens = 4, 3
+    m.current_period = "first_half"
+    m.save(update_fields=[
+        "sport", "set_scores", "home_score", "away_score",
+        "home_pens", "away_pens", "current_period",
+    ])
+
+    body = _get(t).json()
+    row = next(r for r in body["matches"] if r["id"] == str(m.id))
+    assert row["home_pens"] == 4 and row["away_pens"] == 3
+    assert row["sport"] == "table_tennis"
+    assert row["set_scores"] == [[11, 8], [9, 11], [11, 7]]
+    assert row["current_period"] == "first_half"
+    assert row["home_score"] == 2 and row["away_score"] == 1
