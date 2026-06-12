@@ -124,7 +124,7 @@ describe("ScheduleChangesPanel", () => {
     vi.mocked(tournamentsApi.scheduleChanges).mockResolvedValue({ results: [] });
     mount();
     expect(
-      await screen.findByText(/No schedule changes yet/),
+      await screen.findByText(/No changes yet. Any match you move or delay will show up here./),
     ).toBeInTheDocument();
   });
 });

@@ -21,36 +21,54 @@ const VIOLATION: PreviewViolation = {
 };
 
 describe("ViolationsPanel", () => {
-  it("renders the all-clear quality strip when there are no violations", () => {
-    render(<ViolationsPanel violations={[]} softScore={0.87} />);
+  it("says the schedule works when nothing is broken", () => {
+    render(<ViolationsPanel violations={[]} />);
     expect(screen.getByTestId("soft-score")).toHaveTextContent(
-      "No hard violations",
+      "This schedule works. No rules are broken.",
     );
-    expect(screen.getByTestId("soft-score")).toHaveTextContent("87%");
+    expect(screen.queryByTestId("fix-rules-link")).toBeNull();
   });
 
-  it("explains hard violations from the stable code and offers relaxations", async () => {
+  it("counts the problems, explains them plainly and offers next steps", async () => {
     const onRelax = vi.fn();
+    const onFixRules = vi.fn();
     render(
       <ViolationsPanel
         violations={[VIOLATION]}
-        softScore={0.5}
         onRelax={onRelax}
+        onFixRules={onFixRules}
       />,
     );
+    expect(screen.getByTestId("soft-score")).toHaveTextContent(
+      "1 problem(s) need fixing before you publish.",
+    );
     const card = screen.getByTestId("violation-pinned_round_unplaced");
-    // localized title from the code (§9 A5), server message as the detail
-    expect(card).toHaveTextContent("A pinned round does not fit its window");
+    // plain title from the code (§7.7), server message as the detail
+    expect(card).toHaveTextContent(
+      "A round that is pinned to a date does not fit its day.",
+    );
     expect(card).toHaveTextContent(
       "The pinned round does not fit inside its window.",
     );
-    expect(card).toHaveTextContent("round_pinned_to_window");
+    // the raw tokens move off the card face into a support tooltip
+    expect(card).not.toHaveTextContent("round_pinned_to_window");
+    expect(card).toHaveAttribute(
+      "title",
+      "round_pinned_to_window · leaf:football.u15",
+    );
+    expect(screen.getByText("What you can do:")).toBeInTheDocument();
+    expect(screen.getByTestId("relax-add_day")).toHaveTextContent(
+      "Add another day",
+    );
     await userEvent.click(screen.getByTestId("relax-add_day"));
     expect(onRelax).toHaveBeenCalledWith(VIOLATION.relaxations[0], VIOLATION);
+    // the failure verdict links back to the rules
+    await userEvent.click(screen.getByTestId("fix-rules-link"));
+    expect(onFixRules).toHaveBeenCalled();
   });
 
   it("renders read-only (disabled) relaxations without onRelax", () => {
-    render(<ViolationsPanel violations={[VIOLATION]} softScore={null} />);
+    render(<ViolationsPanel violations={[VIOLATION]} />);
     expect(screen.getByTestId("relax-add_day")).toBeDisabled();
   });
 });

@@ -130,9 +130,9 @@ beforeEach(() => {
 });
 
 describe("DryRunPreviewPage", () => {
-  it("runs the pure simulate and renders the matches-by-day grid + quality", async () => {
+  it("runs the pure simulate, leads with the verdict and renders the day grid", async () => {
     mount();
-    // the simulate uses the SAME schedule payload Accept will send (§9 A1)
+    // the simulate uses the SAME schedule payload Publish will send (§9 A1)
     await waitFor(() =>
       expect(tournamentsApi.previewFixtures).toHaveBeenCalledWith("t1", {
         leaf_key: "football.u15",
@@ -143,17 +143,37 @@ describe("DryRunPreviewPage", () => {
         include_schedule: true,
       }),
     );
-    expect(await screen.findByTestId("day-2026-06-20")).toBeInTheDocument();
+    // step 3 journey header + the trial-run framing
+    expect(screen.getByText("Step 3 · Preview & publish")).toBeInTheDocument();
+    expect(
+      screen.getByText("This is a trial run. Nothing is saved until you publish."),
+    ).toBeInTheDocument();
+    // verdict first, in plain words
+    expect(await screen.findByTestId("soft-score")).toHaveTextContent(
+      "This schedule works. No rules are broken.",
+    );
+    expect(screen.getByTestId("day-2026-06-20")).toBeInTheDocument();
     expect(screen.getByTestId("day-2026-06-21")).toBeInTheDocument();
     expect(screen.getByTestId("chip-p1")).toHaveTextContent("Alpha FC");
     expect(screen.getByTestId("chip-p2")).toHaveTextContent("Winner of p1");
-    expect(screen.getByTestId("soft-score")).toHaveTextContent("91%");
-    expect(screen.getByTestId("preview-seed")).toHaveTextContent("1234567");
     // nothing persisted by the preview itself
     expect(tournamentsApi.generateFixtures).not.toHaveBeenCalled();
   });
 
-  it("Accept replays the previewed seed through generate + schedule with the hash guard", async () => {
+  it("keeps the draw number and quality behind the closed Advanced details", async () => {
+    mount();
+    await screen.findByTestId("day-2026-06-20");
+    // closed by default when nothing needs attention
+    expect(screen.queryByTestId("preview-seed")).toBeNull();
+    expect(screen.queryByTestId("schedule-quality")).toBeNull();
+    await userEvent.click(screen.getByTestId("advanced-details-toggle"));
+    expect(screen.getByTestId("preview-seed")).toHaveTextContent(
+      "Draw number 1234567",
+    );
+    expect(screen.getByTestId("schedule-quality")).toHaveTextContent("91%");
+  });
+
+  it("Publish replays the previewed seed through generate + schedule with the hash guard", async () => {
     mount();
     await userEvent.click(await screen.findByTestId("accept-preview"));
 
@@ -178,7 +198,7 @@ describe("DryRunPreviewPage", () => {
     );
   });
 
-  it("409 inputs_changed shows the InputsChangedBanner; re-preview re-simulates", async () => {
+  it("409 inputs_changed shows the banner; preview again re-simulates", async () => {
     vi.mocked(tournamentsApi.generateFixtures).mockRejectedValue(
       new ApiError(409, { detail: "inputs_changed", inputs_hash: "hash-2" }),
     );
@@ -199,7 +219,7 @@ describe("DryRunPreviewPage", () => {
     expect(screen.getByTestId("accept-preview")).toBeEnabled();
   });
 
-  it("Regenerate re-rolls the simulate; Discard leaves without persisting", async () => {
+  it("Try another draw re-rolls; Back without saving leaves without persisting", async () => {
     mount();
     await userEvent.click(await screen.findByTestId("regenerate-preview"));
     await waitFor(() =>
@@ -213,7 +233,7 @@ describe("DryRunPreviewPage", () => {
     expect(tournamentsApi.scheduleFixtures).not.toHaveBeenCalled();
   });
 
-  it("demote_to_soft relaxation patches the record soft and re-previews", async () => {
+  it("a hard violation blocks publishing, forces the details open and offers the one-click preference fix", async () => {
     const record = {
       type: "category_session_window", scope: "leaf:football.u15",
       hard: true, weight: 5, params: {},
@@ -238,23 +258,49 @@ describe("DryRunPreviewPage", () => {
     });
     mount();
 
+    // plain verdict + the failure link back to the rules
+    expect(await screen.findByTestId("soft-score")).toHaveTextContent(
+      "1 problem(s) need fixing before you publish.",
+    );
+    expect(screen.getByTestId("fix-rules-link")).toBeInTheDocument();
     expect(
-      await screen.findByTestId("violation-session_window_starved"),
+      screen.getByTestId("violation-session_window_starved"),
+    ).toHaveTextContent('A "must" time rule leaves these matches no room.');
+    // publishing a known-broken schedule is not the easy path
+    expect(screen.getByTestId("accept-preview")).toBeDisabled();
+    expect(screen.getByTestId("accept-preview")).toHaveAttribute(
+      "title",
+      "Fix the problems above first.",
+    );
+    // problems force the Advanced details open
+    expect(screen.getByTestId("advanced-details-toggle")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    // unscheduled matches explained in plain words
+    expect(screen.getByText("1 match(es) have no time yet")).toBeInTheDocument();
+    expect(
+      screen.getByText("Add another day or venue in Step 1, then preview again."),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getByTestId("relax-demote_to_soft"));
 
+    await userEvent.click(screen.getByTestId("relax-demote_to_soft"));
     await waitFor(() =>
       expect(tournamentsApi.updateSettings).toHaveBeenCalledWith("t1", {
         constraints: [{ ...record, hard: false }],
         event_id: expect.any(String),
       }),
     );
+    expect(
+      await screen.findByText(
+        "Done. That rule is now a preference, and the preview re-ran.",
+      ),
+    ).toBeInTheDocument();
     await waitFor(() =>
       expect(tournamentsApi.previewFixtures).toHaveBeenCalledTimes(2),
     );
   });
 
-  it("renders the per-team fairness analytics with the server's outlier flags", async () => {
+  it("fairness flags force the details open and render the plain explanations", async () => {
     vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
       ...PREVIEW,
       fairness: {
@@ -273,24 +319,22 @@ describe("DryRunPreviewPage", () => {
     });
     mount();
 
+    // flagged → no click needed, the panel is already visible
     const panel = await screen.findByTestId("fairness-panel");
     expect(panel).toBeInTheDocument();
-    // per-team metric rows (rest rendered as minutes/hours, font-tabular)
     expect(screen.getByTestId("fairness-row-tm1")).toHaveTextContent("Alpha FC");
     expect(screen.getByTestId("fairness-row-tm1")).toHaveTextContent("30m");
     expect(screen.getByTestId("fairness-row-tm2")).toHaveTextContent("3h");
-    // stable-code flags localized client-side (§9 A5)
     expect(screen.getByTestId("fairness-flag-rest_below_min")).toHaveTextContent(
-      "Alpha FC gets less rest than the configured minimum",
+      "Alpha FC gets less rest than your minimum",
     );
     expect(screen.getByTestId("fairness-flag-early_outlier")).toHaveTextContent(
-      "opens the day far more often than the median team",
+      "starts the day far more often than most teams",
     );
-    // short field → no collapse toggle
     expect(screen.queryByTestId("fairness-toggle")).toBeNull();
   });
 
-  it("collapses a long fairness table behind Show all", async () => {
+  it("collapses a long, unflagged fairness table behind Advanced details + Show all", async () => {
     const teams = Array.from({ length: 10 }, (_, i) => ({
       team_id: `tm${i + 1}`, name: `Team ${i + 1}`, rest_min: 60,
       rest_median: 90, early: 1, late: 1, venues: 1, max_per_day: 1,
@@ -301,7 +345,9 @@ describe("DryRunPreviewPage", () => {
     });
     mount();
 
-    await screen.findByTestId("fairness-panel");
+    await screen.findByTestId("day-2026-06-20");
+    expect(screen.queryByTestId("fairness-panel")).toBeNull();
+    await userEvent.click(screen.getByTestId("advanced-details-toggle"));
     expect(screen.getAllByTestId(/^fairness-row-/)).toHaveLength(8);
     await userEvent.click(screen.getByTestId("fairness-toggle"));
     expect(screen.getAllByTestId(/^fairness-row-/)).toHaveLength(10);
@@ -310,16 +356,33 @@ describe("DryRunPreviewPage", () => {
   it("omits the fairness panel when the preview carries no per-team data", async () => {
     mount();
     await screen.findByTestId("day-2026-06-20");
+    await userEvent.click(screen.getByTestId("advanced-details-toggle"));
     expect(screen.queryByTestId("fairness-panel")).toBeNull();
+    expect(screen.getByTestId("preview-seed")).toBeInTheDocument();
   });
 
-  it("asks for the global setup when no calendar exists yet", async () => {
+  it("asks for Step 1 when no calendar exists yet", async () => {
     vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
       draw_config: {},
       defaults: { format: "round_robin" } as unknown as DrawConfig,
     });
     mount();
-    expect(await screen.findByText("Calendar not set")).toBeInTheDocument();
+    expect(await screen.findByText("Step 1 is not finished")).toBeInTheDocument();
+    expect(
+      screen.getByText("The preview needs your tournament dates. Set them in Step 1 first."),
+    ).toBeInTheDocument();
     expect(tournamentsApi.previewFixtures).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Open Step 1" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("fixtures-page")).toBeInTheDocument(),
+    );
+  });
+
+  it("publishing toasts in plain words", async () => {
+    mount();
+    await userEvent.click(await screen.findByTestId("accept-preview"));
+    expect(
+      await screen.findByText("Published. 2 matches are on the schedule."),
+    ).toBeInTheDocument();
   });
 });

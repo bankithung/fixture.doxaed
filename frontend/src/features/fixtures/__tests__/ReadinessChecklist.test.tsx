@@ -35,20 +35,26 @@ const COMPETITION: ReadinessCompetition = {
 };
 
 describe("ReadinessChecklist", () => {
-  it("shows the summary, progress bar and per-check hints", () => {
+  it("captions the server summary in plain words with the progress bar and hints", () => {
     render(<ReadinessChecklist competition={COMPETITION} />);
-    expect(screen.getByText(/3\/5/)).toBeInTheDocument();
+    // the server's "3/5" summary, never recomputed client-side
+    expect(screen.getByText("3 of 5 checks passed")).toBeInTheDocument();
     const bar = screen.getByRole("progressbar", {
-      name: /Readiness — Football · U15/,
+      name: "Setup progress for Football · U15",
     });
     expect(bar).toHaveAttribute("aria-valuenow", "3");
     expect(bar).toHaveAttribute("aria-valuemax", "5");
+    // §7.3 plain labels with the server hint as the detail
+    expect(screen.getByText("Teams registered")).toBeInTheDocument();
+    expect(screen.getByText("Seed numbers")).toBeInTheDocument();
+    expect(screen.getByText("Scheduling rules checked")).toBeInTheDocument();
+    expect(screen.getByText("Current draw")).toBeInTheDocument();
     expect(screen.getByText("4 registered teams")).toBeInTheDocument();
     expect(
       screen.getByText("No venues defined — add at least one."),
     ).toBeInTheDocument();
     // no onFix → hints only, no action buttons
-    expect(screen.queryByRole("button", { name: /Fix/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Fix this" })).toBeNull();
   });
 
   it("deep-links fixable checks and skips unknown fix targets", async () => {
@@ -60,7 +66,7 @@ describe("ReadinessChecklist", () => {
         fixable={new Set(["venues", "constraints"])}
       />,
     );
-    const buttons = screen.getAllByRole("button", { name: /Fix/ });
+    const buttons = screen.getAllByRole("button", { name: "Fix this" });
     // "diff" is not fixable yet → only venues + constraints get buttons
     expect(buttons).toHaveLength(2);
     await userEvent.click(buttons[0]);

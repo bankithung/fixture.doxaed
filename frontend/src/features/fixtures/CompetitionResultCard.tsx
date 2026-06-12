@@ -49,7 +49,7 @@ function Row({
       {match.locked_at ? (
         <span
           data-testid={`locked-${match.id}`}
-          title={t("Slot locked — re-runs and cascades will not move it")}
+          title={t("This match is pinned. Re-runs and delays will not move it.")}
           className="inline-flex shrink-0 items-center rounded-full bg-muted px-1 py-0.5 text-muted-foreground"
         >
           <Lock aria-hidden="true" className="h-3 w-3" />
@@ -124,8 +124,8 @@ export function CompetitionResultCard({
   return (
     <div className="flex flex-col gap-3" data-testid="competition-result-card">
       <p className="font-tabular text-xs text-muted-foreground">
-        {played}/{matches.length} {t("played")} ·{" "}
-        {t("read-only — scores are entered in the match console")}
+        {played} {t("of")} {matches.length} {t("played.")}{" "}
+        {t("Scores are entered in the match console.")}
       </p>
       <div className={cn("grid gap-3", groups.length > 1 && "md:grid-cols-2")}>
         {groups.map(([label, ms]) => (

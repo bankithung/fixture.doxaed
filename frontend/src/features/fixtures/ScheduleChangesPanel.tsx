@@ -94,9 +94,9 @@ function Entry({ e }: { e: ScheduleChangeEntry }): React.ReactElement {
 }
 
 /**
- * The hub's change-history feed (trust layer, increment F): reverse-chrono
- * per-match slot changes flattened from the audit log — who moved what,
- * from where to where, when and why. Leaf filter + "load more" via limit.
+ * The Advanced-tools change-history feed (trust layer, increment F):
+ * reverse-chrono per-match slot changes flattened from the audit log — who
+ * moved what, from where to where, when and why. Leaf filter + "load more".
  */
 export function ScheduleChangesPanel({
   tournamentId,
@@ -125,9 +125,9 @@ export function ScheduleChangesPanel({
     >
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
         <History aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
-        <h3 className="text-sm font-semibold">{t("Schedule changes")}</h3>
+        <h3 className="text-sm font-semibold">{t("Change history")}</h3>
         <p className="hidden text-xs text-muted-foreground sm:block">
-          {t("every slot move, audited")}
+          {t("Every time and venue change, with who did it and why.")}
         </p>
         {competitions.length > 0 ? (
           <Select
@@ -152,7 +152,7 @@ export function ScheduleChangesPanel({
         </div>
       ) : entries.length === 0 ? (
         <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-          {t("No schedule changes yet — repairs and re-runs will appear here.")}
+          {t("No changes yet. Any match you move or delay will show up here.")}
         </p>
       ) : (
         <>

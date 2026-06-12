@@ -93,7 +93,7 @@ describe("ConstraintRow", () => {
         params_schema: { team_id: "str", dates: "list" },
         scopes: ["team"], layer: "S" },
     );
-    await userEvent.click(screen.getByRole("button", { name: "Team — constraint 1" }));
+    await userEvent.click(screen.getByRole("button", { name: "Team, rule 1" }));
     await userEvent.click(screen.getByRole("option", { name: "Bravo" }));
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -126,7 +126,7 @@ describe("ConstraintRow", () => {
     );
   });
 
-  it("soft records expose a 1-10 weight; switching to Hard hides it", async () => {
+  it("preferences expose a 1-10 strength; switching to Must hides it", async () => {
     const record: ConstraintRecord = {
       type: "preferred_window", scope: "all", hard: false, weight: 5,
       params: { days: [], from: "09:00", to: "12:00" },
@@ -156,7 +156,7 @@ describe("ConstraintRow", () => {
         params_schema: { minutes: "int" }, scopes: ["all", "leaf"], layer: "S" },
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Scope — constraint 1" }),
+      screen.getByRole("button", { name: "Scope, rule 1" }),
     );
     await userEvent.click(screen.getByRole("option", { name: "Football · U15" }));
     expect(onChange).toHaveBeenCalledWith(

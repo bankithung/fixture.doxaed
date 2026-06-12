@@ -7,15 +7,16 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
-/** Human labels per server check id (§5.1) — the hint carries the detail. */
+/** Plain labels per server check id (clarity rebuild §7.3) — the server hint
+ * keeps rendering after the label as the detail. */
 const CHECK_LABELS: Record<string, string> = {
-  enough_teams: "Enough teams",
-  format_chosen: "Format chosen",
-  seeds_set: "Seeds set",
-  calendar_set: "Calendar set",
-  venues_defined: "Venues defined",
-  constraints_reviewed: "Constraints reviewed",
-  already_generated: "Existing draw",
+  enough_teams: "Teams registered",
+  format_chosen: "Format picked",
+  seeds_set: "Seed numbers",
+  calendar_set: "Tournament dates",
+  venues_defined: "Venues",
+  constraints_reviewed: "Scheduling rules checked",
+  already_generated: "Current draw",
 };
 
 function StatusIcon({ status }: { status: string }): React.ReactElement {
@@ -38,10 +39,11 @@ function StatusIcon({ status }: { status: string }): React.ReactElement {
 }
 
 /**
- * One competition's server-computed readiness (redesign §6 screen 1): "3/5
- * ready" + progress bar, then every §5.1 check with its status icon, hint
- * and — when the hub can act on it — a deep-link Fix button. The FE never
- * recomputes these checks; it renders what the endpoint said.
+ * One competition's server-computed readiness, rendered as the "what's
+ * missing" detail (clarity rebuild §4.1): a caption + progress bar, then
+ * every §5.1 check with its status icon, hint and — when the hub can act on
+ * it — a deep-link "Fix this" button. The FE never recomputes these checks;
+ * it renders what the endpoint said.
  */
 export function ReadinessChecklist({
   competition,
@@ -71,11 +73,11 @@ export function ReadinessChecklist({
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-3">
         <span className="font-tabular text-xs text-muted-foreground">
-          {competition.summary} {t("ready")}
+          {t(`${ok} of ${total} checks passed`)}
         </span>
         <div
           role="progressbar"
-          aria-label={t(`Readiness — ${competition.label}`)}
+          aria-label={t(`Setup progress for ${competition.label}`)}
           aria-valuemin={0}
           aria-valuemax={total}
           aria-valuenow={ok}
@@ -117,7 +119,7 @@ export function ReadinessChecklist({
                 className="ml-auto h-7 px-2 text-xs text-primary"
                 onClick={() => onFix!(c.fix!, competition.leaf_key)}
               >
-                {t("Fix")}
+                {t("Fix this")}
               </Button>
             ) : null}
           </li>

@@ -7,49 +7,50 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
-/** Localized titles per stable violation code (§9 A5 — the FE renders from
- * the code; the gettext server message is only the unknown-code fallback). */
+/** Plain titles per stable violation code (§7.7 — the FE renders from the
+ * code; the gettext server message is only the unknown-code fallback). */
 const VIOLATION_TITLES: Record<string, string> = {
-  pinned_round_unplaced: "A pinned round does not fit its window",
-  session_window_starved: "A hard session window starves these matches",
-  matches_unplaced: "Some matches could not be placed",
+  pinned_round_unplaced: "A round that is pinned to a date does not fit its day.",
+  session_window_starved: 'A "must" time rule leaves these matches no room.',
+  matches_unplaced: "Some matches could not be given a time and venue.",
 };
 
-/** Localized labels per relaxation code — concrete next steps, never a
- * generic error (§3 infeasibility contract). */
+/** Plain labels per relaxation code — concrete next steps, never a generic
+ * error (§3 infeasibility contract). */
 const RELAXATION_LABELS: Record<string, string> = {
-  demote_to_soft: "Make it a preference (soft)",
-  add_day: "Add a day",
-  add_venue: "Add a venue",
-  raise_max_per_day: "Raise the per-day cap",
+  demote_to_soft: "Make this rule a preference instead",
+  add_day: "Add another day",
+  add_venue: "Add another venue",
+  raise_max_per_day: "Allow more matches per team per day",
 };
 
 /**
- * The dry-run preview's violations panel (redesign §6 screen 5): hard
- * failures in destructive framing with plain-language explanations and
- * actionable relaxation buttons; soft notes in warning framing; the
- * soft-score quality strip on top.
+ * The preview's verdict (clarity rebuild §4.4): one lead sentence — the
+ * schedule works, or {n} problems need fixing — then each problem as a card
+ * with plain-language explanation and actionable relaxation buttons. Soft
+ * notes render in warning framing. The quality figure lives in the page's
+ * Advanced details, not here.
  */
 export function ViolationsPanel({
   violations,
-  softScore,
   onRelax,
+  onFixRules,
 }: {
   violations: PreviewViolation[];
-  /** 0–1 schedule quality; null when the preview skipped scheduling. */
-  softScore: number | null;
   /** Apply/route a relaxation; omit to render the suggestions read-only. */
   onRelax?: (relaxation: PreviewRelaxation, violation: PreviewViolation) => void;
+  /** Failure-verdict link back to fixture setup (the rules live there). */
+  onFixRules?: () => void;
 }): React.ReactElement {
   const hard = violations.filter((v) => v.hard);
   const soft = violations.filter((v) => !v.hard);
 
   return (
-    <section className="flex flex-col gap-2" aria-label={t("Constraint check")}>
+    <section className="flex flex-col gap-2" aria-label={t("Schedule check")}>
       <div
         data-testid="soft-score"
         className={cn(
-          "flex items-center gap-2 rounded-lg border px-3 py-2",
+          "flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2",
           hard.length
             ? "border-destructive/40 bg-destructive-muted"
             : "border-success/40 bg-success-muted",
@@ -62,20 +63,27 @@ export function ViolationsPanel({
         )}
         <p className="text-sm font-medium">
           {hard.length
-            ? `${hard.length} ${t("hard constraint violation(s)")}`
-            : t("No hard violations")}
-          {softScore != null ? (
-            <span className="font-tabular text-muted-foreground">
-              {" "}· {t("Schedule quality")} {Math.round(softScore * 100)}%
-            </span>
-          ) : null}
+            ? t(`${hard.length} problem(s) need fixing before you publish.`)
+            : t("This schedule works. No rules are broken.")}
         </p>
+        {hard.length && onFixRules ? (
+          <button
+            type="button"
+            data-testid="fix-rules-link"
+            className="ml-auto text-sm font-medium text-primary hover:underline"
+            onClick={onFixRules}
+          >
+            {t("Fix the rules in fixture setup")}
+          </button>
+        ) : null}
       </div>
 
       {[...hard, ...soft].map((v, i) => (
         <div
           key={`${v.code}-${i}`}
           data-testid={`violation-${v.code}`}
+          // The raw constraint tokens stay reachable for support/debugging.
+          title={v.constraint ? `${v.constraint.type} · ${v.constraint.scope}` : undefined}
           className={cn(
             "flex flex-col gap-1.5 rounded-lg border p-3",
             v.hard
@@ -99,18 +107,15 @@ export function ViolationsPanel({
                 {v.matches.length} {t("match(es)")}
               </span>
             ) : null}
-            {v.constraint ? (
-              <span className="rounded-full bg-muted px-2 py-0.5 font-tabular text-[0.6875rem] text-muted-foreground">
-                {v.constraint.type} · {v.constraint.scope}
-              </span>
-            ) : null}
           </div>
-          {/* Plain-language explanation: the localized title above carries the
-              code; the server message adds the wordy fallback detail. */}
+          {/* Plain-language title above carries the code; the server message
+              adds the wordy fallback detail. */}
           <p className="text-xs text-muted-foreground">{v.message}</p>
           {v.relaxations.length ? (
             <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-              <span className="text-xs text-muted-foreground">{t("Try:")}</span>
+              <span className="text-xs text-muted-foreground">
+                {t("What you can do:")}
+              </span>
               {v.relaxations.map((r, j) => (
                 <Button
                   key={`${r.code}-${j}`}

@@ -316,15 +316,15 @@ export function GlobalSetupWizard({
     },
     onSuccess: () => {
       invalidateTournament(qc, tournamentId);
-      toast.push({ kind: "success", title: t("Global setup saved") });
+      toast.push({ kind: "success", title: t("Step 1 saved") });
       onClose();
     },
     onError: (e) =>
       toast.push({
         kind: "error",
-        title: t("Could not save the global setup"),
+        title: t("Could not save. Try again."),
         description:
-          e instanceof ApiError ? (e.payload.detail ?? "") : t("Try again."),
+          e instanceof ApiError ? (e.payload.detail ?? "") : undefined,
       }),
   });
 
@@ -340,13 +340,13 @@ export function GlobalSetupWizard({
         if (!o) onClose();
       }}
       variant="sheet"
-      ariaLabel={t("Global setup")}
+      ariaLabel={t("Step 1 · When & where")}
     >
       <DialogHeader>
-        <DialogTitle>{t("Global setup")}</DialogTitle>
+        <DialogTitle>{t("Step 1 · When & where")}</DialogTitle>
         <DialogDescription>
           {t(
-            "Asked once, edited forever — calendar, venues and defaults apply to every competition's draw and schedule.",
+            "Answer these once. Every competition's schedule is built from them, and you can come back and change them any time.",
           )}
         </DialogDescription>
       </DialogHeader>
@@ -375,15 +375,15 @@ export function GlobalSetupWizard({
               </Field>
             </div>
             <BlackoutDatesField
-              label={t("Blackout dates")}
-              hint={t("Exams, holidays — no matches on these days.")}
+              label={t("Days off")}
+              hint={t("No matches on these days (exams, holidays).")}
               value={form.blackouts}
               onChange={(v) => set("blackouts", v)}
               testId="blackouts"
             />
             <BlackoutDatesField
-              label={t("Reserve days")}
-              hint={t("Kept free at generation as rain/repair buffer days.")}
+              label={t("Spare days")}
+              hint={t("Kept free as a buffer. If rain washes out a day, matches move here.")}
               value={form.reserves}
               onChange={(v) => set("reserves", v)}
               testId="reserves"
@@ -405,7 +405,7 @@ export function GlobalSetupWizard({
           <div className="flex flex-col gap-3">
             <p className="text-xs text-muted-foreground">
               {t(
-                "Your venue pool — shared by every competition. A hall with 4 tables runs 4 matches in parallel.",
+                "Your venues, shared by every competition. A hall with 4 courts runs 4 matches at the same time.",
               )}
             </p>
             {form.venues.map((v, i) => (
@@ -441,21 +441,26 @@ export function GlobalSetupWizard({
         ) : step === 2 ? (
           <div className="flex flex-col gap-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label={t("Earliest kickoff")}>
+              <Field label={t("First match of the day starts at")}>
                 <Input
                   type="time"
                   value={form.daily_start}
                   onChange={(e) => set("daily_start", e.target.value)}
                 />
               </Field>
-              <Field label={t("Latest kickoff")}>
+              <Field label={t("Last match must start by")}>
                 <Input
                   type="time"
                   value={form.daily_end}
                   onChange={(e) => set("daily_end", e.target.value)}
                 />
               </Field>
-              <Field label={t("Match length (minutes, incl. turnaround)")}>
+            </div>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {t("Pace")}
+            </h4>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={t("Minutes per match (including changeover)")}>
                 <Input
                   type="number"
                   min={10}
@@ -464,7 +469,7 @@ export function GlobalSetupWizard({
                 />
               </Field>
               <Field
-                label={t("Minimum rest between a team's matches (minutes)")}
+                label={t("Shortest break between a team's matches (minutes)")}
               >
                 <Input
                   type="number"
@@ -473,7 +478,7 @@ export function GlobalSetupWizard({
                   onChange={(e) => set("rest_minutes", Number(e.target.value))}
                 />
               </Field>
-              <Field label={t("Max matches per team per day")}>
+              <Field label={t("Most matches a team plays in one day")}>
                 <Input
                   type="number"
                   min={1}
@@ -497,24 +502,26 @@ export function GlobalSetupWizard({
           <dl className="grid gap-2 text-sm sm:grid-cols-2">
             <Row
               k={t("Dates")}
-              v={`${form.date_start || "—"} → ${form.date_end || "—"}`}
+              v={`${form.date_start || t("not set")} ${t("to")} ${form.date_end || t("not set")}`}
             />
             <Row
-              k={t("Daily window")}
-              v={`${form.daily_start}–${form.daily_end} · ${form.slot_minutes} ${t("min slots")}`}
+              k={t("Play times")}
+              v={t(
+                `${form.daily_start} to ${form.daily_end}, ${form.slot_minutes} min per match`,
+              )}
             />
             <Row
               k={t("Venues")}
               v={String(form.venues.filter((v) => v.name.trim()).length)}
             />
             <Row
-              k={t("Rest & caps")}
-              v={`${form.rest_minutes} ${t("min rest")} · ${t("max")} ${form.max_per_day}/${t("day")}`}
+              k={t("Breaks")}
+              v={t(
+                `${form.rest_minutes} min between matches, max ${form.max_per_day} per day`,
+              )}
             />
-            <Row
-              k={t("Blackouts / reserves")}
-              v={`${form.blackouts.length} / ${form.reserves.length}`}
-            />
+            <Row k={t("Days off")} v={String(form.blackouts.length)} />
+            <Row k={t("Spare days")} v={String(form.reserves.length)} />
             <Row
               k={t("Ceremonies")}
               v={
@@ -523,12 +530,12 @@ export function GlobalSetupWizard({
                   form.closing?.date ? t("closing") : null,
                 ]
                   .filter(Boolean)
-                  .join(" · ") || t("none")
+                  .join(", ") || t("none")
               }
             />
             <Row
               k={t("Sunday mornings")}
-              v={form.sunday_church ? t("Blocked until 13:00") : t("Open")}
+              v={form.sunday_church ? t("Free until 13:00") : t("Open")}
             />
           </dl>
         )}
@@ -558,7 +565,7 @@ export function GlobalSetupWizard({
               onClick={() => save.mutate()}
             >
               <Sparkles aria-hidden="true" className="h-4 w-4" />
-              {save.isPending ? t("Saving…") : t("Save global setup")}
+              {save.isPending ? t("Saving…") : t("Save")}
             </Button>
           )}
         </div>

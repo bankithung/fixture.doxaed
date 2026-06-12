@@ -1,14 +1,15 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarRange,
+  ChevronDown,
   GitBranch,
   GitMerge,
   Layers,
   ListChecks,
   Pencil,
-  Save,
   Shuffle,
+  SlidersHorizontal,
   Wand2,
 } from "lucide-react";
 import {
@@ -46,6 +47,7 @@ type UiFormat =
   | "swiss"
   | "double_elim";
 
+/** §7.5 format hints — one plain sentence each. */
 const FORMATS: {
   key: UiFormat;
   label: string;
@@ -55,52 +57,52 @@ const FORMATS: {
   {
     key: "league",
     label: "League",
-    hint: "Everyone plays everyone — a single table decides it.",
+    hint: "Everyone plays everyone once. The table decides the winner.",
     icon: ListChecks,
   },
   {
     key: "groups",
     label: "Groups",
-    hint: "Round-robin inside groups of N — standings per group.",
+    hint: "Teams split into groups and play within them. Each group gets its own table.",
     icon: Layers,
   },
   {
     key: "knockout",
     label: "Knockout",
-    hint: "Single elimination. Byes are added automatically.",
+    hint: "Lose and you're out. Byes are added automatically if needed.",
     icon: GitBranch,
   },
   {
     key: "groups_knockout",
     label: "Groups → Knockout",
-    hint: "Group stage now; the top N of each group advance to a bracket.",
+    hint: "Groups first, then the top teams from each group go into a knockout bracket.",
     icon: Wand2,
   },
   {
     key: "swiss",
     label: "Swiss",
-    hint: "A fixed number of rounds — each round pairs similar records, never repeating a pairing.",
+    hint: "A set number of rounds. Each round pairs teams with similar results, never repeating a match.",
     icon: Shuffle,
   },
   {
     key: "double_elim",
     label: "Double elimination",
-    hint: "Lose once and drop to the losers bracket; lose twice and you're out.",
+    hint: "Lose once and you drop to a second bracket. Lose twice and you're out.",
     icon: GitMerge,
   },
 ];
 
 const SEEDING_OPTIONS = [
-  { value: "registration", label: "Registration order" },
-  { value: "random", label: "Random draw (replayable)" },
-  { value: "snake", label: "Snake — spread by seed" },
-  { value: "seeded", label: "Seeded — strict seed order" },
+  { value: "registration", label: "In registration order" },
+  { value: "random", label: "Random draw" },
+  { value: "snake", label: "Spread the top seeds apart" },
+  { value: "seeded", label: "Strict seed order (1 plays lowest)" },
 ];
 
 /** Groups→knockout bracket-pool order (increment O). */
 const KNOCKOUT_SEEDING_OPTIONS = [
-  { value: "cross", label: "Cross-group — A1 vs B2" },
-  { value: "overall", label: "Overall record — best vs worst" },
+  { value: "cross", label: "Winners meet other groups' runners-up" },
+  { value: "overall", label: "Best record plays worst record" },
 ];
 
 /** The backend's auto round count when swiss_rounds is unset: ceil(log2 n),
@@ -155,16 +157,17 @@ interface Form {
 }
 
 /**
- * Per-competition format wizard (redesign §6 screen 3; evolves the old
- * GenerateDrawWizard). Asks ONLY the per-competition questions — format,
- * group size, advance-per-group, legs, seeding (with a SeedListEditor for
- * `seeded`), third place — and shows the asked-once globals read-only in the
- * header with an Edit link (tenet 1: never re-ask what is known).
+ * Step 2 of the journey (clarity rebuild §4.3): how ONE competition plays.
+ * The main path is just the six format cards plus the per-format essential
+ * knob; seeding, legs, third place, plate, best-thirds and bracket seeding
+ * live behind an "Advanced options" disclosure. The asked-once Step 1
+ * answers show read-only in the header with an Edit link (never re-asked).
  *
- * "Save format" persists `draw_config[leaf]` via the draw-config PATCH
- * WITHOUT generating; "Save & generate draw" then generates from the stored
- * config (bare `{leaf_key}` body — §4.5). Mount conditionally so each opening
- * reseeds from the stored layers.
+ * "Save for later" persists `draw_config[leaf]` via the draw-config PATCH
+ * WITHOUT generating; "Preview the draw" persists then hands off to the
+ * full-page preview; "Create the draw" (no-preview fallback) generates from
+ * the stored config (bare `{leaf_key}` body — §4.5). Mount conditionally so
+ * each opening reseeds from the stored layers.
  */
 export function CompetitionFormatWizard({
   tournamentId,
@@ -173,6 +176,7 @@ export function CompetitionFormatWizard({
   leafKey,
   leafLabel,
   teams,
+  focusSeeds = false,
   onGenerated,
   onPreview,
   onEditGlobals,
@@ -185,19 +189,23 @@ export function CompetitionFormatWizard({
   leafLabel: string;
   /** Registered teams in this competition (count + seed-editor prefill). */
   teams: TeamRow[];
+  /** Opened via the seeds Fix action — Advanced starts open, seed list in view. */
+  focusSeeds?: boolean;
   /** Called after a successful generation — chain the schedule wizard here. */
   onGenerated: (opts: { leafKey: string; label: string }) => void;
-  /** Dry-run path (redesign §6 screen 5): when set, the primary CTA becomes
-   * "Preview & generate" — save the format, then hand off to the full-page
-   * preview instead of generating directly. */
+  /** Preview path (§4.4): when set, the primary CTA becomes "Preview the
+   * draw" — save the format, then hand off to the full-page preview instead
+   * of generating directly. */
   onPreview?: (opts: { leafKey: string; label: string }) => void;
-  /** Reopen the GlobalSetupWizard (the header's Edit link). */
+  /** Reopen the Step 1 wizard (the header's Edit link). */
   onEditGlobals?: () => void;
 }): React.ReactElement {
   const qc = useQueryClient();
   const toast = useToast();
   const teamCount = teams.length;
   const [form, setForm] = useState<Form | null>(null);
+  const [advanced, setAdvanced] = useState(focusSeeds);
+  const seedsRef = useRef<HTMLDivElement>(null);
   const set = <K extends keyof Form>(k: K, v: Form[K]): void =>
     setForm((f) => (f ? { ...f, [k]: v } : f));
 
@@ -249,6 +257,14 @@ export function CompetitionFormatWizard({
   }
 
   const f = form;
+
+  // Seeds deep-link: once the seed list is on screen, scroll it into view.
+  useEffect(() => {
+    if (focusSeeds && f?.seeding === "seeded") {
+      seedsRef.current?.scrollIntoView?.({ block: "center" });
+    }
+  }, [focusSeeds, f?.seeding]);
+
   const needsGroups = f?.ui === "groups" || f?.ui === "groups_knockout";
   // Third place + plate apply to the single-elim knockout family only —
   // double elimination ignores both (the losers bracket IS the consolation
@@ -263,7 +279,7 @@ export function CompetitionFormatWizard({
   const advanceInvalid =
     f?.ui === "groups_knockout" && f.advance >= Math.max(2, f.groupSize);
 
-  /** The sparse layer "Save format" persists (always self-consistent so the
+  /** The sparse layer the wizard persists (always self-consistent so the
    * server's advance_per_group < group_size validation holds — §9 A8). */
   const buildConfig = (): DrawConfigLayer => {
     if (!f) return {};
@@ -322,7 +338,7 @@ export function CompetitionFormatWizard({
       toast.push({
         kind: "success",
         title: t("Format saved"),
-        description: t("No draw generated yet — run it whenever you're ready."),
+        description: t("No draw made yet. Come back and preview whenever you're ready."),
       });
       onClose();
     },
@@ -335,8 +351,8 @@ export function CompetitionFormatWizard({
       }),
   });
 
-  /** Dry-run handoff: persist the format, then open the full-page preview —
-   * generation/scheduling happen there on Accept (§5.2, nothing persists
+  /** Preview handoff: persist the format, then open the full-page preview —
+   * generation/scheduling happen there on Publish (§5.2, nothing persists
    * before that). */
   const saveAndPreview = useMutation({
     mutationFn: persist,
@@ -366,12 +382,12 @@ export function CompetitionFormatWizard({
       invalidateTournament(qc, tournamentId);
       toast.push({
         kind: "success",
-        title: t(`Draw generated — ${data.generated} matches`),
+        title: t(`Draw created - ${data.generated} matches`),
         description:
           f?.ui === "groups_knockout"
-            ? t('Group stage created. Once groups finish, use "Advance to knockout".')
+            ? t('Group stage created. When the groups finish, come back and tap "Build the bracket".')
             : f?.ui === "swiss"
-              ? t('Round 1 drawn. Once every match finishes, use "Generate next round".')
+              ? t('Round 1 drawn. When every match finishes, tap "Pair the next round".')
               : undefined,
       });
       onClose();
@@ -380,7 +396,7 @@ export function CompetitionFormatWizard({
     onError: (e) =>
       toast.push({
         kind: "error",
-        title: t("Could not generate the draw"),
+        title: t("Could not create the draw"),
         description:
           e instanceof ApiError ? (e.payload.detail ?? undefined) : undefined,
       }),
@@ -390,6 +406,9 @@ export function CompetitionFormatWizard({
     saveFormat.isPending || saveAndGenerate.isPending || saveAndPreview.isPending;
   const cal = drawConfig.data?.draw_config["*"]?.calendar;
   const venueCount = venues.data?.venues.length ?? 0;
+  const title = leafLabel
+    ? t(`Step 2 · How ${leafLabel} plays`)
+    : t("Step 2 · How this competition plays");
 
   return (
     <Dialog
@@ -398,20 +417,18 @@ export function CompetitionFormatWizard({
         if (!o) onClose();
       }}
       variant="sheet"
-      ariaLabel={t("Competition format")}
+      ariaLabel={title}
     >
       <DialogHeader>
-        <DialogTitle>
-          {leafLabel ? t(`Format — ${leafLabel}`) : t("Competition format")}
-        </DialogTitle>
+        <DialogTitle>{title}</DialogTitle>
         <DialogDescription>
           {t(
-            `${teamCount} registered teams. Pick a format — every competition can use a different one.`,
+            `${teamCount} teams are in. Pick how they play each other. Each competition can be different.`,
           )}
         </DialogDescription>
       </DialogHeader>
 
-      {/* Asked-once globals: read-only context, never re-asked (tenet 1). */}
+      {/* The Step 1 receipt: read-only context, never re-asked (tenet 1). */}
       <div
         data-testid="globals-strip"
         className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
@@ -419,15 +436,14 @@ export function CompetitionFormatWizard({
         <CalendarRange aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
         <span className="font-tabular">
           {cal?.date_start && cal?.date_end
-            ? `${fmtDay(cal.date_start)} – ${fmtDay(cal.date_end)}`
+            ? `${fmtDay(cal.date_start)} ${t("to")} ${fmtDay(cal.date_end)}`
             : t("Dates not set")}
         </span>
         <span aria-hidden="true">·</span>
         <span className="font-tabular">
           {venueCount} {venueCount === 1 ? t("venue") : t("venues")}
         </span>
-        <span aria-hidden="true">·</span>
-        <span>{t("From global setup")}</span>
+        <span>{t("Dates and venues come from Step 1.")}</span>
         {onEditGlobals ? (
           <button
             type="button"
@@ -491,61 +507,27 @@ export function CompetitionFormatWizard({
                 />
               </label>
               {f.ui === "groups_knockout" ? (
-                <>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-xs font-medium">{t("Advance per group")}</span>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={8}
-                      value={f.advance}
-                      data-testid="advance-per-group"
-                      onChange={(e) => set("advance", Number(e.target.value) || 1)}
-                      className="h-9 w-24"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-xs font-medium">
-                      {t("Best next-placed qualifiers")}
-                    </span>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={16}
-                      value={f.bestThirds}
-                      data-testid="best-thirds"
-                      title={t("Top next-placed teams across all groups that also advance (e.g. best thirds)")}
-                      onChange={(e) =>
-                        set("bestThirds", Math.max(0, Number(e.target.value) || 0))
-                      }
-                      className="h-9 w-24"
-                    />
-                  </label>
-                  <label className="flex min-w-44 flex-col gap-1">
-                    <span className="text-xs font-medium">{t("Bracket seeding")}</span>
-                    <Select
-                      aria-label={t("Bracket seeding")}
-                      value={f.knockoutSeeding}
-                      onChange={(v) => set("knockoutSeeding", v)}
-                      options={KNOCKOUT_SEEDING_OPTIONS.map((o) => ({
-                        ...o,
-                        label: t(o.label),
-                      }))}
-                      size="sm"
-                    />
-                  </label>
-                </>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium">
+                    {t("How many advance per group")}
+                  </span>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={8}
+                    value={f.advance}
+                    data-testid="advance-per-group"
+                    onChange={(e) => set("advance", Number(e.target.value) || 1)}
+                    className="h-9 w-24"
+                  />
+                </label>
               ) : null}
               <p className="pb-1.5 text-xs text-muted-foreground">
-                {t(`→ ${groupCount} ${groupCount === 1 ? "group" : "groups"}`)}
-                {f.ui === "groups_knockout"
-                  ? " · " +
-                    t('stored — "Advance to knockout" prefills this, it never re-asks')
-                  : null}
+                {t(`That makes ${groupCount} ${groupCount === 1 ? "group" : "groups"}.`)}
               </p>
               {advanceInvalid ? (
                 <p className="w-full text-xs text-destructive">
-                  {t("Advance per group must be smaller than the group size.")}
+                  {t("Fewer teams must advance than the group holds. Lower this number or make groups bigger.")}
                 </p>
               ) : null}
             </div>
@@ -569,81 +551,146 @@ export function CompetitionFormatWizard({
               </label>
               <p className="pb-1.5 text-xs text-muted-foreground">
                 {t(
-                  `Suggested: ${suggestedSwissRounds(teamCount)} for ${teamCount} teams. Round 1 is drawn now; later rounds pair from the standings as results land.`,
+                  `Suggested: ${suggestedSwissRounds(teamCount)} rounds for ${teamCount} teams. Round 1 is drawn now. You pair each next round after results come in.`,
                 )}
               </p>
             </div>
           ) : null}
 
-          {hasLegs ? (
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={f.twoLegs}
-                data-testid="two-legs"
-                onChange={(e) => set("twoLegs", e.target.checked)}
-                className="h-4 w-4 rounded border-input"
-              />
-              {t("Two legs — every pairing plays home & away (double round-robin)")}
-            </label>
-          ) : null}
-
-          {isKnockoutish ? (
-            <>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={f.thirdPlace}
-                  data-testid="third-place"
-                  onChange={(e) => set("thirdPlace", e.target.checked)}
-                  className="h-4 w-4 rounded border-input"
-                />
-                {t("Third-place playoff (semifinal losers)")}
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={f.plate}
-                  data-testid="plate"
-                  onChange={(e) => set("plate", e.target.checked)}
-                  className="h-4 w-4 rounded border-input"
-                />
-                {t("Consolation plate — first-round losers play their own bracket")}
-              </label>
-            </>
-          ) : null}
-
-          <div className="flex flex-col gap-1">
-            <label
-              className="text-xs font-medium"
-              htmlFor="seeding-method"
+          {/* §4.3 progressive disclosure — every secondary knob, nothing dropped. */}
+          <div className="overflow-hidden rounded-lg border border-border">
+            <button
+              type="button"
+              data-testid="advanced-options"
+              aria-expanded={advanced}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left"
+              onClick={() => setAdvanced((o) => !o)}
             >
-              {t("Seeding method")}
-            </label>
-            <Select
-              id="seeding-method"
-              aria-label={t("Seeding method")}
-              value={f.seeding}
-              onChange={(v) => set("seeding", v)}
-              options={SEEDING_OPTIONS.map((o) => ({ ...o, label: t(o.label) }))}
-              className="max-w-xs"
-            />
-          </div>
+              <SlidersHorizontal
+                aria-hidden="true"
+                className="h-4 w-4 shrink-0 text-muted-foreground"
+              />
+              <span className="text-sm font-medium">{t("Advanced options")}</span>
+              <span className="hidden text-xs text-muted-foreground sm:block">
+                {t("Seeding, home and away, extra matches")}
+              </span>
+              <ChevronDown
+                aria-hidden="true"
+                className={cn(
+                  "ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                  advanced && "rotate-180",
+                )}
+              />
+            </button>
+            {advanced ? (
+              <div className="flex flex-col gap-3 border-t border-border px-3 py-3">
+                {hasLegs ? (
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={f.twoLegs}
+                      data-testid="two-legs"
+                      onChange={(e) => set("twoLegs", e.target.checked)}
+                      className="h-4 w-4 rounded border-input"
+                    />
+                    {t("Play each pairing twice (home and away)")}
+                  </label>
+                ) : null}
 
-          {f.seeding === "seeded" ? (
-            teamCount > 0 ? (
-              <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/30 p-3">
-                <span className="text-xs font-medium">
-                  {t("Seed order (1 = top seed) — move rows with the arrows or arrow keys")}
-                </span>
-                <SeedListEditor teams={f.order} onChange={(next) => set("order", next)} />
+                {isKnockoutish ? (
+                  <>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={f.thirdPlace}
+                        data-testid="third-place"
+                        onChange={(e) => set("thirdPlace", e.target.checked)}
+                        className="h-4 w-4 rounded border-input"
+                      />
+                      {t("Third-place match between the semifinal losers")}
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={f.plate}
+                        data-testid="plate"
+                        onChange={(e) => set("plate", e.target.checked)}
+                        className="h-4 w-4 rounded border-input"
+                      />
+                      {t("Plate bracket so first-round losers keep playing")}
+                    </label>
+                  </>
+                ) : null}
+
+                {f.ui === "groups_knockout" ? (
+                  <div className="flex flex-wrap items-end gap-4">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs font-medium">
+                        {t("Best next-placed qualifiers")}
+                      </span>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={16}
+                        value={f.bestThirds}
+                        data-testid="best-thirds"
+                        title={t("Top next-placed teams across all groups that also advance (e.g. best thirds)")}
+                        onChange={(e) =>
+                          set("bestThirds", Math.max(0, Number(e.target.value) || 0))
+                        }
+                        className="h-9 w-24"
+                      />
+                    </label>
+                    <label className="flex min-w-44 flex-col gap-1">
+                      <span className="text-xs font-medium">{t("Bracket seeding")}</span>
+                      <Select
+                        aria-label={t("Bracket seeding")}
+                        value={f.knockoutSeeding}
+                        onChange={(v) => set("knockoutSeeding", v)}
+                        options={KNOCKOUT_SEEDING_OPTIONS.map((o) => ({
+                          ...o,
+                          label: t(o.label),
+                        }))}
+                        size="sm"
+                      />
+                    </label>
+                  </div>
+                ) : null}
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium" htmlFor="seeding-method">
+                    {t("Seeding method")}
+                  </label>
+                  <Select
+                    id="seeding-method"
+                    aria-label={t("Seeding method")}
+                    value={f.seeding}
+                    onChange={(v) => set("seeding", v)}
+                    options={SEEDING_OPTIONS.map((o) => ({ ...o, label: t(o.label) }))}
+                    className="max-w-xs"
+                  />
+                </div>
+
+                {f.seeding === "seeded" ? (
+                  teamCount > 0 ? (
+                    <div
+                      ref={seedsRef}
+                      className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/30 p-3"
+                    >
+                      <span className="text-xs font-medium">
+                        {t("Seed order. 1 is your strongest team. Move rows with the arrows.")}
+                      </span>
+                      <SeedListEditor teams={f.order} onChange={(next) => set("order", next)} />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {t("No registered teams yet. Seeds can be set once teams register.")}
+                    </p>
+                  )
+                ) : null}
               </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                {t("No registered teams yet — seeds can be set once teams register.")}
-              </p>
-            )
-          ) : null}
+            ) : null}
+          </div>
         </div>
       )}
 
@@ -653,13 +700,12 @@ export function CompetitionFormatWizard({
         </Button>
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           disabled={busy || f === null || advanceInvalid}
           data-testid="save-format"
           onClick={() => saveFormat.mutate()}
         >
-          <Save aria-hidden="true" className="h-4 w-4" />
-          {saveFormat.isPending ? t("Saving…") : t("Save format")}
+          {saveFormat.isPending ? t("Saving…") : t("Save for later")}
         </Button>
         {onPreview ? (
           <Button
@@ -669,7 +715,7 @@ export function CompetitionFormatWizard({
             onClick={() => saveAndPreview.mutate()}
           >
             <Wand2 aria-hidden="true" className="h-4 w-4" />
-            {saveAndPreview.isPending ? t("Saving…") : t("Preview & generate")}
+            {saveAndPreview.isPending ? t("Saving…") : t("Preview the draw")}
           </Button>
         ) : (
           <Button
@@ -679,7 +725,7 @@ export function CompetitionFormatWizard({
             onClick={() => saveAndGenerate.mutate()}
           >
             <Wand2 aria-hidden="true" className="h-4 w-4" />
-            {saveAndGenerate.isPending ? t("Generating…") : t("Save & generate draw")}
+            {saveAndGenerate.isPending ? t("Creating…") : t("Create the draw")}
           </Button>
         )}
       </DialogFooter>

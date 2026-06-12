@@ -3,12 +3,12 @@ import { Button } from "@/components/ui/button";
 import { t } from "@/lib/t";
 
 /**
- * The invariant-10 "inputs changed" banner (redesign §6 screen 6 + §9 A1).
+ * The invariant-10 "things changed" banner (clarity rebuild §7.6).
  *
  * Two homes:
  * - the hub, on a competition whose draw's stored `inputs_hash` no longer
- *   matches (regenerate via a fresh preview / keep the draw — it stays valid);
- * - the dry-run preview page, when Accept came back 409 `inputs_changed`
+ *   matches (preview again for a fresh draw / keep the draw — it stays valid);
+ * - the preview page, when Publish came back 409 `inputs_changed`
  *   (nothing was saved; the only way forward is a fresh preview).
  */
 export function InputsChangedBanner({
@@ -32,19 +32,19 @@ export function InputsChangedBanner({
       <p className="min-w-0 flex-1 text-sm text-warning-foreground">
         {context === "accept"
           ? t(
-              "The inputs changed while you were previewing — a registration or config edit landed. Nothing was saved; re-run the preview to continue.",
+              "Something changed while you were looking (a team or a setting). Nothing was saved. Run the preview again to continue.",
             )
           : t(
-              "Inputs changed since this draw was generated — re-preview to regenerate, or keep the current draw (it stays valid).",
+              "Things changed since this draw was made (a team or a setting). The current schedule is still valid. Preview again to see a fresh draw, or keep what you have.",
             )}
       </p>
       <span className="flex shrink-0 items-center gap-1.5">
         <Button size="sm" data-testid="re-preview" onClick={onRePreview}>
-          {t("Re-preview")}
+          {t("Preview again")}
         </Button>
         {onKeep ? (
           <Button size="sm" variant="ghost" data-testid="keep-draw" onClick={onKeep}>
-            {t("Keep")}
+            {t("Keep this draw")}
           </Button>
         ) : null}
       </span>

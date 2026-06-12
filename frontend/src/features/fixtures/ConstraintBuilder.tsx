@@ -169,12 +169,12 @@ export function ConstraintBuilder({
       // Reset to pristine so the server's normalized records reseed the rows.
       setState((s) => (s ? { base: s.rows, rows: s.rows } : s));
       invalidateTournament(qc, tournamentId);
-      toast.push({ kind: "success", title: t("Constraints saved") });
+      toast.push({ kind: "success", title: t("Rules saved") });
     },
     onError: (e) =>
       toast.push({
         kind: "error",
-        title: t("Could not save the constraints"),
+        title: t("Could not save the rules"),
         description:
           e instanceof ApiError ? (e.payload.detail ?? undefined) : undefined,
       }),
@@ -189,10 +189,10 @@ export function ConstraintBuilder({
       }),
     onSuccess: () => {
       invalidateTournament(qc, tournamentId);
-      toast.push({ kind: "success", title: t("Constraints marked as reviewed") });
+      toast.push({ kind: "success", title: t("Rules marked as checked") });
     },
     onError: () =>
-      toast.push({ kind: "error", title: t("Could not mark as reviewed") }),
+      toast.push({ kind: "error", title: t("Could not mark the rules as checked") }),
   });
 
   const reviewedAt = drawConfig.data?.draw_config["*"]?.constraints_reviewed_at;
@@ -205,15 +205,15 @@ export function ConstraintBuilder({
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-3">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold">{t("Scheduling constraints")}</h3>
+          <h3 className="text-sm font-semibold">{t("Scheduling rules")}</h3>
           <p className="text-xs text-muted-foreground">
-            {t("Hard rules block slots; soft preferences score them (weight 1–10).")}
+            {t('Rules the schedule must follow. "Must" rules block a time slot; "prefer" rules guide it.')}
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           {reviewedAt ? (
             <span className="text-xs text-muted-foreground">
-              {t("Reviewed")}{" "}
+              {t("Checked")}{" "}
               <span className="font-tabular">
                 {new Date(reviewedAt).toLocaleString(undefined, {
                   dateStyle: "medium",
@@ -230,7 +230,7 @@ export function ConstraintBuilder({
             onClick={() => markReviewed.mutate()}
           >
             <CheckCheck aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("Mark reviewed")}
+            {t("Mark rules as checked")}
           </Button>
         </div>
       </div>
@@ -240,7 +240,7 @@ export function ConstraintBuilder({
           <div className="h-16 animate-pulse rounded-lg bg-muted/40" />
         ) : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            {t("No constraints yet — the global setup seeds the common ones; add anything sharper here.")}
+            {t("No extra rules yet. Step 1 already added the common ones (days off, rest time, Sunday mornings). Add anything sharper here.")}
           </p>
         ) : (
           rows.map((record, i) => {
@@ -257,7 +257,7 @@ export function ConstraintBuilder({
                 badge={
                   GLOBAL_SETUP_TYPES.has(record.type) &&
                   (!record.scope || record.scope === "all")
-                    ? t("From global setup")
+                    ? t("From Step 1")
                     : undefined
                 }
                 onChange={(next) =>
@@ -271,8 +271,8 @@ export function ConstraintBuilder({
 
         <div className="flex flex-wrap items-center gap-2">
           <Select
-            aria-label={t("Add constraint")}
-            placeholder={t("Add constraint…")}
+            aria-label={t("Add a rule")}
+            placeholder={t("Add a rule…")}
             value=""
             onChange={(type) => {
               const spec = byType.get(type);
@@ -293,7 +293,7 @@ export function ConstraintBuilder({
             className="ml-auto"
           >
             <Save aria-hidden="true" className="h-3.5 w-3.5" />
-            {save.isPending ? t("Saving…") : t("Save constraints")}
+            {save.isPending ? t("Saving…") : t("Save rules")}
           </Button>
         </div>
       </div>

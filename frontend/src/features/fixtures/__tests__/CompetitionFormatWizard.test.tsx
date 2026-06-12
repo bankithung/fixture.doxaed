@@ -101,8 +101,13 @@ function mount(over: Partial<Parameters<typeof CompetitionFormatWizard>[0]> = {}
   );
 }
 
+/** The secondary knobs live behind the Advanced-options disclosure (§4.3). */
+async function openAdvanced(): Promise<void> {
+  await userEvent.click(await screen.findByTestId("advanced-options"));
+}
+
 describe("CompetitionFormatWizard", () => {
-  it("shows the asked-once globals read-only and never re-asks them", async () => {
+  it("titles itself as Step 2 and shows the Step 1 answers read-only", async () => {
     vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
       draw_config: {
         "*": { calendar: { date_start: "2026-06-20", date_end: "2026-06-28" } },
@@ -118,13 +123,34 @@ describe("CompetitionFormatWizard", () => {
     const onEditGlobals = vi.fn();
     mount({ onEditGlobals });
 
+    expect(
+      await screen.findByRole("dialog", {
+        name: "Step 2 · How Football · U15 plays",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("3 teams are in. Pick how they play each other. Each competition can be different."),
+    ).toBeInTheDocument();
     const strip = await screen.findByTestId("globals-strip");
     await waitFor(() => expect(strip).toHaveTextContent("2 venues"));
-    expect(strip).toHaveTextContent("From global setup");
+    expect(strip).toHaveTextContent("Dates and venues come from Step 1.");
     // read-only: no date inputs anywhere in this wizard
     expect(document.querySelector('input[type="date"]')).toBeNull();
     await userEvent.click(screen.getByTestId("edit-globals"));
     expect(onEditGlobals).toHaveBeenCalled();
+  });
+
+  it("keeps the main path to the format cards; secondary knobs sit behind Advanced options", async () => {
+    mount();
+    await screen.findByTestId("format-league");
+    // league is selected by default → legs is an Advanced option
+    expect(screen.queryByTestId("two-legs")).toBeNull();
+    expect(screen.queryByText("Seeding method")).toBeNull();
+    const toggle = screen.getByTestId("advanced-options");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await openAdvanced();
+    expect(screen.getByTestId("two-legs")).toBeInTheDocument();
+    expect(screen.getByText("Seeding method")).toBeInTheDocument();
   });
 
   it("prefills every stored answer from draw_config[leaf]", async () => {
@@ -149,11 +175,12 @@ describe("CompetitionFormatWizard", () => {
     );
     expect(screen.getByTestId("group-size")).toHaveValue(3);
     expect(screen.getByTestId("advance-per-group")).toHaveValue(1);
+    await openAdvanced();
     expect(screen.getByTestId("two-legs")).toBeChecked();
     expect(screen.getByTestId("third-place")).toBeChecked();
   });
 
-  it("Save format persists draw_config[leaf] WITHOUT generating", async () => {
+  it("Save for later persists draw_config[leaf] WITHOUT generating", async () => {
     mount();
     await userEvent.click(await screen.findByTestId("format-groups_knockout"));
     fireEvent.change(screen.getByTestId("group-size"), { target: { value: "3" } });
@@ -180,6 +207,9 @@ describe("CompetitionFormatWizard", () => {
       }),
     );
     expect(tournamentsApi.generateFixtures).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText("No draw made yet. Come back and preview whenever you're ready."),
+    ).toBeInTheDocument();
   });
 
   it("league saves a single round_robin group sized to the field", async () => {
@@ -203,12 +233,16 @@ describe("CompetitionFormatWizard", () => {
 
   it("seeded method opens the SeedListEditor and saves the order via the seeds API", async () => {
     mount();
+    await openAdvanced();
     await userEvent.click(
-      await screen.findByRole("button", { name: "Seeding method" }),
+      screen.getByRole("button", { name: "Seeding method" }),
     );
     await userEvent.click(
-      screen.getByRole("option", { name: /Seeded — strict seed order/ }),
+      screen.getByRole("option", { name: "Strict seed order (1 plays lowest)" }),
     );
+    expect(
+      screen.getByText("Seed order. 1 is your strongest team. Move rows with the arrows."),
+    ).toBeInTheDocument();
     // teams listed alphabetically (no stored seeds); promote Charlie to seed 2
     await userEvent.click(screen.getByLabelText("Move Charlie up"));
     await userEvent.click(screen.getByTestId("save-format"));
@@ -226,10 +260,26 @@ describe("CompetitionFormatWizard", () => {
     );
   });
 
-  it("Save & generate persists, then generates from the stored config (bare body)", async () => {
+  it("opened via the seeds fix, Advanced starts expanded with the stored seed order", async () => {
+    vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
+      draw_config: { "football.u15": { seeding: "seeded" } },
+      defaults: DEFAULTS,
+    });
+    mount({ focusSeeds: true });
+    expect(await screen.findByTestId("advanced-options")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(
+      screen.getByText("Seed order. 1 is your strongest team. Move rows with the arrows."),
+    ).toBeInTheDocument();
+  });
+
+  it("Create the draw persists, then generates from the stored config (bare body)", async () => {
     const onGenerated = vi.fn();
     mount({ onGenerated });
     await userEvent.click(await screen.findByTestId("format-knockout"));
+    await openAdvanced();
     await userEvent.click(screen.getByTestId("third-place"));
     await userEvent.click(screen.getByTestId("confirm-generate"));
 
@@ -252,13 +302,17 @@ describe("CompetitionFormatWizard", () => {
       leafKey: "football.u15",
       label: "Football · U15",
     });
+    expect(await screen.findByText("Draw created - 3 matches")).toBeInTheDocument();
   });
 
-  it("with onPreview the primary CTA saves the format and hands off to the dry run (no direct generate)", async () => {
+  it("with onPreview the primary saves the format and hands off to the preview (no direct generate)", async () => {
     const onPreview = vi.fn();
     mount({ onPreview });
     await userEvent.click(await screen.findByTestId("format-knockout"));
     expect(screen.queryByTestId("confirm-generate")).toBeNull();
+    expect(screen.getByTestId("confirm-preview")).toHaveTextContent(
+      "Preview the draw",
+    );
     await userEvent.click(screen.getByTestId("confirm-preview"));
 
     await waitFor(() =>
@@ -280,13 +334,14 @@ describe("CompetitionFormatWizard", () => {
     expect(tournamentsApi.generateFixtures).not.toHaveBeenCalled();
   });
 
-  it("Swiss asks the round count (suggested default) and persists swiss_rounds", async () => {
+  it("Swiss asks the round count on the main path and persists swiss_rounds", async () => {
     mount();
     await userEvent.click(await screen.findByTestId("format-swiss"));
     // suggested = ceil(log2 3) = 2, capped at teamCount - 1
     const rounds = screen.getByTestId("swiss-rounds");
     expect(rounds).toHaveValue(2);
-    // knockout/round-robin-only options never show for Swiss
+    // knockout/round-robin-only options never show for Swiss, even in Advanced
+    await openAdvanced();
     expect(screen.queryByTestId("two-legs")).toBeNull();
     expect(screen.queryByTestId("third-place")).toBeNull();
     expect(screen.queryByTestId("plate")).toBeNull();
@@ -318,6 +373,7 @@ describe("CompetitionFormatWizard", () => {
   it("double elimination stores the format alone — no third place or plate", async () => {
     mount();
     await userEvent.click(await screen.findByTestId("format-double_elim"));
+    await openAdvanced();
     expect(screen.queryByTestId("third-place")).toBeNull();
     expect(screen.queryByTestId("plate")).toBeNull();
     expect(screen.queryByTestId("two-legs")).toBeNull();
@@ -332,9 +388,10 @@ describe("CompetitionFormatWizard", () => {
     );
   });
 
-  it("knockout exposes the consolation plate toggle and persists it", async () => {
+  it("knockout exposes the plate toggle under Advanced and persists it", async () => {
     mount();
     await userEvent.click(await screen.findByTestId("format-knockout"));
+    await openAdvanced();
     await userEvent.click(screen.getByTestId("plate"));
     await userEvent.click(screen.getByTestId("save-format"));
 
@@ -352,13 +409,14 @@ describe("CompetitionFormatWizard", () => {
     );
   });
 
-  it("groups→knockout asks best next-placed qualifiers + bracket seeding", async () => {
+  it("groups→knockout keeps best next-placed + bracket seeding under Advanced", async () => {
     mount();
     await userEvent.click(await screen.findByTestId("format-groups_knockout"));
     fireEvent.change(screen.getByTestId("group-size"), { target: { value: "3" } });
     fireEvent.change(screen.getByTestId("advance-per-group"), {
       target: { value: "1" },
     });
+    await openAdvanced();
     fireEvent.change(screen.getByTestId("best-thirds"), {
       target: { value: "2" },
     });
@@ -366,7 +424,7 @@ describe("CompetitionFormatWizard", () => {
       screen.getByRole("button", { name: "Bracket seeding" }),
     );
     await userEvent.click(
-      screen.getByRole("option", { name: /Overall record/ }),
+      screen.getByRole("option", { name: "Best record plays worst record" }),
     );
     await userEvent.click(screen.getByTestId("save-format"));
 
@@ -389,7 +447,7 @@ describe("CompetitionFormatWizard", () => {
     );
   });
 
-  it("blocks saving when advance per group >= group size", async () => {
+  it("blocks saving when more advance than a group holds, in plain words", async () => {
     mount();
     await userEvent.click(await screen.findByTestId("format-groups_knockout"));
     fireEvent.change(screen.getByTestId("group-size"), { target: { value: "3" } });
@@ -397,7 +455,9 @@ describe("CompetitionFormatWizard", () => {
       target: { value: "3" },
     });
     expect(
-      screen.getByText("Advance per group must be smaller than the group size."),
+      screen.getByText(
+        "Fewer teams must advance than the group holds. Lower this number or make groups bigger.",
+      ),
     ).toBeInTheDocument();
     expect(screen.getByTestId("save-format")).toBeDisabled();
     expect(screen.getByTestId("confirm-generate")).toBeDisabled();

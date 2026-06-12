@@ -126,7 +126,7 @@ describe("MatchRepairControls", () => {
     expect(await screen.findByText("Match moved")).toBeInTheDocument();
   });
 
-  it("hard conflicts block the move behind a destructive Force anyway", async () => {
+  it("hard conflicts block the move behind a destructive Move it anyway", async () => {
     vi.mocked(tournamentsApi.rescheduleMatch)
       .mockRejectedValueOnce(
         new ApiError(409, {
@@ -146,11 +146,13 @@ describe("MatchRepairControls", () => {
     await userEvent.click(screen.getByTestId("repair-move-m1"));
     await userEvent.click(screen.getByTestId("move-submit"));
 
-    // violations rendered from the stable code; submit flips to Force anyway
+    // violations rendered from the stable code; submit flips to Move it anyway
     expect(
       await screen.findByTestId("repair-violation-venue_double_booked"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Venue double-booked")).toBeInTheDocument();
+    expect(
+      screen.getByText("Two matches would share this venue at the same time"),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId("move-submit")).toBeNull();
 
     await userEvent.click(screen.getByTestId("move-force"));

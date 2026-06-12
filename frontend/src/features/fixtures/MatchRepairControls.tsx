@@ -32,14 +32,14 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { MOVABLE_STATUSES, conflictsOf, errorDetail } from "./repair";
 
-/** Localized titles per stable repair-violation code (§9 A5 — the FE renders
+/** Plain titles per stable repair-violation code (§7.9 — the FE renders
  * from the code, never string-matches server messages). */
 const VIOLATION_TITLES: Record<string, string> = {
-  venue_double_booked: "Venue double-booked",
-  insufficient_rest: "Not enough rest between a team's matches",
-  exceeds_max_per_day: "A team would exceed its matches-per-day cap",
-  team_blackout: "A team is unavailable on that date",
-  shared_player_conflict: "Linked teams (shared player) would clash",
+  venue_double_booked: "Two matches would share this venue at the same time",
+  insufficient_rest: "A team would get too short a break between matches",
+  exceeds_max_per_day: "A team would play more matches in one day than you allow",
+  team_blackout: "A team is not available on that date",
+  shared_player_conflict: "Two linked teams (shared player) would play at the same time",
 };
 
 function violationDetail(v: RepairViolation): string {
@@ -47,7 +47,7 @@ function violationDetail(v: RepairViolation): string {
   if (v.venue) parts.push(String(v.venue));
   const at = v.at ?? v.date;
   if (at) parts.push(String(at).replace("T", " ").slice(0, 16));
-  return parts.join(" · ");
+  return parts.join(", ");
 }
 
 /** Compact list of raw scheduler violations (shared by every repair dialog
@@ -86,7 +86,7 @@ export function RepairViolationsList({
               {t(VIOLATION_TITLES[v.code] ?? v.code)}
             </span>
             {violationDetail(v) ? (
-              <span className="text-muted-foreground"> — {violationDetail(v)}</span>
+              <span className="text-muted-foreground"> · {violationDetail(v)}</span>
             ) : null}
           </span>
         </li>
@@ -96,7 +96,7 @@ export function RepairViolationsList({
 }
 
 /** Footer shared by the repair dialogs: Cancel + the primary action, which
- * flips to a destructive "Force anyway" once hard conflicts came back. */
+ * flips to a destructive "Move it anyway" once hard conflicts came back. */
 export function RepairFooter({
   conflicts,
   busy,
@@ -125,7 +125,7 @@ export function RepairFooter({
           data-testid={`${testid}-force`}
           onClick={() => onSubmit(true)}
         >
-          {t("Force anyway")}
+          {t("Move it anyway")}
         </Button>
       ) : (
         <Button
@@ -149,7 +149,7 @@ export function ConflictsBlock({
   return (
     <div className="flex flex-col gap-1.5 pt-2">
       <p className="text-xs font-medium text-destructive">
-        {t("This change creates hard conflicts — review them before forcing.")}
+        {t("This change breaks the rules below. You can still force it, and the warnings are kept in the change history.")}
       </p>
       <RepairViolationsList violations={conflicts} />
     </div>
@@ -371,7 +371,7 @@ function DelayMatchDialog({
             onChange={(e) => setCascade(e.target.checked)}
             className="h-4 w-4 rounded border-input"
           />
-          {t("Cascade — push later matches at this venue too")}
+          {t("Also push the later matches at this venue")}
         </label>
         <ConflictsBlock conflicts={conflicts} />
       </div>
@@ -392,7 +392,7 @@ function swapLabel(m: MatchRow): string {
   const when = m.scheduled_at
     ? `${m.scheduled_at.slice(0, 10)} ${m.scheduled_at.slice(11, 16)}`
     : t("unscheduled");
-  return `${sides} — ${when}${m.venue ? ` · ${m.venue}` : ""}`;
+  return `${sides} - ${when}${m.venue ? ` · ${m.venue}` : ""}`;
 }
 
 function SwapMatchDialog({
@@ -556,7 +556,7 @@ export function MatchRepairMenu({
         kind: "success",
         title: locked
           ? t("Slot unlocked")
-          : t("Slot locked — re-runs and cascades will not move it"),
+          : t("Slot locked. Re-runs and delays will not move it."),
       });
     },
     onError: () =>

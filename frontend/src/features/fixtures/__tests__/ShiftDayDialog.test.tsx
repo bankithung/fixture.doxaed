@@ -93,9 +93,9 @@ describe("ShiftDayDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "Day to move" }));
     const labels = screen.getAllByRole("option").map((o) => o.textContent);
     expect(labels).toHaveLength(3); // 20th (2), 21st, 24th — not 22nd/23rd
-    expect(labels[0]).toMatch(/Jun 20 — 2 matches/);
-    expect(labels[1]).toMatch(/Jun 21 — 1 match/);
-    expect(labels[2]).toMatch(/Jun 24 — 1 match/);
+    expect(labels[0]).toMatch(/Jun 20 · 2 matches/);
+    expect(labels[1]).toMatch(/Jun 21 · 1 match/);
+    expect(labels[2]).toMatch(/Jun 24 · 1 match/);
   });
 
   it("blank target = first reserve day; success toasts moved-count + day", async () => {
@@ -135,7 +135,7 @@ describe("ShiftDayDialog", () => {
     );
   });
 
-  it("hard conflicts gate behind Force anyway, replaying the same event_id", async () => {
+  it("hard conflicts gate behind Move it anyway, replaying the same event_id", async () => {
     vi.mocked(tournamentsApi.shiftDay)
       .mockRejectedValueOnce(
         new ApiError(409, {
@@ -173,7 +173,7 @@ describe("ShiftDayDialog", () => {
     await userEvent.click(screen.getByTestId("shift-submit"));
 
     expect(
-      await screen.findByText(/No free reserve day after that date/),
+      await screen.findByText(/No spare day is free after that date/),
     ).toBeInTheDocument();
   });
 });

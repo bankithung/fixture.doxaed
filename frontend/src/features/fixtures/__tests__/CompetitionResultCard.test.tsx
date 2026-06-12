@@ -34,7 +34,7 @@ describe("CompetitionResultCard", () => {
       </MemoryRouter>,
     );
     expect(screen.getByTestId("competition-result-card")).toHaveTextContent(
-      "1/3 played",
+      "1 of 3 played.",
     );
     expect(screen.getByText("Group A")).toBeInTheDocument();
     expect(screen.getByText("Bracket")).toBeInTheDocument();

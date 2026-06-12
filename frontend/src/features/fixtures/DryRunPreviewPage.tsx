@@ -1,13 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowLeft,
-  Check,
-  Dices,
-  SlidersHorizontal,
-  Trash2,
-} from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, Dices } from "lucide-react";
 import {
   tournamentsApi,
   type ConstraintDraft,
@@ -23,26 +17,30 @@ import { useToast } from "@/components/ui/toast";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
+import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { useBreakpoint } from "@/lib/useBreakpoint";
 import { FairnessPanel } from "./FairnessPanel";
 import { InputsChangedBanner } from "./InputsChangedBanner";
 import { MatchesByDayGrid } from "./MatchesByDayGrid";
+import { SetupJourneyHeader } from "./SetupJourneyHeader";
 import { sideName } from "./sideName";
 import { ViolationsPanel } from "./ViolationsPanel";
 
-/** Pairing-layer warning labels per stable code (§9 A5). */
+/** Pairing-layer warning labels per stable code (§7.7). */
 const WARNING_LABELS: Record<string, string> = {
   keep_apart_relaxed:
-    "A keep-apart rule could not be fully honoured and was relaxed for this draw.",
+    "We could not fully keep those teams apart, so the rule was relaxed for this draw.",
   keep_apart_missing_district:
-    "Some teams have no district on record — they were excluded from the keep-apart rule.",
+    "Some teams have no district saved, so the keep-apart rule skipped them.",
   keep_apart_missing_seed:
-    "Some teams have no seed — they were excluded from the seed-pot keep-apart rule.",
-  keep_apart_unknown_key: "A keep-apart rule uses an unknown key and was skipped.",
+    "Some teams have no seed number, so the keep-apart rule skipped them.",
+  keep_apart_unknown_key:
+    "A keep-apart rule uses an unknown setting and was skipped.",
 };
 
 /** Build the slot-layer payload from the asked-once global calendar
- * (draw_config["*"].calendar). Preview AND Accept send the SAME payload so
+ * (draw_config["*"].calendar). Preview AND Publish send the SAME payload so
  * preview ≡ commit (§9 A1); venues stay omitted — both paths fall back to
  * the stored venue pool. */
 function schedulePayloadFrom(cal: DrawCalendar | null | undefined): ScheduleRequest | null {
@@ -57,12 +55,15 @@ function schedulePayloadFrom(cal: DrawCalendar | null | undefined): ScheduleRequ
 }
 
 /**
- * Full-page dry-run preview (redesign §6 screen 5, §5.2): a PURE simulate of
- * generate + schedule for one competition — nothing persists until Accept.
- * Accept replays the previewed `seed` through the real generate + schedule
- * endpoints with `expected_inputs_hash`; a 409 `inputs_changed` renders the
- * InputsChangedBanner and the only way forward is a fresh preview (§9 A1).
- * Regenerate re-rolls; Discard walks away (nothing was saved).
+ * Step 3 of the journey (clarity rebuild §4.4): a PURE simulate of
+ * generate + schedule for one competition — nothing persists until Publish.
+ * The verdict leads; fairness, pairing warnings, the draw number and the
+ * quality figure sit behind an Advanced-details disclosure that forces open
+ * whenever there is a problem. Publish replays the previewed `seed` through
+ * the real generate + schedule endpoints with `expected_inputs_hash`; a 409
+ * `inputs_changed` renders the InputsChangedBanner and the only way forward
+ * is a fresh preview (§9 A1). "Try another draw" re-rolls; "Back without
+ * saving" walks away (nothing was saved).
  */
 export function DryRunPreviewPage(): React.ReactElement {
   const { id = "" } = useParams();
@@ -71,9 +72,11 @@ export function DryRunPreviewPage(): React.ReactElement {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
+  const { isMobile } = useBreakpoint();
   // Bumping the roll re-simulates (fresh seed for random draws — §5.2).
   const [roll, setRoll] = useState(0);
   const [stale, setStale] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const drawConfig = useQuery({
     queryKey: qk.drawConfig(id),
@@ -122,7 +125,7 @@ export function DryRunPreviewPage(): React.ReactElement {
     setRoll((r) => r + 1);
   };
 
-  /** Accept = the real generate + schedule endpoints replaying the previewed
+  /** Publish = the real generate + schedule endpoints replaying the previewed
    * seed, both guarded by `expected_inputs_hash` (D6/D10). */
   const accept = useMutation({
     mutationFn: async (p: FixturePreview) => {
@@ -141,9 +144,9 @@ export function DryRunPreviewPage(): React.ReactElement {
       invalidateTournament(qc, id);
       toast.push({
         kind: "success",
-        title: t(`Draw accepted — ${r.scheduled} matches scheduled`),
+        title: t(`Published. ${r.scheduled} matches are on the schedule.`),
         description: r.unscheduled.length
-          ? `${r.unscheduled.length} ${t("unscheduled — see the fixtures hub")}`
+          ? t(`${r.unscheduled.length} matches still need a time. See fixture setup.`)
           : undefined,
       });
       navigate(routes.tournamentFixtures(id));
@@ -159,16 +162,16 @@ export function DryRunPreviewPage(): React.ReactElement {
       }
       toast.push({
         kind: "error",
-        title: t("Could not accept the draw"),
+        title: t("Could not publish the schedule"),
         description:
           e instanceof ApiError ? (e.payload.detail ?? "") : t("Try again."),
       });
     },
   });
 
-  /** Relaxation routing: demoting a constraint to soft is a one-click PATCH
-   * + re-preview; capacity fixes (days/venues/caps) live in the hub's
-   * global-setup + constraint surfaces. */
+  /** Relaxation routing: making a rule a preference is a one-click PATCH +
+   * re-preview; capacity fixes (days/venues/caps) live in the hub's Step 1 +
+   * rules surfaces. */
   const demote = useMutation({
     mutationFn: async (v: PreviewViolation) => {
       const settings = await tournamentsApi.settings(id);
@@ -198,13 +201,16 @@ export function DryRunPreviewPage(): React.ReactElement {
     },
     onSuccess: () => {
       invalidateTournament(qc, id);
-      toast.push({ kind: "success", title: t("Constraint demoted to soft") });
+      toast.push({
+        kind: "success",
+        title: t("Done. That rule is now a preference, and the preview re-ran."),
+      });
       rePreview();
     },
     onError: (e) =>
       toast.push({
         kind: "error",
-        title: t("Could not update the constraint"),
+        title: t("Could not update the rule"),
         description:
           e instanceof ApiError ? (e.payload.detail ?? "") : t("Try again."),
       }),
@@ -227,6 +233,15 @@ export function DryRunPreviewPage(): React.ReactElement {
       ? String(preview.error.payload.detail ?? "")
       : "";
 
+  const hardCount = (p?.violations ?? []).filter((v) => v.hard).length;
+  const flagCount = p?.fairness.flags?.length ?? 0;
+  const warnings = ((p?.warnings ?? []) as { code?: string }[]).filter(
+    (w) => w?.code,
+  );
+  // Problems are never hidden — flags or hard violations force the details open.
+  const forceAdvanced = hardCount > 0 || flagCount > 0;
+  const advancedShown = advancedOpen || forceAdvanced;
+
   return (
     <div className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
       <Link
@@ -237,31 +252,29 @@ export function DryRunPreviewPage(): React.ReactElement {
         {t("Back to fixture setup")}
       </Link>
 
+      <SetupJourneyHeader
+        step={3}
+        compact
+        onStepClick={() => navigate(routes.tournamentFixtures(id))}
+      />
+
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">
-          {t("Dry-run preview")}
+          {t("Step 3 · Preview & publish")}
         </h1>
         <span className="text-sm text-muted-foreground">{label}</span>
         {p ? (
-          <span className="ml-auto flex flex-wrap items-center gap-2 font-tabular text-xs text-muted-foreground">
-            <span data-testid="preview-counts">
-              {p.matches.length} {t("matches")}
-              {p.fairness.days_used ? ` · ${p.fairness.days_used} ${t("days")}` : ""}
-            </span>
-            {p.seed != null ? (
-              <span
-                data-testid="preview-seed"
-                title={t("Draw seed — stored on accept so the draw is replayable")}
-                className="rounded-full bg-muted px-2 py-0.5"
-              >
-                {t("seed")} {p.seed}
-              </span>
-            ) : null}
+          <span
+            data-testid="preview-counts"
+            className="ml-auto font-tabular text-xs text-muted-foreground"
+          >
+            {p.matches.length} {t("matches")}
+            {p.fairness.days_used ? ` · ${p.fairness.days_used} ${t("days")}` : ""}
           </span>
         ) : null}
       </div>
       <p className="-mt-2 text-sm text-muted-foreground">
-        {t("Nothing is saved until you accept — regenerate or adjust constraints freely.")}
+        {t("This is a trial run. Nothing is saved until you publish.")}
       </p>
 
       {stale ? (
@@ -270,16 +283,16 @@ export function DryRunPreviewPage(): React.ReactElement {
 
       {calendarMissing ? (
         <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
-          <p className="text-sm font-medium">{t("Calendar not set")}</p>
+          <p className="text-sm font-medium">{t("Step 1 is not finished")}</p>
           <p className="pt-1 text-sm text-muted-foreground">
-            {t("Run the global setup first — the preview needs the tournament dates to build a schedule.")}
+            {t("The preview needs your tournament dates. Set them in Step 1 first.")}
           </p>
           <Button
             variant="outline"
             className="mt-3"
             onClick={() => navigate(routes.tournamentFixtures(id))}
           >
-            {t("Open fixture setup")}
+            {t("Open Step 1")}
           </Button>
         </div>
       ) : preview.isError ? (
@@ -300,38 +313,85 @@ export function DryRunPreviewPage(): React.ReactElement {
         </div>
       ) : (
         <>
+          {/* Verdict first (§4.4). */}
           <ViolationsPanel
             violations={p.violations}
-            softScore={p.soft_score}
             onRelax={busy ? undefined : onRelax}
+            onFixRules={() => navigate(routes.tournamentFixtures(id))}
           />
 
-          {/* Per-team fairness analytics (increment R) — rest/early/venue
-              metrics with the server's outlier flags. */}
-          <FairnessPanel
-            teams={p.fairness.teams ?? []}
-            flags={p.fairness.flags ?? []}
-          />
-
-          {(p.warnings as { code?: string }[]).filter((w) => w?.code).length ? (
-            <ul className="flex flex-col gap-1">
-              {(p.warnings as { code?: string }[]).map((w, i) =>
-                w?.code ? (
-                  <li key={i} className="text-xs text-warning-foreground">
-                    {t(WARNING_LABELS[w.code] ?? w.code)}
-                  </li>
-                ) : null,
-              )}
-            </ul>
-          ) : null}
+          {/* Advanced details — fairness, pairing warnings, draw number,
+              quality. Forced open whenever something needs attention. */}
+          <section
+            data-testid="advanced-details"
+            className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+          >
+            <button
+              type="button"
+              data-testid="advanced-details-toggle"
+              aria-expanded={advancedShown}
+              className="flex w-full items-center gap-2 px-4 py-3 text-left"
+              onClick={() => setAdvancedOpen((o) => !o)}
+            >
+              <span className="text-sm font-semibold">{t("Advanced details")}</span>
+              <span className="hidden text-xs text-muted-foreground sm:block">
+                {t("Fairness, draw number and schedule quality")}
+              </span>
+              <ChevronDown
+                aria-hidden="true"
+                className={cn(
+                  "ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                  advancedShown && "rotate-180",
+                )}
+              />
+            </button>
+            {advancedShown ? (
+              <div className="flex flex-col gap-3 border-t border-border px-4 py-3">
+                {/* Per-team fairness analytics (increment R) — rest/early/
+                    venue metrics with the server's outlier flags. */}
+                <FairnessPanel
+                  teams={p.fairness.teams ?? []}
+                  flags={p.fairness.flags ?? []}
+                />
+                {warnings.length ? (
+                  <ul className="flex flex-col gap-1">
+                    {warnings.map((w, i) => (
+                      <li key={i} className="text-xs text-warning-foreground">
+                        {t(WARNING_LABELS[w.code!] ?? w.code!)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <div className="flex flex-wrap items-center gap-2 font-tabular text-xs text-muted-foreground">
+                  {p.seed != null ? (
+                    <span
+                      data-testid="preview-seed"
+                      title={t("Saved when you publish, so this exact draw can be reproduced.")}
+                      className="rounded-full bg-muted px-2 py-0.5"
+                    >
+                      {t("Draw number")} {p.seed}
+                    </span>
+                  ) : null}
+                  {p.soft_score != null ? (
+                    <span data-testid="schedule-quality">
+                      {t("Schedule quality")} {Math.round(p.soft_score * 100)}%
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </section>
 
           <MatchesByDayGrid matches={p.matches} teamNames={teamNames} />
 
           {p.unscheduled.length ? (
             <section className="rounded-xl border border-warning/40 bg-warning-muted px-4 py-3">
               <h3 className="text-sm font-semibold">
-                {p.unscheduled.length} {t("match(es) without a slot")}
+                {p.unscheduled.length} {t("match(es) have no time yet")}
               </h3>
+              <p className="pt-0.5 text-xs text-muted-foreground">
+                {t("Add another day or venue in Step 1, then preview again.")}
+              </p>
               <ul className="pt-1">
                 {p.matches
                   .filter((m) => p.unscheduled.includes(m.ref))
@@ -347,7 +407,7 @@ export function DryRunPreviewPage(): React.ReactElement {
             </section>
           ) : null}
 
-          {/* Sticky decision bar (§6 screen 5). */}
+          {/* Sticky decision bar — ONE primary (§4.4). */}
           <div className="sticky bottom-0 -mx-4 mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-border bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
             <Button
               variant="ghost"
@@ -355,33 +415,38 @@ export function DryRunPreviewPage(): React.ReactElement {
               disabled={busy}
               onClick={() => navigate(routes.tournamentFixtures(id))}
             >
-              <Trash2 aria-hidden="true" className="h-4 w-4" />
-              {t("Discard")}
+              {t("Back without saving")}
             </Button>
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => navigate(routes.tournamentFixtures(id))}
-            >
-              <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
-              {t("Adjust constraints")}
-            </Button>
-            <Button
-              variant="outline"
-              data-testid="regenerate-preview"
-              disabled={busy}
-              onClick={rePreview}
-            >
-              <Dices aria-hidden="true" className="h-4 w-4" />
-              {t("Regenerate")}
-            </Button>
+            {isMobile ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t("Try another draw")}
+                data-testid="regenerate-preview"
+                disabled={busy}
+                onClick={rePreview}
+              >
+                <Dices aria-hidden="true" className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                data-testid="regenerate-preview"
+                disabled={busy}
+                onClick={rePreview}
+              >
+                <Dices aria-hidden="true" className="h-4 w-4" />
+                {t("Try another draw")}
+              </Button>
+            )}
             <Button
               data-testid="accept-preview"
-              disabled={busy || stale || p.matches.length === 0}
+              disabled={busy || stale || p.matches.length === 0 || hardCount > 0}
+              title={hardCount > 0 ? t("Fix the problems above first.") : undefined}
               onClick={() => accept.mutate(p)}
             >
               <Check aria-hidden="true" className="h-4 w-4" />
-              {accept.isPending ? t("Saving…") : t("Accept & save")}
+              {accept.isPending ? t("Saving…") : t("Publish schedule")}
             </Button>
           </div>
         </>

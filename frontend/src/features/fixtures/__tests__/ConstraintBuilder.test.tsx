@@ -104,7 +104,7 @@ describe("ConstraintBuilder", () => {
     expect(
       await screen.findByText("Recurring blocked window"),
     ).toBeInTheDocument();
-    expect(screen.getByText("From global setup")).toBeInTheDocument();
+    expect(screen.getByText("From Step 1")).toBeInTheDocument();
     // pristine → nothing to save yet
     expect(screen.getByTestId("save-constraints")).toBeDisabled();
   });
@@ -112,12 +112,12 @@ describe("ConstraintBuilder", () => {
   it("adds a typed record from the catalog and saves the full list via the settings PATCH", async () => {
     mount();
     await screen.findByText("Recurring blocked window");
-    await userEvent.click(screen.getByRole("button", { name: "Add constraint" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add a rule" }));
     await userEvent.click(
       screen.getByRole("option", { name: "Concurrent-match capacity (officials)" }),
     );
     // scope options come from the catalog's scopes (sport + all only)
-    await userEvent.click(screen.getByRole("button", { name: "Scope — constraint 2" }));
+    await userEvent.click(screen.getByRole("button", { name: "Scope, rule 2" }));
     expect(
       screen.getByRole("option", { name: "Sport · Football" }),
     ).toBeInTheDocument();
@@ -172,6 +172,6 @@ describe("ConstraintBuilder", () => {
       defaults: { format: "round_robin" } as unknown as DrawConfig,
     });
     mount();
-    expect(await screen.findByText("Reviewed")).toBeInTheDocument();
+    expect(await screen.findByText("Checked")).toBeInTheDocument();
   });
 });

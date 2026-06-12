@@ -17,11 +17,11 @@ import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { t } from "@/lib/t";
 
 /**
- * "Advance to knockout" confirm (redesign §6 screen 3): builds the
- * cross-seeded bracket from final group standings. Advance-per-group was
- * already asked and stored by the CompetitionFormatWizard — this dialog
- * PREFILLS the stored value (defaults < "*" < leaf) and never re-asks it as
- * a blank question; editing here is an explicit override.
+ * "Build the knockout bracket" confirm (clarity rebuild §4.7): builds the
+ * cross-seeded bracket from final group standings. Teams-advancing-per-group
+ * was already asked and stored by the Step 2 wizard — this dialog PREFILLS
+ * the stored value (defaults < "*" < leaf) and never re-asks it as a blank
+ * question; editing here is an explicit override.
  */
 export function AdvanceToKnockoutDialog({
   tournamentId,
@@ -67,14 +67,14 @@ export function AdvanceToKnockoutDialog({
       invalidateTournament(qc, tournamentId);
       toast.push({
         kind: "success",
-        title: t(`Knockout generated — ${data.generated} matches`),
+        title: t(`Bracket built - ${data.generated} matches`),
       });
       onClose();
     },
     onError: (e) =>
       toast.push({
         kind: "error",
-        title: t("Could not advance to knockout"),
+        title: t("Could not build the bracket"),
         description:
           e instanceof ApiError ? (e.payload.detail ?? undefined) : undefined,
       }),
@@ -86,22 +86,22 @@ export function AdvanceToKnockoutDialog({
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
-      ariaLabel={t("Advance to knockout")}
+      ariaLabel={t("Build the knockout bracket")}
     >
       <DialogHeader>
         <DialogTitle>
           {leafLabel
-            ? t(`Advance to knockout — ${leafLabel}`)
-            : t("Advance to knockout")}
+            ? t(`Build the knockout bracket · ${leafLabel}`)
+            : t("Build the knockout bracket")}
         </DialogTitle>
         <DialogDescription>
           {t(
-            "Top teams from each group enter a cross-seeded bracket (group winners meet other groups' runners-up first).",
+            "The top teams from each group go into the bracket. Group winners meet other groups' runners-up first.",
           )}
         </DialogDescription>
       </DialogHeader>
       <label className="flex w-fit flex-col gap-1">
-        <span className="text-xs font-medium">{t("Advance per group")}</span>
+        <span className="text-xs font-medium">{t("Teams advancing per group")}</span>
         <Input
           type="number"
           min={1}
@@ -112,11 +112,11 @@ export function AdvanceToKnockoutDialog({
           className="h-9 w-24"
         />
         <span className="text-xs text-muted-foreground">
-          {t("Prefilled from the saved format.")}
+          {t("Already set in Step 2. Change it here only if you mean to.")}
         </span>
       </label>
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onClose}>
+        <Button type="button" variant="ghost" onClick={onClose}>
           {t("Cancel")}
         </Button>
         <Button
@@ -126,7 +126,7 @@ export function AdvanceToKnockoutDialog({
           data-testid="confirm-advance"
         >
           <GitBranch aria-hidden="true" className="h-4 w-4" />
-          {run.isPending ? t("Generating...") : t("Generate knockout")}
+          {run.isPending ? t("Building…") : t("Build bracket")}
         </Button>
       </DialogFooter>
     </Dialog>

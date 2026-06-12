@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
-/** Localized fairness-flag explanations per stable code (§9 A5). */
+/** Plain fairness-flag explanations per stable code (§7.7). */
 const FLAG_LABELS: Record<string, string> = {
-  early_outlier: "opens the day far more often than the median team",
-  rest_below_min: "gets less rest than the configured minimum",
+  early_outlier: "starts the day far more often than most teams",
+  rest_below_min: "gets less rest than your minimum",
 };
 
 /** Rows shown before the table collapses behind "Show all". */
@@ -52,15 +52,15 @@ export function FairnessPanel({
   return (
     <section
       data-testid="fairness-panel"
-      aria-label={t("Fairness")}
+      aria-label={t("Fairness check")}
       className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
     >
       <div className="flex items-center gap-2 border-b border-border px-4 py-3">
         <Scale aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold">{t("Fairness — per team")}</h3>
+          <h3 className="text-sm font-semibold">{t("Fairness check")}</h3>
           <p className="text-xs text-muted-foreground">
-            {t("Rest, early/late starts and venue spread of this simulated schedule.")}
+            {t("How evenly teams get rest, early starts and venues in this trial schedule.")}
           </p>
         </div>
       </div>

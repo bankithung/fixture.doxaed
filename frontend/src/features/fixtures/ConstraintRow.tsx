@@ -38,10 +38,11 @@ function asList(v: unknown): string[] {
 }
 
 /**
- * One typed constraint record (redesign §6 screen 4): the param fields are
+ * One typed scheduling rule (clarity rebuild §4.5): the param fields are
  * rendered from the catalog's `params_schema` (int→number, time→time,
  * dates→date chips, team_id→team Select, days→weekday chips), plus the scope
- * Select, the Hard/Soft segmented toggle and — soft only — the 1-10 weight.
+ * Select, the Must/Prefer segmented toggle (persisted as `hard`) and — for
+ * preferences only — the 1-10 strength (persisted as `weight`).
  */
 export function ConstraintRow({
   record,
@@ -76,7 +77,7 @@ export function ConstraintRow({
         <label key={key} className="flex min-w-44 flex-col gap-1">
           <span className="text-xs font-medium">{paramLabel(key)}</span>
           <Select
-            aria-label={t(`Team — constraint ${index + 1}`)}
+            aria-label={t(`Team, rule ${index + 1}`)}
             value={String(record.params.team_id ?? "")}
             onChange={(v) => setParam("team_id", v)}
             options={teams.map((tm) => ({ value: tm.id, label: tm.name }))}
@@ -131,7 +132,7 @@ export function ConstraintRow({
           </div>
           {days.length === 0 ? (
             <span className="text-xs text-muted-foreground">
-              {t("No days selected — applies every day.")}
+              {t("No days selected. Applies every day.")}
             </span>
           ) : null}
         </div>
@@ -189,7 +190,7 @@ export function ConstraintRow({
         ) : null}
         <div
           role="group"
-          aria-label={t(`Enforcement — constraint ${index + 1}`)}
+          aria-label={t("How strictly this rule applies")}
           className="ml-auto inline-flex rounded-lg border border-border p-0.5"
         >
           <button
@@ -204,7 +205,7 @@ export function ConstraintRow({
                 : "text-muted-foreground hover:bg-accent",
             )}
           >
-            {t("Hard")}
+            {t("Must")}
           </button>
           <button
             type="button"
@@ -218,12 +219,12 @@ export function ConstraintRow({
                 : "text-muted-foreground hover:bg-accent",
             )}
           >
-            {t("Soft")}
+            {t("Prefer")}
           </button>
         </div>
         <button
           type="button"
-          aria-label={t(`Remove constraint ${index + 1}`)}
+          aria-label={t(`Remove rule ${index + 1}`)}
           data-testid={tid("remove")}
           onClick={onRemove}
           className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
@@ -236,7 +237,7 @@ export function ConstraintRow({
         <label className="flex min-w-44 flex-col gap-1">
           <span className="text-xs font-medium">{t("Applies to")}</span>
           <Select
-            aria-label={t(`Scope — constraint ${index + 1}`)}
+            aria-label={t(`Scope, rule ${index + 1}`)}
             value={record.scope || "all"}
             onChange={(v) => onChange({ ...record, scope: v })}
             options={scopeOptions}
@@ -245,7 +246,7 @@ export function ConstraintRow({
         </label>
         {!record.hard ? (
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium">{t("Weight (1–10)")}</span>
+            <span className="text-xs font-medium">{t("How strongly (1-10)")}</span>
             <Input
               type="number"
               min={1}

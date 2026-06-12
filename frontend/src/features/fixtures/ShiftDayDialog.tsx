@@ -24,12 +24,12 @@ import { t } from "@/lib/t";
 import { ConflictsBlock, RepairFooter } from "./MatchRepairControls";
 import { MOVABLE_STATUSES, conflictsOf } from "./repair";
 
-/** Stable backend error codes → friendly inline messages (§9 A5). */
+/** Stable backend error codes → plain inline messages (§7.9). */
 const ERROR_MESSAGES: Record<string, string> = {
   reserve_day_unavailable:
-    "No free reserve day after that date — pick a target date explicitly.",
-  no_matches_to_move: "No movable match is scheduled on that day.",
-  invalid_to_date: "The target date must differ from the source day.",
+    "No spare day is free after that date. Pick the new date yourself.",
+  no_matches_to_move: "There is nothing to move on that day.",
+  invalid_to_date: "Pick a different date to move to.",
 };
 
 function fmtDay(iso: string): string {
@@ -82,7 +82,7 @@ export function ShiftDayDialog({
       .sort((a, b) => (a[0] < b[0] ? -1 : 1))
       .map(([day, n]) => ({
         value: day,
-        label: `${fmtDay(day)} — ${n} ${n === 1 ? t("match") : t("matches")}`,
+        label: `${fmtDay(day)} · ${n} ${n === 1 ? t("match") : t("matches")}`,
       }));
   }, [matches, leaf]);
 
@@ -116,7 +116,7 @@ export function ShiftDayDialog({
       }
       const detail =
         e instanceof ApiError ? String(e.payload.detail ?? "") : "";
-      setError(t(ERROR_MESSAGES[detail] ?? "The day could not be shifted."));
+      setError(t(ERROR_MESSAGES[detail] ?? "The day could not be moved."));
     },
   });
 
@@ -130,7 +130,7 @@ export function ShiftDayDialog({
       <DialogHeader>
         <DialogTitle>{t("Shift a day")}</DialogTitle>
         <DialogDescription>
-          {t("Rained off? Move every movable match of a day onto another date, keeping each match's time and venue.")}
+          {t("Move every match of a day onto another date. Matches keep their time and venue. Locked or finished matches stay.")}
         </DialogDescription>
       </DialogHeader>
       <div className="flex flex-col gap-3">
@@ -161,7 +161,7 @@ export function ShiftDayDialog({
             }}
           />
           <p className="text-xs text-muted-foreground">
-            {t("Leave blank to use the first reserve day on or after the moved day.")}
+            {t("Leave blank to use the first spare day on or after the moved day.")}
           </p>
         </div>
         {competitions.length > 0 ? (

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Pencil, Settings2 } from "lucide-react";
+import { CalendarRange, Pencil } from "lucide-react";
 import { tournamentsApi, type ConstraintRecord } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { qk } from "@/lib/queryKeys";
@@ -11,10 +11,11 @@ function isAll(c: ConstraintRecord): boolean {
 }
 
 /**
- * Slim one-line summary strip of the asked-ONCE globals (staged-funnel hub,
- * increment V): each value the GlobalSetupWizard captured renders as a chip
- * that reopens the wizard at its step — never re-asking, always editable.
- * The hub only shows this once the stage gate (dates + venues) is satisfied.
+ * The Step 1 receipt (clarity rebuild §4.1/§7.4): a slim strip of everything
+ * the Step 1 wizard captured, each value a chip that reopens the wizard at
+ * its step — never re-asking, always editable. Zero/unset chips are hidden;
+ * Dates, Venues and Play times always show. The hub only renders this once
+ * the stage gate (dates + venues) is satisfied.
  */
 export function GlobalSetupCard({
   tournamentId,
@@ -23,7 +24,7 @@ export function GlobalSetupCard({
 }: {
   tournamentId: string;
   canManage: boolean;
-  /** Open the GlobalSetupWizard at this step. */
+  /** Open the Step 1 wizard at this step. */
   onEdit: (step: number) => void;
 }): React.ReactElement {
   const drawConfig = useQuery({
@@ -59,46 +60,62 @@ export function GlobalSetupCard({
   const maxPerDay = one("max_matches_per_team_per_day")?.params.count;
   const unset = !cal?.date_start;
 
-  const rows: { label: string; value: string; step: number }[] = [
+  /** Chips per §7.4 — zero/unset extras are hidden; the three core chips
+   * (Dates, Venues, Play times) always render. */
+  const rows: { key: string; value: string; step: number }[] = [
     {
-      label: t("Dates"),
+      key: "dates",
       value: cal?.date_start
-        ? `${cal.date_start} → ${cal.date_end ?? cal.date_start}`
-        : t("Not set"),
+        ? t(`Dates ${cal.date_start} to ${cal.date_end ?? cal.date_start}`)
+        : t("Dates not set"),
       step: SETUP_STEP.calendar,
     },
+    ...(blackouts > 0
+      ? [{ key: "days-off", value: t(`Days off ${blackouts}`), step: SETUP_STEP.calendar }]
+      : []),
+    ...(reserves > 0
+      ? [{ key: "spare-days", value: t(`Spare days ${reserves}`), step: SETUP_STEP.calendar }]
+      : []),
+    ...(ceremonies > 0
+      ? [{ key: "ceremonies", value: t(`Ceremonies ${ceremonies}`), step: SETUP_STEP.calendar }]
+      : []),
     {
-      label: t("Blackouts / reserves / ceremonies"),
-      value: `${blackouts} · ${reserves} · ${ceremonies}`,
-      step: SETUP_STEP.calendar,
-    },
-    {
-      label: t("Venues"),
+      key: "venues",
       value: pool.length
-        ? `${pool.length} ${t("venues")}${units > pool.length ? ` · ${units} ${t("courts")}` : ""}`
-        : t("None yet"),
+        ? t(`Venues ${pool.length}`) +
+          (units > pool.length ? ` · ${units} ${t("courts")}` : "")
+        : t("No venues yet"),
       step: SETUP_STEP.venues,
     },
     {
-      label: t("Daily window"),
+      key: "play-times",
       value: cal?.daily_start
-        ? `${cal.daily_start}–${cal.daily_end ?? ""} · ${cal.slot_minutes ?? 90} ${t("min slots")}`
-        : t("Not set"),
+        ? t(
+            `Play times ${cal.daily_start} to ${cal.daily_end ?? ""}, ${cal.slot_minutes ?? 90} min per match`,
+          )
+        : t("Play times not set"),
       step: SETUP_STEP.defaults,
     },
-    {
-      label: t("Rest & caps"),
-      value:
-        rest != null || maxPerDay != null
-          ? `${String(rest ?? "—")} ${t("min rest")} · ${t("max")} ${String(maxPerDay ?? "—")}/${t("day")}`
-          : t("Defaults"),
-      step: SETUP_STEP.defaults,
-    },
-    {
-      label: t("Sunday mornings"),
-      value: church ? t("Blocked until 13:00") : t("Open"),
-      step: SETUP_STEP.defaults,
-    },
+    ...(rest != null || maxPerDay != null
+      ? [
+          {
+            key: "breaks",
+            value: t(
+              `Breaks ${String(rest ?? "-")} min between matches, max ${String(maxPerDay ?? "-")} per day`,
+            ),
+            step: SETUP_STEP.defaults,
+          },
+        ]
+      : []),
+    ...(church
+      ? [
+          {
+            key: "sunday",
+            value: t("Sunday mornings free until 13:00"),
+            step: SETUP_STEP.defaults,
+          },
+        ]
+      : []),
   ];
 
   const chipCls =
@@ -109,11 +126,11 @@ export function GlobalSetupCard({
       data-testid="global-setup-strip"
       className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border border-border bg-card px-4 py-2.5 shadow-sm"
     >
-      <Settings2
+      <CalendarRange
         aria-hidden="true"
         className="h-4 w-4 shrink-0 text-muted-foreground"
       />
-      <h3 className="text-sm font-semibold">{t("Global setup")}</h3>
+      <h3 className="text-sm font-semibold">{t("Step 1 · When & where")}</h3>
       {loading ? (
         <div
           className="h-5 w-48 animate-pulse rounded-full bg-muted/40"
@@ -123,24 +140,23 @@ export function GlobalSetupCard({
         rows.map((r) =>
           canManage ? (
             <button
-              key={r.label}
+              key={r.key}
               type="button"
-              aria-label={t(`Edit ${r.label}`)}
-              title={t(`Edit ${r.label}`)}
-              className={`${chipCls} text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground`}
+              aria-label={t(`Edit: ${r.value}`)}
+              title={t("Edit in Step 1")}
+              data-testid={`setup-chip-${r.key}`}
+              className={`${chipCls} text-foreground transition-colors hover:bg-accent hover:text-accent-foreground`}
               onClick={() => onEdit(r.step)}
             >
-              <span className="font-medium">{r.label}</span>
-              <span className="truncate font-tabular text-foreground">
-                {r.value}
-              </span>
+              <span className="truncate font-tabular">{r.value}</span>
             </button>
           ) : (
-            <span key={r.label} className={`${chipCls} text-muted-foreground`}>
-              <span className="font-medium">{r.label}</span>
-              <span className="truncate font-tabular text-foreground">
-                {r.value}
-              </span>
+            <span
+              key={r.key}
+              data-testid={`setup-chip-${r.key}`}
+              className={`${chipCls} text-muted-foreground`}
+            >
+              <span className="truncate font-tabular">{r.value}</span>
             </span>
           ),
         )
@@ -154,7 +170,7 @@ export function GlobalSetupCard({
           onClick={() => onEdit(0)}
         >
           <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
-          {unset ? t("Set up") : t("Edit")}
+          {unset ? t("Start Step 1") : t("Edit")}
         </Button>
       ) : null}
     </section>
