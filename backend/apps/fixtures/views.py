@@ -698,6 +698,7 @@ def _venue_payload(v: Venue) -> dict:
     return {
         "id": str(v.id), "name": v.name, "venue_type": v.venue_type,
         "windows": v.windows or [], "count": v.count,
+        "unavailable_dates": v.unavailable_dates or [],
     }
 
 
@@ -716,6 +717,19 @@ def _clean_windows(raw) -> list[dict]:
         if isinstance(w, dict) and w.get("from") and w.get("to"):
             out.append({"from": str(w["from"])[:5], "to": str(w["to"])[:5]})
     return out
+
+
+def _clean_unavailable_dates(raw) -> list[str]:
+    """Venue off-days (increment S): valid ISO dates only, deduped, sorted."""
+    from datetime import date as _date
+
+    out: set[str] = set()
+    for v in raw if isinstance(raw, list) else []:
+        try:
+            out.add(_date.fromisoformat(str(v)[:10]).isoformat())
+        except ValueError:
+            continue
+    return sorted(out)
 
 
 class TournamentVenuesView(GenericAPIView):
@@ -754,6 +768,9 @@ class TournamentVenuesView(GenericAPIView):
             venue_type=str(request.data.get("venue_type") or "").strip()[:40],
             windows=_clean_windows(request.data.get("windows")),
             count=_clean_count(request.data.get("count", 1)),
+            unavailable_dates=_clean_unavailable_dates(
+                request.data.get("unavailable_dates")
+            ),
             created_by=request.user,
         )
         return Response(_venue_payload(v), status=201)
@@ -795,8 +812,12 @@ class TournamentVenueDetailView(GenericAPIView):
             v.windows = _clean_windows(request.data["windows"])
         if "count" in request.data:
             v.count = _clean_count(request.data["count"])
+        if "unavailable_dates" in request.data:
+            v.unavailable_dates = _clean_unavailable_dates(
+                request.data["unavailable_dates"]
+            )
         v.save(update_fields=["name", "venue_type", "windows", "count",
-                              "updated_at"])
+                              "unavailable_dates", "updated_at"])
         return Response(_venue_payload(v))
 
     def delete(self, request, tournament_id, venue_id):

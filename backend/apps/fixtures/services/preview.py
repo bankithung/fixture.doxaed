@@ -36,6 +36,7 @@ from apps.fixtures.services.scheduler import (
     config_from_dict,
     merge_stored_constraints,
     resolve_team_tags,
+    resolve_venue_unavailability,
     schedule_matches,
     stored_activated_reserve_days,
 )
@@ -50,7 +51,8 @@ def stored_venue_records(tournament) -> list[dict[str, Any]]:
 
     return [
         {"name": v.name, "venue_type": v.venue_type,
-         "windows": v.windows, "count": v.count}
+         "windows": v.windows, "count": v.count,
+         "unavailable_dates": v.unavailable_dates or []}
         for v in Venue.objects.filter(
             organization=tournament.organization, deleted_at__isnull=True
         ).order_by("name")
@@ -334,6 +336,7 @@ def preview_fixtures(
             tournament
         )
         resolve_team_tags(sched_cfg, tournament)
+        resolve_venue_unavailability(sched_cfg, tournament)
         explanation = merge_stored_constraints(sched_cfg, tournament.constraints)
         reqs, preoccupied, linked = build_schedule_inputs(
             tournament, sched_cfg, leaf_key=leaf_key, plans=plans,

@@ -28,6 +28,12 @@ class Venue(models.Model):
     # Courts/tables/pitches at this venue (fixture-engine redesign §2.3): the
     # scheduler expands count=4 into 4 parallel sub-venues ("MP Hall · T1"…).
     count = models.PositiveSmallIntegerField(default=1)
+    # Whole-day off-days for THIS venue only (increment S): a list of ISO
+    # dates ("2026-08-03") excluded from the slot grid and treated as a hard
+    # ``venue_unavailable`` violation by the repair-verb validation. Distinct
+    # from tournament blackout_dates (all venues) and ``windows`` (daily
+    # hours): "the ground is booked for a wedding on the 3rd".
+    unavailable_dates = models.JSONField(default=list, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="venues_created",

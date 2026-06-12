@@ -30,6 +30,7 @@ from apps.fixtures.services.scheduler import (
     config_from_dict,
     merge_stored_constraints,
     resolve_team_tags,
+    resolve_venue_unavailability,
     stored_activated_reserve_days,
     validate_schedule,
 )
@@ -64,6 +65,9 @@ def _validation_config(tournament) -> ScheduleConfig:
         today = dj_tz.localdate()
         cfg = ScheduleConfig(date_start=today, date_end=today)
     resolve_team_tags(cfg, tournament)
+    # Venue off-days resolve FRESH from the model (increment S) — a date
+    # added after the scheduling run still blocks a repair onto it.
+    resolve_venue_unavailability(cfg, tournament)
     merge_stored_constraints(cfg, tournament.constraints)
     return cfg
 

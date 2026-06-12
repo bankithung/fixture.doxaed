@@ -97,6 +97,10 @@ class ScheduleConfig:
     # Courts/tables per venue (redesign §2.3): count=N expands into N parallel
     # sub-venues ("Hall · T1"… — see ``expand_venues``); 1/absent = as-is.
     venue_counts: dict[str, int] = field(default_factory=dict)
+    # Whole-day off-days per venue ({base_name: {date, ...}}, increment S):
+    # removed from THAT venue's grid only; validation reports an assignment
+    # on one as the hard ``venue_unavailable`` violation.
+    venue_unavailable_dates: dict[str, set[date]] = field(default_factory=dict)
     # no_person_overlap gaps in minutes (§2.4/§9 A3): None = legacy behavior
     # (linked teams use the team rest gap, venue-agnostic).
     person_min_gap: int | None = None
@@ -163,6 +167,7 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
     venue_windows: dict[str, list[tuple[time, time]]] = {}
     venue_types: dict[str, str] = {}
     venue_counts: dict[str, int] = {}
+    venue_unavailable: dict[str, set[date]] = {}
     for v in d.get("venues") or []:
         if isinstance(v, dict):
             name = str(v.get("name") or "").strip()
@@ -177,6 +182,13 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
                 count = 1
             if count > 1:
                 venue_counts[name] = count
+            off = {
+                x for x in (
+                    _parse_date(u) for u in v.get("unavailable_dates") or []
+                ) if x
+            }
+            if off:
+                venue_unavailable[name] = off
             wins = [
                 (_parse_time(w.get("from"), daily_start),
                  _parse_time(w.get("to"), daily_end))
@@ -209,6 +221,7 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
         venue_windows=venue_windows,
         venue_types=venue_types,
         venue_counts=venue_counts,
+        venue_unavailable_dates=venue_unavailable,
         activated_reserve_days=activated,
     )
 
@@ -443,6 +456,10 @@ def build_slots(cfg: ScheduleConfig) -> list[tuple[datetime, str, datetime]]:
     while d <= cfg.date_end:
         if d not in cfg.excluded_dates and d not in reserved:
             for venue, base in expand_venues(cfg):
+                # Per-venue off-days (increment S): this venue only — every
+                # other venue keeps the date.
+                if d in cfg.venue_unavailable_dates.get(base, ()):
+                    continue
                 windows = cfg.venue_windows.get(base) or [(cfg.daily_start, cfg.daily_end)]
                 cuts = [
                     (r.params["from"], r.params["to"]) for r in recurring
@@ -1035,6 +1052,7 @@ def validate_schedule(
     by_id = {m.id: m for m in matches}
     violations: list[dict[str, Any]] = []
     rest = timedelta(minutes=cfg.rest_minutes)
+    base_of = dict(expand_venues(cfg))
 
     def dur_of(mid: str) -> timedelta:
         m = by_id.get(mid)
@@ -1049,6 +1067,15 @@ def validate_schedule(
     for mid, (dt, venue) in assignments.items():
         end = dt + dur_of(mid)
         venue_items[venue].append((dt, end, mid))
+        # Per-venue off-day (increment S): landing on one is hard, regardless
+        # of what else the day holds. Sub-venues resolve to their base.
+        if dt.date() in cfg.venue_unavailable_dates.get(
+            base_of.get(venue, venue), ()
+        ):
+            violations.append({
+                "code": "venue_unavailable", "hard": True, "match_id": mid,
+                "venue": venue, "date": dt.date().isoformat(),
+            })
         m = by_id.get(mid)
         if m:
             for t in (m.home, m.away):
@@ -1276,6 +1303,21 @@ def stored_activated_reserve_days(tournament) -> set[date]:
     return {x for x in (_parse_date(v) for v in raw or []) if x}
 
 
+def resolve_venue_unavailability(cfg: ScheduleConfig, tournament) -> None:
+    """Union the CURRENT ``Venue.unavailable_dates`` into the config
+    (increment S). Off-days are facts about the venue, not the run payload —
+    resolving them fresh means scheduling, preview and the repair-verb
+    validation all honor a date added AFTER the original run."""
+    from apps.fixtures.models import Venue
+
+    for name, raw in Venue.objects.filter(
+        organization=tournament.organization, deleted_at__isnull=True
+    ).values_list("name", "unavailable_dates"):
+        dates = {x for x in (_parse_date(v) for v in raw or []) if x}
+        if dates:
+            cfg.venue_unavailable_dates.setdefault(name, set()).update(dates)
+
+
 def resolve_team_tags(cfg: ScheduleConfig, tournament) -> None:
     """tag:<k>=<v> scopes resolve against institution/seed data — only hit
     the DB when a stored record actually uses one."""
@@ -1319,6 +1361,7 @@ def apply_schedule(
     # BEFORE the stored constraints are merged.
     cfg.activated_reserve_days |= stored_activated_reserve_days(tournament)
     resolve_team_tags(cfg, tournament)
+    resolve_venue_unavailability(cfg, tournament)
     constraint_notes = merge_stored_constraints(cfg, tournament.constraints)
 
     reqs, preoccupied, linked = build_schedule_inputs(
