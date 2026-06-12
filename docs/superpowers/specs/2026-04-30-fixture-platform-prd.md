@@ -1,6 +1,6 @@
 # Fixture Platform — Product Requirements Document (PRD)
 
-> **Status:** Draft v3 — all logic-flow gaps folded in
+> **Status:** Draft v4 — all logic-flow gaps folded in; v4 (2026-06-12) adds the `abandoned → scheduled` replay transition (§5.5, decision 71)
 > **Date:** 2026-04-30
 > **Owner:** graceschooledu@gmail.com (Super-admin)
 > **Working directory:** `C:\Users\Asus\Desktop\fixture.doxaed.com`
@@ -419,6 +419,7 @@ Side states (any active state):
 | `* → postponed` | Admin / Coordinator with reason | Schedule update; notifications |
 | `* → walkover` | Scorer / Coordinator with reason | Awarded score applied; advancement fires |
 | `* → abandoned` | Scorer / Coordinator with reason | Per `abandonment_policy` |
+| `abandoned → scheduled` | Admin / Coordinator with reason (**required**) | Replay — the abandoned result is void: scores/pens/sets/period cleared; the original event log is retained (append-only, strikethrough in UI); advancement never fires from `abandoned` |
 | `* → cancelled` | Admin with reason | Bracket-aware: opponents in dependent matches get bye-equivalent or walkover |
 | `* → disputed` (overlay) | Dispute raised | Advancement paused |
 
@@ -1179,6 +1180,7 @@ All primary keys = **UUID v7** (time-ordered).
 | 68 | Org slug locked after first publish; rename = Super-admin + redirect | URL stability |
 | 69 | TZ change blocked after `scheduled` | Schedule integrity |
 | 70 | Audit log GDPR anonymization on user deletion (v1.5 prep) | Privacy + history |
+| 71 | `abandoned → scheduled` guarded replay transition (reason required; scores/pens/sets/period cleared; original events retained in the immutable log; no advancement from `abandoned`) — draft v4 | Real tournaments replay abandoned matches; without this the only escape was cancel + manually recreate, losing the match's history |
 
 ---
 
@@ -1217,4 +1219,4 @@ All primary keys = **UUID v7** (time-ordered).
 
 ---
 
-*End of PRD draft v3. All identified logic-flow gaps folded in. Awaiting user review before proceeding to implementation plan.*
+*End of PRD draft v4. All identified logic-flow gaps folded in.*

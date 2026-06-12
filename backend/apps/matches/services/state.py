@@ -26,7 +26,9 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     S.POSTPONED: {S.SCHEDULED, S.LIVE, S.CANCELLED},
     S.COMPLETED: set(),
     S.CANCELLED: set(),
-    S.ABANDONED: set(),
+    # Replay (PRD §5.5 draft v4, decision 71): the abandoned result is void —
+    # the guarded transition clears scores/pens/sets/period (reason required).
+    S.ABANDONED: {S.SCHEDULED},
     S.WALKOVER: set(),
 }
 
@@ -51,17 +53,26 @@ def transition_match(
         if not can_transition(frm, to_status):
             raise ValidationError(f"Illegal match transition: {frm} -> {to_status}")
 
+        replay = frm == S.ABANDONED and to_status == S.SCHEDULED
         if to_status == S.WALKOVER:
             _stamp_walkover(locked, winner_team_id)
         elif to_status == S.COMPLETED:
             _guard_knockout_draw(locked)
+        elif replay:
+            _reset_for_replay(locked, reason)
 
         locked.status = to_status
         if to_status == S.LIVE and not locked.current_period:
             locked.current_period = "first_half"
         elif to_status == S.HALF_TIME:
             locked.current_period = "half_time"
-        locked.save(update_fields=["status", "current_period", "updated_at"])
+        update_fields = ["status", "current_period", "updated_at"]
+        if replay:
+            update_fields += [
+                "home_score", "away_score", "home_pens", "away_pens",
+                "set_scores",
+            ]
+        locked.save(update_fields=update_fields)
 
         emit_audit(
             actor_user=by,
@@ -102,6 +113,22 @@ def _guard_knockout_draw(locked: Match) -> None:
     if match_rules.get("penalties"):
         raise ValidationError("knockout_draw_needs_shootout")
     raise ValidationError("knockout_match_cannot_end_drawn")
+
+
+def _reset_for_replay(locked: Match, reason: str) -> None:
+    """ABANDONED → SCHEDULED (PRD §5.5 draft v4): the replay starts fresh —
+    the abandoned result is void, so scores/pens/sets/period clear. The
+    original events stay in the immutable log (invariant #4 — strikethrough,
+    never deletion). An audit reason is REQUIRED: a replay without a
+    recorded why is indefensible in a dispute."""
+    if not (reason or "").strip():
+        raise ValidationError("reason_required")
+    locked.home_score = None
+    locked.away_score = None
+    locked.home_pens = None
+    locked.away_pens = None
+    locked.set_scores = []
+    locked.current_period = ""
 
 
 def _stamp_walkover(locked: Match, winner_team_id) -> None:

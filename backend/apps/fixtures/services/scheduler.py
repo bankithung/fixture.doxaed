@@ -1143,8 +1143,9 @@ def build_schedule_inputs(
     the manual repair APIs, so every path sees exactly the bookings and
     shared-player links a commit would (tenet 3: preview ≡ commit).
 
-    Without ``plans``, reqs come from the scope's persisted ``scheduled``-
-    status matches (the commit path — live/completed are never moved). With
+    Without ``plans``, reqs come from the scope's persisted ``scheduled``/
+    ``postponed`` matches (the commit path — live/completed are never
+    moved, and postponed slots are exactly what a re-run must refill). With
     ``plans`` (pure ``MatchPlan``s from the plan_* core), reqs are synthetic
     ("p1"…) and the scope's own still-``scheduled`` rows are excluded from
     ``preoccupied`` (an accepted re-draw replaces them); anything in flight
@@ -1185,11 +1186,15 @@ def build_schedule_inputs(
         # Locked matches (repair seam) are never reassigned — they fall
         # through to ``preoccupied`` below, so their (venue, time, teams)
         # stays on the calendar as a fixed busy booking across any re-run.
+        # POSTPONED matches ARE reassigned (increment E — they need new
+        # slots most); their status stays untouched (the state machine owns
+        # the postponed → scheduled flip).
+        reassignable = (MatchStatus.SCHEDULED, MatchStatus.POSTPONED)
         targets = [
             m for m in all_matches
             if m.id in include
             or (
-                m.status == MatchStatus.SCHEDULED
+                m.status in reassignable
                 and m.locked_at is None
                 and (not leaf_key or m.leaf_key == leaf_key)
             )
@@ -1291,8 +1296,8 @@ def apply_schedule(
     """Run the engine over a tournament's UNPLAYED matches and persist
     scheduled_at/venue.
 
-    Guards + scoping (spec 2026-06-10 P3): only ``status=scheduled`` matches
-    are (re)assigned — live/completed results are never moved; with
+    Guards + scoping (spec 2026-06-10 P3): only ``scheduled``/``postponed``
+    matches are (re)assigned — live/completed results are never moved; with
     ``leaf_key`` only that competition is scheduled, treating every other
     match's existing booking as occupied. Stored Tournament.constraints are
     interpreted into the run. Times persist in the TOURNAMENT's timezone
