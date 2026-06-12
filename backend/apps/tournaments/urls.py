@@ -9,6 +9,7 @@ from apps.fixtures.views import (
     ScheduleFixturesView,
     ShiftFixturesDayView,
     SwapFixtureSlotsView,
+    SwissNextRoundView,
     TournamentDrawConfigView,
     TournamentScheduleChangesView,
     TournamentFixtureReadinessView,
@@ -182,6 +183,11 @@ urlpatterns = [
         "<uuid:tournament_id>/fixtures/preview/",
         PreviewFixturesView.as_view(),
         name="tournament-fixtures-preview",
+    ),
+    path(
+        "<uuid:tournament_id>/fixtures/next-round/",
+        SwissNextRoundView.as_view(),
+        name="tournament-fixtures-next-round",
     ),
     path(
         "<uuid:tournament_id>/fixtures/swap-slots/",

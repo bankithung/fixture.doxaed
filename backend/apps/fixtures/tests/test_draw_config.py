@@ -76,7 +76,7 @@ def test_merge_keeps_layers_sparse():
         {"group_size": 1},                          # A8: group_size < 2
         {"group_size": 3, "advance_per_group": 3},  # A8: apg >= group_size
         {"advance_per_group": 0},
-        {"format": "swiss"},
+        {"format": "ladder"},  # still deferred (swiss landed in increment P)
         {"legs": 3},
         {"seeding": "lottery"},
         {"third_place": "yes"},

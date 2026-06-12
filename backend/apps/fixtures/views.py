@@ -19,6 +19,8 @@ from apps.fixtures.services.generate import (
     generate_round_robin,
     generate_round_robin_by_category,
     generate_single_elimination,
+    generate_swiss,
+    generate_swiss_next_round,
 )
 from apps.fixtures.services.preview import preview_fixtures, stored_venue_records
 from apps.fixtures.services.readiness import fixture_readiness
@@ -76,7 +78,7 @@ class GenerateFixturesView(GenericAPIView):
             for k in (
                 "format", "group_size", "advance_per_group",
                 "advance_best_thirds", "third_place", "plate", "legs",
-                "seeding", "knockout_seeding", "seed",
+                "seeding", "knockout_seeding", "seed", "swiss_rounds",
             )
             if k in request.data
         }
@@ -112,6 +114,19 @@ class GenerateFixturesView(GenericAPIView):
                     knockout_seeding=str(cfg.get("knockout_seeding") or "cross"),
                     warnings=warnings,
                 )
+            elif fmt == "swiss":
+                # Swiss is ROUND-AT-A-TIME (increment P): this draws round 1
+                # only; later rounds via POST …/fixtures/next-round/.
+                teams_qs = Team.objects.filter(
+                    tournament=t, status=TeamStatus.REGISTERED, deleted_at__isnull=True
+                )
+                if leaf_key:
+                    teams_qs = teams_qs.filter(leaf_key=leaf_key)
+                teams = list(teams_qs.order_by("seed", "name"))
+                matches = generate_swiss(
+                    tournament=t, teams=teams, leaf_key=leaf_key,
+                    seeding=seeding, seed=seed, warnings=warnings,
+                )
             elif fmt == "by_category":
                 matches = generate_round_robin_by_category(
                     tournament=t, leaf_key=leaf_key or None,
@@ -141,6 +156,75 @@ class GenerateFixturesView(GenericAPIView):
             {
                 "generated": len(matches), "format": fmt, "leaf_key": leaf_key,
                 "seed": seed_used, "warnings": warnings,
+            },
+            status=201,
+        )
+
+
+class SwissNextRoundView(GenericAPIView):
+    """`POST /api/tournaments/{id}/fixtures/next-round/` — materialize the
+    NEXT Swiss round from current standings (increment P). Body `{leaf_key?,
+    event_id?}`. Gate: bracket_editor. Pairs by standings order (points —
+    byes credited as wins — then GD), never repeating a previous pairing
+    (greedy with backtracking); odd counts sit one team out (no second bye
+    while anyone has had none). Refuses with 400 `round_incomplete` while the
+    current round has unfinished matches, `swiss_not_started` before round 1,
+    `swiss_complete` once the configured `swiss_rounds` exist. Idempotent per
+    round on `event_id` (invariant 3) — a replay answers from the
+    `swiss_round_generated` audit row instead of pairing again."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        import uuid as _uuid
+
+        from apps.audit.models import AuditEvent
+
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        if not can_access_module(request.user, t, "tournament.bracket_editor"):
+            raise PermissionDenied("not_tournament_manager")
+
+        leaf_key = str(request.data.get("leaf_key") or "")
+        event_id = None
+        raw_eid = request.data.get("event_id")
+        if raw_eid:
+            try:
+                event_id = _uuid.UUID(str(raw_eid))
+            except ValueError:
+                raise DRFValidationError({"detail": "invalid_event_id"}) from None
+            prior = AuditEvent.objects.filter(
+                idempotency_key=event_id, event_type="swiss_round_generated"
+            ).first()
+            if prior is not None:  # replay (invariant 3) — do NOT pair again
+                return Response(prior.payload_after or {})
+
+        # Round count from the STORED effective config (the endpoint takes no
+        # overrides — the wizard saves swiss_rounds via the draw-config PATCH).
+        cfg = effective_draw_config(t, leaf_key or None)
+        warnings: list[dict] = []
+        try:
+            matches = generate_swiss_next_round(
+                tournament=t,
+                leaf_key=leaf_key or None,
+                swiss_rounds=(
+                    int(cfg["swiss_rounds"])
+                    if cfg.get("swiss_rounds") is not None else None
+                ),
+                by=request.user, event_id=event_id, request=request,
+                warnings=warnings,
+            )
+        except (ValueError, TypeError) as e:
+            raise DRFValidationError({"detail": str(e)})
+        # Same shape as the audited payload, so replays answer identically.
+        return Response(
+            {
+                "generated": len(matches),
+                "round_no": matches[0].round_no if matches else None,
+                "leaf_key": leaf_key,
+                "matches": [str(m.id) for m in matches],
+                "warnings": warnings,
             },
             status=201,
         )

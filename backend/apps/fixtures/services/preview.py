@@ -22,11 +22,13 @@ from apps.fixtures.services.generate import (
     _plate_label,
     _registered_teams,
     _small_group_max,
+    _swiss_label,
     compute_inputs_hash,
     plan_knockout_qualifiers,
     plan_plate_for_plans,
     plan_round_robin,
     plan_single_elimination,
+    plan_swiss_round1,
 )
 from apps.fixtures.services.scheduler import (
     build_schedule_inputs,
@@ -116,6 +118,22 @@ def _plan_for_config(
             warnings=warnings,
         )
         return _with_plate(plans, cfg, sports_cfg, leaf_key, sport, warnings)
+    if fmt == "swiss":
+        # Swiss is round-at-a-time (increment P): preview shows round 1 only
+        # (later rounds depend on results, which a pure simulate cannot know).
+        teams_qs = Team.objects.filter(
+            tournament=tournament, status=TeamStatus.REGISTERED,
+            deleted_at__isnull=True,
+        )
+        if leaf_key:
+            teams_qs = teams_qs.filter(leaf_key=leaf_key)
+        teams = list(teams_qs.order_by("seed", "name"))
+        plans, _bye = plan_swiss_round1(
+            teams, leaf_key=leaf_key or "", sport=sport,
+            label=_swiss_label(sports_cfg, leaf_key),
+            seeding=seeding, seed=seed,
+        )
+        return plans
     if fmt == "by_category":
         plans, _skipped = _plan_by_category(
             tournament, leaf_key, legs=int(cfg["legs"]),

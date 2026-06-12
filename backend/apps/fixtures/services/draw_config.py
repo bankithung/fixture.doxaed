@@ -26,11 +26,17 @@ from typing import Any
 from django.utils import timezone
 
 DEFAULT_DRAW_CONFIG: dict[str, Any] = {
-    "format": "round_robin",         # round_robin | knockout | groups_knockout
+    "format": "round_robin",         # round_robin | knockout | groups_knockout | swiss
     "group_size": 5,
     "advance_per_group": 2,
     "advance_best_thirds": 0,        # best next-placed cross-group qualifiers
     "legs": 1,                       # 1 | 2 (double round-robin, mirrored 2nd cycle)
+    "swiss_rounds": None,            # format="swiss": rounds; None = ceil(log2 n), cap n-1
+    # Swiss bye bookkeeping persisted BY generation (increment P) — one entry
+    # {"round": int, "team_id": str} per odd-count round; the bye team is
+    # credited full win points in the Swiss pairing standings. Never an input
+    # (excluded from inputs_hash, like "seed").
+    "swiss_byes": [],
     "seeding": "registration",       # registration | random | snake | seeded
     "knockout_seeding": "cross",     # cross | overall (groups→knockout pool)
     "seed": None,                    # RNG seed; persisted on first random draw
@@ -44,7 +50,7 @@ DEFAULT_DRAW_CONFIG: dict[str, Any] = {
     "calendar": None,
 }
 
-_FORMATS = {"round_robin", "knockout", "groups_knockout"}
+_FORMATS = {"round_robin", "knockout", "groups_knockout", "swiss"}
 _SEEDINGS = {"registration", "random", "snake", "seeded"}
 _KNOCKOUT_SEEDINGS = {"cross", "overall"}
 _BYE_POLICIES = {"seeded_byes"}
@@ -116,6 +122,16 @@ def _validate_layer(layer: dict[str, Any]) -> None:
         )
     if "legs" in layer and layer["legs"] not in (1, 2):
         raise ValueError("legs must be 1 or 2")
+    if "swiss_rounds" in layer and layer["swiss_rounds"] is not None \
+            and (not _is_int(layer["swiss_rounds"]) or layer["swiss_rounds"] < 1):
+        raise ValueError("swiss_rounds must be a positive integer")
+    if "swiss_byes" in layer:
+        byes = layer["swiss_byes"]
+        if not isinstance(byes, list) or not all(
+            isinstance(b, dict) and _is_int(b.get("round")) and b.get("team_id")
+            for b in byes
+        ):
+            raise ValueError("swiss_byes must be a list of {round, team_id}")
     if "third_place" in layer and not isinstance(layer["third_place"], bool):
         raise ValueError("third_place must be a boolean")
     if "plate" in layer and not isinstance(layer["plate"], bool):

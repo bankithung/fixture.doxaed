@@ -401,9 +401,11 @@ def _group_hash(group: list) -> str:
 # Bookkeeping keys excluded from the v2 inputs hash: the replay seed is
 # persisted BY generation (hashing it would flip "inputs changed" the moment
 # a previewed random draw is accepted), the reviewed-at stamp is process
-# state, and the wizard-saved calendar is slot-time data (§2.5 — it hashes
-# into scheduling staleness, never the draw), not a generation input.
-_HASH_EXCLUDED_KEYS = ("seed", "constraints_reviewed_at", "calendar")
+# state, the wizard-saved calendar is slot-time data (§2.5 — it hashes
+# into scheduling staleness, never the draw), not a generation input, and
+# the Swiss bye ledger (increment P) is likewise persisted BY generation.
+_HASH_EXCLUDED_KEYS = ("seed", "constraints_reviewed_at", "calendar",
+                       "swiss_byes")
 
 
 def pairing_scope_constraints(
@@ -790,6 +792,316 @@ def generate_plate(
     for m in r1:
         if m.status in final:
             advance_from_match(m.id)
+    return created
+
+
+# ------------------------------------------------------------- Swiss system
+# (increment P) ROUND-AT-A-TIME: format="swiss" draws ONLY round 1; each
+# later round is paired from standings via format="swiss_next_round" once the
+# current round is fully final. BYES (odd entrant counts) create NO phantom
+# Match rows — compute_standings skips None-team matches, so a walkover row
+# against nobody would count for nothing; instead each bye is a ledger entry
+# in draw_config[leaf]["swiss_byes"] and credits full win points inside the
+# Swiss pairing standings (the simplest approach that keeps pairing correct).
+
+
+def _swiss_label(sports_cfg, leaf_key: str | None) -> str:
+    """``"<leaf> — Swiss"`` — the same label grammar the plate uses; plain
+    ``"Swiss"`` for whole-tournament draws."""
+    if leaf_key:
+        return f"{leaf_label(sports_cfg, leaf_key)} — Swiss"[:80]
+    return "Swiss"
+
+
+def default_swiss_rounds(n: int) -> int:
+    """Default round count for ``n`` entrants: ceil(log2(n)) — enough rounds
+    to produce a unique leader — capped at n-1 (a full round robin)."""
+    return min(max(1, n - 1), max(1, (max(2, n) - 1).bit_length()))
+
+
+def _swiss_byes(tournament, leaf_key: str | None) -> list[dict]:
+    """The stored bye ledger for one Swiss scope."""
+    layer = (tournament.draw_config or {}).get(leaf_key or "*") or {}
+    return [b for b in layer.get("swiss_byes") or [] if isinstance(b, dict)]
+
+
+def _persist_swiss_bye(tournament, leaf_key: str | None, round_no: int,
+                       team_id) -> None:
+    """Append one bye to ``draw_config[leaf]["swiss_byes"]`` (bookkeeping —
+    excluded from inputs_hash, like the replay seed)."""
+    stored = dict(tournament.draw_config or {})
+    layer = dict(stored.get(leaf_key or "*") or {})
+    byes = list(layer.get("swiss_byes") or [])
+    byes.append({"round": round_no, "team_id": str(team_id)})
+    layer["swiss_byes"] = byes
+    stored[leaf_key or "*"] = layer
+    tournament.draw_config = stored
+    tournament.save(update_fields=["draw_config", "updated_at"])
+
+
+def _swiss_order(tournament, teams: list[Team], label: str,
+                 byes: list[dict]) -> list[Team]:
+    """Standings order for Swiss pairing: points (bye = full win points),
+    then goal difference, then name (deterministic)."""
+    from apps.matches.services.standings import compute_standings
+    from apps.tournaments.services.rules import merge_rules
+
+    win_pts = merge_rules(getattr(tournament, "rules", None))["points"]["win"]
+    rows = {
+        r["team_id"]: r for r in compute_standings(tournament, group_label=label)
+    }
+    bye_counts: dict[str, int] = {}
+    for b in byes:
+        tid = str(b.get("team_id"))
+        bye_counts[tid] = bye_counts.get(tid, 0) + 1
+
+    def key(tm: Team):
+        row = rows.get(str(tm.id)) or {"Pts": 0, "GD": 0}
+        pts = row["Pts"] + win_pts * bye_counts.get(str(tm.id), 0)
+        return (-pts, -row["GD"], tm.name)
+
+    return sorted(teams, key=key)
+
+
+def _swiss_bye_team(ordered: list[Team], byes: list[dict]) -> Team:
+    """The bye for an odd round: the LOWEST-standing team among those with
+    the fewest prior byes (conventional Swiss — nobody sits out twice while
+    someone hasn't sat out at all)."""
+    counts: dict[str, int] = {}
+    for b in byes:
+        tid = str(b.get("team_id"))
+        counts[tid] = counts.get(tid, 0) + 1
+    fewest = min(counts.get(str(tm.id), 0) for tm in ordered)
+    for tm in reversed(ordered):
+        if counts.get(str(tm.id), 0) == fewest:
+            return tm
+    return ordered[-1]  # unreachable — fewest always matches someone
+
+
+def _swiss_pairs(
+    ordered: list, played: set[frozenset],
+) -> list[tuple] | None:
+    """Pair a standings-ordered (even-length) field avoiding rematches:
+    greedy top-down — best unpaired team meets the nearest unpaired team it
+    hasn't played — with BACKTRACKING (an early pick that strands a forced
+    rematch later is undone and the next candidate tried). Returns None when
+    no rematch-free perfect matching exists; the caller falls back to pairing
+    in order with a named warning. Field sizes are school-tournament small,
+    so the worst-case search is fine."""
+    out: list[tuple] = []
+
+    def solve(remaining: list) -> bool:
+        if not remaining:
+            return True
+        first = remaining[0]
+        for j in range(1, len(remaining)):
+            cand = remaining[j]
+            if frozenset((first.id, cand.id)) in played:
+                continue
+            out.append((first, cand))
+            if solve(remaining[1:j] + remaining[j + 1:]):
+                return True
+            out.pop()
+        return False
+
+    return list(out) if solve(list(ordered)) else None
+
+
+def plan_swiss_round1(
+    teams: list, *, leaf_key: str = "", sport: str = "", label: str = "Swiss",
+    seeding: str = "registration", seed: int | None = None,
+) -> tuple[list[MatchPlan], Team | None]:
+    """Pure pairing core for Swiss ROUND 1: seed-halves pairing — the seed
+    order split in two, top half vs bottom half (seed 1 meets the top of the
+    bottom half). Odd counts: the LOWEST seed takes the round-1 bye (returned;
+    the wrapper records it — zero DB writes here)."""
+    if len(teams) < 2:
+        raise ValueError("swiss requires at least 2 teams")
+    teams = _seed_order(list(teams), seeding=seeding, seed=seed)
+    bye: Team | None = None
+    if len(teams) % 2:
+        bye = teams[-1]
+        teams = teams[:-1]
+    half = len(teams) // 2
+    plans: list[MatchPlan] = []
+    for i in range(half):
+        home, away = teams[i], teams[i + half]
+        plans.append(
+            MatchPlan(
+                stage="swiss", group_label=label, round_no=1,
+                leaf_key=leaf_key, sport=sport,
+                home_team_id=home.id, away_team_id=away.id,
+                home_source={"type": "team", "team_id": str(home.id)},
+                away_source={"type": "team", "team_id": str(away.id)},
+                ref=i,
+            )
+        )
+    return plans, bye
+
+
+def generate_swiss(
+    *, tournament, teams, leaf_key: str = "", sport: str = "",
+    seeding: str = "registration", seed: int | None = None,
+    warnings: list | None = None,
+) -> list[Match]:
+    """Swiss round 1 (increment P) — seed-halves pairing, idempotent per
+    (stage="swiss", leaf). Later rounds via ``generate_swiss_next_round``.
+    An odd entrant count records a bye for the lowest seed in
+    ``draw_config[leaf]["swiss_byes"]`` (full win points in the pairing
+    standings; no phantom Match row). Thin persistence wrapper over
+    ``plan_swiss_round1`` (spec §4.1)."""
+    existing = list(
+        Match.objects.filter(
+            tournament=tournament, stage="swiss", leaf_key=leaf_key or "",
+            deleted_at__isnull=True,
+        )
+    )
+    if existing:
+        return existing
+
+    if not sport and leaf_key:
+        sport = sport_for_leaf(tournament.sports or [], leaf_key)
+    generated_seed: int | None = None
+    if seeding == "random" and seed is None:
+        seed = generated_seed = _new_seed()
+    plans, bye = plan_swiss_round1(
+        list(teams), leaf_key=leaf_key or "", sport=sport,
+        label=_swiss_label(tournament.sports or [], leaf_key or None),
+        seeding=seeding, seed=seed,
+    )
+    ih = compute_inputs_hash(tournament, leaf_key or None)  # v2 hash (§2.5)
+    for p in plans:
+        p.inputs_hash = ih
+    with transaction.atomic():
+        created = _persist_plans(tournament, plans)
+        if bye is not None:
+            _persist_swiss_bye(tournament, leaf_key or None, 1, bye.id)
+        if generated_seed is not None:
+            _persist_draw_seed(tournament, leaf_key or None, generated_seed)
+    return created
+
+
+# Statuses that no longer block the next Swiss round (a cancelled match will
+# never finish — counting it as open would deadlock the system).
+_SWISS_FINAL = (MatchStatus.COMPLETED, MatchStatus.WALKOVER,
+                MatchStatus.CANCELLED)
+
+
+def generate_swiss_next_round(
+    *, tournament, leaf_key: str | None = None, swiss_rounds: int | None = None,
+    by=None, event_id=None, request=None, warnings: list | None = None,
+) -> list[Match]:
+    """Pair and persist the NEXT Swiss round (increment P) from standings —
+    points (byes credited as wins) then GD — avoiding rematches via
+    ``_swiss_pairs`` (greedy + backtracking; an unavoidable rematch falls
+    back to in-order pairing with a named ``swiss_rematch_unavoidable``
+    warning). Readiness: raises ``round_incomplete`` while any Swiss match in
+    scope is unfinished, ``swiss_not_started`` before round 1 and
+    ``swiss_complete`` once ``swiss_rounds`` (default ceil(log2 n), cap n-1)
+    rounds exist. Withdrawn teams drop out of pairing automatically
+    (``_registered_teams`` filters on REGISTERED). Odd counts: the
+    lowest-standing team with the fewest prior byes sits out (ledger entry +
+    win-points credit, no phantom Match).
+
+    Idempotent per round on ``event_id`` (invariant 3): the round is audited
+    as ``swiss_round_generated`` carrying the response payload, and the VIEW
+    answers a replay from that row before calling here."""
+    warnings = [] if warnings is None else warnings
+    existing = list(
+        Match.objects.filter(
+            tournament=tournament, stage="swiss", leaf_key=leaf_key or "",
+            deleted_at__isnull=True,
+        ).select_related("home_team", "away_team")
+    )
+    if not existing:
+        raise ValueError("swiss_not_started")
+    if any(m.status not in _SWISS_FINAL for m in existing):
+        raise ValueError("round_incomplete")
+
+    teams = _registered_teams(tournament, leaf_key)
+    if len(teams) < 2:
+        raise ValueError("Need at least 2 registered teams in this scope.")
+    current = max(m.round_no for m in existing)
+    total = swiss_rounds or default_swiss_rounds(len(teams))
+    if current >= total:
+        raise ValueError("swiss_complete")
+
+    label = existing[0].group_label or _swiss_label(
+        tournament.sports or [], leaf_key
+    )
+    byes = _swiss_byes(tournament, leaf_key)
+    ordered = _swiss_order(tournament, teams, label, byes)
+    bye_team: Team | None = None
+    if len(ordered) % 2:
+        bye_team = _swiss_bye_team(ordered, byes)
+        ordered = [tm for tm in ordered if tm.id != bye_team.id]
+
+    played = {
+        frozenset((m.home_team_id, m.away_team_id))
+        for m in existing
+        if m.home_team_id and m.away_team_id
+    }
+    pairs = _swiss_pairs(ordered, played)
+    if pairs is None:
+        warnings.append({
+            "code": "swiss_rematch_unavoidable", "round": current + 1,
+            "leaf_key": leaf_key or "",
+        })
+        pairs = [
+            (ordered[i], ordered[i + 1]) for i in range(0, len(ordered), 2)
+        ]
+
+    # Home/away balance: fewer prior home games takes home; tie → the
+    # higher-standing side (deterministic).
+    home_counts: dict[object, int] = {}
+    for m in existing:
+        if m.home_team_id:
+            home_counts[m.home_team_id] = home_counts.get(m.home_team_id, 0) + 1
+    sport = existing[0].sport
+    ih = compute_inputs_hash(tournament, leaf_key)
+    plans: list[MatchPlan] = []
+    for a, b in pairs:
+        home, away = (
+            (b, a) if home_counts.get(b.id, 0) < home_counts.get(a.id, 0)
+            else (a, b)
+        )
+        plans.append(
+            MatchPlan(
+                stage="swiss", group_label=label, round_no=current + 1,
+                leaf_key=leaf_key or "", sport=sport,
+                home_team_id=home.id, away_team_id=away.id,
+                home_source={"type": "team", "team_id": str(home.id)},
+                away_source={"type": "team", "team_id": str(away.id)},
+                inputs_hash=ih, ref=len(plans),
+            )
+        )
+    from apps.audit.models import ActorRole
+    from apps.audit.services import emit_audit
+
+    with transaction.atomic():
+        created = _persist_plans(tournament, plans)
+        if bye_team is not None:
+            _persist_swiss_bye(tournament, leaf_key, current + 1, bye_team.id)
+        # The payload mirrors the next-round endpoint's response exactly, so
+        # an event_id replay (invariant 3) answers byte-for-byte from here.
+        emit_audit(
+            actor_user=by,
+            actor_role=ActorRole.ADMIN,
+            event_type="swiss_round_generated",
+            target_type="tournament",
+            target_id=tournament.id,
+            organization_id=tournament.organization_id,
+            tournament_id=tournament.id,
+            idempotency_key=event_id,
+            payload_after={
+                "generated": len(created),
+                "round_no": current + 1,
+                "leaf_key": leaf_key or "",
+                "matches": [str(m.id) for m in created],
+                "warnings": warnings,
+            },
+            request=request,
+        )
     return created
 
 
