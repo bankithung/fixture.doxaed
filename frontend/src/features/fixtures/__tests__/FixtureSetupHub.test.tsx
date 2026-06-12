@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -167,6 +167,18 @@ beforeEach(() => {
   });
 });
 
+/** A scheduled group-stage match in football.u15. */
+function groupMatch(id = "m1"): MatchRow {
+  return {
+    id, stage: "group", group_label: "Group A", round_no: 1,
+    match_no: 1, status: "scheduled",
+    home_team: { id: "tm1", name: "A FC", short_name: "A" },
+    away_team: { id: "tm2", name: "B FC", short_name: "B" },
+    home_score: null, away_score: null, sport: "football", set_scores: [],
+    leaf_key: "football.u15", venue: "", scoring: null, scheduled_at: null,
+  } as MatchRow;
+}
+
 /** A finished Swiss-round match in football.u15. */
 function swissMatch(id: string, status = "completed"): MatchRow {
   return {
@@ -187,26 +199,123 @@ function mockSwissConfig(): void {
   });
 }
 
+/** Readiness whose GLOBAL checks fail — the stage gate must engage. */
+function mockGlobalsUnset(): void {
+  vi.mocked(tournamentsApi.fixtureReadiness).mockResolvedValue({
+    global: {
+      checks: [
+        {
+          id: "calendar_set",
+          status: "fail",
+          hint: "No tournament calendar yet — set the date range.",
+          fix: "settings",
+        },
+        {
+          id: "venues_defined",
+          status: "fail",
+          hint: "No venues defined — add at least one.",
+          fix: "venues",
+        },
+      ],
+    },
+    competitions: READINESS.competitions,
+  });
+}
+
+/** Expand one competition row (accordion). */
+async function expandRow(key: string): Promise<void> {
+  await userEvent.click(await screen.findByTestId(`competition-row-${key}`));
+}
+
 describe("FixtureSetupHub", () => {
-  it("renders the global setup card and one readiness checklist per competition", async () => {
+  it("stage-gates everything behind global setup until dates and venues exist", async () => {
+    mockGlobalsUnset();
     wrap(<FixtureSetupHub tournamentId="t1" />);
-    expect(await screen.findByText("Football · U15")).toBeInTheDocument();
-    expect(screen.getByText("Football · U17")).toBeInTheDocument();
+
+    expect(await screen.findByTestId("global-setup-gate")).toBeInTheDocument();
+    expect(
+      screen.getByText("Start with the global setup"),
+    ).toBeInTheDocument();
+    // competitions, the summary strip and the tab bar are all hidden
+    expect(screen.queryByTestId("competition-row-football.u15")).toBeNull();
+    expect(screen.queryByTestId("global-setup-strip")).toBeNull();
+    expect(screen.queryByTestId("hub-tab-constraints")).toBeNull();
+    // the CTA opens the GlobalSetupWizard
+    await userEvent.click(screen.getByTestId("global-setup-cta"));
+    expect(
+      await screen.findByRole("dialog", { name: "Global setup" }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the slim global strip and groups competitions into funnel sections", async () => {
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+    // globals set → slim strip, not the gate
+    expect(await screen.findByTestId("global-setup-strip")).toBeInTheDocument();
+    expect(screen.queryByTestId("global-setup-gate")).toBeNull();
     expect(screen.getByText("Global setup")).toBeInTheDocument();
-    // progress summaries from the server, never recomputed
-    expect(screen.getByText(/5\/5/)).toBeInTheDocument();
-    expect(screen.getByText(/2\/5/)).toBeInTheDocument();
+
+    // u15 (ready) sits in the open "Ready to draw" section with its server
+    // summary as a badge — never recomputed
+    expect(screen.getByTestId("section-ready")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(
+      screen.getByTestId("competition-row-football.u15"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("readiness-badge-football.u15"),
+    ).toHaveTextContent("5/5");
+    // no competition needs setup or is drawn → those sections don't render
+    expect(screen.queryByTestId("section-needs_setup")).toBeNull();
+    expect(screen.queryByTestId("section-drawn")).toBeNull();
+  });
+
+  it("collapses the Needs-teams section by default, showing only the count", async () => {
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+    const needsTeams = await screen.findByTestId("section-needs_teams");
+    expect(needsTeams).toHaveAttribute("aria-expanded", "false");
+    expect(within(needsTeams).getByText("1")).toBeInTheDocument();
+    // u17 (0 teams) is hidden until the section is opened
+    expect(screen.queryByTestId("competition-row-football.u17")).toBeNull();
+    await userEvent.click(needsTeams);
+    expect(
+      screen.getByTestId("competition-row-football.u17"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("readiness-badge-football.u17"),
+    ).toHaveTextContent("2/5");
+  });
+
+  it("expands rows accordion-style — only one checklist open at a time", async () => {
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+    await expandRow("football.u15");
+    expect(screen.getByTestId("generate-football.u15")).toBeEnabled();
+
+    await userEvent.click(screen.getByTestId("section-needs_teams"));
+    await expandRow("football.u17");
+    // u17's expansion replaced u15's (single-open accordion)
+    expect(screen.getByTestId("generate-football.u17")).toBeDisabled();
+    expect(screen.queryByTestId("generate-football.u15")).toBeNull();
+
+    // clicking the open row again collapses it
+    await userEvent.click(screen.getByTestId("competition-row-football.u17"));
+    expect(screen.queryByTestId("generate-football.u17")).toBeNull();
   });
 
   it("gates the generate CTA on server readiness", async () => {
     wrap(<FixtureSetupHub tournamentId="t1" />);
-    expect(await screen.findByTestId("generate-football.u15")).toBeEnabled();
+    await expandRow("football.u15");
+    expect(screen.getByTestId("generate-football.u15")).toBeEnabled();
+    await userEvent.click(screen.getByTestId("section-needs_teams"));
+    await expandRow("football.u17");
     expect(screen.getByTestId("generate-football.u17")).toBeDisabled();
   });
 
   it("deep-links a venues fix into the global setup wizard", async () => {
     wrap(<FixtureSetupHub tournamentId="t1" />);
-    await screen.findByText("Football · U17");
+    await userEvent.click(await screen.findByTestId("section-needs_teams"));
+    await expandRow("football.u17");
     // U17 has two fixable fails (teams, venues) + a warn (constraints)
     const fixes = screen.getAllByRole("button", { name: "Fix" });
     await userEvent.click(fixes[1]); // venues_defined
@@ -219,7 +328,8 @@ describe("FixtureSetupHub", () => {
 
   it("deep-links a teams fix to the teams tab", async () => {
     wrap(<FixtureSetupHub tournamentId="t1" />);
-    await screen.findByText("Football · U17");
+    await userEvent.click(await screen.findByTestId("section-needs_teams"));
+    await expandRow("football.u17");
     const fixes = screen.getAllByRole("button", { name: "Fix" });
     await userEvent.click(fixes[0]); // enough_teams
     await waitFor(() =>
@@ -227,17 +337,8 @@ describe("FixtureSetupHub", () => {
     );
   });
 
-  it("shows the read-only result card for a drawn competition and routes the stale-draw banner to a fresh preview", async () => {
-    vi.mocked(tournamentsApi.matches).mockResolvedValue([
-      {
-        id: "m1", stage: "group", group_label: "Group A", round_no: 1,
-        match_no: 1, status: "scheduled",
-        home_team: { id: "tm1", name: "A FC", short_name: "A" },
-        away_team: { id: "tm2", name: "B FC", short_name: "B" },
-        home_score: null, away_score: null, sport: "football", set_scores: [],
-        leaf_key: "football.u15", venue: "", scoring: null, scheduled_at: null,
-      } as MatchRow,
-    ]);
+  it("files a drawn competition under Drawn, shows the read-only result card and routes the stale-draw banner to a fresh preview", async () => {
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([groupMatch()]);
     vi.mocked(tournamentsApi.fixtureReadiness).mockResolvedValue({
       ...READINESS,
       competitions: [
@@ -254,6 +355,12 @@ describe("FixtureSetupHub", () => {
     });
     wrap(<FixtureSetupHub tournamentId="t1" />);
 
+    // the drawn competition files under the (open) Drawn section
+    expect(await screen.findByTestId("section-drawn")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    await expandRow("football.u15");
     // post-generation: read-only card, no inline score entry (§6 screen 6)
     expect(await screen.findByTestId("competition-result-card")).toBeInTheDocument();
     expect(screen.queryByLabelText("Home score")).toBeNull();
@@ -267,16 +374,7 @@ describe("FixtureSetupHub", () => {
   it("Share schedule copies the public schedule URL", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
-    vi.mocked(tournamentsApi.matches).mockResolvedValue([
-      {
-        id: "m1", stage: "group", group_label: "Group A", round_no: 1,
-        match_no: 1, status: "scheduled",
-        home_team: { id: "tm1", name: "A FC", short_name: "A" },
-        away_team: { id: "tm2", name: "B FC", short_name: "B" },
-        home_score: null, away_score: null, sport: "football", set_scores: [],
-        leaf_key: "football.u15", venue: "", scoring: null, scheduled_at: null,
-      } as MatchRow,
-    ]);
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([groupMatch()]);
     wrap(<FixtureSetupHub tournamentId="t1" />);
 
     const share = await screen.findByTestId("share-schedule");
@@ -295,16 +393,7 @@ describe("FixtureSetupHub", () => {
   it("Print opens the public schedule page (the print view lives there)", async () => {
     const open = vi.fn();
     vi.stubGlobal("open", open);
-    vi.mocked(tournamentsApi.matches).mockResolvedValue([
-      {
-        id: "m1", stage: "group", group_label: "Group A", round_no: 1,
-        match_no: 1, status: "scheduled",
-        home_team: { id: "tm1", name: "A FC", short_name: "A" },
-        away_team: { id: "tm2", name: "B FC", short_name: "B" },
-        home_score: null, away_score: null, sport: "football", set_scores: [],
-        leaf_key: "football.u15", venue: "", scoring: null, scheduled_at: null,
-      } as MatchRow,
-    ]);
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([groupMatch()]);
     wrap(<FixtureSetupHub tournamentId="t1" />);
 
     const print = await screen.findByTestId("print-order-of-play");
@@ -318,6 +407,40 @@ describe("FixtureSetupHub", () => {
     vi.unstubAllGlobals();
   });
 
+  it("switches the lower panels via tabs instead of stacking them", async () => {
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([groupMatch()]);
+    vi.mocked(tournamentsApi.standings).mockResolvedValue({
+      groups: [
+        {
+          group_label: "Group A",
+          rows: [
+            {
+              team_id: "tm1", name: "A FC", school: "A School",
+              P: 1, W: 1, D: 0, L: 0, GF: 1, GA: 0, GD: 1, Pts: 3,
+            },
+          ],
+        },
+      ],
+    });
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+
+    // Constraints is the default tab; the other panels are NOT mounted
+    expect(
+      await screen.findByText("Scheduling constraints"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("schedule-changes-panel")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("hub-tab-changes"));
+    expect(
+      await screen.findByTestId("schedule-changes-panel"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Scheduling constraints")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("hub-tab-standings"));
+    expect(await screen.findByText("Group A")).toBeInTheDocument();
+    expect(screen.queryByTestId("schedule-changes-panel")).toBeNull();
+  });
+
   it("offers Generate next round once a Swiss round is fully decided and posts the next-round endpoint", async () => {
     mockSwissConfig();
     vi.mocked(tournamentsApi.matches).mockResolvedValue([
@@ -326,6 +449,7 @@ describe("FixtureSetupHub", () => {
     ]);
     wrap(<FixtureSetupHub tournamentId="t1" />);
 
+    await expandRow("football.u15");
     const btn = await screen.findByTestId("next-round-football.u15");
     await userEvent.click(btn);
     await waitFor(() =>
@@ -347,6 +471,7 @@ describe("FixtureSetupHub", () => {
       swissMatch("m2", "scheduled"),
     ]);
     const { unmount } = wrap(<FixtureSetupHub tournamentId="t1" />);
+    await expandRow("football.u15");
     expect(await screen.findByTestId("competition-result-card")).toBeInTheDocument();
     expect(screen.queryByTestId("next-round-football.u15")).toBeNull();
     unmount();
@@ -360,6 +485,7 @@ describe("FixtureSetupHub", () => {
       defaults: { format: "round_robin" } as unknown as DrawConfig,
     });
     wrap(<FixtureSetupHub tournamentId="t1" />);
+    await expandRow("football.u15");
     expect(await screen.findByTestId("competition-result-card")).toBeInTheDocument();
     expect(screen.queryByTestId("next-round-football.u15")).toBeNull();
   });
@@ -374,6 +500,7 @@ describe("FixtureSetupHub", () => {
     );
     wrap(<FixtureSetupHub tournamentId="t1" />);
 
+    await expandRow("football.u15");
     await userEvent.click(await screen.findByTestId("next-round-football.u15"));
     expect(
       await screen.findByText("Could not generate the next round"),
@@ -386,16 +513,7 @@ describe("FixtureSetupHub", () => {
   });
 
   it("the inputs-changed banner can be dismissed with Keep", async () => {
-    vi.mocked(tournamentsApi.matches).mockResolvedValue([
-      {
-        id: "m1", stage: "group", group_label: "Group A", round_no: 1,
-        match_no: 1, status: "scheduled",
-        home_team: { id: "tm1", name: "A FC", short_name: "A" },
-        away_team: { id: "tm2", name: "B FC", short_name: "B" },
-        home_score: null, away_score: null, sport: "football", set_scores: [],
-        leaf_key: "football.u15", venue: "", scoring: null, scheduled_at: null,
-      } as MatchRow,
-    ]);
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([groupMatch()]);
     vi.mocked(tournamentsApi.fixtureReadiness).mockResolvedValue({
       ...READINESS,
       competitions: [
@@ -411,6 +529,7 @@ describe("FixtureSetupHub", () => {
     });
     wrap(<FixtureSetupHub tournamentId="t1" />);
 
+    await expandRow("football.u15");
     expect(await screen.findByTestId("inputs-changed-banner")).toBeInTheDocument();
     await userEvent.click(screen.getByTestId("keep-draw"));
     expect(screen.queryByTestId("inputs-changed-banner")).toBeNull();
