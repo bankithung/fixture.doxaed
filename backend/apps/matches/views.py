@@ -415,6 +415,58 @@ class MatchScheduleView(GenericAPIView):
         )
 
 
+class MatchLockView(GenericAPIView):
+    """`POST/DELETE /api/matches/{id}/lock/` — pin / release a match's slot
+    (repair seam, increment B). A locked match is never reassigned by a
+    scheduler re-run; its (venue, time, teams) stays on the calendar as a
+    fixed busy booking. Gate: the schedule_editor module. Idempotent (a
+    second lock/unlock is a no-op); audited (`match_locked`/`match_unlocked`)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, match_id):
+        return self._set(request, match_id, locked=True)
+
+    def delete(self, request, match_id):
+        return self._set(request, match_id, locked=False)
+
+    def _set(self, request, match_id, *, locked: bool):
+        from django.utils import timezone as dj_tz
+
+        from apps.audit.models import ActorRole
+        from apps.audit.services import emit_audit
+        from apps.tournaments.permissions import can_access_module
+
+        match = _match_or_404(request.user, match_id)
+        if not can_access_module(
+            request.user, match.tournament, "tournament.schedule_editor"
+        ):
+            raise PermissionDenied("not_schedule_editor")
+        if bool(match.locked_at) == locked:  # idempotent no-op
+            return Response({"match": MatchSerializer(match).data})
+        before = {
+            "locked_at": match.locked_at.isoformat() if match.locked_at else None
+        }
+        match.locked_at = dj_tz.now() if locked else None
+        match.save(update_fields=["locked_at", "updated_at"])
+        emit_audit(
+            actor_user=request.user,
+            actor_role=ActorRole.ADMIN,
+            event_type="match_locked" if locked else "match_unlocked",
+            target_type="match",
+            target_id=match.id,
+            organization_id=match.organization_id,
+            tournament_id=match.tournament_id,
+            match_id=match.id,
+            payload_before=before,
+            payload_after={
+                "locked_at": match.locked_at.isoformat() if match.locked_at else None
+            },
+            request=request,
+        )
+        return Response({"match": MatchSerializer(match).data})
+
+
 class TransitionMatchView(GenericAPIView):
     """`POST /api/matches/{id}/transition/` — move the match through its state
     machine (start/half-time/complete/etc.)."""

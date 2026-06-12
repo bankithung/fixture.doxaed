@@ -96,6 +96,10 @@ class Match(models.Model):
 
     scheduled_at = models.DateTimeField(null=True, blank=True)
     venue = models.CharField(max_length=120, blank=True)
+    # Slot lock (repair seam): a locked match is never reassigned by a
+    # scheduler re-run — its (venue, time, teams) stays on the calendar as a
+    # fixed busy booking. Set/cleared via POST/DELETE /api/matches/{id}/lock/.
+    locked_at = models.DateTimeField(null=True, blank=True)
     current_period = models.CharField(max_length=24, blank=True)  # e.g. "first_half"
     scorer = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,

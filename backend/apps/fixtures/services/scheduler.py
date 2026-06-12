@@ -1166,11 +1166,15 @@ def build_schedule_inputs(
     )
     if plans is None:
         include = include_ids or set()
+        # Locked matches (repair seam) are never reassigned — they fall
+        # through to ``preoccupied`` below, so their (venue, time, teams)
+        # stays on the calendar as a fixed busy booking across any re-run.
         targets = [
             m for m in all_matches
             if m.id in include
             or (
                 m.status == MatchStatus.SCHEDULED
+                and m.locked_at is None
                 and (not leaf_key or m.leaf_key == leaf_key)
             )
         ]

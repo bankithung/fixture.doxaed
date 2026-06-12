@@ -187,3 +187,84 @@ def reschedule_match(
             request=request,
         )
     return violations
+
+
+def _slot_payload(match) -> dict[str, Any]:
+    return {
+        "match_id": str(match.id),
+        "scheduled_at": (
+            match.scheduled_at.isoformat() if match.scheduled_at else None
+        ),
+        "venue": match.venue,
+    }
+
+
+def swap_slots(
+    *,
+    tournament,
+    match_a: _uuid.UUID,
+    match_b: _uuid.UUID,
+    by,
+    force: bool = False,
+    event_id: _uuid.UUID | None = None,
+    request=None,
+) -> tuple[Any, Any, list[dict[str, Any]]]:
+    """Exchange scheduled_at+venue between two matches of the same tournament
+    (increment B). Both must be in a movable status and slotted. Conflict
+    semantics are identical to ``reschedule_match`` (hard → RepairConflict
+    unless ``force``). ONE audit row (``match_slots_swapped``) covers both
+    sides; idempotent on ``event_id``. Returns ``(a, b, violations)``."""
+    from apps.audit.models import ActorRole
+    from apps.audit.services import emit_audit
+    from apps.matches.models import Match
+
+    a = Match.objects.filter(
+        id=match_a, tournament=tournament, deleted_at__isnull=True
+    ).first()
+    b = Match.objects.filter(
+        id=match_b, tournament=tournament, deleted_at__isnull=True
+    ).first()
+    if a is None or b is None:
+        raise ValidationError("match_not_found")
+    if a.id == b.id:
+        raise ValidationError("matches_must_differ")
+    for m in (a, b):
+        if m.status not in _movable_statuses():
+            raise ValidationError("match_not_movable")
+        if m.scheduled_at is None:
+            raise ValidationError("match_not_scheduled")
+
+    tz = _tournament_tz(tournament)
+    violations = validate_slot_changes(tournament, {
+        a.id: (_local(b.scheduled_at, tz), b.venue),
+        b.id: (_local(a.scheduled_at, tz), a.venue),
+    })
+    hard = [v for v in violations if v.get("hard", True)]
+    if hard and not force:
+        raise RepairConflict(violations)
+
+    before = [_slot_payload(a), _slot_payload(b)]
+    with transaction.atomic():
+        a.scheduled_at, b.scheduled_at = b.scheduled_at, a.scheduled_at
+        a.venue, b.venue = b.venue, a.venue
+        a.save(update_fields=["scheduled_at", "venue", "updated_at"])
+        b.save(update_fields=["scheduled_at", "venue", "updated_at"])
+        emit_audit(
+            actor_user=by,
+            actor_role=ActorRole.ADMIN,
+            event_type="match_slots_swapped",
+            target_type="tournament",
+            target_id=tournament.id,
+            organization_id=tournament.organization_id,
+            tournament_id=tournament.id,
+            idempotency_key=event_id,
+            payload_before={"slots": before},
+            payload_after={
+                "matches": [str(a.id), str(b.id)],
+                "slots": [_slot_payload(a), _slot_payload(b)],
+                "forced": bool(hard),
+                "violations": violations,
+            },
+            request=request,
+        )
+    return a, b, violations

@@ -23,7 +23,7 @@ class MatchSerializer(serializers.ModelSerializer):
         fields = [
             "id", "stage", "group_label", "round_no", "match_no", "status",
             "home_team", "away_team", "home_score", "away_score",
-            "home_pens", "away_pens", "scheduled_at",
+            "home_pens", "away_pens", "scheduled_at", "locked_at",
             "current_period", "sport", "set_scores", "leaf_key", "venue",
             "scoring",
         ]

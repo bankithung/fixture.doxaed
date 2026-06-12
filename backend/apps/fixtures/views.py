@@ -308,6 +308,95 @@ class TournamentFixturesView(GenericAPIView):
         return Response({"deleted": len(matches), "leaf_key": leaf_key})
 
 
+class SwapFixtureSlotsView(GenericAPIView):
+    """`POST /api/tournaments/{id}/fixtures/swap-slots/` — exchange
+    scheduled_at+venue between two movable matches (repair seam, increment
+    B). Body `{match_a, match_b, event_id?, force?}`. Gate: schedule_editor.
+    Conflict-checked exactly like the manual reslot (hard → 409 with the
+    structured violations unless force=true); ONE audit row
+    (`match_slots_swapped`); idempotent on event_id — a replay answers from
+    the audit log instead of swapping back."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        import uuid as _uuid
+
+        from django.core.exceptions import ValidationError
+
+        from apps.audit.models import AuditEvent
+        from apps.fixtures.services.repair import RepairConflict, swap_slots
+        from apps.matches.models import Match
+        from apps.matches.serializers import MatchSerializer
+
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        if not can_access_module(request.user, t, "tournament.schedule_editor"):
+            raise PermissionDenied("not_tournament_manager")
+
+        ids = {}
+        for key in ("match_a", "match_b"):
+            try:
+                ids[key] = _uuid.UUID(str(request.data.get(key) or ""))
+            except ValueError:
+                raise DRFValidationError({"detail": f"invalid_{key}"}) from None
+        event_id = None
+        raw_eid = request.data.get("event_id")
+        if raw_eid:
+            try:
+                event_id = _uuid.UUID(str(raw_eid))
+            except ValueError:
+                raise DRFValidationError({"detail": "invalid_event_id"}) from None
+            prior = AuditEvent.objects.filter(
+                idempotency_key=event_id, event_type="match_slots_swapped"
+            ).first()
+            if prior is not None:  # replay (invariant 3) — do NOT swap back
+                payload = prior.payload_after or {}
+                fresh = {
+                    str(m.id): m
+                    for m in Match.objects.filter(
+                        tournament=t, id__in=payload.get("matches", [])
+                    )
+                }
+                serialized = [
+                    MatchSerializer(fresh[mid]).data
+                    for mid in payload.get("matches", [])
+                    if mid in fresh
+                ]
+                return Response({
+                    "match_a": serialized[0] if serialized else None,
+                    "match_b": serialized[1] if len(serialized) > 1 else None,
+                    "violations": payload.get("violations", []),
+                })
+
+        try:
+            a, b, violations = swap_slots(
+                tournament=t,
+                match_a=ids["match_a"],
+                match_b=ids["match_b"],
+                by=request.user,
+                force=bool(request.data.get("force")),
+                event_id=event_id,
+                request=request,
+            )
+        except RepairConflict as e:
+            return Response(
+                {"detail": "schedule_conflicts", "violations": e.violations},
+                status=409,
+            )
+        except ValidationError as e:
+            code = getattr(e, "message", "invalid_swap")
+            if code == "match_not_movable":
+                return Response({"detail": code}, status=409)
+            raise DRFValidationError({"detail": code}) from e
+        return Response({
+            "match_a": MatchSerializer(a).data,
+            "match_b": MatchSerializer(b).data,
+            "violations": violations,
+        })
+
+
 class TournamentDrawConfigView(GenericAPIView):
     """`GET/PATCH /api/tournaments/{id}/draw-config/` — per-competition draw
     configuration (redesign spec §2.1). GET: any tournament member. PATCH:
