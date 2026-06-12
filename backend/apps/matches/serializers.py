@@ -22,7 +22,8 @@ class MatchSerializer(serializers.ModelSerializer):
         model = Match
         fields = [
             "id", "stage", "group_label", "round_no", "match_no", "status",
-            "home_team", "away_team", "home_score", "away_score", "scheduled_at",
+            "home_team", "away_team", "home_score", "away_score",
+            "home_pens", "away_pens", "scheduled_at",
             "current_period", "sport", "set_scores", "leaf_key", "venue",
             "scoring",
         ]
@@ -78,9 +79,25 @@ class RecordEventSerializer(serializers.Serializer):
     event_id = serializers.UUIDField(required=False)
 
 
+class RecordShootoutSerializer(serializers.Serializer):
+    """Penalty-shootout result for a drawn knockout match — must be decisive."""
+
+    home_pens = serializers.IntegerField(min_value=0, max_value=99)
+    away_pens = serializers.IntegerField(min_value=0, max_value=99)
+    event_id = serializers.UUIDField(required=False)
+
+    def validate(self, attrs):
+        if attrs["home_pens"] == attrs["away_pens"]:
+            raise serializers.ValidationError("shootout_must_be_decisive")
+        return attrs
+
+
 class TransitionSerializer(serializers.Serializer):
     to_status = serializers.CharField(max_length=16)
     reason = serializers.CharField(required=False, allow_blank=True)
+    # Walkover only: the team being awarded the match (stamps the conventional
+    # walkover score so winner_id/advancement/standings all resolve).
+    winner_team_id = serializers.UUIDField(required=False)
 
 
 def _mini_team(team):

@@ -42,12 +42,19 @@ def can_transition(frm: str, to: str) -> bool:
     return to in ALLOWED_TRANSITIONS.get(frm, set())
 
 
-def transition_match(*, match, to_status, by=None, reason="", request=None) -> Match:
+def transition_match(
+    *, match, to_status, by=None, reason="", request=None, winner_team_id=None
+) -> Match:
     with transaction.atomic():
         locked = Match.objects.select_for_update().get(pk=match.pk)
         frm = locked.status
         if not can_transition(frm, to_status):
             raise ValidationError(f"Illegal match transition: {frm} -> {to_status}")
+
+        if to_status == S.WALKOVER:
+            _stamp_walkover(locked, winner_team_id)
+        elif to_status == S.COMPLETED:
+            _guard_knockout_draw(locked)
 
         locked.status = to_status
         if to_status == S.LIVE and not locked.current_period:
@@ -73,6 +80,52 @@ def transition_match(*, match, to_status, by=None, reason="", request=None) -> M
             mid = locked.id
             transaction.on_commit(lambda: _fire_advancement(mid))
     return locked
+
+
+def _guard_knockout_draw(locked: Match) -> None:
+    """A knockout match completing LEVEL used to stall the bracket silently
+    (stress-test #4): winner_id stayed None and dependents waited forever.
+    Refuse the completion loudly — the scorer either records the shootout
+    first (rules.match.penalties) or the result genuinely can't stand."""
+    if locked.stage == "group" or not locked.stage:
+        return  # draws are a normal league result
+    if locked.home_score is None or locked.away_score is None:
+        return  # score-less completion is guarded elsewhere
+    if locked.home_score != locked.away_score:
+        return
+    if locked.home_pens is not None and locked.away_pens is not None \
+            and locked.home_pens != locked.away_pens:
+        return  # shootout already decided it
+    from apps.tournaments.services.rules import merge_rules
+
+    match_rules = merge_rules(getattr(locked.tournament, "rules", None))["match"]
+    if match_rules.get("penalties"):
+        raise ValidationError("knockout_draw_needs_shootout")
+    raise ValidationError("knockout_match_cannot_end_drawn")
+
+
+def _stamp_walkover(locked: Match, winner_team_id) -> None:
+    """A walkover MUST carry a decisive result, or `winner_id` stays None and
+    the bracket silently stalls (stress-test #3). Either the caller pre-set a
+    decisive score (team-withdrawal path), or `winner_team_id` names the side
+    being awarded the match — anything else is rejected loudly."""
+    if winner_team_id is not None:
+        wid = str(winner_team_id)
+        if wid == str(locked.home_team_id):
+            locked.home_score, locked.away_score = WALKOVER_SCORE, 0
+        elif wid == str(locked.away_team_id):
+            locked.home_score, locked.away_score = 0, WALKOVER_SCORE
+        else:
+            raise ValidationError("walkover_winner_not_in_match")
+        locked.save(update_fields=["home_score", "away_score", "updated_at"])
+        return
+    decisive = (
+        locked.home_score is not None
+        and locked.away_score is not None
+        and locked.home_score != locked.away_score
+    )
+    if not decisive:
+        raise ValidationError("walkover_requires_winner")
 
 
 def _fire_advancement(match_id) -> None:

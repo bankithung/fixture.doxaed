@@ -24,11 +24,74 @@ def _sort_key(row: dict, tiebreakers: list[str]):
             key.append(row["GA"])
         elif tb == "wins":
             key.append(-row["W"])
+        elif tb == "head_to_head":
+            # Mini-table rank among the teams tied on every PRIOR key,
+            # precomputed by _apply_head_to_head (0 = best; 0 for untied rows).
+            key.append(row.get("_h2h_rank", 0))
         elif tb == "name":
             key.append(row["name"])
-        # "head_to_head" and unknown keys are a no-op in v1 (needs pairwise data).
     key.append(row["name"])  # stable final fallback
     return tuple(key)
+
+
+def _apply_head_to_head(
+    rows: list[dict],
+    results: list[tuple],
+    tiebreakers: list[str],
+    pts: dict,
+) -> None:
+    """Annotate rows with ``_h2h_rank`` (stress-test #5 — head_to_head used to
+    be a silent no-op, so tied qualification fell through to ALPHABETICAL
+    order). Teams tied on every tiebreaker BEFORE ``head_to_head`` form a
+    tie-group; a mini-table over only the matches BETWEEN those teams ranks
+    them (mini points, mini GD, mini GF). Teams still level share a rank and
+    fall through to the tiebreakers after ``head_to_head``."""
+    if "head_to_head" not in tiebreakers:
+        return
+    prior = tiebreakers[: tiebreakers.index("head_to_head")]
+
+    def prior_key(row: dict):
+        return _sort_key(row, prior)[:-1]  # drop the name fallback
+
+    groups: dict[tuple, list[dict]] = {}
+    for row in rows:
+        groups.setdefault(prior_key(row), []).append(row)
+
+    win_pts, draw_pts, loss_pts = pts["win"], pts["draw"], pts["loss"]
+    for tied in groups.values():
+        if len(tied) < 2:
+            continue
+        ids = {row["team_id"] for row in tied}
+        mini = {tid: {"Pts": 0, "GD": 0, "GF": 0} for tid in ids}
+        for home_id, away_id, hs, as_ in results:
+            if home_id not in ids or away_id not in ids:
+                continue
+            mini[home_id]["GF"] += hs
+            mini[home_id]["GD"] += hs - as_
+            mini[away_id]["GF"] += as_
+            mini[away_id]["GD"] += as_ - hs
+            if hs > as_:
+                mini[home_id]["Pts"] += win_pts
+                mini[away_id]["Pts"] += loss_pts
+            elif as_ > hs:
+                mini[away_id]["Pts"] += win_pts
+                mini[home_id]["Pts"] += loss_pts
+            else:
+                mini[home_id]["Pts"] += draw_pts
+                mini[away_id]["Pts"] += draw_pts
+        order = sorted(
+            ids,
+            key=lambda tid: (-mini[tid]["Pts"], -mini[tid]["GD"], -mini[tid]["GF"]),
+        )
+        # Equal mini-records share a rank (dense), so later tiebreakers decide.
+        rank, prev = 0, None
+        for i, tid in enumerate(order):
+            cur = (mini[tid]["Pts"], mini[tid]["GD"], mini[tid]["GF"])
+            if cur != prev:
+                rank, prev = i, cur
+            for row in tied:
+                if row["team_id"] == tid:
+                    row["_h2h_rank"] = rank
 
 
 def _voided_team_ids(tournament, matches, rules, group_label) -> set:
@@ -106,6 +169,7 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
             table[team.id] = r
         return r
 
+    results: list[tuple] = []  # (home_id, away_id, hs, as) — feeds head-to-head
     for m in matches:
         if voided and (m.home_team_id in voided or m.away_team_id in voided):
             continue  # rules.withdrawal_policy.rr_results — results annulled
@@ -113,6 +177,7 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
         if h is None or a is None or m.home_score is None or m.away_score is None:
             continue
         hs, as_ = m.home_score, m.away_score
+        results.append((str(m.home_team_id), str(m.away_team_id), hs, as_))
         h["P"] += 1; a["P"] += 1
         h["GF"] += hs; h["GA"] += as_; a["GF"] += as_; a["GA"] += hs
         if hs > as_:
@@ -125,5 +190,8 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
     rows = list(table.values())
     for r in rows:
         r["GD"] = r["GF"] - r["GA"]
+    _apply_head_to_head(rows, results, tiebreakers, pts)
     rows.sort(key=lambda r: _sort_key(r, tiebreakers))
+    for r in rows:
+        r.pop("_h2h_rank", None)  # internal key — keep the response shape
     return rows

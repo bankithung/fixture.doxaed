@@ -21,6 +21,7 @@ from apps.matches.serializers import (
     RecordEventSerializer,
     RecordScoreSerializer,
     RecordSetScoreSerializer,
+    RecordShootoutSerializer,
     SetLineupSerializer,
     TransitionSerializer,
 )
@@ -269,6 +270,72 @@ class RecordMatchEventView(GenericAPIView):
         return Response(MatchSerializer(match).data, status=201)
 
 
+class RecordShootoutView(GenericAPIView):
+    """`POST /api/matches/{id}/shootout/` — record a penalty-shootout result
+    for a LEVEL knockout match (rules.match.penalties). Recordable while LIVE
+    (then complete normally) or on an already-COMPLETED drawn match, where it
+    self-heals a stalled bracket by re-firing advancement."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, match_id):
+        from django.db import transaction
+
+        from apps.matches.models import MatchStatus
+        from apps.matches.services.state import _fire_advancement
+        from apps.tournaments.services.rules import merge_rules
+
+        match = _match_or_404(request.user, match_id)
+        if not _can_score(request.user, match):
+            raise PermissionDenied("not_allowed_to_score")
+        if match.stage == "group" or not match.stage:
+            raise DRFValidationError({"detail": "shootout_knockout_only"})
+        match_rules = merge_rules(getattr(match.tournament, "rules", None))["match"]
+        if not match_rules.get("penalties"):
+            raise DRFValidationError({"detail": "penalties_disabled_by_rules"})
+        if match.status not in (
+            MatchStatus.LIVE, MatchStatus.HALF_TIME, MatchStatus.COMPLETED
+        ):
+            raise DRFValidationError({"detail": "shootout_wrong_state"})
+        if (
+            match.home_score is not None
+            and match.away_score is not None
+            and match.home_score != match.away_score
+        ):
+            raise DRFValidationError({"detail": "shootout_only_when_level"})
+
+        ser = RecordShootoutSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        before = {"home_pens": match.home_pens, "away_pens": match.away_pens}
+        match.home_pens = ser.validated_data["home_pens"]
+        match.away_pens = ser.validated_data["away_pens"]
+        match.save(update_fields=["home_pens", "away_pens", "updated_at"])
+
+        from apps.audit.models import ActorRole
+        from apps.audit.services import emit_audit
+
+        emit_audit(
+            actor_user=request.user,
+            actor_role=ActorRole.ADMIN,
+            event_type="match_shootout_recorded",
+            target_type="match",
+            target_id=match.id,
+            organization_id=match.organization_id,
+            payload_before=before,
+            payload_after={
+                "home_pens": match.home_pens, "away_pens": match.away_pens
+            },
+            idempotency_key=ser.validated_data.get("event_id"),
+            request=request,
+        )
+        # An already-completed drawn match was a stalled bracket — the
+        # shootout result now resolves winner_id, so ripple it (invariant 9).
+        if match.status == MatchStatus.COMPLETED:
+            mid = match.id
+            transaction.on_commit(lambda: _fire_advancement(mid))
+        return Response(MatchSerializer(match).data)
+
+
 class TransitionMatchView(GenericAPIView):
     """`POST /api/matches/{id}/transition/` — move the match through its state
     machine (start/half-time/complete/etc.)."""
@@ -288,6 +355,7 @@ class TransitionMatchView(GenericAPIView):
                 by=request.user,
                 reason=ser.validated_data.get("reason", ""),
                 request=request,
+                winner_team_id=ser.validated_data.get("winner_team_id"),
             )
         except ValidationError as e:
             raise DRFValidationError({"detail": getattr(e, "message", "illegal_transition")})

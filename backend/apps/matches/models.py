@@ -80,6 +80,10 @@ class Match(models.Model):
     )
     home_score = models.PositiveSmallIntegerField(null=True, blank=True)
     away_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Penalty-shootout result for drawn knockout matches (rules.match.penalties)
+    # — distinct from in-game PENALTY_SCORED events, which feed home/away_score.
+    home_pens = models.PositiveSmallIntegerField(null=True, blank=True)
+    away_pens = models.PositiveSmallIntegerField(null=True, blank=True)
     # Multi-sport: which sport this match is (catalog key, e.g. "table_tennis").
     # Blank = goal-based (football, default). Set-based sports also store per-set
     # scores here; home_score/away_score then hold SETS won.
@@ -123,6 +127,12 @@ class Match(models.Model):
             return self.home_team_id
         if self.away_score > self.home_score:
             return self.away_team_id
+        # Level on score → a recorded shootout decides (knockout draws).
+        if self.home_pens is not None and self.away_pens is not None:
+            if self.home_pens > self.away_pens:
+                return self.home_team_id
+            if self.away_pens > self.home_pens:
+                return self.away_team_id
         return None  # draw
 
     @property

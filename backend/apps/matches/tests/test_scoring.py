@@ -116,3 +116,41 @@ def test_assign_scorer_requires_tournament_membership():
     assign_scorer(match=m, user=outsider, by=admin)
     m.refresh_from_db()
     assert m.scorer_id == outsider.id
+
+
+def test_head_to_head_two_way_tie_overrides_name_order():
+    """Clean two-way tie where alphabetical order and h2h disagree."""
+    admin = _verified("h2h2@test.local")
+    t = create_tournament(user=admin, name="H2H Two")
+    t.rules = {"tiebreakers": ["points", "head_to_head", "name"]}
+    t.save(update_fields=["rules"])
+    alpha, zulu = register_school(
+        tournament=t, school_name="S",
+        teams=[{"name": "Alpha", "players": []}, {"name": "Zulu", "players": []}],
+    )
+
+    def play(home, away, hs, as_, label="Group A"):
+        m = Match.objects.create(
+            organization=t.organization, tournament=t, stage="group",
+            group_label=label, home_team=home, away_team=away,
+            status=MatchStatus.LIVE,
+        )
+        record_score(match=m, home_score=hs, away_score=as_, by=admin)
+
+    # Double round-robin between the two: one win each on points... that
+    # leaves the mini-table level too. Single decisive meeting instead:
+    play(zulu, alpha, 2, 0)  # Zulu wins the head-to-head
+    # Both then beat-and-lose against each other? With only one match,
+    # Zulu 3pts vs Alpha 0 — no tie. Add a reversed result with a third
+    # team to equalize points but keep h2h decisive:
+    (mid,) = register_school(
+        tournament=t, school_name="S3", teams=[{"name": "Mid", "players": []}],
+    )
+    play(alpha, mid, 3, 0)   # Alpha 3 pts
+    play(mid, zulu, 1, 3)    # Zulu 6 pts... adjust: give Alpha another win
+    play(mid, alpha, 0, 1)   # Alpha 6 pts — Alpha & Zulu now both 6? Zulu has 6 too
+    rows = compute_standings(t, group_label="Group A")
+    by_name = {r["name"]: r for r in rows}
+    assert by_name["Alpha"]["Pts"] == by_name["Zulu"]["Pts"] == 6
+    # Alphabetical would put Alpha first; head-to-head (Zulu 2-0 Alpha) must win:
+    assert [r["name"] for r in rows[:2]] == ["Zulu", "Alpha"]

@@ -54,9 +54,88 @@ def test_illegal_transition_raises():
 
 def test_no_transition_out_of_terminal():
     admin, m = _match()
-    transition_match(match=m, to_status=MatchStatus.WALKOVER, by=admin)  # scheduled->walkover OK
+    transition_match(
+        match=m, to_status=MatchStatus.WALKOVER, by=admin,
+        winner_team_id=m.home_team_id,
+    )  # scheduled->walkover OK
     with pytest.raises(ValidationError):
         transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)  # walkover is terminal
+
+
+def test_walkover_with_winner_stamps_score_and_resolves_winner():
+    """Stress-test #3: a walkover must carry a decisive result so the bracket
+    advances — naming the winner stamps the conventional scoreline."""
+    admin, m = _match()
+    transition_match(
+        match=m, to_status=MatchStatus.WALKOVER, by=admin,
+        winner_team_id=m.away_team_id,
+    )
+    m.refresh_from_db()
+    assert (m.home_score, m.away_score) == (0, 3)
+    assert m.winner_id == m.away_team_id
+    assert m.loser_id == m.home_team_id
+
+
+def test_walkover_without_winner_or_decisive_score_is_rejected():
+    admin, m = _match()
+    with pytest.raises(ValidationError):
+        transition_match(match=m, to_status=MatchStatus.WALKOVER, by=admin)
+    m.refresh_from_db()
+    assert m.status == MatchStatus.SCHEDULED  # nothing half-applied
+
+
+def test_walkover_winner_must_be_in_the_match():
+    admin, m = _match()
+    other_admin = _verified("other@test.local")
+    t2 = create_tournament(user=other_admin, name="Other")
+    (stranger,) = register_school(
+        tournament=t2, school_name="X", teams=[{"name": "Z", "players": []}],
+    )
+    with pytest.raises(ValidationError):
+        transition_match(
+            match=m, to_status=MatchStatus.WALKOVER, by=admin,
+            winner_team_id=stranger.id,
+        )
+
+
+def test_knockout_draw_cannot_complete_without_shootout():
+    """Stress-test #4: a LEVEL knockout match completing used to stall the
+    bracket silently; now it refuses loudly (rules.match.penalties default)."""
+    admin, m = _match()
+    m.stage = "knockout"
+    m.home_score, m.away_score = 1, 1
+    m.save(update_fields=["stage", "home_score", "away_score"])
+    transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
+    with pytest.raises(ValidationError):
+        transition_match(match=m, to_status=MatchStatus.COMPLETED, by=admin)
+    m.refresh_from_db()
+    assert m.status == MatchStatus.LIVE
+
+
+def test_knockout_draw_completes_once_shootout_recorded():
+    admin, m = _match()
+    m.stage = "knockout"
+    m.home_score, m.away_score = 1, 1
+    m.save(update_fields=["stage", "home_score", "away_score"])
+    transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
+    m.home_pens, m.away_pens = 4, 3
+    m.save(update_fields=["home_pens", "away_pens"])
+    transition_match(match=m, to_status=MatchStatus.COMPLETED, by=admin)
+    m.refresh_from_db()
+    assert m.status == MatchStatus.COMPLETED
+    assert m.winner_id == m.home_team_id  # pens decide the level score
+
+
+def test_group_draw_still_completes_normally():
+    admin, m = _match()
+    m.stage = "group"
+    m.home_score, m.away_score = 2, 2
+    m.save(update_fields=["stage", "home_score", "away_score"])
+    transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
+    transition_match(match=m, to_status=MatchStatus.COMPLETED, by=admin)
+    m.refresh_from_db()
+    assert m.status == MatchStatus.COMPLETED
+    assert m.winner_id is None  # a league draw is a normal result
 
 
 def test_can_transition_table():
