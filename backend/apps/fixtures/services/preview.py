@@ -188,10 +188,37 @@ def _side_payload(team_id, source) -> dict[str, Any]:
 
 def _fairness(
     assignments: dict[str, tuple[datetime, str]], reqs, cfg,
+    team_names: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """The §5.2 fairness block: per-team minimum rest, venue spread, days."""
+    """The §5.2 fairness block, extended with per-team analytics
+    (increment R) — PURE computation over the simulated assignments:
+
+    * ``teams``: per team — minimum/median rest minutes, early-slot count
+      (start within the first 2 hours of the day's window), late-slot count
+      (last 2 hours), venue spread (distinct PHYSICAL venues — sub-venues
+      collapse to their base) and matches-per-day max.
+    * ``flags``: outliers as stable i18n codes (§9 A5) — ``early_outlier``
+      (more than 2x the median early-slot count) and ``rest_below_min``
+      (minimum rest under the configured ``rest_minutes``).
+
+    Legacy keys (``rest_min_by_team``/``venue_distribution``/``days_used``)
+    stay for API back-compat."""
+    from statistics import median
+
+    from apps.fixtures.services.scheduler import expand_venues
+
+    base_of = dict(expand_venues(cfg))
+    day_anchor = datetime.combine(cfg.date_start, cfg.daily_start)
+    early_cut = (day_anchor + timedelta(hours=2)).time()
+    late_cut = (datetime.combine(cfg.date_start, cfg.daily_end)
+                - timedelta(hours=2)).time()
+
     by_req = {r.id: r for r in reqs}
     team_intervals: dict[str, list[tuple[datetime, datetime]]] = defaultdict(list)
+    team_venues: dict[str, set[str]] = defaultdict(set)
+    team_early: dict[str, int] = defaultdict(int)
+    team_late: dict[str, int] = defaultdict(int)
+    team_per_day: dict[str, dict[Any, int]] = defaultdict(lambda: defaultdict(int))
     venue_distribution: dict[str, int] = defaultdict(int)
     days: set = set()
     for rid, (start, venue) in assignments.items():
@@ -203,16 +230,59 @@ def _fairness(
         for tid in ((req.home, req.away) if req else ()):
             if tid:
                 team_intervals[tid].append((start, start + dur))
+                team_venues[tid].add(base_of.get(venue, venue))
+                team_per_day[tid][start.date()] += 1
+                if start.time() < early_cut:
+                    team_early[tid] += 1
+                if start.time() >= late_cut:
+                    team_late[tid] += 1
     rest_min_by_team: dict[str, int] = {}
+    rest_median_by_team: dict[str, int | float] = {}
     for tid, intervals in team_intervals.items():
         if len(intervals) < 2:
             continue
         intervals.sort()
-        rest_min_by_team[tid] = int(min(
-            (intervals[i + 1][0] - intervals[i][1]).total_seconds() // 60
+        gaps = [
+            int((intervals[i + 1][0] - intervals[i][1]).total_seconds() // 60)
             for i in range(len(intervals) - 1)
-        ))
+        ]
+        rest_min_by_team[tid] = min(gaps)
+        rest_median_by_team[tid] = median(gaps)
+
+    names = team_names or {}
+    ordered = sorted(team_intervals, key=lambda tid: (names.get(tid, ""), tid))
+    teams: list[dict[str, Any]] = [
+        {
+            "team_id": tid,
+            "name": names.get(tid, ""),
+            "rest_min": rest_min_by_team.get(tid),
+            "rest_median": rest_median_by_team.get(tid),
+            "early": team_early.get(tid, 0),
+            "late": team_late.get(tid, 0),
+            "venues": len(team_venues[tid]),
+            "max_per_day": max(team_per_day[tid].values(), default=0),
+        }
+        for tid in ordered
+    ]
+    flags: list[dict[str, Any]] = []
+    early_median = median(e["early"] for e in teams) if teams else 0
+    rest_median_all = (
+        median(rest_min_by_team.values()) if rest_min_by_team else None
+    )
+    for e in teams:
+        if e["early"] > 2 * early_median:
+            flags.append({
+                "code": "early_outlier", "team_id": e["team_id"],
+                "value": e["early"], "median": early_median,
+            })
+        if e["rest_min"] is not None and e["rest_min"] < cfg.rest_minutes:
+            flags.append({
+                "code": "rest_below_min", "team_id": e["team_id"],
+                "value": e["rest_min"], "median": rest_median_all,
+            })
     return {
+        "teams": teams,
+        "flags": flags,
         "rest_min_by_team": rest_min_by_team,
         "venue_distribution": dict(venue_distribution),
         "days_used": len(days),
@@ -276,7 +346,16 @@ def preview_fixtures(
         violations = result.violations
         soft_score = result.soft_score
         explanation = explanation + result.explanation
-        fairness = _fairness(assignments, reqs, sched_cfg)
+        from apps.teams.models import Team
+
+        team_names = {
+            str(tid): name
+            for tid, name in Team.objects.filter(
+                tournament=tournament, deleted_at__isnull=True
+            ).values_list("id", "name")
+        }
+        fairness = _fairness(assignments, reqs, sched_cfg,
+                             team_names=team_names)
 
     matches: list[dict[str, Any]] = []
     for p in plans:
