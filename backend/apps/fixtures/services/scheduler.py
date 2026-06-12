@@ -1367,7 +1367,7 @@ def apply_schedule(
             )
         tournament.scheduling_config = stored_cfg
         tournament.save(update_fields=["scheduling_config", "updated_at"])
-        emit_audit(
+        audit = emit_audit(
             actor_user=by,
             actor_role=ActorRole.ADMIN,
             event_type="fixtures_scheduled",
@@ -1383,5 +1383,15 @@ def apply_schedule(
                 "changes": changes,
             },
             request=request,
+        )
+        # Trust layer increment G: a re-run that moves an already-slotted
+        # match notifies affected parties post-commit (initial scheduling —
+        # old scheduled_at null — stays silent inside the queue helper).
+        from apps.fixtures.services.schedule_changes import (
+            queue_slot_change_notifications,
+        )
+
+        queue_slot_change_notifications(
+            tournament=tournament, batch_id=audit.id, changes=changes, by=by,
         )
     return result

@@ -10,12 +10,20 @@ per-match entries the control room and team pages can render:
      reason, batch_id}
 
 ``batch_id`` is the source audit row's id — the same value increment G uses
-to dedupe change notifications per (user, batch).
+to dedupe change notifications per (user, batch):
+``queue_slot_change_notifications`` is called by every repair verb and by
+``apply_schedule`` inside their transaction; on commit it notifies the
+affected teams' institution contacts + the tournament admins, once per
+(user, batch), skipping initial scheduling (previous slot was empty).
 """
 from __future__ import annotations
 
+import json
+import uuid as _uuid
 from datetime import datetime
 from typing import Any
+
+from django.db import transaction
 
 # audit event_type → feed kind. fixtures_scheduled rows older than the trust
 # layer carry no per-match ``changes`` payload (and no tournament_id) — they
@@ -96,6 +104,152 @@ def match_label(m: Any) -> str:
     if home and away:
         return f"{home} vs {away}"
     return f"M{m.match_no} R{m.round_no}"
+
+
+# ----------------------------------------------------------- notifications (G)
+NOTIFICATION_KIND = "schedule_changed"
+NOTIFICATION_TITLE = "notification.schedule_changed"  # i18n code (invariant 13)
+
+
+def _instant(value: Any) -> Any:
+    """ISO string → datetime for comparison; the same wall-clock instant may
+    serialize with different offsets (UTC vs tournament TZ)."""
+    try:
+        return datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return value
+
+
+def _really_moved(change: dict[str, Any]) -> bool:
+    """True when a previously SLOTTED match got a different time or venue —
+    initial scheduling (no previous scheduled_at) is silent by design."""
+    old = change.get("old") or {}
+    new = change.get("new") or {}
+    if not old.get("scheduled_at"):
+        return False
+    if _instant(old.get("scheduled_at")) != _instant(new.get("scheduled_at")):
+        return True
+    return (old.get("venue") or "") != (new.get("venue") or "")
+
+
+def queue_slot_change_notifications(
+    *, tournament: Any, batch_id: Any, changes: list[dict[str, Any]], by: Any = None,
+) -> None:
+    """Register the post-commit change-notification fan-out for one batch.
+
+    ``changes`` = [{match_id, old: {scheduled_at, venue}, new: {...}}] —
+    exactly the shape the audit payloads carry. ``batch_id`` is the audit
+    row id; the dedupe key is (user, batch). Call INSIDE the verb's
+    transaction; nothing fires unless it commits (invariant 4 spirit)."""
+    relevant = [c for c in changes if _really_moved(c)]
+    if not relevant:
+        return
+    tournament_id, actor_id = tournament.id, getattr(by, "id", None)
+    transaction.on_commit(
+        lambda: _send_slot_change_notifications(
+            tournament_id, batch_id, relevant, actor_id
+        )
+    )
+
+
+def _send_slot_change_notifications(
+    tournament_id: Any, batch_id: Any, changes: list[dict[str, Any]], actor_id: Any,
+) -> None:
+    from django.contrib.auth import get_user_model
+    from django.db.models import Q
+
+    from apps.matches.models import Match
+    from apps.notifications.services.dispatch import create_notification
+    from apps.tournaments.models import (
+        Tournament,
+        TournamentMembership,
+        TournamentMembershipRole,
+        TournamentMembershipStatus,
+    )
+
+    tournament = Tournament.objects.filter(id=tournament_id).first()
+    if tournament is None:
+        return
+    matches = {
+        str(m.id): m
+        for m in Match.objects.filter(
+            tournament=tournament, id__in=[c["match_id"] for c in changes]
+        ).select_related(
+            "home_team__institution", "away_team__institution",
+            "home_team", "away_team",
+        )
+    }
+
+    items: list[dict[str, Any]] = []
+    emails_by_match: dict[str, set[str]] = {}
+    for c in changes:
+        mid = str(c["match_id"])
+        m = matches.get(mid)
+        items.append({
+            "match_id": mid,
+            "match_label": match_label(m),
+            "leaf_key": m.leaf_key if m else "",
+            "old": c.get("old"),
+            "new": c.get("new"),
+        })
+        emails: set[str] = set()
+        for team in ((m.home_team, m.away_team) if m else ()):
+            inst = team.institution if team and team.institution_id else None
+            email = (inst.contact_email or "").strip().lower() if inst else ""
+            if email:
+                emails.add(email)
+        emails_by_match[mid] = emails
+
+    admin_ids = set(
+        TournamentMembership.objects.filter(
+            tournament=tournament,
+            status=TournamentMembershipStatus.ACTIVE,
+            role__in=(
+                TournamentMembershipRole.ADMIN,
+                TournamentMembershipRole.CO_ORGANIZER,
+            ),
+        ).values_list("user_id", flat=True)
+    )
+    if tournament.created_by_id:
+        admin_ids.add(tournament.created_by_id)
+
+    all_emails = {e for s in emails_by_match.values() for e in s}
+    users = list(
+        get_user_model().objects.filter(is_active=True).filter(
+            Q(id__in=admin_ids) | Q(email__in=all_emails)
+        )
+    )
+
+    for user in users:
+        if user.id == actor_id:  # never notify the editor of their own change
+            continue
+        if user.id in admin_ids:
+            mine = items  # admins see the whole batch
+        else:
+            mine = [
+                i for i in items if user.email in emails_by_match[i["match_id"]]
+            ]
+        if not mine:
+            continue
+        create_notification(
+            user=user,
+            kind=NOTIFICATION_KIND,
+            title=NOTIFICATION_TITLE,
+            body=json.dumps(
+                {
+                    "code": NOTIFICATION_KIND,
+                    "batch_id": str(batch_id),
+                    "changes": mine,
+                },
+                default=str,
+            ),
+            url=f"/tournaments/{tournament.id}",
+            tournament=tournament,
+            event_id=_uuid.uuid5(
+                _uuid.NAMESPACE_URL,
+                f"fixture:schedule-change:{batch_id}:{user.id}",
+            ),
+        )
 
 
 def schedule_changes(

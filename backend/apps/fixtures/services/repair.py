@@ -19,6 +19,9 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone as dj_tz
 
+from apps.fixtures.services.schedule_changes import (
+    queue_slot_change_notifications,
+)
 from apps.fixtures.services.scheduler import (
     ScheduleConfig,
     _parse_date,
@@ -169,7 +172,7 @@ def reschedule_match(
         match.scheduled_at = new_dt
         match.venue = new_venue
         match.save(update_fields=["scheduled_at", "venue", "updated_at"])
-        emit_audit(
+        audit = emit_audit(
             actor_user=by,
             actor_role=ActorRole.ADMIN,
             event_type="match_rescheduled",
@@ -187,6 +190,19 @@ def reschedule_match(
                 "violations": violations,
             },
             request=request,
+        )
+        queue_slot_change_notifications(
+            tournament=tournament,
+            batch_id=audit.id,
+            by=by,
+            changes=[{
+                "match_id": str(match.id),
+                "old": before,
+                "new": {
+                    "scheduled_at": match.scheduled_at.isoformat(),
+                    "venue": match.venue,
+                },
+            }],
         )
     return violations
 
@@ -344,7 +360,7 @@ def delay_match(
                 "new": m.scheduled_at.isoformat(),
                 "venue": m.venue,
             })
-        emit_audit(
+        audit = emit_audit(
             actor_user=by,
             actor_role=ActorRole.ADMIN,
             event_type="match_delay_cascade",
@@ -363,6 +379,19 @@ def delay_match(
                 "violations": violations,
             },
             request=request,
+        )
+        queue_slot_change_notifications(
+            tournament=tournament,
+            batch_id=audit.id,
+            by=by,
+            changes=[
+                {
+                    "match_id": e["match_id"],
+                    "old": {"scheduled_at": e["old"], "venue": e["venue"]},
+                    "new": {"scheduled_at": e["new"], "venue": e["venue"]},
+                }
+                for e in moved
+            ],
         )
     return moved, violations
 
@@ -502,7 +531,7 @@ def shift_day(
             })
         if activated_new:
             tournament.save(update_fields=["scheduling_config", "updated_at"])
-        emit_audit(
+        audit = emit_audit(
             actor_user=by,
             actor_role=ActorRole.ADMIN,
             event_type="shift_day",
@@ -525,6 +554,19 @@ def shift_day(
                 "activated_reserve_day": activated_new,
             },
             request=request,
+        )
+        queue_slot_change_notifications(
+            tournament=tournament,
+            batch_id=audit.id,
+            by=by,
+            changes=[
+                {
+                    "match_id": e["match_id"],
+                    "old": {"scheduled_at": e["old"], "venue": e["venue"]},
+                    "new": {"scheduled_at": e["new"], "venue": e["venue"]},
+                }
+                for e in moved
+            ],
         )
     return moved, violations, to_date
 
@@ -589,7 +631,8 @@ def swap_slots(
         a.venue, b.venue = b.venue, a.venue
         a.save(update_fields=["scheduled_at", "venue", "updated_at"])
         b.save(update_fields=["scheduled_at", "venue", "updated_at"])
-        emit_audit(
+        after = [_slot_payload(a), _slot_payload(b)]
+        audit = emit_audit(
             actor_user=by,
             actor_role=ActorRole.ADMIN,
             event_type="match_slots_swapped",
@@ -601,10 +644,29 @@ def swap_slots(
             payload_before={"slots": before},
             payload_after={
                 "matches": [str(a.id), str(b.id)],
-                "slots": [_slot_payload(a), _slot_payload(b)],
+                "slots": after,
                 "forced": bool(hard),
                 "violations": violations,
             },
             request=request,
+        )
+        after_by = {p["match_id"]: p for p in after}
+        queue_slot_change_notifications(
+            tournament=tournament,
+            batch_id=audit.id,
+            by=by,
+            changes=[
+                {
+                    "match_id": p["match_id"],
+                    "old": {
+                        "scheduled_at": p["scheduled_at"], "venue": p["venue"]
+                    },
+                    "new": {
+                        "scheduled_at": after_by[p["match_id"]]["scheduled_at"],
+                        "venue": after_by[p["match_id"]]["venue"],
+                    },
+                }
+                for p in before
+            ],
         )
     return a, b, violations
