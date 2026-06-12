@@ -29,6 +29,8 @@ export const qk = {
   fixtureReadiness: (id: string) => ["t-fixture-readiness", id] as const,
   /** Unified slot-change feed (trust layer) — extend with filter params. */
   scheduleChanges: (id: string) => ["t-schedule-changes", id] as const,
+  /** Control-room day aggregate (control room spec §2.a) — extend with the day. */
+  controlRoom: (id: string) => ["t-control-room", id] as const,
 };
 
 /**
@@ -53,6 +55,7 @@ export function invalidateTournament(qc: QueryClient, id: string): void {
     qk.drawConfig(id),
     qk.fixtureReadiness(id),
     qk.scheduleChanges(id),
+    qk.controlRoom(id),
   ];
   for (const key of keys) qc.invalidateQueries({ queryKey: key });
   // The tournaments hub may show this tournament's summary too.

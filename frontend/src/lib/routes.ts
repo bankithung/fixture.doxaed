@@ -71,6 +71,9 @@ export const routes = {
     }`,
   tournamentSettings: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/settings`,
+  /** Live-ops cockpit: day lanes, call-ups, repair verbs (control room spec). */
+  tournamentControl: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/control`,
   /** Public, read-only live match viewer (no login). */
   liveViewer: (matchId: string) => `/m/${encodeURIComponent(matchId)}`,
   /** Public, read-only tournament schedule (no login; slug+UUID pair). */

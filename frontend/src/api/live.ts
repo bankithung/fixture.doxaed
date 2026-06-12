@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { MatchRow } from "./tournaments";
 
 export interface MiniPlayer {
   id: string;
@@ -54,7 +55,22 @@ export const liveApi = {
   ) => api.post(`/api/matches/${matchId}/events/`, payload),
   /** Full event timeline as a downloadable CSV (same-origin; sends the cookie). */
   exportUrl: (matchId: string) => `/api/matches/${matchId}/events/export/`,
-  /** Scorer/manager: move the match through its state machine. */
-  transition: (matchId: string, to_status: string) =>
-    api.post(`/api/matches/${matchId}/transition/`, { to_status }),
+  /** Scorer/manager: move the match through its state machine. `extra` carries
+   * the walkover winner (manager-only) or the replay/abandon reason. */
+  transition: (
+    matchId: string,
+    to_status: string,
+    extra?: { winner_team_id?: string; reason?: string },
+  ) => api.post(`/api/matches/${matchId}/transition/`, { to_status, ...extra }),
+  /** Schedule editor: mark a `scheduled` match as called to its venue
+   * (control room §2.b — an annotation, not a state; idempotent). */
+  callMatch: (matchId: string) =>
+    api.post<{ match: MatchRow }>(`/api/matches/${matchId}/call/`),
+  /** Schedule editor: clear the call (idempotent). */
+  uncallMatch: (matchId: string) =>
+    api.delete<{ match: MatchRow }>(`/api/matches/${matchId}/call/`),
+  /** Public one-way SSE tick stream for a tournament (invariant 11; AllowAny —
+   * frames carry only UUIDs + a tick kind, clients refetch on tick). */
+  streamUrl: (slug: string, tournamentId: string) =>
+    `/api/public/tournaments/${encodeURIComponent(slug)}/${tournamentId}/stream/`,
 };

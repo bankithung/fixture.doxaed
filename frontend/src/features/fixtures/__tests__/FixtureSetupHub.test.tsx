@@ -492,6 +492,11 @@ describe("FixtureSetupHub", () => {
 
     const banner = await screen.findByTestId("done-banner");
     expect(within(banner).getByText("Your schedule is out")).toBeInTheDocument();
+    // Handoff to the live-ops cockpit (control room spec §3.2).
+    expect(within(banner).getByTestId("done-open-control")).toHaveAttribute(
+      "href",
+      "/tournaments/t1/control",
+    );
     const share = within(banner).getByTestId("share-schedule");
     await waitFor(() => expect(share).toBeEnabled()); // slug resolved
     await userEvent.click(share);

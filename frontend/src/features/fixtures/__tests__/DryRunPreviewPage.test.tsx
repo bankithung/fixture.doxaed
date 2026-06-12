@@ -29,6 +29,7 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       scheduleFixtures: vi.fn(),
       settings: vi.fn(),
       updateSettings: vi.fn(),
+      stage: vi.fn(),
     },
   };
 });
@@ -100,6 +101,10 @@ function mount(initial = "/tournaments/t1/fixtures/preview?leaf=football.u15") {
               path="/tournaments/t1/fixtures"
               element={<div data-testid="fixtures-page" />}
             />
+            <Route
+              path="/tournaments/t1/control"
+              element={<div data-testid="control-room-page" />}
+            />
           </Routes>
         </MemoryRouter>
       </ToastProvider>
@@ -127,6 +132,12 @@ beforeEach(() => {
   vi.mocked(tournamentsApi.updateSettings).mockResolvedValue(
     {} as unknown as TournamentSettings,
   );
+  // Mid-flow by default — publishing returns to the fixtures hub.
+  vi.mocked(tournamentsApi.stage).mockResolvedValue({
+    stage: "fixtures", status: "registration_open",
+    order: ["setup", "fixtures", "ready"], allowed_to: [],
+    can_manage: true, modules: [], rules_frozen_at: null, stages: [],
+  });
 });
 
 describe("DryRunPreviewPage", () => {
@@ -196,6 +207,21 @@ describe("DryRunPreviewPage", () => {
     await waitFor(() =>
       expect(screen.getByTestId("fixtures-page")).toBeInTheDocument(),
     );
+  });
+
+  it("publish hands off to the control room once the stage is ready", async () => {
+    vi.mocked(tournamentsApi.stage).mockResolvedValue({
+      stage: "ready", status: "scheduled",
+      order: ["setup", "fixtures", "ready"], allowed_to: [],
+      can_manage: true, modules: [], rules_frozen_at: null, stages: [],
+    });
+    mount();
+    await userEvent.click(await screen.findByTestId("accept-preview"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("control-room-page")).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("fixtures-page")).toBeNull();
   });
 
   it("409 inputs_changed shows the banner; preview again re-simulates", async () => {

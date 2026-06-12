@@ -11,6 +11,7 @@ import {
   MoreHorizontal,
   PartyPopper,
   Printer,
+  Radio,
   Share2,
   SlidersHorizontal,
   Users,
@@ -18,7 +19,7 @@ import {
 } from "lucide-react";
 import { tournamentsApi, type TeamRow } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { ScheduleWizard } from "@/features/tournaments/ScheduleWizard";
 import {
@@ -626,8 +627,18 @@ export function FixtureSetupHub({
                 </p>
               </div>
               <span className="flex shrink-0 flex-wrap items-center gap-3">
+                {/* Handoff to the live-ops cockpit (control room spec §3.2). */}
+                <Link
+                  to={routes.tournamentControl(id)}
+                  data-testid="done-open-control"
+                  className={cn(buttonVariants({ size: "sm" }))}
+                >
+                  <Radio aria-hidden="true" className="h-4 w-4" />
+                  {t("Open control room")}
+                </Link>
                 <Button
                   size="sm"
+                  variant="outline"
                   data-testid="share-schedule"
                   disabled={!shareReady}
                   onClick={() => void shareSchedule()}

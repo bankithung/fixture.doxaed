@@ -207,6 +207,53 @@ export interface MatchRow {
   /** Slot pinned by a schedule editor — repair verbs and scheduler re-runs
    * never move a locked match. */
   locked_at?: string | null;
+  /** Penalty-shootout result (null = no shootout). */
+  home_pens?: number | null;
+  away_pens?: number | null;
+  /** In-play period ("first_half", …); "" outside play. */
+  current_period?: string;
+  /** "Called to the venue" annotation of `scheduled` (control room §2.b) —
+   * presentation-only, NOT a lifecycle state. */
+  called_at?: string | null;
+}
+
+// --- Control room day-view aggregate (control room spec §2.a) ---
+
+/** One day chip of the control room (tournament-TZ date + progress counts). */
+export interface ControlRoomDay {
+  date: string;
+  counts: { total: number; completed: number; live: number };
+}
+
+/** A MatchSerializer row enriched for the cockpit. */
+export interface ControlRoomMatch extends MatchRow {
+  /** Human label of the competition leaf ("" = whole-tournament draw). */
+  leaf_label: string;
+  /** Assigned scorer, if any. */
+  scorer: { id: string; name: string } | null;
+}
+
+export interface ControlRoomVenue {
+  /** Raw venue string ("" = unassigned). */
+  venue: string;
+  /** The venue's matches for the day, kick-off order. */
+  matches: ControlRoomMatch[];
+}
+
+export interface ControlRoomPayload {
+  tournament: {
+    id: string;
+    name: string;
+    slug: string;
+    status: string;
+    time_zone: string;
+  };
+  days: ControlRoomDay[];
+  /** The selected (or server-defaulted) day; null = nothing scheduled. */
+  day: string | null;
+  venues: ControlRoomVenue[];
+  /** Cross-venue "up next": unfinished matches of the day, time order. */
+  queue: ControlRoomMatch[];
 }
 
 /** One raw scheduler violation from the repair endpoints (`validate_schedule`
@@ -612,6 +659,15 @@ export const tournamentsApi = {
   publicSchedule: (slug: string, id: string) =>
     api.get<PublicSchedulePayload>(
       `/api/public/tournaments/${encodeURIComponent(slug)}/${id}/schedule/`,
+    ),
+  /** Control-room day aggregate: lanes by venue + day chips + up-next queue
+   * (any tournament member; spec §2.a). Omit `day` for the server default
+   * (today when it has matches, else the next day with matches). */
+  controlRoom: (id: string, day?: string) =>
+    api.get<ControlRoomPayload>(
+      `/api/tournaments/${id}/control-room/${
+        day ? `?day=${encodeURIComponent(day)}` : ""
+      }`,
     ),
   /** Mint a signed per-team iCal URL (manager or the team's institution
    * contact). The returned `url` is the shareable calendar feed. */

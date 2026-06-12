@@ -90,6 +90,12 @@ export function DryRunPreviewPage(): React.ReactElement {
     queryKey: qk.fixtureReadiness(id),
     queryFn: () => tournamentsApi.fixtureReadiness(id),
   });
+  // Publish → control room handoff (control room spec §3.2): once the
+  // tournament is `ready`, a successful publish lands in the cockpit.
+  const stageQ = useQuery({
+    queryKey: qk.stage(id),
+    queryFn: () => tournamentsApi.stage(id),
+  });
 
   const schedule = useMemo(
     () => schedulePayloadFrom(drawConfig.data?.draw_config["*"]?.calendar),
@@ -143,6 +149,16 @@ export function DryRunPreviewPage(): React.ReactElement {
     },
     onSuccess: (r) => {
       invalidateTournament(qc, id);
+      // Once the schedule is live (stage `ready`), publishing hands off to
+      // the control room — match day runs from there (spec §3.2).
+      if (stageQ.data?.stage === "ready" && r.unscheduled.length === 0) {
+        toast.push({
+          kind: "success",
+          title: t("Schedule published — you're in the control room."),
+        });
+        navigate(routes.tournamentControl(id));
+        return;
+      }
       toast.push({
         kind: "success",
         title: t(`Published. ${r.scheduled} matches are on the schedule.`),

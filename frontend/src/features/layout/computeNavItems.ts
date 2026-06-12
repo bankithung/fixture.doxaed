@@ -4,6 +4,7 @@ import {
   FileText,
   LayoutDashboard,
   Mail,
+  Radio,
   Settings,
   Trophy,
   UserCog,
@@ -197,6 +198,18 @@ export function computeTournamentNav(
       icon: CalendarClock,
       ...gate("fixtures"),
     },
+    // Live-ops cockpit — unlocks once the schedule is published (stage
+    // `ready`). Every role's catalog default includes `match.center_admin_view`
+    // so all members see it; a per-member module revocation hides it.
+    allowed("match.center_admin_view")
+      ? {
+          key: "control",
+          label: t("Control room"),
+          href: routes.tournamentControl(tournamentId),
+          icon: Radio,
+          ...gate("ready"),
+        }
+      : null,
     allowed("tournament.editor")
       ? {
           key: "settings",

@@ -143,6 +143,7 @@ describe("computeTournamentNav", () => {
       "teams",
       "members",
       "fixtures",
+      "control",
       "settings",
     ]);
   });
@@ -208,6 +209,48 @@ describe("computeTournamentNav", () => {
       slug: "acme",
     }).flatMap((g) => g.items);
     expect(items.every((i) => !i.locked)).toBe(true);
+  });
+
+  it("Control room: locked until the stage is ready, then open to module holders", () => {
+    // Mid-flow (org_registration): visible but locked, unlock label = Ready.
+    const locked = computeTournamentNav(TID, {
+      user: makeUser(["admin"], []),
+      slug: "acme",
+      stage: STAGE,
+    }).flatMap((g) => g.items);
+    const lockedItem = locked.find((i) => i.key === "control");
+    expect(lockedItem?.locked).toBe(true);
+    expect(lockedItem?.lockLabel).toBe("Ready");
+    expect(lockedItem?.href).toBe(routes.tournamentControl(TID));
+
+    // Stage ready: unlocked for a plain member holding the view module
+    // (the catalog default for all six roles).
+    const member = computeTournamentNav(TID, {
+      user: makeUser(["match_scorer"], []),
+      slug: "acme",
+      stage: {
+        ...STAGE,
+        stage: "ready",
+        can_manage: false,
+        modules: ["match.center_admin_view", "match.scoring_console"],
+      },
+    }).flatMap((g) => g.items);
+    const open = member.find((i) => i.key === "control");
+    expect(open?.locked).toBeFalsy();
+  });
+
+  it("Control room is HIDDEN from members whose modules revoke the view", () => {
+    const items = computeTournamentNav(TID, {
+      user: makeUser(["team_manager"], []),
+      slug: "acme",
+      stage: {
+        ...STAGE,
+        stage: "ready",
+        can_manage: false,
+        modules: ["team.manager_portal"],
+      },
+    }).flatMap((g) => g.items);
+    expect(items.map((i) => i.key)).not.toContain("control");
   });
 
   it("links sections to the right routes", () => {

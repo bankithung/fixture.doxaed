@@ -27,6 +27,7 @@ import { TournamentMembersPage } from "@/features/tournaments/TournamentMembersP
 import { InvitesPage } from "@/features/invitations/InvitesPage";
 import { TournamentAuditPage } from "@/features/tournaments/TournamentAuditPage";
 import { MatchConsolePage } from "@/features/matches/MatchConsolePage";
+import { ControlRoomPage } from "@/features/controlroom/ControlRoomPage";
 import { BracketPage } from "@/features/tournaments/BracketPage";
 import { DryRunPreviewPage } from "@/features/fixtures/DryRunPreviewPage";
 import { PublicSchedulePage } from "@/features/fixtures/PublicSchedulePage";
@@ -171,6 +172,8 @@ export default function App(): React.ReactElement {
                   <Route path="teams" element={<TeamsTab />} />
                   <Route path="members" element={<TournamentMembersPage />} />
                   <Route path="fixtures" element={<FixturesTab />} />
+                  {/* Live-ops cockpit (control room spec 2026-06-12). */}
+                  <Route path="control" element={<ControlRoomPage />} />
                   <Route path="settings" element={<SettingsTab />} />
                 </Route>
                 <Route
