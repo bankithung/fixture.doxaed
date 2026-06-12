@@ -8,6 +8,7 @@ import {
   tournamentsApi,
   type DrawConfig,
   type FixtureReadiness,
+  type MatchRow,
   type StagePayload,
   type TeamRow,
   type TournamentSettings,
@@ -111,6 +112,10 @@ function wrap(ui: React.ReactElement) {
               path="/tournaments/t1/teams"
               element={<div data-testid="teams-page" />}
             />
+            <Route
+              path="/tournaments/t1/fixtures/preview"
+              element={<div data-testid="preview-page" />}
+            />
           </Routes>
         </MemoryRouter>
       </ToastProvider>
@@ -183,5 +188,73 @@ describe("FixtureSetupHub", () => {
     await waitFor(() =>
       expect(screen.getByTestId("teams-page")).toBeInTheDocument(),
     );
+  });
+
+  it("shows the read-only result card for a drawn competition and routes the stale-draw banner to a fresh preview", async () => {
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([
+      {
+        id: "m1", stage: "group", group_label: "Group A", round_no: 1,
+        match_no: 1, status: "scheduled",
+        home_team: { id: "tm1", name: "A FC", short_name: "A" },
+        away_team: { id: "tm2", name: "B FC", short_name: "B" },
+        home_score: null, away_score: null, sport: "football", set_scores: [],
+        leaf_key: "football.u15", venue: "", scoring: null, scheduled_at: null,
+      } as MatchRow,
+    ]);
+    vi.mocked(tournamentsApi.fixtureReadiness).mockResolvedValue({
+      ...READINESS,
+      competitions: [
+        {
+          ...READINESS.competitions[0],
+          checks: READINESS.competitions[0].checks.map((c) =>
+            c.id === "already_generated"
+              ? { ...c, status: "warn" as const, fix: "diff" }
+              : c,
+          ),
+        },
+        READINESS.competitions[1],
+      ],
+    });
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+
+    // post-generation: read-only card, no inline score entry (§6 screen 6)
+    expect(await screen.findByTestId("competition-result-card")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Home score")).toBeNull();
+    // invariant-10 banner → fresh dry run for that competition
+    await userEvent.click(screen.getByTestId("re-preview"));
+    await waitFor(() =>
+      expect(screen.getByTestId("preview-page")).toBeInTheDocument(),
+    );
+  });
+
+  it("the inputs-changed banner can be dismissed with Keep", async () => {
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([
+      {
+        id: "m1", stage: "group", group_label: "Group A", round_no: 1,
+        match_no: 1, status: "scheduled",
+        home_team: { id: "tm1", name: "A FC", short_name: "A" },
+        away_team: { id: "tm2", name: "B FC", short_name: "B" },
+        home_score: null, away_score: null, sport: "football", set_scores: [],
+        leaf_key: "football.u15", venue: "", scoring: null, scheduled_at: null,
+      } as MatchRow,
+    ]);
+    vi.mocked(tournamentsApi.fixtureReadiness).mockResolvedValue({
+      ...READINESS,
+      competitions: [
+        {
+          ...READINESS.competitions[0],
+          checks: READINESS.competitions[0].checks.map((c) =>
+            c.id === "already_generated"
+              ? { ...c, status: "warn" as const, fix: "diff" }
+              : c,
+          ),
+        },
+      ],
+    });
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+
+    expect(await screen.findByTestId("inputs-changed-banner")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("keep-draw"));
+    expect(screen.queryByTestId("inputs-changed-banner")).toBeNull();
   });
 });

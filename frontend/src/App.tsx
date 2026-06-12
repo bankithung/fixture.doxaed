@@ -28,6 +28,7 @@ import { InvitesPage } from "@/features/invitations/InvitesPage";
 import { TournamentAuditPage } from "@/features/tournaments/TournamentAuditPage";
 import { MatchConsolePage } from "@/features/matches/MatchConsolePage";
 import { BracketPage } from "@/features/tournaments/BracketPage";
+import { DryRunPreviewPage } from "@/features/fixtures/DryRunPreviewPage";
 import { RegistrationFormPage } from "@/features/registration/RegistrationFormPage";
 import { FormsListPage } from "@/features/forms/FormsListPage";
 import { FormBuilderPage } from "@/features/forms/FormBuilderPage";
@@ -172,6 +173,11 @@ export default function App(): React.ReactElement {
                 <Route
                   path="/tournaments/:id/bracket"
                   element={<BracketPage />}
+                />
+                {/* Full-page dry-run preview (fixture-engine redesign §6.5). */}
+                <Route
+                  path="/tournaments/:id/fixtures/preview"
+                  element={<DryRunPreviewPage />}
                 />
                 <Route
                   path="/tournaments/:id/audit"

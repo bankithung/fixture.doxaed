@@ -130,6 +130,7 @@ export function CompetitionFormatWizard({
   leafLabel,
   teams,
   onGenerated,
+  onPreview,
   onEditGlobals,
 }: {
   tournamentId: string;
@@ -142,6 +143,10 @@ export function CompetitionFormatWizard({
   teams: TeamRow[];
   /** Called after a successful generation — chain the schedule wizard here. */
   onGenerated: (opts: { leafKey: string; label: string }) => void;
+  /** Dry-run path (redesign §6 screen 5): when set, the primary CTA becomes
+   * "Preview & generate" — save the format, then hand off to the full-page
+   * preview instead of generating directly. */
+  onPreview?: (opts: { leafKey: string; label: string }) => void;
   /** Reopen the GlobalSetupWizard (the header's Edit link). */
   onEditGlobals?: () => void;
 }): React.ReactElement {
@@ -255,6 +260,25 @@ export function CompetitionFormatWizard({
       }),
   });
 
+  /** Dry-run handoff: persist the format, then open the full-page preview —
+   * generation/scheduling happen there on Accept (§5.2, nothing persists
+   * before that). */
+  const saveAndPreview = useMutation({
+    mutationFn: persist,
+    onSuccess: () => {
+      invalidateTournament(qc, tournamentId);
+      onClose();
+      onPreview?.({ leafKey, label: leafLabel });
+    },
+    onError: (e) =>
+      toast.push({
+        kind: "error",
+        title: t("Could not save the format"),
+        description:
+          e instanceof ApiError ? (e.payload.detail ?? undefined) : undefined,
+      }),
+  });
+
   const saveAndGenerate = useMutation({
     mutationFn: async () => {
       await persist();
@@ -285,7 +309,8 @@ export function CompetitionFormatWizard({
       }),
   });
 
-  const busy = saveFormat.isPending || saveAndGenerate.isPending;
+  const busy =
+    saveFormat.isPending || saveAndGenerate.isPending || saveAndPreview.isPending;
   const cal = drawConfig.data?.draw_config["*"]?.calendar;
   const venueCount = venues.data?.venues.length ?? 0;
 
@@ -491,15 +516,27 @@ export function CompetitionFormatWizard({
           <Save aria-hidden="true" className="h-4 w-4" />
           {saveFormat.isPending ? t("Saving…") : t("Save format")}
         </Button>
-        <Button
-          type="button"
-          disabled={busy || f === null || advanceInvalid || teamCount < 2}
-          data-testid="confirm-generate"
-          onClick={() => saveAndGenerate.mutate()}
-        >
-          <Wand2 aria-hidden="true" className="h-4 w-4" />
-          {saveAndGenerate.isPending ? t("Generating…") : t("Save & generate draw")}
-        </Button>
+        {onPreview ? (
+          <Button
+            type="button"
+            disabled={busy || f === null || advanceInvalid || teamCount < 2}
+            data-testid="confirm-preview"
+            onClick={() => saveAndPreview.mutate()}
+          >
+            <Wand2 aria-hidden="true" className="h-4 w-4" />
+            {saveAndPreview.isPending ? t("Saving…") : t("Preview & generate")}
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            disabled={busy || f === null || advanceInvalid || teamCount < 2}
+            data-testid="confirm-generate"
+            onClick={() => saveAndGenerate.mutate()}
+          >
+            <Wand2 aria-hidden="true" className="h-4 w-4" />
+            {saveAndGenerate.isPending ? t("Generating…") : t("Save & generate draw")}
+          </Button>
+        )}
       </DialogFooter>
     </Dialog>
   );

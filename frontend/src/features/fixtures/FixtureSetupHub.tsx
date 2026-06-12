@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { ScheduleWizard } from "@/features/tournaments/ScheduleWizard";
 import {
   EmptyState,
-  ScoreRow,
   StandingsTable,
 } from "@/features/tournaments/tabs/shared";
 import { qk } from "@/lib/queryKeys";
@@ -20,9 +19,11 @@ import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 import { AdvanceToKnockoutDialog } from "./AdvanceToKnockoutDialog";
 import { CompetitionFormatWizard } from "./CompetitionFormatWizard";
+import { CompetitionResultCard } from "./CompetitionResultCard";
 import { ConstraintBuilder } from "./ConstraintBuilder";
 import { GlobalSetupCard } from "./GlobalSetupCard";
 import { GlobalSetupWizard } from "./GlobalSetupWizard";
+import { InputsChangedBanner } from "./InputsChangedBanner";
 import { ReadinessChecklist } from "./ReadinessChecklist";
 import { SETUP_STEP } from "./setupSteps";
 
@@ -38,9 +39,10 @@ interface Competition {
 
 const FINAL = new Set(["completed", "walkover"]);
 
-/** Readiness fix keys the hub has a surface for today; the rest (seeds,
- * diff) render hint-only until their wizards land (increments 13/15). */
-const FIXABLE = new Set(["settings", "venues", "constraints", "teams", "format"]);
+/** Readiness fix keys the hub has a surface for. */
+const FIXABLE = new Set([
+  "settings", "venues", "constraints", "teams", "format", "seeds", "diff",
+]);
 
 /** True when the competition has a finished group stage and no bracket yet —
  * the moment "Advance to knockout" becomes possible. */
@@ -80,6 +82,8 @@ export function FixtureSetupHub({
     leafKey: string;
     label: string;
   } | null>(null);
+  // "Keep" dismissals of the invariant-10 inputs-changed banner (per leaf).
+  const [keptDraws, setKeptDraws] = useState<ReadonlySet<string>>(new Set());
 
   const teams = useQuery({ queryKey: qk.teams(id), queryFn: () => tournamentsApi.teams(id) });
   const matches = useQuery({ queryKey: qk.matches(id), queryFn: () => tournamentsApi.matches(id) });
@@ -136,9 +140,13 @@ export function FixtureSetupHub({
         .getElementById("constraint-builder")
         ?.scrollIntoView?.({ behavior: "smooth", block: "start" });
     } else if (fix === "teams") navigate(routes.tournamentTeams(id));
-    else if (fix === "format") {
+    else if (fix === "format" || fix === "seeds") {
+      // The format wizard owns seeding too (SeedListEditor).
       const c = competitions.find((x) => x.leafKey === leafKey);
       if (c) setDraw({ leafKey, label: c.label, teams: c.teams });
+    } else if (fix === "diff") {
+      // Inputs changed since the draw — a fresh dry run shows the new draw.
+      navigate(routes.tournamentFixturesPreview(id, leafKey || undefined));
     }
   };
 
@@ -239,16 +247,29 @@ export function FixtureSetupHub({
               ) : null}
 
               {drawn ? (
-                <div className="px-4 py-2">
-                  {c.readiness?.checks.some(
+                <div className="flex flex-col gap-3 px-4 py-3">
+                  {canManage &&
+                  !keptDraws.has(c.leafKey) &&
+                  c.readiness?.checks.some(
                     (k) => k.id === "already_generated" && k.status === "warn",
                   ) ? (
-                    <p className="border-b border-border py-2 text-xs text-amber-500">
-                      {t("Inputs changed since this draw was generated — regenerate or keep it (it stays valid).")}
-                    </p>
+                    <InputsChangedBanner
+                      context="draw"
+                      onRePreview={() =>
+                        navigate(
+                          routes.tournamentFixturesPreview(
+                            id,
+                            c.leafKey || undefined,
+                          ),
+                        )
+                      }
+                      onKeep={() =>
+                        setKeptDraws((prev) => new Set(prev).add(c.leafKey))
+                      }
+                    />
                   ) : null}
                   {canManage && groupsDone(c) ? (
-                    <div className="flex items-center gap-3 border-b border-border py-2">
+                    <div className="flex items-center gap-3 border-b border-border pb-2">
                       <p className="text-sm text-muted-foreground">
                         {t("Group stage complete — build the bracket from the standings.")}
                       </p>
@@ -264,15 +285,16 @@ export function FixtureSetupHub({
                       </Button>
                     </div>
                   ) : null}
-                  {c.matches.map((m) => (
-                    <ScoreRow key={m.id} match={m} tournamentId={id} />
-                  ))}
+                  {/* Post-generation: the accepted draw, read-only (§6 screen
+                      6 — score entry is the match console's job, not this
+                      stage's). */}
+                  <CompetitionResultCard matches={c.matches} tournamentId={id} />
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <p className="text-sm text-muted-foreground">
                     {ready
-                      ? t("Ready — generate the draw; every competition picks its own format.")
+                      ? t("Ready — preview the draw; nothing is saved until you accept it.")
                       : t("Resolve the failed checks above before generating.")}
                   </p>
                   {canManage ? (
@@ -289,7 +311,7 @@ export function FixtureSetupHub({
                       }
                     >
                       <Wand2 aria-hidden="true" className="h-3.5 w-3.5" />
-                      {t("Generate draw")}
+                      {t("Preview & generate")}
                     </Button>
                   ) : null}
                 </div>
@@ -347,6 +369,9 @@ export function FixtureSetupHub({
           teams={draw.teams}
           onGenerated={({ leafKey, label }) =>
             setWizard(leafKey ? { leafKey, label } : {})
+          }
+          onPreview={({ leafKey }) =>
+            navigate(routes.tournamentFixturesPreview(id, leafKey || undefined))
           }
           onEditGlobals={() => {
             setDraw(null);

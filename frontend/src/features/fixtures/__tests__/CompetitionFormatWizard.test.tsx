@@ -242,6 +242,27 @@ describe("CompetitionFormatWizard", () => {
     });
   });
 
+  it("with onPreview the primary CTA saves the format and hands off to the dry run (no direct generate)", async () => {
+    const onPreview = vi.fn();
+    mount({ onPreview });
+    await userEvent.click(await screen.findByTestId("format-knockout"));
+    expect(screen.queryByTestId("confirm-generate")).toBeNull();
+    await userEvent.click(screen.getByTestId("confirm-preview"));
+
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith("t1", {
+        leaf_key: "football.u15",
+        config: { seeding: "registration", format: "knockout", third_place: false },
+        event_id: expect.any(String),
+      }),
+    );
+    expect(onPreview).toHaveBeenCalledWith({
+      leafKey: "football.u15",
+      label: "Football · U15",
+    });
+    expect(tournamentsApi.generateFixtures).not.toHaveBeenCalled();
+  });
+
   it("blocks saving when advance per group >= group size", async () => {
     mount();
     await userEvent.click(await screen.findByTestId("format-groups_knockout"));

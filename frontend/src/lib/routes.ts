@@ -63,6 +63,12 @@ export const routes = {
   tournamentTeams: (id: string) => `/tournaments/${encodeURIComponent(id)}/teams`,
   tournamentFixtures: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/fixtures`,
+  /** Full-page dry-run preview (fixture-engine redesign §6 screen 5).
+   * `leafKey` scopes the simulate to one competition. */
+  tournamentFixturesPreview: (id: string, leafKey?: string) =>
+    `/tournaments/${encodeURIComponent(id)}/fixtures/preview${
+      leafKey ? `?leaf=${encodeURIComponent(leafKey)}` : ""
+    }`,
   tournamentSettings: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/settings`,
   /** Public, read-only live match viewer (no login). */

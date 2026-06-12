@@ -309,6 +309,11 @@ export const tournamentsApi = {
         | "knockout"
         | "knockout_from_groups";
       leafKey?: string;
+      /** Replay the previewed draw exactly (§5.2 — Accept carries the seed). */
+      seed?: number;
+      /** Optimistic-concurrency guard (§9 A1/D10): the preview's
+       * `inputs_hash`; the server answers 409 `inputs_changed` on drift. */
+      expectedInputsHash?: string;
     },
   ) => {
     const body: Record<string, unknown> = { leaf_key: opts?.leafKey ?? "" };
@@ -316,6 +321,10 @@ export const tournamentsApi = {
     if (opts?.groupSize !== undefined) body.group_size = opts.groupSize;
     if (opts?.advancePerGroup !== undefined) {
       body.advance_per_group = opts.advancePerGroup;
+    }
+    if (opts?.seed !== undefined) body.seed = opts.seed;
+    if (opts?.expectedInputsHash !== undefined) {
+      body.expected_inputs_hash = opts.expectedInputsHash;
     }
     return api.post<{
       generated: number;
@@ -444,6 +453,20 @@ export const tournamentsApi = {
   /** Server-computed readiness checklist (§5.1) — the FE never replicates it. */
   fixtureReadiness: (id: string) =>
     api.get<FixtureReadiness>(`/api/tournaments/${id}/fixture-readiness/`),
+  /** Dry-run preview (§5.2, D6): a PURE simulate — persists nothing, takes
+   * no event_id. Accept replays the returned `seed` + `inputs_hash`. */
+  previewFixtures: (
+    id: string,
+    body: {
+      leaf_key?: string;
+      /** DrawConfig overrides for this run only (never persisted). */
+      draw?: DrawConfigLayer;
+      /** ScheduleConfig overrides; omit to use the stored config. */
+      schedule?: Partial<ScheduleRequest>;
+      include_schedule?: boolean;
+    },
+  ) =>
+    api.post<FixturePreview>(`/api/tournaments/${id}/fixtures/preview/`, body),
 };
 
 export interface TournamentRules {
@@ -601,6 +624,9 @@ export interface ScheduleRequest {
   excluded_dates?: string[];
   /** Schedule ONE competition around everything else's bookings. */
   leaf_key?: string;
+  /** Optimistic-concurrency guard (§9 A1/D10): the preview's `inputs_hash`;
+   * the server answers 409 `inputs_changed` when the inputs drifted. */
+  expected_inputs_hash?: string;
 }
 
 export interface ScheduleResultDTO {
@@ -608,6 +634,71 @@ export interface ScheduleResultDTO {
   unscheduled: string[];
   soft_score: number;
   explanation: string[];
+  /** Structured hard-constraint failures (§3 infeasibility contract). */
+  violations?: PreviewViolation[];
+}
+
+// --- Dry-run preview (§5.2) ---
+
+/** One side of a previewed pairing: a real team OR a typed source pointer
+ * (`winner_of`/`loser_of` reference other preview refs like "p3"). */
+export interface PreviewSide {
+  team_id?: string;
+  source?: { type: string; ref?: string; [k: string]: unknown };
+}
+
+export interface PreviewMatch {
+  /** Stable in-preview reference ("p1"…) — violations point at these. */
+  ref: string;
+  leaf_key: string;
+  stage: string;
+  group_label: string;
+  round_no: number;
+  home: PreviewSide;
+  away: PreviewSide;
+  /** Tournament-local wall clock (invariant 14); null = unscheduled. */
+  scheduled_at: string | null;
+  venue: string | null;
+}
+
+/** A concrete relaxation suggestion (§3) — stable `code` + params; the FE
+ * localizes from the code, never string-matches messages (§9 A5). */
+export interface PreviewRelaxation {
+  action: string;
+  code: string;
+  params: Record<string, unknown>;
+}
+
+export interface PreviewViolation {
+  code: string;
+  hard: boolean;
+  /** The offending stored constraint record (null for capacity failures). */
+  constraint: ConstraintRecord | null;
+  /** Preview refs (or match ids on the commit path) this violation hits. */
+  matches: string[];
+  params: Record<string, unknown>;
+  /** Server-rendered fallback message (gettext) — FE prefers the code. */
+  message: string;
+  relaxations: PreviewRelaxation[];
+}
+
+export interface FixturePreview {
+  matches: PreviewMatch[];
+  unscheduled: string[];
+  violations: PreviewViolation[];
+  soft_score: number | null;
+  fairness: {
+    rest_min_by_team?: Record<string, number>;
+    venue_distribution?: Record<string, number>;
+    days_used?: number;
+  };
+  /** The seed Accept MUST replay so commit ≡ preview (tenet 3). */
+  seed: number | null;
+  /** Accept's `expected_inputs_hash` guard value (§9 A1). */
+  inputs_hash: string;
+  warnings: unknown[];
+  explanation: string[];
+  leaf_key: string;
 }
 
 /** One step in the setup stepper (server-computed; FE renders, never hardcodes). */
