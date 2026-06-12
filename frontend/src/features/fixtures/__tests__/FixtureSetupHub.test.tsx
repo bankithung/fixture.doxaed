@@ -263,6 +263,32 @@ describe("FixtureSetupHub", () => {
     ).toBeInTheDocument();
   });
 
+  it("Print opens the public schedule page (the print view lives there)", async () => {
+    const open = vi.fn();
+    vi.stubGlobal("open", open);
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([
+      {
+        id: "m1", stage: "group", group_label: "Group A", round_no: 1,
+        match_no: 1, status: "scheduled",
+        home_team: { id: "tm1", name: "A FC", short_name: "A" },
+        away_team: { id: "tm2", name: "B FC", short_name: "B" },
+        home_score: null, away_score: null, sport: "football", set_scores: [],
+        leaf_key: "football.u15", venue: "", scoring: null, scheduled_at: null,
+      } as MatchRow,
+    ]);
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+
+    const print = await screen.findByTestId("print-order-of-play");
+    await waitFor(() => expect(print).toBeEnabled());
+    await userEvent.click(print);
+    expect(open).toHaveBeenCalledWith(
+      expect.stringContaining("/t/nagaland-cup/t1/schedule"),
+      "_blank",
+      "noopener",
+    );
+    vi.unstubAllGlobals();
+  });
+
   it("the inputs-changed banner can be dismissed with Keep", async () => {
     vi.mocked(tournamentsApi.matches).mockResolvedValue([
       {

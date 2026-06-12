@@ -21,12 +21,8 @@ import { useToast } from "@/components/ui/toast";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament } from "@/lib/queryKeys";
 import { t } from "@/lib/t";
-import {
-  ConflictsBlock,
-  MOVABLE_STATUSES,
-  RepairFooter,
-  conflictsOf,
-} from "./MatchRepairControls";
+import { ConflictsBlock, RepairFooter } from "./MatchRepairControls";
+import { MOVABLE_STATUSES, conflictsOf } from "./repair";
 
 /** Stable backend error codes → friendly inline messages (§9 A5). */
 const ERROR_MESSAGES: Record<string, string> = {

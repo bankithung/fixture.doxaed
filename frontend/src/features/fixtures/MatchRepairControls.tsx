@@ -14,7 +14,6 @@ import {
   type MatchRow,
   type RepairViolation,
 } from "@/api/tournaments";
-import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,9 +30,7 @@ import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-
-/** Match statuses a slot edit may touch (mirrors the backend's gate). */
-export const MOVABLE_STATUSES = new Set(["scheduled", "postponed"]);
+import { MOVABLE_STATUSES, conflictsOf, errorDetail } from "./repair";
 
 /** Localized titles per stable repair-violation code (§9 A5 — the FE renders
  * from the code, never string-matches server messages). */
@@ -96,22 +93,6 @@ export function RepairViolationsList({
       ))}
     </ul>
   );
-}
-
-/** 409 `schedule_conflicts` → the violations payload; anything else → null. */
-export function conflictsOf(e: unknown): RepairViolation[] | null {
-  if (
-    e instanceof ApiError &&
-    e.status === 409 &&
-    e.payload.detail === "schedule_conflicts"
-  ) {
-    return (e.payload.violations as RepairViolation[] | undefined) ?? [];
-  }
-  return null;
-}
-
-export function errorDetail(e: unknown): string {
-  return e instanceof ApiError ? String(e.payload.detail ?? "") : t("Try again.");
 }
 
 /** Footer shared by the repair dialogs: Cancel + the primary action, which

@@ -5,6 +5,7 @@ import {
   CalendarClock,
   CloudRain,
   GitBranch,
+  Printer,
   Share2,
   Users,
   Wand2,
@@ -223,6 +224,24 @@ export function FixtureSetupHub({
             >
               <Share2 aria-hidden="true" className="h-4 w-4" />
               {t("Share schedule")}
+            </Button>
+            <Button
+              variant="outline"
+              data-testid="print-order-of-play"
+              disabled={!tournament.data?.slug}
+              title={t("Order of play — opens the public schedule, print from there")}
+              onClick={() => {
+                const slug = tournament.data?.slug;
+                if (!slug) return;
+                window.open(
+                  window.location.origin + routes.publicSchedule(slug, id),
+                  "_blank",
+                  "noopener",
+                );
+              }}
+            >
+              <Printer aria-hidden="true" className="h-4 w-4" />
+              {t("Print")}
             </Button>
             <Link
               to={routes.tournamentBracket(id)}

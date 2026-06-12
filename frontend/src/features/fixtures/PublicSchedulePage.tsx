@@ -1,10 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { Printer } from "lucide-react";
 import {
   tournamentsApi,
   type PublicScheduleMatch,
 } from "@/api/tournaments";
+import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/Select";
 import { ThemeToggle } from "@/features/theme/ThemeToggle";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
@@ -52,7 +55,7 @@ function fmtDay(iso: string): string {
 
 /** Kick-off in the TOURNAMENT's wall clock (invariant 14 — the schedule of a
  * physical event reads in event-local time, matching the `day` grouping). */
-export function fmtKickoff(iso: string | null, timeZone: string): string {
+function fmtKickoff(iso: string | null, timeZone: string): string {
   if (!iso) return "—";
   try {
     return new Intl.DateTimeFormat(undefined, {
@@ -136,11 +139,104 @@ function MatchCard({
   );
 }
 
+function stageLabel(m: PublicScheduleMatch): string {
+  if (m.group_label) return m.group_label;
+  if (m.stage === "knockout") return `${t("R")}${m.round_no}`;
+  return m.stage;
+}
+
+/**
+ * Print-only order-of-play for ONE chosen day (increment L): grouped by
+ * venue then kick-off time, one page per venue (`break-after-page`), plain
+ * B&W tables (index.css forces a white sheet under `@media print`). Hidden
+ * on screen; the screen content is `print:hidden` in turn.
+ */
+function PrintSheet({
+  day,
+  matches,
+  tournamentName,
+  timeZone,
+}: {
+  day: string;
+  matches: PublicScheduleMatch[];
+  tournamentName: string;
+  timeZone: string;
+}): React.ReactElement | null {
+  const venues = useMemo(() => {
+    const by = new Map<string, PublicScheduleMatch[]>();
+    const ordered = [...matches].sort((a, b) =>
+      (a.scheduled_at ?? "") < (b.scheduled_at ?? "") ? -1 : 1,
+    );
+    for (const m of ordered) {
+      const v = m.venue || t("Unassigned venue");
+      if (!by.has(v)) by.set(v, []);
+      by.get(v)!.push(m);
+    }
+    return [...by.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [matches]);
+
+  if (venues.length === 0) return null;
+  return (
+    <div data-testid="print-sheet" className="hidden print:block">
+      {venues.map(([venue, ms]) => (
+        <section
+          key={venue}
+          data-testid={`print-venue-${venue}`}
+          className="break-after-page pb-6 last:break-after-auto"
+        >
+          <h1 className="text-lg font-bold">
+            {tournamentName} — {t("Order of play")}
+          </h1>
+          <p className="pb-3 text-sm">
+            {fmtDay(day)} · {venue}
+          </p>
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr>
+                {[t("Time"), t("Match"), t("Competition"), t("Stage")].map(
+                  (h) => (
+                    <th
+                      key={h}
+                      className="border-b-2 border-border py-1 pr-3 text-left font-semibold"
+                    >
+                      {h}
+                    </th>
+                  ),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {ms.map((m) => (
+                <tr key={m.id}>
+                  <td className="border-b border-border py-1 pr-3 font-tabular">
+                    {fmtKickoff(m.scheduled_at, timeZone)}
+                  </td>
+                  <td className="border-b border-border py-1 pr-3">
+                    {m.home?.name ?? t("TBD")} {t("vs")}{" "}
+                    {m.away?.name ?? t("TBD")}
+                  </td>
+                  <td className="border-b border-border py-1 pr-3">
+                    {m.leaf_label}
+                  </td>
+                  <td className="border-b border-border py-1">
+                    {stageLabel(m)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 /**
  * Public, read-only tournament schedule (trust layer, increment H): grouped
  * by day, auto-refreshing every 60s, mobile-first and rendered in its own
  * minimal chrome (no app sidebar — it lives outside the authenticated shell,
- * like the /m/ live viewer).
+ * like the /m/ live viewer). A day picker + Print button render a per-venue
+ * order-of-play through the print stylesheet (increment L).
  */
 export function PublicSchedulePage(): React.ReactElement {
   const { slug = "", id = "" } = useParams();
@@ -151,6 +247,7 @@ export function PublicSchedulePage(): React.ReactElement {
   });
 
   const tz = query.data?.tournament.time_zone ?? "UTC";
+  const [printDay, setPrintDay] = useState("");
 
   const { days, unscheduled } = useMemo(() => {
     const byDay = new Map<string, PublicScheduleMatch[]>();
@@ -169,9 +266,14 @@ export function PublicSchedulePage(): React.ReactElement {
     };
   }, [query.data]);
 
+  /** Day the print sheet renders: picked, else the first scheduled day. */
+  const effectivePrintDay = printDay || days[0]?.[0] || "";
+  const printMatches =
+    days.find(([d]) => d === effectivePrintDay)?.[1] ?? [];
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <header className="flex h-14 items-center gap-2 border-b border-border bg-card px-4 sm:px-6">
+      <header className="flex h-14 items-center gap-2 border-b border-border bg-card px-4 print:hidden sm:px-6">
         <Link
           to={routes.landing()}
           className="flex items-center gap-2 rounded-md font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -208,7 +310,7 @@ export function PublicSchedulePage(): React.ReactElement {
           </p>
         ) : (
           <>
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 print:hidden">
               <h1 className="text-xl font-semibold tracking-tight">
                 {query.data.tournament.name}
               </h1>
@@ -218,12 +320,38 @@ export function PublicSchedulePage(): React.ReactElement {
               </span>
             </div>
 
+            {days.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-2 print:hidden">
+                <span className="text-xs text-muted-foreground">
+                  {t("Order of play")}
+                </span>
+                <Select
+                  size="sm"
+                  className="w-48"
+                  aria-label={t("Day to print")}
+                  value={effectivePrintDay}
+                  onChange={setPrintDay}
+                  options={days.map(([d]) => ({ value: d, label: fmtDay(d) }))}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  data-testid="print-button"
+                  onClick={() => window.print()}
+                >
+                  <Printer aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t("Print")}
+                </Button>
+              </div>
+            ) : null}
+
             {days.length === 0 && unscheduled.length === 0 ? (
               <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
                 {t("No matches have been scheduled yet — check back soon.")}
               </p>
             ) : null}
 
+            <div className="flex flex-col gap-4 print:hidden">
             {days.map(([day, ms]) => (
               <section
                 key={day}
@@ -258,6 +386,16 @@ export function PublicSchedulePage(): React.ReactElement {
                   ))}
                 </ul>
               </section>
+            ) : null}
+            </div>
+
+            {effectivePrintDay ? (
+              <PrintSheet
+                day={effectivePrintDay}
+                matches={printMatches}
+                tournamentName={query.data.tournament.name}
+                timeZone={tz}
+              />
             ) : null}
           </>
         )}

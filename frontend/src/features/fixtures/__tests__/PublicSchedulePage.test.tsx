@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -130,5 +131,43 @@ describe("PublicSchedulePage", () => {
     expect(
       await screen.findByText("This schedule is not available."),
     ).toBeInTheDocument();
+  });
+
+  it("print sheet: first day by default, grouped by venue, time-ordered", async () => {
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+
+    const sheet = screen.getByTestId("print-sheet");
+    // page-per-venue order-of-play for the default (first) day
+    const venue = within(sheet).getByTestId("print-venue-Main Ground");
+    expect(venue.className).toContain("break-after-page");
+    expect(venue).toHaveTextContent("Nagaland Schools Cup — Order of play");
+    const rows = within(venue).getAllByRole("row").slice(1); // skip header
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("09:00"); // time-ordered
+    expect(rows[0]).toHaveTextContent("Alpha FC vs Bravo FC");
+    expect(rows[1]).toHaveTextContent("11:00");
+    // day 2's venue is not on day 1's sheet
+    expect(within(sheet).queryByTestId("print-venue-Side Pitch")).toBeNull();
+  });
+
+  it("the day picker re-targets the print sheet; Print calls window.print", async () => {
+    const print = vi.fn();
+    window.print = print;
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+
+    await userEvent.click(screen.getByRole("button", { name: "Day to print" }));
+    await userEvent.click(screen.getByRole("option", { name: /June 21/ }));
+    const sheet = screen.getByTestId("print-sheet");
+    expect(
+      within(sheet).getByTestId("print-venue-Side Pitch"),
+    ).toBeInTheDocument();
+    expect(
+      within(sheet).queryByTestId("print-venue-Main Ground"),
+    ).toBeNull();
+
+    await userEvent.click(screen.getByTestId("print-button"));
+    expect(print).toHaveBeenCalled();
   });
 });
