@@ -68,9 +68,12 @@ CONSTRAINT_TYPES: list[dict[str, Any]] = [
      "params_schema": {"date": "date", "from": "time", "to": "time", "venues": "list"},
      "scopes": ["all"], "layer": "S"},
     # Pinned matches are placed FIRST; earlier rounds back-fill respecting
-    # rest ("football final last day 14:00").
+    # rest ("football final last day 14:00"). Optional ``venues`` (increment
+    # T): when present the pinned round lands ONLY on those venues (hard) —
+    # "the final plays on Center Court".
     {"type": "round_pinned_to_window", "label": "Pin a round to a window", "hard": True,
-     "params_schema": {"round": "str", "date": "date", "from": "time", "to": "time"},
+     "params_schema": {"round": "str", "date": "date", "from": "time", "to": "time",
+                       "venues": "list"},
      "scopes": ["leaf"], "layer": "S"},
     # Soft = per-competition window scoring; the hard toggle = grid filter
     # (U14 mornings, U17 afternoons — §9 A8).

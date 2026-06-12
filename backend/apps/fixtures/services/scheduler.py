@@ -363,6 +363,9 @@ def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> l
                 if p.get("from") else None,
                 "to": _parse_time(p["to"], cfg.daily_end)
                 if p.get("to") else None,
+                # Finals venue pin (increment T): names the ONLY venues the
+                # pinned round may land on. None = any venue (legacy).
+                "venues": [str(v) for v in p.get("venues") or []] or None,
             }, record=c))
             notes.append(
                 f"Round '{p.get('round')}' pinned to its window ({scope})."
@@ -521,6 +524,57 @@ Preoccupied = list[tuple[str, datetime, datetime, list[str]]]
 def _overlaps(busy: list[tuple[datetime, datetime]], start: datetime,
               end: datetime, gap: timedelta = timedelta(0)) -> bool:
     return any(start < e + gap and s < end + gap for s, e in busy)
+
+
+def resolve_pinned_rounds(
+    matches: list[MatchSlotReq], rules: list[ScopedRule], cfg: ScheduleConfig,
+) -> dict[str, ScopedRule]:
+    """Map match id -> its ``round_pinned_to_window`` rule (§4.7): "final" =
+    the highest knockout round in the rule's scope, "semi_final" = the round
+    before it, an int = that literal round. Shared by pinned-first placement
+    AND ``validate_schedule`` (the repair verbs judge a manual move of a
+    pinned final by the same resolution, increment T)."""
+    pin_of: dict[str, ScopedRule] = {}
+    for r in rules:
+        if r.type != "round_pinned_to_window":
+            continue
+        in_scope = [
+            mm for mm in matches
+            if scope_matches(
+                r.scope, sport=mm.sport, leaf_key=mm.leaf_key,
+                team_ids=tuple(t for t in (mm.home, mm.away) if t),
+                team_tags=cfg.team_tags,
+            )
+        ]
+        ko = [mm for mm in in_scope if mm.stage == "knockout"] or in_scope
+        if not ko:
+            continue
+        rounds = sorted({mm.round_no for mm in ko})
+        rnd = r.params.get("round")
+        if rnd == "final":
+            target = rounds[-1]
+        elif rnd == "semi_final":
+            if len(rounds) < 2:
+                continue
+            target = rounds[-2]
+        else:
+            try:
+                target = int(str(rnd))
+            except (TypeError, ValueError):
+                continue
+        for mm in ko:
+            if mm.round_no == target:
+                pin_of[mm.id] = r
+    return pin_of
+
+
+def _pin_venue_ok(r: ScopedRule, venue: str, base_of: dict[str, str]) -> bool:
+    """Finals venue pin (increment T): with ``venues`` named, the pinned
+    match may only sit on one of them — a sub-venue counts through its
+    physical base ("Hall · T2" satisfies a pin on "Hall")."""
+    allowed = r.params.get("venues")
+    return (not allowed or venue in allowed
+            or base_of.get(venue, venue) in allowed)
 
 
 # --------------------------------------------------------------------------- engine
@@ -773,38 +827,10 @@ def schedule_matches(
         )
         return mx
 
-    # Pinned-round resolution (§4.7): map match id -> its pin rule. "final" =
-    # the highest knockout round in the rule's scope, "semi_final" = the round
-    # before it, an int = that literal round.
-    def _pin_targets() -> dict[str, ScopedRule]:
-        pin_of: dict[str, ScopedRule] = {}
-        for r in pinned_rules:
-            in_scope = [
-                mm for mm in matches
-                if _scope_ok(r, mm, tuple(t for t in (mm.home, mm.away) if t))
-            ]
-            ko = [mm for mm in in_scope if mm.stage == "knockout"] or in_scope
-            if not ko:
-                continue
-            rounds = sorted({mm.round_no for mm in ko})
-            rnd = r.params.get("round")
-            if rnd == "final":
-                target = rounds[-1]
-            elif rnd == "semi_final":
-                if len(rounds) < 2:
-                    continue
-                target = rounds[-2]
-            else:
-                try:
-                    target = int(str(rnd))
-                except (TypeError, ValueError):
-                    continue
-            for mm in ko:
-                if mm.round_no == target:
-                    pin_of[mm.id] = r
-        return pin_of
-
-    def _pin_ok(r: ScopedRule, dt: datetime, end: datetime) -> bool:
+    def _pin_ok(r: ScopedRule, dt: datetime, end: datetime,
+                venue: str) -> bool:
+        if not _pin_venue_ok(r, venue, base_of):  # finals venue pin (T)
+            return False
         pd = r.params.get("date")
         if pd == "last_day":
             pd = cfg.date_end
@@ -816,7 +842,8 @@ def schedule_matches(
             return False
         return True
 
-    pin_of = _pin_targets()
+    # Pinned-round resolution (§4.7): match id -> its pin rule.
+    pin_of = resolve_pinned_rounds(matches, pinned_rules, cfg)
 
     # Earlier rounds first, then declared order — keeps a bracket chronological.
     # PINNED matches are placed FIRST (their windows are scarce); the greedy
@@ -841,7 +868,7 @@ def schedule_matches(
         chosen: tuple[datetime, str] | None = None
         best_score = float("-inf")
         for dt, venue, wend in slots:
-            if pin is not None and not _pin_ok(pin, dt, dt + dur):
+            if pin is not None and not _pin_ok(pin, dt, dt + dur, venue):
                 continue
             if not feasible(m, dt, venue, wend, dur, teams):
                 continue
@@ -1088,6 +1115,26 @@ def validate_schedule(
         venue_items[venue].append((start, end, None))
         for t in team_ids:
             team_items[t].append((start, end, None))
+
+    # Finals venue pin (increment T): a pinned-round match parked on a venue
+    # outside its ``venues`` list is a hard violation — the repair verbs
+    # refuse to move a final off center court unless forced.
+    venue_pins = [
+        r for r in cfg.constraint_rules
+        if r.type == "round_pinned_to_window" and r.params.get("venues")
+    ]
+    if venue_pins:
+        for mid, r in resolve_pinned_rounds(matches, venue_pins, cfg).items():
+            slot = assignments.get(mid)
+            if slot is None:
+                continue
+            if not _pin_venue_ok(r, slot[1], base_of):
+                violations.append({
+                    "code": "pinned_round_venue", "hard": True,
+                    "match_id": mid, "venue": slot[1],
+                    "round": str(r.params.get("round")),
+                    "allowed_venues": list(r.params.get("venues") or []),
+                })
 
     def overlap_pairs(
         items: list[Interval], gap: timedelta = timedelta(0),
