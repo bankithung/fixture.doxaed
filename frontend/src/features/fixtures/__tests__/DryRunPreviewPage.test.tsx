@@ -254,6 +254,65 @@ describe("DryRunPreviewPage", () => {
     );
   });
 
+  it("renders the per-team fairness analytics with the server's outlier flags", async () => {
+    vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
+      ...PREVIEW,
+      fairness: {
+        days_used: 2,
+        teams: [
+          { team_id: "tm1", name: "Alpha FC", rest_min: 30, rest_median: 45,
+            early: 3, late: 0, venues: 2, max_per_day: 2 },
+          { team_id: "tm2", name: "Bravo FC", rest_min: 180, rest_median: 200,
+            early: 1, late: 1, venues: 1, max_per_day: 1 },
+        ],
+        flags: [
+          { code: "rest_below_min", team_id: "tm1", value: 30, median: 180 },
+          { code: "early_outlier", team_id: "tm1", value: 3, median: 1 },
+        ],
+      },
+    });
+    mount();
+
+    const panel = await screen.findByTestId("fairness-panel");
+    expect(panel).toBeInTheDocument();
+    // per-team metric rows (rest rendered as minutes/hours, font-tabular)
+    expect(screen.getByTestId("fairness-row-tm1")).toHaveTextContent("Alpha FC");
+    expect(screen.getByTestId("fairness-row-tm1")).toHaveTextContent("30m");
+    expect(screen.getByTestId("fairness-row-tm2")).toHaveTextContent("3h");
+    // stable-code flags localized client-side (§9 A5)
+    expect(screen.getByTestId("fairness-flag-rest_below_min")).toHaveTextContent(
+      "Alpha FC gets less rest than the configured minimum",
+    );
+    expect(screen.getByTestId("fairness-flag-early_outlier")).toHaveTextContent(
+      "opens the day far more often than the median team",
+    );
+    // short field → no collapse toggle
+    expect(screen.queryByTestId("fairness-toggle")).toBeNull();
+  });
+
+  it("collapses a long fairness table behind Show all", async () => {
+    const teams = Array.from({ length: 10 }, (_, i) => ({
+      team_id: `tm${i + 1}`, name: `Team ${i + 1}`, rest_min: 60,
+      rest_median: 90, early: 1, late: 1, venues: 1, max_per_day: 1,
+    }));
+    vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
+      ...PREVIEW,
+      fairness: { days_used: 2, teams, flags: [] },
+    });
+    mount();
+
+    await screen.findByTestId("fairness-panel");
+    expect(screen.getAllByTestId(/^fairness-row-/)).toHaveLength(8);
+    await userEvent.click(screen.getByTestId("fairness-toggle"));
+    expect(screen.getAllByTestId(/^fairness-row-/)).toHaveLength(10);
+  });
+
+  it("omits the fairness panel when the preview carries no per-team data", async () => {
+    mount();
+    await screen.findByTestId("day-2026-06-20");
+    expect(screen.queryByTestId("fairness-panel")).toBeNull();
+  });
+
   it("asks for the global setup when no calendar exists yet", async () => {
     vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
       draw_config: {},

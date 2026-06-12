@@ -24,6 +24,7 @@ import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
+import { FairnessPanel } from "./FairnessPanel";
 import { InputsChangedBanner } from "./InputsChangedBanner";
 import { MatchesByDayGrid } from "./MatchesByDayGrid";
 import { sideName } from "./sideName";
@@ -303,6 +304,13 @@ export function DryRunPreviewPage(): React.ReactElement {
             violations={p.violations}
             softScore={p.soft_score}
             onRelax={busy ? undefined : onRelax}
+          />
+
+          {/* Per-team fairness analytics (increment R) — rest/early/venue
+              metrics with the server's outlier flags. */}
+          <FairnessPanel
+            teams={p.fairness.teams ?? []}
+            flags={p.fairness.flags ?? []}
           />
 
           {(p.warnings as { code?: string }[]).filter((w) => w?.code).length ? (

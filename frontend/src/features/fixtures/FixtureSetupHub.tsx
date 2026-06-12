@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarClock,
   CloudRain,
   GitBranch,
   Printer,
+  Repeat,
   Share2,
   Users,
   Wand2,
@@ -16,6 +17,7 @@ import {
   type ReadinessCompetition,
   type TeamRow,
 } from "@/api/tournaments";
+import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { ScheduleWizard } from "@/features/tournaments/ScheduleWizard";
@@ -23,7 +25,8 @@ import {
   EmptyState,
   StandingsTable,
 } from "@/features/tournaments/tabs/shared";
-import { qk } from "@/lib/queryKeys";
+import { newEventId } from "@/lib/eventId";
+import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 import { AdvanceToKnockoutDialog } from "./AdvanceToKnockoutDialog";
@@ -66,6 +69,25 @@ function groupsDone(c: Competition): boolean {
   );
 }
 
+/** Statuses that no longer block the next Swiss round (mirrors the backend's
+ * `_SWISS_FINAL` — a cancelled match will never finish). */
+const SWISS_FINAL = new Set(["completed", "walkover", "cancelled"]);
+
+/** True when a Swiss draw exists and every round so far is decided — the
+ * moment "Generate next round" becomes possible (increment P). */
+function swissRoundDone(c: Competition): boolean {
+  const swiss = c.matches.filter((m) => m.stage === "swiss");
+  return swiss.length > 0 && swiss.every((m) => SWISS_FINAL.has(m.status));
+}
+
+/** Stable next-round refusal codes → friendly toast descriptions (§9 A5). */
+const SWISS_ERRORS: Record<string, string> = {
+  round_incomplete:
+    "The current round still has unfinished matches — finish or walk over every match first.",
+  swiss_not_started: "No Swiss round exists yet — generate the draw first.",
+  swiss_complete: "Every configured Swiss round has already been played.",
+};
+
 /**
  * Fixture Setup hub (redesign §6 screen 1): the always-visible GlobalSetupCard
  * (asked-once globals, per-row edit), then one section per competition with
@@ -80,6 +102,7 @@ export function FixtureSetupHub({
 }): React.ReactElement {
   const id = tournamentId;
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const toast = useToast();
   const [setup, setSetup] = useState<{ step: number } | null>(null);
   const [wizard, setWizard] = useState<{ leafKey?: string; label?: string } | null>(
@@ -109,6 +132,10 @@ export function FixtureSetupHub({
   const readiness = useQuery({
     queryKey: qk.fixtureReadiness(id),
     queryFn: () => tournamentsApi.fixtureReadiness(id),
+  });
+  const drawConfig = useQuery({
+    queryKey: qk.drawConfig(id),
+    queryFn: () => tournamentsApi.drawConfig(id),
   });
   const canManage =
     (stage.data?.can_manage ?? false) ||
@@ -150,6 +177,47 @@ export function FixtureSetupHub({
       ...all.filter((c) => !c.leafKey),
     ];
   }, [teams.data, matches.data, readiness.data]);
+
+  /** Effective draw format for one leaf — the §2.1 single-key layering
+   * (defaults < "*" < leaf); layers are sparse so a plain ?? chain resolves. */
+  const formatFor = (leafKey: string): string =>
+    String(
+      (leafKey ? drawConfig.data?.draw_config[leafKey]?.format : undefined) ??
+        drawConfig.data?.draw_config["*"]?.format ??
+        drawConfig.data?.defaults.format ??
+        "",
+    );
+
+  /** Materialize the next Swiss round (increment P) — refusals carry stable
+   * codes the toast description localizes (§9 A5). */
+  const nextRound = useMutation({
+    mutationFn: (leafKey: string) =>
+      tournamentsApi.swissNextRound(id, {
+        leaf_key: leafKey,
+        event_id: newEventId(),
+      }),
+    onSuccess: (r) => {
+      invalidateTournament(qc, id);
+      toast.push({
+        kind: "success",
+        title: t(
+          `Round ${r.round_no ?? "?"} generated — ${r.generated} ${
+            r.generated === 1 ? "match" : "matches"
+          }`,
+        ),
+      });
+    },
+    onError: (e) => {
+      const detail = e instanceof ApiError ? String(e.payload.detail ?? "") : "";
+      toast.push({
+        kind: "error",
+        title: t("Could not generate the next round"),
+        description: SWISS_ERRORS[detail]
+          ? t(SWISS_ERRORS[detail])
+          : detail || undefined,
+      });
+    },
+  });
 
   /** Readiness deep-links (§5.1 `fix` keys) → the surface that fixes them. */
   const onFix = (fix: string, leafKey: string): void => {
@@ -357,6 +425,24 @@ export function FixtureSetupHub({
                       >
                         <GitBranch aria-hidden="true" className="h-3.5 w-3.5" />
                         {t("Advance to knockout")}
+                      </Button>
+                    </div>
+                  ) : null}
+                  {canManage &&
+                  formatFor(c.leafKey) === "swiss" &&
+                  swissRoundDone(c) ? (
+                    <div className="flex items-center gap-3 border-b border-border pb-2">
+                      <p className="text-sm text-muted-foreground">
+                        {t("Round complete — pair the next Swiss round from the standings.")}
+                      </p>
+                      <Button
+                        size="sm"
+                        disabled={nextRound.isPending}
+                        data-testid={`next-round-${c.leafKey || "general"}`}
+                        onClick={() => nextRound.mutate(c.leafKey)}
+                      >
+                        <Repeat aria-hidden="true" className="h-3.5 w-3.5" />
+                        {t("Generate next round")}
                       </Button>
                     </div>
                   ) : null}

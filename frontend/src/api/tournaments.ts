@@ -403,7 +403,9 @@ export const tournamentsApi = {
         | "round_robin"
         | "by_category"
         | "knockout"
-        | "knockout_from_groups";
+        | "knockout_from_groups"
+        | "swiss"
+        | "double_elim";
       leafKey?: string;
       /** Replay the previewed draw exactly (§5.2 — Accept carries the seed). */
       seed?: number;
@@ -647,6 +649,15 @@ export const tournamentsApi = {
       violations: RepairViolation[];
     }>(`/api/tournaments/${id}/fixtures/swap-slots/`, body),
 
+  /** Materialize the NEXT Swiss round from current standings (increment P).
+   * Idempotent per round on `event_id`. 400 stable codes: `round_incomplete`
+   * (current round unfinished), `swiss_not_started`, `swiss_complete`. */
+  swissNextRound: (id: string, body: { leaf_key?: string; event_id: string }) =>
+    api.post<SwissNextRoundResult>(
+      `/api/tournaments/${id}/fixtures/next-round/`,
+      body,
+    ),
+
   /** Dry-run preview (§5.2, D6): a PURE simulate — persists nothing, takes
    * no event_id. Accept replays the returned `seed` + `inputs_hash`. */
   previewFixtures: (
@@ -726,6 +737,18 @@ export interface VenueRecord {
   windows: { from: string; to: string }[];
   /** Parallel courts/tables/pitches at this venue (redesign §2.3). */
   count: number;
+  /** Per-venue off-days (ISO dates) the grid and repairs honor (increment S). */
+  unavailable_dates?: string[];
+}
+
+/** `POST …/fixtures/next-round/` response (Swiss, increment P). */
+export interface SwissNextRoundResult {
+  generated: number;
+  round_no: number | null;
+  leaf_key: string;
+  /** Created match ids. */
+  matches: string[];
+  warnings: unknown[];
 }
 
 // --- Fixture-engine redesign types (spec 2026-06-11) ---
@@ -742,15 +765,30 @@ export interface DrawCalendar {
 
 /** Effective per-competition draw configuration (generation inputs, §2.1). */
 export interface DrawConfig {
-  format: "round_robin" | "knockout" | "groups_knockout" | string;
+  format:
+    | "round_robin"
+    | "knockout"
+    | "groups_knockout"
+    | "swiss"
+    | "double_elim"
+    | string;
   group_size: number;
   advance_per_group: number;
+  /** Best next-placed cross-group qualifiers (groups→knockout, increment N). */
+  advance_best_thirds: number;
   /** 1 | 2 (double round-robin). */
   legs: number;
+  /** format="swiss": round count; null = auto (ceil(log2 n), capped n-1). */
+  swiss_rounds: number | null;
   seeding: "registration" | "random" | "snake" | "seeded" | string;
+  /** Groups→knockout bracket pool order: cross-group (A1 vs B2) or overall
+   * record (increment O). */
+  knockout_seeding: "cross" | "overall" | string;
   /** RNG seed persisted on the first random draw (replayable). */
   seed: number | null;
   third_place: boolean;
+  /** Consolation plate over round-1 losers (knockout family, increment M). */
+  plate: boolean;
   bye_policy: string;
   min_entries_action: string;
   /** ISO timestamp of "Mark reviewed" (§9 A10). */
@@ -876,12 +914,39 @@ export interface PreviewViolation {
   relaxations: PreviewRelaxation[];
 }
 
+/** Per-team fairness analytics row (preview `fairness.teams`, increment R). */
+export interface FairnessTeamRow {
+  team_id: string;
+  name: string;
+  /** Minimum / median rest minutes between this team's matches (null while
+   * the team has fewer than 2 scheduled matches). */
+  rest_min: number | null;
+  rest_median: number | null;
+  /** Starts within the first / last 2 hours of the day's window. */
+  early: number;
+  late: number;
+  /** Distinct physical venues (sub-venues collapse to their base). */
+  venues: number;
+  max_per_day: number;
+}
+
+/** A fairness outlier — stable i18n code (§9 A5), never a message. */
+export interface FairnessFlag {
+  code: "early_outlier" | "rest_below_min" | string;
+  team_id: string;
+  value: number;
+  median: number | null;
+}
+
 export interface FixturePreview {
   matches: PreviewMatch[];
   unscheduled: string[];
   violations: PreviewViolation[];
   soft_score: number | null;
   fairness: {
+    /** Per-team rest / early-slot / venue analytics (increment R). */
+    teams?: FairnessTeamRow[];
+    flags?: FairnessFlag[];
     rest_min_by_team?: Record<string, number>;
     venue_distribution?: Record<string, number>;
     days_used?: number;

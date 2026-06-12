@@ -3,10 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarRange,
   GitBranch,
+  GitMerge,
   Layers,
   ListChecks,
   Pencil,
   Save,
+  Shuffle,
   Wand2,
 } from "lucide-react";
 import {
@@ -36,7 +38,13 @@ import { SeedListEditor, type SeedTeam } from "./SeedListEditor";
 
 /** UI-level format. League and Groups both store `format: "round_robin"` —
  * a league is simply one group holding every team. */
-type UiFormat = "league" | "groups" | "knockout" | "groups_knockout";
+type UiFormat =
+  | "league"
+  | "groups"
+  | "knockout"
+  | "groups_knockout"
+  | "swiss"
+  | "double_elim";
 
 const FORMATS: {
   key: UiFormat;
@@ -68,6 +76,18 @@ const FORMATS: {
     hint: "Group stage now; the top N of each group advance to a bracket.",
     icon: Wand2,
   },
+  {
+    key: "swiss",
+    label: "Swiss",
+    hint: "A fixed number of rounds — each round pairs similar records, never repeating a pairing.",
+    icon: Shuffle,
+  },
+  {
+    key: "double_elim",
+    label: "Double elimination",
+    hint: "Lose once and drop to the losers bracket; lose twice and you're out.",
+    icon: GitMerge,
+  },
 ];
 
 const SEEDING_OPTIONS = [
@@ -76,6 +96,22 @@ const SEEDING_OPTIONS = [
   { value: "snake", label: "Snake — spread by seed" },
   { value: "seeded", label: "Seeded — strict seed order" },
 ];
+
+/** Groups→knockout bracket-pool order (increment O). */
+const KNOCKOUT_SEEDING_OPTIONS = [
+  { value: "cross", label: "Cross-group — A1 vs B2" },
+  { value: "overall", label: "Overall record — best vs worst" },
+];
+
+/** The backend's auto round count when swiss_rounds is unset: ceil(log2 n),
+ * capped at n-1 — shown as the suggested default (tenet 1). */
+function suggestedSwissRounds(teamCount: number): number {
+  if (teamCount < 2) return 1;
+  return Math.min(
+    Math.max(1, Math.ceil(Math.log2(teamCount))),
+    teamCount - 1,
+  );
+}
 
 /** Client-side mirror of the §2.1 layering, for PREFILL only (the server
  * resolves the real effective config at generation time). */
@@ -104,9 +140,17 @@ interface Form {
   ui: UiFormat;
   groupSize: number;
   advance: number;
+  /** Best next-placed cross-group qualifiers (groups→knockout). */
+  bestThirds: number;
   twoLegs: boolean;
   seeding: string;
+  /** Groups→knockout bracket pool order: "cross" | "overall". */
+  knockoutSeeding: string;
   thirdPlace: boolean;
+  /** Consolation plate over round-1 losers (knockout family). */
+  plate: boolean;
+  /** Swiss round count. */
+  swissRounds: number;
   order: SeedTeam[];
 }
 
@@ -182,23 +226,37 @@ export function CompetitionFormatWizard({
         ? "knockout"
         : eff.format === "groups_knockout"
           ? "groups_knockout"
-          : !hasStored || teamCount < 2 || eff.group_size >= teamCount
-            ? "league"
-            : "groups";
+          : eff.format === "swiss"
+            ? "swiss"
+            : eff.format === "double_elim"
+              ? "double_elim"
+              : !hasStored || teamCount < 2 || eff.group_size >= teamCount
+                ? "league"
+                : "groups";
     setForm({
       ui,
       groupSize: Math.max(2, eff.group_size),
       advance: Math.max(1, eff.advance_per_group),
+      bestThirds: Math.max(0, eff.advance_best_thirds ?? 0),
       twoLegs: eff.legs === 2,
       seeding: eff.seeding,
+      knockoutSeeding: eff.knockout_seeding ?? "cross",
       thirdPlace: Boolean(eff.third_place),
+      plate: Boolean(eff.plate),
+      swissRounds: eff.swiss_rounds ?? suggestedSwissRounds(teamCount),
       order: bySeed(teams),
     });
   }
 
   const f = form;
   const needsGroups = f?.ui === "groups" || f?.ui === "groups_knockout";
+  // Third place + plate apply to the single-elim knockout family only —
+  // double elimination ignores both (the losers bracket IS the consolation
+  // path and its final decides 3rd, increment Q).
   const isKnockoutish = f?.ui === "knockout" || f?.ui === "groups_knockout";
+  /** Legs only make sense for the round-robin family. */
+  const hasLegs =
+    f?.ui === "league" || f?.ui === "groups" || f?.ui === "groups_knockout";
   const groupCount = f
     ? Math.max(1, Math.ceil(Math.max(1, teamCount) / Math.max(2, f.groupSize)))
     : 1;
@@ -213,6 +271,18 @@ export function CompetitionFormatWizard({
     if (f.ui === "knockout") {
       cfg.format = "knockout";
       cfg.third_place = f.thirdPlace;
+      cfg.plate = f.plate;
+      return cfg;
+    }
+    if (f.ui === "double_elim") {
+      // third_place/plate deliberately NOT stored — the losers bracket is
+      // the consolation path and its final decides 3rd (increment Q).
+      cfg.format = "double_elim";
+      return cfg;
+    }
+    if (f.ui === "swiss") {
+      cfg.format = "swiss";
+      cfg.swiss_rounds = Math.max(1, f.swissRounds);
       return cfg;
     }
     const gs = f.ui === "league" ? Math.max(2, teamCount) : Math.max(2, f.groupSize);
@@ -221,7 +291,12 @@ export function CompetitionFormatWizard({
     cfg.advance_per_group =
       f.ui === "groups_knockout" ? f.advance : Math.max(1, Math.min(f.advance, gs - 1));
     cfg.legs = f.twoLegs ? 2 : 1;
-    if (f.ui === "groups_knockout") cfg.third_place = f.thirdPlace;
+    if (f.ui === "groups_knockout") {
+      cfg.third_place = f.thirdPlace;
+      cfg.plate = f.plate;
+      cfg.advance_best_thirds = Math.max(0, f.bestThirds);
+      cfg.knockout_seeding = f.knockoutSeeding;
+    }
     return cfg;
   };
 
@@ -295,7 +370,9 @@ export function CompetitionFormatWizard({
         description:
           f?.ui === "groups_knockout"
             ? t('Group stage created. Once groups finish, use "Advance to knockout".')
-            : undefined,
+            : f?.ui === "swiss"
+              ? t('Round 1 drawn. Once every match finishes, use "Generate next round".')
+              : undefined,
       });
       onClose();
       onGenerated({ leafKey, label: leafLabel });
@@ -414,18 +491,50 @@ export function CompetitionFormatWizard({
                 />
               </label>
               {f.ui === "groups_knockout" ? (
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs font-medium">{t("Advance per group")}</span>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={8}
-                    value={f.advance}
-                    data-testid="advance-per-group"
-                    onChange={(e) => set("advance", Number(e.target.value) || 1)}
-                    className="h-9 w-24"
-                  />
-                </label>
+                <>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs font-medium">{t("Advance per group")}</span>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={8}
+                      value={f.advance}
+                      data-testid="advance-per-group"
+                      onChange={(e) => set("advance", Number(e.target.value) || 1)}
+                      className="h-9 w-24"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs font-medium">
+                      {t("Best next-placed qualifiers")}
+                    </span>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={16}
+                      value={f.bestThirds}
+                      data-testid="best-thirds"
+                      title={t("Top next-placed teams across all groups that also advance (e.g. best thirds)")}
+                      onChange={(e) =>
+                        set("bestThirds", Math.max(0, Number(e.target.value) || 0))
+                      }
+                      className="h-9 w-24"
+                    />
+                  </label>
+                  <label className="flex min-w-44 flex-col gap-1">
+                    <span className="text-xs font-medium">{t("Bracket seeding")}</span>
+                    <Select
+                      aria-label={t("Bracket seeding")}
+                      value={f.knockoutSeeding}
+                      onChange={(v) => set("knockoutSeeding", v)}
+                      options={KNOCKOUT_SEEDING_OPTIONS.map((o) => ({
+                        ...o,
+                        label: t(o.label),
+                      }))}
+                      size="sm"
+                    />
+                  </label>
+                </>
               ) : null}
               <p className="pb-1.5 text-xs text-muted-foreground">
                 {t(`→ ${groupCount} ${groupCount === 1 ? "group" : "groups"}`)}
@@ -442,7 +551,31 @@ export function CompetitionFormatWizard({
             </div>
           ) : null}
 
-          {f.ui !== "knockout" ? (
+          {f.ui === "swiss" ? (
+            <div className="flex flex-wrap items-end gap-4 rounded-lg border border-border bg-muted/30 p-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium">{t("Rounds")}</span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={Math.max(1, teamCount - 1)}
+                  value={f.swissRounds}
+                  data-testid="swiss-rounds"
+                  onChange={(e) =>
+                    set("swissRounds", Math.max(1, Number(e.target.value) || 1))
+                  }
+                  className="h-9 w-24"
+                />
+              </label>
+              <p className="pb-1.5 text-xs text-muted-foreground">
+                {t(
+                  `Suggested: ${suggestedSwissRounds(teamCount)} for ${teamCount} teams. Round 1 is drawn now; later rounds pair from the standings as results land.`,
+                )}
+              </p>
+            </div>
+          ) : null}
+
+          {hasLegs ? (
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -456,16 +589,28 @@ export function CompetitionFormatWizard({
           ) : null}
 
           {isKnockoutish ? (
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={f.thirdPlace}
-                data-testid="third-place"
-                onChange={(e) => set("thirdPlace", e.target.checked)}
-                className="h-4 w-4 rounded border-input"
-              />
-              {t("Third-place playoff (semifinal losers)")}
-            </label>
+            <>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={f.thirdPlace}
+                  data-testid="third-place"
+                  onChange={(e) => set("thirdPlace", e.target.checked)}
+                  className="h-4 w-4 rounded border-input"
+                />
+                {t("Third-place playoff (semifinal losers)")}
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={f.plate}
+                  data-testid="plate"
+                  onChange={(e) => set("plate", e.target.checked)}
+                  className="h-4 w-4 rounded border-input"
+                />
+                {t("Consolation plate — first-round losers play their own bracket")}
+              </label>
+            </>
           ) : null}
 
           <div className="flex flex-col gap-1">

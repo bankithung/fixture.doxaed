@@ -30,10 +30,14 @@ const DEFAULTS = {
   format: "round_robin",
   group_size: 5,
   advance_per_group: 2,
+  advance_best_thirds: 0,
   legs: 1,
+  swiss_rounds: null,
   seeding: "registration",
+  knockout_seeding: "cross",
   seed: null,
   third_place: false,
+  plate: false,
   bye_policy: "seeded_byes",
   min_entries_action: "prompt",
   constraints_reviewed_at: null,
@@ -168,6 +172,9 @@ describe("CompetitionFormatWizard", () => {
           advance_per_group: 1,
           legs: 1,
           third_place: false,
+          plate: false,
+          advance_best_thirds: 0,
+          knockout_seeding: "cross",
         },
         event_id: expect.any(String),
       }),
@@ -233,7 +240,12 @@ describe("CompetitionFormatWizard", () => {
     );
     expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith("t1", {
       leaf_key: "football.u15",
-      config: { seeding: "registration", format: "knockout", third_place: true },
+      config: {
+        seeding: "registration",
+        format: "knockout",
+        third_place: true,
+        plate: false,
+      },
       event_id: expect.any(String),
     });
     expect(onGenerated).toHaveBeenCalledWith({
@@ -252,7 +264,12 @@ describe("CompetitionFormatWizard", () => {
     await waitFor(() =>
       expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith("t1", {
         leaf_key: "football.u15",
-        config: { seeding: "registration", format: "knockout", third_place: false },
+        config: {
+          seeding: "registration",
+          format: "knockout",
+          third_place: false,
+          plate: false,
+        },
         event_id: expect.any(String),
       }),
     );
@@ -261,6 +278,115 @@ describe("CompetitionFormatWizard", () => {
       label: "Football · U15",
     });
     expect(tournamentsApi.generateFixtures).not.toHaveBeenCalled();
+  });
+
+  it("Swiss asks the round count (suggested default) and persists swiss_rounds", async () => {
+    mount();
+    await userEvent.click(await screen.findByTestId("format-swiss"));
+    // suggested = ceil(log2 3) = 2, capped at teamCount - 1
+    const rounds = screen.getByTestId("swiss-rounds");
+    expect(rounds).toHaveValue(2);
+    // knockout/round-robin-only options never show for Swiss
+    expect(screen.queryByTestId("two-legs")).toBeNull();
+    expect(screen.queryByTestId("third-place")).toBeNull();
+    expect(screen.queryByTestId("plate")).toBeNull();
+    fireEvent.change(rounds, { target: { value: "3" } });
+    await userEvent.click(screen.getByTestId("save-format"));
+
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith("t1", {
+        leaf_key: "football.u15",
+        config: { seeding: "registration", format: "swiss", swiss_rounds: 3 },
+        event_id: expect.any(String),
+      }),
+    );
+  });
+
+  it("prefills a stored Swiss config (format card + rounds)", async () => {
+    vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
+      draw_config: { "football.u15": { format: "swiss", swiss_rounds: 5 } },
+      defaults: DEFAULTS,
+    });
+    mount();
+    expect(await screen.findByTestId("format-swiss")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByTestId("swiss-rounds")).toHaveValue(5);
+  });
+
+  it("double elimination stores the format alone — no third place or plate", async () => {
+    mount();
+    await userEvent.click(await screen.findByTestId("format-double_elim"));
+    expect(screen.queryByTestId("third-place")).toBeNull();
+    expect(screen.queryByTestId("plate")).toBeNull();
+    expect(screen.queryByTestId("two-legs")).toBeNull();
+    await userEvent.click(screen.getByTestId("save-format"));
+
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith("t1", {
+        leaf_key: "football.u15",
+        config: { seeding: "registration", format: "double_elim" },
+        event_id: expect.any(String),
+      }),
+    );
+  });
+
+  it("knockout exposes the consolation plate toggle and persists it", async () => {
+    mount();
+    await userEvent.click(await screen.findByTestId("format-knockout"));
+    await userEvent.click(screen.getByTestId("plate"));
+    await userEvent.click(screen.getByTestId("save-format"));
+
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith("t1", {
+        leaf_key: "football.u15",
+        config: {
+          seeding: "registration",
+          format: "knockout",
+          third_place: false,
+          plate: true,
+        },
+        event_id: expect.any(String),
+      }),
+    );
+  });
+
+  it("groups→knockout asks best next-placed qualifiers + bracket seeding", async () => {
+    mount();
+    await userEvent.click(await screen.findByTestId("format-groups_knockout"));
+    fireEvent.change(screen.getByTestId("group-size"), { target: { value: "3" } });
+    fireEvent.change(screen.getByTestId("advance-per-group"), {
+      target: { value: "1" },
+    });
+    fireEvent.change(screen.getByTestId("best-thirds"), {
+      target: { value: "2" },
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Bracket seeding" }),
+    );
+    await userEvent.click(
+      screen.getByRole("option", { name: /Overall record/ }),
+    );
+    await userEvent.click(screen.getByTestId("save-format"));
+
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith("t1", {
+        leaf_key: "football.u15",
+        config: {
+          seeding: "registration",
+          format: "groups_knockout",
+          group_size: 3,
+          advance_per_group: 1,
+          legs: 1,
+          third_place: false,
+          plate: false,
+          advance_best_thirds: 2,
+          knockout_seeding: "overall",
+        },
+        event_id: expect.any(String),
+      }),
+    );
   });
 
   it("blocks saving when advance per group >= group size", async () => {

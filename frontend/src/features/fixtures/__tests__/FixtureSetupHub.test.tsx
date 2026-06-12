@@ -13,6 +13,7 @@ import {
   type TeamRow,
   type TournamentSettings,
 } from "@/api/tournaments";
+import { ApiError } from "@/types/api";
 import { FixtureSetupHub } from "../FixtureSetupHub";
 
 vi.mock("@/api/tournaments", async (importOriginal) => {
@@ -33,6 +34,7 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       constraintTypes: vi.fn(),
       sports: vi.fn(),
       scheduleChanges: vi.fn(),
+      swissNextRound: vi.fn(),
     },
   };
 });
@@ -156,7 +158,34 @@ beforeEach(() => {
   vi.mocked(tournamentsApi.constraintTypes).mockResolvedValue([]);
   vi.mocked(tournamentsApi.sports).mockResolvedValue({ sports: [] });
   vi.mocked(tournamentsApi.scheduleChanges).mockResolvedValue({ results: [] });
+  vi.mocked(tournamentsApi.swissNextRound).mockResolvedValue({
+    generated: 1,
+    round_no: 2,
+    leaf_key: "football.u15",
+    matches: ["m9"],
+    warnings: [],
+  });
 });
+
+/** A finished Swiss-round match in football.u15. */
+function swissMatch(id: string, status = "completed"): MatchRow {
+  return {
+    id, stage: "swiss", group_label: "Swiss", round_no: 1,
+    match_no: 1, status,
+    home_team: { id: "tm1", name: "A FC", short_name: "A" },
+    away_team: { id: "tm2", name: "B FC", short_name: "B" },
+    home_score: 1, away_score: 0, sport: "football", set_scores: [],
+    leaf_key: "football.u15", venue: "", scoring: null, scheduled_at: null,
+  } as MatchRow;
+}
+
+/** Stored Swiss draw config for the u15 leaf (drives the next-round CTA). */
+function mockSwissConfig(): void {
+  vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
+    draw_config: { "football.u15": { format: "swiss", swiss_rounds: 3 } },
+    defaults: { format: "round_robin" } as unknown as DrawConfig,
+  });
+}
 
 describe("FixtureSetupHub", () => {
   it("renders the global setup card and one readiness checklist per competition", async () => {
@@ -287,6 +316,73 @@ describe("FixtureSetupHub", () => {
       "noopener",
     );
     vi.unstubAllGlobals();
+  });
+
+  it("offers Generate next round once a Swiss round is fully decided and posts the next-round endpoint", async () => {
+    mockSwissConfig();
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([
+      swissMatch("m1", "completed"),
+      swissMatch("m2", "walkover"),
+    ]);
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+
+    const btn = await screen.findByTestId("next-round-football.u15");
+    await userEvent.click(btn);
+    await waitFor(() =>
+      expect(tournamentsApi.swissNextRound).toHaveBeenCalledWith("t1", {
+        leaf_key: "football.u15",
+        event_id: expect.any(String),
+      }),
+    );
+    expect(
+      await screen.findByText("Round 2 generated — 1 match"),
+    ).toBeInTheDocument();
+  });
+
+  it("hides Generate next round while the current Swiss round is unfinished or the format is not swiss", async () => {
+    // unfinished round
+    mockSwissConfig();
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([
+      swissMatch("m1", "completed"),
+      swissMatch("m2", "scheduled"),
+    ]);
+    const { unmount } = wrap(<FixtureSetupHub tournamentId="t1" />);
+    expect(await screen.findByTestId("competition-result-card")).toBeInTheDocument();
+    expect(screen.queryByTestId("next-round-football.u15")).toBeNull();
+    unmount();
+
+    // finished matches but a non-swiss stored format
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([
+      swissMatch("m1", "completed"),
+    ]);
+    vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
+      draw_config: { "football.u15": { format: "round_robin" } },
+      defaults: { format: "round_robin" } as unknown as DrawConfig,
+    });
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+    expect(await screen.findByTestId("competition-result-card")).toBeInTheDocument();
+    expect(screen.queryByTestId("next-round-football.u15")).toBeNull();
+  });
+
+  it("surfaces the round_incomplete refusal as a toast description", async () => {
+    mockSwissConfig();
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([
+      swissMatch("m1", "completed"),
+    ]);
+    vi.mocked(tournamentsApi.swissNextRound).mockRejectedValue(
+      new ApiError(400, { detail: "round_incomplete" }),
+    );
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+
+    await userEvent.click(await screen.findByTestId("next-round-football.u15"));
+    expect(
+      await screen.findByText("Could not generate the next round"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The current round still has unfinished matches — finish or walk over every match first.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("the inputs-changed banner can be dismissed with Keep", async () => {

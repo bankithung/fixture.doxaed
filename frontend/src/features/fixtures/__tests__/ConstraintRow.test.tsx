@@ -102,6 +102,30 @@ describe("ConstraintRow", () => {
     );
   });
 
+  it("renders round_pinned_to_window's venues list param (increment T) as a comma-separated input", () => {
+    const { onChange } = mount(
+      { type: "round_pinned_to_window", scope: "leaf:football.u15", hard: true,
+        weight: 5,
+        params: { round: "final", date: "2026-06-28", from: "14:00",
+          to: "16:00", venues: ["Main Ground"] } },
+      { type: "round_pinned_to_window", label: "Pin a round to a window",
+        hard: true,
+        params_schema: { round: "str", date: "date", from: "time",
+          to: "time", venues: "list" },
+        scopes: ["all", "sport", "leaf"], layer: "S" },
+    );
+    const input = screen.getByTestId("constraint-0-venues");
+    expect(input).toHaveValue("Main Ground");
+    fireEvent.change(input, { target: { value: "Main Ground, IG Stadium" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          venues: ["Main Ground", "IG Stadium"],
+        }),
+      }),
+    );
+  });
+
   it("soft records expose a 1-10 weight; switching to Hard hides it", async () => {
     const record: ConstraintRecord = {
       type: "preferred_window", scope: "all", hard: false, weight: 5,
