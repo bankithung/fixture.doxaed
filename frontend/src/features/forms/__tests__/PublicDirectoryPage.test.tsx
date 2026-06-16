@@ -190,7 +190,7 @@ describe("PublicDirectoryPage", () => {
     expect(within(summary).queryByText("Sepak Takraw")).toBeNull();
   });
 
-  it("applies the active filters to the Competitions tab (counts only)", async () => {
+  it("Competitions tab is a full report — all competitions with server counts", async () => {
     renderPage();
     await screen.findByText("Grace High");
 
@@ -198,20 +198,17 @@ describe("PublicDirectoryPage", () => {
     const section = screen.getByRole("region", {
       name: "Entries by competition",
     });
-    // The breakdown shows a COUNT per competition, never the school names
-    // (owner 2026-06-16). Unfiltered: U-14 — Girls counts 2 schools.
+    // Counts only (no school names); every configured competition is shown
+    // with its server-side registration count (owner 2026-06-16).
     expect(within(section).queryByText("Grace High")).toBeNull();
-    const girlsRow = () =>
-      within(section).getByText("U-14 — Girls").closest("li") as HTMLElement;
-    expect(within(girlsRow()).getByText("2")).toBeInTheDocument();
+    const row = (label: string) =>
+      within(section).getByText(label).closest("li") as HTMLElement;
+    expect(within(row("U-14 — Girls")).getByText("2")).toBeInTheDocument();
+    expect(within(row("U-14 — Boys")).getByText("1")).toBeInTheDocument();
 
-    await userEvent.type(screen.getByLabelText("Search"), "Mount");
-
-    // The search narrows to Mount Hermon → the Girls count drops 2 → 1.
-    await waitFor(() =>
-      expect(within(girlsRow()).getByText("1")).toBeInTheDocument(),
-    );
-    expect(within(section).queryByText("Grace High")).toBeNull();
+    // It's a stable report — filtering the directory doesn't prune or rescale it.
+    await userEvent.type(screen.getByLabelText("Search"), "zzz");
+    expect(within(row("U-14 — Girls")).getByText("2")).toBeInTheDocument();
   });
 
   it("uses the admin's custom KPI label instead of the game name", async () => {

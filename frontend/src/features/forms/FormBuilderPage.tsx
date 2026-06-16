@@ -93,6 +93,7 @@ function SettingsPanel({
   const [kpiLabels, setKpiLabels] = useState<Record<string, string>>(
     () => (form.settings?.kpi_labels as Record<string, string>) ?? {},
   );
+  const [savedAt, setSavedAt] = useState<number | null>(null);
 
   const save = useMutation({
     mutationFn: () => {
@@ -120,9 +121,28 @@ function SettingsPanel({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["form", form.id] });
       qc.invalidateQueries({ queryKey: ["forms", tournamentId] });
-      toast.push({ kind: "success", title: t("Settings saved") });
+      setSavedAt(Date.now());
     },
+    onError: (e) =>
+      toast.push({
+        kind: "error",
+        title: t("Could not save settings"),
+        description: e instanceof ApiError ? (e.payload.detail ?? "") : "",
+      }),
   });
+
+  // Autosave (debounced) so settings persist the way the schema does — relying
+  // on a manual button left edits (instructions, KPI names) silently unsaved.
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    if (!dirtyRef.current) {
+      dirtyRef.current = true; // skip the initial hydrate-from-form render
+      return;
+    }
+    const handle = setTimeout(() => save.mutate(), 800);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, confirmation, closesAt, instructions, kpiMode, kpiLabels]);
 
   return (
     <section
@@ -229,7 +249,7 @@ function SettingsPanel({
                         onChange={(e) =>
                           setKpiLabels((s) => ({ ...s, [g.key]: e.target.value }))
                         }
-                        placeholder={g.label}
+                        placeholder={t("Custom name (optional)")}
                         aria-label={t(`Stat name for ${g.label}`)}
                         className="h-8"
                       />
@@ -239,15 +259,25 @@ function SettingsPanel({
               ) : null}
             </div>
           ) : null}
-          <div>
+          <div className="flex items-center gap-3">
             <Button
               variant="outline"
               size="sm"
               disabled={save.isPending}
               onClick={() => save.mutate()}
             >
-              {save.isPending ? t("Saving...") : t("Save settings")}
+              {save.isPending ? t("Saving…") : t("Save settings")}
             </Button>
+            {savedAt && !save.isPending ? (
+              <span className="inline-flex items-center gap-1 text-xs text-primary">
+                <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" />
+                {t("Saved")}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                {t("Changes save automatically.")}
+              </span>
+            )}
           </div>
         </div>
       ) : null}

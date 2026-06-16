@@ -49,21 +49,16 @@ function valueLabels(map: Map<string, string>, val: unknown): string[] {
 // ---------------------------------------------------------------------------
 interface SportGroup {
   sport: string;
-  rows: { leafKey: string; label: string; institutions: string[] }[];
+  rows: { leafKey: string; label: string; count: number }[];
 }
 
+/** Group EVERY configured competition by its sport, carrying the server-side
+ *  registration count. This is a full structural report (owner 2026-06-16:
+ *  show all games + categories, including zeros) — independent of the filter
+ *  rail, which drives the directory table instead. */
 function groupBySport(
   competitions: { leaf_key: string; label: string; count: number }[],
-  entries: DirectoryEntry[],
 ): SportGroup[] {
-  const byLeaf = new Map<string, string[]>();
-  for (const e of entries) {
-    for (const c of e.competitions ?? []) {
-      const list = byLeaf.get(c.leaf_key) ?? [];
-      list.push(e.name);
-      byLeaf.set(c.leaf_key, list);
-    }
-  }
   const groups = new Map<string, SportGroup>();
   for (const c of competitions) {
     const sport = c.label.split(" — ")[0];
@@ -71,11 +66,7 @@ function groupBySport(
       ? c.label.slice(sport.length + 3)
       : t("Open competition");
     const g = groups.get(sport) ?? { sport, rows: [] };
-    g.rows.push({
-      leafKey: c.leaf_key,
-      label: within,
-      institutions: byLeaf.get(c.leaf_key) ?? [],
-    });
+    g.rows.push({ leafKey: c.leaf_key, label: within, count: c.count });
     groups.set(sport, g);
   }
   return [...groups.values()];
@@ -86,9 +77,9 @@ function CompetitionsSection({
 }: {
   groups: SportGroup[];
 }): React.ReactElement {
-  // Compact: one LINE per competition (owner 2026-06-10 — the per-row
-  // "No entries yet." cards made 21 empty competitions a wall of noise);
-  // institution chips appear only once a competition has entries.
+  // One LINE per competition: the category + how many registered. Every
+  // configured competition shows (zeros included, owner 2026-06-16) so the
+  // report is the full sport → category structure with counts only.
   return (
     <section
       aria-label={t("Entries by competition")}
@@ -100,9 +91,6 @@ function CompetitionsSection({
           className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4 shadow-sm"
         >
           <h3 className="text-sm font-semibold">{g.sport}</h3>
-          {/* One line per competition: the category + how many registered.
-              We show the COUNT only (owner 2026-06-16) — the school-name chips
-              repeated the directory table and made long lists unreadable. */}
           <ul className="mt-1 flex flex-col divide-y divide-border/60">
             {g.rows.map((r) => (
               <li
@@ -112,7 +100,7 @@ function CompetitionsSection({
                 <span
                   className={cn(
                     "min-w-0 truncate text-sm",
-                    r.institutions.length === 0 && "text-muted-foreground",
+                    r.count === 0 && "text-muted-foreground",
                   )}
                   title={r.label}
                 >
@@ -121,12 +109,12 @@ function CompetitionsSection({
                 <span
                   className={cn(
                     "shrink-0 rounded-md px-1.5 py-0.5 font-tabular text-xs font-medium",
-                    r.institutions.length > 0
+                    r.count > 0
                       ? "bg-primary/10 text-primary"
                       : "bg-muted text-muted-foreground/60",
                   )}
                 >
-                  {r.institutions.length}
+                  {r.count}
                 </span>
               </li>
             ))}
@@ -237,24 +225,14 @@ export function PublicDirectoryPage(): React.ReactElement {
     compSel.size > 0 ||
     Object.values(filters).some(Boolean);
 
-  // Every view honours the active filters (owner 2026-06-10: the rail only
-  // affecting the Directory table read as broken on the other tabs).
-  const sportGroups = useMemo(() => {
-    const all = dir.data?.competitions ?? [];
-    const visible =
-      compSel.size === 0
-        ? all
-        : all.filter((c) =>
-            [...compSel].some(
-              (p) => c.leaf_key === p || c.leaf_key.startsWith(`${p}.`),
-            ),
-          );
-    const groups = groupBySport(visible, entries);
-    if (!hasFilters) return groups; // unfiltered → the full structure, zeros included
-    return groups
-      .map((g) => ({ ...g, rows: g.rows.filter((r) => r.institutions.length > 0) }))
-      .filter((g) => g.rows.length > 0);
-  }, [dir.data, entries, compSel, hasFilters]);
+  // The Competitions report always shows the full sport → category structure
+  // with the registration count per leaf (owner 2026-06-16: "show all games
+  // too even if they are 0"). It's a stable report; the filter rail drives the
+  // directory table, not this.
+  const sportGroups = useMemo(
+    () => groupBySport(dir.data?.competitions ?? []),
+    [dir.data],
+  );
   const compTree = useMemo(
     () => buildCompTree(dir.data?.competitions ?? []),
     [dir.data],
