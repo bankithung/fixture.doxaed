@@ -30,6 +30,7 @@ from apps.forms.constants import (
 )
 from apps.forms.models import Form, FormFileUpload, FormResponse
 from apps.forms.serializers import (
+    ContactAdminSerializer,
     FormCreateSerializer,
     FormResponseSerializer,
     FormSerializer,
@@ -605,6 +606,77 @@ class PublicUploadView(GenericAPIView):
             size=f.size,
         )
         return Response({"upload_ref": str(up.upload_ref)}, status=201)
+
+
+def _organiser_emails(form) -> list[str]:
+    """Active admins/co-organizers of the form's tournament, deduped — falling
+    back to the tournament/form creator so a message is never silently dropped
+    when no explicit role membership has been added yet."""
+    from apps.tournaments.models import (
+        TournamentMembershipRole as Role,
+    )
+    from apps.tournaments.models import (
+        TournamentMembershipStatus as Status,
+    )
+
+    emails: list[str] = []
+    seen: set[str] = set()
+
+    def add(user) -> None:
+        e = (getattr(user, "email", "") or "").strip() if user else ""
+        if e and e.lower() not in seen:
+            seen.add(e.lower())
+            emails.append(e)
+
+    members = form.tournament.memberships.filter(
+        role__in=[Role.ADMIN, Role.CO_ORGANIZER], status=Status.ACTIVE
+    ).select_related("user")
+    for m in members:
+        add(m.user)
+    if not emails:
+        add(form.tournament.created_by)
+        add(form.created_by)
+    return emails
+
+
+class ContactAdminView(GenericAPIView):
+    """`POST /api/forms/{id}/contact/` — a public visitor messages the organisers.
+
+    Emails the tournament's active admins/co-organizers (sender set as reply-to)
+    so anyone hitting an issue can reach a human. AllowAny + throttled; never
+    leaks whether/which organisers exist."""
+
+    permission_classes: ClassVar[list[type[BasePermission]]] = [AllowAny]
+    throttle_classes: ClassVar[list] = [PublicFormThrottle]
+
+    def post(self, request, form_id):
+        form = (
+            Form.objects.filter(id=form_id, deleted_at__isnull=True)
+            .select_related("tournament")
+            .first()
+        )
+        if form is None or form.status == FormStatus.DRAFT:
+            raise NotFound("form_not_found")
+        ser = ContactAdminSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        d = ser.validated_data
+
+        recipients = _organiser_emails(form)
+        if recipients:
+            from django.core.mail import EmailMessage
+
+            EmailMessage(
+                subject=f"[{form.tournament.name}] Message from {d['name']}",
+                body=(
+                    f"From: {d['name']} <{d['email']}>\n"
+                    f"Tournament: {form.tournament.name}\n"
+                    f"Form: {form.title}\n\n"
+                    f"{d['message']}\n"
+                ),
+                to=recipients,
+                reply_to=[d["email"]],
+            ).send(fail_silently=True)
+        return Response({"sent": bool(recipients)}, status=201)
 
 
 # --- Responses API (Increment 5) -------------------------------------------

@@ -210,6 +210,11 @@ export const formsApi = {
       fd,
     );
   },
+  /** Public visitor sends a message to the tournament organisers. */
+  contactAdmin: (
+    formId: string,
+    body: { name: string; email: string; message: string },
+  ) => api.post<{ sent: boolean }>(`/api/forms/${formId}/contact/`, body),
   /** Public directory of institutions registered through an org-reg form. */
   directory: (formId: string) =>
     api.get<DirectoryPayload>(`/api/forms/${formId}/directory/`),

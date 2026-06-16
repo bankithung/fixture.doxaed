@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.urls import path
 
 from apps.forms.views import (
+    ContactAdminView,
     CopyableFormsView,
     FieldTypesView,
     FormCloseView,
@@ -32,6 +33,7 @@ urlpatterns = [
          name="form-directory"),
     path("<uuid:form_id>/uploads/", PublicUploadView.as_view(), name="form-upload"),
     path("<uuid:form_id>/team-access/", TeamAccessView.as_view(), name="form-team-access"),
+    path("<uuid:form_id>/contact/", ContactAdminView.as_view(), name="form-contact"),
     # Responses API (organizer-only).
     path("<uuid:form_id>/responses/", FormResponsesView.as_view(), name="form-responses"),
     path("<uuid:form_id>/responses/<uuid:response_id>/",

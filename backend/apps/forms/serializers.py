@@ -76,6 +76,14 @@ class FormResponseSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class ContactAdminSerializer(serializers.Serializer):
+    """A public visitor's message to the tournament organisers."""
+
+    name = serializers.CharField(max_length=200)
+    email = serializers.EmailField()
+    message = serializers.CharField(max_length=5000)
+
+
 class PublicSubmitSerializer(serializers.Serializer):
     """Validates the shape of a public submission payload. Answer-level
     validation (branching-aware) happens in ``submit_response``."""

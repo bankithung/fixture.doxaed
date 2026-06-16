@@ -18,6 +18,7 @@ import {
 } from "@/lib/formLogic";
 import { t } from "@/lib/t";
 import { Centered, PublicShell } from "@/features/registration/PublicShell";
+import { ContactAdminDialog } from "./ContactAdminDialog";
 import { FieldRenderer } from "./fieldRenderers";
 import type { Field } from "./types";
 
@@ -287,6 +288,8 @@ export function PublicFormPage(): React.ReactElement {
       return next;
     });
   };
+
+  const [contactOpen, setContactOpen] = useState(false);
 
   const handleUpload = async (field: Field, file: File): Promise<string> => {
     const id = form?.id ?? formId ?? "";
@@ -586,13 +589,27 @@ export function PublicFormPage(): React.ReactElement {
             html={form.description}
             className="mt-1 text-sm text-muted-foreground"
           />
-          <a
-            href={`/f/${form.id}/directory`}
-            className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-          >
-            {t("View registered organisations")} →
-          </a>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <a
+              href={`/f/${form.id}/directory`}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+            >
+              {t("View registered organisations")} →
+            </a>
+            <button
+              type="button"
+              onClick={() => setContactOpen(true)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+            >
+              {t("Contact the organisers")}
+            </button>
+          </div>
         </div>
+        <ContactAdminDialog
+          formId={form?.id ?? formId ?? ""}
+          open={contactOpen}
+          onOpenChange={setContactOpen}
+        />
 
         {/* Admin entry path: organizer filling the form — no access code. */}
         {data?.can_manage ? (
