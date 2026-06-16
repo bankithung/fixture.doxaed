@@ -360,9 +360,10 @@ export function FieldRenderer({
             placeholder={t("Select…")}
             aria-label={t(field.label)}
             disabled={disabled}
-            // Live-bound pickers (e.g. the school/institution list) are always
-            // searchable; static lists fall back to the count threshold.
-            searchable={field.data_source ? true : undefined}
+            // Searchable for any non-trivial list — live-bound pickers (the
+            // school/institution list) always, and static lists once they have
+            // more than a few options (so a school dropdown gets a search box).
+            searchable={!!field.data_source || options.length > 3}
           />
         );
       case "rating": {
