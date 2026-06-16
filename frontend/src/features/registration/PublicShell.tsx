@@ -1,5 +1,6 @@
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 
 /**
  * Lightweight public chrome for standalone, unauthenticated pages (they live
@@ -29,12 +30,7 @@ export function PublicShell({
             wide ? "max-w-6xl" : "max-w-3xl",
           )}
         >
-          <span
-            aria-hidden="true"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-primary font-bold text-primary-foreground"
-          >
-            F
-          </span>
+          <BrandLogo className="h-7 w-7" />
           <span className="text-sm font-semibold tracking-tight text-foreground">
             {t("fixture.doxaed.com")}
           </span>

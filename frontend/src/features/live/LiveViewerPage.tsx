@@ -5,6 +5,7 @@ import { ThemeToggle } from "@/features/theme/ThemeToggle";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 
 const OVERLINE =
   "text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground";
@@ -38,9 +39,7 @@ export function LiveViewerPage(): React.ReactElement {
           to={routes.landing()}
           className="flex items-center gap-2 rounded-md font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-            F
-          </span>
+          <BrandLogo className="h-7 w-7 rounded-lg" />
           {t("Fixture")}
         </Link>
         <span className="ml-2 text-sm text-muted-foreground">{t("Live")}</span>

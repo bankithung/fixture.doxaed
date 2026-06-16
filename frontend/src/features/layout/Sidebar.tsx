@@ -4,6 +4,7 @@ import type { NavGroup, NavItem } from "./computeNavItems";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 
 /**
  * Tournament-context header shown above the groups in tournament mode: a
@@ -142,9 +143,7 @@ export function Sidebar({
           title={collapsed ? t("Fixture") : undefined}
           className="flex items-center gap-2 rounded-md font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-sm">
-            F
-          </span>
+          <BrandLogo className="h-7 w-7 rounded-lg shadow-sm" alt={t("Fixture")} />
           {collapsed ? null : t("Fixture")}
         </Link>
       </div>

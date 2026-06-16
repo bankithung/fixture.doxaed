@@ -16,6 +16,7 @@ import { pickLandingPathForUser } from "@/features/roles/redirectByRole";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 
 /**
  * Public landing page at `/`.
@@ -54,12 +55,7 @@ export function LandingPage(): React.ReactElement {
             className="inline-flex items-center gap-2.5 rounded-sm text-base font-semibold tracking-tight text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={t("Fixture Platform — home")}
           >
-            <span
-              aria-hidden="true"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary font-bold text-primary-foreground shadow-sm"
-            >
-              F
-            </span>
+            <BrandLogo className="h-8 w-8 shadow-sm" />
             <span>{t("Fixture Platform")}</span>
           </Link>
           <nav

@@ -41,6 +41,7 @@ import { useBreakpoint } from "@/lib/useBreakpoint";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 
 /**
  * Attach the pending-invite count as a `badge` on the Workspace "invites" nav
@@ -441,9 +442,7 @@ export function AppShell(): React.ReactElement {
             <div className="absolute inset-y-0 left-0 flex w-72 max-w-[80vw] flex-col gap-2 border-r bg-card p-4 shadow-xl animate-fade-in">
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-2 font-semibold">
-                  <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-                    F
-                  </span>
+                  <BrandLogo className="h-7 w-7 rounded-lg" />
                   {t("Fixture")}
                 </span>
                 <button

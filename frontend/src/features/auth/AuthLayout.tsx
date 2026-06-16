@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { t } from "@/lib/t";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 
 interface AuthLayoutProps {
   children: ReactNode;
@@ -33,12 +34,7 @@ export function AuthLayout({
             to="/"
             className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 rounded-sm"
           >
-            <span
-              aria-hidden="true"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white/15 backdrop-blur-sm font-bold"
-            >
-              F
-            </span>
+            <BrandLogo className="h-8 w-8 bg-white/10 p-0.5" />
             <span>{t("Fixture Platform")}</span>
           </Link>
         </div>
@@ -59,12 +55,7 @@ export function AuthLayout({
       <main className="flex items-center justify-center p-6 sm:p-10">
         <div className="w-full max-w-sm">
           <div className="lg:hidden mb-8 flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
-            <span
-              aria-hidden="true"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-primary font-bold text-primary-foreground"
-            >
-              F
-            </span>
+            <BrandLogo className="h-7 w-7" />
             <span>{t("Fixture Platform")}</span>
           </div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
