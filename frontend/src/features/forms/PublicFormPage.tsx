@@ -6,6 +6,7 @@ import { formsApi } from "@/api/forms";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RichText } from "@/components/ui/RichText";
 import { newEventId } from "@/lib/eventId";
 import {
   isVisible,
@@ -572,11 +573,10 @@ export function PublicFormPage(): React.ReactElement {
           <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
             {t(form.title)}
           </h1>
-          {form.description ? (
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t(form.description)}
-            </p>
-          ) : null}
+          <RichText
+            html={form.description}
+            className="mt-1 text-sm text-muted-foreground"
+          />
           <a
             href={`/f/${form.id}/directory`}
             className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"

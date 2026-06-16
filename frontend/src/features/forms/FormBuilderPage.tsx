@@ -35,7 +35,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { Select } from "@/components/ui/Select";
+import { sanitizeRichText } from "@/lib/richText";
 import { useToast } from "@/components/ui/toast";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
@@ -104,7 +106,7 @@ function SettingsPanel({
       );
       return formsApi.update(form.id, {
         title: title.trim(),
-        description: instructions,
+        description: sanitizeRichText(instructions),
         confirmation_message: confirmation,
         closes_at: closesAt ? new Date(closesAt).toISOString() : null,
         ...(hasDirectory
@@ -188,16 +190,14 @@ function SettingsPanel({
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="form-instructions">{t("Instructions")}</Label>
-            <textarea
-              id="form-instructions"
+            <Label>{t("Instructions")}</Label>
+            <RichTextEditor
               value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
-              rows={3}
+              onChange={setInstructions}
+              ariaLabel={t("Instructions")}
               placeholder={t(
-                "Shown at the top of the public form — e.g. who can register, documents to keep ready, the deadline.",
+                "Shown at the top of the public form — format it, e.g. who can register, documents to keep ready, the deadline.",
               )}
-              className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             />
             <p className="text-xs text-muted-foreground">
               {t("Respondents read this before they start filling the form.")}
