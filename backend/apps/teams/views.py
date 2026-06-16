@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Count, F, Q
+from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.generics import GenericAPIView
@@ -11,6 +12,7 @@ from rest_framework.response import Response
 from apps.teams.models import (
     Institution,
     InstitutionStatus,
+    Player,
     RegistrationLink,
     Team,
 )
@@ -519,6 +521,47 @@ class InstitutionDetailView(GenericAPIView):
                 _sync_response_from_institution(inst)
         inst.team_count = inst.teams.filter(deleted_at__isnull=True).count()
         return Response(_institution_dict(inst))
+
+    def delete(self, request, tournament_id, institution_id):
+        """Permanently remove an application: soft-delete the institution and
+        cascade to its teams, their players, and the originating Stage-1
+        submission — so it leaves the directory, the institutions table AND the
+        raw-submissions list. Reversible at the DB level (deleted_at), unlike a
+        reject which only hides it from the public. Manager-only."""
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        inst = (
+            Institution.objects.filter(
+                id=institution_id, tournament_id=tournament_id, deleted_at__isnull=True
+            )
+            .select_related("tournament")
+            .first()
+        )
+        if inst is None:
+            raise NotFound("institution_not_found")
+        if not _can_register(request.user, inst.tournament):
+            raise PermissionDenied("not_tournament_manager")
+        now = timezone.now()
+        with transaction.atomic():
+            team_ids = list(
+                inst.teams.filter(deleted_at__isnull=True).values_list("id", flat=True)
+            )
+            if team_ids:
+                Player.objects.filter(
+                    team_id__in=team_ids, deleted_at__isnull=True
+                ).update(deleted_at=now)
+                Team.objects.filter(id__in=team_ids).update(
+                    deleted_at=now, updated_at=now
+                )
+            if inst.source_response_id:
+                from apps.forms.models import FormResponse
+
+                FormResponse.objects.filter(
+                    id=inst.source_response_id, deleted_at__isnull=True
+                ).update(deleted_at=now)
+            inst.deleted_at = now
+            inst.save(update_fields=["deleted_at", "updated_at"])
+        return Response(status=204)
 
 
 class TeamAccessCodesView(GenericAPIView):

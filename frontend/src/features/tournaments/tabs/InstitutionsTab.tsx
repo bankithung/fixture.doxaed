@@ -14,6 +14,7 @@ import {
   Pencil,
   Plus,
   Send,
+  Trash2,
   X,
 } from "lucide-react";
 import { institutionsApi, type Institution } from "@/api/institutions";
@@ -27,6 +28,13 @@ import {
 } from "@/features/forms/FilterPanel";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { flipPlacement } from "@/lib/popover";
 import { invalidateTournament } from "@/lib/queryKeys";
@@ -416,6 +424,7 @@ function ReviewMenu({
   const qc = useQueryClient();
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [pos, setPos] = useState<{
     top?: number;
     bottom?: number;
@@ -427,8 +436,9 @@ function ReviewMenu({
   const openMenu = (): void => {
     const r = wrapRef.current?.getBoundingClientRect();
     if (r) {
-      // Flip above the trigger near the bottom of the viewport (~34px/item).
-      const { top, bottom } = flipPlacement(r, REVIEW_ACTIONS.length * 34 + 10, 4);
+      // Flip above the trigger near the bottom of the viewport (~34px/item;
+      // +1 row for Delete).
+      const { top, bottom } = flipPlacement(r, (REVIEW_ACTIONS.length + 1) * 34 + 10, 4);
       setPos({ top, bottom, right: window.innerWidth - r.right });
     }
     setOpen(true);
@@ -480,6 +490,21 @@ function ReviewMenu({
     onSuccess: () => toast.push({ kind: "success", title: t("Status updated") }),
     onSettled: () =>
       qc.invalidateQueries({ queryKey: ["t-institutions", tournamentId] }),
+  });
+
+  const remove = useMutation({
+    mutationFn: () => institutionsApi.remove(tournamentId, inst.id),
+    onSuccess: () => {
+      setConfirmOpen(false);
+      qc.invalidateQueries({ queryKey: ["t-institutions", tournamentId] });
+      toast.push({ kind: "success", title: t("Application deleted") });
+    },
+    onError: (e) =>
+      toast.push({
+        kind: "error",
+        title: t("Could not delete"),
+        description: e instanceof ApiError ? (e.payload.detail ?? "") : "",
+      }),
   });
 
   return (
@@ -534,10 +559,52 @@ function ReviewMenu({
                   </button>
                 );
               })}
+              {/* Delete — permanent removal (confirmed), set apart from the
+                  reversible review actions above. */}
+              <div className="my-1 border-t border-border" />
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  setConfirmOpen(true);
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                {t("Delete")}
+              </button>
             </div>,
             document.body,
           )
         : null}
+      <Dialog
+        open={confirmOpen}
+        onOpenChange={(o) => !remove.isPending && setConfirmOpen(o)}
+        ariaLabel={t("Delete application")}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("Delete this application?")}</DialogTitle>
+          <DialogDescription>
+            {t(
+              "This removes the institution, its teams and players, and the original submission. Reject instead if you only want to hide it from the public.",
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <p className="text-sm font-medium">{inst.name}</p>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+            {t("Cancel")}
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={remove.isPending}
+            onClick={() => remove.mutate()}
+          >
+            {remove.isPending ? t("Deleting…") : t("Delete")}
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </span>
   );
 }

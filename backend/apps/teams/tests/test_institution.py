@@ -496,3 +496,48 @@ def test_patch_institution_status_review_and_validation():
     c2 = APIClient()
     c2.force_authenticate(user=outsider)
     assert c2.patch(url, {"status": "registered"}, format="json").status_code == 404
+
+
+def test_api_delete_institution_cascades_and_hides():
+    """Deleting an application soft-deletes the institution + its teams/players
+    + the originating submission, and it leaves the list."""
+    from apps.forms.models import Form, FormResponse
+    from apps.teams.models import Person, Player, Team
+
+    admin = _admin("del@inst.test")
+    t = create_tournament(user=admin, name="Cup")
+    f = Form.objects.create(organization=t.organization, tournament=t, slug="r",
+                            title="R", purpose="organization_registration")
+    resp = FormResponse.objects.create(form=f, organization=t.organization,
+                                       tournament=t, title="Del High")
+    inst = get_or_create_institution(tournament=t, name="Del High")
+    inst.source_response_id = resp.id
+    inst.save(update_fields=["source_response_id"])
+    team = Team.objects.create(organization=t.organization, tournament=t,
+                               institution=inst, slug="dt", name="DT", status="registered")
+    person = Person.objects.create(full_name="Player One")
+    player = Player.objects.create(organization=t.organization, tournament=t,
+                                   team=team, person=person)
+
+    r = _client(admin).delete(f"/api/tournaments/{t.id}/institutions/{inst.id}/")
+    assert r.status_code == 204, r.content
+
+    for obj in (inst, team, player, resp):
+        obj.refresh_from_db()
+        assert obj.deleted_at is not None
+
+    lst = _client(admin).get(f"/api/tournaments/{t.id}/institutions/").json()
+    assert all(i["id"] != str(inst.id) for i in lst)
+
+
+def test_api_delete_institution_manager_gated():
+    admin = _admin("o@del.test")
+    t = create_tournament(user=admin, name="Cup")
+    inst = get_or_create_institution(tournament=t, name="Guarded High")
+    outsider = _admin("x@del.test")
+    # outsider can't even see the tournament → 404 (no existence leak)
+    assert _client(outsider).delete(
+        f"/api/tournaments/{t.id}/institutions/{inst.id}/"
+    ).status_code == 404
+    inst.refresh_from_db()
+    assert inst.deleted_at is None

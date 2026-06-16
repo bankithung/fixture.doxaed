@@ -39,6 +39,10 @@ export const institutionsApi = {
       `/api/tournaments/${tournamentId}/institutions/${id}/`,
       body,
     ),
+  /** Permanently remove an application (soft-deletes the institution + its
+   *  teams/players + originating submission). Manager-only. */
+  remove: (tournamentId: string, id: string) =>
+    api.delete<void>(`/api/tournaments/${tournamentId}/institutions/${id}/`),
   /** Mint a temporary single-use link for a school to edit its own details. */
   editLink: (tournamentId: string, institutionId: string) =>
     api.post<{ path: string; expires_at: string }>(
