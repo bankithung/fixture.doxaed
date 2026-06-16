@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FieldRenderer } from "../fieldRenderers";
 import type { Field } from "../types";
@@ -72,5 +72,55 @@ describe("FieldRenderer choice-list search", () => {
     } as Field);
 
     expect(screen.queryByLabelText("Search Squad size")).toBeNull();
+  });
+});
+
+describe("FieldRenderer file uploads", () => {
+  it("multi-file upload accumulates every upload ref", async () => {
+    const onChange = vi.fn();
+    let n = 0;
+    const onUpload = vi.fn(async () => `ref-${++n}`);
+    render(
+      <FieldRenderer
+        field={{ key: "docs", type: "file_upload", label: "Docs", multiple: true } as Field}
+        value={undefined}
+        onChange={onChange}
+        onUpload={onUpload}
+      />,
+    );
+    await userEvent.upload(screen.getByLabelText("Docs"), [
+      new File(["a"], "a.pdf", { type: "application/pdf" }),
+      new File(["b"], "b.pdf", { type: "application/pdf" }),
+    ]);
+    await waitFor(() => expect(onUpload).toHaveBeenCalledTimes(2));
+    expect(onChange).toHaveBeenLastCalledWith(["ref-1", "ref-2"]);
+  });
+
+  it("threads onUpload into a repeatable group's file field", async () => {
+    const onChange = vi.fn();
+    const onUpload = vi.fn(async () => "ref-x");
+    render(
+      <FieldRenderer
+        field={
+          {
+            key: "players",
+            type: "group",
+            label: "Player",
+            repeatable: true,
+            fields: [{ key: "doc", type: "file_upload", label: "Doc" }],
+          } as Field
+        }
+        value={[{}]}
+        onChange={onChange}
+        onUpload={onUpload}
+      />,
+    );
+    await userEvent.upload(
+      screen.getByLabelText("Doc"),
+      new File(["a"], "a.pdf", { type: "application/pdf" }),
+    );
+    // Before the fix onUpload wasn't passed down → the file fell back to its
+    // name and never uploaded.
+    await waitFor(() => expect(onUpload).toHaveBeenCalled());
   });
 });

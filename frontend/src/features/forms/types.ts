@@ -106,6 +106,10 @@ export interface Field {
   /** Live-bound options resolved by the server at fetch time
    * (e.g. {type: "institution_list"}). */
   data_source?: { type: string };
+  /** `type: "file_upload"` → allow several files (value becomes an array of
+   * upload refs) and/or constrain the picker's accepted types. */
+  multiple?: boolean;
+  accept?: string;
 }
 
 export interface Section {

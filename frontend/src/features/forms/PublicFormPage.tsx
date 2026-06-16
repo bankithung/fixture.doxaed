@@ -7,6 +7,7 @@ import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RichText } from "@/components/ui/RichText";
+import { compressImage } from "@/lib/compressImage";
 import { newEventId } from "@/lib/eventId";
 import {
   isVisible,
@@ -289,8 +290,12 @@ export function PublicFormPage(): React.ReactElement {
 
   const handleUpload = async (field: Field, file: File): Promise<string> => {
     const id = form?.id ?? formId ?? "";
-    const res = await formsApi.publicUpload(id, field.key, file);
-    setUploadRefs((r) => ({ ...r, [field.key]: res.upload_ref }));
+    const prepared = await compressImage(file);
+    const res = await formsApi.publicUpload(id, field.key, prepared);
+    // Key by the ref itself (not the field key) so files in repeatable groups
+    // and multi-file fields all survive into `upload_refs` — the backend claims
+    // every value, and the answer carries which row/field owns each ref.
+    setUploadRefs((r) => ({ ...r, [res.upload_ref]: res.upload_ref }));
     return res.upload_ref;
   };
 
@@ -303,7 +308,11 @@ export function PublicFormPage(): React.ReactElement {
         ...(accessToken ? { access_token: accessToken } : {}),
       };
       return token !== undefined
-        ? formsApi.publicSubmitByToken(token, { answers, event_id: eventId })
+        ? formsApi.publicSubmitByToken(token, {
+            answers,
+            event_id: eventId,
+            upload_refs: uploadRefs,
+          })
         : formsApi.publicSubmit(form?.id ?? formId ?? "", body);
     },
     onSuccess: (res) => setDone(res.message),

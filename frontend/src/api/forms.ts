@@ -217,7 +217,11 @@ export const formsApi = {
     api.get<PublicFormPayload>(`/api/forms/r/${token}/`),
   publicSubmitByToken: (
     token: string,
-    body: { answers: Record<string, unknown>; event_id: string },
+    body: {
+      answers: Record<string, unknown>;
+      event_id: string;
+      upload_refs?: Record<string, string>;
+    },
   ) =>
     api.post<{ response_id: string; message: string }>(
       `/api/forms/r/${token}/`,

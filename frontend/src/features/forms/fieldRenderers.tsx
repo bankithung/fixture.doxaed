@@ -37,6 +37,127 @@ function asArray(v: unknown): string[] {
 }
 
 /**
+ * File input for `file_upload` fields — single or (with `field.multiple`) many.
+ * Each picked file uploads via `onUpload`, and the field's value becomes the
+ * resulting upload ref(s); picked filenames are kept locally just for display.
+ * Works inside repeatable groups because the renderer now threads `onUpload`
+ * through. Without an upload handler (builder preview) it falls back to names.
+ */
+function FileUploadField({
+  field,
+  value,
+  onChange,
+  onUpload,
+  disabled,
+  id,
+  describedBy,
+  error,
+}: {
+  field: Field;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  onUpload?: (field: Field, file: File) => Promise<string>;
+  disabled?: boolean;
+  id: string;
+  describedBy?: string;
+  error?: string;
+}): React.ReactElement {
+  const multiple = field.multiple === true;
+  const refs = Array.isArray(value)
+    ? (value as unknown[]).map(String)
+    : value
+      ? [String(value)]
+      : [];
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
+
+  const handleFiles = async (files: File[]): Promise<void> => {
+    if (files.length === 0) return;
+    setUploadErr(null);
+    if (!onUpload) {
+      onChange(multiple ? files.map((f) => f.name) : files[0].name);
+      return;
+    }
+    setBusy(true);
+    try {
+      const added: string[] = [];
+      const newNames: Record<string, string> = {};
+      for (const file of files) {
+        const ref = await onUpload(field, file);
+        added.push(ref);
+        newNames[ref] = file.name;
+        if (!multiple) break;
+      }
+      setNames((n) => ({ ...n, ...newNames }));
+      onChange(multiple ? [...refs, ...added] : (added[0] ?? null));
+    } catch {
+      setUploadErr(
+        t("Couldn't upload that file — use a PDF, PNG or JPG under 10 MB."),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      {refs.length > 0 ? (
+        <ul className="flex flex-col gap-1">
+          {refs.map((ref) => (
+            <li
+              key={ref}
+              className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-sm"
+            >
+              <span className="min-w-0 truncate">
+                {names[ref] ?? t("Uploaded file")}
+              </span>
+              {!disabled ? (
+                <button
+                  type="button"
+                  aria-label={t("Remove file")}
+                  onClick={() =>
+                    onChange(multiple ? refs.filter((r) => r !== ref) : null)
+                  }
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {multiple || refs.length === 0 ? (
+        <input
+          id={id}
+          type="file"
+          multiple={multiple}
+          accept={field.accept}
+          disabled={disabled || busy}
+          aria-describedby={describedBy}
+          aria-invalid={!!error}
+          onChange={(e) => {
+            const files = e.target.files ? Array.from(e.target.files) : [];
+            e.target.value = ""; // allow re-picking the same file
+            void handleFiles(files);
+          }}
+          className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium file:text-secondary-foreground hover:file:bg-secondary/80"
+        />
+      ) : null}
+      {busy ? (
+        <span className="text-xs text-muted-foreground">{t("Uploading…")}</span>
+      ) : null}
+      {uploadErr ? (
+        <span role="alert" className="text-xs text-destructive">
+          {uploadErr}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * One renderer per field type, shared by the builder preview and the public
  * renderer. Pure presentation: no data fetching, no branching — the caller
  * filters fields by visibility before rendering. Every control is labelled
@@ -313,22 +434,15 @@ export function FieldRenderer({
       }
       case "file_upload":
         return (
-          <input
-            id={id}
-            type="file"
+          <FileUploadField
+            field={field}
+            value={value}
+            onChange={onChange}
+            onUpload={onUpload}
             disabled={disabled}
-            aria-describedby={describedBy}
-            aria-invalid={!!error}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              if (onUpload) {
-                void onUpload(field, file).then((ref) => onChange(ref));
-              } else {
-                onChange(file.name);
-              }
-            }}
-            className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium file:text-secondary-foreground hover:file:bg-secondary/80"
+            id={id}
+            describedBy={describedBy}
+            error={error}
           />
         );
       case "group": {
@@ -379,6 +493,7 @@ export function FieldRenderer({
                       field={child}
                       value={(row ?? {})[child.key]}
                       disabled={disabled}
+                      onUpload={onUpload}
                       onChange={(v) =>
                         onChange(
                           rows.map((r, k) =>
@@ -437,6 +552,7 @@ export function FieldRenderer({
                 field={child}
                 value={obj[child.key]}
                 disabled={disabled}
+                onUpload={onUpload}
                 onChange={(v) => onChange({ ...obj, [child.key]: v })}
               />
             ))}

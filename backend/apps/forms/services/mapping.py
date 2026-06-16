@@ -351,26 +351,66 @@ def _map_team_registration(resp: FormResponse) -> FormResponse:
     return resp
 
 
+def _dob_year(value) -> int | None:
+    """Pull the YEAR out of a ``YYYY-MM-DD`` date answer (Person stores DOB
+    coarsely as ``dob_year`` for now; the full date stays on the response)."""
+    if not value:
+        return None
+    head = str(value)[:4]
+    if head.isdigit():
+        year = int(head)
+        if 1900 <= year <= 2100:
+            return year
+    return None
+
+
 def _map_team_registration_multi(resp, form, b, a) -> FormResponse:
     """Auto-generated team form: collect teams from every category group into one
     register_school call (all under the chosen institution)."""
     institution_id = a.get(b.get("institution_id", "institution_id")) or None
+    # The team name defaults to the institution's name when left blank — resolve
+    # it once so blank rows can adopt it.
+    inst_name = ""
+    if institution_id:
+        from apps.teams.models import Institution
+
+        inst = Institution.objects.filter(
+            id=institution_id, tournament=form.tournament, deleted_at__isnull=True
+        ).first()
+        inst_name = inst.name if inst else ""
+    # Team names are unique per competition leaf — track per-leaf names so a
+    # defaulted (institution) name auto-suffixes instead of failing the submit.
+    used_by_leaf: dict[str, set[str]] = {}
     teams_payload: list[dict] = []
     for cg in b.get("category_groups", []):
         group_key = cg.get("group")
         tname_key = cg.get("team_name")
         players_group_key = cg.get("players_group")
         pname_key = cg.get("player_name")
+        pdob_key = cg.get("player_dob")
         category = cg.get("category") or ""
+        leaf = cg.get("leaf_key") or category
         rows = a.get(group_key, []) or []
         if not isinstance(rows, list):
             continue
         for row in rows:
             if not isinstance(row, dict):
                 continue
-            name = row.get(tname_key)
+            seen = used_by_leaf.setdefault(leaf, set())
+            raw = row.get(tname_key)
+            if raw and str(raw).strip():
+                name = str(raw).strip()
+            else:
+                # Default to the institution name; suffix on collision so two
+                # blank teams in one leaf don't break the unique constraint.
+                name = inst_name
+                base, n = name or "", 2
+                while name and name in seen:
+                    name = f"{base} {n}"
+                    n += 1
             if not name:
                 continue
+            seen.add(name)
             # Each team row carries its own nested, repeatable players group.
             players: list[dict] = []
             if players_group_key:
@@ -378,7 +418,11 @@ def _map_team_registration_multi(resp, form, b, a) -> FormResponse:
                     if isinstance(pr, dict):
                         pn = pr.get(pname_key)
                         if pn:
-                            players.append({"full_name": str(pn)})
+                            player = {"full_name": str(pn)}
+                            year = _dob_year(pr.get(pdob_key)) if pdob_key else None
+                            if year:
+                                player["dob_year"] = year
+                            players.append(player)
             teams_payload.append({
                 "name": str(name),
                 # pool = human-readable label; sport/leaf_key = the structural

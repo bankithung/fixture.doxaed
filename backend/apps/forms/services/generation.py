@@ -296,6 +296,12 @@ def build_team_form_schema(
             "fields": [
                 {"key": f"player_name_{slug}", "type": "short_text",
                  "label": "Player name", "required": True},
+                {"key": f"player_dob_{slug}", "type": "date",
+                 "label": "Date of birth", "required": True},
+                {"key": f"player_docs_{slug}", "type": "file_upload",
+                 "label": "Documents (ID / certificate)", "required": False,
+                 "multiple": True,
+                 "help": "Optional — upload one or more. Images are compressed automatically."},
             ],
         }
         if tournament is not None and getattr(tournament, "sports", None):
@@ -346,7 +352,21 @@ def build_team_form_schema(
                         "repeatable": True,
                         "fields": [
                             {"key": tkey, "type": "short_text", "label": "Team name",
-                             "required": True},
+                             "required": False,
+                             "help": "Leave blank to use your institution's name."},
+                            {"key": f"team_logo_{slug}", "type": "file_upload",
+                             "label": "Team logo", "required": False,
+                             "accept": "image/*",
+                             "help": "Optional — upload an image; it's compressed automatically."},
+                            {"key": f"coaches_{slug}", "type": "group",
+                             "label": "Coach", "repeatable": True, "fields": [
+                                 {"key": f"coach_name_{slug}", "type": "short_text",
+                                  "label": "Coach name", "required": True},
+                                 {"key": f"coach_docs_{slug}", "type": "file_upload",
+                                  "label": "Coach documents", "required": False,
+                                  "multiple": True,
+                                  "help": "Optional — upload one or more."},
+                             ]},
                             players,
                         ],
                     }
@@ -356,6 +376,14 @@ def build_team_form_schema(
         category_groups.append({
             "category": v, "group": gkey, "team_name": tkey,
             "players_group": f"players_{slug}", "player_name": f"player_name_{slug}",
+            # Extra collected fields (mapping reads player_dob; the rest are
+            # captured on the response + uploads for the admin to review).
+            "player_dob": f"player_dob_{slug}",
+            "player_docs": f"player_docs_{slug}",
+            "team_logo": f"team_logo_{slug}",
+            "coaches_group": f"coaches_{slug}",
+            "coach_name": f"coach_name_{slug}",
+            "coach_docs": f"coach_docs_{slug}",
             # Structural binding (spec 2026-06-10): mapping stamps these onto
             # the created Team rows so fixtures scope per leaf, not by string.
             "sport_key": extra.get("sport_key", ""),
@@ -378,12 +406,31 @@ def build_team_form_schema(
                         "repeatable": True,
                         "fields": [
                             {"key": "team_name_all", "type": "short_text",
-                             "label": "Team name", "required": True},
+                             "label": "Team name", "required": False,
+                             "help": "Leave blank to use your institution's name."},
+                            {"key": "team_logo_all", "type": "file_upload",
+                             "label": "Team logo", "required": False,
+                             "accept": "image/*",
+                             "help": "Optional — upload an image; it's compressed automatically."},
+                            {"key": "coaches_all", "type": "group", "label": "Coach",
+                             "repeatable": True, "fields": [
+                                 {"key": "coach_name_all", "type": "short_text",
+                                  "label": "Coach name", "required": True},
+                                 {"key": "coach_docs_all", "type": "file_upload",
+                                  "label": "Coach documents", "required": False,
+                                  "multiple": True, "help": "Optional — upload one or more."},
+                             ]},
                             {"key": "players_all", "type": "group",
                              "label": "Player", "repeatable": True,
                              "fields": [
                                  {"key": "player_name_all", "type": "short_text",
                                   "label": "Player name", "required": True},
+                                 {"key": "player_dob_all", "type": "date",
+                                  "label": "Date of birth", "required": True},
+                                 {"key": "player_docs_all", "type": "file_upload",
+                                  "label": "Documents (ID / certificate)",
+                                  "required": False, "multiple": True,
+                                  "help": "Optional — upload one or more."},
                              ]},
                         ],
                     }
@@ -393,6 +440,9 @@ def build_team_form_schema(
         category_groups.append({
             "category": "", "group": "teams_all", "team_name": "team_name_all",
             "players_group": "players_all", "player_name": "player_name_all",
+            "player_dob": "player_dob_all", "player_docs": "player_docs_all",
+            "team_logo": "team_logo_all", "coaches_group": "coaches_all",
+            "coach_name": "coach_name_all", "coach_docs": "coach_docs_all",
         })
 
     schema = {"version": 1, "sections": sections}
