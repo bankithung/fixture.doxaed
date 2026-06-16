@@ -1051,8 +1051,8 @@ class FormRegenerateView(GenericAPIView):
 
     def post(self, request, form_id):
         from apps.forms.services.generation import (
-            build_institution_form_schema,
             build_team_form_schema,
+            reconcile_institution_form_schema,
         )
         from apps.tournaments.services.sports import sports_inputs_hash
 
@@ -1063,7 +1063,11 @@ class FormRegenerateView(GenericAPIView):
         t = form.tournament
 
         if form.purpose == FormPurpose.ORGANIZATION_REGISTRATION:
-            schema, cat_meta = build_institution_form_schema(t.sports or [])
+            # Smart rebuild: MERGE the sports deltas onto the admin's current
+            # form (keep custom fields + edits), don't replace it (invariant 10).
+            schema, cat_meta = reconcile_institution_form_schema(
+                form.schema, t.sports or [], settings
+            )
             new_settings = {
                 **settings,
                 "sports_field": "sports",

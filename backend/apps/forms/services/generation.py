@@ -528,6 +528,118 @@ def build_institution_form_schema(sports: list[dict]) -> tuple[dict, dict]:
     return {"version": 1, "sections": sections}, meta
 
 
+def reconcile_institution_form_schema(
+    existing_schema: dict | None,
+    sports: list[dict],
+    existing_settings: dict | None,
+) -> tuple[dict, dict]:
+    """Smart rebuild (invariant 10 done as a MERGE, not a replace): apply only
+    the structural deltas from the current sports config onto the admin's
+    EXISTING institution form, instead of overwriting it with a fresh default.
+
+    Generated competition questions carry STABLE keys (minted from node keys, not
+    display names) and stable option values (path keys), so we reconcile by key:
+      * a retained competition question keeps the admin's label/help/required/
+        order/group, but has its OPTIONS + branching refreshed (renamed leaves,
+        added/removed options, retargeted visibility);
+      * a question whose competition was deleted is dropped;
+      * a brand-new competition's question is inserted next to its sport group
+        (kept contiguous so the renderer's per-sport card stays intact).
+    Custom fields the admin added, label edits, reordering, the school/confirm
+    sections and any extra sections are all preserved.
+
+    Falls back to a clean build when there's nothing to merge onto (no existing
+    schema). Returns (schema, meta) exactly like ``build_institution_form_schema``.
+    """
+    fresh_schema, meta = build_institution_form_schema(sports)
+    if not existing_schema or not existing_schema.get("sections"):
+        return fresh_schema, meta
+
+    fresh_by_key: dict[str, dict] = {}
+    fresh_order: list[str] = []
+    for sec in fresh_schema["sections"]:
+        for f in sec["fields"]:
+            fresh_by_key[f["key"]] = f
+            fresh_order.append(f["key"])
+
+    # Keys the generator OWNS in the fresh build: the sports question + every
+    # category-chain field.
+    fresh_gen: set[str] = {"sports"}
+    for keys in meta["category_fields_all"].values():
+        fresh_gen.update(keys)
+
+    # Keys the CURRENT form was generated with (from its stored tags) — lets us
+    # tell an old generated question apart from an admin-added custom field.
+    es = existing_settings or {}
+    managed: set[str] = set(fresh_gen)
+    managed.add(es.get("sports_field") or "sports")
+    for keys in (es.get("category_fields_all") or {}).values():
+        managed.update(keys)
+    managed.update((es.get("category_fields") or {}).values())
+
+    # On a retained question, refresh ONLY the data-bearing parts — keep every
+    # presentation/label edit the admin made.
+    refresh = ("options", "visibility")
+    seen: set[str] = set()
+    new_sections: list[dict] = []
+    for sec in existing_schema.get("sections", []):
+        out_fields: list[dict] = []
+        for f in sec.get("fields", []):
+            k = f.get("key")
+            if k in managed:
+                fresh = fresh_by_key.get(k)
+                if fresh is None:
+                    continue  # its competition was removed → drop the question
+                merged = dict(f)
+                for attr in refresh:
+                    if attr in fresh:
+                        merged[attr] = fresh[attr]
+                    else:
+                        merged.pop(attr, None)
+                out_fields.append(merged)
+                seen.add(k)
+            else:
+                out_fields.append(f)  # custom field → untouched
+        new_sections.append({**sec, "fields": out_fields})
+
+    # Questions for NEW competitions, in fresh walk order.
+    to_add = [
+        fresh_by_key[k]
+        for k in fresh_order
+        if k in fresh_gen and k != "sports" and k not in seen
+    ]
+    sports_missing = "sports" in fresh_by_key and "sports" not in seen
+    if to_add or sports_missing:
+        part = next(
+            (s for s in new_sections if s.get("key") == "participation"), None
+        )
+        if part is None:
+            part = {
+                "key": "participation",
+                "title": "Competition selection",
+                "fields": [],
+            }
+            idx = next(
+                (i for i, s in enumerate(new_sections) if s.get("key") == "confirm"),
+                len(new_sections),
+            )
+            new_sections.insert(idx, part)
+        if sports_missing:
+            part["fields"].insert(0, fresh_by_key["sports"])
+        for f in to_add:
+            grp = f.get("group")
+            pos = None
+            for i, ef in enumerate(part["fields"]):
+                if grp is not None and ef.get("group") == grp:
+                    pos = i  # keep last → block stays contiguous
+            if pos is None:
+                part["fields"].append(f)
+            else:
+                part["fields"].insert(pos + 1, f)
+
+    return {"version": existing_schema.get("version", 1), "sections": new_sections}, meta
+
+
 def generate_institution_form(*, tournament, created_by=None, request=None) -> Form:
     """Create a DRAFT institution-registration form from the tournament's sports,
     for the admin to review/edit/publish."""
