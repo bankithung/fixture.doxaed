@@ -291,6 +291,9 @@ export function FieldRenderer({
                     onChange={() => onChange(o.value)}
                     className="h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
+                  {o.image ? (
+                    <img src={o.image} alt="" className="h-6 w-6 shrink-0 rounded object-cover" />
+                  ) : null}
                   <span>{t(o.label)}</span>
                 </label>
               );
@@ -333,6 +336,9 @@ export function FieldRenderer({
                     }
                     className="h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
+                  {o.image ? (
+                    <img src={o.image} alt="" className="h-6 w-6 shrink-0 rounded object-cover" />
+                  ) : null}
                   <span>{t(o.label)}</span>
                 </label>
               );
@@ -349,6 +355,7 @@ export function FieldRenderer({
             options={options.map((o) => ({
               value: String(o.value),
               label: t(o.label),
+              image: o.image,
             }))}
             placeholder={t("Select…")}
             aria-label={t(field.label)}

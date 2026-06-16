@@ -8,6 +8,8 @@ import { t } from "@/lib/t";
 export interface SelectOption {
   value: string;
   label: string;
+  /** Optional thumbnail shown beside the label (e.g. a school logo). */
+  image?: string;
 }
 
 export interface SelectProps {
@@ -165,8 +167,20 @@ export function Select({
           size === "sm" ? "h-9 px-2.5" : "h-10 px-3",
         )}
       >
-        <span className={cn("truncate", !selected && "text-muted-foreground")}>
-          {selected?.label ?? placeholder}
+        <span
+          className={cn(
+            "flex min-w-0 items-center gap-2",
+            !selected && "text-muted-foreground",
+          )}
+        >
+          {selected?.image ? (
+            <img
+              src={selected.image}
+              alt=""
+              className="h-5 w-5 shrink-0 rounded object-cover"
+            />
+          ) : null}
+          <span className="truncate">{selected?.label ?? placeholder}</span>
         </span>
         <ChevronDown
           aria-hidden="true"
@@ -228,7 +242,16 @@ export function Select({
                       i === active ? "bg-accent text-accent-foreground" : "",
                     )}
                   >
-                    <span className="truncate">{o.label}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      {o.image ? (
+                        <img
+                          src={o.image}
+                          alt=""
+                          className="h-5 w-5 shrink-0 rounded object-cover"
+                        />
+                      ) : null}
+                      <span className="truncate">{o.label}</span>
+                    </span>
                     {o.value === value ? (
                       <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
                     ) : null}

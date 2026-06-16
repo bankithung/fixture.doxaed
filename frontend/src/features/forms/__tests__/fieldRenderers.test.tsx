@@ -63,6 +63,20 @@ describe("FieldRenderer choice-list search", () => {
     expect(screen.getAllByRole("radio")).toHaveLength(7);
   });
 
+  it("renders a per-option image/logo beside the choice", () => {
+    renderField({
+      key: "school",
+      type: "single_choice",
+      label: "School",
+      options: [
+        { value: "a", label: "Alpha", image: "data:image/png;base64,AAAA" },
+        { value: "b", label: "Beta" },
+      ],
+    } as Field);
+    const img = document.querySelector('img[src^="data:image"]');
+    expect(img).not.toBeNull();
+  });
+
   it("short choice lists have no search box", () => {
     renderField({
       key: "size",

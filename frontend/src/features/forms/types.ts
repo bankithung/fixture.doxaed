@@ -45,6 +45,9 @@ export interface Visibility {
 export interface Option {
   value: string;
   label: string;
+  /** Optional per-option image/logo (a compressed data URL set in the builder),
+   * shown beside the option on the public form. */
+  image?: string;
   /** Branching: jump to this section key when this option is chosen. */
   goto?: string;
   /** institution_list options: the competition leaves the institution

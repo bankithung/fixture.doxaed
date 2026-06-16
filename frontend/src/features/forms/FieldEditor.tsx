@@ -6,8 +6,10 @@ import {
   ChevronDownSquare,
   Circle,
   GripVertical,
+  ImagePlus,
   Plus,
   Trash2,
+  X,
 } from "lucide-react";
 import { useBuilderStore } from "./builderStore";
 import { BranchingEditor } from "./BranchingEditor";
@@ -16,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
+import { compressImage } from "@/lib/compressImage";
 import { t } from "@/lib/t";
 import { cn } from "@/lib/tailwind";
 
@@ -87,6 +90,22 @@ export function FieldEditor({
     updateField(sectionKey, field.key, {
       options: options.filter((_, j) => j !== i),
     });
+  // Per-option logo: compress to a small thumbnail and store it inline as a
+  // data URL on the option (no upload/serving infra — see lib/compressImage).
+  const setOptionImage = async (
+    i: number,
+    file: File | undefined,
+  ): Promise<void> => {
+    if (!file) return;
+    const small = await compressImage(file, { maxDim: 160, quality: 0.8 });
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error("read_failed"));
+      reader.readAsDataURL(small);
+    });
+    setOption(i, { image: dataUrl });
+  };
   // Reorder options so the admin can place any choice at any position.
   const moveOption = (i: number, dir: -1 | 1): void => {
     const j = i + dir;
@@ -220,6 +239,41 @@ export function FieldEditor({
                 placeholder={t("value")}
                 className="w-24 font-tabular text-xs"
               />
+              {/* Per-option logo: thumbnail + remove, or an upload button. */}
+              {o.image ? (
+                <span className="relative inline-flex h-9 w-9 shrink-0">
+                  <img
+                    src={o.image}
+                    alt=""
+                    className="h-9 w-9 rounded-md border border-border object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setOption(i, { image: undefined })}
+                    aria-label={t("Remove image")}
+                    className="absolute -right-1.5 -top-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <X aria-hidden="true" className="h-2.5 w-2.5" />
+                  </button>
+                </span>
+              ) : (
+                <label
+                  title={t("Add an image/logo for this option")}
+                  className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-within:ring-2 focus-within:ring-ring"
+                >
+                  <ImagePlus aria-hidden="true" className="h-4 w-4" />
+                  <span className="sr-only">{t("Add image")}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={(e) => {
+                      void setOptionImage(i, e.target.files?.[0]);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              )}
               <button
                 type="button"
                 disabled={i === 0}
