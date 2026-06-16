@@ -568,20 +568,29 @@ export function PublicDirectoryPage(): React.ReactElement {
                   key={i}
                   className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4 shadow-sm"
                 >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold" title={e.name}>
-                      {e.name}
-                    </p>
-                    {(showType && e.kind) || (showRegion && e.region) ? (
-                      <p className="mt-0.5 text-xs capitalize text-muted-foreground">
-                        {[
-                          showType && e.kind ? t(e.kind) : null,
-                          showRegion && e.region ? e.region : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    {e.logo ? (
+                      <img
+                        src={e.logo}
+                        alt=""
+                        className="h-9 w-9 shrink-0 rounded-md object-cover"
+                      />
                     ) : null}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold" title={e.name}>
+                        {e.name}
+                      </p>
+                      {(showType && e.kind) || (showRegion && e.region) ? (
+                        <p className="mt-0.5 text-xs capitalize text-muted-foreground">
+                          {[
+                            showType && e.kind ? t(e.kind) : null,
+                            showRegion && e.region ? e.region : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                   {comps.length > 0 ? (
                     <div className="flex flex-wrap items-center gap-1">
@@ -667,7 +676,16 @@ export function PublicDirectoryPage(): React.ReactElement {
                       className="sticky left-0 z-10 border-b border-border bg-card px-4 py-2.5 align-top font-medium group-hover:bg-accent/40"
                       title={e.name}
                     >
-                      <span className="block max-w-[14rem] truncate">{e.name}</span>
+                      <span className="flex items-center gap-2">
+                        {e.logo ? (
+                          <img
+                            src={e.logo}
+                            alt=""
+                            className="h-6 w-6 shrink-0 rounded object-cover"
+                          />
+                        ) : null}
+                        <span className="block max-w-[12rem] truncate">{e.name}</span>
+                      </span>
                     </td>
                     {showType ? (
                       <td className="border-b border-border px-3 py-2.5 align-top capitalize text-muted-foreground group-hover:bg-accent/40">

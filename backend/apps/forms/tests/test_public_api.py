@@ -600,3 +600,44 @@ def test_directory_kpi_mode_setting_passthrough():
     form.save(update_fields=["status"])
     body = APIClient().get(f"/api/forms/{form.id}/directory/").json()
     assert body["form_open"] is False
+
+
+def test_per_option_logo_flows_to_directory_and_institution_dropdown():
+    """A per-option image (school logo) on the Stage-1 dropdown shows on the
+    public directory AND in the team form's institution selector."""
+    from apps.forms.services.generation import generate_team_form_template
+    from apps.forms.services.mapping import map_response
+    from apps.teams.models import Institution
+
+    admin = _verified("logo@pub.test")
+    t = create_tournament(user=admin, name="Logo Cup")
+    img = "data:image/png;base64,AAAA"
+    schema = {"version": 1, "sections": [{"key": "s", "title": "S", "fields": [
+        {"key": "school_name", "type": "dropdown", "label": "School", "role": "title",
+         "options": [{"value": "alpha", "label": "Alpha", "image": img}]},
+    ]}]}
+    org = Form.objects.create(
+        organization=t.organization, tournament=t, slug="org", title="Org",
+        purpose="organization_registration", status="open", schema=schema,
+        settings={"bindings": {"institution_name": "school_name"}},
+    )
+    resp = FormResponse.objects.create(
+        form=org, organization=t.organization, tournament=t, title="Alpha",
+        answers={"school_name": "alpha"},
+    )
+    map_response(resp)
+    assert Institution.objects.filter(tournament=t).count() == 1
+
+    body = APIClient().get(f"/api/forms/{org.id}/directory/").json()
+    assert body["entries"][0]["logo"] == img
+
+    team = generate_team_form_template(tournament=t, created_by=admin)
+    team.status = "open"
+    team.save(update_fields=["status"])
+    payload = APIClient().get(f"/api/forms/{team.id}/public/").json()
+    fields = {
+        f["key"]: f
+        for sec in payload["form"]["schema"]["sections"]
+        for f in sec["fields"]
+    }
+    assert any(o.get("image") == img for o in fields["institution_id"]["options"])

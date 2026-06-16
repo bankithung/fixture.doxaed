@@ -61,6 +61,8 @@ export interface DirectoryEntry {
   name: string;
   region: string;
   kind: string;
+  /** Per-option logo for this institution (from a choice field's option image). */
+  logo?: string | null;
   /** The competitions (category leaves) this institution entered (W2-E). */
   competitions: DirectoryCompetitionRef[];
   values: Record<string, unknown>;

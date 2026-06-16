@@ -191,6 +191,44 @@ class FieldTypesView(GenericAPIView):
 _DATA_BOUND = {"single_choice", "multi_choice", "dropdown"}
 
 
+def _schema_option_images(schema) -> dict[str, str]:
+    """Map option value -> per-option image (the logos set per choice in the
+    builder) across every choice field in a schema, nested groups included."""
+    out: dict[str, str] = {}
+
+    def walk(fields):
+        for f in fields or []:
+            if f.get("type") in CHOICE_TYPES:
+                for o in f.get("options") or []:
+                    if (
+                        isinstance(o, dict)
+                        and o.get("image")
+                        and o.get("value") is not None
+                    ):
+                        out.setdefault(str(o["value"]), o["image"])
+            if f.get("type") == "group":
+                walk(f.get("fields"))
+
+    for s in (schema or {}).get("sections", []):
+        walk(s.get("fields"))
+    return out
+
+
+def _match_option_image(answers: dict, images: dict[str, str]) -> str | None:
+    """First per-option image among a response's answers (e.g. the selected
+    school's logo)."""
+    if not images:
+        return None
+    for v in (answers or {}).values():
+        if isinstance(v, str) and v in images:
+            return images[v]
+        if isinstance(v, list):
+            for x in v:
+                if isinstance(x, str) and x in images:
+                    return images[x]
+    return None
+
+
 def _resolve_data_sources(schema: dict, tournament) -> dict:
     """Populate options for data-bound choice fields (e.g. "select your
     institution") at fetch time, so the dropdown always reflects the CURRENT
@@ -217,11 +255,36 @@ def _resolve_data_sources(schema: dict, tournament) -> dict:
 
     from apps.teams.models import Institution
 
-    insts = (
+    insts = list(
         Institution.objects.filter(tournament=tournament, deleted_at__isnull=True)
         .exclude(status__in=["withdrawn", "rejected"])
         .order_by("name")
     )
+    # Each school's logo (the per-option image the admin set on the Stage-1
+    # school question) so the institution dropdown shows it — resolved from the
+    # org form's option images matched to each institution's submission.
+    org_form = (
+        Form.objects.filter(
+            tournament=tournament,
+            purpose=FormPurpose.ORGANIZATION_REGISTRATION,
+            deleted_at__isnull=True,
+        )
+        .order_by("created_at")
+        .first()
+    )
+    images = _schema_option_images(org_form.schema) if org_form else {}
+    logos: dict = {}
+    if images:
+        resp_ids = [i.source_response_id for i in insts if i.source_response_id]
+        ans = (
+            {r.id: (r.answers or {}) for r in FormResponse.objects.filter(id__in=resp_ids)}
+            if resp_ids
+            else {}
+        )
+        for i in insts:
+            lg = _match_option_image(ans.get(i.source_response_id), images)
+            if lg:
+                logos[i.id] = lg
     # `leaves` = the competitions the institution registered at Stage 1; the
     # team form scopes its sport/category questions to them client-side
     # (competition keys are already public via the directory — no PII here).
@@ -233,6 +296,7 @@ def _resolve_data_sources(schema: dict, tournament) -> dict:
             "label": i.name,
             "leaves": (i.attributes or {}).get("leaves") or [],
             "requires_code": bool(i.team_code_hash),
+            **({"image": logos[i.id]} if i.id in logos else {}),
         }
         for i in insts
     ]
@@ -935,12 +999,22 @@ class PublicInstitutionDirectoryView(GenericAPIView):
         # page groups by sport → category without re-parsing raw answers.
         from apps.tournaments.services.sports import iter_leaves, leaf_label
 
+        # Per-option images set in the builder (e.g. a school logo) → show each
+        # institution's logo on the directory, matched from its submission.
+        opt_images = _schema_option_images(form.schema)
+
+        def _entry_logo(inst):
+            if not inst.source_response_id:
+                return None
+            return _match_option_image(answers.get(inst.source_response_id), opt_images)
+
         sports_cfg = form.tournament.sports or []
         entries = [
             {
                 "name": i.name,
                 "region": i.region,
                 "kind": i.kind,
+                "logo": _entry_logo(i),
                 "competitions": [
                     {"leaf_key": lk, "label": leaf_label(sports_cfg, lk)}
                     for lk in (i.attributes or {}).get("leaves") or []
