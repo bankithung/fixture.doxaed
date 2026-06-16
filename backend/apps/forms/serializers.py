@@ -26,6 +26,10 @@ class FormSchemaField(serializers.JSONField):
 class FormSerializer(serializers.ModelSerializer):
     schema = FormSchemaField(required=False)
     stale = serializers.SerializerMethodField()
+    # Live count of submissions that still exist — the stored counter is only
+    # ever incremented, so soft-deleted (e.g. deleted-application) responses
+    # would otherwise keep inflating it.
+    response_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Form
@@ -36,6 +40,9 @@ class FormSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("id", "slug", "stage", "status", "version", "response_count",
                             "stale", "created_at", "updated_at")
+
+    def get_response_count(self, obj) -> int:
+        return obj.responses.filter(deleted_at__isnull=True).count()
 
     def get_stale(self, obj) -> bool:
         """True for a GENERATED form whose inputs (the sports/category config)
