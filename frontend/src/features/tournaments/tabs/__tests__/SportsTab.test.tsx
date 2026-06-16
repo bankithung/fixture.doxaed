@@ -191,6 +191,51 @@ describe("SportsTab", () => {
     );
   });
 
+  it("renames a category, round-tripping its key so registered teams stay linked", async () => {
+    vi.mocked(tournamentsApi.sports).mockResolvedValue({
+      sports: [
+        {
+          key: "football",
+          name: "Football",
+          custom: false,
+          nodes: [
+            {
+              key: "u_14",
+              name: "U-14",
+              kind: "age_group",
+              age: { op: "under", age: 14 },
+              children: [],
+            },
+          ],
+        },
+      ],
+    });
+    renderTab();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /next: set up categories/i }),
+    );
+    // The per-category "edit" button (was "type") is the rename entry point.
+    await userEvent.click(
+      await screen.findByRole("button", { name: /edit u-14/i }),
+    );
+    const nameInput = await screen.findByLabelText(/category name/i);
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, "Juniors");
+    // Commits on blur — clicking Done blurs the field, then closes the modal.
+    await userEvent.click(screen.getByRole("button", { name: /done/i }));
+    await waitFor(() => {
+      const call = vi.mocked(tournamentsApi.setSports).mock.calls.at(-1);
+      // The key is preserved (leaf_key stays football.u_14) — only the name
+      // changed; the kind/age rule travels along untouched.
+      expect(call?.[1][0].nodes?.[0]).toMatchObject({
+        key: "u_14",
+        name: "Juniors",
+        kind: "age_group",
+        age: { op: "under", age: 14 },
+      });
+    });
+  });
+
   it("generates the form AND advances to the registration stage", async () => {
     vi.mocked(tournamentsApi.sports).mockResolvedValue({
       sports: [

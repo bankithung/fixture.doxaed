@@ -9,6 +9,7 @@ import {
   Copy as CopyIcon,
   CornerDownRight,
   FileText,
+  Pencil,
   Plus,
   Search,
   SlidersHorizontal,
@@ -403,10 +404,13 @@ function AddNodeForm({
 }
 
 /**
- * Inline node "type & team size" editor (W2-B). Numbers commit on blur so the
- * auto-saving PUT doesn't fire per keystroke. A "format" node's team-size
- * rules become the generated team form's roster bounds (1v1 → exactly 1
- * player; widen squad max for substitutes).
+ * Inline node editor (W2-B): name, type & team size. Text/numbers commit on
+ * blur so the auto-saving PUT doesn't fire per keystroke. Renaming round-trips
+ * the node's server-minted `key` (via `withNodePatched` spreading the existing
+ * node), so a competition's `leaf_key` — and the teams registered under it —
+ * stays stable across renames (owner report 2026-06-15: names were locked once
+ * added). A "format" node's team-size rules become the generated team form's
+ * roster bounds (1v1 → exactly 1 player; widen squad max for substitutes).
  */
 function NodeKindEditor({
   node,
@@ -431,6 +435,20 @@ function NodeKindEditor({
   const showAge = node.kind === "age_group" || node.age != null;
   return (
     <div className="flex flex-col gap-3">
+      {/* Name — commits on blur (changed + non-blank only); keeps the node's
+          key, so the rename doesn't orphan registered teams. */}
+      <div className="flex flex-col gap-1">
+        <Label className="text-xs">{t("Name")}</Label>
+        <Input
+          defaultValue={node.name}
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v && v !== node.name) onPatch({ name: v });
+          }}
+          className="h-9"
+          aria-label={t("Category name")}
+        />
+      </div>
       <div className="flex flex-wrap items-end gap-2">
       <div className="flex w-40 flex-col gap-1">
         <Label className="text-xs">{t("Type")}</Label>
@@ -781,12 +799,12 @@ export function SportsTab(): React.ReactElement {
             <button
               type="button"
               onClick={() => setKindTarget({ sportKey: sport.key, path })}
-              aria-label={t(`Category type and team size for ${node.name}`)}
+              aria-label={t(`Edit ${node.name} — name, type and team size`)}
               aria-haspopup="dialog"
               className="inline-flex h-6 items-center gap-0.5 rounded px-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <SlidersHorizontal aria-hidden="true" className="h-3 w-3" />
-              {t("type")}
+              <Pencil aria-hidden="true" className="h-3 w-3" />
+              {t("edit")}
             </button>
             <button
               type="button"
@@ -1452,22 +1470,22 @@ export function SportsTab(): React.ReactElement {
         ) : null}
       </Dialog>
 
-      {/* Type & team-size modal for an existing category. */}
+      {/* Edit modal for an existing category — name, type & team size. */}
       <Dialog
         open={kindTarget !== null}
         onOpenChange={(o) => {
           if (!o) setKindTarget(null);
         }}
-        ariaLabel={t("Category type and team size")}
+        ariaLabel={t("Edit category")}
       >
         {kindTarget && kindNode ? (
           <>
             <DialogHeader>
               <DialogTitle>
-                {t("Category type")} — {kindNode.name}
+                {t("Edit category")} — {kindNode.name}
               </DialogTitle>
               <DialogDescription>
-                {t("Formats (1v1, 5v5…) carry a team size that the registration form enforces.")}
+                {t("Rename it, or change its type. Formats (1v1, 5v5…) carry a team size that the registration form enforces.")}
               </DialogDescription>
             </DialogHeader>
             <NodeKindEditor
