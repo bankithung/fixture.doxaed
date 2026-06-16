@@ -158,7 +158,7 @@ export function RichTextEditor({
           aria-multiline="true"
           aria-label={ariaLabel}
           onInput={sync}
-          className="min-h-[96px] w-full px-3 py-2 text-sm leading-relaxed focus-visible:outline-none [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
+          className="min-h-[96px] w-full whitespace-pre-wrap px-3 py-2 text-sm leading-relaxed focus-visible:outline-none [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
         />
         {empty && placeholder ? (
           <span className="pointer-events-none absolute left-3 top-2 text-sm text-muted-foreground">

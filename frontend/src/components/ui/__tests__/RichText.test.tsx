@@ -12,6 +12,15 @@ describe("RichText viewer", () => {
     expect(container.textContent).not.toContain("alert(1)");
   });
 
+  it("preserves newlines inside formatted (HTML) content", () => {
+    const { container } = render(
+      <RichText html={'<span style="color: red">line 1\nline 2</span>'} />,
+    );
+    const div = container.firstChild as HTMLElement;
+    expect(div.className).toContain("whitespace-pre-wrap");
+    expect(div.textContent).toBe("line 1\nline 2");
+  });
+
   it("preserves newlines for plain-text (legacy) values", () => {
     const { container } = render(<RichText html={"line 1\nline 2"} />);
     const div = container.firstChild as HTMLElement;

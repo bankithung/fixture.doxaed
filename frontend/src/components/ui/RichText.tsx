@@ -23,8 +23,11 @@ export function RichText({
 
   return (
     <div
+      // `whitespace-pre-wrap`: the editor records line breaks as newline
+      // characters, so the public page must preserve newlines + spacing (the
+      // default `normal` would collapse them onto one line).
       className={cn(
-        "break-words [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5",
+        "whitespace-pre-wrap break-words [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5",
         className,
       )}
       // Sanitised to a small formatting allowlist immediately above.
