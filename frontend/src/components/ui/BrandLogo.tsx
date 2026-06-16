@@ -14,7 +14,7 @@ export function BrandLogo({
 }): React.ReactElement {
   return (
     <img
-      src="/brand-logo.jpg"
+      src="/brand-logo.jpg?v=2"
       alt={alt}
       aria-hidden={alt ? undefined : "true"}
       className={cn("h-7 w-7 shrink-0 rounded-md object-cover", className)}
