@@ -38,6 +38,29 @@ def _can_register(user, tournament) -> bool:
     return can_access_module(user, tournament, "tournament.team_registration")
 
 
+def _sync_response_from_institution(inst) -> None:
+    """Mirror an institution review decision back onto the raw Stage-1 submission
+    that created it, so "Review raw submissions" agrees with the "Registered
+    institutions" table — a school rejected in one place must not still read
+    'submitted' in the other (which looks like the action never took). The public
+    surfaces gate on ``Institution.status`` directly, so this is purely about the
+    two admin views never contradicting each other."""
+    if not inst.source_response_id:
+        return
+    from apps.forms.constants import ResponseStatus
+    from apps.forms.models import FormResponse
+
+    if inst.status in (InstitutionStatus.REJECTED, InstitutionStatus.WITHDRAWN):
+        target = ResponseStatus.REJECTED
+    elif inst.status == InstitutionStatus.REGISTERED:
+        target = ResponseStatus.ACCEPTED
+    else:
+        return
+    FormResponse.objects.filter(
+        id=inst.source_response_id, deleted_at__isnull=True
+    ).exclude(status=target).update(status=target)
+
+
 class RegistrationLinkCreateView(GenericAPIView):
     """`POST /api/tournaments/{id}/registration-link/` — organizer mints a
     shareable link schools use to self-register. Token returned once."""
@@ -491,6 +514,9 @@ class InstitutionDetailView(GenericAPIView):
                 changed.append(field)
         if changed:
             inst.save(update_fields=[*changed, "updated_at"])
+            # Keep the raw-submission review state in lockstep with the table.
+            if "status" in changed:
+                _sync_response_from_institution(inst)
         inst.team_count = inst.teams.filter(deleted_at__isnull=True).count()
         return Response(_institution_dict(inst))
 

@@ -18,7 +18,12 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Centered, PublicShell } from "@/features/registration/PublicShell";
-import { buildCompTree, FilterPanel, matchesCompPrefix } from "./FilterPanel";
+import {
+  buildCompTree,
+  compLeafKeys,
+  FilterPanel,
+  matchesCompPrefix,
+} from "./FilterPanel";
 import { cn } from "@/lib/tailwind";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { t } from "@/lib/t";
@@ -95,42 +100,34 @@ function CompetitionsSection({
           className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4 shadow-sm"
         >
           <h3 className="text-sm font-semibold">{g.sport}</h3>
+          {/* One line per competition: the category + how many registered.
+              We show the COUNT only (owner 2026-06-16) — the school-name chips
+              repeated the directory table and made long lists unreadable. */}
           <ul className="mt-1 flex flex-col divide-y divide-border/60">
             {g.rows.map((r) => (
-              <li key={r.leafKey} className="flex flex-col gap-1 py-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className={cn(
-                      "min-w-0 truncate text-sm",
-                      r.institutions.length === 0 && "text-muted-foreground",
-                    )}
-                    title={r.label}
-                  >
-                    {r.label}
-                  </span>
-                  <span
-                    className={cn(
-                      "shrink-0 rounded-md px-1.5 py-0.5 font-tabular text-xs font-medium",
-                      r.institutions.length > 0
-                        ? "bg-primary/10 text-primary"
-                        : "bg-muted text-muted-foreground/60",
-                    )}
-                  >
-                    {r.institutions.length}
-                  </span>
-                </div>
-                {r.institutions.length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {r.institutions.map((name) => (
-                      <span
-                        key={name}
-                        className="rounded-md bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground"
-                      >
-                        {name}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
+              <li
+                key={r.leafKey}
+                className="flex items-center justify-between gap-2 py-1.5"
+              >
+                <span
+                  className={cn(
+                    "min-w-0 truncate text-sm",
+                    r.institutions.length === 0 && "text-muted-foreground",
+                  )}
+                  title={r.label}
+                >
+                  {r.label}
+                </span>
+                <span
+                  className={cn(
+                    "shrink-0 rounded-md px-1.5 py-0.5 font-tabular text-xs font-medium",
+                    r.institutions.length > 0
+                      ? "bg-primary/10 text-primary"
+                      : "bg-muted text-muted-foreground/60",
+                  )}
+                >
+                  {r.institutions.length}
+                </span>
               </li>
             ))}
           </ul>
@@ -284,9 +281,12 @@ export function PublicDirectoryPage(): React.ReactElement {
         set.add(e.name);
       }
     }
+    // Admins can rename any headline stat in the form builder; the sport name
+    // is just the default (owner 2026-06-16).
+    const custom = (dir.data?.kpi_labels ?? {}) as Record<string, string>;
     return [...sports].map(([key, label]) => ({
       key,
-      label,
+      label: (custom[key] ?? "").trim() || label,
       count: byGame.get(key)?.size ?? 0,
     }));
   }, [dir.data]);
@@ -345,9 +345,15 @@ export function PublicDirectoryPage(): React.ReactElement {
   // filtered groups — otherwise a strict filter would make the tab vanish.
   const hasCompetitions = (d.competitions ?? []).length > 0;
   const tabsVisible = hasCompetitions;
+  // Count each partially/fully selected competition GROUP as one filter (not
+  // each underlying leaf), so picking a whole sport reads as "1", not "7".
+  const compFilterCount = compTree.reduce(
+    (n, root) => n + (compLeafKeys(root).some((l) => compSel.has(l)) ? 1 : 0),
+    0,
+  );
   const activeFilterCount =
     (search.trim() !== "" ? 1 : 0) +
-    compSel.size +
+    compFilterCount +
     Object.values(filters).filter(Boolean).length;
   const clearFilters = (): void => {
     setSearch("");

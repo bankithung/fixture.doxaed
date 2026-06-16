@@ -100,6 +100,65 @@ def test_invalid_status_rejected():
     assert r.status_code == 400
 
 
+def test_rejecting_org_response_hides_school_from_public_directory():
+    """Reported bug: rejecting a Stage-1 submission in "Review raw submissions"
+    left the school on the PUBLIC directory, because the public surfaces gate on
+    Institution.status, not FormResponse.status. The review must propagate."""
+    from apps.teams.models import Institution, InstitutionStatus
+
+    admin, t, f = _setup()
+    f.status = "open"  # directory is exposed once published (open/closed), not draft
+    f.save(update_fields=["status"])
+    resp = FormResponse.objects.filter(form=f).first()
+    inst = Institution.objects.create(
+        organization=t.organization, tournament=t, slug="mh", name="MH",
+        status=InstitutionStatus.REGISTERED, source_response_id=resp.id,
+    )
+    resp.mapped_entities = {"institution_id": str(inst.id)}
+    resp.save(update_fields=["mapped_entities"])
+
+    c = APIClient()
+    c.force_authenticate(user=admin)
+
+    # Visible while registered.
+    body = APIClient().get(f"/api/forms/{f.id}/directory/").json()
+    assert [e["name"] for e in body["entries"]] == ["MH"]
+
+    # Reject the raw submission -> institution flips to rejected -> gone publicly.
+    r = c.patch(f"/api/forms/{f.id}/responses/{resp.id}/", {"status": "rejected"}, format="json")
+    assert r.status_code == 200
+    inst.refresh_from_db()
+    assert inst.status == InstitutionStatus.REJECTED
+    body = APIClient().get(f"/api/forms/{f.id}/directory/").json()
+    assert body["entries"] == []
+
+    # Un-reject (accept) -> restored to registered -> visible again.
+    c.patch(f"/api/forms/{f.id}/responses/{resp.id}/", {"status": "accepted"}, format="json")
+    inst.refresh_from_db()
+    assert inst.status == InstitutionStatus.REGISTERED
+
+
+def test_rejecting_org_response_leaves_a_withdrawn_school_withdrawn():
+    """A deliberate withdraw (school pulled out) outranks a raw-submission
+    reject — both hide it, but we don't silently rewrite the reason."""
+    from apps.teams.models import Institution, InstitutionStatus
+
+    admin, t, f = _setup()
+    resp = FormResponse.objects.filter(form=f).first()
+    inst = Institution.objects.create(
+        organization=t.organization, tournament=t, slug="mh", name="MH",
+        status=InstitutionStatus.WITHDRAWN, source_response_id=resp.id,
+    )
+    resp.mapped_entities = {"institution_id": str(inst.id)}
+    resp.save(update_fields=["mapped_entities"])
+
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    c.patch(f"/api/forms/{f.id}/responses/{resp.id}/", {"status": "rejected"}, format="json")
+    inst.refresh_from_db()
+    assert inst.status == InstitutionStatus.WITHDRAWN
+
+
 def test_responses_outsider_404():
     _admin, _t, f = _setup()
     outsider = _verified("out@test.local")

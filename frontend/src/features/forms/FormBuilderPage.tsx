@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -66,23 +66,57 @@ function SettingsPanel({
   const [title, setTitle] = useState(form.title);
   const [confirmation, setConfirmation] = useState(form.confirmation_message);
   const [closesAt, setClosesAt] = useState(toLocalInput(form.closes_at));
+  // Instructions shown to respondents at the top of the PUBLIC form (stored on
+  // the form's `description`; the institution + team forms both render it).
+  const [instructions, setInstructions] = useState(form.description ?? "");
   // Public-directory headline KPIs (org-registration forms only): default =
   // total + per-game registrations; admins can reduce to the total only.
   const hasDirectory = form.purpose === "organization_registration";
   const [kpiMode, setKpiMode] = useState<string>(
     form.settings?.directory_kpis === "total" ? "total" : "games",
   );
+  // Per-game headline-stat names. The sport name is the default; admins can
+  // rename each one. Games come from the generated sports question's options.
+  const games = useMemo<{ key: string; label: string }[]>(() => {
+    const sportsField = (form.settings as { sports_field?: string } | undefined)
+      ?.sports_field;
+    if (!sportsField) return [];
+    for (const s of form.schema?.sections ?? [])
+      for (const f of s.fields ?? [])
+        if (f.key === sportsField)
+          return (f.options ?? []).map((o) => ({
+            key: String(o.value),
+            label: o.label,
+          }));
+    return [];
+  }, [form]);
+  const [kpiLabels, setKpiLabels] = useState<Record<string, string>>(
+    () => (form.settings?.kpi_labels as Record<string, string>) ?? {},
+  );
 
   const save = useMutation({
-    mutationFn: () =>
-      formsApi.update(form.id, {
+    mutationFn: () => {
+      const cleanedKpis = Object.fromEntries(
+        Object.entries(kpiLabels)
+          .map(([k, v]) => [k, v.trim()] as const)
+          .filter(([, v]) => v !== ""),
+      );
+      return formsApi.update(form.id, {
         title: title.trim(),
+        description: instructions,
         confirmation_message: confirmation,
         closes_at: closesAt ? new Date(closesAt).toISOString() : null,
         ...(hasDirectory
-          ? { settings: { ...(form.settings ?? {}), directory_kpis: kpiMode } }
+          ? {
+              settings: {
+                ...(form.settings ?? {}),
+                directory_kpis: kpiMode,
+                kpi_labels: cleanedKpis,
+              },
+            }
           : {}),
-      }),
+      });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["form", form.id] });
       qc.invalidateQueries({ queryKey: ["forms", tournamentId] });
@@ -134,6 +168,22 @@ function SettingsPanel({
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
+            <Label htmlFor="form-instructions">{t("Instructions")}</Label>
+            <textarea
+              id="form-instructions"
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              rows={3}
+              placeholder={t(
+                "Shown at the top of the public form — e.g. who can register, documents to keep ready, the deadline.",
+              )}
+              className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            />
+            <p className="text-xs text-muted-foreground">
+              {t("Respondents read this before they start filling the form.")}
+            </p>
+          </div>
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="form-confirm">{t("Confirmation message")}</Label>
             <Input
               id="form-confirm"
@@ -161,6 +211,32 @@ function SettingsPanel({
               <p className="text-xs text-muted-foreground">
                 {t("What the public directory shows at the top of the page.")}
               </p>
+              {kpiMode === "games" && games.length > 0 ? (
+                <div className="mt-1 flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {t("Stat names (leave blank to use the game's name)")}
+                  </p>
+                  {games.map((g) => (
+                    <div key={g.key} className="flex items-center gap-2">
+                      <span
+                        className="w-28 shrink-0 truncate text-xs text-muted-foreground"
+                        title={g.label}
+                      >
+                        {g.label}
+                      </span>
+                      <Input
+                        value={kpiLabels[g.key] ?? ""}
+                        onChange={(e) =>
+                          setKpiLabels((s) => ({ ...s, [g.key]: e.target.value }))
+                        }
+                        placeholder={g.label}
+                        aria-label={t(`Stat name for ${g.label}`)}
+                        className="h-8"
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div>

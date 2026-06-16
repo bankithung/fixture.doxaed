@@ -58,6 +58,20 @@ export function matchesCompPrefix(
   );
 }
 
+/** The deepest competition leaf keys under a node (the node itself when it has
+ *  no children). Selection is tracked in terms of these real leaves, so a parent
+ *  is "checked" exactly when every leaf beneath it is selected. */
+export function compLeafKeys(node: CompNode): string[] {
+  return node.children.length ? node.children.flatMap(compLeafKeys) : [node.key];
+}
+
+/** Every branch (has-children) key in a subtree, including the node itself —
+ *  the set to expand so ticking a parent reveals all its sub-options at once. */
+function compBranchKeys(node: CompNode): string[] {
+  if (!node.children.length) return [];
+  return [node.key, ...node.children.flatMap(compBranchKeys)];
+}
+
 export function CompTreeRow({
   node,
   depth,
@@ -77,6 +91,24 @@ export function CompTreeRow({
   // list of sports; the chevron drills in level by level.
   const hasKids = node.children.length > 0;
   const isOpen = expanded.has(node.key);
+  // Hierarchical (tristate) selection: ticking a parent ticks every leaf under
+  // it; unticking any leaf drops the parent to "indeterminate" while its other
+  // leaves stay selected. We toggle the real leaves so filtering stays a plain
+  // union of leaf keys.
+  const leaves = compLeafKeys(node);
+  const selectedLeaves = leaves.reduce(
+    (n, l) => n + (selected.has(l) ? 1 : 0),
+    0,
+  );
+  const checked = selectedLeaves > 0 && selectedLeaves === leaves.length;
+  const indeterminate = selectedLeaves > 0 && !checked;
+  const toggleSelf = (): void => {
+    const next = !checked; // empty/indeterminate → select all; full → clear all
+    leaves.forEach((l) => onToggle(l, next));
+    // Selecting a branch opens it (and every level beneath) so the just-picked
+    // leaves are visible to review or untick — no manual drill-in needed.
+    if (next && hasKids) compBranchKeys(node).forEach((k) => onExpand(k, true));
+  };
   return (
     <>
       <div
@@ -107,8 +139,11 @@ export function CompTreeRow({
         <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
           <input
             type="checkbox"
-            checked={selected.has(node.key)}
-            onChange={(e) => onToggle(node.key, e.target.checked)}
+            checked={checked}
+            ref={(el) => {
+              if (el) el.indeterminate = indeterminate;
+            }}
+            onChange={toggleSelf}
             className="h-3.5 w-3.5 accent-[hsl(var(--primary))]"
           />
           <span

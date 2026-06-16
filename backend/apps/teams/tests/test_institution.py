@@ -173,6 +173,36 @@ def test_api_patch_withdraw_institution():
     assert inst.status == "withdrawn"
 
 
+@pytest.mark.parametrize(
+    "inst_status,expected_resp",
+    [("rejected", "rejected"), ("withdrawn", "rejected"), ("registered", "accepted")],
+)
+def test_api_institution_review_mirrors_raw_submission_status(inst_status, expected_resp):
+    """Reviewing an institution in the "Registered institutions" table writes the
+    matching review onto the raw Stage-1 submission, so "Review raw submissions"
+    never disagrees (a reject in one place reading 'submitted' in the other looks
+    like the action failed)."""
+    from apps.forms.models import Form, FormResponse
+
+    admin = _admin()
+    t = create_tournament(user=admin, name="Cup")
+    f = Form.objects.create(organization=t.organization, tournament=t, slug="r",
+                            title="R", purpose="organization_registration")
+    resp = FormResponse.objects.create(form=f, organization=t.organization,
+                                       tournament=t, title="Linked High")
+    inst = get_or_create_institution(tournament=t, name="Linked High")
+    inst.source_response_id = resp.id
+    inst.save(update_fields=["source_response_id"])
+
+    r = _client(admin).patch(
+        f"/api/tournaments/{t.id}/institutions/{inst.id}/",
+        {"status": inst_status}, format="json",
+    )
+    assert r.status_code == 200, r.content
+    resp.refresh_from_db()
+    assert resp.status == expected_resp
+
+
 def test_api_admin_add_team_under_institution():
     admin = _admin()
     t = create_tournament(user=admin, name="Cup")

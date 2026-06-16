@@ -78,6 +78,9 @@ export interface DirectoryPayload {
   count: number;
   /** Admin's headline-KPI choice: total + per-game (default) or total only. */
   kpi_mode?: "games" | "total";
+  /** Admin-set custom names per game (sport key → display label); the sport
+   *  name is used as the default when a key is absent. */
+  kpi_labels?: Record<string, string>;
   /** True while the form still accepts submissions (drives the register CTA). */
   form_open?: boolean;
 }

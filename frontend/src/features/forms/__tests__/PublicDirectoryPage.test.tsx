@@ -190,21 +190,89 @@ describe("PublicDirectoryPage", () => {
     expect(within(summary).queryByText("Sepak Takraw")).toBeNull();
   });
 
-  it("applies the active filters to the Competitions tab", async () => {
+  it("applies the active filters to the Competitions tab (counts only)", async () => {
     renderPage();
     await screen.findByText("Grace High");
 
     await userEvent.click(screen.getByRole("tab", { name: "Competitions" }));
-    // Unfiltered: both institutions appear as chips under their competitions.
-    expect(screen.getAllByText("Grace High").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Mount Hermon")).toHaveLength(2);
+    const section = screen.getByRole("region", {
+      name: "Entries by competition",
+    });
+    // The breakdown shows a COUNT per competition, never the school names
+    // (owner 2026-06-16). Unfiltered: U-14 — Girls counts 2 schools.
+    expect(within(section).queryByText("Grace High")).toBeNull();
+    const girlsRow = () =>
+      within(section).getByText("U-14 — Girls").closest("li") as HTMLElement;
+    expect(within(girlsRow()).getByText("2")).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText("Search"), "Mount");
 
-    // The competitions view honours the search: Grace High's chip is gone,
-    // Mount Hermon stays listed under both of its competitions.
+    // The search narrows to Mount Hermon → the Girls count drops 2 → 1.
+    await waitFor(() =>
+      expect(within(girlsRow()).getByText("1")).toBeInTheDocument(),
+    );
+    expect(within(section).queryByText("Grace High")).toBeNull();
+  });
+
+  it("uses the admin's custom KPI label instead of the game name", async () => {
+    vi.mocked(formsApi.directory).mockResolvedValue({
+      ...DATA,
+      kpi_labels: { sepak: "Sepak (B&G)" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    renderPage();
+    await screen.findByText("Grace High");
+
+    const summary = screen.getByRole("region", {
+      name: "Registration summary",
+    });
+    expect(within(summary).getByText("Sepak (B&G)")).toBeInTheDocument();
+    expect(within(summary).queryByText("Sepak Takraw")).toBeNull();
+  });
+
+  it("competition filter: a leaf narrows, the parent shows partial, ticking the parent restores all", async () => {
+    renderPage();
+    await screen.findByText("Grace High");
+
+    // Drill in to the gender leaves (branches start collapsed).
+    await userEvent.click(
+      screen.getByRole("button", { name: "Expand Sepak Takraw" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Expand U-14" }));
+
+    // Tick only the Boys leaf → schools without a Boys entry drop out. The
+    // accessible name carries the trailing count, so match by prefix.
+    await userEvent.click(screen.getByRole("checkbox", { name: /^Boys/ }));
     await waitFor(() => expect(screen.queryByText("Grace High")).toBeNull());
-    expect(screen.getAllByText("Mount Hermon")).toHaveLength(2);
+    expect(screen.getByText("Mount Hermon")).toBeInTheDocument();
+
+    // The Sepak Takraw parent is now partially selected (indeterminate).
+    const sepak = screen.getByRole("checkbox", {
+      name: /^Sepak Takraw/,
+    }) as HTMLInputElement;
+    expect(sepak).not.toBeChecked();
+    expect(sepak.indeterminate).toBe(true);
+
+    // Ticking the parent selects everything under it → Grace High returns.
+    await userEvent.click(sepak);
+    await waitFor(() =>
+      expect(screen.getByText("Grace High")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("Mount Hermon")).toBeInTheDocument();
+  });
+
+  it("ticking a root opens its whole branch so the sub-options are visible", async () => {
+    renderPage();
+    await screen.findByText("Grace High");
+
+    // Leaves are hidden initially (branches start collapsed).
+    expect(screen.queryByRole("checkbox", { name: /^Girls/ })).toBeNull();
+
+    // Tick the Sepak Takraw root → every level beneath opens automatically
+    // and the leaves come up already selected.
+    await userEvent.click(screen.getByRole("checkbox", { name: /^Sepak Takraw/ }));
+    expect(await screen.findByRole("checkbox", { name: /^Girls/ })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /^Boys/ })).toBeChecked();
   });
 
   it("renders stacked cards and a filter bottom-sheet on mobile", async () => {

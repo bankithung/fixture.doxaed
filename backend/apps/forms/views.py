@@ -646,6 +646,42 @@ class FormResponsesView(GenericAPIView):
         return resp
 
 
+def _sync_institution_from_response(response: FormResponse, new_status: str) -> None:
+    """Propagate a Stage-1 raw-submission review decision onto the institution it
+    created, so the PUBLIC surfaces reflect it.
+
+    The public directory and the team-form school list both gate on
+    ``Institution.status`` (they exclude ``rejected``/``withdrawn``), NOT on the
+    raw ``FormResponse.status``. Without this, rejecting a submission in "Review
+    raw submissions" left the school visible to the public — the reported bug.
+
+    Rejecting hides the school; un-rejecting (accept/submit/waitlist) restores it.
+    Only the ``registered`` <-> ``rejected`` pair is toggled — a deliberate
+    ``withdrawn`` (school pulled out, also hidden) is left intact.
+    """
+    from apps.teams.models import Institution, InstitutionStatus
+
+    iid = (response.mapped_entities or {}).get("institution_id")
+    if not iid:
+        return
+    inst = Institution.objects.filter(id=iid, deleted_at__isnull=True).first()
+    if inst is None:
+        return
+    if new_status == ResponseStatus.REJECTED:
+        target = (
+            inst.status
+            if inst.status == InstitutionStatus.WITHDRAWN
+            else InstitutionStatus.REJECTED
+        )
+    elif inst.status == InstitutionStatus.REJECTED:
+        target = InstitutionStatus.REGISTERED
+    else:
+        target = inst.status
+    if target != inst.status:
+        inst.status = target
+        inst.save(update_fields=["status", "updated_at"])
+
+
 class FormResponseDetailView(GenericAPIView):
     """`PATCH /api/forms/{id}/responses/{rid}/` — review status (accept/reject/...)."""
 
@@ -663,6 +699,10 @@ class FormResponseDetailView(GenericAPIView):
             raise DRFValidationError({"detail": "invalid_status"})
         r.status = new_status
         r.save(update_fields=["status"])
+        # A Stage-1 review decision must reach the public surfaces, which gate on
+        # the mapped institution's status — keep the two in lockstep.
+        if form.purpose == FormPurpose.ORGANIZATION_REGISTRATION:
+            _sync_institution_from_response(r, new_status)
         return Response(FormResponseSerializer(r).data)
 
 
@@ -859,6 +899,11 @@ class PublicInstitutionDirectoryView(GenericAPIView):
         kpi_mode = settings.get("directory_kpis")
         if kpi_mode not in ("games", "total"):
             kpi_mode = "games"
+        # Admin-set custom headline-stat names, keyed by game (top-level sport
+        # key); the page falls back to the sport name for any key absent here.
+        kpi_labels = settings.get("kpi_labels")
+        if not isinstance(kpi_labels, dict):
+            kpi_labels = {}
         return Response(
             {
                 "tournament_name": form.tournament.name,
@@ -868,6 +913,7 @@ class PublicInstitutionDirectoryView(GenericAPIView):
                 "competitions": competitions,
                 "count": len(entries),
                 "kpi_mode": kpi_mode,
+                "kpi_labels": kpi_labels,
                 # Lets the directory page link back to the registration form
                 # while it is still accepting submissions.
                 "form_open": is_open(form),
