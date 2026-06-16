@@ -1,9 +1,11 @@
+import { useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
   CheckSquare,
   ChevronDownSquare,
   Circle,
+  GripVertical,
   Plus,
   Trash2,
 } from "lucide-react";
@@ -15,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { t } from "@/lib/t";
+import { cn } from "@/lib/tailwind";
 
 const ROLE_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "No special role" },
@@ -59,6 +62,12 @@ export function FieldEditor({
   const isChoice = CHOICE_TYPES.has(field.type);
   const isScale = SCALE_TYPES.has(field.type);
   const options = field.options ?? [];
+  // Drag-to-reorder (mouse) state: which row is being dragged + the row it's
+  // hovering over. The arrow buttons stay as the keyboard-accessible path.
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+  // Bulk-add text (comma/newline-separated names → one option each).
+  const [bulk, setBulk] = useState("");
 
   const setOption = (i: number, patch: Partial<Option>): void =>
     updateField(sectionKey, field.key, {
@@ -86,6 +95,65 @@ export function FieldEditor({
     [next[i], next[j]] = [next[j], next[i]];
     updateField(sectionKey, field.key, { options: next });
   };
+  // Drop a dragged option at any position (remove from `from`, insert at `to`
+  // — the dragged option lands exactly on the target row's index).
+  const reorderOption = (from: number, to: number): void => {
+    if (
+      from === to ||
+      from < 0 ||
+      to < 0 ||
+      from >= options.length ||
+      to >= options.length
+    )
+      return;
+    const next = [...options];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    updateField(sectionKey, field.key, { options: next });
+  };
+
+  // Bulk-add: type/paste names separated by commas or new lines → one option
+  // each (e.g. a list of schools). Blanks and labels already present are
+  // skipped; the stored value is slugged from the label, uniquified, falling
+  // back to optN when the name has no usable letters/digits.
+  const slugValue = (label: string): string =>
+    label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 40);
+  const addFromList = (): void => {
+    const names = bulk
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (names.length === 0) return;
+    const seenLabels = new Set(options.map((o) => o.label.trim().toLowerCase()));
+    const usedValues = new Set(options.map((o) => o.value));
+    const additions: Option[] = [];
+    for (const label of names) {
+      const lower = label.toLowerCase();
+      if (seenLabels.has(lower)) continue;
+      seenLabels.add(lower);
+      let value = slugValue(label);
+      if (!value || usedValues.has(value)) {
+        let n = options.length + additions.length + 1;
+        let candidate = value ? `${value}_${n}` : `opt${n}`;
+        while (usedValues.has(candidate)) {
+          n += 1;
+          candidate = value ? `${value}_${n}` : `opt${n}`;
+        }
+        value = candidate;
+      }
+      usedValues.add(value);
+      additions.push({ label, value });
+    }
+    if (additions.length === 0) return;
+    updateField(sectionKey, field.key, {
+      options: [...options, ...additions],
+    });
+    setBulk("");
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -93,7 +161,50 @@ export function FieldEditor({
       {isChoice ? (
         <div className="flex flex-col gap-2">
           {options.map((o, i) => (
-            <div key={i} className="flex items-center gap-2">
+            <div
+              key={i}
+              data-option-row
+              onDragOver={(e) => {
+                if (dragIndex === null) return;
+                e.preventDefault();
+                if (overIndex !== i) setOverIndex(i);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragIndex !== null) reorderOption(dragIndex, i);
+                setDragIndex(null);
+                setOverIndex(null);
+              }}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md transition-colors",
+                dragIndex === i ? "opacity-50" : "",
+                overIndex === i && dragIndex !== null && dragIndex !== i
+                  ? "ring-2 ring-primary/50"
+                  : "",
+              )}
+            >
+              {/* Drag handle — mouse reorder. Only the handle is draggable so
+                  the label/value inputs stay text-selectable. Keyboard users
+                  reorder with the arrow buttons. */}
+              <span
+                aria-hidden="true"
+                draggable
+                onDragStart={(e) => {
+                  setDragIndex(i);
+                  e.dataTransfer.effectAllowed = "move";
+                  const row = e.currentTarget.closest("[data-option-row]");
+                  if (row instanceof HTMLElement)
+                    e.dataTransfer.setDragImage(row, 12, row.offsetHeight / 2);
+                }}
+                onDragEnd={() => {
+                  setDragIndex(null);
+                  setOverIndex(null);
+                }}
+                title={t("Drag to reorder")}
+                className="flex h-9 w-4 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/40 hover:text-muted-foreground active:cursor-grabbing"
+              >
+                <GripVertical className="h-4 w-4" />
+              </span>
               {optionGlyph(field.type)}
               <Input
                 aria-label={t("Option label")}
@@ -144,6 +255,48 @@ export function FieldEditor({
               <Plus aria-hidden="true" className="h-4 w-4" />
               {t("Add option")}
             </Button>
+          </div>
+
+          {/* Bulk-add — paste/type a comma- or newline-separated list (e.g.
+              every school's name) and Enter turns each into an option. */}
+          <div className="flex flex-col gap-1.5 rounded-md border border-dashed border-border bg-muted/20 p-2.5">
+            <Label htmlFor={`bulk-${field.key}`} className="text-xs font-medium">
+              {t("Add many at once")}
+            </Label>
+            <div className="flex items-start gap-2">
+              <textarea
+                id={`bulk-${field.key}`}
+                value={bulk}
+                onChange={(e) => setBulk(e.target.value)}
+                onKeyDown={(e) => {
+                  // Enter adds the list; Shift+Enter keeps a newline so a
+                  // multi-line paste can be edited before adding.
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    addFromList();
+                  }
+                }}
+                rows={2}
+                placeholder={t(
+                  "Type names separated by commas, then press Enter — e.g. St. Xavier's, Don Bosco, Holy Cross",
+                )}
+                aria-label={t("Add many options at once")}
+                className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addFromList}
+                disabled={!bulk.trim()}
+              >
+                <Plus aria-hidden="true" className="h-4 w-4" />
+                {t("Add")}
+              </Button>
+            </div>
+            <p className="text-[0.6875rem] text-muted-foreground">
+              {t("Commas or new lines both work. Press Enter to add; duplicates are skipped.")}
+            </p>
           </div>
         </div>
       ) : null}
