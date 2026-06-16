@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CheckCircle2, KeyRound, Lock, ShieldCheck } from "lucide-react";
+import { Building2, CheckCircle2, KeyRound, Lock, ShieldCheck } from "lucide-react";
 import { formsApi } from "@/api/forms";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
@@ -465,6 +465,14 @@ export function PublicFormPage(): React.ReactElement {
           >
             {done || t("Thank you! Your submission has been recorded.")}
           </p>
+          {/* Straight to the public list of registered institutions. */}
+          <a
+            href={`/f/${form?.id ?? formId}/directory`}
+            className="mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <Building2 aria-hidden="true" className="h-4 w-4" />
+            {t("View the public directory")}
+          </a>
         </Centered>
       </PublicShell>
     );
