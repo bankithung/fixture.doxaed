@@ -6,6 +6,16 @@ import type {
 } from "@/features/forms/types";
 
 /** Public payload returned by the unauthenticated form endpoints. */
+/** Display metadata for a stored upload: filename, signed view URL, MIME type
+ * (so the renderer can show images inline and link the rest). Keyed by upload_ref. */
+export interface FileMeta {
+  name: string;
+  /** The respondent's document name ("Aadhaar card"); "" when unnamed. */
+  label?: string;
+  url: string;
+  content_type: string;
+}
+
 export interface PublicFormPayload {
   form?: {
     id: string;
@@ -25,6 +35,8 @@ export interface PublicFormPayload {
    * (hidden; server-authoritative), `bound` = the fixed entity for a banner.
    */
   prefill?: Record<string, unknown>;
+  /** Filename + signed view URL for every file referenced in `prefill`. */
+  file_meta?: Record<string, FileMeta>;
   locked?: string[];
   bound?: { institution_id: string; label: string };
   /** Keys of choice fields whose options are competition keys — the renderer
@@ -73,6 +85,9 @@ export interface DirectoryCompetition extends DirectoryCompetitionRef {
 export interface DirectoryPayload {
   tournament_name: string;
   form_title: string;
+  /** Header for the name column (the institution-name field's own label, e.g.
+   *  "School name"); falls back to "Institution". */
+  name_label?: string;
   filters: DirectoryFilter[];
   entries: DirectoryEntry[];
   /** Every configured competition with its registration count (W2-E). */
@@ -184,6 +199,7 @@ export const formsApi = {
       expires_in: number;
       editing: boolean;
       prefill: Record<string, unknown> | null;
+      file_meta?: Record<string, FileMeta>;
     }>(`/api/forms/${formId}/team-access/`, body),
   publicSubmit: (
     formId: string,
@@ -191,6 +207,7 @@ export const formsApi = {
       answers: Record<string, unknown>;
       event_id: string;
       upload_refs?: Record<string, string>;
+      file_labels?: Record<string, string>;
       access_token?: string;
     },
   ) =>
@@ -228,6 +245,7 @@ export const formsApi = {
       answers: Record<string, unknown>;
       event_id: string;
       upload_refs?: Record<string, string>;
+      file_labels?: Record<string, string>;
     },
   ) =>
     api.post<{ response_id: string; message: string }>(

@@ -1,12 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Building2, CheckCircle2, KeyRound, Lock, ShieldCheck } from "lucide-react";
+import {
+  Building2,
+  CheckCircle2,
+  Info,
+  KeyRound,
+  Lock,
+  MessageCircle,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 import { formsApi } from "@/api/forms";
+import type { FileMeta } from "@/api/forms";
 import { ApiError } from "@/types/api";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RichText } from "@/components/ui/RichText";
+import { cn } from "@/lib/tailwind";
 import { compressImage } from "@/lib/compressImage";
 import { newEventId } from "@/lib/eventId";
 import {
@@ -70,6 +81,20 @@ export function PublicFormPage(): React.ReactElement {
 
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [uploadRefs, setUploadRefs] = useState<Record<string, string>>({});
+  // Filename + signed view URL for files already on the server, revealed by the
+  // code-exchange / manager prefill (the bound-link case is merged in via
+  // useMemo below). Lets prefilled uploads show as names, thumbnails and links.
+  const [accessFileMeta, setAccessFileMeta] = useState<Record<string, FileMeta>>(
+    {},
+  );
+  // Document names the respondent typed, keyed by upload_ref (edits only —
+  // prior-submission names are merged in from fileMeta at submit time).
+  const [fileLabels, setFileLabels] = useState<Record<string, string>>({});
+  // Client-side display metadata for files uploaded THIS session (name, type, an
+  // object URL to preview), so the review step shows them like prefilled files.
+  const [localFileMeta, setLocalFileMeta] = useState<Record<string, FileMeta>>(
+    {},
+  );
   const [stepIndex, setStepIndex] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [eventId] = useState(newEventId); // stable across retries (idempotency)
@@ -95,6 +120,33 @@ export function PublicFormPage(): React.ReactElement {
       setAnswers((a) => ({ ...data.prefill, ...a }));
     }
   }, [data]);
+
+  // Merge bound-link file metadata (on the payload) with whatever the
+  // code-exchange / manager prefill revealed — derived, so no setState-in-effect.
+  const fileMeta = useMemo(
+    () => ({ ...(data?.file_meta ?? {}), ...accessFileMeta }),
+    [data?.file_meta, accessFileMeta],
+  );
+  // Names carried in from a prior submission — the baseline the respondent's
+  // edits (fileLabels) layer over when the registration is re-submitted.
+  const metaLabels = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const [ref, m] of Object.entries(fileMeta))
+      if (m.label) out[ref] = m.label;
+    return out;
+  }, [fileMeta]);
+
+  // What the renderer shows for each file: server + this-session uploads, with
+  // the live document name (typed edits over prior-submission names) overlaid —
+  // so the review step reflects exactly what will be submitted.
+  const displayFileMeta = useMemo(() => {
+    const base: Record<string, FileMeta> = { ...fileMeta, ...localFileMeta };
+    const labels = { ...metaLabels, ...fileLabels };
+    const out: Record<string, FileMeta> = {};
+    for (const [ref, m] of Object.entries(base))
+      out[ref] = { ...m, label: labels[ref] ?? m.label ?? "" };
+    return out;
+  }, [fileMeta, localFileMeta, metaLabels, fileLabels]);
 
   // Fields the link locks (e.g. the institution) are hidden from the wizard —
   // their value rides along in `answers` and the server is authoritative anyway.
@@ -205,6 +257,7 @@ export function PublicFormPage(): React.ReactElement {
         // Their saved registration becomes the working answers (edit mode).
         setAnswers((a) => ({ ...a, ...res.prefill }));
       }
+      if (res.file_meta) setAccessFileMeta((m) => ({ ...m, ...res.file_meta }));
     },
     onError: (e) =>
       setCodeError(
@@ -230,6 +283,7 @@ export function PublicFormPage(): React.ReactElement {
     onSuccess: (res) => {
       setEditingPrior(res.editing);
       if (res.prefill) setAnswers((a) => ({ ...a, ...res.prefill }));
+      if (res.file_meta) setAccessFileMeta((m) => ({ ...m, ...res.file_meta }));
     },
   });
   useEffect(() => {
@@ -275,9 +329,13 @@ export function PublicFormPage(): React.ReactElement {
     () => reachableSections(schema, answers),
     [schema, answers],
   );
-  const clamped = Math.min(stepIndex, Math.max(sections.length - 1, 0));
-  const current = sections[clamped];
-  const isLast = clamped >= sections.length - 1;
+  // A virtual final "review" step (index === sections.length) lets the
+  // respondent read everything back before committing — they Submit there, not
+  // from the last question section.
+  const reviewIndex = sections.length;
+  const clamped = Math.min(stepIndex, reviewIndex);
+  const isReview = sections.length > 0 && clamped >= reviewIndex;
+  const current = isReview ? undefined : sections[clamped];
 
   const setAnswer = (key: string, value: unknown) => {
     setAnswers((a) => ({ ...a, [key]: value }));
@@ -293,21 +351,42 @@ export function PublicFormPage(): React.ReactElement {
 
   const handleUpload = async (field: Field, file: File): Promise<string> => {
     const id = form?.id ?? formId ?? "";
-    const prepared = await compressImage(file);
+    // Document fields (multi-file) compress to JPEG — scans/ID photos shrink far
+    // more that way; single-image fields (logos) keep their type for transparency.
+    const prepared = await compressImage(file, { preferJpeg: field.multiple === true });
     const res = await formsApi.publicUpload(id, field.key, prepared);
     // Key by the ref itself (not the field key) so files in repeatable groups
     // and multi-file fields all survive into `upload_refs` — the backend claims
     // every value, and the answer carries which row/field owns each ref.
     setUploadRefs((r) => ({ ...r, [res.upload_ref]: res.upload_ref }));
+    setLocalFileMeta((m) => ({
+      ...m,
+      [res.upload_ref]: {
+        name: prepared.name,
+        url:
+          prepared.type.startsWith("image/") &&
+          typeof URL.createObjectURL === "function"
+            ? URL.createObjectURL(prepared)
+            : "",
+        content_type: prepared.type,
+        label: "",
+      },
+    }));
     return res.upload_ref;
   };
 
+  const handleFileLabel = (ref: string, label: string): void =>
+    setFileLabels((m) => ({ ...m, [ref]: label }));
+
   const submit = useMutation({
     mutationFn: () => {
+      // Prior-submission names first, the respondent's edits on top.
+      const file_labels = { ...metaLabels, ...fileLabels };
       const body = {
         answers,
         event_id: eventId,
         upload_refs: uploadRefs,
+        file_labels,
         ...(accessToken ? { access_token: accessToken } : {}),
       };
       return token !== undefined
@@ -315,6 +394,7 @@ export function PublicFormPage(): React.ReactElement {
             answers,
             event_id: eventId,
             upload_refs: uploadRefs,
+            file_labels,
           })
         : formsApi.publicSubmit(form?.id ?? formId ?? "", body);
     },
@@ -367,7 +447,9 @@ export function PublicFormPage(): React.ReactElement {
       return;
     }
     if (!validateCurrent()) return;
-    setStepIndex((i) => Math.min(i + 1, sections.length - 1));
+    setStepIndex((i) => Math.min(i + 1, reviewIndex));
+    if (typeof window !== "undefined")
+      window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function onBack() {
@@ -497,13 +579,16 @@ export function PublicFormPage(): React.ReactElement {
   // sport-less `short_label` (W2: the flat run of chained category questions
   // was unreadable once several sports were selected). Ungrouped fields
   // render exactly as before.
-  const renderGrouped = (fields: Field[]): React.ReactNode[] => {
+  const renderGrouped = (
+    fields: Field[],
+    readOnly = false,
+  ): React.ReactNode[] => {
     const out: React.ReactNode[] = [];
     let i = 0;
     while (i < fields.length) {
       const f = fields[i];
       if (!f.group) {
-        out.push(renderField(f));
+        out.push(renderField(f, readOnly));
         i += 1;
         continue;
       }
@@ -533,7 +618,7 @@ export function PublicFormPage(): React.ReactElement {
                 className={depth > 0 ? "border-l-2 border-border pl-3" : undefined}
                 style={depth > 0 ? { marginLeft: (depth - 1) * 16 } : undefined}
               >
-                {renderField({ ...c, label: c.short_label ?? c.label })}
+                {renderField({ ...c, label: c.short_label ?? c.label }, readOnly)}
               </div>
             );
           })}
@@ -546,7 +631,7 @@ export function PublicFormPage(): React.ReactElement {
   // Render a field and, recursively, the nested follow-up fields of any selected
   // option (indented). Returns null for hidden/locked fields. Competition-scoped
   // fields show ONLY the options the selected school registered for.
-  const renderField = (raw: Field): React.ReactNode => {
+  const renderField = (raw: Field, readOnly = false): React.ReactNode => {
     if (!isVisible(raw.visibility, answers) || lockedSet.has(raw.key)) return null;
     const f =
       instLeaves && compFieldKeys.has(raw.key)
@@ -561,7 +646,7 @@ export function PublicFormPage(): React.ReactElement {
     for (const o of f.options ?? []) {
       if (o.fields?.length && optionSelected(f, o.value, answers)) {
         for (const child of o.fields) {
-          const rendered = renderField(child);
+          const rendered = renderField(child, readOnly);
           if (rendered) nested.push(rendered);
         }
       }
@@ -571,9 +656,12 @@ export function PublicFormPage(): React.ReactElement {
         <FieldRenderer
           field={f}
           value={answers[f.key]}
-          error={errors[f.key] ?? dupErrors[f.key]}
+          error={readOnly ? undefined : (errors[f.key] ?? dupErrors[f.key])}
           onChange={(v) => setAnswer(f.key, v)}
-          onUpload={handleUpload}
+          onUpload={readOnly ? undefined : handleUpload}
+          fileMeta={displayFileMeta}
+          onFileLabel={readOnly ? undefined : handleFileLabel}
+          disabled={readOnly}
         />
         {nested.length ? (
           <div className="ml-3 flex flex-col gap-5 border-l-2 border-border pl-4">
@@ -586,38 +674,63 @@ export function PublicFormPage(): React.ReactElement {
 
   return (
     <PublicShell tournamentName={data?.tournament_name}>
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6">
-        {/* Heading */}
-        <div>
-          <p className={OVERLINE}>{t("Registration")}</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
-            {t(form.title)}
-          </h1>
-          <RichText
-            html={form.description}
-            className="mt-1 text-sm text-muted-foreground"
-          />
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+      {/* Extra bottom padding reserves room for the floating contact button so it
+          never covers the Back/Next/Submit footer (notably on narrow screens). */}
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 pb-28 pt-8 sm:px-6">
+        {/* Heading — the registry link sits top-right on the same row as the title. */}
+        <div className="flex flex-col gap-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className={OVERLINE}>{t("Registration")}</p>
+              <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+                {t(form.title)}
+              </h1>
+            </div>
             <a
               href={`/f/${form.id}/directory`}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "h-8 shrink-0 px-2.5 text-xs",
+              )}
             >
-              {t("View registered organisations")} →
+              <Users aria-hidden="true" className="h-3.5 w-3.5" />
+              {t("Registered")}
             </a>
-            <button
-              type="button"
-              onClick={() => setContactOpen(true)}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
-            >
-              {t("Contact the organisers")}
-            </button>
           </div>
+
+          {/* Instructions — a highlighted callout (dates, age cut-off, rules) so
+              applicants actually read them instead of skimming grey body text. */}
+          {form.description ? (
+            <aside
+              role="note"
+              className="flex gap-3 rounded-xl border border-primary/30 bg-primary/[0.06] p-4 sm:p-5"
+            >
+              <Info aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              <RichText
+                html={form.description}
+                className="text-sm leading-relaxed text-foreground/90 [&_a]:font-medium [&_a]:text-primary [&_a]:underline [&_strong]:font-semibold"
+              />
+            </aside>
+          ) : null}
         </div>
         <ContactAdminDialog
           formId={form?.id ?? formId ?? ""}
           open={contactOpen}
           onOpenChange={setContactOpen}
         />
+
+        {/* Floating "contact" launcher — the familiar website overlay-button
+            pattern; opens the contact dialog. Fixed to the viewport, always
+            reachable as the applicant scrolls the form. */}
+        <button
+          type="button"
+          onClick={() => setContactOpen(true)}
+          aria-label={t("Contact the organisers")}
+          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-medium text-primary-foreground shadow-lg transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <MessageCircle aria-hidden="true" className="h-5 w-5" />
+          <span className="hidden sm:inline">{t("Contact the organisers")}</span>
+        </button>
 
         {/* Admin entry path: organizer filling the form — no access code. */}
         {data?.can_manage ? (
@@ -642,16 +755,53 @@ export function PublicFormPage(): React.ReactElement {
           </div>
         ) : null}
 
-        {/* Step indicator */}
-        {sections.length > 1 ? (
+        {/* Step indicator (the review step is the final step). */}
+        {sections.length >= 1 ? (
           <p className="font-tabular text-xs text-muted-foreground" aria-live="polite">
-            {t("Step")} {clamped + 1} {t("of")} {sections.length}
-            {current?.title ? ` · ${t(current.title)}` : ""}
+            {t("Step")} {clamped + 1} {t("of")} {sections.length + 1}
+            {isReview
+              ? ` · ${t("Review")}`
+              : current?.title
+                ? ` · ${t(current.title)}`
+                : ""}
           </p>
         ) : null}
 
-        {/* Current section */}
-        {current ? (
+        {/* Review step: read everything back (read-only), then submit. */}
+        {isReview ? (
+          <section
+            aria-label={t("Review your registration")}
+            className="flex flex-col gap-6 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6"
+          >
+            <div>
+              <h2 className="text-base font-semibold">
+                {t("Review your registration")}
+              </h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {t(
+                  "Check your answers below, then submit. Use Back to change anything.",
+                )}
+              </p>
+            </div>
+            {sections.map((s, i) => {
+              const fields = renderGrouped(s.fields, true);
+              if (fields.length === 0) return null;
+              return (
+                <div
+                  key={i}
+                  className="flex flex-col gap-4 border-t border-border pt-5 first:border-t-0 first:pt-0"
+                >
+                  {s.title ? (
+                    <h3 className="text-sm font-semibold text-muted-foreground">
+                      {t(s.title)}
+                    </h3>
+                  ) : null}
+                  <div className="flex flex-col gap-5">{fields}</div>
+                </div>
+              );
+            })}
+          </section>
+        ) : current ? (
           <section
             aria-label={current.title || t("Section")}
             className="flex flex-col gap-5 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6"
@@ -758,18 +908,25 @@ export function PublicFormPage(): React.ReactElement {
           >
             {t("Back")}
           </Button>
-          {isLast ? (
+          {isReview ? (
             <Button
               type="button"
               size="lg"
-              disabled={submit.isPending || !current}
+              disabled={submit.isPending}
               onClick={onSubmit}
             >
               {submit.isPending ? t("Submitting…") : t("Submit")}
             </Button>
           ) : (
-            <Button type="button" size="lg" onClick={onNext}>
-              {t("Next")}
+            <Button
+              type="button"
+              size="lg"
+              disabled={!current}
+              onClick={onNext}
+            >
+              {sections.length > 0 && clamped === sections.length - 1
+                ? t("Review")
+                : t("Next")}
             </Button>
           )}
         </div>

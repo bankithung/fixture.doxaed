@@ -165,6 +165,33 @@ export interface TeamRow {
   players?: TeamPlayerRow[];
 }
 
+/** A stored upload's display metadata (filename, signed view URL, MIME). */
+export interface UploadRef {
+  name: string;
+  /** The respondent's document name ("Aadhaar card"); "" when unnamed. */
+  label?: string;
+  url: string;
+  content_type: string;
+}
+
+/** Rich roster detail read back from a team's originating submission: logo,
+ * coaches (+ docs), and each player's full DOB + uploaded documents merged with
+ * the domain roster (jersey/captain). Served by the registration-detail endpoint. */
+export interface TeamRegistrationDetail {
+  team_id: string;
+  logo: UploadRef | null;
+  coaches: { name: string; documents: UploadRef[] }[];
+  players: {
+    id: string;
+    name: string;
+    jersey_no: number | null;
+    position: string;
+    captain: boolean;
+    dob: string | null;
+    documents: UploadRef[];
+  }[];
+}
+
 export interface MiniTeam {
   id: string;
   name: string;
@@ -689,6 +716,12 @@ export const tournamentsApi = {
   teamCalendarLink: (id: string, teamId: string) =>
     api.post<{ token: string; url: string }>(
       `/api/tournaments/${id}/teams/${teamId}/calendar-link/`,
+    ),
+  /** Rich roster detail (logo, coaches, per-player DOB + documents) for one
+   * team — manager-only; lazily fetched when a team is expanded. */
+  teamRegistrationDetail: (id: string, teamId: string) =>
+    api.get<TeamRegistrationDetail>(
+      `/api/tournaments/${id}/teams/${teamId}/registration/`,
     ),
   /** Unified reverse-chrono slot-change feed (any tournament member). */
   scheduleChanges: (

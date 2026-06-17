@@ -155,6 +155,10 @@ class FormFileUpload(models.Model):
     upload_ref = models.UUIDField(default=uuid7, db_index=True, editable=False)
     file = models.FileField(upload_to="form_uploads/%Y/%m/")
     original_name = models.CharField(max_length=255)
+    # Human label the respondent gives a document ("Aadhaar card", "Birth
+    # certificate") so the admin knows what each upload is — set on submit from
+    # the client's per-file ``file_labels`` map; blank = fall back to the filename.
+    label = models.CharField(max_length=120, blank=True, default="")
     content_type = models.CharField(max_length=127)
     size = models.PositiveIntegerField()
     created_at = models.DateTimeField(auto_now_add=True)

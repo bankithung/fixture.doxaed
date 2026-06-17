@@ -1,5 +1,6 @@
-import { useId, useState } from "react";
-import { Plus, Search, Star, Trash2 } from "lucide-react";
+import { useEffect, useId, useState } from "react";
+import type { SyntheticEvent } from "react";
+import { ExternalLink, Plus, Search, Star, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,8 +17,25 @@ export interface FieldRenderProps {
   error?: string;
   /** Upload handler for file fields; resolves to an `upload_ref`. */
   onUpload?: (field: Field, file: File) => Promise<string>;
+  /** Display metadata for already-stored uploads (filename + signed view URL +
+   * MIME + the respondent's document name), keyed by upload_ref — lets
+   * prefilled files show as names, thumbnails and view links. */
+  fileMeta?: Record<
+    string,
+    { name: string; label?: string; url: string; content_type: string }
+  >;
+  /** Report the document name a respondent typed for an uploaded file, so the
+   * admin knows what each document is. Keyed by upload_ref. */
+  onFileLabel?: (ref: string, label: string) => void;
   /** Disable inputs (e.g. live preview that is read-only). */
   disabled?: boolean;
+}
+
+/** True for an upload we should preview inline as an image (by MIME, else by
+ * file extension as a fallback when MIME is unknown). */
+function isImageFile(name: string, contentType?: string): boolean {
+  if (contentType) return contentType.startsWith("image/");
+  return /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(name);
 }
 
 /** Address sub-fields (mirrors the backend address coercion shape). */
@@ -48,6 +66,8 @@ function FileUploadField({
   value,
   onChange,
   onUpload,
+  fileMeta,
+  onFileLabel,
   disabled,
   id,
   describedBy,
@@ -57,20 +77,45 @@ function FileUploadField({
   value: unknown;
   onChange: (value: unknown) => void;
   onUpload?: (field: Field, file: File) => Promise<string>;
+  fileMeta?: Record<
+    string,
+    { name: string; label?: string; url: string; content_type: string }
+  >;
+  onFileLabel?: (ref: string, label: string) => void;
   disabled?: boolean;
   id: string;
   describedBy?: string;
   error?: string;
 }): React.ReactElement {
   const multiple = field.multiple === true;
+  // Multi-file fields are document fields ("ID / certificate", "Coach docs") —
+  // let the respondent name each upload so the admin knows what it is. Local
+  // edits layer over any name carried in from a prior submission (fileMeta).
+  const [labels, setLabels] = useState<Record<string, string>>({});
+  const labelable = multiple && !!onFileLabel;
+  const labelFor = (ref: string): string =>
+    labels[ref] ?? fileMeta?.[ref]?.label ?? "";
+  const setLabel = (ref: string, v: string): void => {
+    setLabels((m) => ({ ...m, [ref]: v }));
+    onFileLabel?.(ref, v);
+  };
   const refs = Array.isArray(value)
     ? (value as unknown[]).map(String)
     : value
       ? [String(value)]
       : [];
   const [names, setNames] = useState<Record<string, string>>({});
+  // Object URLs for files just picked this session, so images preview instantly
+  // before the server can mint a signed URL (cleared via cleanup on unmount).
+  const [previews, setPreviews] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
+
+  // Revoke object URLs on unmount so picking many images doesn't leak blobs.
+  useEffect(
+    () => () => Object.values(previews).forEach((u) => URL.revokeObjectURL(u)),
+    [previews],
+  );
 
   const handleFiles = async (files: File[]): Promise<void> => {
     if (files.length === 0) return;
@@ -83,13 +128,17 @@ function FileUploadField({
     try {
       const added: string[] = [];
       const newNames: Record<string, string> = {};
+      const newPreviews: Record<string, string> = {};
       for (const file of files) {
         const ref = await onUpload(field, file);
         added.push(ref);
         newNames[ref] = file.name;
+        if (file.type.startsWith("image/"))
+          newPreviews[ref] = URL.createObjectURL(file);
         if (!multiple) break;
       }
       setNames((n) => ({ ...n, ...newNames }));
+      setPreviews((p) => ({ ...p, ...newPreviews }));
       onChange(multiple ? [...refs, ...added] : (added[0] ?? null));
     } catch {
       setUploadErr(
@@ -103,32 +152,77 @@ function FileUploadField({
   return (
     <div className="flex flex-col gap-2">
       {refs.length > 0 ? (
-        <ul className="flex flex-col gap-1">
-          {refs.map((ref) => (
-            <li
-              key={ref}
-              className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-sm"
-            >
-              <span className="min-w-0 truncate">
-                {names[ref] ?? t("Uploaded file")}
-              </span>
-              {!disabled ? (
-                <button
-                  type="button"
-                  aria-label={t("Remove file")}
-                  onClick={() =>
-                    onChange(multiple ? refs.filter((r) => r !== ref) : null)
-                  }
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
-                </button>
-              ) : null}
-            </li>
-          ))}
+        <ul className="flex flex-col gap-1.5">
+          {refs.map((ref) => {
+            const meta = fileMeta?.[ref];
+            const fileName = names[ref] ?? meta?.name ?? t("Uploaded file");
+            const docLabel = labelFor(ref);
+            // Show the document name as the headline when given; the filename
+            // then drops to a muted second line.
+            const primary = docLabel || fileName;
+            const url = meta?.url ?? previews[ref];
+            const showImg = !!url && isImageFile(fileName, meta?.content_type);
+            return (
+              <li
+                key={ref}
+                className="flex flex-col gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-sm"
+              >
+                <div className="flex items-center gap-2.5">
+                  {showImg ? (
+                    <img
+                      src={url}
+                      alt={primary}
+                      className="h-10 w-10 shrink-0 rounded border border-border object-cover"
+                    />
+                  ) : null}
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    {url ? (
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex min-w-0 items-center gap-1.5 text-primary hover:underline"
+                      >
+                        <span className="truncate">{primary}</span>
+                        <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                      </a>
+                    ) : (
+                      <span className="min-w-0 truncate">{primary}</span>
+                    )}
+                    {docLabel ? (
+                      <span className="truncate text-xs text-muted-foreground">
+                        {fileName}
+                      </span>
+                    ) : null}
+                  </div>
+                  {!disabled ? (
+                    <button
+                      type="button"
+                      aria-label={t("Remove file")}
+                      onClick={() =>
+                        onChange(multiple ? refs.filter((r) => r !== ref) : null)
+                      }
+                      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
+                </div>
+                {labelable && !disabled ? (
+                  <Input
+                    value={docLabel}
+                    onChange={(e) => setLabel(ref, e.target.value)}
+                    placeholder={t("Name this document (e.g. Aadhaar card)")}
+                    aria-label={t(`Document name for ${fileName}`)}
+                    className="h-8 text-xs"
+                  />
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       ) : null}
-      {multiple || refs.length === 0 ? (
+      {!disabled && (multiple || refs.length === 0) ? (
         <input
           id={id}
           type="file"
@@ -169,6 +263,8 @@ export function FieldRenderer({
   onChange,
   error,
   onUpload,
+  fileMeta,
+  onFileLabel,
   disabled,
 }: FieldRenderProps): React.ReactElement {
   const id = useId();
@@ -230,6 +326,23 @@ export function FieldRenderer({
       case "time": {
         const inputType =
           field.type === "short_text" ? "text" : field.type;
+        // For native date/time inputs the calendar only opens from the tiny
+        // built-in glyph. Open the picker when the user clicks (or focuses)
+        // anywhere on the field. showPicker() must run inside a user gesture
+        // and isn't available on every browser, so guard + swallow errors.
+        const isPicker = field.type === "date" || field.type === "time";
+        const openPicker = isPicker
+          ? (e: SyntheticEvent<HTMLInputElement>) => {
+              const el = e.currentTarget;
+              if (typeof el.showPicker === "function") {
+                try {
+                  el.showPicker();
+                } catch {
+                  /* not allowed / unsupported — fall back to native UI */
+                }
+              }
+            }
+          : undefined;
         return (
           <Input
             id={id}
@@ -244,6 +357,8 @@ export function FieldRenderer({
             aria-describedby={describedBy}
             aria-invalid={!!error}
             onChange={(e) => onChange(e.target.value)}
+            onClick={openPicker}
+            onFocus={openPicker}
           />
         );
       }
@@ -450,6 +565,8 @@ export function FieldRenderer({
             value={value}
             onChange={onChange}
             onUpload={onUpload}
+            fileMeta={fileMeta}
+            onFileLabel={onFileLabel}
             disabled={disabled}
             id={id}
             describedBy={describedBy}
@@ -505,6 +622,8 @@ export function FieldRenderer({
                       value={(row ?? {})[child.key]}
                       disabled={disabled}
                       onUpload={onUpload}
+                      fileMeta={fileMeta}
+                      onFileLabel={onFileLabel}
                       onChange={(v) =>
                         onChange(
                           rows.map((r, k) =>
@@ -564,6 +683,8 @@ export function FieldRenderer({
                 value={obj[child.key]}
                 disabled={disabled}
                 onUpload={onUpload}
+                fileMeta={fileMeta}
+                onFileLabel={onFileLabel}
                 onChange={(v) => onChange({ ...obj, [child.key]: v })}
               />
             ))}

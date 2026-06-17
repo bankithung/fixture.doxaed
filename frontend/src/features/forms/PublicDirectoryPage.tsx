@@ -643,7 +643,7 @@ export function PublicDirectoryPage(): React.ReactElement {
               <thead>
                 <tr className="text-left text-[0.6875rem] uppercase tracking-wide text-muted-foreground">
                   <th className="sticky left-0 top-0 z-30 border-b border-border bg-muted px-4 py-2.5 font-medium">
-                    {t("Institution")}
+                    {t(d.name_label ?? "Institution")}
                   </th>
                   {showType ? (
                     <th className="sticky top-0 z-20 border-b border-border bg-muted px-3 py-2.5 font-medium">

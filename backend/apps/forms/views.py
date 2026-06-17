@@ -12,7 +12,7 @@ import csv
 from typing import ClassVar
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.http import HttpResponse
+from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
@@ -273,6 +273,18 @@ def _resolve_data_sources(schema: dict, tournament) -> dict:
         .first()
     )
     images = _schema_option_images(org_form.schema) if org_form else {}
+    # The institution name is the Stage-1 dropdown's VALUE (a slug like
+    # "amazing_school"); resolve it to that option's human label ("AMAZING
+    # SCHOOL") so the institution picker reads properly. Display-only.
+    name_label_map: dict[str, str] = {}
+    if org_form:
+        nfk = (org_form.settings or {}).get("bindings", {}).get("institution_name")
+        if nfk:
+            for f in _choice_fields(org_form.schema or {}):
+                if f.get("key") == nfk:
+                    for o in f.get("options") or []:
+                        no = _norm_option(o)
+                        name_label_map[str(no["value"])] = no["label"]
     logos: dict = {}
     if images:
         resp_ids = [i.source_response_id for i in insts if i.source_response_id]
@@ -293,7 +305,7 @@ def _resolve_data_sources(schema: dict, tournament) -> dict:
     options = [
         {
             "value": str(i.id),
-            "label": i.name,
+            "label": name_label_map.get(i.name, i.name),
             "leaves": (i.attributes or {}).get("leaves") or [],
             "requires_code": bool(i.team_code_hash),
             **({"image": logos[i.id]} if i.id in logos else {}),
@@ -384,6 +396,9 @@ def _public_payload(form, link=None):
     if link is not None and (link.prefill or link.bound_entity):
         if link.prefill:
             data["prefill"] = link.prefill
+            from apps.forms.services.uploads import file_meta_for
+
+            data["file_meta"] = file_meta_for(form, link.prefill)
         bound_iid = (link.bound_entity or {}).get("institution_id")
         if bound_iid:
             from apps.teams.models import Institution
@@ -470,11 +485,16 @@ class TeamAccessView(GenericAPIView):
         )
         if prior is not None:
             prefill = {**prefill, **(prior.answers or {})}
+        from apps.forms.services.uploads import file_meta_for
+
         return Response({
             "access_token": make_access_token(inst, form),
             "expires_in": 2 * 60 * 60,
             "editing": prior is not None,
             "prefill": prefill,
+            # Names + signed view URLs for any files in the prior submission, so
+            # the renderer shows them as thumbnails/links, not bare "Uploaded file".
+            "file_meta": file_meta_for(form, prefill),
         })
 
 
@@ -618,6 +638,7 @@ class PublicFormView(GenericAPIView):
                 event_id=event_id,
                 share_link=link,
                 upload_refs=ser.validated_data.get("upload_refs"),
+                file_labels=ser.validated_data.get("file_labels"),
                 request=request,
             )
         except AnswerError as e:
@@ -670,6 +691,48 @@ class PublicUploadView(GenericAPIView):
             size=f.size,
         )
         return Response({"upload_ref": str(up.upload_ref)}, status=201)
+
+
+class ServeUploadView(GenericAPIView):
+    """`GET /api/forms/uploads/{upload_ref}/` — stream a stored form upload.
+
+    Capability-based: a valid signed ``?t=`` token authorizes anyone (the URL is
+    minted only into payloads the viewer is already entitled to — admin roster
+    detail, public-form prefill), and an authenticated tournament manager is
+    allowed too. ``?dl=1`` forces a download instead of inline display. A
+    missing file and an unauthorized request both 404 (no existence leak).
+    """
+
+    permission_classes: ClassVar[list[type[BasePermission]]] = [AllowAny]
+
+    def get(self, request, upload_ref):
+        from apps.forms.services.uploads import verify_upload_token
+
+        up = (
+            FormFileUpload.objects.select_related("form", "form__tournament")
+            .filter(upload_ref=upload_ref)
+            .first()
+        )
+        if up is None:
+            raise NotFound("file_not_found")
+        authorized = verify_upload_token(
+            request.query_params.get("t") or ""
+        ) == str(up.upload_ref)
+        if not authorized and request.user.is_authenticated:
+            authorized = (
+                accessible_tournaments(request.user)
+                .filter(id=up.form.tournament_id)
+                .exists()
+                and can_access_module(request.user, up.form.tournament, "forms")
+            )
+        if not authorized:
+            raise NotFound("file_not_found")
+        return FileResponse(
+            up.file.open("rb"),
+            as_attachment=bool(request.query_params.get("dl")),
+            filename=up.original_name,
+            content_type=up.content_type or "application/octet-stream",
+        )
 
 
 def _organiser_emails(form) -> list[str]:
@@ -967,6 +1030,22 @@ class PublicInstitutionDirectoryView(GenericAPIView):
         # The generated sports selector duplicates the Competitions grouping.
         if settings.get("sports_field"):
             chain_keys.add(settings["sports_field"])
+        # The institution-name field is typically a dropdown of canonical school
+        # names, so the stored institution name is the chosen option's VALUE (a
+        # slug like "amazing_school"). Build value->label to show the human name,
+        # and drop the field as a directory column — it would only duplicate the
+        # row's own name.
+        name_field_key = (settings.get("bindings") or {}).get("institution_name")
+        name_label_map: dict[str, str] = {}
+        name_col_label = "Institution"
+        if name_field_key:
+            for f in _choice_fields(form.schema or {}):
+                if f.get("key") == name_field_key:
+                    name_col_label = f.get("label") or name_col_label
+                    for o in f.get("options") or []:
+                        no = _norm_option(o)
+                        name_label_map[str(no["value"])] = no["label"]
+            chain_keys.add(name_field_key)
         cfields = [
             f for f in cfields
             if f.get("directory") is not False and f.get("key") not in chain_keys
@@ -1011,7 +1090,7 @@ class PublicInstitutionDirectoryView(GenericAPIView):
         sports_cfg = form.tournament.sports or []
         entries = [
             {
-                "name": i.name,
+                "name": name_label_map.get(i.name, i.name),
                 "region": i.region,
                 "kind": i.kind,
                 "logo": _entry_logo(i),
@@ -1027,6 +1106,8 @@ class PublicInstitutionDirectoryView(GenericAPIView):
             }
             for i in insts
         ]
+        # Order by the human label now shown (insts were ordered by the slug name).
+        entries.sort(key=lambda e: (e["name"] or "").lower())
         leaf_counts: dict[str, int] = {}
         for e in entries:
             for c in e["competitions"]:
@@ -1054,6 +1135,7 @@ class PublicInstitutionDirectoryView(GenericAPIView):
             {
                 "tournament_name": form.tournament.name,
                 "form_title": form.title,
+                "name_label": name_col_label,
                 "filters": filters,
                 "entries": entries,
                 "competitions": competitions,

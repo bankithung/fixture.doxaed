@@ -98,6 +98,11 @@ class PublicSubmitSerializer(serializers.Serializer):
     answers = serializers.DictField()
     event_id = serializers.UUIDField(required=False)
     upload_refs = serializers.DictField(required=False, default=dict)
+    # Per-file document names ({upload_ref: "Aadhaar card"}) so the admin knows
+    # what each uploaded document is.
+    file_labels = serializers.DictField(
+        required=False, default=dict, child=serializers.CharField(allow_blank=True),
+    )
     # Team forms: the signed token from /team-access/ proving the submitter
     # holds the institution's emailed access code.
     access_token = serializers.CharField(required=False, allow_blank=True)

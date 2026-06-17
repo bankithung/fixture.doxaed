@@ -19,6 +19,7 @@ from apps.forms.views import (
     PublicFormView,
     PublicInstitutionDirectoryView,
     PublicUploadView,
+    ServeUploadView,
     TeamAccessView,
 )
 
@@ -32,6 +33,8 @@ urlpatterns = [
     path("<uuid:form_id>/directory/", PublicInstitutionDirectoryView.as_view(),
          name="form-directory"),
     path("<uuid:form_id>/uploads/", PublicUploadView.as_view(), name="form-upload"),
+    # Serve a stored upload (signed token or manager session) — see ServeUploadView.
+    path("uploads/<uuid:upload_ref>/", ServeUploadView.as_view(), name="form-upload-serve"),
     path("<uuid:form_id>/team-access/", TeamAccessView.as_view(), name="form-team-access"),
     path("<uuid:form_id>/contact/", ContactAdminView.as_view(), name="form-contact"),
     # Responses API (organizer-only).

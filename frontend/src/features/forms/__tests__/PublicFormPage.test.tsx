@@ -152,8 +152,9 @@ describe("PublicFormPage", () => {
     await userEvent.click(screen.getByLabelText(/u14 boys/i));
     await userEvent.click(screen.getByRole("button", { name: /next/i }));
 
-    // Final section: confirm → Submit.
+    // Final section: confirm → Review → Submit.
     await userEvent.click(screen.getByLabelText(/^yes$/i));
+    await userEvent.click(screen.getByRole("button", { name: /^review$/i }));
     await userEvent.click(screen.getByRole("button", { name: /submit/i }));
 
     await waitFor(() => expect(formsApi.publicSubmit).toHaveBeenCalled());
@@ -490,6 +491,7 @@ describe("PublicFormPage", () => {
     await userEvent.click(screen.getByRole("button", { name: /next/i }));
     expect(screen.getByLabelText(/team name/i)).toHaveValue("Don Bosco Blue");
 
+    await userEvent.click(screen.getByRole("button", { name: /^review$/i }));
     await userEvent.click(screen.getByRole("button", { name: /submit/i }));
     await waitFor(() => expect(formsApi.publicSubmit).toHaveBeenCalled());
     expect(vi.mocked(formsApi.publicSubmit).mock.calls[0][1].access_token).toBe(
@@ -619,9 +621,12 @@ describe("PublicFormPage", () => {
     expect(
       await screen.findByText(/two teams here have the same name/i),
     ).toBeInTheDocument();
-    // ...and submit is blocked client-side.
-    await userEvent.click(screen.getByRole("button", { name: /submit/i }));
+    // ...and advancing past this section (to Review) is blocked client-side.
+    await userEvent.click(screen.getByRole("button", { name: /^review$/i }));
     expect(formsApi.publicSubmit).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: /submit/i }),
+    ).toBeNull();
 
     // Renaming clears the error.
     await userEvent.type(names[1], " Two");

@@ -6,7 +6,15 @@
  */
 export async function compressImage(
   file: File,
-  { maxDim = 1600, quality = 0.82, skipBelow = 600 * 1024 } = {},
+  {
+    maxDim = 1600,
+    quality = 0.82,
+    skipBelow = 600 * 1024,
+    // Force JPEG output regardless of source type. Document scans/photos don't
+    // need transparency and JPEG compresses them far smaller than PNG — set
+    // this for document uploads (logos keep PNG so transparency survives).
+    preferJpeg = false,
+  } = {},
 ): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
   // SVG/GIF (animation) don't survive a canvas round-trip well — leave them.
@@ -16,8 +24,9 @@ export async function compressImage(
     const bitmap = await createImageBitmap(file);
     const longest = Math.max(bitmap.width, bitmap.height);
     const scale = Math.min(1, maxDim / longest);
-    // Already small enough and not oversized → keep the original bytes.
-    if (scale >= 1 && file.size <= skipBelow) {
+    // Already small enough and not oversized → keep the original bytes. (A
+    // PNG we'd rather re-encode as JPEG still re-encodes below.)
+    if (scale >= 1 && file.size <= skipBelow && !(preferJpeg && file.type !== "image/jpeg")) {
       bitmap.close?.();
       return file;
     }
@@ -31,7 +40,8 @@ export async function compressImage(
     ctx.drawImage(bitmap, 0, 0, w, h);
     bitmap.close?.();
 
-    const keepAlpha = file.type === "image/png" || file.type === "image/webp";
+    const keepAlpha =
+      !preferJpeg && (file.type === "image/png" || file.type === "image/webp");
     const outType = keepAlpha ? "image/png" : "image/jpeg";
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, outType, quality),

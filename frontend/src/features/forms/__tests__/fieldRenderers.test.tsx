@@ -137,4 +137,113 @@ describe("FieldRenderer file uploads", () => {
     // name and never uploaded.
     await waitFor(() => expect(onUpload).toHaveBeenCalled());
   });
+
+  it("shows a prefilled file's real name + view link, and images as thumbnails", () => {
+    render(
+      <FieldRenderer
+        field={{ key: "logo", type: "file_upload", label: "Team logo" } as Field}
+        value="ref-img"
+        onChange={vi.fn()}
+        fileMeta={{
+          "ref-img": {
+            name: "crest.png",
+            url: "/api/forms/uploads/ref-img/?t=sig",
+            content_type: "image/png",
+          },
+        }}
+      />,
+    );
+    const link = screen.getByRole("link", { name: /crest\.png/i });
+    expect(link).toHaveAttribute("href", "/api/forms/uploads/ref-img/?t=sig");
+    const img = document.querySelector('img[src="/api/forms/uploads/ref-img/?t=sig"]');
+    expect(img).not.toBeNull();
+  });
+
+  it("lets the user name a document on a multi-file field and reports it", async () => {
+    const onFileLabel = vi.fn();
+    render(
+      <FieldRenderer
+        field={
+          { key: "docs", type: "file_upload", label: "Documents", multiple: true } as Field
+        }
+        value={["ref-pdf"]}
+        onChange={vi.fn()}
+        onFileLabel={onFileLabel}
+        fileMeta={{
+          "ref-pdf": {
+            name: "scan.pdf",
+            url: "/api/forms/uploads/ref-pdf/?t=sig",
+            content_type: "application/pdf",
+          },
+        }}
+      />,
+    );
+    const nameInput = screen.getByLabelText(/document name for scan\.pdf/i);
+    await userEvent.type(nameInput, "Aadhaar");
+    expect(onFileLabel).toHaveBeenLastCalledWith("ref-pdf", "Aadhaar");
+  });
+
+  it("shows a prior document name as the headline, filename beneath", () => {
+    render(
+      <FieldRenderer
+        field={
+          { key: "docs", type: "file_upload", label: "Documents", multiple: true } as Field
+        }
+        value={["ref-pdf"]}
+        onChange={vi.fn()}
+        onFileLabel={vi.fn()}
+        fileMeta={{
+          "ref-pdf": {
+            name: "scan.pdf",
+            label: "Birth certificate",
+            url: "/api/forms/uploads/ref-pdf/?t=sig",
+            content_type: "application/pdf",
+          },
+        }}
+      />,
+    );
+    // The link text is the document name; the filename is still shown.
+    expect(
+      screen.getByRole("link", { name: /birth certificate/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("scan.pdf")).toBeInTheDocument();
+  });
+
+  it("does not offer a name input on a single-file field (e.g. a logo)", () => {
+    render(
+      <FieldRenderer
+        field={{ key: "logo", type: "file_upload", label: "Team logo" } as Field}
+        value="ref-img"
+        onChange={vi.fn()}
+        onFileLabel={vi.fn()}
+        fileMeta={{
+          "ref-img": {
+            name: "crest.png",
+            url: "/api/forms/uploads/ref-img/?t=sig",
+            content_type: "image/png",
+          },
+        }}
+      />,
+    );
+    expect(screen.queryByLabelText(/document name/i)).toBeNull();
+  });
+
+  it("links a non-image upload without a thumbnail", () => {
+    render(
+      <FieldRenderer
+        field={{ key: "doc", type: "file_upload", label: "Doc" } as Field}
+        value="ref-pdf"
+        onChange={vi.fn()}
+        fileMeta={{
+          "ref-pdf": {
+            name: "id.pdf",
+            url: "/api/forms/uploads/ref-pdf/?t=sig",
+            content_type: "application/pdf",
+          },
+        }}
+      />,
+    );
+    expect(screen.getByRole("link", { name: /id\.pdf/i })).toBeInTheDocument();
+    expect(document.querySelector("img")).toBeNull();
+  });
 });

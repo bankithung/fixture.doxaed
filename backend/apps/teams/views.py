@@ -375,6 +375,34 @@ class TournamentTeamsListView(GenericAPIView):
         )
 
 
+class TeamRegistrationDetailView(GenericAPIView):
+    """`GET /api/tournaments/{tid}/teams/{team_id}/registration/` — the rich
+    detail the mapper drops onto the floor: team logo, coaches (+ documents),
+    and each player's full date of birth + uploaded documents, read back out of
+    the originating submission and merged with the domain roster. Manager-gated
+    because it exposes the schools' uploaded personal documents."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id, team_id):
+        from apps.forms.services.roster import team_submission_detail
+
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        team = (
+            Team.objects.filter(
+                id=team_id, tournament_id=tournament_id, deleted_at__isnull=True
+            )
+            .select_related("institution", "tournament")
+            .first()
+        )
+        if team is None:
+            raise NotFound("team_not_found")
+        if not _can_register(request.user, team.tournament):
+            raise PermissionDenied("not_tournament_manager")
+        return Response(team_submission_detail(team))
+
+
 def _institution_dict(
     i: Institution,
     answers: dict | None = None,

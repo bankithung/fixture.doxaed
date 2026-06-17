@@ -32,7 +32,7 @@ export function PublicShell({
         >
           <BrandLogo className="h-7 w-7" />
           <span className="text-sm font-semibold tracking-tight text-foreground">
-            {t("fixture.doxaed.com")}
+            {t("DoxaEd Fixture")}
           </span>
           {tournamentName ? (
             <span className="ml-auto truncate text-xs text-muted-foreground">

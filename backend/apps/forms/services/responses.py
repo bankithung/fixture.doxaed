@@ -20,12 +20,14 @@ from apps.forms.services.validation import promote, validate_answers
 
 def submit_response(
     *, form: Form, answers: dict, event_id=None, share_link=None,
-    upload_refs=None, request=None,
+    upload_refs=None, file_labels=None, request=None,
 ) -> FormResponse:
     """Create (or replay) a FormResponse for ``form``.
 
     ``answers`` is the raw submission; ``upload_refs`` maps a field key to an
-    ``upload_ref`` UUID returned by the upload endpoint. Raises ``AnswerError``
+    ``upload_ref`` UUID returned by the upload endpoint. ``file_labels`` maps an
+    ``upload_ref`` to the human document name the respondent typed (e.g.
+    "Aadhaar card") so the admin can tell uploads apart. Raises ``AnswerError``
     (subclass of ValueError) on invalid input — the caller maps it to a 400.
     """
     if event_id is not None:
@@ -72,6 +74,14 @@ def submit_response(
                 upload_ref__in=list(upload_refs.values()),
                 response__isnull=True,
             ).update(response=resp)
+        # Persist the per-file document names. Scoped by form (can only relabel
+        # this form's uploads) and applied even to already-claimed rows, so an
+        # edit can rename a previously-uploaded file too.
+        if file_labels:
+            for ref, label in file_labels.items():
+                FormFileUpload.objects.filter(form=form, upload_ref=ref).update(
+                    label=str(label or "")[:120]
+                )
         Form.objects.filter(pk=form.pk).update(response_count=F("response_count") + 1)
         if share_link is not None:
             type(share_link).objects.filter(pk=share_link.pk).update(

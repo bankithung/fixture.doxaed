@@ -7,6 +7,7 @@ import {
   Clock,
   KeyRound,
   Link2,
+  Paperclip,
   Pencil,
   Plus,
   Sparkles,
@@ -17,7 +18,9 @@ import { formsApi } from "@/api/forms";
 import {
   tournamentsApi,
   type TeamPlayerRow,
+  type TeamRegistrationDetail,
   type TeamRow,
+  type UploadRef,
 } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
@@ -476,29 +479,196 @@ export function TeamsTab(): React.ReactElement {
   );
 }
 
-/** Compact roster chips: jersey no · name · captain badge. */
-function Roster({ players }: { players: TeamPlayerRow[] }): React.ReactElement {
-  if (!players.length)
-    return <p className="text-xs text-muted-foreground">{t("No players yet.")}</p>;
+/** A row of uploaded-file chips — images preview as thumbnails, everything
+ * else shows a paperclip; each opens the signed view URL in a new tab. */
+function FileChips({ files }: { files: UploadRef[] }): React.ReactElement | null {
+  if (!files.length) return null;
   return (
-    <ol className="flex flex-wrap gap-1.5">
-      {players.map((p, i) => (
-        <li
-          key={p.id}
-          className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-xs"
-        >
-          <span className="font-tabular text-muted-foreground">
-            {p.jersey_no ?? i + 1}
+    <div className="flex flex-wrap gap-1.5">
+      {files.map((f) => {
+        const isImg = f.content_type.startsWith("image/");
+        // Show the respondent's document name when given; the filename is the
+        // hover title so the admin can still see the original.
+        const label = f.label || f.name;
+        return (
+          <a
+            key={f.url}
+            href={f.url}
+            target="_blank"
+            rel="noreferrer"
+            title={f.label ? f.name : undefined}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs text-primary transition-colors hover:bg-accent"
+          >
+            {isImg ? (
+              <img
+                src={f.url}
+                alt={label}
+                className="h-6 w-6 shrink-0 rounded border border-border object-cover"
+              />
+            ) : (
+              <Paperclip aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            )}
+            <span className="max-w-[11rem] truncate">{label}</span>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+/** One line per player (jersey · name · captain · DOB); expands to documents
+ * when there are any (owner 2026-06-17: "one line per player, details inline"). */
+function PlayerRow({
+  player,
+}: {
+  player: TeamRegistrationDetail["players"][number];
+}): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  const hasDocs = player.documents.length > 0;
+  return (
+    <li className="rounded-md border border-border bg-background">
+      <button
+        type="button"
+        disabled={!hasDocs}
+        aria-expanded={hasDocs ? open : undefined}
+        onClick={() => hasDocs && setOpen((o) => !o)}
+        className={cn(
+          "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm",
+          hasDocs && "hover:bg-accent/40",
+        )}
+      >
+        <span className="w-5 shrink-0 text-right font-tabular text-xs text-muted-foreground">
+          {player.jersey_no ?? ""}
+        </span>
+        <span className="min-w-0 flex-1 truncate font-medium">
+          {player.name || t("Unnamed")}
+        </span>
+        {player.captain ? (
+          <span className="shrink-0 rounded bg-primary/15 px-1 font-tabular text-[0.6875rem] font-semibold text-primary">
+            C
           </span>
-          <span className="font-medium">{p.full_name || t("Unnamed")}</span>
-          {p.captain ? (
-            <span className="rounded bg-primary/15 px-1 font-tabular font-semibold text-primary">
-              C
-            </span>
+        ) : null}
+        {player.dob ? (
+          <span className="shrink-0 font-tabular text-xs text-muted-foreground">
+            {player.dob}
+          </span>
+        ) : null}
+        {hasDocs ? (
+          <span className="inline-flex shrink-0 items-center gap-0.5 font-tabular text-[0.6875rem] text-muted-foreground">
+            <Paperclip aria-hidden="true" className="h-3 w-3" />
+            {player.documents.length}
+          </span>
+        ) : null}
+        {hasDocs ? (
+          <ChevronRight
+            aria-hidden="true"
+            className={cn(
+              "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
+              open && "rotate-90",
+            )}
+          />
+        ) : null}
+      </button>
+      {open && hasDocs ? (
+        <div className="border-t border-border/60 px-2.5 py-2">
+          <p className="mb-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
+            {t("Documents")}
+          </p>
+          <FileChips files={player.documents} />
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+/** A team's full registration detail — logo + coach(es) header, then one
+ * expandable line per player. Lazily fetched: only mounted when the team is
+ * expanded, so the list view stays cheap. Falls back to the inline roster while
+ * the detail loads or when the team has no originating submission. */
+function TeamDetail({
+  tournamentId,
+  teamId,
+  teamName,
+  fallback,
+  canManage,
+}: {
+  tournamentId: string;
+  teamId: string;
+  teamName: string;
+  fallback: TeamPlayerRow[];
+  canManage: boolean;
+}): React.ReactElement {
+  const detail = useQuery({
+    queryKey: ["team-reg-detail", tournamentId, teamId],
+    queryFn: () => tournamentsApi.teamRegistrationDetail(tournamentId, teamId),
+  });
+  const d = detail.data;
+  // Show the basic roster immediately (no DOB/docs) until the detail lands, so
+  // expanding a team never flashes empty.
+  const players: TeamRegistrationDetail["players"] =
+    d?.players ??
+    fallback.map((p) => ({
+      id: p.id,
+      name: p.full_name,
+      jersey_no: p.jersey_no,
+      position: p.position,
+      captain: p.captain,
+      dob: null,
+      documents: [],
+    }));
+
+  return (
+    <div className="flex flex-col gap-3">
+      {d && (d.logo || d.coaches.length > 0) ? (
+        <div className="flex flex-wrap items-start gap-4">
+          {d.logo ? (
+            <a href={d.logo.url} target="_blank" rel="noreferrer" className="shrink-0">
+              <img
+                src={d.logo.url}
+                alt={t(`${teamName} logo`)}
+                className="h-16 w-16 rounded-lg border border-border object-cover"
+              />
+            </a>
           ) : null}
-        </li>
-      ))}
-    </ol>
+          {d.coaches.length > 0 ? (
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <span className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
+                {d.coaches.length === 1 ? t("Coach") : t("Coaches")}
+              </span>
+              {d.coaches.map((c, i) => (
+                <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-medium">{c.name}</span>
+                  <FileChips files={c.documents} />
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {players.length > 0 ? (
+        <ol className="flex flex-col gap-1.5">
+          {players.map((p) => (
+            <PlayerRow key={p.id} player={p} />
+          ))}
+        </ol>
+      ) : (
+        <p className="text-xs text-muted-foreground">{t("No players yet.")}</p>
+      )}
+      {detail.isError ? (
+        <p className="text-xs text-muted-foreground">
+          {t("Couldn't load player details.")}
+        </p>
+      ) : null}
+
+      {canManage ? (
+        <TeamCalendarLinkButton
+          tournamentId={tournamentId}
+          teamId={teamId}
+          teamName={teamName}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -615,15 +785,14 @@ function TeamsTable({
                         </span>
                       </button>
                       {expanded.has(tm.id) ? (
-                        <div className="flex flex-col gap-2 border-t border-border/60 px-3 py-2.5">
-                          <Roster players={tm.players ?? []} />
-                          {canManage ? (
-                            <TeamCalendarLinkButton
-                              tournamentId={tournamentId}
-                              teamId={tm.id}
-                              teamName={tm.name}
-                            />
-                          ) : null}
+                        <div className="border-t border-border/60 px-3 py-2.5">
+                          <TeamDetail
+                            tournamentId={tournamentId}
+                            teamId={tm.id}
+                            teamName={tm.name}
+                            fallback={tm.players ?? []}
+                            canManage={canManage}
+                          />
                         </div>
                       ) : null}
                     </div>
@@ -728,18 +897,13 @@ function TeamsTable({
                       {expanded.has(tm.id) ? (
                         <tr>
                           <td colSpan={5} className="border-b border-border bg-muted/20 px-4 py-3 pl-12">
-                            <div className="flex flex-col gap-2">
-                              <Roster players={tm.players ?? []} />
-                              {canManage ? (
-                                <div>
-                                  <TeamCalendarLinkButton
-                                    tournamentId={tournamentId}
-                                    teamId={tm.id}
-                                    teamName={tm.name}
-                                  />
-                                </div>
-                              ) : null}
-                            </div>
+                            <TeamDetail
+                              tournamentId={tournamentId}
+                              teamId={tm.id}
+                              teamName={tm.name}
+                              fallback={tm.players ?? []}
+                              canManage={canManage}
+                            />
                           </td>
                         </tr>
                       ) : null}
