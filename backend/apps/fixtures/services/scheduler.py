@@ -27,7 +27,7 @@ without touching callers.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import Any
@@ -379,6 +379,20 @@ def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> l
                     f"At most {count} concurrent match(es) for {scope} "
                     f"(official capacity)."
                 )
+        elif ctype == "no_concurrent_competitions":
+            members = [
+                str(x).strip() for x in (p.get("members") or [])
+                if isinstance(x, str) and str(x).strip()
+            ]
+            if len({*members}) >= 2:
+                gap = max(0, int(p.get("gap_minutes") or 0))
+                cfg.constraint_rules.append(ScopedRule(
+                    ctype, "all", True, weight,
+                    {"members": members, "gap_minutes": gap}, record=c))
+                notes.append(
+                    f"{len({*members})} competitions kept from running at the "
+                    f"same time" + (f" ({gap} min apart)." if gap else ".")
+                )
         elif ctype == "no_person_overlap":
             cfg.person_min_gap = int(p.get("min_gap_minutes") or 30)
             cfg.person_cross_venue_gap = int(p.get("cross_venue_gap_minutes") or 60)
@@ -517,13 +531,33 @@ class ScheduleResult:
 
 
 # Pre-existing bookings the run must respect (other leaves / live matches):
-# (venue, start, end, [team_ids]).
-Preoccupied = list[tuple[str, datetime, datetime, list[str]]]
+# (venue, start, end, [team_ids]) with an OPTIONAL 5th element
+# ``(sport, leaf_key)`` naming the booking's competition — present on real
+# runs (``build_schedule_inputs``) so a per-leaf run still honours
+# cross-competition rules (official capacity, mutual exclusion); absent on
+# legacy/unit-test bookings, which simply match no exclusion member.
+Preoccupied = list[
+    tuple[str, datetime, datetime, list[str]]
+    | tuple[str, datetime, datetime, list[str], tuple[str, str]]
+]
 
 
 def _overlaps(busy: list[tuple[datetime, datetime]], start: datetime,
               end: datetime, gap: timedelta = timedelta(0)) -> bool:
     return any(start < e + gap and s < end + gap for s, e in busy)
+
+
+def exclusion_member(members: Sequence[str], sport: str, leaf_key: str) -> str | None:
+    """Which member of a ``no_concurrent_competitions`` group a match belongs
+    to, or None if it's outside the group. A leaf match wins on its exact
+    ``leaf_key`` (most specific) before falling back to its ``sport`` key, so a
+    group can mix whole-sport and single-leaf members. Two matches clash only
+    when both return a member AND the members differ."""
+    if leaf_key and leaf_key in members:
+        return leaf_key
+    if sport and sport in members:
+        return sport
+    return None
 
 
 def resolve_pinned_rounds(
@@ -630,6 +664,7 @@ def schedule_matches(
         r for r in rules if r.type == "reserve_days" and r.scope != "all"
     ]
     capacity_rules = [r for r in rules if r.type == "official_capacity"]
+    exclusion_rules = [r for r in rules if r.type == "no_concurrent_competitions"]
     pinned_rules = [r for r in rules if r.type == "round_pinned_to_window"]
 
     # Sub-venue expansion (§2.3): display name -> base name, and the parallel
@@ -642,9 +677,15 @@ def schedule_matches(
     # the in-flight interval list the capacity engine counts against.
     team_busy_v: dict[str, list[tuple[datetime, datetime, str]]] = defaultdict(list)
     inflight: list[tuple[datetime, datetime, str, str]] = []  # start, end, sport, leaf
-    pre_intervals: list[tuple[datetime, datetime]] = []
+    # start, end, sport, leaf — sport/leaf carry the booking's competition so a
+    # per-leaf run still honours cross-competition rules (capacity, exclusion).
+    pre_intervals: list[tuple[datetime, datetime, str, str]] = []
 
-    for venue, start, end, team_ids in preoccupied or []:
+    for booking in preoccupied or []:
+        venue, start, end, team_ids = booking[0], booking[1], booking[2], booking[3]
+        meta = booking[4] if len(booking) > 4 else None
+        bsport = str(meta[0]) if meta else ""
+        bleaf = str(meta[1]) if meta else ""
         # Absorption rule (§9 A2): a legacy booking under an expanded venue's
         # BARE name consumes one unit of its capacity — the lowest-numbered
         # free sub-venue; at/over capacity it blocks every unit.
@@ -656,7 +697,7 @@ def schedule_matches(
             targets = [free[0]] if free else subs
         for tv in targets:
             venue_busy[tv].append((start, end))
-        pre_intervals.append((start, end))
+        pre_intervals.append((start, end, bsport, bleaf))
         for t in team_ids:
             team_busy[t].append((start, end))
             team_busy_v[t].append((start, end, targets[0]))
@@ -752,9 +793,26 @@ def schedule_matches(
                 and scope_matches(r.scope, sport=sp, leaf_key=lf)
             )
             if r.scope == "all":
-                n += sum(1 for s, e in pre_intervals if s < end and dt < e)
+                n += sum(1 for s, e, _sp, _lf in pre_intervals if s < end and dt < e)
             if n >= cap:
                 return False
+        # Mutual-exclusion groups (owner ask): a match may not overlap (within
+        # the group's transition gap) any already-placed match of a DIFFERENT
+        # named member — same-member matches still run in parallel. Scans both
+        # this run's placements (inflight) and other competitions' bookings
+        # (pre_intervals) so it holds whether the run is whole-tournament or
+        # per-leaf.
+        for r in exclusion_rules:
+            members = r.params["members"]
+            mine = exclusion_member(members, m.sport, m.leaf_key)
+            if mine is None:
+                continue
+            g = timedelta(minutes=int(r.params.get("gap_minutes") or 0))
+            for s, e, sp, lf in (*inflight, *pre_intervals):
+                other = exclusion_member(members, sp, lf)
+                if other is not None and other != mine \
+                        and dt < e + g and s < end + g:
+                    return False
         for t in teams:
             if dt.date() in cfg.team_blackouts.get(t, ()):  # blackout day
                 return False
@@ -1091,9 +1149,14 @@ def validate_schedule(
     Interval = tuple[datetime, datetime, "str | None"]
     venue_items: dict[str, list[Interval]] = defaultdict(list)
     team_items: dict[str, list[Interval]] = defaultdict(list)
+    # (start, end, sport, leaf, match_id|None) for mutual-exclusion checking.
+    ex_items: list[tuple[datetime, datetime, str, str, "str | None"]] = []
     for mid, (dt, venue) in assignments.items():
         end = dt + dur_of(mid)
         venue_items[venue].append((dt, end, mid))
+        m_ex = by_id.get(mid)
+        if m_ex:
+            ex_items.append((dt, end, m_ex.sport, m_ex.leaf_key, mid))
         # Per-venue off-day (increment S): landing on one is hard, regardless
         # of what else the day holds. Sub-venues resolve to their base.
         if dt.date() in cfg.venue_unavailable_dates.get(
@@ -1111,10 +1174,14 @@ def validate_schedule(
                     if dt.date() in cfg.team_blackouts.get(t, ()):
                         violations.append({"code": "team_blackout", "hard": True,
                                            "match_id": mid, "team_id": t})
-    for venue, start, end, team_ids in preoccupied or []:
+    for booking in preoccupied or []:
+        venue, start, end, team_ids = booking[0], booking[1], booking[2], booking[3]
         venue_items[venue].append((start, end, None))
         for t in team_ids:
             team_items[t].append((start, end, None))
+        meta = booking[4] if len(booking) > 4 else None
+        if meta:
+            ex_items.append((start, end, str(meta[0]), str(meta[1]), None))
 
     # Finals venue pin (increment T): a pinned-round match parked on a venue
     # outside its ``venues`` list is a hard violation — the repair verbs
@@ -1197,6 +1264,39 @@ def validate_schedule(
                             "match_id": subject, "other_match_id": other,
                             "team_id": team, "linked_team_id": lt,
                         })
+
+    # Mutual-exclusion groups (owner ask): two placed matches of DIFFERENT
+    # named members must not overlap (within the group's transition gap). One
+    # side may be a fixed preoccupied booking (mid None) — then the in-scope
+    # match carries the violation.
+    for r in cfg.constraint_rules:
+        if r.type != "no_concurrent_competitions":
+            continue
+        members = r.params["members"]
+        g = timedelta(minutes=int(r.params.get("gap_minutes") or 0))
+        tagged = [
+            (s, e, exclusion_member(members, sp, lf), mid)
+            for s, e, sp, lf, mid in ex_items
+        ]
+        for i in range(len(tagged)):
+            s_i, e_i, mem_i, mid_i = tagged[i]
+            if mem_i is None:
+                continue
+            for j in range(i + 1, len(tagged)):
+                s_j, e_j, mem_j, mid_j = tagged[j]
+                if mem_j is None or mem_j == mem_i:
+                    continue
+                if mid_i is None and mid_j is None:
+                    continue
+                if s_i < e_j + g and s_j < e_i + g:
+                    subject, other = (
+                        (mid_i, mid_j) if mid_i is not None else (mid_j, mid_i)
+                    )
+                    violations.append({
+                        "code": "concurrent_competitions", "hard": True,
+                        "match_id": subject, "other_match_id": other,
+                        "members": [mem_i, mem_j],
+                    })
     return violations
 
 
@@ -1321,7 +1421,10 @@ def build_schedule_inputs(
         start = dj_tz.localtime(m.scheduled_at, tz).replace(tzinfo=None)
         dmin = duration_for(m.sport) or cfg.slot_minutes
         teams = [str(t) for t in (m.home_team_id, m.away_team_id) if t]
-        preoccupied.append((m.venue, start, start + timedelta(minutes=dmin), teams))
+        preoccupied.append((
+            m.venue, start, start + timedelta(minutes=dmin), teams,
+            (m.sport, m.leaf_key),
+        ))
 
     # Teams sharing a rostered person (one student in two competitions) are
     # linked: their matches must never overlap (W2-D).

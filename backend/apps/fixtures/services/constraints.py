@@ -94,6 +94,17 @@ CONSTRAINT_TYPES: list[dict[str, Any]] = [
     # repair tool; scope sport: lets indoor sports keep playing.
     {"type": "reserve_days", "label": "Reserve days (kept free for repairs)", "hard": True,
      "params_schema": {"dates": "list"}, "scopes": ["all", "sport"], "layer": "S"},
+    # Mutual-exclusion group (owner ask 2026-06-18): the named competitions
+    # (sport keys and/or leaf keys) may never be live at the same moment —
+    # even on separate courts — because they share athletes, officials, a
+    # venue, or one audience. Matches of the SAME member still run in
+    # parallel. ``gap_minutes`` (optional) forces a transition buffer between
+    # different members. Inherently a relationship across competitions, so it
+    # carries its targets in ``params.members`` and scopes only "all".
+    {"type": "no_concurrent_competitions", "hard": True,
+     "label": "Competitions that can't run at the same time",
+     "params_schema": {"members": "list", "gap_minutes": "int"},
+     "scopes": ["all"], "layer": "S"},
 ]
 
 _BY_TYPE = {c["type"]: c for c in CONSTRAINT_TYPES}
