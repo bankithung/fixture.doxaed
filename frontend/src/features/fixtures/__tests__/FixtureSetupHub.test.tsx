@@ -314,7 +314,7 @@ describe("FixtureSetupHub", () => {
     expect(screen.queryByTestId("global-setup-gate")).toBeNull();
     expect(screen.getByText("Step 1 · When & where")).toBeInTheDocument();
     expect(screen.getByTestId("journey-next")).toHaveTextContent(
-      "Next: choose how each competition plays.",
+      "Next: set any clashes (optional), then choose how each competition plays.",
     );
 
     // u15 (ready) sits in the open "Ready to go" section as a card with ONE
@@ -431,7 +431,7 @@ describe("FixtureSetupHub", () => {
     expect(screen.queryByTestId("global-setup-inline")).toBeNull();
     expect(await screen.findByTestId("global-setup-strip")).toBeInTheDocument();
     expect(screen.getByTestId("journey-next")).toHaveTextContent(
-      "Next: choose how each competition plays.",
+      "Next: set any clashes (optional), then choose how each competition plays.",
     );
 
     // a receipt chip deep-links to its wizard step (Play times)

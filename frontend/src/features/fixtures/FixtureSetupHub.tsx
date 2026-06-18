@@ -487,14 +487,17 @@ export function FixtureSetupHub({
     );
   };
 
-  /** Completed journey steps deep-link back (§3.1). */
-  const onStepClick = (n: 1 | 2 | 3): void => {
+  /** Journey steps deep-link to their editor (§3.1). Step 2 (Clashes &
+   * sessions) is optional — it scrolls to the inline editor card. */
+  const scrollToId = (elId: string): void =>
+    document
+      .getElementById(elId)
+      ?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  const onStepClick = (n: 1 | 2 | 3 | 4): void => {
     if (n === 1) setSetup({ step: 0 });
-    else if (n === 2) {
-      document
-        .getElementById("competition-list")
-        ?.scrollIntoView?.({ behavior: "smooth", block: "start" });
-    } else {
+    else if (n === 2) scrollToId("clash-builder");
+    else if (n === 3) scrollToId("competition-list");
+    else {
       const target =
         competitions.find(
           (c) => c.matches.length === 0 && (c.readiness?.ready ?? false),
@@ -677,6 +680,22 @@ export function FixtureSetupHub({
             </section>
           ) : null}
 
+          {/* Step 2 of the journey — optional cross-competition rules. Lives
+              inline in the flow (not under Advanced tools) so it's a real,
+              visible step; the journey header's step 2 scrolls here. */}
+          {canManage && competitions.length > 0 ? (
+            <ClashesSection
+              tournamentId={id}
+              competitions={competitions
+                .filter((c) => c.leafKey)
+                .map((c) => ({
+                  leafKey: c.leafKey,
+                  label: c.label,
+                  sport: c.sport,
+                }))}
+            />
+          ) : null}
+
           {competitions.length === 0 ? (
             <EmptyState
               icon={<Users className="h-8 w-8" />}
@@ -814,27 +833,15 @@ export function FixtureSetupHub({
                     ))}
                   </div>
                   {activeTab === "constraints" && canManage ? (
-                    <div className="flex flex-col gap-4">
-                      <ClashesSection
-                        tournamentId={id}
-                        competitions={competitions
-                          .filter((c) => c.leafKey)
-                          .map((c) => ({
-                            leafKey: c.leafKey,
-                            label: c.label,
-                            sport: c.sport,
-                          }))}
-                      />
-                      <ConstraintBuilder
-                        tournamentId={id}
-                        competitions={competitions
-                          .filter((c) => c.leafKey)
-                          .map((c) => ({ leafKey: c.leafKey, label: c.label }))}
-                        teams={(teams.data ?? [])
-                          .filter((tm) => tm.status === "registered")
-                          .map((tm) => ({ id: tm.id, name: tm.name }))}
-                      />
-                    </div>
+                    <ConstraintBuilder
+                      tournamentId={id}
+                      competitions={competitions
+                        .filter((c) => c.leafKey)
+                        .map((c) => ({ leafKey: c.leafKey, label: c.label }))}
+                      teams={(teams.data ?? [])
+                        .filter((tm) => tm.status === "registered")
+                        .map((tm) => ({ id: tm.id, name: tm.name }))}
+                    />
                   ) : null}
                   {activeTab === "changes" && matchCount > 0 ? (
                     <ScheduleChangesPanel
