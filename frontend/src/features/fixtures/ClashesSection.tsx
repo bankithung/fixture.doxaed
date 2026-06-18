@@ -1,0 +1,381 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CalendarClock, Plus, Save, Trash2 } from "lucide-react";
+import { tournamentsApi, type ConstraintRecord } from "@/api/tournaments";
+import { ApiError } from "@/types/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
+import { newEventId } from "@/lib/eventId";
+import { invalidateTournament, qk } from "@/lib/queryKeys";
+import { cn } from "@/lib/tailwind";
+import { t } from "@/lib/t";
+
+const CLASH = "no_concurrent_competitions";
+const SESSION = "category_session_window";
+
+interface Comp {
+  leafKey: string;
+  label: string;
+}
+
+const asMembers = (r: ConstraintRecord): string[] =>
+  Array.isArray(r.params.members) ? (r.params.members as string[]) : [];
+
+/**
+ * "Clashes & sessions" — the competition-centric scheduling surface (owner ask
+ * 2026-06-18). Two friendly editors over the SAME stored `constraints` list
+ * the advanced builder writes (other constraint types are preserved verbatim):
+ *
+ *  • Clash rules (`no_concurrent_competitions`): pick the competitions that may
+ *    never run at the same moment — even on separate courts — with an optional
+ *    transition gap. The scheduler keeps them apart but auto-orders them.
+ *  • Session windows (`category_session_window`, leaf-scoped, hard): give a
+ *    single competition its own daily time window.
+ *
+ * Saving goes through the settings PATCH with the rules-freeze amend-on-409
+ * fallback, exactly like the global wizard and the advanced builder.
+ */
+export function ClashesSection({
+  tournamentId,
+  competitions,
+}: {
+  tournamentId: string;
+  competitions: Comp[];
+}): React.ReactElement {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [state, setState] = useState<{
+    base: ConstraintRecord[];
+    rows: ConstraintRecord[];
+  } | null>(null);
+
+  const settings = useQuery({
+    queryKey: qk.settings(tournamentId),
+    queryFn: () => tournamentsApi.settings(tournamentId),
+  });
+
+  // Seed/refresh from the server while the user has no unsaved edits.
+  if (
+    settings.data &&
+    (state === null ||
+      (state.base !== settings.data.constraints && state.rows === state.base))
+  ) {
+    setState({ base: settings.data.constraints, rows: settings.data.constraints });
+  }
+
+  const rows = state?.rows ?? [];
+  const dirty = state !== null && state.rows !== state.base;
+  const setRows = (next: ConstraintRecord[]): void =>
+    setState((s) => (s ? { ...s, rows: next } : s));
+
+  // ---- row helpers (operate on the full list, preserving other types) ----
+  const patchParams = (idx: number, params: Record<string, unknown>): void =>
+    setRows(
+      rows.map((r, j) =>
+        j === idx ? { ...r, params: { ...r.params, ...params } } : r,
+      ),
+    );
+  const removeAt = (idx: number): void =>
+    setRows(rows.filter((_, j) => j !== idx));
+
+  // ---- clash rules ----
+  const clashes = rows
+    .map((r, idx) => ({ r, idx }))
+    .filter((x) => x.r.type === CLASH);
+
+  const addClash = (): void =>
+    setRows([
+      ...rows,
+      {
+        type: CLASH,
+        scope: "all",
+        hard: true,
+        weight: 5,
+        // For a two-competition tournament, pre-select both — that's the whole
+        // point of the rule and saves a click.
+        params: {
+          members: competitions.length === 2 ? competitions.map((c) => c.leafKey) : [],
+          gap_minutes: 0,
+        },
+      },
+    ]);
+
+  const toggleMember = (idx: number, leafKey: string): void => {
+    const cur = asMembers(rows[idx]);
+    patchParams(idx, {
+      members: cur.includes(leafKey)
+        ? cur.filter((m) => m !== leafKey)
+        : [...cur, leafKey],
+    });
+  };
+
+  // ---- session windows (one per competition leaf) ----
+  const sessionIdx = (leafKey: string): number =>
+    rows.findIndex((r) => r.type === SESSION && r.scope === `leaf:${leafKey}`);
+
+  const toggleSession = (leafKey: string): void => {
+    const idx = sessionIdx(leafKey);
+    if (idx >= 0) removeAt(idx);
+    else
+      setRows([
+        ...rows,
+        {
+          type: SESSION,
+          scope: `leaf:${leafKey}`,
+          hard: true,
+          weight: 5,
+          params: { days: null, from: "09:00", to: "12:00" },
+        },
+      ]);
+  };
+
+  const save = useMutation({
+    mutationFn: async () => {
+      // Drop half-built clash rules (< 2 competitions can't clash with anything).
+      const constraints = rows.filter(
+        (r) => r.type !== CLASH || asMembers(r).length >= 2,
+      );
+      const body = { constraints, event_id: newEventId() };
+      try {
+        await tournamentsApi.updateSettings(tournamentId, body);
+      } catch (e) {
+        if (
+          e instanceof ApiError &&
+          e.status === 409 &&
+          e.payload.detail === "rules_frozen"
+        ) {
+          await tournamentsApi.updateSettings(tournamentId, {
+            ...body,
+            amend: true,
+            reason: t("Clashes & sessions: scheduling rules updated"),
+          });
+        } else {
+          throw e;
+        }
+      }
+    },
+    onSuccess: () => {
+      setState((s) => (s ? { base: s.rows, rows: s.rows } : s));
+      invalidateTournament(qc, tournamentId);
+      toast.push({ kind: "success", title: t("Rules saved") });
+    },
+    onError: (e) =>
+      toast.push({
+        kind: "error",
+        title: t("Could not save the rules"),
+        description:
+          e instanceof ApiError ? (e.payload.detail ?? undefined) : undefined,
+      }),
+  });
+
+  if (settings.isLoading) {
+    return (
+      <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
+        <div className="h-20 animate-pulse rounded-lg bg-muted/40" />
+      </section>
+    );
+  }
+
+  const tooFew = competitions.length < 2;
+
+  return (
+    <section
+      id="clash-builder"
+      className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+    >
+      <div className="border-b border-border px-4 py-3">
+        <h3 className="text-sm font-semibold">{t("Clashes & sessions")}</h3>
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "Keep competitions from running at the same time, or give one its own time of day. The schedule is built around these.",
+          )}
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-5 px-4 py-4">
+        {tooFew ? (
+          <p className="text-sm text-muted-foreground">
+            {t(
+              "Add a second competition to this tournament to set up clashes between them.",
+            )}
+          </p>
+        ) : (
+          <>
+            {/* ---------------------------------------------- clash rules */}
+            <div className="flex flex-col gap-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {t("Can't run at the same time")}
+              </h4>
+              {clashes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {t(
+                    "No clash rules yet. Add one to stop two competitions overlapping (shared players, courts, or officials).",
+                  )}
+                </p>
+              ) : (
+                clashes.map(({ r, idx }, n) => {
+                  const members = asMembers(r);
+                  const gap = Number(r.params.gap_minutes) || 0;
+                  return (
+                    <div
+                      key={idx}
+                      data-testid={`clash-${n}`}
+                      className="rounded-lg border border-border bg-muted/20 p-3"
+                    >
+                      <div className="mb-2 flex items-start justify-between gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {t("These never overlap")}
+                        </span>
+                        <button
+                          type="button"
+                          data-testid={`clash-${n}-remove`}
+                          aria-label={t("Remove this clash rule")}
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => removeAt(idx)}
+                        >
+                          <Trash2 aria-hidden="true" className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {competitions.map((c) => {
+                          const on = members.includes(c.leafKey);
+                          return (
+                            <button
+                              key={c.leafKey}
+                              type="button"
+                              aria-pressed={on}
+                              data-testid={`clash-${n}-member-${c.leafKey}`}
+                              onClick={() => toggleMember(idx, c.leafKey)}
+                              className={cn(
+                                "rounded-full border px-3 py-1 text-sm transition-colors",
+                                on
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-border bg-card text-foreground hover:bg-muted",
+                              )}
+                            >
+                              {c.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {members.length < 2 ? (
+                        <p className="mt-2 text-xs text-destructive">
+                          {t("Pick at least two competitions.")}
+                        </p>
+                      ) : null}
+                      <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                        {t("Gap between them")}
+                        <Input
+                          type="number"
+                          min={0}
+                          step={5}
+                          data-testid={`clash-${n}-gap`}
+                          className="h-8 w-20 font-tabular"
+                          value={gap}
+                          onChange={(e) =>
+                            patchParams(idx, {
+                              gap_minutes: Math.max(0, Number(e.target.value) || 0),
+                            })
+                          }
+                        />
+                        {t("minutes")}
+                      </label>
+                    </div>
+                  );
+                })
+              )}
+              <div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  data-testid="add-clash-rule"
+                  onClick={addClash}
+                >
+                  <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t("Add a clash rule")}
+                </Button>
+              </div>
+            </div>
+
+            {/* ------------------------------------------- session windows */}
+            <div className="flex flex-col gap-3 border-t border-border pt-4">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {t("Each competition's own time of day")}
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "Optional. Pin a competition to a daily window (e.g. U-14 in the mornings).",
+                )}
+              </p>
+              {competitions.map((c) => {
+                const idx = sessionIdx(c.leafKey);
+                const on = idx >= 0;
+                const rec = on ? rows[idx] : null;
+                return (
+                  <div
+                    key={c.leafKey}
+                    className="flex flex-wrap items-center gap-3 rounded-lg border border-border px-3 py-2"
+                  >
+                    <label className="flex flex-1 items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        data-testid={`session-${c.leafKey}-toggle`}
+                        onChange={() => toggleSession(c.leafKey)}
+                        className="h-4 w-4 rounded border-border accent-[var(--primary)]"
+                      />
+                      <span className="flex items-center gap-1.5">
+                        <CalendarClock
+                          aria-hidden="true"
+                          className="h-3.5 w-3.5 text-muted-foreground"
+                        />
+                        {c.label}
+                      </span>
+                    </label>
+                    {on && rec ? (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {t("from")}
+                        <Input
+                          type="time"
+                          data-testid={`session-${c.leafKey}-from`}
+                          className="h-8 w-28 font-tabular"
+                          value={String(rec.params.from ?? "09:00")}
+                          onChange={(e) =>
+                            patchParams(idx, { from: e.target.value })
+                          }
+                        />
+                        {t("to")}
+                        <Input
+                          type="time"
+                          data-testid={`session-${c.leafKey}-to`}
+                          className="h-8 w-28 font-tabular"
+                          value={String(rec.params.to ?? "12:00")}
+                          onChange={(e) =>
+                            patchParams(idx, { to: e.target.value })
+                          }
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-end border-t border-border pt-3">
+              <Button
+                size="sm"
+                disabled={!dirty || save.isPending}
+                data-testid="save-clashes"
+                onClick={() => save.mutate()}
+              >
+                <Save aria-hidden="true" className="h-3.5 w-3.5" />
+                {save.isPending ? t("Saving…") : t("Save rules")}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}

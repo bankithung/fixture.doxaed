@@ -27,6 +27,11 @@ const GLOBAL_SETUP_TYPES = new Set([
   "max_matches_per_team_per_day",
 ]);
 
+/** Competition-centric types owned by the friendlier "Clashes & sessions"
+ * section (ClashesSection) — hidden here so they aren't edited in two places
+ * with a generic row, but still preserved verbatim in this builder's save. */
+const OWNED_BY_CLASHES = new Set(["no_concurrent_competitions", "category_session_window"]);
+
 /** Sensible starting values for int params when a record is added. */
 const INT_DEFAULTS: Record<string, number> = {
   minutes: 30,
@@ -238,12 +243,15 @@ export function ConstraintBuilder({
       <div className="flex flex-col gap-3 px-4 py-3" aria-busy={loading}>
         {loading ? (
           <div className="h-16 animate-pulse rounded-lg bg-muted/40" />
-        ) : rows.length === 0 ? (
+        ) : rows.every((r) => OWNED_BY_CLASHES.has(r.type)) ? (
           <p className="text-sm text-muted-foreground">
             {t("No extra rules yet. Step 1 already added the common ones (days off, rest time, Sunday mornings). Add anything sharper here.")}
           </p>
         ) : (
           rows.map((record, i) => {
+            // Clash/session rows are edited in the "Clashes & sessions" section
+            // above; keep them in the saved list but don't render them here.
+            if (OWNED_BY_CLASHES.has(record.type)) return null;
             const spec = byType.get(record.type);
             if (!spec) return null;
             return (
@@ -278,10 +286,12 @@ export function ConstraintBuilder({
               const spec = byType.get(type);
               if (spec) setRows([...rows, defaultRecord(spec)]);
             }}
-            options={(catalog.data ?? []).map((c) => ({
-              value: c.type,
-              label: t(c.label),
-            }))}
+            options={(catalog.data ?? [])
+              .filter((c) => !OWNED_BY_CLASHES.has(c.type))
+              .map((c) => ({
+                value: c.type,
+                label: t(c.label),
+              }))}
             size="sm"
             className="w-72"
           />

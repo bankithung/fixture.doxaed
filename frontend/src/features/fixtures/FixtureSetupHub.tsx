@@ -34,6 +34,7 @@ import { t } from "@/lib/t";
 import { AdvanceToKnockoutDialog } from "./AdvanceToKnockoutDialog";
 import { CompetitionCard } from "./CompetitionCard";
 import { CompetitionFormatWizard } from "./CompetitionFormatWizard";
+import { ClashesSection } from "./ClashesSection";
 import { ConstraintBuilder } from "./ConstraintBuilder";
 import { GlobalSetupCard } from "./GlobalSetupCard";
 import { GlobalSetupWizard } from "./GlobalSetupWizard";
@@ -813,15 +814,23 @@ export function FixtureSetupHub({
                     ))}
                   </div>
                   {activeTab === "constraints" && canManage ? (
-                    <ConstraintBuilder
-                      tournamentId={id}
-                      competitions={competitions
-                        .filter((c) => c.leafKey)
-                        .map((c) => ({ leafKey: c.leafKey, label: c.label }))}
-                      teams={(teams.data ?? [])
-                        .filter((tm) => tm.status === "registered")
-                        .map((tm) => ({ id: tm.id, name: tm.name }))}
-                    />
+                    <div className="flex flex-col gap-4">
+                      <ClashesSection
+                        tournamentId={id}
+                        competitions={competitions
+                          .filter((c) => c.leafKey)
+                          .map((c) => ({ leafKey: c.leafKey, label: c.label }))}
+                      />
+                      <ConstraintBuilder
+                        tournamentId={id}
+                        competitions={competitions
+                          .filter((c) => c.leafKey)
+                          .map((c) => ({ leafKey: c.leafKey, label: c.label }))}
+                        teams={(teams.data ?? [])
+                          .filter((tm) => tm.status === "registered")
+                          .map((tm) => ({ id: tm.id, name: tm.name }))}
+                      />
+                    </div>
                   ) : null}
                   {activeTab === "changes" && matchCount > 0 ? (
                     <ScheduleChangesPanel
