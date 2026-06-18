@@ -819,7 +819,11 @@ export function FixtureSetupHub({
                         tournamentId={id}
                         competitions={competitions
                           .filter((c) => c.leafKey)
-                          .map((c) => ({ leafKey: c.leafKey, label: c.label }))}
+                          .map((c) => ({
+                            leafKey: c.leafKey,
+                            label: c.label,
+                            sport: c.sport,
+                          }))}
                       />
                       <ConstraintBuilder
                         tournamentId={id}

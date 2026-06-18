@@ -13,25 +13,39 @@ import { t } from "@/lib/t";
 
 const CLASH = "no_concurrent_competitions";
 const SESSION = "category_session_window";
+const CAP = "official_capacity";
 
 interface Comp {
   leafKey: string;
   label: string;
+  sport: string;
 }
 
 const asMembers = (r: ConstraintRecord): string[] =>
   Array.isArray(r.params.members) ? (r.params.members as string[]) : [];
 
+/** Title-case a sport key as a last-resort label ("table_tennis" → "Table
+ * Tennis") when the sports query hasn't resolved a friendly name. */
+const prettySport = (key: string): string =>
+  key
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((w) => w[0]!.toUpperCase() + w.slice(1))
+    .join(" ");
+
 /**
  * "Clashes & sessions" — the competition-centric scheduling surface (owner ask
- * 2026-06-18). Two friendly editors over the SAME stored `constraints` list
- * the advanced builder writes (other constraint types are preserved verbatim):
+ * 2026-06-18). Friendly editors over the SAME stored `constraints` list the
+ * advanced builder writes (other constraint types are preserved verbatim):
  *
  *  • Clash rules (`no_concurrent_competitions`): pick the competitions that may
  *    never run at the same moment — even on separate courts — with an optional
- *    transition gap. The scheduler keeps them apart but auto-orders them.
+ *    transition gap. Members can be a whole sport ("All Football") or a single
+ *    category leaf; the scheduler keeps them apart but auto-orders them.
  *  • Session windows (`category_session_window`, leaf-scoped, hard): give a
  *    single competition its own daily time window.
+ *  • Concurrent-match caps (`official_capacity`): how many matches may run at
+ *    once, tournament-wide or per sport ("only 2 TT umpires").
  *
  * Saving goes through the settings PATCH with the rules-freeze amend-on-409
  * fallback, exactly like the global wizard and the advanced builder.
@@ -54,6 +68,10 @@ export function ClashesSection({
     queryKey: qk.settings(tournamentId),
     queryFn: () => tournamentsApi.settings(tournamentId),
   });
+  const sportsQ = useQuery({
+    queryKey: ["tournament-sports", tournamentId],
+    queryFn: () => tournamentsApi.sports(tournamentId),
+  });
 
   // Seed/refresh from the server while the user has no unsaved edits.
   if (
@@ -68,6 +86,32 @@ export function ClashesSection({
   const dirty = state !== null && state.rows !== state.base;
   const setRows = (next: ConstraintRecord[]): void =>
     setState((s) => (s ? { ...s, rows: next } : s));
+
+  const sportName = (key: string): string =>
+    sportsQ.data?.sports.find((s) => s.key === key)?.name ?? prettySport(key);
+
+  // Competitions grouped by sport (stable first-seen order) — drives both the
+  // clash picker's "All {Sport}" chips and the per-sport capacity rows.
+  const sportsInOrder: string[] = [];
+  const leavesBySport = new Map<string, Comp[]>();
+  for (const c of competitions) {
+    if (!leavesBySport.has(c.sport)) {
+      leavesBySport.set(c.sport, []);
+      sportsInOrder.push(c.sport);
+    }
+    leavesBySport.get(c.sport)!.push(c);
+  }
+
+  // Selectable clash members: a whole-sport chip (value = sport key) when the
+  // sport has more than one category, plus a chip per leaf (value = leaf key).
+  const memberChips: { value: string; label: string }[] = [];
+  for (const sp of sportsInOrder) {
+    const leaves = leavesBySport.get(sp)!;
+    if (leaves.length > 1) {
+      memberChips.push({ value: sp, label: `${t("All")} ${sportName(sp)}` });
+    }
+    for (const c of leaves) memberChips.push({ value: c.leafKey, label: c.label });
+  }
 
   // ---- row helpers (operate on the full list, preserving other types) ----
   const patchParams = (idx: number, params: Record<string, unknown>): void =>
@@ -101,12 +145,12 @@ export function ClashesSection({
       },
     ]);
 
-  const toggleMember = (idx: number, leafKey: string): void => {
+  const toggleMember = (idx: number, value: string): void => {
     const cur = asMembers(rows[idx]);
     patchParams(idx, {
-      members: cur.includes(leafKey)
-        ? cur.filter((m) => m !== leafKey)
-        : [...cur, leafKey],
+      members: cur.includes(value)
+        ? cur.filter((m) => m !== value)
+        : [...cur, value],
     });
   };
 
@@ -127,6 +171,20 @@ export function ClashesSection({
           weight: 5,
           params: { days: null, from: "09:00", to: "12:00" },
         },
+      ]);
+  };
+
+  // ---- concurrent-match caps (official_capacity; scope "all" or sport:key) ----
+  const capIdx = (scope: string): number =>
+    rows.findIndex((r) => r.type === CAP && r.scope === scope);
+
+  const toggleCap = (scope: string): void => {
+    const idx = capIdx(scope);
+    if (idx >= 0) removeAt(idx);
+    else
+      setRows([
+        ...rows,
+        { type: CAP, scope, hard: true, weight: 5, params: { count: 1 } },
       ]);
   };
 
@@ -238,15 +296,15 @@ export function ClashesSection({
                         </button>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {competitions.map((c) => {
-                          const on = members.includes(c.leafKey);
+                        {memberChips.map((c) => {
+                          const on = members.includes(c.value);
                           return (
                             <button
-                              key={c.leafKey}
+                              key={c.value}
                               type="button"
                               aria-pressed={on}
-                              data-testid={`clash-${n}-member-${c.leafKey}`}
-                              onClick={() => toggleMember(idx, c.leafKey)}
+                              data-testid={`clash-${n}-member-${c.value}`}
+                              onClick={() => toggleMember(idx, c.value)}
                               className={cn(
                                 "rounded-full border px-3 py-1 text-sm transition-colors",
                                 on
@@ -356,6 +414,64 @@ export function ClashesSection({
                           }
                         />
                       </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* --------------------------------------- concurrent-match caps */}
+            <div className="flex flex-col gap-3 border-t border-border pt-4">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {t("Matches running at once")}
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "Optional. Cap how many matches play at the same time — tournament-wide, or per sport (e.g. only 2 umpires).",
+                )}
+              </p>
+              {[
+                { scope: "all", label: t("Whole tournament") },
+                ...sportsInOrder.map((sp) => ({
+                  scope: `sport:${sp}`,
+                  label: sportName(sp),
+                })),
+              ].map(({ scope, label }) => {
+                const idx = capIdx(scope);
+                const on = idx >= 0;
+                const count = on ? Number(rows[idx].params.count) || 1 : 1;
+                return (
+                  <div
+                    key={scope}
+                    className="flex flex-wrap items-center gap-3 rounded-lg border border-border px-3 py-2"
+                  >
+                    <label className="flex flex-1 items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        data-testid={`cap-${scope}-toggle`}
+                        onChange={() => toggleCap(scope)}
+                        className="h-4 w-4 rounded border-border accent-[var(--primary)]"
+                      />
+                      {label}
+                    </label>
+                    {on ? (
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {t("at most")}
+                        <Input
+                          type="number"
+                          min={1}
+                          data-testid={`cap-${scope}-count`}
+                          className="h-8 w-20 font-tabular"
+                          value={count}
+                          onChange={(e) =>
+                            patchParams(idx, {
+                              count: Math.max(1, Number(e.target.value) || 1),
+                            })
+                          }
+                        />
+                        {t("at a time")}
+                      </label>
                     ) : null}
                   </div>
                 );

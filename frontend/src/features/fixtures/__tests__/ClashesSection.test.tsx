@@ -15,13 +15,21 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       ...actual.tournamentsApi,
       settings: vi.fn(),
       updateSettings: vi.fn(),
+      sports: vi.fn(),
     },
   };
 });
 
 const COMPS = [
-  { leafKey: "sepaktakraw.u14", label: "Sepaktakraw U-14" },
-  { leafKey: "table_tennis.u14", label: "Table Tennis U-14" },
+  { leafKey: "sepaktakraw.u14", label: "Sepaktakraw U-14", sport: "sepaktakraw" },
+  { leafKey: "table_tennis.u14", label: "Table Tennis U-14", sport: "table_tennis" },
+];
+
+// A multi-leaf sport (Football U15 + U17) alongside a single-leaf one.
+const MULTI = [
+  { leafKey: "football.u15", label: "Football U15", sport: "football" },
+  { leafKey: "football.u17", label: "Football U17", sport: "football" },
+  { leafKey: "table_tennis.u14", label: "Table Tennis U-14", sport: "table_tennis" },
 ];
 
 function settings(constraints: unknown[] = []): TournamentSettings {
@@ -55,6 +63,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(tournamentsApi.settings).mockResolvedValue(settings());
   vi.mocked(tournamentsApi.updateSettings).mockResolvedValue(settings());
+  vi.mocked(tournamentsApi.sports).mockResolvedValue({
+    sports: [
+      { key: "sepaktakraw", name: "Sepaktakraw" },
+      { key: "table_tennis", name: "Table Tennis" },
+      { key: "football", name: "Football" },
+    ],
+  });
 });
 
 describe("ClashesSection", () => {
@@ -152,6 +167,55 @@ describe("ClashesSection", () => {
         weight: 5,
         params: { days: null, from: "09:00", to: "12:00" },
       },
+    ]);
+  });
+
+  it("offers an 'All {sport}' clash member for a multi-leaf sport", async () => {
+    mount(MULTI);
+    await userEvent.click(await screen.findByTestId("add-clash-rule"));
+    // Football has two leaves → a whole-sport chip plus the two leaf chips.
+    expect(screen.getByTestId("clash-0-member-football")).toHaveTextContent(
+      "All Football",
+    );
+    expect(screen.getByTestId("clash-0-member-football.u15")).toBeInTheDocument();
+    expect(screen.getByTestId("clash-0-member-football.u17")).toBeInTheDocument();
+    // Table Tennis has one leaf → no "All Table Tennis" chip.
+    expect(screen.queryByTestId("clash-0-member-table_tennis")).toBeNull();
+
+    // "All Football" vs the Table Tennis leaf → mixed sport-key + leaf-key members.
+    await userEvent.click(screen.getByTestId("clash-0-member-football"));
+    await userEvent.click(screen.getByTestId("clash-0-member-table_tennis.u14"));
+    await userEvent.click(screen.getByTestId("save-clashes"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateSettings).toHaveBeenCalled(),
+    );
+    const body = vi.mocked(tournamentsApi.updateSettings).mock.calls[0][1];
+    expect(body.constraints).toEqual([
+      {
+        type: "no_concurrent_competitions",
+        scope: "all",
+        hard: true,
+        weight: 5,
+        params: { members: ["football", "table_tennis.u14"], gap_minutes: 0 },
+      },
+    ]);
+  });
+
+  it("caps how many matches run at once, tournament-wide and per sport", async () => {
+    mount();
+    await userEvent.click(await screen.findByTestId("cap-all-toggle"));
+    expect(screen.getByTestId("cap-all-count")).toHaveValue(1);
+    await userEvent.click(screen.getByTestId("cap-sport:table_tennis-toggle"));
+    await userEvent.click(screen.getByTestId("save-clashes"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateSettings).toHaveBeenCalled(),
+    );
+    const body = vi.mocked(tournamentsApi.updateSettings).mock.calls[0][1];
+    expect(body.constraints).toEqual([
+      { type: "official_capacity", scope: "all", hard: true, weight: 5,
+        params: { count: 1 } },
+      { type: "official_capacity", scope: "sport:table_tennis", hard: true,
+        weight: 5, params: { count: 1 } },
     ]);
   });
 

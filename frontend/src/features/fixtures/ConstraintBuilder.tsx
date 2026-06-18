@@ -30,7 +30,11 @@ const GLOBAL_SETUP_TYPES = new Set([
 /** Competition-centric types owned by the friendlier "Clashes & sessions"
  * section (ClashesSection) — hidden here so they aren't edited in two places
  * with a generic row, but still preserved verbatim in this builder's save. */
-const OWNED_BY_CLASHES = new Set(["no_concurrent_competitions", "category_session_window"]);
+const OWNED_BY_CLASHES = new Set([
+  "no_concurrent_competitions",
+  "category_session_window",
+  "official_capacity",
+]);
 
 /** Sensible starting values for int params when a record is added. */
 const INT_DEFAULTS: Record<string, number> = {

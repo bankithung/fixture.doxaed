@@ -113,17 +113,21 @@ describe("ConstraintBuilder", () => {
     mount();
     await screen.findByText("Recurring blocked window");
     await userEvent.click(screen.getByRole("button", { name: "Add a rule" }));
+    // Concurrent-match capacity is owned by the "Clashes & sessions" section now,
+    // so it's not offered in the advanced builder.
+    expect(
+      screen.queryByRole("option", {
+        name: "Concurrent-match capacity (officials)",
+      }),
+    ).toBeNull();
     await userEvent.click(
-      screen.getByRole("option", { name: "Concurrent-match capacity (officials)" }),
+      screen.getByRole("option", { name: "Minimum rest between a team's matches" }),
     );
-    // scope options come from the catalog's scopes (sport + all only)
+    // scope options come from the catalog's scopes (all/sport/leaf/team)
     await userEvent.click(screen.getByRole("button", { name: "Scope, rule 2" }));
     expect(
       screen.getByRole("option", { name: "Sport · Football" }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "Football · U15" }),
-    ).toBeNull();
     await userEvent.click(screen.getByRole("option", { name: "Sport · Football" }));
 
     await userEvent.click(screen.getByTestId("save-constraints"));
@@ -135,8 +139,8 @@ describe("ConstraintBuilder", () => {
       { type: "recurring_blackout_window", scope: "all", hard: true, weight: 5,
         params: { days: ["sun"], from: "00:00", to: "13:00" } },
       // the new record carries catalog defaults + the picked scope
-      { type: "official_capacity", scope: "sport:football", hard: true,
-        weight: 5, params: { count: 1 } },
+      { type: "min_rest_minutes", scope: "sport:football", hard: true,
+        weight: 5, params: { minutes: 30 } },
     ]);
   });
 
