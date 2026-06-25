@@ -34,6 +34,7 @@ import { t } from "@/lib/t";
 import { AdvanceToKnockoutDialog } from "./AdvanceToKnockoutDialog";
 import { CompetitionCard } from "./CompetitionCard";
 import { CompetitionFormatWizard } from "./CompetitionFormatWizard";
+import { CompetitionFormatBoard } from "./CompetitionFormatBoard";
 import { ClashesSection } from "./ClashesSection";
 import { ConstraintBuilder } from "./ConstraintBuilder";
 import { GlobalSetupCard } from "./GlobalSetupCard";
@@ -341,15 +342,19 @@ export function FixtureSetupHub({
     return by;
   }, [competitions, globalsUnset]);
 
-  /** Effective draw format for one leaf — the §2.1 single-key layering
-   * (defaults < "*" < leaf); layers are sparse so a plain ?? chain resolves. */
-  const formatFor = (leafKey: string): string =>
-    String(
+  /** Effective draw format for one leaf — the §2.1 layering with the sport
+   * layer (defaults < "*" < sport:<k> < leaf); layers are sparse so a plain ??
+   * chain resolves. Sport key = the leaf key's first segment. */
+  const formatFor = (leafKey: string): string => {
+    const sport = leafKey ? leafKey.split(".")[0] : "";
+    return String(
       (leafKey ? drawConfig.data?.draw_config[leafKey]?.format : undefined) ??
+        (sport ? drawConfig.data?.draw_config[`sport:${sport}`]?.format : undefined) ??
         drawConfig.data?.draw_config["*"]?.format ??
         drawConfig.data?.defaults.format ??
         "",
     );
+  };
 
   /** Materialize the next Swiss round — refusals carry stable codes the
    * toast description localizes (§7.9). */
@@ -685,6 +690,21 @@ export function FixtureSetupHub({
               visible step; the journey header's step 2 scrolls here. */}
           {canManage && competitions.length > 0 ? (
             <ClashesSection
+              tournamentId={id}
+              competitions={competitions
+                .filter((c) => c.leafKey)
+                .map((c) => ({
+                  leafKey: c.leafKey,
+                  label: c.label,
+                  sport: c.sport,
+                }))}
+            />
+          ) : null}
+
+          {/* "How each competition plays" — pick a game type per sport (and per
+              category) in one place; the journey header's step 3 scrolls here. */}
+          {canManage && competitions.some((c) => c.leafKey) ? (
+            <CompetitionFormatBoard
               tournamentId={id}
               competitions={competitions
                 .filter((c) => c.leafKey)

@@ -843,6 +843,9 @@ export interface VenueRecord {
   count: number;
   /** Per-venue off-days (ISO dates) the grid and repairs honor (increment S). */
   unavailable_dates?: string[];
+  /** Sport keys allowed on this venue (owner ask 2026-06-25); empty = any
+   * sport. The scheduler keeps a sport's matches on its own courts. */
+  sports?: string[];
 }
 
 /** `POST …/fixtures/next-round/` response (Swiss, increment P). */
