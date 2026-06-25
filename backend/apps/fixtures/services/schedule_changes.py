@@ -31,6 +31,7 @@ from django.db import transaction
 KIND_BY_EVENT_TYPE = {
     "match_rescheduled": "rescheduled",
     "match_delay_cascade": "delayed",
+    "match_reflow": "retimed",
     "match_slots_swapped": "swapped",
     "shift_day": "day_shifted",
     "fixtures_scheduled": "engine_rerun",
@@ -57,9 +58,9 @@ def _row_changes(ev: Any) -> list[dict[str, Any]]:
             "old": _slot(before),
             "new": _slot(after),
         }]
-    if et in ("match_delay_cascade", "shift_day"):
-        # moved: [{match_id, old, new, venue?}] — venue unchanged by both
-        # verbs (None on legacy delay rows that predate the venue field).
+    if et in ("match_delay_cascade", "shift_day", "match_reflow"):
+        # moved: [{match_id, old, new, venue?}] — same shape across the delay
+        # cascade, rain-day shift, and the elastic actual-end reflow (R11).
         return [
             {
                 "match_id": str(e.get("match_id")),

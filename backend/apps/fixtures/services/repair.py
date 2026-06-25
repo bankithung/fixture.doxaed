@@ -432,6 +432,172 @@ def delay_match(
     return moved, violations
 
 
+#: Drift (minutes) below which an actual-end reflow is a no-op — avoids
+#: churning the calendar for trivial over/under-runs (stability gate, R11).
+_REFLOW_MIN_DRIFT = 5
+
+
+def reflow_from_actual(
+    match_id, *, by=None, request=None,
+) -> list[dict[str, Any]]:
+    """Elastic live re-timing (R11, owner ask 2026-06-25). After a match
+    actually ENDS, move the later MOVABLE matches on the SAME court to follow
+    its real end time: a match that ran long pushes the rest back, an early
+    finish pulls them up — the court's remaining queue is re-packed from
+    ``ended_at`` (respecting venue occupancy + team rest, routing past fixed
+    live/locked obstacles). Auto-applies ONLY when no hard constraint is
+    violated; otherwise the plan is left untouched for manual repair.
+
+    Opt-in per tournament (``scheduling_config["auto_reflow"]``) and skipped for
+    drift under ``_REFLOW_MIN_DRIFT``. Fired from ``transition_match`` on commit
+    when a match completes; safe to call directly. Returns the moved rows."""
+    from datetime import timedelta
+
+    from apps.audit.models import ActorRole
+    from apps.audit.services import emit_audit
+    from apps.matches.models import Match
+
+    match = Match.objects.filter(id=match_id, deleted_at__isnull=True).first()
+    if (match is None or match.scheduled_at is None or match.ended_at is None
+            or not match.venue):
+        return []
+    tournament = match.tournament
+    if not (tournament.scheduling_config or {}).get("auto_reflow"):
+        return []
+
+    tz = _tournament_tz(tournament)
+    cfg = _validation_config(tournament)
+    rest = timedelta(minutes=cfg.rest_minutes)
+
+    def dur(m) -> timedelta:
+        return timedelta(
+            minutes=_duration_minutes(tournament, m.sport, cfg.slot_minutes)
+        )
+
+    def teams_of(m) -> set[str]:
+        return {str(x) for x in (m.home_team_id, m.away_team_id) if x}
+
+    def lstart(m) -> datetime:
+        assert m.scheduled_at is not None
+        return _local(m.scheduled_at, tz)
+
+    def is_movable(m) -> bool:
+        return m.status in _movable_statuses() and m.locked_at is None
+
+    sched_start = _local(match.scheduled_at, tz)
+    actual_end = _local(match.ended_at, tz)
+    planned_end = sched_start + dur(match)
+    drift = (actual_end - planned_end).total_seconds() / 60.0
+    if abs(drift) < _REFLOW_MIN_DRIFT:
+        return []
+    delta = timedelta(minutes=drift)
+    # The court is free no earlier than the LATER of the real end and the
+    # planned end of this slot: a late finish pushes the queue back, while an
+    # early finish lets a LATE-running queue recover toward plan — but never
+    # starts a match before its slot would have freed on schedule (no surprise
+    # early kickoffs; also keeps clear of the finished match's planned slot,
+    # which the validator still treats as occupied).
+    court_free = max(actual_end, planned_end)
+
+    others = list(
+        Match.objects.filter(
+            tournament=tournament, deleted_at__isnull=True,
+            scheduled_at__isnull=False,
+        ).exclude(id=match.id)
+    )
+    # Fixed obstacles the re-pack routes around: live/completed/locked matches
+    # (venue + team rest), PLUS the just-finished match itself by its ACTUAL
+    # interval so a shared-team next match still gets its rest after real end.
+    obstacles = [
+        (lstart(m), lstart(m) + dur(m), m.venue, teams_of(m))
+        for m in others if not is_movable(m)
+    ]
+    obstacles.append((sched_start, actual_end, match.venue, teams_of(match)))
+
+    queue = sorted(
+        (
+            m for m in others
+            if is_movable(m) and m.venue == match.venue
+            and lstart(m) >= sched_start
+        ),
+        key=lambda m: (lstart(m), m.match_no),
+    )
+
+    moving: list[tuple[datetime, datetime, str, set[str]]] = []
+    new_starts: dict[Any, datetime] = {}
+    moved_rows = []
+    for m in queue:
+        d = dur(m)
+        mteams = teams_of(m)
+        # Original plan shifted by the drift, never before the court is free.
+        required = max(lstart(m) + delta, court_free)
+        for _ in range(100):  # settle past chained blockers
+            bumped = required
+            for s, e, v, ts in moving + obstacles:
+                if v == m.venue and s < bumped + d and bumped < e:
+                    bumped = max(bumped, e)
+                if ts & mteams and s < bumped + d + rest and bumped < e + rest:
+                    bumped = max(bumped, e + rest)
+            if bumped == required:
+                break
+            required = bumped
+        if required != lstart(m):
+            new_starts[m.id] = required
+            moved_rows.append(m)
+        moving.append((required, required + d, m.venue, mteams))
+
+    if not new_starts:
+        return []
+
+    by_id = {m.id: m for m in moved_rows}
+    violations = validate_slot_changes(
+        tournament,
+        {mid: (st, by_id[mid].venue) for mid, st in new_starts.items()},
+    )
+    if [v for v in violations if v.get("hard", True)]:
+        # Never auto-break the plan; leave it for the control room to repair.
+        return []
+
+    moved: list[dict[str, Any]] = []
+    with transaction.atomic():
+        for m in moved_rows:
+            old_iso = m.scheduled_at.isoformat()
+            m.scheduled_at = new_starts[m.id].replace(tzinfo=tz)
+            m.save(update_fields=["scheduled_at", "updated_at"])
+            moved.append({
+                "match_id": str(m.id), "old": old_iso,
+                "new": m.scheduled_at.isoformat(), "venue": m.venue,
+            })
+        audit = emit_audit(
+            actor_user=by,
+            actor_role=ActorRole.ADMIN,
+            event_type="match_reflow",
+            target_type="match",
+            target_id=match.id,
+            organization_id=match.organization_id,
+            tournament_id=match.tournament_id,
+            match_id=match.id,
+            payload_before={"drift_minutes": round(drift, 1)},
+            payload_after={"drift_minutes": round(drift, 1), "moved": moved},
+            request=request,
+        )
+        queue_slot_change_notifications(
+            tournament=tournament,
+            batch_id=audit.id,
+            by=by,
+            changes=[
+                {
+                    "match_id": e["match_id"],
+                    "old": {"scheduled_at": e["old"], "venue": e["venue"]},
+                    "new": {"scheduled_at": e["new"], "venue": e["venue"]},
+                }
+                for e in moved
+            ],
+        )
+        _publish_schedule_ticks(match.tournament_id, [e["match_id"] for e in moved])
+    return moved
+
+
 def _reserve_day_records(tournament) -> list[tuple[set[date], str]]:
     """``(dates, scope)`` per stored ``reserve_days`` constraint record."""
     from apps.fixtures.services.constraints import normalize_scope

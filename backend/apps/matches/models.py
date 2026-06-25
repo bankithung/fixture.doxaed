@@ -107,6 +107,14 @@ class Match(models.Model):
     # /api/matches/{id}/call/; auto-cleared on the transition to LIVE
     # (owner decision 2026-06-12).
     called_at = models.DateTimeField(null=True, blank=True)
+    # Actual play times (owner ask 2026-06-25, R11 elastic re-timing): stamped
+    # by the state machine — started_at on the first transition to LIVE,
+    # ended_at on a terminal end (completed/walkover/abandoned). The gap between
+    # ended_at and the scheduled end drives the automatic downstream re-timing
+    # (a match running early pulls later matches up; running late pushes them
+    # back). Distinct from scheduled_at (the plan).
+    started_at = models.DateTimeField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
     current_period = models.CharField(max_length=24, blank=True)  # e.g. "first_half"
     scorer = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,

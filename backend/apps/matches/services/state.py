@@ -9,6 +9,7 @@ import logging
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils import timezone as dj_tz
 
 from apps.audit.models import ActorRole
 from apps.audit.services import emit_audit
@@ -63,6 +64,7 @@ def transition_match(
             _reset_for_replay(locked, reason)
 
         locked.status = to_status
+        update_fields = ["status", "current_period", "updated_at"]
         if to_status == S.LIVE:
             if not locked.current_period:
                 locked.current_period = "first_half"
@@ -70,15 +72,25 @@ def transition_match(
             # called_at auto-clears on the transition to live (owner
             # decision 2026-06-12, spec 2026-06-12 §2.b).
             locked.called_at = None
+            update_fields.append("called_at")
+            # Stamp the actual kickoff once (R11). A resume from half-time
+            # keeps the original start.
+            if locked.started_at is None:
+                locked.started_at = dj_tz.now()
+                update_fields.append("started_at")
         elif to_status == S.HALF_TIME:
             locked.current_period = "half_time"
-        update_fields = ["status", "current_period", "updated_at"]
-        if to_status == S.LIVE:
-            update_fields.append("called_at")
+        # Actual end time on any terminal end — drives elastic re-timing (R11).
+        if to_status in (S.COMPLETED, S.WALKOVER, S.ABANDONED):
+            locked.ended_at = dj_tz.now()
+            update_fields.append("ended_at")
         if replay:
+            # A replay voids the prior result, including its actual times.
+            locked.started_at = None
+            locked.ended_at = None
             update_fields += [
                 "home_score", "away_score", "home_pens", "away_pens",
-                "set_scores",
+                "set_scores", "started_at", "ended_at",
             ]
         locked.save(update_fields=update_fields)
 
@@ -98,6 +110,12 @@ def transition_match(
         if to_status in _TERMINAL_WITH_RESULT:
             mid = locked.id
             transaction.on_commit(lambda: _fire_advancement(mid))
+        # Elastic re-timing (R11): a completed match's real end time ripples to
+        # the later matches on its court (opt-in per tournament). Post-commit so
+        # it sees the persisted ended_at and never blocks the result.
+        if to_status == S.COMPLETED:
+            rid = locked.id
+            transaction.on_commit(lambda: _fire_reflow(rid))
         # Live delivery (spec 2026-06-12 §2.c): transitions used to publish
         # NOTHING — the console polled. Thin post-commit "state" tick.
         tick_mid, tick_tid = locked.id, locked.tournament_id
@@ -177,3 +195,14 @@ def _fire_advancement(match_id) -> None:
         advance_from_match(match_id)
     except Exception:  # pragma: no cover - post-commit hook must never crash the request
         logger.exception("advancement hook failed for match=%s", match_id)
+
+
+def _fire_reflow(match_id) -> None:
+    """Elastic re-timing hook (R11): ripple a completed match's real end time to
+    its court's later matches. Opt-in + conservative; must never crash."""
+    try:
+        from apps.fixtures.services.repair import reflow_from_actual
+
+        reflow_from_actual(match_id)
+    except Exception:  # pragma: no cover - post-commit hook must never crash the request
+        logger.exception("reflow hook failed for match=%s", match_id)
