@@ -260,6 +260,9 @@ def _settings_payload(tournament, user) -> dict:
         # Destructive verbs (delete / deactivate) are the ORGANIZER's alone —
         # invited managers never see the danger zone (owner 2026-06-11).
         "can_delete": is_tournament_organizer(user, tournament),
+        # Stored scheduling preferences (slot length, rests, auto_reflow, …) so the
+        # Schedule wizard can pre-seed its controls from the last run.
+        "scheduling_config": tournament.scheduling_config or {},
     }
 
 

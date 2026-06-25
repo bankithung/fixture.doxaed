@@ -18,6 +18,7 @@ const PAGE = 50;
 const KIND_LABELS: Record<string, string> = {
   rescheduled: "Moved",
   delayed: "Delayed",
+  retimed: "Re-timed",
   swapped: "Swapped",
   day_shifted: "Day shifted",
   engine_rerun: "Re-scheduled",
@@ -29,6 +30,7 @@ const KIND_LABELS: Record<string, string> = {
 const KIND_CLASSES: Record<string, string> = {
   rescheduled: "bg-primary/15 text-primary",
   delayed: "bg-warning-muted text-warning-foreground",
+  retimed: "bg-primary/15 text-primary",
   swapped: "bg-accent text-accent-foreground",
   day_shifted: "bg-warning-muted text-warning-foreground",
   engine_rerun: "bg-secondary text-secondary-foreground",

@@ -817,6 +817,9 @@ export interface TournamentSettings {
   /** Organizer-only (creator / workspace admin): drives the danger zone —
    * invited managers can manage but never delete/deactivate. */
   can_delete: boolean;
+  /** Stored scheduling preferences from the last engine run (slot length,
+   * rests, auto_reflow, …) — lets the Schedule wizard pre-seed its controls. */
+  scheduling_config?: Record<string, unknown> | null;
 }
 
 export interface ConstraintType {
@@ -961,6 +964,9 @@ export interface ScheduleRequest {
   rest_minutes?: number;
   max_per_team_per_day?: number;
   excluded_dates?: string[];
+  /** Auto-adjust later same-court match times when a match runs early/late
+   * (R11 elastic re-timing). Stored on scheduling_config. */
+  auto_reflow?: boolean;
   /** Schedule ONE competition around everything else's bookings. */
   leaf_key?: string;
   /** Optimistic-concurrency guard (§9 A1/D10): the preview's `inputs_hash`;

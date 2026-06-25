@@ -29,6 +29,7 @@ type Form = {
   venues: string; // comma/newline separated; empty = the saved venue pool
   rest_minutes: number;
   max_per_team_per_day: number;
+  auto_reflow: boolean;
 };
 
 function Field({
@@ -106,6 +107,7 @@ export function ScheduleWizard({
     venues: "",
     rest_minutes: 60,
     max_per_team_per_day: 1,
+    auto_reflow: false,
   });
   const set = <K extends keyof Form>(k: K, v: Form[K]): void =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -144,6 +146,7 @@ export function ScheduleWizard({
       max_per_team_per_day: Number(
         one("max_matches_per_team_per_day")?.params.count ?? 1,
       ),
+      auto_reflow: Boolean(settings.data.scheduling_config?.auto_reflow),
     });
     setSeeded(true);
   }
@@ -162,6 +165,7 @@ export function ScheduleWizard({
           .filter(Boolean),
         rest_minutes: Number(form.rest_minutes),
         max_per_team_per_day: Number(form.max_per_team_per_day),
+        auto_reflow: form.auto_reflow,
         ...(leafKey ? { leaf_key: leafKey } : {}),
       }),
     onSuccess: (r) => {
@@ -357,6 +361,25 @@ export function ScheduleWizard({
                       />
                     </Field>
                   </div>
+                  <label className="flex items-start gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      data-testid="auto-reflow-toggle"
+                      checked={form.auto_reflow}
+                      onChange={(e) => set("auto_reflow", e.target.checked)}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-input text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                    <span className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium">
+                        {t("Auto-adjust later times when a match runs early or late")}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {t(
+                          "As each match finishes, the later matches on the same court shift to follow the real end time — only when it breaks no rule. You can still move any match by hand.",
+                        )}
+                      </span>
+                    </span>
+                  </label>
                   <Field
                     label={t("Venues")}
                     hint={t("One per line (or comma-separated). Leave empty to use your saved venues with their availability windows.")}
