@@ -560,6 +560,43 @@ def exclusion_member(members: Sequence[str], sport: str, leaf_key: str) -> str |
     return None
 
 
+def fairness_order(reqs: list[MatchSlotReq]) -> list[str]:
+    """Asynchronous round-robin ordering (R7, owner ask 2026-06-25): emit the
+    matches of one round-robin cohort so the next match always goes to the
+    teams that have played the FEWEST games and rested the LONGEST — i.e.
+    "give the not-yet-played teams the chance" before any team plays again,
+    minimising back-to-back play on few courts (Suksompong, *Scheduling
+    Asynchronous Round-Robin Tournaments*).
+
+    Deterministic: at each step pick the remaining match minimising
+    ``(max games-played of its teams, -rest since either last played,
+    round_no, match_no)``. Returns match ids in play order. ``reqs`` is one
+    homogeneous cohort of resolved (both-teams-known) matches; multiple groups
+    of a leaf may be passed together — they interleave fairly because the key
+    is global to the cohort.
+    """
+    remaining = list(reqs)
+    played: dict[str, int] = defaultdict(int)
+    last: dict[str, int] = {}
+    order: list[str] = []
+    pos = 0
+    while remaining:
+        def _key(m: MatchSlotReq, _pos: int = pos) -> tuple[int, int, int, int]:
+            teams = [t for t in (m.home, m.away) if t]
+            load = max((played[t] for t in teams), default=0)
+            rest = min((_pos - last.get(t, -1 << 30) for t in teams), default=1 << 30)
+            return (load, -rest, m.round_no, m.match_no)
+        m = min(remaining, key=_key)
+        remaining.remove(m)
+        for t in (m.home, m.away):
+            if t:
+                played[t] += 1
+                last[t] = pos
+        order.append(m.id)
+        pos += 1
+    return order
+
+
 def resolve_pinned_rounds(
     matches: list[MatchSlotReq], rules: list[ScopedRule], cfg: ScheduleConfig,
 ) -> dict[str, ScopedRule]:
@@ -666,6 +703,7 @@ def schedule_matches(
     capacity_rules = [r for r in rules if r.type == "official_capacity"]
     exclusion_rules = [r for r in rules if r.type == "no_concurrent_competitions"]
     pinned_rules = [r for r in rules if r.type == "round_pinned_to_window"]
+    rotation_rules = [r for r in rules if r.type == "rotation_fairness"]
 
     # Sub-venue expansion (§2.3): display name -> base name, and the parallel
     # units of each expanded base.
@@ -872,6 +910,20 @@ def schedule_matches(
         # day spread: prefer a day the teams aren't already playing
         if teams and all(team_day[(t, dt.date())] == 0 for t in teams):
             score += 0.5
+        # rotation fairness (R7): reward slots that give the least-rested team
+        # the most rest since its last match — spreads a round-robin team's
+        # games rather than clustering them. Teams that have not played yet do
+        # not constrain the reward (any slot is fine for a fresh team).
+        for r in rotation_rules:
+            if not _scope_ok(r, m, tkey):
+                continue
+            played_gaps = [
+                max(0.0, (dt - max(e for _s, e in team_busy[t])).total_seconds() / 60.0)
+                for t in teams if team_busy[t]
+            ]
+            if played_gaps:
+                cap = float(max(120, 2 * cfg.rest_minutes))
+                score += (r.weight / DEFAULT_WEIGHT) * min(min(played_gaps), cap) / cap
         return score
 
     def _max_preference(m: MatchSlotReq, teams: list[str]) -> float:
@@ -912,11 +964,39 @@ def schedule_matches(
     soft_active = (
         bool(cfg.preferred_windows) or cfg.balance_venues
         or bool(soft_windows) or bool(soft_rest_rules) or bool(balance_rules)
+        or bool(rotation_rules)
     )
     window_sat = [0.0, 0.0]  # achieved, achievable (weighted windows)
     violations: list[dict[str, Any]] = []
     pinned_failed: set[str] = set()
-    by_order = sorted(matches, key=lambda m: (m.round_no, m.match_no))
+    # Placement order. Default: earlier rounds first, then declared order. When
+    # a rotation_fairness rule is in scope (R7), the round-robin matches it
+    # covers are re-sequenced by fairness_order (least-played/longest-rested
+    # next) and placed before knockout/unresolved matches — which keep round
+    # order (a bracket round depends on the prior round). Gated on the rule, so
+    # tournaments without it schedule exactly as before.
+    def _rotation_scoped(m: MatchSlotReq) -> bool:
+        tkey = tuple(t for t in (m.home, m.away) if t)
+        return any(_scope_ok(r, m, tkey) for r in rotation_rules)
+
+    if rotation_rules:
+        fair_pos: dict[str, int] = {}
+        cohorts: dict[str, list[MatchSlotReq]] = defaultdict(list)
+        for m in matches:
+            if m.stage != "knockout" and m.home and m.away and _rotation_scoped(m):
+                cohorts[m.leaf_key].append(m)
+        for cohort in cohorts.values():
+            for i, mid in enumerate(fairness_order(cohort)):
+                fair_pos[mid] = i
+
+        def _order_key(m: MatchSlotReq) -> tuple:
+            if m.id in fair_pos:
+                return (0, fair_pos[m.id], m.leaf_key, m.match_no)
+            return (1, m.round_no, m.leaf_key, m.match_no)
+
+        by_order = sorted(matches, key=_order_key)
+    else:
+        by_order = sorted(matches, key=lambda m: (m.round_no, m.match_no))
     ordered = [m for m in by_order if m.id in pin_of] + \
               [m for m in by_order if m.id not in pin_of]
     for m in ordered:

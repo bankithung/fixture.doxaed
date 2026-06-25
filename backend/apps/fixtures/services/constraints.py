@@ -56,6 +56,15 @@ CONSTRAINT_TYPES: list[dict[str, Any]] = [
      "params_schema": {}, "scopes": ["all"], "layer": "S"},
     {"type": "balance_venues", "label": "Balance matches across venues", "hard": False,
      "params_schema": {}, "scopes": ["all"], "layer": "S"},
+    # Round-wise rotation fairness (owner ask 2026-06-25, R7): within a
+    # round-robin competition, the next match should go to the teams that have
+    # played the FEWEST games and rested the LONGEST — "give not-yet-played
+    # teams the chance" before any team plays again. Drives both the asynchronous
+    # match-ordering (scheduler.fairness_order, Suksompong) and a soft slot
+    # reward; only round-robin (non-knockout, resolved) matches in scope are
+    # affected. Per-category by scope, like the rest buffer.
+    {"type": "rotation_fairness", "label": "Round-wise rotation fairness", "hard": False,
+     "params_schema": {}, "scopes": ["all", "sport", "leaf"], "layer": "S"},
     # ------------------------------------------------------------- catalog v2
     # Subtracted from every matching weekday (days=null => all days): covers
     # Sunday-morning church AND daily lunch/assembly breaks (spec D4).
