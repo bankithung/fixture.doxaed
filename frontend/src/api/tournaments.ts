@@ -967,6 +967,15 @@ export interface ScheduleRequest {
   /** Auto-adjust later same-court match times when a match runs early/late
    * (R11 elastic re-timing). Stored on scheduling_config. */
   auto_reflow?: boolean;
+  /** Run the optimization pass (R12): search for a better-soft-scored
+   * arrangement than the greedy seed, adopted only when hard-legal and no
+   * worse. Off = the fast greedy schedule. */
+  optimize?: boolean;
+  /** Optimizer engine: "local" (fast hill-climb) or "cpsat" (OR-Tools, slower
+   * but explores more globally). Falls back to local if OR-Tools is absent. */
+  optimize_engine?: "local" | "cpsat";
+  /** Optional wall-clock budget (seconds) for the optimizer search. */
+  optimize_seconds?: number;
   /** Schedule ONE competition around everything else's bookings. */
   leaf_key?: string;
   /** Optimistic-concurrency guard (§9 A1/D10): the preview's `inputs_hash`;

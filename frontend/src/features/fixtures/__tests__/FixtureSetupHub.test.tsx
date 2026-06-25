@@ -579,6 +579,7 @@ describe("FixtureSetupHub", () => {
         rest_minutes: 45,
         max_per_team_per_day: 2,
         auto_reflow: false,
+        optimize: false,
       }),
     );
     expect(await screen.findByText("1 matches scheduled")).toBeInTheDocument();

@@ -111,4 +111,38 @@ describe("ScheduleWizard · auto-reflow", () => {
     const toggle = await screen.findByTestId("auto-reflow-toggle");
     expect(toggle).toBeChecked();
   });
+
+  it("posts optimize + the chosen engine when the operator opts in", async () => {
+    vi.mocked(tournamentsApi.settings).mockResolvedValue(settings({}));
+    const user = userEvent.setup();
+    wrap(<ScheduleWizard tournamentId="t1" open onClose={() => {}} />);
+
+    const opt = await screen.findByTestId("optimize-toggle");
+    expect(opt).not.toBeChecked();
+    await user.click(opt);
+    // The engine selector appears only once optimization is on.
+    expect(await screen.findByLabelText("Optimizer engine")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("rerun-schedule-submit"));
+    await waitFor(() =>
+      expect(tournamentsApi.scheduleFixtures).toHaveBeenCalled(),
+    );
+    const body = vi.mocked(tournamentsApi.scheduleFixtures).mock.calls[0][1];
+    expect(body.optimize).toBe(true);
+    expect(body.optimize_engine).toBe("local");
+  });
+
+  it("omits optimize_engine from the request while optimization is off", async () => {
+    vi.mocked(tournamentsApi.settings).mockResolvedValue(settings({}));
+    const user = userEvent.setup();
+    wrap(<ScheduleWizard tournamentId="t1" open onClose={() => {}} />);
+
+    await user.click(await screen.findByTestId("rerun-schedule-submit"));
+    await waitFor(() =>
+      expect(tournamentsApi.scheduleFixtures).toHaveBeenCalled(),
+    );
+    const body = vi.mocked(tournamentsApi.scheduleFixtures).mock.calls[0][1];
+    expect(body.optimize).toBe(false);
+    expect(body.optimize_engine).toBeUndefined();
+  });
 });

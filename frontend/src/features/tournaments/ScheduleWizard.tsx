@@ -9,6 +9,7 @@ import {
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/Select";
 import {
   Dialog,
   DialogDescription,
@@ -30,6 +31,8 @@ type Form = {
   rest_minutes: number;
   max_per_team_per_day: number;
   auto_reflow: boolean;
+  optimize: boolean;
+  optimize_engine: "local" | "cpsat";
 };
 
 function Field({
@@ -108,6 +111,8 @@ export function ScheduleWizard({
     rest_minutes: 60,
     max_per_team_per_day: 1,
     auto_reflow: false,
+    optimize: false,
+    optimize_engine: "local",
   });
   const set = <K extends keyof Form>(k: K, v: Form[K]): void =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -147,6 +152,11 @@ export function ScheduleWizard({
         one("max_matches_per_team_per_day")?.params.count ?? 1,
       ),
       auto_reflow: Boolean(settings.data.scheduling_config?.auto_reflow),
+      optimize: Boolean(settings.data.scheduling_config?.optimize),
+      optimize_engine:
+        settings.data.scheduling_config?.optimize_engine === "cpsat"
+          ? "cpsat"
+          : "local",
     });
     setSeeded(true);
   }
@@ -166,6 +176,8 @@ export function ScheduleWizard({
         rest_minutes: Number(form.rest_minutes),
         max_per_team_per_day: Number(form.max_per_team_per_day),
         auto_reflow: form.auto_reflow,
+        optimize: form.optimize,
+        ...(form.optimize ? { optimize_engine: form.optimize_engine } : {}),
         ...(leafKey ? { leaf_key: leafKey } : {}),
       }),
     onSuccess: (r) => {
@@ -281,6 +293,52 @@ export function ScheduleWizard({
                 )}
               />
             </dl>
+
+            {/* Best-possible optimization (R12): opt-in, with an engine choice. */}
+            <div className="rounded-lg border border-border bg-card p-3">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  data-testid="optimize-toggle"
+                  checked={form.optimize}
+                  onChange={(e) => set("optimize", e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-input text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium">
+                    {t("Find the best-possible schedule")}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {t(
+                      "Searches many arrangements and keeps the best — better spacing, fewer clashes. Never adopts a worse or rule-breaking schedule, so it's always safe. Takes a little longer to run.",
+                    )}
+                  </span>
+                </span>
+              </label>
+              {form.optimize ? (
+                <div className="mt-3 flex flex-col gap-1 pl-7">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {t("Optimizer")}
+                  </span>
+                  <Select
+                    className="w-full sm:w-72"
+                    size="sm"
+                    aria-label={t("Optimizer engine")}
+                    value={form.optimize_engine}
+                    onChange={(v) =>
+                      set("optimize_engine", v === "cpsat" ? "cpsat" : "local")
+                    }
+                    options={[
+                      { value: "local", label: t("Standard (fast)") },
+                      {
+                        value: "cpsat",
+                        label: t("Advanced solver (slower, explores more)"),
+                      },
+                    ]}
+                  />
+                </div>
+              ) : null}
+            </div>
 
             <div className="overflow-hidden rounded-lg border border-border">
               <button
