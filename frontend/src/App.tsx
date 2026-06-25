@@ -38,6 +38,8 @@ import { ResponsesPage } from "@/features/forms/ResponsesPage";
 import { PublicFormPage } from "@/features/forms/PublicFormPage";
 import { PublicDirectoryPage } from "@/features/forms/PublicDirectoryPage";
 import { LiveViewerPage } from "@/features/live/LiveViewerPage";
+import { PublicLiveScoreboardPage } from "@/features/live/PublicLiveScoreboardPage";
+import { PublicBracketPage } from "@/features/live/PublicBracketPage";
 import { OrgDashboardPage } from "@/features/layout/OrgDashboardPage";
 // Auth pages (B1).
 import { LoginPage } from "@/features/auth/LoginPage";
@@ -145,8 +147,14 @@ export default function App(): React.ReactElement {
               <Route path="/f/:formId" element={<PublicFormPage />} />
               <Route path="/r/:token" element={<PublicFormPage />} />
               <Route path="/m/:matchId" element={<LiveViewerPage />} />
-              {/* Public read-only tournament schedule (trust layer). */}
+              {/* Public read-only tournament views (trust layer): schedule,
+                  live scoreboard, knockout bracket — all SSE-live, no login. */}
               <Route path="/t/:slug/:id/schedule" element={<PublicSchedulePage />} />
+              <Route
+                path="/t/:slug/:id/live"
+                element={<PublicLiveScoreboardPage />}
+              />
+              <Route path="/t/:slug/:id/bracket" element={<PublicBracketPage />} />
 
               {/* Protected surfaces — share the AppShell chrome. */}
               <Route

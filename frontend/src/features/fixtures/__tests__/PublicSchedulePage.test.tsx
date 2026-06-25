@@ -187,8 +187,13 @@ describe("PublicSchedulePage", () => {
     expect(m3).toHaveTextContent("Football · U17");
     expect(within(m3).getAllByText("TBD")).toHaveLength(2);
 
-    // no auth chrome: it is a standalone page, not the app shell
-    expect(screen.queryByRole("navigation")).toBeNull();
+    // no auth chrome: it is a standalone page, not the app shell — but it does
+    // carry the public viewer tabs (Schedule / Live / Bracket).
+    expect(screen.queryByTestId("app-sidebar")).toBeNull();
+    expect(
+      screen.getByRole("navigation", { name: "Tournament views" }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("viewer-tab-live")).toBeInTheDocument();
   });
 
   it("shows the live pulse on in-flight matches", async () => {

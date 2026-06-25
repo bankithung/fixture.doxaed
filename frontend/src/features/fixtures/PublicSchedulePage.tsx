@@ -16,6 +16,7 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import { useEventStream } from "@/lib/useEventStream";
+import { PublicViewerTabs } from "@/features/live/PublicViewerHeader";
 
 const LIVE_STATUSES = new Set(["live", "half_time", "extra_time", "penalties"]);
 const FINAL_STATUSES = new Set(["completed", "walkover"]);
@@ -447,6 +448,9 @@ export function PublicSchedulePage(): React.ReactElement {
           <ThemeToggle />
         </div>
       </header>
+      <div className="border-b border-border bg-card px-4 print:hidden sm:px-6">
+        <PublicViewerTabs slug={slug} id={id} active="schedule" />
+      </div>
 
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-4 py-6 sm:px-6">
         {query.isLoading ? (
