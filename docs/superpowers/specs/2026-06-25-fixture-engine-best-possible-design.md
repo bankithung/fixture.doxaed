@@ -1,6 +1,6 @@
 # Fixture engine — "best possible" upgrade (design)
 
-**Date:** 2026-06-25 · **Status:** in progress · **Branch:** `restructure-foundation`
+**Date:** 2026-06-25 · **Status:** in progress — **P1, P2, P3, P4, P6 shipped & live**; P5 in progress, P7 pending · **Branch:** `restructure-foundation`
 
 Driver: make the engine able to model **and optimally schedule** the *Dimapur District
 Catch Them Young U-14 Sepak Takraw + Table Tennis Tournament* (and generalise to 10–20+
@@ -38,16 +38,16 @@ prod data, prod migrations, or deploy without explicit owner go-ahead.
 |---|---|---|---|
 | R1 | Arbitrary-depth tree (TT 4-deep, Singles/Doubles) | ✅ full (`MAX_DEPTH=6`) | — |
 | R2 | Per-leaf format coexistence | ✅ full (`views.py` dispatch) | — |
-| R3 | Group stage for arbitrary N (sizing, pots, best-thirds) | 🟡 best-thirds done; no auto sizing/pots | **P4** |
+| R3 | Group stage for arbitrary N (sizing, pots, best-thirds) | ✅ **SHIPPED P4** (`balanced_group_sizes`, snake pots, balance_groups) | done |
 | R4 | 2 courts/sport, K-court concurrency | ✅ full (`venue_counts`, `official_capacity`) | doc convention (P6) |
 | R5 | Cross-competition clash | ✅ full (`no_concurrent_competitions`) | gender auto-gen (P6) |
 | R6 | Per-category break/rest | 🟡 team-rest yes; no court changeover | **P6** |
-| R7 | Round-wise rotation fairness | ❌ none | **P1** |
-| R8 | Multi-day packing, min idle | 🟡 chronological first-fit, no objective | **P3** |
+| R7 | Round-wise rotation fairness | ✅ **SHIPPED P1** (`fairness_order`, `rotation_fairness` soft rule) | done |
+| R8 | Multi-day packing, min idle | ✅ **SHIPPED P3** (optimizer soft-score: spread + placement) | done |
 | R9 | Per-category constraint config | 🟡 constraints full; draw-config has no sport layer | **P6** |
 | R10 | Scale 10–20+ sports, no per-sport code | 🟡 no-per-sport-code ✅; scale unproven | **P7** |
-| R11 | Elastic live re-timing | ❌ none (no `ended_at`) | **P2** |
-| R12 | "Best fixture possible" optimisation | ❌ greedy, no objective | **P3** |
+| R11 | Elastic live re-timing | ✅ **SHIPPED P2** (`started_at`/`ended_at`, `reflow_from_actual`, wizard opt-in) | done |
+| R12 | "Best fixture possible" optimisation | ✅ **SHIPPED P3** (`optimizer.py`: local + CP-SAT, validator-gated) | done |
 | R13 | Live scores + charts (bracket) | 🟡 scores+tables live; no public bracket | **P5** |
 | R14 | Reserve days + rain repair | ✅ full (`shift_day`) | test (P7) |
 
@@ -121,4 +121,16 @@ prod data, prod migrations, or deploy without explicit owner go-ahead.
   strict improvement) and additionally **tunable** via the `rotation_fairness` soft constraint —
   satisfies "data-driven, per-category, no per-sport code".
 - P2 `Match` migration is the one schema change; it must be applied while the target tournament is
-  still `registration_open` (not yet live).
+  still `registration_open` (not yet live). **Shipped**: migration `0010`, `reflow_from_actual`
+  opt-in via `scheduling_config.auto_reflow`; `apply_schedule` reflects the actual end time on
+  same-court downstream matches only when zero hard violations (else no-op).
+- P3 optimiser is **validator-gated, not a CP-SAT rewrite**: greedy stays the seed; a proposal
+  (local hill-climb default, or CP-SAT via `optimize_engine="cpsat"`) is adopted only when
+  `validate_schedule` (+ an `official_capacity` peak-concurrency check) finds zero hard violations
+  AND soft ≥ the seed. Worst case == today's greedy. Single-match constraints are enforced at
+  candidate generation; pinned matches are frozen (validator doesn't re-check pin *times*).
+  OR-Tools `9.15.6755` imports + solves CP-SAT on Python 3.14; `ortools>=9.12` is a declared dep,
+  lazy-imported so absence silently falls back to local search. Off by default (`optimize=false`).
+- P4 balanced grouping is **opt-in** (`balance_groups`, default off for back-compat) but the format
+  board turns it ON by default for a fresh `groups_knockout` pick. `group_size` becomes the TARGET;
+  `ceil(n/target)` even groups (snake seeding already did pots + balance).
