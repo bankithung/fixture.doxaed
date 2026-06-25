@@ -101,6 +101,11 @@ class ScheduleConfig:
     # removed from THAT venue's grid only; validation reports an assignment
     # on one as the hard ``venue_unavailable`` violation.
     venue_unavailable_dates: dict[str, set[date]] = field(default_factory=dict)
+    # Sport allow-list per venue ({base_name: [sport_key, ...]}, owner ask
+    # 2026-06-25): a match only lands on a venue whose list is empty (any) or
+    # contains the match's sport. Makes "2 courts per sport" enforced rather
+    # than convention — separating sports that share a venue_type.
+    venue_sports: dict[str, list[str]] = field(default_factory=dict)
     # no_person_overlap gaps in minutes (§2.4/§9 A3): None = legacy behavior
     # (linked teams use the team rest gap, venue-agnostic).
     person_min_gap: int | None = None
@@ -168,6 +173,7 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
     venue_types: dict[str, str] = {}
     venue_counts: dict[str, int] = {}
     venue_unavailable: dict[str, set[date]] = {}
+    venue_sports: dict[str, list[str]] = {}
     for v in d.get("venues") or []:
         if isinstance(v, dict):
             name = str(v.get("name") or "").strip()
@@ -176,6 +182,12 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
             venues.append(name)
             if v.get("venue_type"):
                 venue_types[name] = str(v["venue_type"]).strip()
+            allowed = [
+                str(s).strip() for s in (v.get("sports") or [])
+                if str(s).strip()
+            ]
+            if allowed:
+                venue_sports[name] = allowed
             try:
                 count = int(v.get("count") or 1)
             except (TypeError, ValueError):
@@ -222,6 +234,7 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
         venue_types=venue_types,
         venue_counts=venue_counts,
         venue_unavailable_dates=venue_unavailable,
+        venue_sports=venue_sports,
         activated_reserve_days=activated,
     )
 
@@ -789,6 +802,11 @@ def schedule_matches(
             vt = cfg.venue_types.get(base_of.get(venue, venue), "")
             if vt and vt != m.venue_type:
                 return False
+        # Sport allow-list (owner ask 2026-06-25): a venue bound to specific
+        # sports rejects matches of any other sport — "TT only on TT courts".
+        allowed_sports = cfg.venue_sports.get(base_of.get(venue, venue))
+        if allowed_sports and m.sport and m.sport not in allowed_sports:
+            return False
         end = dt + dur
         if end > wend:
             return False

@@ -391,3 +391,51 @@ def test_calendar_excluded_from_inputs_hash():
     )
     t.refresh_from_db()
     assert compute_inputs_hash(t, LEAF_U15) == h0
+
+
+# ----------------------------------------------------- sport-level layer (R9)
+def test_effective_layering_inserts_sport_between_star_and_leaf():
+    """draw_config["sport:football"] sits between "*" and the leaf: one write
+    sets the format for every category of the sport (owner ask 2026-06-25)."""
+    admin = _verified("sport-layer@test.local")
+    t = _tournament(admin)
+    # "*" says round_robin; the sport layer overrides every football leaf to KO
+    update_draw_config(tournament=t, leaf_key="*",
+                       partial={"format": "round_robin"}, by=admin)
+    update_draw_config(tournament=t, leaf_key="sport:football",
+                       partial={"format": "knockout"}, by=admin)
+    t.refresh_from_db()
+    assert effective_draw_config(t, LEAF_U15)["format"] == "knockout"
+    assert effective_draw_config(t, LEAF_U17)["format"] == "knockout"
+    # "*"-only resolution (no leaf) still sees the tournament default
+    assert effective_draw_config(t, None)["format"] == "round_robin"
+
+
+def test_leaf_layer_overrides_sport_layer():
+    admin = _verified("leaf-beats-sport@test.local")
+    t = _tournament(admin)
+    update_draw_config(tournament=t, leaf_key="sport:football",
+                       partial={"format": "knockout"}, by=admin)
+    update_draw_config(tournament=t, leaf_key=LEAF_U17,
+                       partial={"format": "round_robin"}, by=admin)
+    t.refresh_from_db()
+    assert effective_draw_config(t, LEAF_U15)["format"] == "knockout"   # sport
+    assert effective_draw_config(t, LEAF_U17)["format"] == "round_robin"  # leaf
+
+
+def test_update_draw_config_rejects_unknown_sport():
+    admin = _verified("bad-sport@test.local")
+    t = _tournament(admin)
+    with pytest.raises(ValueError):
+        update_draw_config(tournament=t, leaf_key="sport:basketball",
+                           partial={"format": "knockout"}, by=admin)
+
+
+def test_update_draw_config_accepts_known_sport_and_audits():
+    admin = _verified("good-sport@test.local")
+    t = _tournament(admin)
+    update_draw_config(tournament=t, leaf_key="sport:football",
+                       partial={"format": "knockout"}, by=admin)
+    t.refresh_from_db()
+    assert t.draw_config["sport:football"] == {"format": "knockout"}
+    assert AuditEvent.objects.filter(event_type="draw_config_updated").exists()

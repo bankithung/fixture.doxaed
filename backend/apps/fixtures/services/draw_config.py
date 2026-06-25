@@ -183,9 +183,14 @@ def effective_draw_config(
     overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Resolve the effective draw config for one competition (spec §2.1):
-    defaults < legacy rules keys < draw_config["*"] < draw_config[leaf] <
-    ``overrides`` (explicit request params — copied verbatim so legacy API
-    format values like "by_category" keep winning unchanged)."""
+    defaults < legacy rules keys < draw_config["*"] < draw_config["sport:<k>"]
+    < draw_config[leaf] < ``overrides`` (explicit request params — copied
+    verbatim so legacy API format values like "by_category" keep winning
+    unchanged). The sport layer (owner ask 2026-06-25) lets one write set the
+    format for every category of a sport — "all Table Tennis is knockout" —
+    inherited by each leaf unless that leaf overrides it."""
+    from apps.tournaments.services.sports import sport_for_leaf
+
     out = copy.deepcopy(DEFAULT_DRAW_CONFIG)
     rules = tournament.rules or {}
     for key in _LEGACY_RULES_KEYS:
@@ -194,7 +199,13 @@ def effective_draw_config(
     stored = tournament.draw_config or {}
     layers = ["*"]
     if leaf_key and leaf_key != "*":
-        layers.append(leaf_key)
+        if leaf_key.startswith("sport:"):
+            layers.append(leaf_key)
+        else:
+            sport = sport_for_leaf(tournament.sports, leaf_key)
+            if sport:
+                layers.append(f"sport:{sport}")
+            layers.append(leaf_key)
     for layer_key in layers:
         layer = stored.get(layer_key)
         if isinstance(layer, dict):
@@ -211,11 +222,17 @@ def leaf_has_matches(tournament, leaf_key: str | None) -> bool:
     """True once non-deleted matches exist in scope — the per-leaf freeze
     signal (§2.1): edits stay allowed but the UI shows the invariant-10
     regenerate/keep/diff banner."""
+    from django.db.models import Q
+
     from apps.matches.models import Match
 
     qs = Match.objects.filter(tournament=tournament, deleted_at__isnull=True)
-    if leaf_key and leaf_key != "*":
-        qs = qs.filter(leaf_key=leaf_key)
+    lk = str(leaf_key or "*")
+    if lk.startswith("sport:"):
+        sport = lk[len("sport:"):]
+        qs = qs.filter(Q(leaf_key=sport) | Q(leaf_key__startswith=f"{sport}."))
+    elif lk != "*":
+        qs = qs.filter(leaf_key=lk)
     return qs.exists()
 
 
@@ -227,8 +244,9 @@ def update_draw_config(
     verb — the view gates it). Whitelist merge, idempotent on ``event_id``
     (invariant 3, via AuditEvent), audited as ``draw_config_updated``.
 
-    ``leaf_key`` is "*" (tournament-wide defaults) or a configured category
-    leaf key. Raises ValueError on unknown leaf/keys/values.
+    ``leaf_key`` is "*" (tournament-wide defaults), "sport:<sport_key>" (every
+    category of one sport — owner ask 2026-06-25), or a configured category
+    leaf key. Raises ValueError on an unknown sport/leaf/keys/values.
     """
     from django.db import transaction
 
@@ -237,7 +255,12 @@ def update_draw_config(
     from apps.tournaments.services.sports import iter_leaves
 
     leaf_key = str(leaf_key or "*")
-    if leaf_key != "*":
+    if leaf_key.startswith("sport:"):
+        sport_key = leaf_key[len("sport:"):]
+        known_sports = {s.get("key") for s in (tournament.sports or [])}
+        if sport_key not in known_sports:
+            raise ValueError(f"unknown sport_key: {sport_key!r}")
+    elif leaf_key != "*":
         known = {leaf["leaf_key"] for leaf in iter_leaves(tournament.sports)}
         if leaf_key not in known:
             raise ValueError(f"unknown leaf_key: {leaf_key!r}")

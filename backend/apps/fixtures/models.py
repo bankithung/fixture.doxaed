@@ -34,6 +34,12 @@ class Venue(models.Model):
     # from tournament blackout_dates (all venues) and ``windows`` (daily
     # hours): "the ground is booked for a wedding on the 3rd".
     unavailable_dates = models.JSONField(default=list, blank=True)
+    # Sports allowed on this venue (owner ask 2026-06-25): empty list = any
+    # sport. When set (e.g. ["table_tennis"]) the scheduler only lands matches
+    # of those sports here — so "2 courts per sport" becomes enforced, not just
+    # convention: a TT match never sits on a Sepak Takraw court even when both
+    # share the "indoor_court" type. Stored as a list of sport keys.
+    sports = models.JSONField(default=list, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="venues_created",

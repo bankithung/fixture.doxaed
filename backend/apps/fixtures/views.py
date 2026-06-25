@@ -821,7 +821,19 @@ def _venue_payload(v: Venue) -> dict:
         "id": str(v.id), "name": v.name, "venue_type": v.venue_type,
         "windows": v.windows or [], "count": v.count,
         "unavailable_dates": v.unavailable_dates or [],
+        "sports": v.sports or [],
     }
+
+
+def _clean_sports(raw) -> list[str]:
+    """Venue sport allow-list (owner ask 2026-06-25): a de-duped list of
+    non-empty sport-key strings (empty = any sport may use the venue)."""
+    out: list[str] = []
+    for s in raw or []:
+        key = str(s).strip()[:60]
+        if key and key not in out:
+            out.append(key)
+    return out
 
 
 def _clean_count(raw) -> int:
@@ -893,6 +905,7 @@ class TournamentVenuesView(GenericAPIView):
             unavailable_dates=_clean_unavailable_dates(
                 request.data.get("unavailable_dates")
             ),
+            sports=_clean_sports(request.data.get("sports")),
             created_by=request.user,
         )
         return Response(_venue_payload(v), status=201)
@@ -938,8 +951,10 @@ class TournamentVenueDetailView(GenericAPIView):
             v.unavailable_dates = _clean_unavailable_dates(
                 request.data["unavailable_dates"]
             )
+        if "sports" in request.data:
+            v.sports = _clean_sports(request.data["sports"])
         v.save(update_fields=["name", "venue_type", "windows", "count",
-                              "unavailable_dates", "updated_at"])
+                              "unavailable_dates", "sports", "updated_at"])
         return Response(_venue_payload(v))
 
     def delete(self, request, tournament_id, venue_id):
