@@ -1,6 +1,6 @@
 # Fixture engine — "best possible" upgrade (design)
 
-**Date:** 2026-06-25 · **Status:** in progress — **P1, P2, P3, P4, P6 shipped & live**; P5 in progress, P7 pending · **Branch:** `restructure-foundation`
+**Date:** 2026-06-25 · **Status:** **P1–P6 shipped & live; P7 (adversarial review + hardening) done.** All of R1–R14 are now ✅. · **Branch:** `restructure-foundation`
 
 Driver: make the engine able to model **and optimally schedule** the *Dimapur District
 Catch Them Young U-14 Sepak Takraw + Table Tennis Tournament* (and generalise to 10–20+
@@ -48,7 +48,7 @@ prod data, prod migrations, or deploy without explicit owner go-ahead.
 | R10 | Scale 10–20+ sports, no per-sport code | 🟡 no-per-sport-code ✅; scale unproven | **P7** |
 | R11 | Elastic live re-timing | ✅ **SHIPPED P2** (`started_at`/`ended_at`, `reflow_from_actual`, wizard opt-in) | done |
 | R12 | "Best fixture possible" optimisation | ✅ **SHIPPED P3** (`optimizer.py`: local + CP-SAT, validator-gated) | done |
-| R13 | Live scores + charts (bracket) | 🟡 scores+tables live; no public bracket | **P5** |
+| R13 | Live scores + charts (bracket) | ✅ **SHIPPED P5** (public live scoreboard + per-leaf bracket, SSE-live) | done |
 | R14 | Reserve days + rain repair | ✅ full (`shift_day`) | test (P7) |
 
 ## Build tracks
@@ -134,3 +134,12 @@ prod data, prod migrations, or deploy without explicit owner go-ahead.
 - P4 balanced grouping is **opt-in** (`balance_groups`, default off for back-compat) but the format
   board turns it ON by default for a fresh `groups_knockout` pick. `group_size` becomes the TARGET;
   `ceil(n/target)` even groups (snake seeding already did pots + balance).
+- P5 public live scoreboard + bracket reuse the EXISTING public schedule endpoint + SSE tick stream
+  (zero new backend); the bracket reuses the admin `BracketView` (set-sport winners fall out of
+  `home/away_score` = sets-won). New routes `/t/:slug/:id/{live,bracket}`.
+- P7 ran a 5-reviewer + per-finding-verifier adversarial review of the session's code; it found
+  **9 real defects** (2 HIGH in the optimizer, 1 HIGH + 1 MED in reflow, 1 MED preview, 4 low/i18n/a11y),
+  all fixed + regression-tested. The keystone fix: `validate_schedule` (the optimizer's safety gate)
+  was blind to **scoped** hard `min_rest_minutes`/`max_matches_per_team_per_day` — it now shares ONE
+  resolver (`effective_rest_gap`/`effective_day_cap`) with the greedy, so the "worst case == greedy"
+  guarantee actually holds. Reflow is now day-scoped + drift-capped (`_REFLOW_MAX_DRIFT=480`).
