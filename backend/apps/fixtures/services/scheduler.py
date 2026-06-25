@@ -704,14 +704,12 @@ def schedule_matches(
     team_day: dict[tuple[str, date], int] = defaultdict(int)
     venue_load: dict[str, int] = defaultdict(int)
     unscheduled: list[str] = []
-    rest = timedelta(minutes=cfg.rest_minutes)
 
     # Scoped rule lists (redesign spec §9 A3) resolved per match below.
     rules = cfg.constraint_rules
-    hard_rest_rules = [r for r in rules if r.type == "min_rest_minutes" and r.hard]
+    # Hard rest + per-day caps now resolve through the shared effective_rest_gap
+    # / effective_day_cap helpers (so the greedy and validate_schedule agree).
     soft_rest_rules = [r for r in rules if r.type == "min_rest_minutes" and not r.hard]
-    day_rules = [r for r in rules
-                 if r.type == "max_matches_per_team_per_day" and r.hard]
     blackout_rules = [r for r in rules if r.type == "blackout_dates" and r.hard]
     window_types = ("preferred_window", "category_session_window")
     hard_windows = [r for r in rules if r.type in window_types and r.hard]
@@ -771,26 +769,12 @@ def schedule_matches(
                              team_ids=team_ids, team_tags=cfg.team_tags)
 
     def _rest_for(m: MatchSlotReq, t: str) -> timedelta:
-        """Effective hard rest gap for one team in one match: the
-        most-specific matching scoped rule wins (larger minutes break ties);
-        no match falls back to the global scalar."""
-        best: tuple[int, int] | None = None
-        for r in hard_rest_rules:
-            if _scope_ok(r, m, (t,)):
-                cand = (scope_specificity(r.scope),
-                        int(r.params.get("minutes") or 0))
-                if best is None or cand > best:
-                    best = cand
-        return timedelta(minutes=best[1]) if best else rest
+        """Effective hard rest gap for one team in one match — delegates to the
+        shared resolver so the greedy and ``validate_schedule`` never diverge."""
+        return effective_rest_gap(cfg, m, t)
 
     def _day_cap(m: MatchSlotReq, t: str) -> int:
-        best: tuple[int, int] | None = None
-        for r in day_rules:
-            if _scope_ok(r, m, (t,)):
-                cand = (scope_specificity(r.scope), int(r.params.get("count") or 0))
-                if best is None or cand[0] > best[0]:
-                    best = cand
-        return best[1] if best else cfg.max_per_team_per_day
+        return effective_day_cap(cfg, m, t)
 
     def _in_window(r: ScopedRule, dt: datetime) -> bool:
         days = r.params.get("days")
@@ -1222,6 +1206,46 @@ def _score_soft(assignments, team_busy, cfg, total,
     return score, notes
 
 
+# ----------------------------------------------------------- scoped-rule resolvers
+# One source of truth for the per-team HARD rest gap and per-day cap, shared by
+# the greedy placer AND ``validate_schedule`` — they used to diverge, letting the
+# optimizer adopt a schedule that broke a scoped hard rest/cap the greedy honored
+# (review 2026-06-25). Most-specific scope wins; larger minutes break rest ties.
+def effective_rest_gap(
+    cfg: ScheduleConfig, match: MatchSlotReq | None, team: str
+) -> timedelta:
+    base = timedelta(minutes=cfg.rest_minutes)
+    if match is None:
+        return base
+    best: tuple[int, int] | None = None
+    for r in cfg.constraint_rules:
+        if r.type == "min_rest_minutes" and r.hard and scope_matches(
+            r.scope, sport=match.sport, leaf_key=match.leaf_key,
+            team_ids=(team,), team_tags=cfg.team_tags,
+        ):
+            cand = (scope_specificity(r.scope), int(r.params.get("minutes") or 0))
+            if best is None or cand > best:
+                best = cand
+    return timedelta(minutes=best[1]) if best else base
+
+
+def effective_day_cap(
+    cfg: ScheduleConfig, match: MatchSlotReq | None, team: str
+) -> int:
+    if match is None:
+        return cfg.max_per_team_per_day
+    best: tuple[int, int] | None = None
+    for r in cfg.constraint_rules:
+        if r.type == "max_matches_per_team_per_day" and r.hard and scope_matches(
+            r.scope, sport=match.sport, leaf_key=match.leaf_key,
+            team_ids=(team,), team_tags=cfg.team_tags,
+        ):
+            cand = (scope_specificity(r.scope), int(r.params.get("count") or 0))
+            if best is None or cand[0] > best[0]:
+                best = cand
+    return best[1] if best else cfg.max_per_team_per_day
+
+
 # --------------------------------------------------------------------------- hard validation
 def validate_schedule(
     assignments: dict[str, tuple[datetime, str]],
@@ -1340,17 +1364,39 @@ def validate_schedule(
                                "venue": venue, "at": at.isoformat()})
 
     for team, items in team_items.items():
+        # Per-day cap: the effective limit on a day is the SMALLEST resolved cap
+        # among that day's matches (a match with a scoped cap of 1 forbids a 2nd
+        # that day) — matches the greedy's place-time _day_cap check.
         per_day: dict[date, int] = defaultdict(int)
-        for s, _e, _mid in items:
-            per_day[s.date()] += 1
+        day_caps: dict[date, int] = {}
+        for s, _e, mid in items:
+            d = s.date()
+            per_day[d] += 1
+            cap = effective_day_cap(cfg, by_id.get(mid) if mid else None, team)
+            day_caps[d] = min(day_caps.get(d, cap), cap)
         for d, count in per_day.items():
-            if count > cfg.max_per_team_per_day:
+            if count > day_caps.get(d, cfg.max_per_team_per_day):
                 violations.append({"code": "exceeds_max_per_day", "hard": True,
                                    "team_id": team, "date": d.isoformat()})
-        for subject, other, _at in overlap_pairs(items, gap=rest):
-            violations.append({"code": "insufficient_rest", "hard": True,
-                               "match_id": subject, "other_match_id": other,
-                               "team_id": team})
+        # Rest: each match's own scoped gap governs (the in-scope/later match's
+        # rule), so a scoped hard min_rest is enforced exactly as the greedy did.
+        items_sorted = sorted(items, key=lambda x: (x[0], x[1]))
+        for a in range(len(items_sorted)):
+            sa, ea, mid_a = items_sorted[a]
+            for b in range(a + 1, len(items_sorted)):
+                sb, eb, mid_b = items_sorted[b]
+                if mid_a is None and mid_b is None:
+                    continue  # two fixed bookings — not ours to flag
+                # Subject = the in-scope (reportable) match; its rule sets the gap.
+                if mid_b is not None:
+                    subject, other = mid_b, mid_a
+                else:
+                    subject, other = mid_a, mid_b
+                gap = effective_rest_gap(cfg, by_id.get(subject), team)
+                if sa < eb + gap and sb < ea + gap:
+                    violations.append({"code": "insufficient_rest", "hard": True,
+                                       "match_id": subject, "other_match_id": other,
+                                       "team_id": team})
 
     # Shared-player links (W2-D): linked teams never play overlapping
     # matches; the rest gap applies across the link too.

@@ -79,13 +79,13 @@ export function PublicBracketPage(): React.ReactElement {
   const brackets = useMemo(() => {
     const byLeaf = new Map<
       string,
-      { label: string; matches: MatchRow[] }
+      { key: string; label: string; matches: MatchRow[] }
     >();
     for (const m of query.data?.matches ?? []) {
       if (m.stage !== "knockout") continue;
       const key = m.leaf_key || "_";
       if (!byLeaf.has(key)) {
-        byLeaf.set(key, { label: m.leaf_label || t("Bracket"), matches: [] });
+        byLeaf.set(key, { key, label: m.leaf_label || t("Bracket"), matches: [] });
       }
       byLeaf.get(key)!.matches.push(toMatchRow(m));
     }
@@ -116,8 +116,8 @@ export function PublicBracketPage(): React.ReactElement {
         ) : (
           brackets.map((b) => (
             <section
-              key={b.label}
-              data-testid={`bracket-${b.label}`}
+              key={b.key}
+              data-testid={`bracket-${b.key}`}
               className="flex flex-col gap-3"
             >
               <h2 className="text-base font-semibold">{b.label}</h2>

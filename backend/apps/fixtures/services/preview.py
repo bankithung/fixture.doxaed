@@ -172,6 +172,10 @@ def _plan_for_config(
         sport=sport,
         label_prefix=f"{leaf_label(sports_cfg, leaf_key)} — " if leaf_key else "",
         legs=int(cfg["legs"]), seeding=seeding, seed=seed,
+        # Thread balance_groups so the preview's group split matches the commit
+        # path (views.py) — otherwise FIFA-balanced configs previewed plain
+        # chunks, silently breaking preview==commit (review 2026-06-25).
+        balance_groups=bool(cfg.get("balance_groups")),
         small_group_max=_small_group_max(tournament),
         separators=_keep_apart_separators(
             tournament, teams, leaf_key or "", sport, warnings,

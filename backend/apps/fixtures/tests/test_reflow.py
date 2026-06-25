@@ -143,6 +143,33 @@ def test_tiny_drift_under_threshold_is_ignored():
     assert _hour(m2, tz) == (10, 0)
 
 
+def test_reflow_does_not_move_other_days():
+    # Regression (review 2026-06-25): a late finish on day 1 must NOT shift a
+    # match the next day on the same court.
+    _a, t, tz, matches = _setup(auto_reflow=True)
+    m1, m2, m3 = matches
+    m2.scheduled_at = datetime(2026, 8, 2, 10, 0, tzinfo=tz)  # move m2 to day 2
+    m2.save(update_fields=["scheduled_at"])
+    m1.ended_at = datetime(2026, 8, 1, 10, 30, tzinfo=tz)     # 30' over on day 1
+    m1.save(update_fields=["ended_at"])
+    moved = reflow_from_actual(m1.id)
+    ids = {x["match_id"] for x in moved}
+    assert str(m3.id) in ids          # same-day downstream still shifts
+    assert str(m2.id) not in ids      # next day is untouched
+    assert _hour(m2, tz) == (10, 0)
+
+
+def test_reflow_ignores_implausibly_large_drift():
+    # A stale "complete" click hours after play ended must not reschedule the
+    # whole queue; drift over the cap is left for manual repair.
+    _a, t, tz, matches = _setup(auto_reflow=True)
+    m1, m2, _m3 = matches
+    m1.ended_at = datetime(2026, 8, 1, 19, 0, tzinfo=tz)  # planned 10:00 → +9h
+    m1.save(update_fields=["ended_at"])
+    assert reflow_from_actual(m1.id) == []
+    assert _hour(m2, tz) == (10, 0)
+
+
 def test_completed_match_is_not_moved_by_its_own_reflow():
     _a, t, tz, matches = _setup(auto_reflow=True)
     m1, _m2, _m3 = matches

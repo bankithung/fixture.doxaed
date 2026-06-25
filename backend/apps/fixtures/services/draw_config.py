@@ -151,6 +151,8 @@ def _validate_layer(layer: dict[str, Any]) -> None:
         raise ValueError("constraints_reviewed_at must be an ISO timestamp string")
     if "calendar" in layer:
         _validate_calendar(layer["calendar"])
+    if "balance_groups" in layer and not isinstance(layer["balance_groups"], bool):
+        raise ValueError("balance_groups must be a boolean")
 
     group_size = layer.get("group_size", DEFAULT_DRAW_CONFIG["group_size"])
     advance = layer.get("advance_per_group", DEFAULT_DRAW_CONFIG["advance_per_group"])

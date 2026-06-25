@@ -76,15 +76,13 @@ describe("PublicBracketPage", () => {
       payload([SEMI, GROUP_MATCH]),
     );
     wrap();
-    // Knockout leaf bracket appears with its competition heading + the teams.
-    expect(
-      await screen.findByTestId("bracket-Table Tennis · U14"),
-    ).toBeInTheDocument();
+    // Knockout leaf bracket appears (keyed by the unique leaf_key) with its
+    // competition heading + the teams.
+    expect(await screen.findByTestId("bracket-tt.u14")).toBeInTheDocument();
+    expect(screen.getByText("Table Tennis · U14")).toBeInTheDocument();
     expect(screen.getByText("Asen")).toBeInTheDocument();
     // The group-stage competition does NOT get a bracket section.
-    expect(
-      screen.queryByTestId("bracket-Sepak Takraw · U14"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("bracket-sepak.u14")).not.toBeInTheDocument();
   });
 
   it("shows an empty state when no knockout matches exist yet", async () => {

@@ -435,6 +435,11 @@ def delay_match(
 #: Drift (minutes) below which an actual-end reflow is a no-op — avoids
 #: churning the calendar for trivial over/under-runs (stability gate, R11).
 _REFLOW_MIN_DRIFT = 5
+#: Drift above which the reflow is NOT trusted — a stale "complete" click hours
+#: after play ended (ended_at is wall-clock at the click) would otherwise shift
+#: the whole queue by that much; leave it for manual repair (matches the 8h cap
+#: delay_match enforces). Review 2026-06-25.
+_REFLOW_MAX_DRIFT = 480
 
 
 def reflow_from_actual(
@@ -488,7 +493,7 @@ def reflow_from_actual(
     actual_end = _local(match.ended_at, tz)
     planned_end = sched_start + dur(match)
     drift = (actual_end - planned_end).total_seconds() / 60.0
-    if abs(drift) < _REFLOW_MIN_DRIFT:
+    if abs(drift) < _REFLOW_MIN_DRIFT or abs(drift) > _REFLOW_MAX_DRIFT:
         return []
     delta = timedelta(minutes=drift)
     # The court is free no earlier than the LATER of the real end and the
@@ -514,11 +519,16 @@ def reflow_from_actual(
     ]
     obstacles.append((sched_start, actual_end, match.venue, teams_of(match)))
 
+    # Same court, same DAY, later than the finished match. Scoping to the day is
+    # essential: without it, a later day's matches at this venue would be shifted
+    # by today's drift (lstart+delta lands a day out and dominates court_free),
+    # spilling wrong-time notifications across every subsequent day (review).
     queue = sorted(
         (
             m for m in others
             if is_movable(m) and m.venue == match.venue
             and lstart(m) >= sched_start
+            and lstart(m).date() == sched_start.date()
         ),
         key=lambda m: (lstart(m), m.match_no),
     )

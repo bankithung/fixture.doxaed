@@ -528,7 +528,9 @@ def optimize_schedule(
 
     proposals: list[dict[str, tuple[datetime, str]]] = []
     if cfg.optimize_engine == "cpsat":
-        fixed = {mid: seed_assign[mid] for mid in frozen}
+        # A pinned match the greedy seed could not place has no fixed slot —
+        # skip it (it stays unscheduled), exactly as the local path handles it.
+        fixed = {mid: seed_assign[mid] for mid in frozen if mid in seed_assign}
         cp = _cpsat_propose(
             movable, fixed, candidates, matches, cfg,
             preoccupied=preoccupied, seconds=seconds or 5.0,

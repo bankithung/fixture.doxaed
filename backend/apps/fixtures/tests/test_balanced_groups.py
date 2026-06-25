@@ -74,6 +74,33 @@ def test_generate_round_robin_balances_groups():
 
 
 @pytest.mark.django_db
+def test_preview_group_sizes_match_committed_draw():
+    # Regression (review 2026-06-25): the preview must use the SAME grouping as
+    # commit when balance_groups is on (it used to fall back to plain chunking).
+    from apps.fixtures.services.preview import preview_fixtures
+
+    admin = _admin()
+    t = create_tournament(user=admin, name="Preview Parity Cup")
+    register_school(tournament=t, school_name="S",
+                    teams=[{"name": f"T{i}", "players": []} for i in range(10)])
+    t.draw_config = {"*": {"format": "round_robin", "group_size": 4,
+                           "balance_groups": True}}
+    t.save(update_fields=["draw_config"])
+
+    preview = preview_fixtures(tournament=t, leaf_key=None, include_schedule=False)
+    pv_sizes: dict[str, set] = {}
+    for m in preview["matches"]:
+        g = pv_sizes.setdefault(m["group_label"], set())
+        for side in (m.get("home"), m.get("away")):
+            if side and side.get("team_id"):
+                g.add(side["team_id"])
+    preview_group_sizes = sorted((len(v) for v in pv_sizes.values()), reverse=True)
+
+    generate_round_robin(tournament=t, group_size=4, balance_groups=True)
+    assert preview_group_sizes == _group_sizes(t) == [4, 3, 3]
+
+
+@pytest.mark.django_db
 def test_plain_chunking_unchanged_when_balance_off():
     admin = _admin()
     t = create_tournament(user=admin, name="Chunk Cup")

@@ -9,7 +9,7 @@ optional CP-SAT engine produces a legal, non-worse schedule.
 """
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import date, datetime, time
 
 import pytest
 
@@ -135,6 +135,66 @@ def test_pinned_match_is_frozen_even_when_moving_would_improve():
     assert {dt.date() for dt, _v in seed.assignments.values()} == {date(2026, 8, 1)}
     out = optimize_schedule(seed, matches, cfg)
     assert out.assignments == seed.assignments
+
+
+def test_validate_schedule_honors_scoped_hard_rest_and_day_cap():
+    # Regression (review 2026-06-25): validate_schedule used to read only the
+    # GLOBAL rest/day-cap, so the optimizer gate was blind to scoped HARD rules.
+    cfg = _cfg(rest_minutes=0, max_per_team_per_day=5, daily_end=time(18, 0),
+               constraint_rules=[
+                   ScopedRule(type="min_rest_minutes", scope="sport:tt",
+                              hard=True, params={"minutes": 120}),
+                   ScopedRule(type="max_matches_per_team_per_day", scope="sport:tt",
+                              hard=True, params={"count": 1}),
+               ])
+    matches = [
+        MatchSlotReq(id="a", round_no=1, match_no=1, home="X", away="Y", sport="tt"),
+        MatchSlotReq(id="b", round_no=1, match_no=2, home="X", away="Z", sport="tt"),
+    ]
+    # X plays 09:00–10:00 then 10:30–11:30 → 30 min rest (< scoped 120) AND two
+    # tt matches same day (> scoped cap 1). Both must be flagged now.
+    bad = {
+        "a": (datetime(2026, 8, 1, 9, 0), "G"),
+        "b": (datetime(2026, 8, 1, 10, 30), "G"),
+    }
+    codes = {v["code"] for v in validate_schedule(bad, matches, cfg)}
+    assert "insufficient_rest" in codes
+    assert "exceeds_max_per_day" in codes
+
+
+def test_optimizer_never_adopts_a_scoped_hard_rest_violation():
+    # The whole safety guarantee: even with a scoped hard rest the optimizer's
+    # output must be hard-legal by the engine's own validator.
+    cfg = _cfg(optimize=True, rest_minutes=0, daily_end=time(18, 0),
+               slot_minutes=60, max_per_team_per_day=5,
+               constraint_rules=[
+                   ScopedRule(type="min_rest_minutes", scope="sport:tt",
+                              hard=True, params={"minutes": 120}),
+               ])
+    matches = [
+        MatchSlotReq(id="a", round_no=1, match_no=1, home="X", away="Y", sport="tt"),
+        MatchSlotReq(id="b", round_no=1, match_no=2, home="X", away="Z", sport="tt"),
+        MatchSlotReq(id="c", round_no=1, match_no=3, home="P", away="Q", sport="tt"),
+    ]
+    seed = schedule_matches(matches, cfg)
+    out = optimize_schedule(seed, matches, cfg)
+    assert validate_schedule(out.assignments, matches, cfg) == []
+
+
+def test_cpsat_with_unplaceable_pin_does_not_crash():
+    # Regression: the CP-SAT branch indexed seed.assignments by every frozen
+    # (pinned) id, KeyError-ing when the seed left a pinned match unscheduled.
+    cfg = _cfg(optimize=True, optimize_engine="cpsat",
+               constraint_rules=[
+                   ScopedRule(type="round_pinned_to_window", scope="all", hard=True,
+                              params={"round": 1, "date": date(2026, 8, 1),
+                                      "from": time(9, 0), "to": time(9, 30)}),
+               ])
+    matches = _clustering_matches()  # 60-min matches can't fit a 30-min pin window
+    seed = schedule_matches(matches, cfg)
+    assert seed.unscheduled  # the pin is infeasible → seed leaves them unplaced
+    out = optimize_schedule(seed, matches, cfg)  # must not raise
+    assert validate_schedule(out.assignments, matches, cfg) == []
 
 
 def test_cpsat_engine_is_legal_and_not_worse():

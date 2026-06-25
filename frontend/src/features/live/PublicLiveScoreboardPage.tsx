@@ -15,7 +15,8 @@ function periodLabel(m: PublicScheduleMatch): string {
   if (m.status === "extra_time") return t("Extra time");
   if (m.status === "penalties") return t("Penalties");
   const p = (m.current_period || "").replace(/_/g, " ").trim();
-  return p ? p.replace(/\b\w/g, (c) => c.toUpperCase()) : t("Live");
+  // Wrap through t() like every other consumer of current_period (i18n).
+  return p ? t(p).replace(/\b\w/g, (c) => c.toUpperCase()) : t("Live");
 }
 
 /** One big, glanceable live score card. */
@@ -159,6 +160,8 @@ export function PublicLiveScoreboardPage(): React.ReactElement {
         ) : (
           <div
             data-testid="live-grid"
+            aria-live="polite"
+            aria-atomic="false"
             className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
           >
             {live.map((m) => (
