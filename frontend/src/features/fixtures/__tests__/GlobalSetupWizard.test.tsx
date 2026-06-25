@@ -137,6 +137,7 @@ describe("GlobalSetupWizard", () => {
       venue_type: "ground",
       windows: [],
       count: 4,
+      sports: [],
     });
     const constraints =
       vi.mocked(tournamentsApi.updateSettings).mock.calls[0][1].constraints!;

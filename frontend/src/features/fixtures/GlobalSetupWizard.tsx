@@ -86,6 +86,7 @@ function venueDraft(v: VenueRecord): VenueDraft {
     count: v.count ?? 1,
     from: v.windows?.[0]?.from ?? "",
     to: v.windows?.[0]?.to ?? "",
+    sports: v.sports ?? [],
   };
 }
 
@@ -174,6 +175,11 @@ export function GlobalSetupWizard({
     queryKey: qk.settings(tournamentId),
     queryFn: () => tournamentsApi.settings(tournamentId),
   });
+  const sportsQ = useQuery({
+    queryKey: ["tournament-sports", tournamentId],
+    queryFn: () => tournamentsApi.sports(tournamentId),
+  });
+  const sportOptions = sportsQ.data?.sports ?? [];
 
   // Seed the form ONCE from the three stored sources (guarded render-phase
   // adjustment — mount the wizard conditionally so reopening reseeds).
@@ -225,6 +231,7 @@ export function GlobalSetupWizard({
           venue_type: d.venue_type,
           windows: draftWindows(d),
           count: d.count,
+          sports: d.sports,
         };
         if (!d.id) {
           await tournamentsApi.createVenue(tournamentId, body);
@@ -236,7 +243,8 @@ export function GlobalSetupWizard({
           prev.name !== body.name ||
           prev.venue_type !== body.venue_type ||
           (prev.count ?? 1) !== body.count ||
-          JSON.stringify(prev.windows ?? []) !== JSON.stringify(body.windows);
+          JSON.stringify(prev.windows ?? []) !== JSON.stringify(body.windows) ||
+          JSON.stringify(prev.sports ?? []) !== JSON.stringify(body.sports);
         if (changed) await tournamentsApi.updateVenue(tournamentId, d.id, body);
       }
       for (const v of stored) {
@@ -418,11 +426,19 @@ export function GlobalSetupWizard({
                 "Your venues, shared by every competition. A hall with 4 courts runs 4 matches at the same time.",
               )}
             </p>
+            {sportOptions.length > 1 ? (
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "With more than one sport, use “Used by” on a venue to dedicate it — e.g. give Table Tennis its own tables so its matches never share a Sepak Takraw court.",
+                )}
+              </p>
+            ) : null}
             {form.venues.map((v, i) => (
               <VenueRow
                 key={v.id ?? `new-${i}`}
                 value={v}
                 index={i}
+                sportOptions={sportOptions}
                 onChange={(nv) =>
                   set("venues", form.venues.map((x, j) => (j === i ? nv : x)))
                 }
@@ -440,7 +456,7 @@ export function GlobalSetupWizard({
               onClick={() =>
                 set("venues", [
                   ...form.venues,
-                  { name: "", venue_type: "ground", count: 1, from: "", to: "" },
+                  { name: "", venue_type: "ground", count: 1, from: "", to: "", sports: [] },
                 ])
               }
             >

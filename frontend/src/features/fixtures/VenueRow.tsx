@@ -1,6 +1,7 @@
 import { Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
+import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
 /** Editable venue draft (maps to the Venue CRUD API, redesign §2.3). */
@@ -14,6 +15,10 @@ export interface VenueDraft {
   /** Daily availability window; both empty = always open. */
   from: string;
   to: string;
+  /** Sport keys allowed on this venue; empty = any sport (owner ask
+   * 2026-06-25). Binds e.g. "TT Court" to table tennis so a Sepak match
+   * never lands there. */
+  sports: string[];
 }
 
 const TYPE_OPTIONS = [
@@ -31,14 +36,24 @@ export function VenueRow({
   index,
   onChange,
   onRemove,
+  sportOptions = [],
 }: {
   value: VenueDraft;
   index: number;
   onChange: (v: VenueDraft) => void;
   onRemove: () => void;
+  /** Tournament sports — when there are 2+, the row offers a "Used by" picker
+   * so the organiser bonds courts to a sport (TT tables vs Sepak courts). */
+  sportOptions?: { key: string; name: string }[];
 }): React.ReactElement {
   const set = (patch: Partial<VenueDraft>): void =>
     onChange({ ...value, ...patch });
+  const toggleSport = (key: string): void =>
+    set({
+      sports: value.sports.includes(key)
+        ? value.sports.filter((s) => s !== key)
+        : [...value.sports, key],
+    });
   const options =
     !value.venue_type || TYPE_OPTIONS.some((o) => o.value === value.venue_type)
       ? TYPE_OPTIONS
@@ -107,6 +122,41 @@ export function VenueRow({
       >
         <Trash2 aria-hidden="true" className="h-4 w-4" />
       </button>
+
+      {sportOptions.length > 1 ? (
+        <div className="flex w-full flex-col gap-1 border-t border-border/60 pt-2">
+          <span className="text-xs font-medium">
+            {t("Used by")}
+            <span className="ml-1 font-normal text-muted-foreground">
+              {value.sports.length === 0
+                ? t("(any sport — pick to dedicate this venue)")
+                : null}
+            </span>
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {sportOptions.map((s) => {
+              const on = value.sports.includes(s.key);
+              return (
+                <button
+                  key={s.key}
+                  type="button"
+                  aria-pressed={on}
+                  data-testid={`venue-${index}-sport-${s.key}`}
+                  onClick={() => toggleSport(s.key)}
+                  className={cn(
+                    "rounded-full border px-2.5 py-0.5 text-xs transition-colors",
+                    on
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card text-foreground hover:bg-muted",
+                  )}
+                >
+                  {s.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
