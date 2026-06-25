@@ -156,6 +156,36 @@ def test_apply_schedule_persists_and_audits():
 
 
 @pytest.mark.django_db
+def test_apply_schedule_with_optimizer_persists_and_keeps_flag():
+    """End-to-end: the optimize flag flows config_from_dict → greedy seed →
+    optimizer → persisted slots; every match lands and the flag round-trips."""
+    admin = User.objects.create_user(email="opt@sch.test", password="FixtureDemo2026!",
+                                     is_active=True)
+    admin.email_verified_at = timezone.now()
+    admin.save(update_fields=["email_verified_at"])
+    t = create_tournament(user=admin, name="Optimize Cup")
+    for s in ("Alpha", "Beta", "Gamma", "Delta"):
+        register_school(tournament=t, school_name=s,
+                        teams=[{"name": s[0], "players": []}])
+    generate_round_robin(tournament=t, group_size=4)
+
+    res = apply_schedule(
+        tournament=t,
+        config={"date_start": "2026-08-01", "date_end": "2026-08-03",
+                "slot_minutes": 60, "venues": ["Ground 1"],
+                "rest_minutes": 30, "max_per_team_per_day": 1,
+                "optimize": True, "optimize_engine": "local"},
+        by=admin,
+    )
+    assert not res.unscheduled
+    for m in Match.objects.filter(tournament=t):
+        assert m.scheduled_at is not None and m.venue
+    # The stored config kept the optimize flag for re-runs.
+    t.refresh_from_db()
+    assert t.scheduling_config.get("optimize") is True
+
+
+@pytest.mark.django_db
 def test_schedule_api_manager_only_and_isolation():
     from rest_framework.test import APIClient
 

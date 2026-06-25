@@ -38,6 +38,7 @@ dependencies = [
   # SaaS console UX
   "django-tailwind>=3.8",
   "django-browser-reload>=1.13",  # tailwind dev autoreload
+  "ortools>=9.12",  # R12 CP-SAT schedule optimizer (lazy-imported; optimizer falls back to local search if absent)
 ]
 
 [project.optional-dependencies]

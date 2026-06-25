@@ -116,6 +116,14 @@ class ScheduleConfig:
     # ``reserve_days`` record at merge time, so the grid/validation/re-runs
     # treat the day as available once matches actually live on it.
     activated_reserve_days: set[date] = field(default_factory=set)
+    # Optimization pass (R12): the greedy result is the SEED; when ``optimize``
+    # is on, ``optimizer.optimize_schedule`` searches for a better-soft-scored
+    # arrangement (local search, optionally CP-SAT/OR-Tools) and is accepted
+    # only when it has zero hard violations AND a soft score >= the seed — so
+    # the worst case is exactly today's greedy schedule. Off by default.
+    optimize: bool = False
+    optimize_engine: str = "local"   # "local" | "cpsat" (cpsat falls back to local)
+    optimize_seconds: float = 0.0    # >0 = wall-clock budget; 0 = iteration-bounded
 
 
 def _parse_date(v: Any) -> date | None:
@@ -236,6 +244,9 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
         venue_unavailable_dates=venue_unavailable,
         venue_sports=venue_sports,
         activated_reserve_days=activated,
+        optimize=bool(d.get("optimize", False)),
+        optimize_engine=str(d.get("optimize_engine") or "local"),
+        optimize_seconds=float(d.get("optimize_seconds") or 0.0),
     )
 
 
@@ -1617,6 +1628,14 @@ def apply_schedule(
     )
     result = schedule_matches(reqs, cfg, preoccupied=preoccupied, linked=linked)
     result.explanation[1:1] = constraint_notes
+    # Optimization pass (R12): the greedy result is the seed; an improved
+    # arrangement is adopted only when it is hard-legal AND soft >= the seed.
+    if cfg.optimize:
+        from apps.fixtures.services.optimizer import optimize_schedule
+
+        result = optimize_schedule(
+            result, reqs, cfg, preoccupied=preoccupied, linked=linked
+        )
 
     by_id = {
         str(m.id): m
