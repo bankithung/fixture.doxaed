@@ -120,6 +120,33 @@ describe("CompetitionFormatBoard", () => {
     );
   });
 
+  it("defaults groups to balanced sizing and lets you turn it off", async () => {
+    mount();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Format for Sepak Takraw" }),
+    );
+    await userEvent.click(
+      screen.getByRole("option", { name: "Group stage → Knockout" }),
+    );
+    // FIFA-style balance is on by default after choosing the group format.
+    const balance = await screen.findByTestId("format-sport-sepak_takraw-balance");
+    expect(balance).toBeChecked();
+    await userEvent.click(balance); // turn it off
+    await userEvent.click(screen.getByTestId("save-formats"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({
+          leaf_key: "sport:sepak_takraw",
+          config: expect.objectContaining({
+            format: "groups_knockout",
+            balance_groups: false,
+          }),
+        }),
+      ),
+    );
+  });
+
   it("can override one category's format independently of its sport", async () => {
     mount();
     await userEvent.click(

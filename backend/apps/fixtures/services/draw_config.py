@@ -29,6 +29,11 @@ DEFAULT_DRAW_CONFIG: dict[str, Any] = {
     "format": "round_robin",         # round_robin | knockout | groups_knockout
                                      # | swiss | double_elim
     "group_size": 5,
+    # R3 FIFA-style auto group-sizing: when true, ``group_size`` is the TARGET
+    # and the engine derives ceil(n/target) even-sized groups (no orphan group).
+    # Off by default for back-compat; the format board turns it on for new
+    # groups_knockout configs.
+    "balance_groups": False,
     "advance_per_group": 2,
     "advance_best_thirds": 0,        # best next-placed cross-group qualifiers
     "legs": 1,                       # 1 | 2 (double round-robin, mirrored 2nd cycle)

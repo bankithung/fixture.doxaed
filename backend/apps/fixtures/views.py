@@ -158,7 +158,9 @@ class GenerateFixturesView(GenericAPIView):
                     group_size=int(cfg["group_size"]),
                     leaf_key=leaf_key or None,
                     legs=int(cfg["legs"]),
-                    seeding=seeding, seed=seed, warnings=warnings,
+                    seeding=seeding, seed=seed,
+                    balance_groups=bool(cfg.get("balance_groups")),
+                    warnings=warnings,
                 )
         except (ValueError, TypeError) as e:
             raise DRFValidationError({"detail": str(e)})

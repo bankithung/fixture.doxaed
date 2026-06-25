@@ -883,6 +883,9 @@ export interface DrawConfig {
     | "double_elim"
     | string;
   group_size: number;
+  /** R3 FIFA-style auto group-sizing: treat group_size as the TARGET and derive
+   * ceil(n/target) even-sized groups (no orphan group). */
+  balance_groups?: boolean;
   advance_per_group: number;
   /** Best next-placed cross-group qualifiers (groups→knockout, increment N). */
   advance_best_thirds: number;

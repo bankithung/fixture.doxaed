@@ -137,6 +137,30 @@ def _snake_groups(teams: list, group_size: int) -> list[list]:
     return groups
 
 
+def balanced_group_sizes(n: int, target: int) -> list[int]:
+    """FIFA-style group sizing (R3): ``ceil(n / target)`` groups whose sizes
+    differ by at most one — never an orphan group. The target is the PREFERRED
+    size; the count is derived from it so 10 teams at target 4 give groups of
+    (4, 3, 3) rather than the plain-chunk (4, 4, 2). Larger groups come first so
+    Group A is never smaller than Group B."""
+    target = max(2, target)
+    n_groups = max(1, -(-n // target))  # ceil(n / target)
+    base, rem = divmod(n, n_groups)
+    return [base + 1] * rem + [base] * (n_groups - rem)
+
+
+def _balanced_groups(teams: list, target: int) -> list[list]:
+    """Split a seed-ordered list into ``balanced_group_sizes`` buckets (R3) by
+    sequential fill — even group sizes for any seeding method, not just snake."""
+    sizes = balanced_group_sizes(len(teams), target)
+    groups: list[list] = []
+    i = 0
+    for s in sizes:
+        groups.append(teams[i : i + s])
+        i += s
+    return groups
+
+
 def _persist_draw_seed(tournament, leaf_key: str | None, seed: int) -> None:
     """Store a freshly-generated RNG seed in ``draw_config`` (under the leaf,
     or "*" for whole-tournament runs) so the draw can be reproduced (§4.3)."""
@@ -501,10 +525,13 @@ def plan_round_robin(
     label_prefix: str = "", legs: int = 1, seeding: str = "registration",
     seed: int | None = None, small_group_max: int = 0,
     separators: list[tuple[dict, dict]] | None = None,
+    balance_groups: bool = False,
     warnings: list | None = None,
 ) -> list[MatchPlan]:
     """Pure pairing core for the grouped round-robin: seed order, institution
-    spread, chunk/snake grouping, per-group circle pairing. Zero DB writes."""
+    spread, chunk/snake/balanced grouping, per-group circle pairing. Zero DB
+    writes. ``balance_groups`` (R3) sizes the groups FIFA-style — even sizes,
+    no orphan group — for any seeding method (snake already balances)."""
     if len(teams) < 2:
         raise ValueError("Need at least 2 registered teams to generate fixtures.")
     teams = _seed_order(list(teams), seeding=seeding, seed=seed)
@@ -517,6 +544,8 @@ def plan_round_robin(
         teams = _separate_by_key(teams, None, key_map)
     if seeding == "snake":
         groups = _snake_groups(teams, group_size)
+    elif balance_groups:
+        groups = _balanced_groups(teams, group_size)
     else:
         groups = [
             teams[i : i + group_size] for i in range(0, len(teams), group_size)
@@ -1250,7 +1279,7 @@ def _persist_plans(tournament, plans: list[MatchPlan]) -> list[Match]:
 def generate_round_robin(
     *, tournament, group_size: int = 5, leaf_key: str | None = None,
     legs: int = 1, seeding: str = "registration", seed: int | None = None,
-    warnings: list | None = None,
+    balance_groups: bool = False, warnings: list | None = None,
 ) -> list[Match]:
     """Split registered teams into groups of ``group_size`` and round-robin each
     group. With ``leaf_key``, only that competition's teams are drawn and the
@@ -1284,6 +1313,7 @@ def generate_round_robin(
         sport=sport,
         label_prefix=f"{leaf_label(sports_cfg, leaf_key)} — " if leaf_key else "",
         legs=legs, seeding=seeding, seed=seed,
+        balance_groups=balance_groups,
         small_group_max=_small_group_max(tournament),
         separators=_keep_apart_separators(
             tournament, teams, leaf_key or "", sport, warnings,

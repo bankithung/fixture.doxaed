@@ -126,6 +126,14 @@ export function CompetitionFormatBoard({
         fallback,
     );
 
+  const boolParam = (sp: string, key: keyof DrawConfig, fallback: boolean): boolean =>
+    Boolean(
+      layerVal(`sport:${sp}`, key) ??
+        layerVal("*", key) ??
+        defaults?.[key] ??
+        fallback,
+    );
+
   /** A leaf's OWN format override (staged or stored), or "" when it inherits. */
   const leafOwnFormat = (leafKey: string): string =>
     (staged[leafKey]?.format ?? dc?.draw_config[leafKey]?.format ?? "") as string;
@@ -138,6 +146,8 @@ export function CompetitionFormatBoard({
     if (fmt === "groups_knockout") {
       patch.group_size = sportParam(sp, "group_size", 4);
       patch.advance_per_group = sportParam(sp, "advance_per_group", 2);
+      // FIFA-style balanced groups are the better default for a fresh choice.
+      patch.balance_groups = true;
     }
     stage(`sport:${sp}`, patch);
   };
@@ -274,7 +284,30 @@ export function CompetitionFormatBoard({
                         }
                       />
                     </label>
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        data-testid={`format-sport-${sp}-balance`}
+                        className="h-4 w-4 rounded border-input text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        checked={boolParam(sp, "balance_groups", true)}
+                        onChange={(e) =>
+                          stage(`sport:${sp}`, { balance_groups: e.target.checked })
+                        }
+                      />
+                      {t("Balance group sizes (FIFA-style)")}
+                    </label>
                   </div>
+                ) : null}
+                {isGroups ? (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    {boolParam(sp, "balance_groups", true)
+                      ? t(
+                          "“Teams per group” is the target — groups come out even (e.g. 10 teams → 4, 3, 3), never one tiny leftover group.",
+                        )
+                      : t(
+                          "Teams are split into fixed groups of this size; the last group may be smaller.",
+                        )}
+                  </p>
                 ) : null}
 
                 {leaves.length > 1 ? (
