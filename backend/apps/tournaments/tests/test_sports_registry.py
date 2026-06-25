@@ -216,7 +216,10 @@ def test_generated_team_form_pins_roster_bounds_and_validator_enforces():
     sec = next(s for s in form.schema["sections"]
                if (s.get("visibility") or {}).get("value") == "table_tennis.1v1")
     team_group = sec["fields"][0]
-    players = next(f for f in team_group["fields"] if f["type"] == "group")
+    # The team group now also carries a coaches group; pin the *players* group
+    # by key so the roster-bound assertion isn't fooled by field order.
+    players = next(f for f in team_group["fields"]
+                   if f["type"] == "group" and f["key"].startswith("players_"))
     assert players["min_items"] == 1
     assert players["max_items"] == 1
 
