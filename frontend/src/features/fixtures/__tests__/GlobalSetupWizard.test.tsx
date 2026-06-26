@@ -224,6 +224,22 @@ describe("GlobalSetupWizard", () => {
     expect(tournamentsApi.createVenue).not.toHaveBeenCalled();
   });
 
+  it("auto-detects ceremony dates from the match window", async () => {
+    wrap(<GlobalSetupWizard tournamentId="t1" onClose={() => {}} />);
+    fireEvent.change(await screen.findByLabelText("First match day"), {
+      target: { value: "2026-08-01" },
+    });
+    fireEvent.change(screen.getByLabelText("Last match day"), {
+      target: { value: "2026-08-05" },
+    });
+    // Adding the opening ceremony prefills its date with the first match day…
+    await userEvent.click(screen.getByTestId("opening-add"));
+    expect(screen.getByTestId("opening-date")).toHaveValue("2026-08-01");
+    // …and the closing ceremony with the last match day.
+    await userEvent.click(screen.getByTestId("closing-add"));
+    expect(screen.getByTestId("closing-date")).toHaveValue("2026-08-05");
+  });
+
   it("opens at the deep-linked step, rendered inline (not as a modal)", async () => {
     wrap(
       <GlobalSetupWizard tournamentId="t1" onClose={() => {}} initialStep={1} />,

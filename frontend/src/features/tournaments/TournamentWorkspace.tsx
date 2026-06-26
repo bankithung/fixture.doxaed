@@ -117,8 +117,10 @@ export function TournamentWorkspace(): React.ReactElement {
         ) : null}
       </div>
 
-      {/* Identity + slim stage progress */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      {/* Stage progress sits ABOVE the tournament name (owner request); the
+          DOM keeps the name first so screen readers announce the title before
+          the progress nav, while `flex-col-reverse` paints the stages on top. */}
+      <div className="flex flex-col-reverse gap-4">
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10">
             <Trophy aria-hidden="true" className="h-5 w-5 text-primary" />

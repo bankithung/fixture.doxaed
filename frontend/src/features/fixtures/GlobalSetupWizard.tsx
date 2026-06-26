@@ -366,58 +366,73 @@ export function GlobalSetupWizard({
         {loading ? (
           <div className="h-40 animate-pulse rounded-lg bg-muted/40" />
         ) : step === 0 ? (
-          <div className="flex flex-col gap-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label={t("First match day")}>
-                <Input
-                  type="date"
-                  value={form.date_start}
-                  onChange={(e) => set("date_start", e.target.value)}
-                />
-              </Field>
-              <Field label={t("Last match day")}>
-                <Input
-                  type="date"
-                  value={form.date_end}
-                  onChange={(e) => set("date_end", e.target.value)}
-                />
-              </Field>
+          <div className="flex flex-col gap-5">
+            {/* Match window — the two dates everything else is built from. */}
+            <div className="flex flex-col gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label={t("First match day")}>
+                  <Input
+                    type="date"
+                    value={form.date_start}
+                    max={form.date_end || undefined}
+                    onChange={(e) => set("date_start", e.target.value)}
+                  />
+                </Field>
+                <Field label={t("Last match day")}>
+                  <Input
+                    type="date"
+                    value={form.date_end}
+                    min={form.date_start || undefined}
+                    onChange={(e) => set("date_end", e.target.value)}
+                  />
+                </Field>
+              </div>
+              {!form.date_start || !form.date_end ? (
+                /* Why the Next button is disabled — never leave it a mystery. */
+                <p className="text-xs text-muted-foreground">
+                  {t("Pick the first and last match days to continue.")}
+                </p>
+              ) : null}
             </div>
-            {!form.date_start || !form.date_end ? (
-              /* Why the Next button is disabled — never leave it a mystery. */
+
+            {/* Calendar exceptions — days the schedule should avoid or hold. */}
+            <div className="flex flex-col gap-4 border-t border-border pt-4">
+              <BlackoutDatesField
+                label={t("Days off")}
+                hint={t("No matches on these days (exams, holidays).")}
+                value={form.blackouts}
+                onChange={(v) => set("blackouts", v)}
+                testId="blackouts"
+              />
+              <BlackoutDatesField
+                label={t("Spare days")}
+                hint={t("Kept free as a buffer. If rain washes out a day, matches move here.")}
+                value={form.reserves}
+                onChange={(v) => set("reserves", v)}
+                testId="reserves"
+              />
+            </div>
+
+            {/* Ceremonies — dates auto-fill from the match window above. */}
+            <div className="flex flex-col gap-3 border-t border-border pt-4">
+              <CeremonyField
+                label={t("Opening ceremony")}
+                value={form.opening}
+                onChange={(v) => set("opening", v)}
+                testId="opening"
+                defaultDate={form.date_start}
+              />
+              <CeremonyField
+                label={t("Closing ceremony")}
+                value={form.closing}
+                onChange={(v) => set("closing", v)}
+                testId="closing"
+                defaultDate={form.date_end}
+              />
               <p className="text-xs text-muted-foreground">
-                {t("Pick the first and last match days to continue.")}
+                {t("No matches are scheduled while a ceremony is on.")}
               </p>
-            ) : null}
-            <BlackoutDatesField
-              label={t("Days off")}
-              hint={t("No matches on these days (exams, holidays).")}
-              value={form.blackouts}
-              onChange={(v) => set("blackouts", v)}
-              testId="blackouts"
-            />
-            <BlackoutDatesField
-              label={t("Spare days")}
-              hint={t("Kept free as a buffer. If rain washes out a day, matches move here.")}
-              value={form.reserves}
-              onChange={(v) => set("reserves", v)}
-              testId="reserves"
-            />
-            <CeremonyField
-              label={t("Opening ceremony")}
-              value={form.opening}
-              onChange={(v) => set("opening", v)}
-              testId="opening"
-            />
-            <CeremonyField
-              label={t("Closing ceremony")}
-              value={form.closing}
-              onChange={(v) => set("closing", v)}
-              testId="closing"
-            />
-            <p className="text-xs text-muted-foreground">
-              {t("No matches are scheduled while a ceremony is on.")}
-            </p>
+            </div>
           </div>
         ) : step === 1 ? (
           <div className="flex flex-col gap-3">

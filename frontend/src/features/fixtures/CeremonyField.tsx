@@ -20,11 +20,15 @@ export function CeremonyField({
   value,
   onChange,
   testId,
+  defaultDate,
 }: {
   label: string;
   value: CeremonyValue | null;
   onChange: (v: CeremonyValue | null) => void;
   testId?: string;
+  /** Auto-detected date (e.g. the first/last match day) the ceremony defaults
+   * to when added — still editable after. */
+  defaultDate?: string;
 }): React.ReactElement {
   if (value === null) {
     return (
@@ -35,7 +39,9 @@ export function CeremonyField({
           variant="outline"
           size="sm"
           data-testid={testId ? `${testId}-add` : undefined}
-          onClick={() => onChange({ date: "", from: "09:00", to: "10:00" })}
+          onClick={() =>
+            onChange({ date: defaultDate ?? "", from: "09:00", to: "10:00" })
+          }
         >
           {t("Add")}
         </Button>
@@ -82,6 +88,11 @@ export function CeremonyField({
           className="h-9 w-28"
         />
       </div>
+      {defaultDate && value.date === defaultDate ? (
+        <span className="text-xs text-muted-foreground">
+          {t("Auto-detected from your match days — change it if the ceremony is on a different day.")}
+        </span>
+      ) : null}
     </div>
   );
 }
