@@ -64,6 +64,9 @@ export function ClashesSection({
     base: ConstraintRecord[];
     rows: ConstraintRecord[];
   } | null>(null);
+  // Which clash rule is expanded for editing (absolute row index); others show
+  // a compact one-line summary so many rules don't stack into a wall.
+  const [editingClash, setEditingClash] = useState<number | null>(null);
 
   const settings = useQuery({
     queryKey: qk.settings(tournamentId),
@@ -113,6 +116,8 @@ export function ClashesSection({
     }
     for (const c of leaves) memberChips.push({ value: c.leafKey, label: c.label });
   }
+  const labelOf = (value: string): string =>
+    memberChips.find((c) => c.value === value)?.label ?? value;
 
   // ---- row helpers (operate on the full list, preserving other types) ----
   const patchParams = (idx: number, params: Record<string, unknown>): void =>
@@ -129,7 +134,8 @@ export function ClashesSection({
     .map((r, idx) => ({ r, idx }))
     .filter((x) => x.r.type === CLASH);
 
-  const addClash = (): void =>
+  const addClash = (): void => {
+    setEditingClash(rows.length); // open the new rule expanded
     setRows([
       ...rows,
       {
@@ -145,6 +151,7 @@ export function ClashesSection({
         },
       },
     ]);
+  };
 
   const toggleMember = (idx: number, value: string): void => {
     const cur = asMembers(rows[idx]);
@@ -271,7 +278,7 @@ export function ClashesSection({
         ) : (
           <>
             {/* ---------------------------------------------- clash rules */}
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/10 p-4">
               <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {t("Can't run at the same time")}
               </h4>
@@ -285,25 +292,74 @@ export function ClashesSection({
                 clashes.map(({ r, idx }, n) => {
                   const members = asMembers(r);
                   const gap = Number(r.params.gap_minutes) || 0;
+                  const removeBtn = (
+                    <button
+                      type="button"
+                      data-testid={`clash-${n}-remove`}
+                      aria-label={t("Remove this clash rule")}
+                      className="rounded-md p-1 text-muted-foreground hover:text-destructive"
+                      onClick={() => {
+                        if (editingClash === idx) setEditingClash(null);
+                        removeAt(idx);
+                      }}
+                    >
+                      <Trash2 aria-hidden="true" className="h-4 w-4" />
+                    </button>
+                  );
+
+                  // Collapsed summary — a complete rule the user isn't editing.
+                  if (editingClash !== idx && members.length >= 2) {
+                    return (
+                      <div
+                        key={idx}
+                        data-testid={`clash-${n}`}
+                        className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2"
+                      >
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                          <span className="shrink-0 text-xs font-medium text-muted-foreground">
+                            {t("Never together:")}
+                          </span>
+                          {members.map((m) => (
+                            <span
+                              key={m}
+                              className="rounded-full border border-border bg-card px-2 py-0.5 text-xs"
+                            >
+                              {labelOf(m)}
+                            </span>
+                          ))}
+                          {gap > 0 ? (
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              · {gap} {t("min gap")}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            data-testid={`clash-${n}-edit`}
+                            className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-accent"
+                            onClick={() => setEditingClash(idx)}
+                          >
+                            {t("Edit")}
+                          </button>
+                          {removeBtn}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Expanded editor — the competition picker + gap.
                   return (
                     <div
                       key={idx}
                       data-testid={`clash-${n}`}
-                      className="rounded-lg border border-border bg-muted/20 p-3"
+                      className="rounded-lg border border-primary/40 bg-muted/20 p-3"
                     >
                       <div className="mb-2 flex items-start justify-between gap-2">
                         <span className="text-xs font-medium text-muted-foreground">
-                          {t("These never overlap")}
+                          {t("Tap the competitions that can't run at the same time")}
                         </span>
-                        <button
-                          type="button"
-                          data-testid={`clash-${n}-remove`}
-                          aria-label={t("Remove this clash rule")}
-                          className="text-muted-foreground hover:text-destructive"
-                          onClick={() => removeAt(idx)}
-                        >
-                          <Trash2 aria-hidden="true" className="h-4 w-4" />
-                        </button>
+                        {removeBtn}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {memberChips.map((c) => {
@@ -332,23 +388,35 @@ export function ClashesSection({
                           {t("Pick at least two competitions.")}
                         </p>
                       ) : null}
-                      <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                        {t("Gap between them")}
-                        <Input
-                          type="number"
-                          min={0}
-                          step={5}
-                          data-testid={`clash-${n}-gap`}
-                          className="h-8 w-20 font-tabular"
-                          value={gap}
-                          onChange={(e) =>
-                            patchParams(idx, {
-                              gap_minutes: Math.max(0, Number(e.target.value) || 0),
-                            })
-                          }
-                        />
-                        {t("minutes")}
-                      </label>
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                          {t("Gap between them")}
+                          <Input
+                            type="number"
+                            min={0}
+                            step={5}
+                            data-testid={`clash-${n}-gap`}
+                            className="h-8 w-20 font-tabular"
+                            value={gap}
+                            onChange={(e) =>
+                              patchParams(idx, {
+                                gap_minutes: Math.max(0, Number(e.target.value) || 0),
+                              })
+                            }
+                          />
+                          {t("minutes")}
+                        </label>
+                        {members.length >= 2 ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            data-testid={`clash-${n}-done`}
+                            onClick={() => setEditingClash(null)}
+                          >
+                            {t("Done")}
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                   );
                 })
@@ -367,7 +435,7 @@ export function ClashesSection({
             </div>
 
             {/* ------------------------------------------- session windows */}
-            <div className="flex flex-col gap-3 border-t border-border pt-4">
+            <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/10 p-4">
               <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {t("Each competition's own time of day")}
               </h4>
@@ -376,6 +444,7 @@ export function ClashesSection({
                   "Optional. Pin a competition to a daily window (e.g. U-14 in the mornings).",
                 )}
               </p>
+              <div className="grid gap-2 sm:grid-cols-2">
               {competitions.map((c) => {
                 const idx = sessionIdx(c.leafKey);
                 const on = idx >= 0;
@@ -428,10 +497,11 @@ export function ClashesSection({
                   </div>
                 );
               })}
+              </div>
             </div>
 
             {/* --------------------------------------- concurrent-match caps */}
-            <div className="flex flex-col gap-3 border-t border-border pt-4">
+            <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/10 p-4">
               <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {t("Matches running at once")}
               </h4>
