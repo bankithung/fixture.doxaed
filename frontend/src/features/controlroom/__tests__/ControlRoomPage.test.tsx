@@ -11,6 +11,8 @@ import {
   type ControlRoomPayload,
   type StagePayload,
 } from "@/api/tournaments";
+import { useAuthStore } from "@/features/auth/authStore";
+import type { User } from "@/types/user";
 import { ControlRoomPage } from "../ControlRoomPage";
 
 vi.mock("@/api/tournaments", async (importOriginal) => {
@@ -22,6 +24,8 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       controlRoom: vi.fn(),
       stage: vi.fn(),
       scheduleChanges: vi.fn(),
+      score: vi.fn(),
+      scoreSets: vi.fn(),
     },
   };
 });
@@ -200,9 +204,13 @@ beforeEach(() => {
   vi.mocked(tournamentsApi.controlRoom).mockResolvedValue(ROOM);
   vi.mocked(tournamentsApi.stage).mockResolvedValue(MANAGER);
   vi.mocked(tournamentsApi.scheduleChanges).mockResolvedValue({ results: [] });
+  vi.mocked(tournamentsApi.score).mockResolvedValue(M3);
+  vi.mocked(tournamentsApi.scoreSets).mockResolvedValue(M3);
   vi.mocked(liveApi.callMatch).mockResolvedValue({ match: M4 });
   vi.mocked(liveApi.uncallMatch).mockResolvedValue({ match: M2 });
   vi.mocked(liveApi.transition).mockResolvedValue({});
+  // Default to a signed-out viewer; the My-matches test sets a scorer.
+  useAuthStore.setState({ user: null });
 });
 
 afterEach(() => {
@@ -311,6 +319,42 @@ describe("ControlRoomPage", () => {
         winner_team_id: "tmh",
       }),
     );
+  });
+
+  it("Enter result: a manager records a goal score from the board in one dialog", async () => {
+    mount();
+    await userEvent.click(await screen.findByTestId("quick-result-m4"));
+    // Bump the home score to 1, leave away at 0, then save.
+    await userEvent.click(screen.getByTestId("qr-home-m4-inc"));
+    await userEvent.click(screen.getByTestId("quick-result-confirm-m4"));
+    await waitFor(() =>
+      expect(tournamentsApi.score).toHaveBeenCalledWith(
+        "m4",
+        expect.objectContaining({ home_score: 1, away_score: 0 }),
+      ),
+    );
+  });
+
+  it("a plain member assigned as scorer gets a focused 'My matches' lane", async () => {
+    useAuthStore.setState({ user: { id: "u-me" } as unknown as User });
+    vi.mocked(tournamentsApi.stage).mockResolvedValue(VIEWER);
+    const mine = row({ id: "mine", scorer: { id: "u-me", name: "Me" } });
+    vi.mocked(tournamentsApi.controlRoom).mockResolvedValue({
+      ...ROOM,
+      venues: [
+        { venue: "Main Ground", matches: [mine, M2] },
+        { venue: "Side Pitch", matches: [M3, M4] },
+      ],
+    });
+    mount();
+
+    expect(await screen.findByTestId("my-matches")).toBeInTheDocument();
+    expect(screen.getByTestId("tile-mine")).toBeInTheDocument();
+    // The full venue board + ops band are replaced by the focused lane.
+    expect(screen.queryByTestId("lane-Side Pitch")).toBeNull();
+    expect(screen.queryByTestId("ops-band")).toBeNull();
+    // And the member can enter that match's result.
+    expect(screen.getByTestId("quick-result-mine")).toBeInTheDocument();
   });
 
   it("scorers see only their console link — no schedule verbs", async () => {

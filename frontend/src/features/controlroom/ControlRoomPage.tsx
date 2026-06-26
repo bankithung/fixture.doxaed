@@ -21,6 +21,7 @@ import {
   type SlotDelay,
 } from "./format";
 import type { ControlRoomPerms } from "./MatchActionsMenu";
+import { MatchTile } from "./MatchTile";
 import { QueueRail } from "./QueueRail";
 import { useControlRoom } from "./useControlRoom";
 import { VenueLane } from "./VenueLane";
@@ -226,6 +227,16 @@ export function ControlRoomPage(): React.ReactElement {
   const tz = data?.tournament.time_zone ?? "UTC";
   const selectedDay = day ?? data?.day ?? "";
 
+  // Member view: a plain member (no manage / no scheduling) who is the assigned
+  // scorer on any of the day's matches gets a focused "My matches" lane instead
+  // of the full venue board — their job is to enter results, nothing else
+  // (ops 2026-06-26). Admins/coordinators always get the full board.
+  const isPlainMember = !perms.canManage && !perms.canSchedule;
+  const myMatches = perms.userId
+    ? allMatches.filter((m) => m.scorer?.id === perms.userId)
+    : [];
+  const showMine = isPlainMember && myMatches.length > 0;
+
   if (query.isLoading) {
     return (
       <div className="flex w-full flex-col gap-4" aria-busy="true">
@@ -298,12 +309,14 @@ export function ControlRoomPage(): React.ReactElement {
         </section>
       ) : (
         <>
-          <OpsHeaderBand
-            data={data}
-            selectedDay={selectedDay}
-            delays={delays}
-            tz={tz}
-          />
+          {showMine ? null : (
+            <OpsHeaderBand
+              data={data}
+              selectedDay={selectedDay}
+              delays={delays}
+              tz={tz}
+            />
+          )}
 
           {/* Day selector — chips on desktop, the custom Select on mobile. */}
           {isMobile ? (
@@ -365,32 +378,62 @@ export function ControlRoomPage(): React.ReactElement {
             </div>
           )}
 
-          <QueueRail queue={data.queue} timeZone={tz} delays={delays} />
-
-          {/* Per-venue lanes. */}
-          {data.venues.length === 0 ? (
-            <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-              {t("No matches on this day.")}
-            </p>
+          {showMine ? (
+            // Focused member lane: just the matches this user is scoring today.
+            <section data-testid="my-matches" className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold">{t("My matches")}</h3>
+                <span className="rounded-full bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground">
+                  {myMatches.length}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {t("Tap a match to enter its result.")}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-2">
+                {myMatches.map((m) => (
+                  <MatchTile
+                    key={m.id}
+                    match={m}
+                    timeZone={tz}
+                    tournamentId={id}
+                    siblings={siblingsOf(m)}
+                    perms={perms}
+                    delayMinutes={delayFor(delays, m)}
+                  />
+                ))}
+              </div>
+            </section>
           ) : (
-            <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {data.venues.map((v) => (
-                <VenueLane
-                  key={v.venue || "unassigned"}
-                  venue={v.venue}
-                  matches={v.matches}
-                  timeZone={tz}
-                  tournamentId={id}
-                  perms={perms}
-                  delays={delays}
-                  siblingsOf={siblingsOf}
-                />
-              ))}
-            </div>
+            <>
+              <QueueRail queue={data.queue} timeZone={tz} delays={delays} />
+
+              {/* Per-venue lanes. */}
+              {data.venues.length === 0 ? (
+                <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+                  {t("No matches on this day.")}
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {data.venues.map((v) => (
+                    <VenueLane
+                      key={v.venue || "unassigned"}
+                      venue={v.venue}
+                      matches={v.matches}
+                      timeZone={tz}
+                      tournamentId={id}
+                      perms={perms}
+                      delays={delays}
+                      siblingsOf={siblingsOf}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           {/* Changes drawer — the audit-backed slot-change feed (§1.1). */}
-          {allMatches.length > 0 ? (
+          {!showMine && allMatches.length > 0 ? (
             <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
               <button
                 type="button"
