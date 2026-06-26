@@ -5,6 +5,7 @@ import {
   CalendarClock,
   CalendarRange,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   CloudRain,
   GitBranch,
@@ -214,6 +215,44 @@ function HubMoreMenu({
 }
 
 /**
+ * A setup sub-page (Clashes & sessions, How each competition plays). The owner
+ * asked for these to be their OWN pages, not stacked in one scroll — so the hub
+ * body shows ONE at a time and this frames it with a back link + a "next" step.
+ */
+function SetupSubPage({
+  onBack,
+  nextLabel,
+  onNext,
+  children,
+}: {
+  onBack: () => void;
+  nextLabel: string;
+  onNext: () => void;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <div className="flex flex-col gap-5">
+      <button
+        type="button"
+        data-testid="subpage-back"
+        onClick={onBack}
+        className="flex w-fit items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+        {t("Back to setup")}
+      </button>
+      {children}
+      <div className="flex justify-end border-t border-border pt-4">
+        <Button variant="outline" data-testid="subpage-next" onClick={onNext}>
+          {nextLabel}
+          <ChevronRight aria-hidden="true" className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Fixture Setup hub as a guided three-step journey (clarity rebuild §4.1):
  * a persistent numbered header (When & where → How each competition plays →
  * Preview & publish), the Step 1 gate/receipt, one card per competition with
@@ -267,6 +306,13 @@ export function FixtureSetupHub({
   const [tab, setTab] = useState<TabKey>("constraints");
   // The §6.3 celebrate banner, dismissible per session.
   const [doneDismissed, setDoneDismissed] = useState(false);
+  // Owner: never stack the setup sections on one page. "Clashes & sessions"
+  // and "How each competition plays" are their OWN pages, reached from the
+  // journey stepper; the hub body shows ONE at a time. "overview" is the
+  // competition list — the Preview & publish surface (journey step 4).
+  const [view, setView] = useState<"overview" | "clashes" | "formats">(
+    "overview",
+  );
 
   const tournament = useQuery({
     queryKey: qk.tournament(id),
@@ -455,6 +501,17 @@ export function FixtureSetupHub({
     setGateDismissed(true);
   };
 
+  /** Which journey step the body is currently showing — so the stepper
+   * highlights the page you're on (Step 1 wizard → 1, sub-pages → 2/3, the
+   * competition list → undefined, where the readiness pointer drives it). */
+  const activeStep: 1 | 2 | 3 | undefined = setupView
+    ? 1
+    : view === "clashes"
+      ? 2
+      : view === "formats"
+        ? 3
+        : undefined;
+
   /** Panels behind the Advanced disclosure — only the ones that render today. */
   const matchCount = (matches.data ?? []).length;
   const tabs: TabKey[] = [
@@ -493,25 +550,18 @@ export function FixtureSetupHub({
     );
   };
 
-  /** Journey steps deep-link to their editor (§3.1). Step 2 (Clashes &
-   * sessions) is optional — it scrolls to the inline editor card. */
-  const scrollToId = (elId: string): void =>
-    document
-      .getElementById(elId)
-      ?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  /** Journey steps are PAGE navigation — each step is its own page in the hub
+   * body, never stacked together (owner: "they should be in different pages").
+   * Step 1 opens the inline When & where wizard; 2 and 3 swap the body to the
+   * Clashes and Formats pages; 4 returns to the competition list (Preview &
+   * publish), where each competition's Preview button lives. */
   const onStepClick = (n: 1 | 2 | 3 | 4): void => {
-    if (n === 1) setSetup({ step: 0 });
-    else if (n === 2) scrollToId("clash-builder");
-    else if (n === 3) scrollToId("competition-list");
-    else {
-      const target =
-        competitions.find(
-          (c) => c.matches.length === 0 && (c.readiness?.ready ?? false),
-        ) ?? competitions.find((c) => c.matches.length > 0);
-      if (target) {
-        navigate(routes.tournamentFixturesPreview(id, target.leafKey || undefined));
-      }
-    }
+    if (n === 1) {
+      setView("overview");
+      setSetup({ step: 0 });
+    } else if (n === 2) setView("clashes");
+    else if (n === 3) setView("formats");
+    else setView("overview");
   };
 
   const shareReady = Boolean(tournament.data?.slug);
@@ -520,7 +570,11 @@ export function FixtureSetupHub({
   // toolbar offers only the overflow menu; while the inline Step 1 panel is
   // open, the wizard's Next/Save is the page's only primary.
   const showToolbar =
-    canManage && !globalsUnset && journey === "done" && !setupView;
+    canManage &&
+    !globalsUnset &&
+    journey === "done" &&
+    !setupView &&
+    view === "overview";
 
   return (
     <div className="flex flex-col gap-5">
@@ -560,6 +614,7 @@ export function FixtureSetupHub({
         /* Step 1 stays the active journey step while the inline setup is open. */
         <SetupJourneyHeader
           step={setupView ? 1 : journey}
+          activeStep={activeStep}
           onStepClick={canManage ? onStepClick : undefined}
         />
       ) : null}
@@ -610,6 +665,58 @@ export function FixtureSetupHub({
             </p>
           )}
         </section>
+      ) : view === "clashes" ? (
+        /* Journey Step 2 — its OWN page (owner: not stacked with formats). */
+        <SetupSubPage
+          onBack={() => setView("overview")}
+          nextLabel={t("Next: How each competition plays")}
+          onNext={() => setView("formats")}
+        >
+          {canManage && competitions.length > 0 ? (
+            <ClashesSection
+              tournamentId={id}
+              competitions={competitions
+                .filter((c) => c.leafKey)
+                .map((c) => ({
+                  leafKey: c.leafKey,
+                  label: c.label,
+                  sport: c.sport,
+                }))}
+            />
+          ) : (
+            <EmptyState
+              icon={<CalendarClock className="h-8 w-8" />}
+              title={t("Nothing to schedule yet")}
+              hint={t("Clashes and session windows apply across competitions. Add sports and categories in Settings first.")}
+            />
+          )}
+        </SetupSubPage>
+      ) : view === "formats" ? (
+        /* Journey Step 3 — its OWN page (owner: not stacked with clashes). */
+        <SetupSubPage
+          onBack={() => setView("overview")}
+          nextLabel={t("Done — review competitions")}
+          onNext={() => setView("overview")}
+        >
+          {canManage && competitions.some((c) => c.leafKey) ? (
+            <CompetitionFormatBoard
+              tournamentId={id}
+              competitions={competitions
+                .filter((c) => c.leafKey)
+                .map((c) => ({
+                  leafKey: c.leafKey,
+                  label: c.label,
+                  sport: c.sport,
+                }))}
+            />
+          ) : (
+            <EmptyState
+              icon={<Users className="h-8 w-8" />}
+              title={t("No competitions yet")}
+              hint={t("Add sports and categories in Settings. Each one then gets its own format here.")}
+            />
+          )}
+        </SetupSubPage>
       ) : (
         <>
           <GlobalSetupCard
@@ -686,36 +793,9 @@ export function FixtureSetupHub({
             </section>
           ) : null}
 
-          {/* Step 2 of the journey — optional cross-competition rules. Lives
-              inline in the flow (not under Advanced tools) so it's a real,
-              visible step; the journey header's step 2 scrolls here. */}
-          {canManage && competitions.length > 0 ? (
-            <ClashesSection
-              tournamentId={id}
-              competitions={competitions
-                .filter((c) => c.leafKey)
-                .map((c) => ({
-                  leafKey: c.leafKey,
-                  label: c.label,
-                  sport: c.sport,
-                }))}
-            />
-          ) : null}
-
-          {/* "How each competition plays" — pick a game type per sport (and per
-              category) in one place; the journey header's step 3 scrolls here. */}
-          {canManage && competitions.some((c) => c.leafKey) ? (
-            <CompetitionFormatBoard
-              tournamentId={id}
-              competitions={competitions
-                .filter((c) => c.leafKey)
-                .map((c) => ({
-                  leafKey: c.leafKey,
-                  label: c.label,
-                  sport: c.sport,
-                }))}
-            />
-          ) : null}
+          {/* Clashes & sessions (Step 2) and How each competition plays (Step 3)
+              are their OWN pages now — reached from the journey stepper above,
+              not stacked here. This overview is the Preview & publish surface. */}
 
           {competitions.length === 0 ? (
             <EmptyState

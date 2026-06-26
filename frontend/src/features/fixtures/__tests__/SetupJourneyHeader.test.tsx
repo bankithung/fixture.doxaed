@@ -65,6 +65,20 @@ describe("SetupJourneyHeader", () => {
     expect(onStepClick).toHaveBeenCalledWith(3);
   });
 
+  it("activeStep marks the sub-page you're on as current and gates later steps", () => {
+    const onStepClick = vi.fn();
+    // Readiness still points at 3, but the hub is showing the Clashes sub-page
+    // (activeStep 2): step 2 reads as the current page (clickable) and the
+    // later steps read as upcoming so they don't all light up at once.
+    render(
+      <SetupJourneyHeader step={3} activeStep={2} onStepClick={onStepClick} />,
+    );
+    expect(screen.getByTestId("journey-step-1")).not.toBeDisabled(); // done
+    expect(screen.getByTestId("journey-step-2")).not.toBeDisabled(); // current
+    expect(screen.getByTestId("journey-step-3")).toBeDisabled(); // upcoming
+    expect(screen.getByTestId("journey-step-4")).toBeDisabled(); // upcoming
+  });
+
   it("renders the single current-step label for mobile", () => {
     render(<SetupJourneyHeader step={2} />);
     expect(

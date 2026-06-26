@@ -39,7 +39,17 @@ const NEXT_LINE: Record<"1" | "2" | "3" | "done", string> = {
 function dotState(
   n: VisibleStep,
   step: JourneyStep,
+  activeStep?: VisibleStep,
 ): "done" | "current" | "todo" | "optional" {
+  // When the hub body is showing a specific sub-page, that page is THE current
+  // step; earlier steps read as done, later ones as todo (clashes stays
+  // optional unless it's the page you're on). This drives the page-style
+  // highlight without disturbing the readiness pointer logic below.
+  if (activeStep != null) {
+    if (n === activeStep) return "current";
+    if (n === 2) return "optional";
+    return n < activeStep ? "done" : "todo";
+  }
   if (n === 2) return step === 1 ? "todo" : "optional";
   if (step === "done") return "done";
   if (step === 3) return n === 1 ? "done" : "current"; // 3 and 4 together
@@ -58,11 +68,15 @@ function dotState(
 export function SetupJourneyHeader({
   step,
   compact = false,
+  activeStep,
   onStepClick,
 }: {
   step: JourneyStep;
   /** Slimmer spacing for the preview page's top strip. */
   compact?: boolean;
+  /** The sub-page the hub body is currently showing — highlighted as the
+   * current step so the stepper reads like page navigation. */
+  activeStep?: VisibleStep;
   /** Deep-link from a completed, current, or optional step. */
   onStepClick?: (step: VisibleStep) => void;
 }): React.ReactElement {
@@ -77,7 +91,7 @@ export function SetupJourneyHeader({
     >
       <ol className="flex items-center gap-1 text-xs">
         {STEPS.map((s) => {
-          const state = dotState(s.n, step);
+          const state = dotState(s.n, step, activeStep);
           const clickable = Boolean(onStepClick) && state !== "todo";
           return (
             <li key={s.n} className="flex flex-1 items-center gap-1.5">

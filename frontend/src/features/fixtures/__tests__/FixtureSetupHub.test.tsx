@@ -336,6 +336,47 @@ describe("FixtureSetupHub", () => {
     expect(screen.queryByTestId("section-drawn")).toBeNull();
   });
 
+  it("opens Clashes and Formats as their OWN pages from the journey stepper (not stacked)", async () => {
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+    // Overview = the competition list. The clash + format editors are NOT here
+    // (owner: "they should be in different pages").
+    expect(await screen.findByTestId("global-setup-strip")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("competition-card-football.u15"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("add-clash-rule")).toBeNull();
+    expect(screen.queryByTestId("format-sport-football")).toBeNull();
+
+    // Step 2 → the Clashes & sessions page: its own page, no competition cards,
+    // no format board, and a Back affordance.
+    await userEvent.click(screen.getByTestId("journey-step-2"));
+    expect(await screen.findByTestId("add-clash-rule")).toBeInTheDocument();
+    expect(screen.queryByTestId("competition-card-football.u15")).toBeNull();
+    expect(screen.queryByTestId("format-sport-football")).toBeNull();
+    expect(screen.getByTestId("subpage-back")).toBeInTheDocument();
+
+    // Next → the How-each-competition-plays page (formats), NOT clashes.
+    await userEvent.click(screen.getByTestId("subpage-next"));
+    expect(
+      await screen.findByTestId("format-sport-football"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("add-clash-rule")).toBeNull();
+
+    // Back → the competition overview again.
+    await userEvent.click(screen.getByTestId("subpage-back"));
+    expect(
+      await screen.findByTestId("competition-card-football.u15"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("format-sport-football")).toBeNull();
+
+    // Step 3 jumps straight to the formats page from the overview.
+    await userEvent.click(screen.getByTestId("journey-step-3"));
+    expect(
+      await screen.findByTestId("format-sport-football"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("competition-card-football.u15")).toBeNull();
+  });
+
   it("collapses the Waiting-for-teams section by default, showing only the count", async () => {
     wrap(<FixtureSetupHub tournamentId="t1" />);
     const needsTeams = await screen.findByTestId("section-needs_teams");
