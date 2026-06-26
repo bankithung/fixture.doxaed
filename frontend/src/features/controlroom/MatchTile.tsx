@@ -46,7 +46,7 @@ function statusMeta(m: ControlRoomMatch): {
   };
 }
 
-function StatusPill({ match }: { match: ControlRoomMatch }): React.ReactElement {
+export function StatusPill({ match }: { match: ControlRoomMatch }): React.ReactElement {
   const sm = statusMeta(match);
   return (
     <span

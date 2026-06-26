@@ -171,7 +171,7 @@ function ScoreStepper({
  * fires advancement + the live tick on commit. Goal sports get +/- steppers;
  * set sports get a per-set points grid driven by the match's resolved rules.
  */
-function QuickResultDialog({
+export function QuickResultDialog({
   tournamentId,
   match,
   onClose,

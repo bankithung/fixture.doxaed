@@ -479,8 +479,15 @@ export const tournamentsApi = {
       skipped: number;
       no_email_institutions: { id: string; name: string }[];
     }>(`/api/tournaments/${id}/team-codes/`, opts),
-  /** All matches (the generated fixture). */
+  /** All matches (the generated fixture). The server enriches each row with the
+   * competition leaf label + assigned scorer/officials (the operations Matches
+   * board reads those via `matchesEnriched`); plain consumers (bracket,
+   * standings) keep the lean `MatchRow` view. */
   matches: (id: string) => api.get<MatchRow[]>(`/api/tournaments/${id}/matches/`),
+  /** Same endpoint as `matches`, typed as the enriched control-room row
+   * (leaf_label + scorer + officials are always present in the response). */
+  matchesEnriched: (id: string) =>
+    api.get<ControlRoomMatch[]>(`/api/tournaments/${id}/matches/`),
   /** Standings grouped by pool. */
   standings: (id: string) =>
     api.get<{ groups: StandingsGroup[] }>(`/api/tournaments/${id}/standings/`),

@@ -46,6 +46,11 @@ def test_generate_list_score_and_standings_flow():
     assert ml.status_code == 200
     assert len(ml.json()) == 6
     first = ml.json()[0]
+    # The list is enriched for the operations Matches board (additive fields):
+    # competition leaf label + assigned scorer/officials always present.
+    assert "leaf_label" in first
+    assert first["scorer"] is None
+    assert first["officials"] == []
 
     s = client.post(
         f"/api/matches/{first['id']}/score/", {"home_score": 3, "away_score": 1}, format="json"

@@ -153,16 +153,47 @@ def _can_record_events(user, match: Match) -> bool:
 
 
 class TournamentMatchListView(GenericAPIView):
+    """Tournament-wide match list — the all-days source for the operations
+    Matches board. Rows are enriched (leaf_label + scorer + officials) the same
+    way as the control-room day view, so the board can show + filter crew."""
+
     permission_classes = [IsAuthenticated]
 
     def get(self, request, tournament_id):
+        from apps.tournaments.services.sports import leaf_label
+
         t = _accessible_tournament_or_404(request.user, tournament_id)
         qs = (
             Match.objects.filter(tournament=t, deleted_at__isnull=True)
-            .select_related("home_team", "away_team", "tournament")
+            .select_related("home_team", "away_team", "tournament", "scorer")
+            .prefetch_related("officials__user")
             .order_by("group_label", "match_no")
         )
-        return Response(MatchSerializer(qs, many=True).data)
+        labels: dict[str, str] = {}
+
+        def row(m: Match) -> dict:
+            if m.leaf_key and m.leaf_key not in labels:
+                labels[m.leaf_key] = leaf_label(t.sports, m.leaf_key)
+            data = MatchSerializer(m).data
+            data["leaf_label"] = labels.get(m.leaf_key, "")
+            data["scorer"] = (
+                {"id": str(m.scorer.id), "name": m.scorer.name or m.scorer.email}
+                if m.scorer is not None
+                else None
+            )
+            data["officials"] = [
+                {
+                    "id": str(o.id),
+                    "user_id": str(o.user_id),
+                    "name": o.user.name or o.user.email,
+                    "role": o.role,
+                    "status": o.status,
+                }
+                for o in m.officials.all()
+            ]
+            return data
+
+        return Response([row(m) for m in qs])
 
 
 class TournamentStandingsView(GenericAPIView):
