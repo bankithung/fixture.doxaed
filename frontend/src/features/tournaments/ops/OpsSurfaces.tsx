@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router-dom";
-import { BarChart3, ListChecks, Radio, UserCog } from "lucide-react";
+import { ListChecks, Radio, UserCog } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
@@ -65,24 +65,6 @@ export function MatchesBoardPage(): React.ReactElement {
         t("Filter by day, competition, venue and status"),
         t("Spot matches missing a scorer, official or court"),
         t("Assign and enter results inline"),
-      ]}
-    />
-  );
-}
-
-/** Operations: admin-context live standings & bracket (slice 6). */
-export function OpsStandingsPage(): React.ReactElement {
-  return (
-    <OpsPlaceholder
-      icon={BarChart3}
-      title={t("Standings & bracket")}
-      blurb={t(
-        "Live tables and knockout brackets for every competition, updating as results land.",
-      )}
-      bullets={[
-        t("Group tables ranked by your tiebreakers"),
-        t("Brackets fill as winners advance"),
-        t("Jump from any slot back to its match"),
       ]}
     />
   );

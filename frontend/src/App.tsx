@@ -30,9 +30,9 @@ import { MatchConsolePage } from "@/features/matches/MatchConsolePage";
 import { ControlRoomPage } from "@/features/controlroom/ControlRoomPage";
 import {
   MatchesBoardPage,
-  OpsStandingsPage,
   CrewPage,
 } from "@/features/tournaments/ops/OpsSurfaces";
+import { OpsStandingsPage } from "@/features/tournaments/ops/OpsStandingsPage";
 import { BracketPage } from "@/features/tournaments/BracketPage";
 import { DryRunPreviewPage } from "@/features/fixtures/DryRunPreviewPage";
 import { PublicSchedulePage } from "@/features/fixtures/PublicSchedulePage";
