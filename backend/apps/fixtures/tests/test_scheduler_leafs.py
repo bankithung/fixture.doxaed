@@ -79,6 +79,44 @@ def test_venue_type_compatibility():
     assert res2.unscheduled == ["tt"]
 
 
+def test_venue_type_relaxes_when_no_typed_venue_serves_the_sport():
+    # The owner's bug: indoor sports (Sepak Takraw, TT) whose profile wants
+    # "indoor_court", but the organiser typed every venue "ground". The hard
+    # type filter rejected EVERY slot → 0 placed with a misleading message.
+    # Now, when no eligible venue carries the type, drop the type requirement
+    # and fall back to the explicit per-venue sport binding the organiser set.
+    matches = [
+        MatchSlotReq(id="m1", round_no=1, match_no=1, home="a", away="b",
+                     sport="sepak_takraw", venue_type="indoor_court"),
+        MatchSlotReq(id="m2", round_no=1, match_no=2, home="c", away="d",
+                     sport="sepak_takraw", venue_type="indoor_court"),
+    ]
+    cfg = _cfg(
+        venues=["Sepak Ground", "TT Ground"],
+        venue_types={"Sepak Ground": "ground", "TT Ground": "ground"},
+        venue_sports={"Sepak Ground": ["sepak_takraw"],
+                      "TT Ground": ["table_tennis"]},
+    )
+    res = schedule_matches(matches, cfg)
+    # placed despite the type mismatch — and ONLY on the sepak-bound venue
+    # (the sport allow-list still separates; relaxing type doesn't break it).
+    assert not res.unscheduled
+    assert {v for _, v in res.assignments.values()} == {"Sepak Ground"}
+    assert any("court type" in e for e in res.explanation)
+
+
+def test_venue_type_not_relaxed_when_a_typed_venue_exists():
+    # If even ONE eligible venue carries the right type, the filter stays HARD —
+    # correctly-typed tournaments keep strict court separation, no relaxation.
+    matches = [MatchSlotReq(id="tt", round_no=1, match_no=1, home="a", away="b",
+                            sport="table_tennis", venue_type="indoor_court")]
+    cfg = _cfg(venues=["Ground", "Hall"],
+               venue_types={"Ground": "ground", "Hall": "indoor_court"})
+    res = schedule_matches(matches, cfg)
+    assert res.assignments["tt"][1] == "Hall"
+    assert not any("court type" in e for e in res.explanation)
+
+
 def test_rich_venue_records_parse_types_and_windows():
     cfg = config_from_dict({
         "date_start": "2026-08-01", "date_end": "2026-08-01",

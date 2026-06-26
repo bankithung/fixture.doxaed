@@ -14,6 +14,7 @@ from datetime import date, datetime, time
 import pytest
 
 from apps.fixtures.services.optimizer import (
+    _candidates,
     assignment_quality,
     optimize_schedule,
 )
@@ -79,6 +80,34 @@ def test_improves_a_clustered_schedule_and_stays_legal():
     assert len(a_days) == 2
     # And the result is hard-legal by the engine's own validator.
     assert validate_schedule(out.assignments, matches, cfg) == []
+
+
+def test_candidates_relax_venue_type_so_the_optimizer_matches_the_seed():
+    # The optimizer searches within `_candidates`. When an indoor sport's
+    # profile wants "indoor_court" but every venue is typed "ground", the type
+    # filter must relax HERE too (else 0 candidates → the optimizer could never
+    # hold the seed's placement). The sport allow-list still binds the venue.
+    cfg = _cfg(
+        optimize=True,
+        venues=["Court A", "Court B"],
+        venue_types={"Court A": "ground", "Court B": "ground"},
+        venue_sports={"Court A": ["sepak_takraw"], "Court B": ["table_tennis"]},
+    )
+    matches = [
+        MatchSlotReq(id="m1", round_no=1, match_no=1, home="A", away="B",
+                     sport="sepak_takraw", venue_type="indoor_court"),
+        MatchSlotReq(id="m2", round_no=1, match_no=2, home="C", away="D",
+                     sport="sepak_takraw", venue_type="indoor_court"),
+    ]
+    cand = _candidates(matches, cfg)
+    # every match has feasible slots, all on the sepak-bound court only
+    assert all(cand[m.id] for m in matches)
+    assert {v for m in matches for (_dt, v) in cand[m.id]} == {"Court A"}
+    # end-to-end: a full legal placement, never stranded
+    seed = schedule_matches(matches, cfg)
+    out = optimize_schedule(seed, matches, cfg)
+    assert validate_schedule(out.assignments, matches, cfg) == []
+    assert not out.unscheduled
 
 
 def test_never_worse_than_seed_on_an_already_optimal_instance():

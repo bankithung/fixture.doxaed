@@ -45,6 +45,7 @@ from apps.fixtures.services.scheduler import (
     build_slots,
     exclusion_member,
     expand_venues,
+    relaxed_venue_type_sports,
     resolve_pinned_rounds,
     validate_schedule,
 )
@@ -138,13 +139,14 @@ def _single_match_ok(
     cfg: ScheduleConfig, base_of: dict[str, str],
     scoped_blackout: list[ScopedRule], recurring_scoped: list[ScopedRule],
     reserve_scoped: list[ScopedRule], hard_windows: list[ScopedRule],
+    relax_vtype: set[str] = frozenset(),
 ) -> bool:
     """Every per-match hard constraint that does NOT depend on other in-run
     matches (mirrors the single-match half of ``schedule_matches.feasible``).
     Slots already come from ``build_slots`` (calendar windows, all-scope cuts,
     per-venue off-days), so this layers on the type/scope/window checks."""
     base = base_of.get(venue, venue)
-    if m.venue_type:
+    if m.venue_type and m.sport not in relax_vtype:
         vt = cfg.venue_types.get(base, "")
         if vt and vt != m.venue_type:
             return False
@@ -193,6 +195,7 @@ def _candidates(
     hard constraint — the search space the optimizer moves within."""
     slots = build_slots(cfg)
     base_of = dict(expand_venues(cfg))
+    relax_vtype = relaxed_venue_type_sports(cfg, matches)
     rules = cfg.constraint_rules
     scoped_blackout = [r for r in rules if r.type == "blackout_dates" and r.hard]
     recurring_scoped = [
@@ -214,7 +217,7 @@ def _candidates(
                 continue
             if _single_match_ok(m, start, venue, end, cfg, base_of,
                                  scoped_blackout, recurring_scoped,
-                                 reserve_scoped, hard_windows):
+                                 reserve_scoped, hard_windows, relax_vtype):
                 cand.append((start, venue))
         out[m.id] = cand
     return out

@@ -272,12 +272,14 @@ export function DryRunPreviewPage(): React.ReactElement {
       <SetupJourneyHeader
         step={3}
         compact
+        activeStep={4}
+        doneSteps={{ 1: true, 3: true }}
         onStepClick={() => navigate(routes.tournamentFixtures(id))}
       />
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">
-          {t("Step 3 · Preview & publish")}
+          {t("Step 4 · Preview & publish")}
         </h1>
         <span className="text-sm text-muted-foreground">{label}</span>
         {p ? (

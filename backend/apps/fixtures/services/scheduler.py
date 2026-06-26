@@ -448,6 +448,39 @@ def expand_venues(cfg: ScheduleConfig) -> list[tuple[str, str]]:
     return out
 
 
+def relaxed_venue_type_sports(
+    cfg: ScheduleConfig, matches: list[MatchSlotReq],
+) -> set[str]:
+    """Sports whose required venue_type (from the sport profile) NO available
+    venue can satisfy — almost always because the organiser typed their venues
+    differently from the hidden profile value (e.g. an indoor sport like Sepak
+    Takraw or Table Tennis on a venue they typed "ground").
+
+    A match requiring a type normally only lands on venues of that type. But
+    when not one eligible venue carries the type, that hard filter rejects every
+    slot and silently strands the entire competition (0/N placed, with a
+    misleading "add venues / widen dates" message). For those sports we drop the
+    type requirement and fall back to the explicit per-venue sport allow-list —
+    which the organiser set deliberately ("Sepak only on this court"). Correctly
+    typed tournaments are unaffected: their venues satisfy the type, nothing is
+    relaxed, and sports sharing a venue_type stay separated exactly as before.
+    """
+    required: dict[str, str] = {}
+    for m in matches:
+        if m.venue_type and m.sport:
+            required.setdefault(m.sport, m.venue_type)
+    relax: set[str] = set()
+    for sport, vtype in required.items():
+        satisfiable = any(
+            (not (allowed := cfg.venue_sports.get(v)) or sport in allowed)
+            and cfg.venue_types.get(v, "") in ("", vtype)
+            for v in cfg.venues
+        )
+        if not satisfiable:
+            relax.add(sport)
+    return relax
+
+
 def _subtract_windows(
     windows: list[tuple[time, time]], cuts: list[tuple[time, time]],
 ) -> list[tuple[time, time]]:
@@ -733,6 +766,11 @@ def schedule_matches(
     subs_by_base: dict[str, list[str]] = defaultdict(list)
     for disp, base in base_of.items():
         subs_by_base[base].append(disp)
+
+    # Sports whose profile venue_type no venue can satisfy → drop the type
+    # filter for them (the explicit per-venue sport allow-list still binds), so
+    # a venue-type mismatch never silently strands a whole competition.
+    relax_vtype = relaxed_venue_type_sports(cfg, matches)
     # Venue-tagged team intervals (shared-player cross-venue gaps, §9 A3) and
     # the in-flight interval list the capacity engine counts against.
     team_busy_v: dict[str, list[tuple[datetime, datetime, str]]] = defaultdict(list)
@@ -793,7 +831,7 @@ def schedule_matches(
 
     def feasible(m: MatchSlotReq, dt: datetime, venue: str, wend: datetime,
                  dur: timedelta, teams: list[str]) -> bool:
-        if m.venue_type:
+        if m.venue_type and m.sport not in relax_vtype:
             vt = cfg.venue_types.get(base_of.get(venue, venue), "")
             if vt and vt != m.venue_type:
                 return False
@@ -1069,6 +1107,13 @@ def schedule_matches(
         f"{len(cfg.venues)} venue(s), {cfg.date_start}..{cfg.date_end}.",
         *notes,
     ]
+    if relax_vtype:
+        explanation.append(
+            "No venue matched the expected court type for "
+            f"{', '.join(sorted(relax_vtype))} — used the venues you assigned "
+            "to those sports instead (set each venue's type if you want strict "
+            "court separation)."
+        )
     if unscheduled:
         explanation.append(
             f"{len(unscheduled)} match(es) could not be placed — widen the date "
