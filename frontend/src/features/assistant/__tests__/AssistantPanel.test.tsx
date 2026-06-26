@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AssistantWidget } from "../AssistantPanel";
+import { AskAiButton } from "../AskAiButton";
 import { useAssistantStore } from "../assistantStore";
 import { assistantApi } from "@/api/assistant";
 
@@ -19,7 +20,7 @@ function wrap(ui: React.ReactElement) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useAssistantStore.setState({ open: false, byTournament: {} });
+  useAssistantStore.setState({ open: false, focus: null, byTournament: {} });
 });
 
 describe("AssistantWidget", () => {
@@ -54,10 +55,42 @@ describe("AssistantWidget", () => {
     );
     expect(screen.getByText("Match days set to Aug 1–3")).toBeInTheDocument();
 
-    // The history sent carries the user's message.
-    expect(assistantApi.chat).toHaveBeenCalledWith("t1", [
-      { role: "user", content: "set dates aug 1 to 3" },
-    ]);
+    // The history sent carries the user's message (no focus → undefined).
+    expect(assistantApi.chat).toHaveBeenCalledWith(
+      "t1",
+      [{ role: "user", content: "set dates aug 1 to 3" }],
+      undefined,
+    );
+  });
+
+  it("opens focused from an Ask-AI affordance and sends the focus hint", async () => {
+    vi.mocked(assistantApi.chat).mockResolvedValue({
+      reply: "Sure.",
+      actions: [],
+      changed: false,
+    });
+    wrap(
+      <>
+        <AskAiButton
+          focus={{ label: "Clashes & sessions", hint: "the clashes section" }}
+        />
+        <AssistantWidget tournamentId="t1" canManage />
+      </>,
+    );
+    // Click the section's Ask-AI button → the panel opens, focused.
+    await userEvent.click(screen.getByTestId("ask-ai"));
+    expect(screen.getByTestId("assistant-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("assistant-focus")).toHaveTextContent(
+      "Clashes & sessions",
+    );
+
+    await userEvent.type(screen.getByTestId("assistant-input"), "set one up");
+    await userEvent.click(screen.getByTestId("assistant-send"));
+    expect(assistantApi.chat).toHaveBeenCalledWith(
+      "t1",
+      [{ role: "user", content: "set one up" }],
+      "the clashes section",
+    );
   });
 
   it("shows a friendly error bubble when the call fails", async () => {

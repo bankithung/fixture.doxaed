@@ -264,12 +264,21 @@ competitions, venues, or team numbers - use only what the state shows.
 """
 
 
-def system_prompt(tournament) -> str:
+def system_prompt(tournament, focus: str | None = None) -> str:
     state = build_state(tournament)
     tz = getattr(tournament, "timezone", "") or "Asia/Kolkata"
-    return SYSTEM_TEMPLATE.format(
+    prompt = SYSTEM_TEMPLATE.format(
         today=timezone.localdate().isoformat(),
         tz=tz,
         name=state["name"],
         state=render_state(state),
     )
+    if focus:
+        prompt += (
+            f"\nCURRENT FOCUS: The user opened the assistant from '{focus}'. "
+            "Interpret their message as being about that section/input, answer "
+            "specifically, and offer to do it for them. If their first message is "
+            "vague (e.g. 'set this up', 'what do you recommend'), act on this focus."
+        )
+    return prompt
+

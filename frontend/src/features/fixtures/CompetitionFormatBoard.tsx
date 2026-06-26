@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
+import { AskAiButton } from "@/features/assistant/AskAiButton";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
@@ -199,13 +200,22 @@ export function CompetitionFormatBoard({
       id="format-board"
       className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
     >
-      <div className="border-b border-border px-4 py-3">
-        <h3 className="text-sm font-semibold">{t("How each competition plays")}</h3>
-        <p className="text-xs text-muted-foreground">
-          {t(
-            "Pick a game type for each sport — it applies to every category. Open a sport to give one category a different format.",
-          )}
-        </p>
+      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">{t("How each competition plays")}</h3>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "Pick a game type for each sport — it applies to every category. Open a sport to give one category a different format.",
+            )}
+          </p>
+        </div>
+        <AskAiButton
+          className="mt-0.5"
+          focus={{
+            label: t("How each competition plays"),
+            hint: "the 'How each competition plays' section: choosing a format (knockout, group stage -> knockout, or round-robin league) for each sport or category",
+          }}
+        />
       </div>
 
       <div className="flex flex-col gap-4 px-4 py-4">
@@ -227,13 +237,22 @@ export function CompetitionFormatBoard({
                 className="rounded-lg border border-border bg-muted/10 p-3"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-semibold">{sportName(sp)}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {leaves.length === 1
-                        ? t("1 category")
-                        : `${leaves.length} ${t("categories")}`}
-                    </span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold">{sportName(sp)}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {leaves.length === 1
+                          ? t("1 category")
+                          : `${leaves.length} ${t("categories")}`}
+                      </span>
+                    </div>
+                    <AskAiButton
+                      variant="icon"
+                      focus={{
+                        label: t(`${sportName(sp)} format`),
+                        hint: `the format for the sport "${sportName(sp)}" (sport_key=${sp}) — should it be knockout, group stage -> knockout, or round-robin league`,
+                      }}
+                    />
                   </div>
                   <label className="flex items-center gap-2 text-xs text-muted-foreground">
                     {t("All categories play")}

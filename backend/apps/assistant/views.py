@@ -48,10 +48,13 @@ class AssistantChatView(GenericAPIView):
         messages = request.data.get("messages")
         if not isinstance(messages, list):
             raise ValidationError({"messages": "expected a list of {role, content}"})
+        focus = request.data.get("focus")
+        focus = str(focus)[:300] if isinstance(focus, str) and focus.strip() else None
 
         try:
             result = run_assistant(
-                tournament=tournament, user=request.user, messages=messages, request=request,
+                tournament=tournament, user=request.user, messages=messages,
+                focus=focus, request=request,
             )
         except GeminiError as exc:
             code = str(exc)

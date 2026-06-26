@@ -29,8 +29,12 @@ def _to_contents(messages: list[dict]) -> list[dict[str, Any]]:
     return contents
 
 
-def run_assistant(*, tournament, user, messages, request) -> dict[str, Any]:
-    """Returns ``{"reply": str, "actions": [{label, ok}], "changed": bool}``."""
+def run_assistant(*, tournament, user, messages, request, focus=None) -> dict[str, Any]:
+    """Returns ``{"reply": str, "actions": [{label, ok}], "changed": bool}``.
+
+    ``focus`` (optional) names the section/input the user pointed the assistant
+    at (via an Ask-AI affordance), so the model interprets the turn in context.
+    """
     contents = _to_contents(messages)
     if not contents:
         return {"reply": "Hi! Tell me about your tournament and I'll help set up the fixtures — "
@@ -42,7 +46,7 @@ def run_assistant(*, tournament, user, messages, request) -> dict[str, Any]:
 
     for _ in range(MAX_STEPS):
         resp = gemini.generate(
-            system_text=system_prompt(tournament),
+            system_text=system_prompt(tournament, focus=focus),
             contents=contents,
             tools=TOOL_DECLARATIONS,
         )

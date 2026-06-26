@@ -25,10 +25,15 @@ export interface AssistantReply {
 export const assistantApi = {
   /** Send the running conversation (last entry = the new user message); the
    * server runs the Gemini tool-loop and returns the assistant's reply plus a
-   * receipt of any setup changes it made. */
-  chat: (tournamentId: string, messages: AssistantChatMessage[]) =>
+   * receipt of any setup changes it made. `focus` (optional) tells the model
+   * which section/input the user is pointing at. */
+  chat: (
+    tournamentId: string,
+    messages: AssistantChatMessage[],
+    focus?: string,
+  ) =>
     api.post<AssistantReply>(
       `/api/tournaments/${tournamentId}/assistant/chat/`,
-      { messages },
+      focus ? { messages, focus } : { messages },
     ),
 };

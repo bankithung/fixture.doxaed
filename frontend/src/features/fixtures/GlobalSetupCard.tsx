@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CalendarRange, Pencil } from "lucide-react";
 import { tournamentsApi, type ConstraintRecord } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
+import { AskAiButton } from "@/features/assistant/AskAiButton";
 import { qk } from "@/lib/queryKeys";
 import { t } from "@/lib/t";
 import { SETUP_STEP } from "./setupSteps";
@@ -172,16 +173,23 @@ export function GlobalSetupCard({
         )
       )}
       {canManage ? (
-        <Button
-          size="sm"
-          variant={unset ? "default" : "outline"}
-          className="ml-auto"
-          data-testid="global-setup-edit"
-          onClick={() => onEdit(0)}
-        >
-          <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
-          {unset ? t("Start Step 1") : t("Edit")}
-        </Button>
+        <div className="ml-auto flex items-center gap-1.5">
+          <AskAiButton
+            focus={{
+              label: t("When & where"),
+              hint: "the 'When & where' section: match days, daily play times, venues and courts, breaks, and ceremonies",
+            }}
+          />
+          <Button
+            size="sm"
+            variant={unset ? "default" : "outline"}
+            data-testid="global-setup-edit"
+            onClick={() => onEdit(0)}
+          >
+            <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
+            {unset ? t("Start Step 1") : t("Edit")}
+          </Button>
+        </div>
       ) : null}
     </section>
   );

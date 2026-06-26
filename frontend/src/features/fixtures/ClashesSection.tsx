@@ -6,6 +6,7 @@ import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
+import { AskAiButton } from "@/features/assistant/AskAiButton";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
@@ -242,13 +243,22 @@ export function ClashesSection({
       id="clash-builder"
       className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
     >
-      <div className="border-b border-border px-4 py-3">
-        <h3 className="text-sm font-semibold">{t("Clashes & sessions")}</h3>
-        <p className="text-xs text-muted-foreground">
-          {t(
-            "Keep competitions from running at the same time, or give one its own time of day. The schedule is built around these.",
-          )}
-        </p>
+      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">{t("Clashes & sessions")}</h3>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "Keep competitions from running at the same time, or give one its own time of day. The schedule is built around these.",
+            )}
+          </p>
+        </div>
+        <AskAiButton
+          className="mt-0.5"
+          focus={{
+            label: t("Clashes & sessions"),
+            hint: "the 'Clashes & sessions' section: clash rules that stop competitions running at the same time, per-competition session windows (pin to a time of day), and concurrency caps (how many matches run at once)",
+          }}
+        />
       </div>
 
       <div className="flex flex-col gap-5 px-4 py-4">

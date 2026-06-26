@@ -44,6 +44,7 @@ export function AssistantWidget({
 }): React.ReactElement | null {
   const open = useAssistantStore((s) => s.open);
   const setOpen = useAssistantStore((s) => s.setOpen);
+  const openPlain = useAssistantStore((s) => s.openPlain);
   if (!canManage) return null;
   return (
     <>
@@ -51,7 +52,7 @@ export function AssistantWidget({
         <button
           type="button"
           data-testid="assistant-launcher"
-          onClick={() => setOpen(true)}
+          onClick={openPlain}
           className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           <Sparkles aria-hidden="true" className="h-4 w-4" />
@@ -81,12 +82,14 @@ function AssistantPanel({
   );
   const appendMsg = useAssistantStore((s) => s.append);
   const reset = useAssistantStore((s) => s.reset);
+  const focus = useAssistantStore((s) => s.focus);
+  const clearFocus = useAssistantStore((s) => s.clearFocus);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
   const chat = useMutation({
-    mutationFn: (history: AssistantChatMessage[]) =>
-      assistantApi.chat(tournamentId, history),
+    mutationFn: (vars: { history: AssistantChatMessage[]; focus?: string }) =>
+      assistantApi.chat(tournamentId, vars.history, vars.focus),
     onSuccess: (data: AssistantReply) => {
       appendMsg(tournamentId, {
         role: "assistant",
@@ -122,9 +125,13 @@ function AssistantPanel({
       { role: "user", content: trimmed },
     ];
     appendMsg(tournamentId, { role: "user", content: trimmed });
-    chat.mutate(next);
+    chat.mutate({ history: next, focus: focus?.hint });
     if (inputRef.current) inputRef.current.value = "";
   };
+
+  const suggestions = focus
+    ? ["Set this up for me", "What do you recommend?", "Explain this"]
+    : SUGGESTIONS;
 
   return (
     <aside
@@ -165,6 +172,28 @@ function AssistantPanel({
         </button>
       </header>
 
+      {focus ? (
+        <div
+          data-testid="assistant-focus"
+          className="flex items-center gap-2 border-b border-border bg-primary/5 px-4 py-2 text-xs"
+        >
+          <Sparkles aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-primary" />
+          <span className="min-w-0 flex-1 truncate">
+            <span className="text-muted-foreground">{t("Helping with:")}</span>{" "}
+            <span className="font-medium">{focus.label}</span>
+          </span>
+          <button
+            type="button"
+            aria-label={t("Clear focus")}
+            data-testid="assistant-clear-focus"
+            onClick={clearFocus}
+            className="rounded-md p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <X aria-hidden="true" className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : null}
+
       <div
         ref={logRef}
         role="log"
@@ -175,12 +204,14 @@ function AssistantPanel({
         {messages.length === 0 ? (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">
-              {t(
-                "I can set your dates, venues, formats, breaks and clash rules — just ask. I won't publish anything; that's still your click.",
-              )}
+              {focus
+                ? t(`Ask me about ${focus.label}, or tell me to set it up for you.`)
+                : t(
+                    "I can set your dates, venues, formats, breaks and clash rules — just ask. I won't publish anything; that's still your click.",
+                  )}
             </p>
             <div className="flex flex-col gap-1.5">
-              {SUGGESTIONS.map((s) => (
+              {suggestions.map((s) => (
                 <button
                   key={s}
                   type="button"
