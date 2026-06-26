@@ -15,18 +15,16 @@ from apps.fixtures.services.draw_config import (
 )
 from apps.fixtures.services.generate import (
     compute_inputs_hash,
-    generate_double_elimination,
-    generate_knockout_from_groups,
-    generate_round_robin,
-    generate_round_robin_by_category,
-    generate_single_elimination,
-    generate_swiss,
+    generate_for_leaf,
     generate_swiss_next_round,
 )
-from apps.fixtures.services.preview import preview_fixtures, stored_venue_records
+from apps.fixtures.services.preview import (
+    preview_all_fixtures,
+    preview_fixtures,
+    stored_venue_records,
+)
 from apps.fixtures.services.readiness import fixture_readiness
 from apps.fixtures.services.scheduler import apply_schedule
-from apps.teams.models import Team, TeamStatus
 from apps.tournaments.models import Tournament
 from apps.tournaments.permissions import can_access_module
 from apps.tournaments.scope import accessible_tournaments
@@ -91,77 +89,9 @@ class GenerateFixturesView(GenericAPIView):
         # to relax (best-effort) or skipped teams missing the key datum.
         warnings: list[dict] = []
         try:
-            if fmt == "knockout":
-                teams_qs = Team.objects.filter(
-                    tournament=t, status=TeamStatus.REGISTERED, deleted_at__isnull=True
-                )
-                if leaf_key:
-                    teams_qs = teams_qs.filter(leaf_key=leaf_key)
-                teams = list(teams_qs.order_by("seed", "name"))
-                matches = generate_single_elimination(
-                    tournament=t, teams=teams, leaf_key=leaf_key,
-                    third_place=bool(cfg.get("third_place")),
-                    plate=bool(cfg.get("plate")),
-                    seeding=seeding, seed=seed, warnings=warnings,
-                )
-            elif fmt == "knockout_from_groups":
-                matches = generate_knockout_from_groups(
-                    tournament=t,
-                    advance_per_group=int(cfg["advance_per_group"]),
-                    leaf_key=leaf_key or None,
-                    third_place=bool(cfg.get("third_place")),
-                    plate=bool(cfg.get("plate")),
-                    advance_best_thirds=int(cfg.get("advance_best_thirds") or 0),
-                    knockout_seeding=str(cfg.get("knockout_seeding") or "cross"),
-                    warnings=warnings,
-                )
-            elif fmt == "double_elim":
-                # Double elimination (increment Q): WB + loser_of-wired LB +
-                # single grand final. third_place/plate are deliberately NOT
-                # passed — the LB final decides 3rd and the LB IS the
-                # consolation path (see generate_double_elimination).
-                teams_qs = Team.objects.filter(
-                    tournament=t, status=TeamStatus.REGISTERED, deleted_at__isnull=True
-                )
-                if leaf_key:
-                    teams_qs = teams_qs.filter(leaf_key=leaf_key)
-                teams = list(teams_qs.order_by("seed", "name"))
-                matches = generate_double_elimination(
-                    tournament=t, teams=teams, leaf_key=leaf_key,
-                    seeding=seeding, seed=seed, warnings=warnings,
-                )
-            elif fmt == "swiss":
-                # Swiss is ROUND-AT-A-TIME (increment P): this draws round 1
-                # only; later rounds via POST …/fixtures/next-round/.
-                teams_qs = Team.objects.filter(
-                    tournament=t, status=TeamStatus.REGISTERED, deleted_at__isnull=True
-                )
-                if leaf_key:
-                    teams_qs = teams_qs.filter(leaf_key=leaf_key)
-                teams = list(teams_qs.order_by("seed", "name"))
-                matches = generate_swiss(
-                    tournament=t, teams=teams, leaf_key=leaf_key,
-                    seeding=seeding, seed=seed, warnings=warnings,
-                )
-            elif fmt == "by_category":
-                matches = generate_round_robin_by_category(
-                    tournament=t, leaf_key=leaf_key or None,
-                    legs=int(cfg["legs"]),
-                    seeding=seeding, seed=seed, warnings=warnings,
-                )
-            else:
-                # "round_robin" and "groups_knockout" (the stored-config name)
-                # both draw the group stage now; the knockout is advanced later
-                # via format="knockout_from_groups" once groups complete.
-                matches = generate_round_robin(
-                    tournament=t,
-                    group_size=int(cfg["group_size"]),
-                    leaf_key=leaf_key or None,
-                    legs=int(cfg["legs"]),
-                    seeding=seeding, seed=seed,
-                    balance_groups=bool(cfg.get("balance_groups")),
-                    warnings=warnings,
-                )
+            matches = generate_for_leaf(
+                tournament=t, leaf_key=leaf_key, cfg=cfg, warnings=warnings,
+            )
         except (ValueError, TypeError) as e:
             raise DRFValidationError({"detail": str(e)})
         # The seed the draw used (random seeding persists a fresh one into
@@ -335,6 +265,93 @@ class PreviewFixturesView(GenericAPIView):
         except (ValueError, TypeError) as e:
             raise DRFValidationError({"detail": str(e)})
         return Response(data)
+
+
+class PreviewAllFixturesView(GenericAPIView):
+    """`POST /api/tournaments/{id}/fixtures/preview-all/` — ONE combined dry-run
+    across EVERY competition (all sports + categories), scheduled together so
+    shared courts + cross-sport clashes are coordinated globally. Persists
+    nothing (read-only POST, no `event_id`). Gate: bracket_editor. Body
+    `{schedule?, include_schedule}`."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        if not can_access_module(request.user, t, "tournament.bracket_editor"):
+            raise PermissionDenied("not_tournament_manager")
+        schedule = request.data.get("schedule")
+        try:
+            data = preview_all_fixtures(
+                tournament=t,
+                schedule=schedule if isinstance(schedule, dict) else None,
+                include_schedule=bool(request.data.get("include_schedule", True)),
+            )
+        except (ValueError, TypeError) as e:
+            raise DRFValidationError({"detail": str(e)})
+        return Response(data)
+
+
+class PublishAllFixturesView(GenericAPIView):
+    """`POST /api/tournaments/{id}/fixtures/publish-all/` — generate EVERY
+    competition's draw (idempotent: existing draws are kept) then schedule them
+    ALL together in one run. The whole request is one transaction
+    (ATOMIC_REQUESTS), so it commits all-or-nothing. Gates: bracket_editor
+    (generate) + schedule_editor (schedule). Body `{schedule?}`."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        from apps.tournaments.services.sports import iter_leaves
+
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        if not (
+            can_access_module(request.user, t, "tournament.bracket_editor")
+            and can_access_module(request.user, t, "tournament.schedule_editor")
+        ):
+            raise PermissionDenied("not_tournament_manager")
+
+        warnings: list[dict] = []
+        drawn = 0
+        try:
+            for lf in iter_leaves(t.sports or []):
+                cfg = effective_draw_config(t, lf["leaf_key"])
+                try:
+                    generate_for_leaf(
+                        tournament=t, leaf_key=lf["leaf_key"], cfg=cfg,
+                        warnings=warnings,
+                    )
+                    drawn += 1
+                except ValueError:
+                    # A competition with too few teams is skipped, not fatal —
+                    # the rest of the tournament still publishes.
+                    warnings.append(
+                        {"code": "skipped_leaf", "leaf_key": lf["leaf_key"]}
+                    )
+            payload = dict(request.data.get("schedule") or {})
+            if not payload.get("venues"):
+                stored = stored_venue_records(t)
+                if stored:
+                    payload["venues"] = stored
+            result = apply_schedule(
+                tournament=t, config=payload, by=request.user,
+                request=request, leaf_key=None,
+            )
+        except (ValueError, TypeError) as e:
+            raise DRFValidationError({"detail": str(e)})
+        return Response(
+            {
+                "competitions": drawn,
+                "scheduled": len(result.assignments),
+                "unscheduled": result.unscheduled,
+                "warnings": warnings,
+            },
+            status=201,
+        )
 
 
 class TournamentFixturesView(GenericAPIView):

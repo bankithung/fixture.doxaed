@@ -776,6 +776,30 @@ export const tournamentsApi = {
     },
   ) =>
     api.post<FixturePreview>(`/api/tournaments/${id}/fixtures/preview/`, body),
+
+  /** ONE combined dry-run across every competition (all sports + categories),
+   * scheduled together — the master "see everything before publishing" view. */
+  previewAllFixtures: (
+    id: string,
+    body: { schedule?: Partial<ScheduleRequest>; include_schedule?: boolean },
+  ) =>
+    api.post<FixturePreview & { competitions: number }>(
+      `/api/tournaments/${id}/fixtures/preview-all/`,
+      body,
+    ),
+
+  /** Generate every competition's draw (existing draws kept) + schedule them
+   * all together, atomically — the "publish the whole tournament" action. */
+  publishAllFixtures: (
+    id: string,
+    body: { schedule?: Partial<ScheduleRequest> },
+  ) =>
+    api.post<{
+      competitions: number;
+      scheduled: number;
+      unscheduled: string[];
+      warnings: unknown[];
+    }>(`/api/tournaments/${id}/fixtures/publish-all/`, body),
 };
 
 export interface TournamentRules {

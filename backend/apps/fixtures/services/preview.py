@@ -10,6 +10,7 @@ included), so an Accept with the returned ``seed`` +
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -40,7 +41,11 @@ from apps.fixtures.services.scheduler import (
     schedule_matches,
     stored_activated_reserve_days,
 )
-from apps.tournaments.services.sports import leaf_label, sport_for_leaf
+from apps.tournaments.services.sports import (
+    iter_leaves,
+    leaf_label,
+    sport_for_leaf,
+)
 
 
 def stored_venue_records(tournament) -> list[dict[str, Any]]:
@@ -321,7 +326,20 @@ def preview_fixtures(
     plans = _plan_for_config(
         tournament, leaf_key, cfg, seed=seed, warnings=warnings,
     )
+    return _schedule_and_payload(
+        tournament, plans, schedule=schedule, include_schedule=include_schedule,
+        warnings=warnings, seed=seed, leaf_key=leaf_key,
+    )
 
+
+def _schedule_and_payload(
+    tournament, plans: list[MatchPlan], *, schedule: dict[str, Any] | None,
+    include_schedule: bool, warnings: list[dict[str, Any]],
+    seed: int | None, leaf_key: str | None,
+) -> dict[str, Any]:
+    """Schedule a list of (already-planned) matches and shape the §5.2 preview
+    body. Shared by the single-competition preview and the all-competitions
+    preview, so both run through the SAME slot layer + payload (tenet 3)."""
     assignments: dict[str, tuple[datetime, str]] = {}
     unscheduled: list[str] = []
     violations: list[dict[str, Any]] = []
@@ -394,3 +412,73 @@ def preview_fixtures(
         "explanation": explanation,
         "leaf_key": leaf_key or "",
     }
+
+
+def _rebase_plans(plans: list[MatchPlan], base: int) -> list[MatchPlan]:
+    """Shift each plan's ``ref`` (and any winner_of/loser_of source pointer that
+    references a sibling plan) by ``base`` so plans concatenated from several
+    competitions get globally-unique scheduler ids (``p{ref+1}``) — no id
+    collisions when the all-competitions preview schedules every leaf together.
+    Group/round-robin draws have no such pointers; knockout sources do."""
+    if base == 0:
+        return plans
+
+    def _shift(src: Any) -> Any:
+        if (isinstance(src, dict)
+                and src.get("type") in ("winner_of", "loser_of")
+                and isinstance(src.get("ref"), int)):
+            return {**src, "ref": src["ref"] + base}
+        return src
+
+    return [
+        replace(p, ref=p.ref + base,
+                home_source=_shift(p.home_source),
+                away_source=_shift(p.away_source))
+        for p in plans
+    ]
+
+
+def preview_all_fixtures(
+    *, tournament, schedule: dict[str, Any] | None = None,
+    include_schedule: bool = True,
+) -> dict[str, Any]:
+    """Combined dry-run across EVERY competition (all sports + categories).
+
+    Each leaf's draw is planned with its OWN effective format, then ALL of them
+    are scheduled together in one run — so shared courts, official capacity and
+    cross-sport clash rules are coordinated globally (publishing one competition
+    at a time only sees the already-committed ones). Persists nothing — the same
+    simulate-only contract as ``preview_fixtures``. The ``matches`` array spans
+    every competition (each row carries its ``leaf_key``)."""
+    leaves = iter_leaves(tournament.sports or [])
+    warnings: list[dict[str, Any]] = []
+    all_plans: list[MatchPlan] = []
+    per_leaf_seed: dict[str, int | None] = {}
+    base = 0
+    for lf in leaves:
+        lk = lf["leaf_key"]
+        cfg = effective_draw_config(tournament, lk)
+        seeding = str(cfg.get("seeding") or "registration")
+        seed = int(cfg["seed"]) if cfg.get("seed") is not None else None
+        if seeding == "random" and seed is None:
+            seed = _new_seed()
+        try:
+            plans = _plan_for_config(
+                tournament, lk, cfg, seed=seed, warnings=warnings,
+            )
+        except (ValueError, TypeError):
+            # e.g. fewer than 2 registered teams — nothing to draw for this
+            # competition yet; it simply doesn't appear in the combined preview.
+            continue
+        per_leaf_seed[lk] = seed
+        all_plans.extend(_rebase_plans(plans, base))
+        base += len(plans)
+
+    payload = _schedule_and_payload(
+        tournament, all_plans, schedule=schedule,
+        include_schedule=include_schedule, warnings=warnings,
+        seed=None, leaf_key=None,
+    )
+    payload["per_leaf_seed"] = per_leaf_seed
+    payload["competitions"] = len(leaves)
+    return payload

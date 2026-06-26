@@ -69,6 +69,9 @@ export const routes = {
     `/tournaments/${encodeURIComponent(id)}/fixtures/preview${
       leafKey ? `?leaf=${encodeURIComponent(leafKey)}` : ""
     }`,
+  /** Combined dry-run across EVERY competition (all sports), with publish-all. */
+  tournamentFixturesPreviewAll: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/fixtures/preview?all=1`,
   tournamentSettings: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/settings`,
   /** Live-ops cockpit: day lanes, call-ups, repair verbs (control room spec). */

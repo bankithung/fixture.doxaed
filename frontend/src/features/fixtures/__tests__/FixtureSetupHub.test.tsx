@@ -410,6 +410,14 @@ describe("FixtureSetupHub", () => {
     expect(screen.getByTestId("journey-step-2")).not.toHaveTextContent("2");
   });
 
+  it("offers a 'preview all competitions' entry that opens the combined preview", async () => {
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+    const cta = await screen.findByTestId("preview-all");
+    await userEvent.click(cta);
+    // routes to the combined preview (the ?all=1 master page)
+    expect(await screen.findByTestId("preview-page")).toBeInTheDocument();
+  });
+
   it("collapses the Waiting-for-teams section by default, showing only the count", async () => {
     wrap(<FixtureSetupHub tournamentId="t1" />);
     const needsTeams = await screen.findByTestId("section-needs_teams");

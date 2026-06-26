@@ -6,7 +6,9 @@ from apps.disputes.views import TournamentDisputeView
 from apps.fixtures.views import (
     ControlRoomDayView,
     GenerateFixturesView,
+    PreviewAllFixturesView,
     PreviewFixturesView,
+    PublishAllFixturesView,
     ScheduleFixturesView,
     ShiftFixturesDayView,
     SwapFixtureSlotsView,
@@ -190,6 +192,16 @@ urlpatterns = [
         "<uuid:tournament_id>/fixtures/preview/",
         PreviewFixturesView.as_view(),
         name="tournament-fixtures-preview",
+    ),
+    path(
+        "<uuid:tournament_id>/fixtures/preview-all/",
+        PreviewAllFixturesView.as_view(),
+        name="tournament-fixtures-preview-all",
+    ),
+    path(
+        "<uuid:tournament_id>/fixtures/publish-all/",
+        PublishAllFixturesView.as_view(),
+        name="tournament-fixtures-publish-all",
     ),
     path(
         "<uuid:tournament_id>/fixtures/next-round/",

@@ -763,6 +763,37 @@ export function FixtureSetupHub({
             onEdit={(step) => setSetup({ step })}
           />
 
+          {/* The combined master view: every sport drawn + timed together, then
+              publish the whole tournament in one step (vs. one card at a time). */}
+          {canManage && competitions.some((c) => c.leafKey) ? (
+            <section
+              data-testid="preview-all-cta"
+              className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3"
+            >
+              <CalendarClock
+                aria-hidden="true"
+                className="h-5 w-5 shrink-0 text-primary"
+              />
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-semibold">
+                  {t("See & publish the whole tournament at once")}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {t("One combined schedule for every sport — drawn and timed together so courts and clashes line up — then publish it all in one step.")}
+                </p>
+              </div>
+              <Button
+                data-testid="preview-all"
+                onClick={() =>
+                  navigate(routes.tournamentFixturesPreviewAll(id))
+                }
+              >
+                <CalendarClock aria-hidden="true" className="h-4 w-4" />
+                {t("Preview all competitions")}
+              </Button>
+            </section>
+          ) : null}
+
           {showDoneBanner ? (
             /* §6.3 celebrate state. */
             <section

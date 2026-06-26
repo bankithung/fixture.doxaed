@@ -25,6 +25,8 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       teams: vi.fn(),
       fixtureReadiness: vi.fn(),
       previewFixtures: vi.fn(),
+      previewAllFixtures: vi.fn(),
+      publishAllFixtures: vi.fn(),
       generateFixtures: vi.fn(),
       scheduleFixtures: vi.fn(),
       settings: vi.fn(),
@@ -121,6 +123,12 @@ beforeEach(() => {
   vi.mocked(tournamentsApi.teams).mockResolvedValue(TEAMS);
   vi.mocked(tournamentsApi.fixtureReadiness).mockResolvedValue(READINESS);
   vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue(PREVIEW);
+  vi.mocked(tournamentsApi.previewAllFixtures).mockResolvedValue({
+    ...PREVIEW, competitions: 3,
+  });
+  vi.mocked(tournamentsApi.publishAllFixtures).mockResolvedValue({
+    competitions: 3, scheduled: 2, unscheduled: [], warnings: [],
+  });
   vi.mocked(tournamentsApi.generateFixtures).mockResolvedValue({ generated: 2 });
   vi.mocked(tournamentsApi.scheduleFixtures).mockResolvedValue({
     scheduled: 2, unscheduled: [], soft_score: 0.91, explanation: [],
@@ -410,5 +418,27 @@ describe("DryRunPreviewPage", () => {
     expect(
       await screen.findByText("Published. 2 matches are on the schedule."),
     ).toBeInTheDocument();
+  });
+
+  it("all-mode previews every competition together and publishes them in one call", async () => {
+    mount("/tournaments/t1/fixtures/preview?all=1");
+    // the combined endpoint runs, NOT the per-leaf preview
+    await waitFor(() =>
+      expect(tournamentsApi.previewAllFixtures).toHaveBeenCalled(),
+    );
+    expect(tournamentsApi.previewFixtures).not.toHaveBeenCalled();
+    expect(screen.getByText("All competitions")).toBeInTheDocument();
+
+    // Publish = ONE atomic publish-all, not per-leaf generate + schedule
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Publish all competitions" }),
+    );
+    await waitFor(() =>
+      expect(tournamentsApi.publishAllFixtures).toHaveBeenCalledWith("t1", {
+        schedule: expect.anything(),
+      }),
+    );
+    expect(tournamentsApi.generateFixtures).not.toHaveBeenCalled();
+    expect(tournamentsApi.scheduleFixtures).not.toHaveBeenCalled();
   });
 });

@@ -69,6 +69,9 @@ export function DryRunPreviewPage(): React.ReactElement {
   const { id = "" } = useParams();
   const [params] = useSearchParams();
   const leaf = params.get("leaf") ?? "";
+  // "All competitions" master mode: every sport/category drawn + scheduled
+  // together in one combined preview, with a single Publish-all.
+  const isAll = params.get("all") === "1";
   const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
@@ -105,27 +108,33 @@ export function DryRunPreviewPage(): React.ReactElement {
   // The simulate itself: a read-only POST (D6) — modelled as a query so the
   // result is stable while the page is open; gcTime 0 so a revisit re-runs.
   const preview = useQuery({
-    queryKey: ["t-fixture-preview", id, leaf, roll],
+    queryKey: ["t-fixture-preview", id, isAll ? "all" : leaf, roll],
     enabled: drawConfig.data !== undefined && schedule !== null,
     staleTime: Infinity,
     gcTime: 0,
     retry: false,
     queryFn: () =>
-      tournamentsApi.previewFixtures(id, {
-        ...(leaf ? { leaf_key: leaf } : {}),
-        schedule: schedule!,
-        include_schedule: true,
-      }),
+      isAll
+        ? tournamentsApi.previewAllFixtures(id, {
+            schedule: schedule!,
+            include_schedule: true,
+          })
+        : tournamentsApi.previewFixtures(id, {
+            ...(leaf ? { leaf_key: leaf } : {}),
+            schedule: schedule!,
+            include_schedule: true,
+          }),
   });
 
   const teamNames = useMemo(
     () => new Map((teams.data ?? []).map((tm) => [tm.id, tm.name])),
     [teams.data],
   );
-  const label =
-    readiness.data?.competitions.find((c) => c.leaf_key === leaf)?.label ??
-    // Raw leaf keys are internal codes — never flash one while loading.
-    (readiness.data === undefined ? "" : leaf || t("All competitions"));
+  const label = isAll
+    ? t("All competitions")
+    : (readiness.data?.competitions.find((c) => c.leaf_key === leaf)?.label ??
+      // Raw leaf keys are internal codes — never flash one while loading.
+      (readiness.data === undefined ? "" : leaf || t("All competitions")));
 
   const rePreview = (): void => {
     setStale(false);
@@ -136,6 +145,11 @@ export function DryRunPreviewPage(): React.ReactElement {
    * seed, both guarded by `expected_inputs_hash` (D6/D10). */
   const accept = useMutation({
     mutationFn: async (p: FixturePreview) => {
+      if (isAll) {
+        // Publish the WHOLE tournament: every competition's draw + one
+        // coordinated schedule, committed atomically server-side.
+        return tournamentsApi.publishAllFixtures(id, { schedule: schedule! });
+      }
       await tournamentsApi.generateFixtures(id, {
         leafKey: leaf || undefined,
         ...(p.seed != null ? { seed: p.seed } : {}),
@@ -465,7 +479,11 @@ export function DryRunPreviewPage(): React.ReactElement {
               onClick={() => accept.mutate(p)}
             >
               <Check aria-hidden="true" className="h-4 w-4" />
-              {accept.isPending ? t("Saving…") : t("Publish schedule")}
+              {accept.isPending
+                ? t("Saving…")
+                : isAll
+                  ? t("Publish all competitions")
+                  : t("Publish schedule")}
             </Button>
           </div>
         </>

@@ -1778,3 +1778,68 @@ def generate_knockout_from_groups(
         leaf_key=leaf_key or "", third_place=third_place, plate=plate,
         warnings=warnings,
     )
+
+
+def generate_for_leaf(
+    *, tournament, leaf_key: str, cfg: dict, warnings: list | None = None,
+) -> list[Match]:
+    """Generate ONE competition's initial draw from its effective config —
+    the format dispatch shared by ``GenerateFixturesView`` (single leaf) and
+    the all-competitions publish (loops this over every leaf). Idempotent: each
+    generator early-returns the existing matches when its scope already has a
+    draw, so re-running over a partly-published tournament only fills the gaps.
+
+    ``cfg`` is the already-resolved effective draw config for ``leaf_key``
+    (defaults < rules < draw_config["*"] < draw_config[leaf]); the caller owns
+    layering so this stays a pure dispatch."""
+    warnings = [] if warnings is None else warnings
+    fmt = str(cfg.get("format") or "round_robin")
+    seeding = str(cfg.get("seeding") or "registration")
+    seed = int(cfg["seed"]) if cfg.get("seed") is not None else None
+
+    def _seeded_teams() -> list[Team]:
+        qs = Team.objects.filter(
+            tournament=tournament, status=TeamStatus.REGISTERED,
+            deleted_at__isnull=True,
+        )
+        if leaf_key:
+            qs = qs.filter(leaf_key=leaf_key)
+        return list(qs.order_by("seed", "name"))
+
+    if fmt == "knockout":
+        return generate_single_elimination(
+            tournament=tournament, teams=_seeded_teams(), leaf_key=leaf_key,
+            third_place=bool(cfg.get("third_place")), plate=bool(cfg.get("plate")),
+            seeding=seeding, seed=seed, warnings=warnings,
+        )
+    if fmt == "knockout_from_groups":
+        return generate_knockout_from_groups(
+            tournament=tournament, advance_per_group=int(cfg["advance_per_group"]),
+            leaf_key=leaf_key or None, third_place=bool(cfg.get("third_place")),
+            plate=bool(cfg.get("plate")),
+            advance_best_thirds=int(cfg.get("advance_best_thirds") or 0),
+            knockout_seeding=str(cfg.get("knockout_seeding") or "cross"),
+            warnings=warnings,
+        )
+    if fmt == "double_elim":
+        return generate_double_elimination(
+            tournament=tournament, teams=_seeded_teams(), leaf_key=leaf_key,
+            seeding=seeding, seed=seed, warnings=warnings,
+        )
+    if fmt == "swiss":
+        return generate_swiss(
+            tournament=tournament, teams=_seeded_teams(), leaf_key=leaf_key,
+            seeding=seeding, seed=seed, warnings=warnings,
+        )
+    if fmt == "by_category":
+        return generate_round_robin_by_category(
+            tournament=tournament, leaf_key=leaf_key or None,
+            legs=int(cfg["legs"]), seeding=seeding, seed=seed, warnings=warnings,
+        )
+    # "round_robin" and "groups_knockout" both draw the group stage now.
+    return generate_round_robin(
+        tournament=tournament, group_size=int(cfg["group_size"]),
+        leaf_key=leaf_key or None, legs=int(cfg["legs"]),
+        seeding=seeding, seed=seed,
+        balance_groups=bool(cfg.get("balance_groups")), warnings=warnings,
+    )
