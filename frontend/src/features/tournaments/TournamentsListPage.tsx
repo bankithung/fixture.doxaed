@@ -141,7 +141,7 @@ function AccessBadge({ tn }: { tn: Tournament }): React.ReactElement {
  * Members area, not here.)
  */
 export function TournamentsListPage(): React.ReactElement {
-  const { isMobile } = useBreakpoint();
+  const { up } = useBreakpoint();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
 
@@ -227,13 +227,13 @@ export function TournamentsListPage(): React.ReactElement {
             <p className="rounded-xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">
               {t("No tournaments match your search.")}
             </p>
-          ) : isMobile ? (
-            <TournamentCards items={tournaments} />
-          ) : (
+          ) : up("lg") ? (
             <TournamentTable
               items={tournaments}
               onOpen={(id) => navigate(routes.tournamentDetail(id))}
             />
+          ) : (
+            <TournamentCards items={tournaments} />
           )}
         </div>
       )}
@@ -249,76 +249,77 @@ function TournamentTable({
   onOpen: (id: string) => void;
 }): React.ReactElement {
   return (
+    // table-fixed + w-full → the table always fits its container (never forces a
+    // horizontal scrollbar); the name/slug truncate and the less-important
+    // columns drop on narrower widths.
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[48rem] text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/30 text-left text-[0.6875rem] uppercase tracking-wider text-muted-foreground">
-              <th className="px-4 py-2.5 font-medium">{t("Tournament")}</th>
-              <th className="px-3 py-2.5 font-medium">{t("Sport")}</th>
-              <th className="px-3 py-2.5 font-medium">{t("Status")}</th>
-              <th className="px-3 py-2.5 font-medium">{t("Your role")}</th>
-              <th className="px-3 py-2.5 font-medium">{t("Created")}</th>
-              <th className="px-4 py-2.5">
-                <span className="sr-only">{t("Open")}</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((tn) => (
-              <tr
-                key={tn.id}
-                onClick={() => onOpen(tn.id)}
-                className="group cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-accent/40"
-              >
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <Monogram name={tn.name} />
-                    <div className="min-w-0">
-                      <Link
-                        to={routes.tournamentDetail(tn.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        className="font-medium tracking-tight hover:text-primary focus-visible:text-primary focus-visible:underline focus-visible:outline-none"
-                      >
-                        {tn.name}
-                      </Link>
-                      <div className="truncate font-tabular text-xs text-muted-foreground">
-                        {tn.slug}
-                      </div>
+      <table className="w-full table-fixed text-sm">
+        <thead>
+          <tr className="border-b border-border bg-muted/30 text-left text-[0.6875rem] uppercase tracking-wider text-muted-foreground">
+            <th className="px-4 py-2.5 font-medium">{t("Tournament")}</th>
+            <th className="hidden w-24 px-3 py-2.5 font-medium 2xl:table-cell">{t("Sport")}</th>
+            <th className="w-40 px-3 py-2.5 font-medium">{t("Status")}</th>
+            <th className="w-28 px-3 py-2.5 font-medium">{t("Your role")}</th>
+            <th className="hidden w-28 px-3 py-2.5 font-medium xl:table-cell">{t("Created")}</th>
+            <th className="w-24 px-4 py-2.5">
+              <span className="sr-only">{t("Open")}</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((tn) => (
+            <tr
+              key={tn.id}
+              onClick={() => onOpen(tn.id)}
+              className="group cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-accent/40"
+            >
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <Monogram name={tn.name} />
+                  <div className="min-w-0">
+                    <Link
+                      to={routes.tournamentDetail(tn.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="block truncate font-medium tracking-tight hover:text-primary focus-visible:text-primary focus-visible:underline focus-visible:outline-none"
+                    >
+                      {tn.name}
+                    </Link>
+                    <div className="truncate font-tabular text-xs text-muted-foreground">
+                      {tn.slug}
                     </div>
                   </div>
-                </td>
-                <td className="px-3 py-3">
-                  <Sport code={tn.sport_code} />
-                </td>
-                <td className="px-3 py-3">
-                  <StatusPill status={tn.status} />
-                </td>
-                <td className="px-3 py-3">
-                  <AccessBadge tn={tn} />
-                </td>
-                <td className="whitespace-nowrap px-3 py-3 font-tabular text-muted-foreground">
-                  {formatCreated(tn.created_at)}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-1">
-                    {canManageTournament(tn.origin, tn.my_roles) ? (
-                      <RenameTournamentButton
-                        tournamentId={tn.id}
-                        currentName={tn.name}
-                      />
-                    ) : null}
-                    <ChevronRight
-                      aria-hidden="true"
-                      className="h-4 w-4 text-muted-foreground/50 transition-all group-hover:translate-x-0.5 group-hover:text-foreground"
+                </div>
+              </td>
+              <td className="hidden px-3 py-3 2xl:table-cell">
+                <Sport code={tn.sport_code} />
+              </td>
+              <td className="px-3 py-3">
+                <StatusPill status={tn.status} />
+              </td>
+              <td className="px-3 py-3">
+                <AccessBadge tn={tn} />
+              </td>
+              <td className="hidden whitespace-nowrap px-3 py-3 font-tabular text-muted-foreground xl:table-cell">
+                {formatCreated(tn.created_at)}
+              </td>
+              <td className="px-4 py-3">
+                <div className="flex items-center justify-end gap-1">
+                  {canManageTournament(tn.origin, tn.my_roles) ? (
+                    <RenameTournamentButton
+                      tournamentId={tn.id}
+                      currentName={tn.name}
                     />
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                  ) : null}
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="h-4 w-4 text-muted-foreground/50 transition-all group-hover:translate-x-0.5 group-hover:text-foreground"
+                  />
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
