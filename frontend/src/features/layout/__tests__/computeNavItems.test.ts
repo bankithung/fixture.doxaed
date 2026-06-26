@@ -263,13 +263,13 @@ describe("computeTournamentNav", () => {
     ...over,
   });
 
-  it("at ready, pivots to a two-group Operations + Setup nav (Operations leads)", () => {
+  it("at ready, the nav is Operations + Manage — no setup-flow pages", () => {
     const groups = computeTournamentNav(TID, {
       user: makeUser(["admin"], []),
       slug: "acme",
       stage: readyStage({ can_manage: true }),
     });
-    expect(groupKeys(groups)).toEqual(["operations", "setup"]);
+    expect(groupKeys(groups)).toEqual(["operations", "manage"]);
     const ops = groups.find((g) => g.key === "operations")!;
     expect(ops.items.map((i) => i.key)).toEqual([
       "control",
@@ -278,16 +278,13 @@ describe("computeTournamentNav", () => {
       "crew",
       "directory",
     ]);
-    const setup = groups.find((g) => g.key === "setup")!;
-    expect(setup.items.map((i) => i.key)).toEqual([
-      "overview",
-      "sports",
-      "forms",
-      "institutions",
-      "members",
-      "fixtures",
-      "settings",
-    ]);
+    // Only people + config remain; the setup-flow pages are gone from the nav.
+    const manage = groups.find((g) => g.key === "manage")!;
+    expect(manage.items.map((i) => i.key)).toEqual(["members", "settings"]);
+    const allKeys = flatKeys(groups);
+    for (const gone of ["overview", "sports", "forms", "institutions", "fixtures"]) {
+      expect(allKeys).not.toContain(gone);
+    }
   });
 
   it("ops-mode items are never stage-locked (all reachable at ready)", () => {

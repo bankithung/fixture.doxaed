@@ -198,38 +198,12 @@ export function computeTournamentNav(
       },
     ];
 
-    // Demoted but fully reachable — late registrations, reschedules, settings,
-    // regeneration. Same permission gating as setup mode, minus the stage locks
-    // (everything is reached at `ready`).
-    const setup: (NavItem | null)[] = [
-      {
-        key: "overview",
-        label: t("Overview"),
-        href: routes.tournamentOverview(tournamentId),
-        icon: LayoutDashboard,
-      },
-      allowed("tournament.editor")
-        ? {
-            key: "sports",
-            label: t("Sports"),
-            href: routes.tournamentSports(tournamentId),
-            icon: Trophy,
-          }
-        : null,
-      allowed("forms")
-        ? {
-            key: "forms",
-            label: t("Forms"),
-            href: routes.tournamentForms(tournamentId),
-            icon: FileText,
-          }
-        : null,
-      {
-        key: "institutions",
-        label: t("Institutions"),
-        href: routes.tournamentInstitutions(tournamentId),
-        icon: Building2,
-      },
+    // People + config — the only setup-era surfaces that stay relevant once the
+    // event is running, and ONLY as their own operations-grade pages (ops
+    // 2026-06-26: the setup-flow pages — Overview/Sports/Forms/Institutions/the
+    // Fixtures wizard — belong to setup, not operations, so they leave the nav;
+    // they stay reachable by URL + a "Setup tools" hatch in ops Settings).
+    const manage: (NavItem | null)[] = [
       canManage
         ? {
             key: "members",
@@ -238,12 +212,6 @@ export function computeTournamentNav(
             icon: UserCog,
           }
         : null,
-      {
-        key: "fixtures",
-        label: t("Fixtures"),
-        href: routes.tournamentFixtures(tournamentId),
-        icon: CalendarClock,
-      },
       allowed("tournament.editor")
         ? {
             key: "settings",
@@ -261,9 +229,9 @@ export function computeTournamentNav(
         items: operations.filter((i): i is NavItem => i !== null),
       },
       {
-        key: "setup",
-        label: t("Setup & config"),
-        items: setup.filter((i): i is NavItem => i !== null),
+        key: "manage",
+        label: t("Manage"),
+        items: manage.filter((i): i is NavItem => i !== null),
       },
     ].filter((g) => g.items.length > 0);
   }

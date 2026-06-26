@@ -211,10 +211,12 @@ describe("AppShell", () => {
     renderShellAt("/tournaments/t-123");
 
     const primary = await screen.findByRole("navigation", { name: /primary/i });
-    // Inside a tournament the sidebar switches to that tournament's sections.
-    expect(primary.textContent).toMatch(/overview/i);
-    expect(primary.textContent).toMatch(/institutions/i);
-    expect(primary.textContent).toMatch(/fixtures/i);
+    // Once fixtures are generated (stage "ready") the sidebar is the operations
+    // console — Operations-first, no setup-flow pages (ops 2026-06-26).
+    expect(primary.textContent).toMatch(/operations/i);
+    expect(primary.textContent).toMatch(/today/i);
+    expect(primary.textContent).toMatch(/standings/i);
+    expect(primary.textContent).not.toMatch(/institutions/i);
     // Name resolves into the rail identity header.
     await waitFor(() =>
       expect(screen.getAllByText(/spring cup/i).length).toBeGreaterThan(0),

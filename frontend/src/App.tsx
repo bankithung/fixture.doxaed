@@ -22,7 +22,7 @@ import { SportsTab } from "@/features/tournaments/tabs/SportsTab";
 import { InstitutionsTab } from "@/features/tournaments/tabs/InstitutionsTab";
 import { TeamsTab } from "@/features/tournaments/tabs/TeamsTab";
 import { FixturesTab } from "@/features/tournaments/tabs/FixturesTab";
-import { SettingsTab } from "@/features/tournaments/tabs/SettingsTab";
+import { SettingsRoute } from "@/features/tournaments/ops/SettingsRoute";
 import { TournamentMembersPage } from "@/features/tournaments/TournamentMembersPage";
 import { InvitesPage } from "@/features/invitations/InvitesPage";
 import { TournamentAuditPage } from "@/features/tournaments/TournamentAuditPage";
@@ -191,7 +191,7 @@ export default function App(): React.ReactElement {
                   <Route path="matches" element={<MatchesBoardPage />} />
                   <Route path="standings" element={<OpsStandingsPage />} />
                   <Route path="crew" element={<CrewPage />} />
-                  <Route path="settings" element={<SettingsTab />} />
+                  <Route path="settings" element={<SettingsRoute />} />
                 </Route>
                 <Route
                   path="/tournaments/:id/bracket"
