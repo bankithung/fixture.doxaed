@@ -65,18 +65,36 @@ describe("SetupJourneyHeader", () => {
     expect(onStepClick).toHaveBeenCalledWith(3);
   });
 
-  it("activeStep marks the sub-page you're on as current and gates later steps", () => {
+  it("page-nav mode: completed steps tick, the active page is current, every step navigates", async () => {
     const onStepClick = vi.fn();
-    // Readiness still points at 3, but the hub is showing the Clashes sub-page
-    // (activeStep 2): step 2 reads as the current page (clickable) and the
-    // later steps read as upcoming so they don't all light up at once.
+    // On the formats page (activeStep 3); steps 1 & 2 are actually complete.
     render(
-      <SetupJourneyHeader step={3} activeStep={2} onStepClick={onStepClick} />,
+      <SetupJourneyHeader
+        step={2}
+        activeStep={3}
+        doneSteps={{ 1: true, 2: true }}
+        onStepClick={onStepClick}
+      />,
     );
-    expect(screen.getByTestId("journey-step-1")).not.toBeDisabled(); // done
-    expect(screen.getByTestId("journey-step-2")).not.toBeDisabled(); // current
-    expect(screen.getByTestId("journey-step-3")).toBeDisabled(); // upcoming
-    expect(screen.getByTestId("journey-step-4")).toBeDisabled(); // upcoming
+    // completed steps render a check (no number); current/upcoming show numbers
+    expect(screen.getByTestId("journey-step-1")).not.toHaveTextContent("1");
+    expect(screen.getByTestId("journey-step-2")).not.toHaveTextContent("2");
+    expect(screen.getByTestId("journey-step-3")).toHaveTextContent("3");
+    expect(screen.getByTestId("journey-step-4")).toHaveTextContent("4");
+    // these are PAGES — even an upcoming step navigates (no gating)
+    expect(screen.getByTestId("journey-step-4")).not.toBeDisabled();
+    await userEvent.click(screen.getByTestId("journey-step-4"));
+    expect(onStepClick).toHaveBeenCalledWith(4);
+  });
+
+  it("an optional step 2 that isn't configured shows as optional, not ticked", () => {
+    // formats page again, but no clash rules set → step 2 is not done.
+    render(
+      <SetupJourneyHeader step={2} activeStep={3} doneSteps={{ 1: true }} />,
+    );
+    // step 2 still shows its number (optional, awaiting config), step 1 ticks
+    expect(screen.getByTestId("journey-step-1")).not.toHaveTextContent("1");
+    expect(screen.getByTestId("journey-step-2")).toHaveTextContent("2");
   });
 
   it("renders the single current-step label for mobile", () => {

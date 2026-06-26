@@ -32,6 +32,16 @@ const NEXT_LINE: Record<"1" | "2" | "3" | "done", string> = {
   done: "All set. Your schedule is published.",
 };
 
+/** Page-navigation mode (the setup hub): the line describes what to do on the
+ * page you're currently looking at, since the stepper is page navigation —
+ * not the readiness pointer (which tracks draw generation, a later concern). */
+const ACTIVE_NEXT: Record<VisibleStep, string> = {
+  1: "Next: set your tournament dates and venues.",
+  2: "Optional — stop competitions clashing, or skip ahead to formats.",
+  3: "Choose how each competition plays, then preview & publish.",
+  4: "Preview each competition's draw below, then publish the schedule.",
+};
+
 /** Required dots are done strictly before the pointer; in the mixed step-3
  * state the header highlights 3 AND 4 together (some competitions are drawn
  * while others are still mid-path). The optional clashes step (2) renders as
@@ -40,15 +50,17 @@ function dotState(
   n: VisibleStep,
   step: JourneyStep,
   activeStep?: VisibleStep,
+  doneSteps?: Partial<Record<VisibleStep, boolean>>,
 ): "done" | "current" | "todo" | "optional" {
-  // When the hub body is showing a specific sub-page, that page is THE current
-  // step; earlier steps read as done, later ones as todo (clashes stays
-  // optional unless it's the page you're on). This drives the page-style
-  // highlight without disturbing the readiness pointer logic below.
+  // Page-navigation mode (the setup hub passes activeStep): the page you're on
+  // is THE current step; any step actually COMPLETE shows a tick (from real
+  // data, not position) so finished steps read as done and unfinished ones
+  // don't; the optional clashes step stays "optional" until configured.
   if (activeStep != null) {
     if (n === activeStep) return "current";
+    if (doneSteps?.[n]) return "done";
     if (n === 2) return "optional";
-    return n < activeStep ? "done" : "todo";
+    return "todo";
   }
   if (n === 2) return step === 1 ? "todo" : "optional";
   if (step === "done") return "done";
@@ -69,19 +81,31 @@ export function SetupJourneyHeader({
   step,
   compact = false,
   activeStep,
+  doneSteps,
   onStepClick,
 }: {
   step: JourneyStep;
   /** Slimmer spacing for the preview page's top strip. */
   compact?: boolean;
-  /** The sub-page the hub body is currently showing — highlighted as the
-   * current step so the stepper reads like page navigation. */
+  /** The page the hub body is currently showing — highlighted as the current
+   * step so the stepper reads like page navigation. */
   activeStep?: VisibleStep;
+  /** Which steps are actually COMPLETE (drives the ticks in page-nav mode). */
+  doneSteps?: Partial<Record<VisibleStep, boolean>>;
   /** Deep-link from a completed, current, or optional step. */
   onStepClick?: (step: VisibleStep) => void;
 }): React.ReactElement {
   const pointer = VISIBLE_POINTER[step === "done" ? "done" : (String(step) as "1" | "2" | "3")];
-  const current = STEPS.find((s) => s.n === pointer) ?? STEPS[0];
+  // In page-nav mode the "you are here" label + line follow the active page;
+  // otherwise (compact preview header) they follow the readiness pointer.
+  const shownStep = activeStep ?? pointer;
+  const shownLabel = (STEPS.find((s) => s.n === shownStep) ?? STEPS[0]).label;
+  const nextLine =
+    step === "done"
+      ? NEXT_LINE.done
+      : activeStep != null
+        ? ACTIVE_NEXT[activeStep]
+        : NEXT_LINE[String(step) as "1" | "2" | "3"];
 
   return (
     <nav
@@ -91,8 +115,11 @@ export function SetupJourneyHeader({
     >
       <ol className="flex items-center gap-1 text-xs">
         {STEPS.map((s) => {
-          const state = dotState(s.n, step, activeStep);
-          const clickable = Boolean(onStepClick) && state !== "todo";
+          const state = dotState(s.n, step, activeStep, doneSteps);
+          // Page-nav mode → every step is a reachable page (even "todo" ones);
+          // pointer mode keeps upcoming steps locked.
+          const clickable =
+            Boolean(onStepClick) && (activeStep != null || state !== "todo");
           return (
             <li key={s.n} className="flex flex-1 items-center gap-1.5">
               <button
@@ -141,11 +168,11 @@ export function SetupJourneyHeader({
       </ol>
       {step !== "done" ? (
         <p className="text-xs text-muted-foreground sm:hidden">
-          {t(`Step ${pointer} of 4: ${current.label}`)}
+          {t(`Step ${shownStep} of 4: ${shownLabel}`)}
         </p>
       ) : null}
       <p data-testid="journey-next" className="text-sm text-muted-foreground">
-        {t(NEXT_LINE[step === "done" ? "done" : (String(step) as "1" | "2" | "3")])}
+        {t(nextLine)}
       </p>
     </nav>
   );

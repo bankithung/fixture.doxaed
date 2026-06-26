@@ -330,6 +330,12 @@ export function FixtureSetupHub({
     queryKey: qk.drawConfig(id),
     queryFn: () => tournamentsApi.drawConfig(id),
   });
+  // Constraints power the journey ticks (is "Clashes & sessions" configured?).
+  // Same query key the Clashes/Constraint panels use, so it shares the cache.
+  const settings = useQuery({
+    queryKey: qk.settings(id),
+    queryFn: () => tournamentsApi.settings(id),
+  });
   const canManage =
     (stage.data?.can_manage ?? false) ||
     (stage.data?.modules ?? []).includes("tournament.bracket_editor");
@@ -501,16 +507,44 @@ export function FixtureSetupHub({
     setGateDismissed(true);
   };
 
-  /** Which journey step the body is currently showing — so the stepper
-   * highlights the page you're on (Step 1 wizard → 1, sub-pages → 2/3, the
-   * competition list → undefined, where the readiness pointer drives it). */
-  const activeStep: 1 | 2 | 3 | undefined = setupView
-    ? 1
-    : view === "clashes"
-      ? 2
-      : view === "formats"
-        ? 3
-        : undefined;
+  /** Which page the body is currently showing — so the stepper highlights the
+   * page you're on (Step 1 wizard / gate → 1, sub-pages → 2/3, the competition
+   * list → 4, the Preview & publish surface). */
+  const activeStep: 1 | 2 | 3 | 4 =
+    globalsUnset || setupView
+      ? 1
+      : view === "clashes"
+        ? 2
+        : view === "formats"
+          ? 3
+          : 4;
+
+  /** Real completion per step → the stepper ticks (not mere position). Step 2
+   * (Clashes & sessions) is optional; it ticks once any clash rule or session
+   * window exists. Step 3 ticks when no competition is still on the implicit
+   * league default. Step 4 ticks when every eligible competition is drawn. */
+  const constraints = settings.data?.constraints ?? [];
+  // The three constraint types the "Clashes & sessions" page owns.
+  const CLASH_TYPES = new Set([
+    "no_concurrent_competitions",
+    "category_session_window",
+    "official_capacity",
+  ]);
+  const clashesConfigured = constraints.some((c) => CLASH_TYPES.has(c.type));
+  const leafComps = competitions.filter((c) => c.leafKey);
+  const formatsChosen =
+    leafComps.length > 0 &&
+    !leafComps.some((c) =>
+      c.readiness?.checks.some(
+        (k) => k.id === "format_chosen" && k.status === "warn",
+      ),
+    );
+  const doneSteps: Partial<Record<1 | 2 | 3 | 4, boolean>> = {
+    1: !globalsUnset,
+    2: clashesConfigured,
+    3: formatsChosen,
+    4: journey === "done",
+  };
 
   /** Panels behind the Advanced disclosure — only the ones that render today. */
   const matchCount = (matches.data ?? []).length;
@@ -559,9 +593,12 @@ export function FixtureSetupHub({
     if (n === 1) {
       setView("overview");
       setSetup({ step: 0 });
-    } else if (n === 2) setView("clashes");
-    else if (n === 3) setView("formats");
-    else setView("overview");
+    } else {
+      // Leaving Step 1 for a later page closes the inline wizard if it's open
+      // (e.g. a receipt edit), so the page actually swaps.
+      setSetup(null);
+      setView(n === 2 ? "clashes" : n === 3 ? "formats" : "overview");
+    }
   };
 
   const shareReady = Boolean(tournament.data?.slug);
@@ -615,7 +652,8 @@ export function FixtureSetupHub({
         <SetupJourneyHeader
           step={setupView ? 1 : journey}
           activeStep={activeStep}
-          onStepClick={canManage ? onStepClick : undefined}
+          doneSteps={doneSteps}
+          onStepClick={canManage && !globalsUnset ? onStepClick : undefined}
         />
       ) : null}
 

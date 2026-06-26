@@ -313,8 +313,10 @@ describe("FixtureSetupHub", () => {
     expect(await screen.findByTestId("global-setup-strip")).toBeInTheDocument();
     expect(screen.queryByTestId("global-setup-gate")).toBeNull();
     expect(screen.getByText("Step 1 · When & where")).toBeInTheDocument();
+    // The overview is the Preview & publish page (step 4) — its line + the
+    // stepper highlight follow the page you're on, not the readiness pointer.
     expect(screen.getByTestId("journey-next")).toHaveTextContent(
-      "Next: set any clashes (optional), then choose how each competition plays.",
+      "Preview each competition's draw below, then publish the schedule.",
     );
 
     // u15 (ready) sits in the open "Ready to go" section as a card with ONE
@@ -375,6 +377,37 @@ describe("FixtureSetupHub", () => {
       await screen.findByTestId("format-sport-football"),
     ).toBeInTheDocument();
     expect(screen.queryByTestId("competition-card-football.u15")).toBeNull();
+  });
+
+  it("ticks the Clashes & sessions step once a clash rule exists, anywhere in the flow", async () => {
+    // The owner's bug: clashes were configured (via the assistant) but step 2
+    // never showed as done. A stored clash constraint must tick step 2.
+    vi.mocked(tournamentsApi.settings).mockResolvedValue({
+      rules: {},
+      constraints: [
+        {
+          type: "no_concurrent_competitions",
+          scope: "all",
+          hard: true,
+          weight: 5,
+          params: {},
+        },
+      ],
+      rules_frozen_at: null,
+      can_edit: true,
+      can_manage: true,
+      can_delete: true,
+    } as unknown as TournamentSettings);
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+
+    // Overview is the Preview & publish page (step 4) — its line confirms the
+    // active page is 4, so step 4 is the highlighted "you are here".
+    expect(await screen.findByTestId("global-setup-strip")).toBeInTheDocument();
+    expect(screen.getByTestId("journey-next")).toHaveTextContent(
+      "Preview each competition's draw below, then publish the schedule.",
+    );
+    // Step 2 is configured → it renders a tick (no "2"), even from the overview.
+    expect(screen.getByTestId("journey-step-2")).not.toHaveTextContent("2");
   });
 
   it("collapses the Waiting-for-teams section by default, showing only the count", async () => {
@@ -472,7 +505,7 @@ describe("FixtureSetupHub", () => {
     expect(screen.queryByTestId("global-setup-inline")).toBeNull();
     expect(await screen.findByTestId("global-setup-strip")).toBeInTheDocument();
     expect(screen.getByTestId("journey-next")).toHaveTextContent(
-      "Next: set any clashes (optional), then choose how each competition plays.",
+      "Preview each competition's draw below, then publish the schedule.",
     );
 
     // a receipt chip deep-links to its wizard step (Play times)
