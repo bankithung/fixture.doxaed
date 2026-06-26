@@ -17,6 +17,7 @@ from apps.fixtures.services.scheduler import (
     apply_schedule,
     build_slots,
     config_from_dict,
+    court_venue_name,
     schedule_matches,
     validate_schedule,
 )
@@ -118,6 +119,128 @@ def test_validate_schedule_flags_venue_and_rest():
     bad = {"m0": (same, "A"), "m1": (same, "A")}  # both in the same venue slot
     v = validate_schedule(bad, matches, cfg)
     assert any(x["code"] == "venue_double_booked" for x in v)
+
+
+# ----------------------------------------------------------------- court capacity
+def _hall_cfg(count: int) -> ScheduleConfig:
+    return ScheduleConfig(
+        date_start=date(2026, 8, 1), date_end=date(2026, 8, 1),
+        daily_start=time(9, 0), daily_end=time(18, 0), slot_minutes=60,
+        venues=["Hall"], venue_counts={"Hall": count}, rest_minutes=0,
+        max_per_team_per_day=99,
+    )
+
+
+def test_court_venue_name_format():
+    # The court-suffix format is the single source of truth (U+00B7 MIDDLE DOT).
+    assert court_venue_name("Hall", 2) == "Hall · T2"
+    assert court_venue_name("Hall", 2) == "Hall · T2"
+
+
+def test_court_capacity_overflow_across_distinct_courts():
+    # 2-court hall, 3 mutually-overlapping matches on T1/T2/T3 — distinct court
+    # strings (so NOT venue_double_booked) but 3 concurrent on a 2-court base.
+    matches = _reqs(3)
+    at = datetime(2026, 8, 1, 9, 0)
+    assign = {
+        "m0": (at, court_venue_name("Hall", 1)),
+        "m1": (at, court_venue_name("Hall", 2)),
+        "m2": (at, court_venue_name("Hall", 3)),
+    }
+    v = validate_schedule(assign, matches, _hall_cfg(2))
+    cap = [x for x in v if x["code"] == "court_capacity_exceeded"]
+    assert cap, v
+    assert cap[0]["venue"] == "Hall" and cap[0]["capacity"] == 2
+    assert cap[0]["match_id"] in {"m0", "m1", "m2"}
+    # Distinct courts → no same-court double-book reported.
+    assert not any(x["code"] == "venue_double_booked" for x in v)
+
+
+def test_court_capacity_within_count_ok():
+    matches = _reqs(2)
+    at = datetime(2026, 8, 1, 9, 0)
+    assign = {
+        "m0": (at, court_venue_name("Hall", 1)),
+        "m1": (at, court_venue_name("Hall", 2)),
+    }
+    v = validate_schedule(assign, matches, _hall_cfg(2))
+    assert not any(x["code"] == "court_capacity_exceeded" for x in v)
+
+
+def test_court_capacity_counts_bare_base_absorption():
+    # A bare-base "Hall" booking (legacy / preoccupied) occupies a court; two
+    # more overlapping court matches push a 2-court base over capacity. The
+    # reported subject must be a MOVABLE match, never the fixed booking.
+    matches = _reqs(2)
+    at = datetime(2026, 8, 1, 9, 0)
+    end = datetime(2026, 8, 1, 10, 0)
+    assign = {
+        "m0": (at, court_venue_name("Hall", 1)),
+        "m1": (at, court_venue_name("Hall", 2)),
+    }
+    preoccupied = [("Hall", at, end, set())]
+    v = validate_schedule(assign, matches, _hall_cfg(2), preoccupied=preoccupied)
+    cap = [x for x in v if x["code"] == "court_capacity_exceeded"]
+    assert cap, v
+    assert cap[0]["match_id"] in {"m0", "m1"}
+
+
+def test_court_capacity_same_court_is_double_book_not_capacity():
+    # Two overlapping on the SAME court of a 2-court base: that's the existing
+    # venue_double_booked (exact string), and base concurrency (2) == cap, so
+    # NO court_capacity_exceeded — the two codes stay complementary.
+    matches = _reqs(2)
+    at = datetime(2026, 8, 1, 9, 0)
+    court = court_venue_name("Hall", 1)
+    v = validate_schedule({"m0": (at, court), "m1": (at, court)}, matches, _hall_cfg(2))
+    assert any(x["code"] == "venue_double_booked" for x in v)
+    assert not any(x["code"] == "court_capacity_exceeded" for x in v)
+
+
+def test_court_capacity_single_court_cross_string_collision():
+    # A single-court venue (count=1) is NOT skipped: a stale "Hall · T1" (left
+    # over after count dropped to 1) and a bare "Hall" booking occupy the one
+    # physical court at the same time — distinct strings, so venue_double_booked
+    # misses it, but the capacity pass must flag the cross-court collision.
+    matches = _reqs(2)
+    at = datetime(2026, 8, 1, 9, 0)
+    assign = {
+        "m0": (at, court_venue_name("Hall", 1)),  # stale court string
+        "m1": (at, "Hall"),                        # bare base — same court
+    }
+    v = validate_schedule(assign, matches, _hall_cfg(1))
+    assert any(x["code"] == "court_capacity_exceeded" for x in v), v
+
+
+def test_court_capacity_single_court_same_string_is_only_double_book():
+    matches = _reqs(2)
+    at = datetime(2026, 8, 1, 9, 0)
+    v = validate_schedule({"m0": (at, "Hall"), "m1": (at, "Hall")}, matches, _hall_cfg(1))
+    assert any(x["code"] == "venue_double_booked" for x in v)
+    assert not any(x["code"] == "court_capacity_exceeded" for x in v)
+
+
+def test_court_capacity_distinct_times_ok():
+    matches = _reqs(2)
+    court = court_venue_name("Hall", 1)
+    assign = {
+        "m0": (datetime(2026, 8, 1, 9, 0), court),
+        "m1": (datetime(2026, 8, 1, 10, 30), court),  # 60-min slot → no overlap
+    }
+    v = validate_schedule(assign, matches, _hall_cfg(2))
+    assert not any(x["code"] == "court_capacity_exceeded" for x in v)
+
+
+def test_greedy_schedule_never_violates_court_capacity():
+    # Parity: a schedule the greedy placer accepts on an N-court venue must
+    # yield ZERO court_capacity_exceeded from the validator (the two paths
+    # must agree). 6 matches on a 2-court hall.
+    matches = _reqs(6)
+    cfg = _hall_cfg(2)
+    res = schedule_matches(matches, cfg)
+    assert not res.unscheduled
+    v = validate_schedule(res.assignments, matches, cfg)
+    assert not any(x["code"] == "court_capacity_exceeded" for x in v)
 
 
 def test_config_from_dict_minimal():

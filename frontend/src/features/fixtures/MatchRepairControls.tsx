@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
+import { venueCourtOptions } from "@/lib/courts";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
@@ -35,11 +36,15 @@ import { MOVABLE_STATUSES, conflictsOf, errorDetail } from "./repair";
 /** Plain titles per stable repair-violation code (§7.9 — the FE renders
  * from the code, never string-matches server messages). */
 const VIOLATION_TITLES: Record<string, string> = {
-  venue_double_booked: "Two matches would share this venue at the same time",
+  venue_double_booked: "Two matches would share this court at the same time",
+  court_capacity_exceeded: "No free court at this venue at that time",
   insufficient_rest: "A team would get too short a break between matches",
   exceeds_max_per_day: "A team would play more matches in one day than you allow",
   team_blackout: "A team is not available on that date",
   shared_player_conflict: "Two linked teams (shared player) would play at the same time",
+  venue_unavailable: "This venue is closed on that date",
+  pinned_round_venue: "This round is pinned to a different venue",
+  concurrent_competitions: "Two competitions that must not clash would run at the same time",
 };
 
 function violationDetail(v: RepairViolation): string {
@@ -183,7 +188,10 @@ function MoveMatchDialog({
     queryKey: qk.venues(tournamentId),
     queryFn: () => tournamentsApi.venues(tournamentId),
   });
-  const pool = (venues.data?.venues ?? []).map((v) => v.name);
+  // Expand each venue into its parallel courts so the editor assigns a SPECIFIC
+  // court ("Hall · T2"), not just the base hall. The current slot is prepended
+  // when it isn't in the pool (covers legacy/bare or now-removed court strings).
+  const pool = (venues.data?.venues ?? []).flatMap(venueCourtOptions);
   const options = (pool.includes(match.venue) || !match.venue
     ? pool
     : [match.venue, ...pool]

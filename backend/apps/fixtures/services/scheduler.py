@@ -434,6 +434,39 @@ def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> l
 
 
 # --------------------------------------------------------------------------- slots
+# The court-suffix format: ``<base><_COURT_SUFFIX><1-based index>`` → "Hall · T2".
+# The separator is U+00B7 MIDDLE DOT (never a hyphen / em-dash / en-dash). Court
+# identity is encoded in ``Match.venue`` (no separate column), so this exact
+# string is what double-book / court-capacity checks key off and what the
+# editor's court picker submits. The frontend mirrors it in
+# ``lib/courts.ts::courtLabel`` — keep the two in lockstep.
+_COURT_SUFFIX = " · T"
+
+
+def court_venue_name(base: str, index: int) -> str:
+    """The canonical display name of court ``index`` (1-based) at venue ``base``
+    ("Hall · T2"). SINGLE source of truth for the court-suffix format."""
+    return f"{base}{_COURT_SUFFIX}{index}"
+
+
+def court_base_of(venue: str, venues: Sequence[str]) -> str:
+    """The physical base venue a (possibly court-suffixed) display name belongs
+    to. Strips a ``" · T<n>"`` suffix ONLY when the remainder is a configured
+    base venue — so a stranded/out-of-range court ("Hall · T3" after ``count``
+    dropped to 2) still counts against its hall, while a real base name that
+    merely ends in the pattern is left untouched. Callers should prefer an
+    authoritative ``expand_venues`` mapping and fall back to this for off-grid
+    strings."""
+    if venue in venues:
+        return venue  # a configured base venue is never stripped, even if it
+        # happens to end in the court pattern (e.g. a venue named "Hall · T2")
+    for vname in venues:
+        prefix = f"{vname}{_COURT_SUFFIX}"
+        if venue.startswith(prefix) and venue[len(prefix):].isdigit():
+            return vname
+    return venue
+
+
 def expand_venues(cfg: ScheduleConfig) -> list[tuple[str, str]]:
     """``(display_name, base_name)`` pairs: a venue with ``count=N`` becomes N
     parallel sub-venues ("Hall · T1"…) sharing the base venue's windows and
@@ -444,7 +477,7 @@ def expand_venues(cfg: ScheduleConfig) -> list[tuple[str, str]]:
         if n == 1:
             out.append((name, name))
         else:
-            out.extend((f"{name} · T{i}", name) for i in range(1, n + 1))
+            out.extend((court_venue_name(name, i), name) for i in range(1, n + 1))
     return out
 
 
@@ -1407,6 +1440,53 @@ def validate_schedule(
             violations.append({"code": "venue_double_booked", "hard": True,
                                "match_id": subject, "other_match_id": other,
                                "venue": venue, "at": at.isoformat()})
+
+    # Court capacity: across all courts of one PHYSICAL base, no more than
+    # ``count`` matches may run concurrently. The greedy can't break this (it
+    # only ever offers the N expanded display-courts, one match each), but a
+    # manual edit can — a 3rd overlapping match on a 2-court hall, mixing the
+    # bare base name with court strings, or landing on a court that no longer
+    # exists after ``count`` was reduced (incl. all the way to 1). We only emit
+    # for a CROSS-COURT overflow — the active set spans >=2 distinct venue
+    # strings — because a same-string pile-up is already ``venue_double_booked``
+    # (so single-court bases are NOT skipped: two matches on "Hall" vs a stale
+    # "Hall · T1" still collide on the one physical court and must be caught).
+    def capacity_base(venue: str) -> str:
+        # Authoritative mapping for legitimate expanded courts; suffix-strip for
+        # bare-base / stale / out-of-range strings so they still count against
+        # the right hall.
+        return base_of.get(venue) or court_base_of(venue, cfg.venues)
+
+    # (start, end, match_id|None, venue_string) — venue carried so the pass can
+    # tell a cross-court overflow from a same-court double-book.
+    CourtItem = tuple[datetime, datetime, str | None, str]
+    base_items: dict[str, list[CourtItem]] = defaultdict(list)
+    for venue, items in venue_items.items():
+        bse = capacity_base(venue)
+        base_items[bse].extend((s, e, mid, venue) for (s, e, mid) in items)
+    for base, citems in base_items.items():
+        cap = max(1, int(cfg.venue_counts.get(base, 1)))
+        citems.sort(key=lambda x: (x[0], x[1]))
+        active: list[CourtItem] = []
+        for cur in citems:
+            s_cur = cur[0]
+            active = [a for a in active if a[1] > s_cur]  # drop ended courts
+            active.append(cur)
+            if len(active) <= cap:
+                continue
+            if len({a[3] for a in active}) < 2:
+                continue  # same court only — venue_double_booked has it covered
+            movable = [a for a in active if a[2] is not None]
+            if not movable:
+                continue  # an all-fixed overflow is not ours to flag
+            subject = cur if cur[2] is not None else movable[-1]
+            other = next((a for a in active if a is not subject), None)
+            violations.append({
+                "code": "court_capacity_exceeded", "hard": True,
+                "match_id": subject[2],
+                "other_match_id": other[2] if other else None,
+                "venue": base, "capacity": cap, "at": s_cur.isoformat(),
+            })
 
     for team, items in team_items.items():
         # Per-day cap: the effective limit on a day is the SMALLEST resolved cap

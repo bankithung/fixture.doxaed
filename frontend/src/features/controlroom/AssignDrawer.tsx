@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Radio, UserCog, X } from "lucide-react";
+import { MapPin, Plus, Radio, UserCog, X } from "lucide-react";
 import {
   tournamentsApi,
   type ControlRoomMatch,
+  type RepairViolation,
   type TournamentMember,
 } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
@@ -17,9 +18,11 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
-import { errorDetail } from "@/features/fixtures/repair";
+import { RepairViolationsList } from "@/features/fixtures/MatchRepairControls";
+import { MOVABLE_STATUSES, conflictsOf, errorDetail } from "@/features/fixtures/repair";
+import { venueCourtOptions } from "@/lib/courts";
 import { newEventId } from "@/lib/eventId";
-import { invalidateTournament } from "@/lib/queryKeys";
+import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { t } from "@/lib/t";
 
 const OFFICIAL_ROLES: { value: string; label: string }[] = [
@@ -92,6 +95,71 @@ export function AssignDrawer({
 
   const refresh = (): void => invalidateTournament(qc, tournamentId);
 
+  // --- Court assignment (the court is encoded in Match.venue; assigning one is
+  // a venue change through the same audited repair path, so it inherits the
+  // 409 conflict / force flow). Only movable matches can be reslotted.
+  const courtMovable = MOVABLE_STATUSES.has(match.status);
+  const venuesQ = useQuery({
+    queryKey: qk.venues(tournamentId),
+    queryFn: () => tournamentsApi.venues(tournamentId),
+    enabled: courtMovable,
+  });
+  const courtPool = (venuesQ.data?.venues ?? []).flatMap(venueCourtOptions);
+  const courtOptions = (
+    courtPool.includes(match.venue) || !match.venue
+      ? courtPool
+      : [match.venue, ...courtPool]
+  ).map((name) => ({ value: name, label: name }));
+  const [pendingCourt, setPendingCourt] = useState("");
+  const [courtEventId, setCourtEventId] = useState("");
+  const [courtConflicts, setCourtConflicts] = useState<RepairViolation[] | null>(
+    null,
+  );
+
+  const assignCourt = useMutation({
+    mutationFn: (vars: { venue: string; force: boolean; eventId: string }) =>
+      tournamentsApi.rescheduleMatch(match.id, {
+        venue: vars.venue,
+        ...(vars.force ? { force: true } : {}),
+        event_id: vars.eventId,
+      }),
+    onSuccess: (r) => {
+      refresh();
+      setCourtConflicts(null);
+      setPendingCourt("");
+      toast.push({
+        kind: "success",
+        title: t("Court assigned"),
+        description: r.violations.length
+          ? `${r.violations.length} ${t("warning(s) recorded in the change history")}`
+          : undefined,
+      });
+    },
+    onError: (e) => {
+      const v = conflictsOf(e);
+      if (v) {
+        setCourtConflicts(v);
+        return;
+      }
+      toast.push({
+        kind: "error",
+        title: t("Could not assign the court"),
+        description: errorDetail(e),
+      });
+    },
+  });
+
+  const chooseCourt = (venue: string): void => {
+    if (!venue || venue === match.venue) return;
+    // Fresh idempotency key per court attempt; the force retry reuses it (the
+    // 409 path persisted nothing, so the same key safely replays — invariant 3).
+    const eventId = newEventId();
+    setPendingCourt(venue);
+    setCourtEventId(eventId);
+    setCourtConflicts(null);
+    assignCourt.mutate({ venue, force: false, eventId });
+  };
+
   const setScorer = useMutation({
     mutationFn: (userId: string) => tournamentsApi.assignScorer(match.id, userId),
     onSuccess: () => {
@@ -159,6 +227,49 @@ export function AssignDrawer({
       </DialogHeader>
 
       <div className="flex flex-col gap-4 py-2">
+        {/* Court (where the match plays) */}
+        {courtMovable && courtOptions.length > 0 ? (
+          <section className="flex flex-col gap-1.5">
+            <Label htmlFor={`court-${match.id}`}>
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin aria-hidden="true" className="h-3.5 w-3.5" />
+                {t("Court")}
+              </span>
+            </Label>
+            <Select
+              id={`court-${match.id}`}
+              aria-label={t("Court")}
+              value={match.venue}
+              onChange={chooseCourt}
+              options={courtOptions}
+              placeholder={t("Pick a court…")}
+            />
+            {courtConflicts ? (
+              <div className="flex flex-col gap-1.5 pt-1">
+                <p className="text-xs font-medium text-destructive">
+                  {t("That court clashes with the schedule. Assign it anyway and the warning is kept in the change history.")}
+                </p>
+                <RepairViolationsList violations={courtConflicts} />
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  data-testid="court-force"
+                  disabled={assignCourt.isPending}
+                  onClick={() =>
+                    assignCourt.mutate({
+                      venue: pendingCourt,
+                      force: true,
+                      eventId: courtEventId,
+                    })
+                  }
+                >
+                  {t("Assign anyway")}
+                </Button>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
         {/* Scorer seat */}
         <section className="flex flex-col gap-1.5">
           <Label htmlFor={`scorer-${match.id}`}>

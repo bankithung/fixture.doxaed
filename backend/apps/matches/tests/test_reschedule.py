@@ -314,6 +314,136 @@ def test_shared_player_conflict_across_linked_teams():
     )
 
 
+def _setup_courts():
+    """A 2-court hall ('Hall', count=2). Two team-disjoint matches sit on its
+    two courts at 09:00; a third disjoint match is free to move onto the hall —
+    which would put 3 concurrent matches on a 2-court venue (capacity overflow),
+    with NO team-rule interference so the court rule is tested in isolation."""
+    admin = _verified(f"courts-{uuid.uuid4().hex[:8]}@test.local")
+    t = create_tournament(user=admin, name="Courts Cup")
+    register_school(
+        tournament=t,
+        school_name="School",
+        teams=[{"name": f"Team {i + 1}", "players": []} for i in range(6)],
+    )
+    from apps.fixtures.services.generate import generate_round_robin
+    from apps.fixtures.services.scheduler import court_venue_name
+
+    generate_round_robin(tournament=t, group_size=6)
+    t.scheduling_config = {
+        "date_start": "2026-08-01", "date_end": "2026-08-15",
+        "venues": [{"name": "Hall", "count": 2}], "slot_minutes": 90,
+        "rest_minutes": 0, "max_per_team_per_day": 99,
+    }
+    t.save(update_fields=["scheduling_config"])
+    tz = ZoneInfo(t.time_zone)
+
+    matches = list(Match.objects.filter(tournament=t).order_by("match_no"))
+    disjoint, used = [], set()
+    for m in matches:
+        pair = {m.home_team_id, m.away_team_id}
+        if pair & used:
+            continue
+        disjoint.append(m)
+        used |= pair
+        if len(disjoint) == 3:
+            break
+    at = datetime(2026, 8, 1, 9, 0, tzinfo=tz)
+    disjoint[0].scheduled_at, disjoint[0].venue = at, court_venue_name("Hall", 1)
+    disjoint[1].scheduled_at, disjoint[1].venue = at, court_venue_name("Hall", 2)
+    disjoint[0].save(update_fields=["scheduled_at", "venue"])
+    disjoint[1].save(update_fields=["scheduled_at", "venue"])
+    return admin, t, disjoint
+
+
+def test_court_capacity_overflow_409_and_force():
+    admin, _t, disjoint = _setup_courts()
+    from apps.fixtures.services.scheduler import court_venue_name
+
+    mover = disjoint[2]
+    # Move the third disjoint match onto a third court of the 2-court hall at the
+    # same 09:00 slot — exceeds the hall's parallel-court capacity.
+    payload = {"scheduled_at": "2026-08-01T09:00", "venue": court_venue_name("Hall", 3)}
+    r = _client(admin).patch(
+        f"/api/matches/{mover.id}/schedule/", payload, format="json"
+    )
+    assert r.status_code == 409, r.content
+    body = r.json()
+    assert body["detail"] == "schedule_conflicts"
+    codes = {v["code"] for v in body["violations"]}
+    assert "court_capacity_exceeded" in codes, body["violations"]
+    cap = next(v for v in body["violations"] if v["code"] == "court_capacity_exceeded")
+    assert cap["venue"] == "Hall" and cap["capacity"] == 2 and cap["hard"] is True
+    mover.refresh_from_db()
+    assert mover.scheduled_at is None  # not applied
+
+    # force overrides and records the capacity conflict as a warning.
+    r2 = _client(admin).patch(
+        f"/api/matches/{mover.id}/schedule/",
+        {**payload, "force": True},
+        format="json",
+    )
+    assert r2.status_code == 200, r2.content
+    assert any(
+        v["code"] == "court_capacity_exceeded" for v in r2.json()["violations"]
+    )
+    mover.refresh_from_db()
+    assert mover.scheduled_at is not None
+
+
+def test_court_capacity_pre_existing_overflow_on_other_day_does_not_block():
+    # Scoping contract: a pre-existing (force-persisted) overflow on the hall on
+    # one day must NOT block an unrelated, legal move onto the hall on a DIFFERENT
+    # day. The capacity scope clause carries a day guard for exactly this.
+    admin, t, disjoint = _setup_courts()
+    from apps.fixtures.services.scheduler import court_venue_name
+
+    # Force a persisted 3-on-2-courts overflow on 2026-08-01.
+    r = _client(admin).patch(
+        f"/api/matches/{disjoint[2].id}/schedule/",
+        {
+            "scheduled_at": "2026-08-01T09:00",
+            "venue": court_venue_name("Hall", 3),
+            "force": True,
+        },
+        format="json",
+    )
+    assert r.status_code == 200, r.content
+
+    other = (
+        Match.objects.filter(tournament=t)
+        .exclude(id__in=[d.id for d in disjoint])
+        .order_by("match_no")
+        .first()
+    )
+    r2 = _client(admin).patch(
+        f"/api/matches/{other.id}/schedule/",
+        {"scheduled_at": "2026-08-02T09:00", "venue": court_venue_name("Hall", 1)},
+        format="json",
+    )
+    assert r2.status_code == 200, r2.content
+    assert not any(
+        v["code"] == "court_capacity_exceeded" for v in r2.json()["violations"]
+    )
+
+
+def test_court_assignment_within_capacity_is_clean():
+    admin, _t, disjoint = _setup_courts()
+    from apps.fixtures.services.scheduler import court_venue_name
+
+    # A different time on a court is fine; assigning a specific court is just a
+    # venue change and must not trip the capacity rule.
+    r = _client(admin).patch(
+        f"/api/matches/{disjoint[2].id}/schedule/",
+        {"scheduled_at": "2026-08-02T09:00", "venue": court_venue_name("Hall", 1)},
+        format="json",
+    )
+    assert r.status_code == 200, r.content
+    assert r.json()["violations"] == []
+    disjoint[2].refresh_from_db()
+    assert disjoint[2].venue == court_venue_name("Hall", 1)
+
+
 def test_clean_move_far_from_everything_has_no_violations():
     admin, _t, matches = _setup()
     r = _client(admin).patch(

@@ -126,6 +126,26 @@ describe("MatchRepairControls", () => {
     expect(await screen.findByText("Match moved")).toBeInTheDocument();
   });
 
+  it("Move expands a multi-court venue into per-court options", async () => {
+    vi.mocked(tournamentsApi.venues).mockResolvedValue({
+      venues: [{ id: "v1", name: "Main Ground", venue_type: "field", windows: [], count: 2 }],
+    });
+    mount();
+    await userEvent.click(screen.getByTestId("repair-menu-m1"));
+    await userEvent.click(screen.getByTestId("repair-move-m1"));
+    await userEvent.click(screen.getByRole("button", { name: "Venue" }));
+    // The 2-court venue offers both courts; pick the second.
+    expect(screen.getByRole("option", { name: "Main Ground · T1" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("option", { name: "Main Ground · T2" }));
+    await userEvent.click(screen.getByTestId("move-submit"));
+    await waitFor(() =>
+      expect(tournamentsApi.rescheduleMatch).toHaveBeenCalledWith(
+        "m1",
+        expect.objectContaining({ venue: "Main Ground · T2" }),
+      ),
+    );
+  });
+
   it("hard conflicts block the move behind a destructive Move it anyway", async () => {
     vi.mocked(tournamentsApi.rescheduleMatch)
       .mockRejectedValueOnce(
@@ -151,7 +171,7 @@ describe("MatchRepairControls", () => {
       await screen.findByTestId("repair-violation-venue_double_booked"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Two matches would share this venue at the same time"),
+      screen.getByText("Two matches would share this court at the same time"),
     ).toBeInTheDocument();
     expect(screen.queryByTestId("move-submit")).toBeNull();
 

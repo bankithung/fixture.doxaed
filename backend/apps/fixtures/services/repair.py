@@ -28,6 +28,7 @@ from apps.fixtures.services.scheduler import (
     _tournament_tz,
     build_schedule_inputs,
     config_from_dict,
+    court_base_of,
     merge_stored_constraints,
     resolve_team_tags,
     resolve_venue_unavailability,
@@ -136,12 +137,14 @@ def validate_slot_changes(
     by_id = {r.id: r for r in reqs}
     teams: set[str] = set()
     venues: set[str] = set()
+    bases: set[str] = set()
     days: set[str] = set()
     for mid, (dt, venue) in changed.items():
         req = by_id.get(mid)
         if req:
             teams.update(t for t in (req.home, req.away) if t)
         venues.add(venue)
+        bases.add(court_base_of(venue, cfg.venues))
         days.add(dt.date().isoformat())
 
     def relevant(v: dict[str, Any]) -> bool:
@@ -150,6 +153,19 @@ def validate_slot_changes(
         if v.get("team_id") in teams or v.get("linked_team_id") in teams:
             return True
         at = str(v.get("at") or v.get("date") or "")
+        # Court-capacity overflow carries the physical BASE venue (e.g. "Hall"),
+        # while the moved slot is a court string ("Hall · T2") and the reported
+        # subject may be a non-moved court-mate — so key it to the moved court's
+        # base, not match_id alone. The day guard (as elsewhere) keeps this from
+        # surfacing a pre-existing overflow on the SAME hall on an unrelated day:
+        # a move that genuinely overflows lands on a changed day, so the catch
+        # is preserved.
+        if (
+            v.get("code") == "court_capacity_exceeded"
+            and v.get("venue") in bases
+            and at[:10] in days
+        ):
+            return True
         return v.get("venue") in venues and at[:10] in days
 
     return [v for v in violations if relevant(v)]

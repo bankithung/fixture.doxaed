@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "@/components/ui/toast";
 import { tournamentsApi, type ControlRoomMatch } from "@/api/tournaments";
+import { ApiError } from "@/types/api";
+import { courtLabel } from "@/lib/courts";
 import { AssignDrawer } from "../AssignDrawer";
 
 vi.mock("@/api/tournaments", async (importOriginal) => {
@@ -16,6 +18,8 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       assignOfficial: vi.fn(),
       removeOfficial: vi.fn(),
       assignScorer: vi.fn(),
+      venues: vi.fn(),
+      rescheduleMatch: vi.fn(),
     },
   };
 });
@@ -76,6 +80,16 @@ beforeEach(() => {
     warning: null,
   });
   vi.mocked(tournamentsApi.removeOfficial).mockResolvedValue({ officials: [] });
+  vi.mocked(tournamentsApi.venues).mockResolvedValue({
+    venues: [
+      { id: "v1", name: "Main", venue_type: "", windows: [], count: 2 },
+      { id: "v2", name: "Hall", venue_type: "", windows: [], count: 1 },
+    ],
+  });
+  vi.mocked(tournamentsApi.rescheduleMatch).mockResolvedValue({
+    match: MATCH,
+    violations: [],
+  });
 });
 
 describe("AssignDrawer", () => {
@@ -116,6 +130,64 @@ describe("AssignDrawer", () => {
     await userEvent.click(await screen.findByRole("option", { name: /alice/i }));
     await waitFor(() =>
       expect(tournamentsApi.assignScorer).toHaveBeenCalledWith("m1", "u1"),
+    );
+  });
+
+  it("assigns a specific court via the reschedule path", async () => {
+    mount();
+    // The 2-court "Main" venue expands to two courts; pick the second.
+    await userEvent.click(await screen.findByRole("button", { name: /^court$/i }));
+    await userEvent.click(
+      await screen.findByRole("option", { name: courtLabel("Main", 2) }),
+    );
+    await waitFor(() =>
+      expect(tournamentsApi.rescheduleMatch).toHaveBeenCalledWith(
+        "m1",
+        expect.objectContaining({ venue: courtLabel("Main", 2) }),
+      ),
+    );
+    // First attempt is unforced.
+    expect(tournamentsApi.rescheduleMatch).toHaveBeenCalledWith(
+      "m1",
+      expect.not.objectContaining({ force: true }),
+    );
+  });
+
+  it("surfaces a court clash and forces past it with the same event id", async () => {
+    const conflict = new ApiError(409, {
+      detail: "schedule_conflicts",
+      violations: [
+        { code: "court_capacity_exceeded", hard: true, venue: "Main", capacity: 2 },
+      ],
+    });
+    vi.mocked(tournamentsApi.rescheduleMatch)
+      .mockRejectedValueOnce(conflict)
+      .mockResolvedValueOnce({ match: MATCH, violations: [] });
+
+    mount();
+    await userEvent.click(await screen.findByRole("button", { name: /^court$/i }));
+    await userEvent.click(
+      await screen.findByRole("option", { name: courtLabel("Main", 2) }),
+    );
+
+    // The clash renders with a localized title and a force affordance.
+    expect(await screen.findByTestId("court-force")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("repair-violation-court_capacity_exceeded"),
+    ).toBeInTheDocument();
+
+    const firstEventId = vi.mocked(tournamentsApi.rescheduleMatch).mock.calls[0][1]
+      .event_id;
+    await userEvent.click(screen.getByTestId("court-force"));
+    await waitFor(() =>
+      expect(tournamentsApi.rescheduleMatch).toHaveBeenCalledWith(
+        "m1",
+        expect.objectContaining({
+          venue: courtLabel("Main", 2),
+          force: true,
+          event_id: firstEventId,
+        }),
+      ),
     );
   });
 });
