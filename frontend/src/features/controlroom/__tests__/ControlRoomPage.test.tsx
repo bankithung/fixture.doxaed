@@ -108,6 +108,7 @@ function row(
     called_at: null,
     leaf_label: "Football · U15",
     scorer: null,
+    officials: [],
     ...over,
   };
 }

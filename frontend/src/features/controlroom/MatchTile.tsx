@@ -1,4 +1,4 @@
-import { Lock } from "lucide-react";
+import { Lock, Radio, UserCog } from "lucide-react";
 import type { ControlRoomMatch, MatchRow } from "@/api/tournaments";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -169,6 +169,30 @@ export function MatchTile({
             ? `(${match.home_pens}–${match.away_pens} ${t("pens")})`
             : ""}
         </p>
+      ) : null}
+
+      {match.scorer || (match.officials ?? []).length > 0 ? (
+        <div
+          data-testid={`crew-${match.id}`}
+          className="flex flex-wrap items-center gap-1"
+        >
+          {match.scorer ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[0.6875rem] text-muted-foreground">
+              <Radio aria-hidden="true" className="h-3 w-3" />
+              {match.scorer.name}
+            </span>
+          ) : null}
+          {(match.officials ?? []).map((o) => (
+            <span
+              key={o.id}
+              title={o.role}
+              className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[0.6875rem] text-muted-foreground"
+            >
+              <UserCog aria-hidden="true" className="h-3 w-3" />
+              {o.name}
+            </span>
+          ))}
+        </div>
       ) : null}
 
       <MatchActionsMenu

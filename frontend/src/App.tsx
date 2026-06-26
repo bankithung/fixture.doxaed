@@ -28,11 +28,9 @@ import { InvitesPage } from "@/features/invitations/InvitesPage";
 import { TournamentAuditPage } from "@/features/tournaments/TournamentAuditPage";
 import { MatchConsolePage } from "@/features/matches/MatchConsolePage";
 import { ControlRoomPage } from "@/features/controlroom/ControlRoomPage";
-import {
-  MatchesBoardPage,
-  CrewPage,
-} from "@/features/tournaments/ops/OpsSurfaces";
+import { MatchesBoardPage } from "@/features/tournaments/ops/OpsSurfaces";
 import { OpsStandingsPage } from "@/features/tournaments/ops/OpsStandingsPage";
+import { CrewPage } from "@/features/tournaments/ops/CrewPage";
 import { BracketPage } from "@/features/tournaments/BracketPage";
 import { DryRunPreviewPage } from "@/features/fixtures/DryRunPreviewPage";
 import { PublicSchedulePage } from "@/features/fixtures/PublicSchedulePage";

@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router-dom";
-import { ListChecks, Radio, UserCog } from "lucide-react";
+import { ListChecks, Radio } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
@@ -70,20 +70,3 @@ export function MatchesBoardPage(): React.ReactElement {
   );
 }
 
-/** Operations: officials, scorer & task assignment cockpit (slice 3). */
-export function CrewPage(): React.ReactElement {
-  return (
-    <OpsPlaceholder
-      icon={UserCog}
-      title={t("Officials & assignments")}
-      blurb={t(
-        "Assign referees, scorers and courts to matches, with double-booking warnings.",
-      )}
-      bullets={[
-        t("Assign officials and scorers per match"),
-        t("Place matches onto courts"),
-        t("Track match-day tasks to done"),
-      ]}
-    />
-  );
-}

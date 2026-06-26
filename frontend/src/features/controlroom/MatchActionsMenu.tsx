@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Megaphone, Minus, Plus, Radio, SquarePen } from "lucide-react";
+import { Megaphone, Minus, Plus, Radio, SquarePen, UserCog } from "lucide-react";
 import { liveApi } from "@/api/live";
 import {
   tournamentsApi,
@@ -22,6 +22,7 @@ import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
 import { MatchRepairMenu } from "@/features/fixtures/MatchRepairControls";
 import { errorDetail } from "@/features/fixtures/repair";
+import { AssignDrawer } from "./AssignDrawer";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
@@ -369,6 +370,7 @@ export function MatchActionsMenu({
   const toast = useToast();
   const [walkover, setWalkover] = useState(false);
   const [quick, setQuick] = useState(false);
+  const [assign, setAssign] = useState(false);
 
   const called = Boolean(match.called_at);
   const call = useMutation({
@@ -403,6 +405,8 @@ export function MatchActionsMenu({
     match.status === "scheduled" &&
     match.home_team !== null &&
     match.away_team !== null;
+  // Assigning officials / scorer / court is a schedule-editor (or manager) verb.
+  const showAssign = perms.canSchedule;
 
   if (!showCall && !showConsole && !showWalkover && !perms.canSchedule) {
     return null; // read-only member — the tile stays a pure status card
@@ -445,6 +449,17 @@ export function MatchActionsMenu({
         </Link>
       ) : null}
       <span className="ml-auto flex items-center gap-1.5">
+        {showAssign ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            data-testid={`assign-${match.id}`}
+            onClick={() => setAssign(true)}
+          >
+            <UserCog aria-hidden="true" className="h-3.5 w-3.5" />
+            {t("Assign")}
+          </Button>
+        ) : null}
         {showWalkover ? (
           <Button
             size="sm"
@@ -475,6 +490,13 @@ export function MatchActionsMenu({
           tournamentId={tournamentId}
           match={match}
           onClose={() => setQuick(false)}
+        />
+      ) : null}
+      {assign ? (
+        <AssignDrawer
+          tournamentId={tournamentId}
+          match={match}
+          onClose={() => setAssign(false)}
         />
       ) : null}
     </div>

@@ -252,12 +252,25 @@ export interface ControlRoomDay {
   counts: { total: number; completed: number; live: number };
 }
 
+/** An official assigned to a match (referee/assistant/fourth/umpire). */
+export interface MatchOfficialRow {
+  id: string;
+  user_id: string;
+  name: string;
+  /** referee | assistant | fourth | umpire | commissioner */
+  role: string;
+  /** assigned | accepted | declined */
+  status: string;
+}
+
 /** A MatchSerializer row enriched for the cockpit. */
 export interface ControlRoomMatch extends MatchRow {
   /** Human label of the competition leaf ("" = whole-tournament draw). */
   leaf_label: string;
   /** Assigned scorer, if any. */
   scorer: { id: string; name: string } | null;
+  /** Assigned officials (referees/assistants/etc.). */
+  officials: MatchOfficialRow[];
 }
 
 export interface ControlRoomVenue {
@@ -568,6 +581,25 @@ export const tournamentsApi = {
     matchId: string,
     payload: { set_scores: number[][]; event_id: string },
   ) => api.post<MatchRow>(`/api/matches/${matchId}/score/`, payload),
+  /** Assign an official (referee/assistant/etc.) to a match. Returns the full
+   * officials list + a soft double-booking warning when the person clashes. */
+  assignOfficial: (
+    matchId: string,
+    payload: { user_id: string; role: string; event_id: string },
+  ) =>
+    api.post<{
+      officials: MatchOfficialRow[];
+      warning: { code: string; count: number } | null;
+    }>(`/api/matches/${matchId}/officials/`, payload),
+  /** Remove an assigned official from a match. */
+  removeOfficial: (matchId: string, officialId: string) =>
+    api.delete<{ officials: MatchOfficialRow[] }>(
+      `/api/matches/${matchId}/officials/`,
+      { body: { official_id: officialId } },
+    ),
+  /** Assign (or change) the scorer seat on a match (manager only). */
+  assignScorer: (matchId: string, userId: string) =>
+    api.post<MatchRow>(`/api/matches/${matchId}/scorer/`, { user_id: userId }),
 
   // --- Setup-stage workflow (WS4) ---
   stage: (id: string) => api.get<StagePayload>(`/api/tournaments/${id}/stage/`),
