@@ -159,25 +159,27 @@ beforeEach(() => {
 });
 
 describe("PublicSchedulePage", () => {
-  it("defaults to a Today overview with chip labels and ZERO dashes", async () => {
+  it("defaults to a TIME-ordered order of play (not grouped by game), ZERO dashes", async () => {
     const { container } = mount();
     // smart default day = nearest >= today, else first day → 2026-06-20
     const day = await screen.findByTestId("public-day-2026-06-20");
     expect(tournamentsApi.publicSchedule).toHaveBeenCalledWith("nagaland-cup", "t1");
 
-    // grouped under competition headers, rendered as chips (never the dashed blob)
-    expect(within(day).getByText("Football")).toBeInTheDocument();
-    expect(within(day).getByText("U15")).toBeInTheDocument(); // "U-14" hyphen stripped
-    expect(screen.queryByText(/Football — U-15 — Boys/)).toBeNull();
-    // the en/em dash is the #1 tell: it must appear NOWHERE on the page
-    expect(container.textContent).not.toMatch(/[—–]/);
-
-    // a completed match shows an ASCII scoreboard hyphen, not a dash
-    const m1 = within(day).getByTestId("public-match-m1");
-    expect(m1).toHaveTextContent("09:00"); // 03:30Z in Asia/Kolkata (invariant 14)
-    expect(m1).toHaveTextContent("2 - 1");
+    // ordered by kick-off time: a time-slot header carries the time, NOT a
+    // competition section (m1 09:00, m2 11:00, m5 12:00 in Asia/Kolkata)
+    const slot = within(day).getByTestId("slot-09:00");
+    expect(slot).toHaveTextContent("09:00"); // 03:30Z in Asia/Kolkata (invariant 14)
+    const m1 = within(slot).getByTestId("public-match-m1");
+    // the row still names its game via chips (never the dashed blob)
+    expect(within(m1).getByText("Football")).toBeInTheDocument();
+    expect(within(m1).getByText("U15")).toBeInTheDocument(); // "U-15" hyphen stripped
+    expect(m1).toHaveTextContent("2 - 1"); // ASCII scoreboard hyphen
     expect(m1).toHaveTextContent("Full time");
     expect(within(m1).getByTestId("points-m1")).toHaveTextContent("(4-3 pens)");
+
+    // the en/em dash is the #1 tell: it must appear NOWHERE on the page
+    expect(screen.queryByText(/Football — U-15 — Boys/)).toBeNull();
+    expect(container.textContent).not.toMatch(/[—–]/);
 
     // standalone page: viewer tabs, no app shell; a competition panel is NOT
     // open by default (you pick one from the rail)

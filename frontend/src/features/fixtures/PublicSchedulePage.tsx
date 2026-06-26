@@ -179,14 +179,17 @@ function MatchCard({
 }: {
   match: PublicScheduleMatch;
   timeZone: string;
-  /** full = leaf chips + group chip; group = group chip only (the section
-   * header already names the competition); none = no labels (panel groups). */
-  labels?: "full" | "group" | "none";
+  /** full = time + leaf chips + group chip; slot = leaf chips + group chip but
+   * NO time (a time-slot header already shows it); group = group chip only (the
+   * section header names the competition); none = no labels (panel groups). */
+  labels?: "full" | "slot" | "group" | "none";
 }): React.ReactElement {
   const live = LIVE_STATUSES.has(match.status);
   const done = FINAL_STATUSES.has(match.status) || live;
   const sets = match.set_scores ?? [];
   const hasPens = match.home_pens != null && match.away_pens != null;
+  const showTime = labels !== "slot";
+  const showLeaf = labels === "full" || labels === "slot";
   const group =
     labels !== "none" ? shortGroup(match.group_label, match.leaf_label) : "";
   return (
@@ -198,11 +201,18 @@ function MatchCard({
       )}
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        <span className="font-tabular font-semibold text-foreground">
-          {fmtKickoff(match.scheduled_at, timeZone)}
-        </span>
-        {match.venue ? <span>· {match.venue}</span> : null}
-        {labels === "full" ? <LabelChips label={match.leaf_label} /> : null}
+        {showTime ? (
+          <span className="font-tabular font-semibold text-foreground">
+            {fmtKickoff(match.scheduled_at, timeZone)}
+          </span>
+        ) : null}
+        {match.venue ? (
+          <span>
+            {showTime ? "· " : ""}
+            {match.venue}
+          </span>
+        ) : null}
+        {showLeaf ? <LabelChips label={match.leaf_label} /> : null}
         {group ? (
           <span className="rounded-md bg-secondary px-1.5 py-0.5 text-[0.6875rem] font-medium text-secondary-foreground">
             {group}
@@ -823,8 +833,10 @@ function CompetitionByDay({
   );
 }
 
-/** Cross-competition order of play for ONE day (the default landing) — every
- * sport/competition that plays that day, grouped under thin headers. */
+/** Cross-competition ORDER OF PLAY for ONE day (the default landing): every
+ * match that day in a single time-ordered list (not grouped by sport), each
+ * row carrying its own competition chips so you still know the game. Optional
+ * thin time-slot headers break the run when the kick-off changes. */
 function TodayOverview({
   day,
   matches,
@@ -834,19 +846,21 @@ function TodayOverview({
   matches: PublicScheduleMatch[];
   timeZone: string;
 }): React.ReactElement {
-  const comps = useMemo(() => {
-    const byLeaf = new Map<string, PublicScheduleMatch[]>();
-    for (const m of matches) {
-      const key = m.leaf_key || "_";
-      if (!byLeaf.has(key)) byLeaf.set(key, []);
-      byLeaf.get(key)!.push(m);
+  // Group by kick-off time so the slot reads once, in chronological order.
+  const slots = useMemo(() => {
+    const ordered = [...matches].sort((a, b) =>
+      (a.scheduled_at ?? "~") < (b.scheduled_at ?? "~") ? -1 : 1,
+    );
+    const by = new Map<string, PublicScheduleMatch[]>();
+    for (const m of ordered) {
+      const time = m.scheduled_at ? fmtKickoff(m.scheduled_at, timeZone) : t("TBD");
+      if (!by.has(time)) by.set(time, []);
+      by.get(time)!.push(m);
     }
-    return [...byLeaf.entries()]
-      .map(([key, ms]) => ({ key, label: ms[0]?.leaf_label || "", matches: ms }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [matches]);
+    return [...by.entries()];
+  }, [matches, timeZone]);
 
-  if (comps.length === 0) {
+  if (slots.length === 0) {
     return (
       <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
         {t("No matches on this day.")}
@@ -855,18 +869,24 @@ function TodayOverview({
   }
 
   return (
-    <div data-testid={`public-day-${day}`} className="flex flex-col gap-5">
-      {comps.map((c) => (
-        <section key={c.key} data-testid={`today-comp-${c.key}`}>
-          <div className="mb-1.5">
-            <LabelChips label={c.label} />
-          </div>
-          <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
-            {c.matches.map((m) => (
-              <MatchCard key={m.id} match={m} timeZone={timeZone} labels="group" />
+    <div
+      data-testid={`public-day-${day}`}
+      className="overflow-hidden rounded-lg border border-border bg-card"
+    >
+      {slots.map(([time, ms]) => (
+        <div key={time} data-testid={`slot-${time}`}>
+          <h3 className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5 font-tabular text-xs font-semibold text-muted-foreground">
+            {time}
+            <span className="font-normal">
+              {ms.length} {ms.length === 1 ? t("match") : t("matches")}
+            </span>
+          </h3>
+          <ul className="divide-y divide-border">
+            {ms.map((m) => (
+              <MatchCard key={m.id} match={m} timeZone={timeZone} labels="slot" />
             ))}
           </ul>
-        </section>
+        </div>
       ))}
     </div>
   );
@@ -1155,32 +1175,37 @@ export function PublicSchedulePage(): React.ReactElement {
                       {t("matches")}
                     </span>
 
-                    <div className="relative min-w-[9rem]">
-                      <Search
-                        aria-hidden
-                        className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                      />
-                      <input
-                        type="search"
-                        data-testid="filter-team"
-                        aria-label={t("Search teams")}
-                        placeholder={t("Search teams…")}
-                        value={teamQ}
-                        onChange={(e) => setTeamQ(e.target.value)}
-                        className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                      />
+                    {/* Search + clear: a full-width row on mobile, bounded on
+                        desktop (w-full makes it wrap to its own line). */}
+                    <div className="flex w-full items-center gap-2 sm:w-auto sm:flex-1 sm:basis-48 sm:min-w-[11rem] sm:max-w-xs">
+                      <div className="relative flex-1">
+                        <Search
+                          aria-hidden
+                          className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                        />
+                        <input
+                          type="search"
+                          data-testid="filter-team"
+                          aria-label={t("Search teams")}
+                          placeholder={t("Search teams…")}
+                          value={teamQ}
+                          onChange={(e) => setTeamQ(e.target.value)}
+                          className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                        />
+                      </div>
+                      {q ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          data-testid="filter-clear"
+                          className="shrink-0"
+                          onClick={() => setTeamQ("")}
+                        >
+                          <X aria-hidden className="h-3.5 w-3.5" />
+                          {t("Clear")}
+                        </Button>
+                      ) : null}
                     </div>
-                    {q ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        data-testid="filter-clear"
-                        onClick={() => setTeamQ("")}
-                      >
-                        <X aria-hidden className="h-3.5 w-3.5" />
-                        {t("Clear")}
-                      </Button>
-                    ) : null}
                   </div>
 
                   {/* The one earned card: live, pinned across any selection */}
