@@ -66,6 +66,8 @@ api_v1 = [
     path("sports/", include("apps.sports.urls")),
     # Phase 1B: tournaments (self-serve create + list).
     path("tournaments/", include("apps.tournaments.urls")),
+    # AI setup assistant (Gemini) — tournament-scoped chat that fills the form.
+    path("tournaments/<uuid:tournament_id>/assistant/", include("apps.assistant.urls")),
     # Phase 1B: public school self-registration via shareable link.
     path("register/", include("apps.teams.urls")),
     # Phase 1B: data-driven registration form builder.

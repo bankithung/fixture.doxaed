@@ -31,6 +31,7 @@ import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { AssistantWidget } from "@/features/assistant/AssistantPanel";
 import { AdvanceToKnockoutDialog } from "./AdvanceToKnockoutDialog";
 import { CompetitionCard } from "./CompetitionCard";
 import { CompetitionFormatWizard } from "./CompetitionFormatWizard";
@@ -935,6 +936,9 @@ export function FixtureSetupHub({
           leafLabel={advanceDlg.label}
         />
       ) : null}
+
+      {/* AI co-pilot — answers questions and fills the setup form (manager-only). */}
+      <AssistantWidget tournamentId={id} canManage={canManage} />
     </div>
   );
 }

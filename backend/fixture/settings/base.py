@@ -60,6 +60,7 @@ LOCAL_APPS = [
     "apps.notifications",
     "apps.disputes",
     "apps.live",
+    "apps.assistant",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -176,6 +177,8 @@ REST_FRAMEWORK = {
         "signup": "3/hour",
         # Public school self-registration via shared link — anti-abuse cap.
         "school_registration": "30/hour",
+        # Setup-assistant chat — bounds Gemini spend per user.
+        "assistant": "30/min",
     },
 }
 
@@ -215,6 +218,12 @@ SADMIN_HOST = env("SADMIN_HOST", default="localhost")
 # (verification, password reset, invitations). Prod sets the real https origin.
 FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:5173").rstrip("/")
 DEFAULT_ORG_TIMEZONE = env("TIME_ZONE", default="Asia/Kolkata")
+
+# --- Setup assistant (Gemini) --------------------------------------------
+# Server-side only; the key never reaches the browser. Empty = assistant off
+# (the endpoint returns 503 and the UI hides the launcher).
+GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
+GEMINI_MODEL = env("GEMINI_MODEL", default="gemini-2.5-flash")
 INVITE_TOKEN_TTL_DAYS = 7
 PENDING_ARCHIVE_DAYS = 30
 OWNER_2FA_GRACE_DAYS = 7  # v1Users.md B.12
