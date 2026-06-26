@@ -340,3 +340,73 @@ class MatchEvent(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"{self.match_id}#{self.sequence_no} {self.event_type}"
+
+
+class MatchOfficialRole(models.TextChoices):
+    REFEREE = "referee", _("Referee")
+    ASSISTANT = "assistant", _("Assistant referee")
+    FOURTH = "fourth", _("Fourth official")
+    UMPIRE = "umpire", _("Umpire")
+    COMMISSIONER = "commissioner", _("Match commissioner")
+
+
+class MatchOfficialStatus(models.TextChoices):
+    ASSIGNED = "assigned", _("Assigned")
+    ACCEPTED = "accepted", _("Accepted")
+    DECLINED = "declined", _("Declined")
+
+
+class MatchOfficial(models.Model):
+    """An official (referee / assistant / fourth / umpire) assigned to a match.
+
+    Org-scoped (invariant #2). One role per person per match — a person can hold
+    only one slot, and reassigning their role updates the row (unique on
+    match+user). Assignment + removal are audited; idempotent at the view via
+    the standard event_id path. Distinct from `Match.scorer` (the scoring seat).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="match_officials",
+    )
+    match = models.ForeignKey(
+        Match, on_delete=models.CASCADE, related_name="officials"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="match_officiating",
+    )
+    role = models.CharField(max_length=20, choices=MatchOfficialRole.choices)
+    status = models.CharField(
+        max_length=12,
+        choices=MatchOfficialStatus.choices,
+        default=MatchOfficialStatus.ASSIGNED,
+    )
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "matches_match_official"
+        ordering = ["match", "role"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["match", "user"], name="unique_official_per_match"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["match"], name="official_match_idx"),
+            models.Index(fields=["user"], name="official_user_idx"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.match_id} {self.role} {self.user_id}"

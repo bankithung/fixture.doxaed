@@ -10,6 +10,8 @@ from apps.matches.models import (
     MatchEventType,
     MatchIncident,
     MatchIncidentKind,
+    MatchOfficial,
+    MatchOfficialRole,
 )
 
 
@@ -48,6 +50,29 @@ class MatchSerializer(serializers.ModelSerializer):
 
     def get_away_team(self, obj):
         return self._mini(obj.away_team)
+
+
+class MatchOfficialSerializer(serializers.ModelSerializer):
+    """Read shape for an assigned official: who + which role + acceptance."""
+
+    user_id = serializers.SerializerMethodField()
+    name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MatchOfficial
+        fields = ["id", "user_id", "name", "role", "status"]
+
+    def get_user_id(self, obj):
+        return str(obj.user_id)
+
+    def get_name(self, obj):
+        return obj.user.name or obj.user.email
+
+
+class AssignOfficialSerializer(serializers.Serializer):
+    user_id = serializers.UUIDField()
+    role = serializers.ChoiceField(choices=MatchOfficialRole.values)
+    event_id = serializers.UUIDField(required=False)
 
 
 class RecordScoreSerializer(serializers.Serializer):

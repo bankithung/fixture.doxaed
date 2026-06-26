@@ -708,6 +708,7 @@ class ControlRoomDayView(GenericAPIView):
         matches = list(
             Match.objects.filter(tournament=t, deleted_at__isnull=True)
             .select_related("home_team", "away_team", "tournament", "scorer")
+            .prefetch_related("officials__user")
             .order_by(_F("scheduled_at").asc(nulls_last=True), "match_no")
         )
 
@@ -751,6 +752,16 @@ class ControlRoomDayView(GenericAPIView):
                 if m.scorer is not None
                 else None
             )
+            data["officials"] = [
+                {
+                    "id": str(o.id),
+                    "user_id": str(o.user_id),
+                    "name": o.user.name or o.user.email,
+                    "role": o.role,
+                    "status": o.status,
+                }
+                for o in m.officials.all()
+            ]
             return data
 
         lanes: dict[str, list[dict]] = {}

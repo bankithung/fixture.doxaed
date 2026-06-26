@@ -119,6 +119,13 @@
     "default_for_roles": ["admin", "co_organizer", "game_coordinator", "match_scorer"]
   },
   {
+    "code": "match.assign_officials",
+    "name": "Assign Officials",
+    "category": "match_scoped",
+    "description": "Assign referees, assistants, scorers and courts to matches.",
+    "default_for_roles": ["admin", "co_organizer", "game_coordinator"]
+  },
+  {
     "code": "match.referee_console",
     "name": "Referee Console",
     "category": "match_scoped",

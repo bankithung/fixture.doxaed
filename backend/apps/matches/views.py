@@ -11,13 +11,22 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.matches.models import Lineup, Match, MatchEvent, MatchIncident, MatchStatus
+from apps.matches.models import (
+    Lineup,
+    Match,
+    MatchEvent,
+    MatchIncident,
+    MatchOfficial,
+    MatchStatus,
+)
 from apps.matches.serializers import (
+    AssignOfficialSerializer,
     ConfirmLineupSerializer,
     DelayMatchSerializer,
     FileIncidentSerializer,
     LineupSerializer,
     MatchIncidentSerializer,
+    MatchOfficialSerializer,
     MatchSerializer,
     RecordEventSerializer,
     RecordScoreSerializer,
@@ -30,6 +39,11 @@ from apps.matches.serializers import (
 from apps.matches.services.events import record_match_event
 from apps.matches.services.incidents import file_incident
 from apps.matches.services.lineups import confirm_lineup, set_lineup
+from apps.matches.services.officials import (
+    assign_official,
+    official_clashes,
+    remove_official,
+)
 from apps.matches.services.scoring import assign_scorer, record_score
 from apps.matches.services.standings import compute_standings
 from apps.matches.services.state import transition_match
@@ -39,7 +53,7 @@ from apps.tournaments.models import (
     TournamentMembershipRole,
     TournamentMembershipStatus,
 )
-from apps.tournaments.permissions import can_manage_tournament
+from apps.tournaments.permissions import can_access_module, can_manage_tournament
 from apps.tournaments.scope import accessible_tournaments
 
 User = get_user_model()
@@ -188,6 +202,75 @@ class AssignScorerView(GenericAPIView):
             raise DRFValidationError({"detail": getattr(e, "message", "invalid_assignment")})
         match.refresh_from_db()
         return Response(MatchSerializer(match).data)
+
+
+def _officials_payload(match: Match) -> list[dict]:
+    return MatchOfficialSerializer(
+        match.officials.select_related("user").all(), many=True
+    ).data
+
+
+class AssignOfficialsView(GenericAPIView):
+    """Assign / remove a match official (referee, assistant, fourth, umpire).
+
+    `POST /api/matches/{id}/officials/` body {user_id, role, event_id?} → assign;
+    `DELETE` body {official_id} → remove. Gate: a manager OR the
+    `match.assign_officials` module (admin / co-organizer / game-coordinator).
+    Returns the match's full officials list; POST also flags a soft
+    double-booking warning when the person clashes with another assignment.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def _gate(self, request, match):
+        if not can_access_module(
+            request.user, match.tournament, "match.assign_officials"
+        ):
+            raise PermissionDenied("not_allowed_to_assign_officials")
+
+    def post(self, request, match_id):
+        match = _match_or_404(request.user, match_id)
+        self._gate(request, match)
+        ser = AssignOfficialSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        target = User.objects.filter(id=ser.validated_data["user_id"]).first()
+        if target is None:
+            raise DRFValidationError({"detail": "user_not_found"})
+        try:
+            assign_official(
+                match=match,
+                user=target,
+                role=ser.validated_data["role"],
+                by=request.user,
+                event_id=ser.validated_data.get("event_id"),
+                request=request,
+            )
+        except ValidationError as e:
+            raise DRFValidationError(
+                {"detail": getattr(e, "message", "invalid_assignment")}
+            )
+        clashes = official_clashes(user=target, match=match)
+        return Response(
+            {
+                "officials": _officials_payload(match),
+                "warning": (
+                    {"code": "official_double_booked", "count": len(clashes)}
+                    if clashes
+                    else None
+                ),
+            }
+        )
+
+    def delete(self, request, match_id):
+        match = _match_or_404(request.user, match_id)
+        self._gate(request, match)
+        official_id = request.data.get("official_id")
+        if not official_id:
+            raise DRFValidationError({"detail": "official_id_required"})
+        remove_official(
+            match=match, official_id=official_id, by=request.user, request=request
+        )
+        return Response({"officials": _officials_payload(match)})
 
 
 class RecordScoreView(GenericAPIView):
