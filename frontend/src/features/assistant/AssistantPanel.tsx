@@ -27,10 +27,10 @@ const EMPTY: AssistantMsg[] = [];
 
 /** Starter prompts shown on the empty state — one tap sends them. */
 const SUGGESTIONS = [
-  "Set up my whole tournament for me",
-  "What format should I use for table tennis?",
-  "Give each sport its own 2 courts",
-  "Help me pick the dates",
+  "Set up everything for me",
+  "What's done and what's left?",
+  "Walk me through it step by step",
+  "What format should each sport use?",
 ];
 
 /** Launcher + slide-over chat. Renders nothing for non-managers (the assistant

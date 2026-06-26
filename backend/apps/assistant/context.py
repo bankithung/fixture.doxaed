@@ -1,8 +1,10 @@
 """Build the live setup snapshot the assistant reasons over.
 
 The snapshot is injected into the Gemini ``system_instruction`` on every call
-(so the model always sees current dates/venues/formats/competitions) and is also
-returned verbatim by the ``get_setup_state`` tool.
+(so the model always sees current journey position, dates, venues, formats,
+competitions and what each section still needs) and is also returned verbatim by
+the ``get_setup_state`` tool. This is what makes the assistant feel "smart" —
+it always knows exactly where the organiser is and what's left.
 """
 from __future__ import annotations
 
@@ -23,6 +25,28 @@ FORMAT_LABELS = {
     "double_elim": "Double elimination",
 }
 
+# Friendly names — the assistant must NEVER show raw enum codes to the user.
+STATUS_LABELS = {
+    "draft": "Draft",
+    "published": "Published",
+    "registration_open": "Registration open",
+    "scheduled": "Scheduled",
+    "live": "Live",
+    "completed": "Completed",
+    "archived": "Archived",
+}
+
+# The setup funnel (matches the on-screen stage stepper).
+STAGE_ORDER = ["setup", "org_registration", "team_registration", "members", "fixtures", "ready"]
+STAGE_LABELS = {
+    "setup": "Setup",
+    "org_registration": "Institution registration",
+    "team_registration": "Team registration",
+    "members": "Members & roles",
+    "fixtures": "Fixtures",
+    "ready": "Ready",
+}
+
 
 def _team_counts(tournament) -> dict[str, int]:
     counts: dict[str, int] = {}
@@ -34,11 +58,22 @@ def _team_counts(tournament) -> dict[str, int]:
     return counts
 
 
+def _format_is_explicit(draw_config: dict, leaf_key: str, sport_key: str) -> bool:
+    """True if a format was actually chosen at any layer (not the implicit
+    league default the cards warn about)."""
+    for layer in ("*", f"sport:{sport_key}", leaf_key):
+        if isinstance(draw_config.get(layer), dict) and draw_config[layer].get("format"):
+            return True
+    return False
+
+
 def build_state(tournament) -> dict[str, Any]:
-    """Structured snapshot of the current fixture setup."""
+    """Structured snapshot of the current fixture setup + journey position."""
     leaves = iter_leaves(tournament.sports)
     counts = _team_counts(tournament)
     cal = (effective_draw_config(tournament).get("calendar")) or {}
+    dc = tournament.draw_config or {}
+    cons = tournament.constraints or []
 
     venues = [
         {
@@ -64,15 +99,34 @@ def build_state(tournament) -> dict[str, Any]:
                 "sport_name": lf["sport_name"],
                 "teams": counts.get(lf["leaf_key"], 0),
                 "format": eff.get("format"),
+                "format_chosen": _format_is_explicit(dc, lf["leaf_key"], lf["sport_key"]),
                 "group_size": eff.get("group_size"),
                 "advance_per_group": eff.get("advance_per_group"),
-                "balance_groups": eff.get("balance_groups"),
             }
         )
+
+    def _count(ctype: str) -> int:
+        return sum(1 for c in cons if c.get("type") == ctype)
+
+    sections = {
+        "dates_set": bool(cal.get("date_start") and cal.get("date_end")),
+        "play_times_set": bool(cal.get("daily_start") and cal.get("daily_end") and cal.get("slot_minutes")),
+        "venues": len(venues),
+        "courts": sum(v["courts"] for v in venues),
+        "breaks_set": bool(_count("min_rest_minutes") or _count("max_matches_per_team_per_day")),
+        "ceremonies": _count("ceremony_block"),
+        "clash_rules": _count("no_concurrent_competitions"),
+        "session_windows": _count("category_session_window"),
+        "concurrency_caps": _count("official_capacity"),
+        "formats_chosen": sum(1 for c in competitions if c["format_chosen"]),
+        "competitions_total": len(competitions),
+        "competitions_with_teams": sum(1 for c in competitions if c["teams"] > 0),
+    }
 
     return {
         "name": tournament.name,
         "status": tournament.status,
+        "stage": getattr(tournament, "stage", "") or "",
         "calendar": {
             "date_start": cal.get("date_start"),
             "date_end": cal.get("date_end"),
@@ -82,7 +136,8 @@ def build_state(tournament) -> dict[str, Any]:
         },
         "venues": venues,
         "competitions": competitions,
-        "constraints": tournament.constraints or [],
+        "constraints": cons,
+        "sections": sections,
     }
 
 
@@ -91,84 +146,121 @@ def _fmt(fmt: str | None) -> str:
 
 
 def render_state(state: dict[str, Any]) -> str:
-    """Human/LLM-readable rendering of the snapshot for the system prompt."""
-    lines: list[str] = []
+    """LLM-readable rendering: journey position + each setup section's status."""
+    sec = state["sections"]
     cal = state["calendar"]
-    if cal.get("date_start") or cal.get("date_end"):
+    lines: list[str] = []
+
+    # --- Where you are (journey) ---------------------------------------
+    status = STATUS_LABELS.get(state["status"], state["status"])
+    stage = state["stage"]
+    if stage in STAGE_ORDER:
+        pos = STAGE_ORDER.index(stage) + 1
         lines.append(
-            f"- Match days: {cal.get('date_start') or '?'} to {cal.get('date_end') or '?'}; "
-            f"daily {cal.get('daily_start') or '09:00'}-{cal.get('daily_end') or '18:00'}, "
-            f"{cal.get('slot_minutes') or '?'} min per match."
+            f"WHERE YOU ARE: Status is '{status}'. Setup step {pos} of {len(STAGE_ORDER)} "
+            f"- '{STAGE_LABELS[stage]}'. The other steps are: "
+            + " -> ".join(STAGE_LABELS[s] for s in STAGE_ORDER) + "."
         )
     else:
-        lines.append("- Match days: NOT SET (ask the user, then call set_schedule_window).")
+        lines.append(f"WHERE YOU ARE: Status is '{status}'.")
+    lines.append("You are helping with FIXTURE SETUP, which has these sections:")
 
+    # --- Section 1: When & where ---------------------------------------
+    w = []
+    w.append(
+        f"dates {cal['date_start']}->{cal['date_end']}" if sec["dates_set"]
+        else "dates NOT SET")
+    w.append(
+        f"play times {cal['daily_start']}-{cal['daily_end']} ({cal['slot_minutes']} min/match)"
+        if sec["play_times_set"] else "play times NOT SET")
+    w.append(f"{sec['venues']} venue(s), {sec['courts']} court(s)" if sec["venues"]
+             else "NO venues")
+    w.append("breaks set" if sec["breaks_set"] else "breaks NOT SET")
+    if sec["ceremonies"]:
+        w.append(f"{sec['ceremonies']} ceremony(ies)")
+    lines.append("  1) When & where: " + "; ".join(w) + ".")
     if state["venues"]:
         for v in state["venues"]:
             used = ", ".join(v["sports"]) if v["sports"] else "any sport"
-            win = ""
-            if v["windows"]:
-                w = v["windows"][0]
-                win = f", open {w.get('from')}-{w.get('to')}"
-            lines.append(f"- Venue '{v['name']}': {v['courts']} court(s), used by {used}{win}.")
-    else:
-        lines.append("- Venues: NONE yet (add with add_or_update_venue).")
+            lines.append(f"       - '{v['name']}': {v['courts']} court(s), used by {used}.")
 
-    lines.append("- Competitions (use these exact leaf_key / sport_key values):")
+    # --- Section 2: Clashes & sessions ---------------------------------
+    lines.append(
+        f"  2) Clashes & sessions (optional): {sec['clash_rules']} clash rule(s), "
+        f"{sec['session_windows']} session window(s), {sec['concurrency_caps']} concurrency cap(s)."
+    )
+
+    # --- Section 3: How each competition plays -------------------------
+    lines.append(
+        f"  3) How each competition plays: {sec['formats_chosen']} of "
+        f"{sec['competitions_total']} competitions have a chosen format "
+        f"(the rest fall back to the league default). Use these exact identifiers:"
+    )
     for c in state["competitions"]:
+        chosen = _fmt(c["format"]) if c["format_chosen"] else f"{_fmt(c['format'])} (DEFAULT, not chosen)"
         extra = ""
         if c["format"] == "groups_knockout":
-            extra = f" (groups of {c['group_size']}, top {c['advance_per_group']} advance)"
+            extra = f", groups of {c['group_size']}, top {c['advance_per_group']} advance"
         lines.append(
-            f"    * {c['label']}  [leaf_key={c['leaf_key']}, sport_key={c['sport_key']}, "
-            f"{c['teams']} teams]  format: {_fmt(c['format'])}{extra}"
+            f"       * {c['label']} [leaf_key={c['leaf_key']}, sport_key={c['sport_key']}, "
+            f"{c['teams']} teams] -> {chosen}{extra}"
         )
 
-    cons = state["constraints"]
-    if cons:
-        summ = ", ".join(
-            f"{c.get('type')}({c.get('scope', 'all')})" for c in cons
-        )
-        lines.append(f"- Existing scheduling rules: {summ}")
-    else:
-        lines.append("- Scheduling rules (breaks, days off, ceremonies, clashes): none set.")
+    lines.append(
+        f"  Next: once formats are chosen, {sec['competitions_with_teams']} competitions are "
+        "ready to preview & publish (the organiser's own click)."
+    )
     return "\n".join(lines)
 
 
 SYSTEM_TEMPLATE = """\
-You are the setup assistant for a sports fixture / tournament platform. You help \
-the organiser configure the "Fixture setup" form for ONE tournament and you can \
-fill it in for them by calling tools. Be warm, concise, and concrete. Use simple \
-language (the organisers are not software experts).
+You are the setup assistant for a sports fixture / tournament platform. Act like \
+an expert tournament organiser who configures everything for the user by chatting \
+- the user should only have to type. Be warm, concise, proactive and concrete, \
+and use plain language (organisers are not software experts). NEVER show raw codes \
+like "registration_open" or a leaf_key to the user - say "Registration is open", \
+"the U-14 Boys singles", etc.
 
 Today's date is {today}. The tournament timezone is {tz}.
 
-TOURNAMENT: "{name}" (status: {status}).
-CURRENT SETUP:
+TOURNAMENT: "{name}".
 {state}
 
-HOW TO HELP:
-- Answer questions about the form plainly (e.g. what "courts", "rest", or a \
-clash rule means).
-- When the user asks you to set something up, CALL THE TOOLS to apply it — do not \
-just describe what to do. After acting, briefly confirm what you changed.
-- If you are missing a fact you need (e.g. the dates, or how many courts each \
-sport has), ASK ONE short question rather than guessing. Don't ask for things \
-already shown in CURRENT SETUP.
-- To set a competition's format, use the exact leaf_key (one competition) or \
-sport_key (all of a sport) from CURRENT SETUP. Use scope "all" for the whole \
-tournament.
-- Knockout suits singles/doubles brackets; "groups_knockout" (group stage then \
-knockout) suits round-robin-into-finals; "round_robin" is a pure league.
-- Reasonable defaults if the user is unsure: 2 courts per sport, ~20-30 min per \
-table-tennis match, a 10-15 min rest between a team's matches.
+WHAT YOU DO - guide the whole FIXTURE SETUP section by section, and DO it for them:
+  1) When & where - match days, venues (courts), daily play times, breaks/ceremonies.
+  2) Clashes & sessions (optional) - stop competitions overlapping, pin a competition
+     to a time of day, or cap how many matches run at once.
+  3) How each competition plays - choose a format for each sport or category.
+Then tell them to use the on-screen "Preview the draw" and publish buttons.
+
+HOW TO BEHAVE:
+- Always know where they are. If asked "what stage / what's done / what's next", \
+answer from WHERE YOU ARE + the section status above, in friendly words, then offer \
+the next concrete step.
+- Be proactive and work section by section. After doing something, say what's left \
+and offer to do it. Lead the user; don't make them figure out the form.
+- If the user says "set it all up", "do everything", or is vague, PROPOSE a sensible \
+plan for THIS tournament using the competitions, team counts and courts shown above, \
+then APPLY it with the tools. Only ask a question for a fact you truly cannot infer \
+(e.g. the match dates if they are not set). Don't ask the user to fill anything in \
+the form themselves.
+- Focus on what is MISSING. Do NOT overwrite a section that is already set (dates, \
+breaks, venues, etc.) unless the user asks or the value is clearly wrong.
+- To set a format, PREFER the sport_key scope to do a whole sport in one step; use a \
+leaf_key only when one category differs, and scope "all" for the whole tournament. \
+Before you finish a "set everything up" request, make sure EVERY competition has a \
+chosen format (none left on the default) - check the state and set any that remain.
+- Good defaults when the user is unsure: knockout for singles/doubles brackets; \
+group stage -> knockout (groups of 4, top 2 advance, balanced) for round-robin-into-\
+finals; ~2 courts per sport; 10-15 min rest between a team's matches; ~20-30 min per \
+table-tennis match. Confirm briefly after applying.
 
 LIMITS:
-- You configure the setup ONLY. You never generate, preview, or publish the \
-schedule — the organiser does that themselves with the on-screen buttons. If \
-asked, tell them to click "Preview the draw" / "Publish" when ready.
-- Make one tool call per distinct change; you may make several in a row to \
-complete a request. Never invent competitions, venues, or team numbers.
+- You configure the SETUP only. You never preview, generate, or publish the schedule \
+- those are the organiser's on-screen buttons. If asked, point them to "Preview the \
+draw" then publish.
+- Make one tool call per distinct change (several in a row is fine). Never invent \
+competitions, venues, or team numbers - use only what the state shows.
 """
 
 
@@ -179,6 +271,5 @@ def system_prompt(tournament) -> str:
         today=timezone.localdate().isoformat(),
         tz=tz,
         name=state["name"],
-        status=state["status"],
         state=render_state(state),
     )

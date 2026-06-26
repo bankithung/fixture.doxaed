@@ -12,7 +12,9 @@ from . import gemini
 from .context import system_prompt
 from .tools import TOOL_DECLARATIONS, dispatch
 
-MAX_STEPS = 6
+# A "set everything up" request can be a dozen distinct writes (formats per
+# sport/leaf, venues, breaks, clashes) — give the loop room to finish in one turn.
+MAX_STEPS = 12
 MAX_HISTORY = 30
 
 
