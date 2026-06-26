@@ -133,6 +133,24 @@ def test_stream_relays_tournament_ticks():
     async_to_sync(flow)()
 
 
+def test_stream_releases_db_connection_after_lookup(monkeypatch):
+    """The long-lived stream must hand its Postgres connection back after the
+    lookup — otherwise one slot is pinned per concurrent viewer until
+    ``max_connections`` is exhausted (the login-500 incident). We assert the
+    release path runs; the body itself only reads from the channel layer."""
+    from apps.live import sse
+
+    calls = {"n": 0}
+    monkeypatch.setattr(
+        sse, "_close_db_connection",
+        lambda: calls.__setitem__("n", calls["n"] + 1),
+    )
+    _admin, t = _setup()
+    r = _stream_response(t)
+    assert r.status_code == 200
+    assert calls["n"] == 1  # released exactly once, before streaming begins
+
+
 def test_stream_emits_keepalive_heartbeats(monkeypatch):
     from apps.live import sse
 

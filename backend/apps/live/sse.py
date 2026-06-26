@@ -20,11 +20,28 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 
-from django.db import transaction
+from asgiref.sync import sync_to_async
+from django.db import connection, transaction
 from django.http import HttpResponseNotFound, StreamingHttpResponse
 
 #: Idle window between ': keep-alive' comments (proxies drop silent streams).
 KEEPALIVE_SECONDS = 25.0
+
+
+def _close_db_connection() -> None:
+    """Release the request's Postgres connection.
+
+    The streaming body below reads only from the channel layer (Redis) — it
+    never touches Postgres again. Because a Server-Sent-Events request never
+    "finishes" until the client disconnects (minutes/hours), the connection
+    the lookup opened would otherwise sit idle for the stream's whole lifetime,
+    pinning one Postgres slot per concurrent viewer until ``max_connections``
+    is exhausted and *every* request 500s. Django reopens lazily if needed.
+    Guarded on ``in_atomic_block`` so it is a no-op under the test transaction
+    (and would never close a connection mid-transaction in any case).
+    """
+    if not connection.in_atomic_block:
+        connection.close()
 
 
 # A long-lived stream must not hold a request transaction open (and Django
@@ -45,6 +62,8 @@ async def tournament_stream(request, slug, tournament_id):
         deleted_at__isnull=True,
         status__in=public_statuses,
     ).afirst()
+    # Hand the Postgres connection back to the pool before we start streaming.
+    await sync_to_async(_close_db_connection)()
     if t is None:
         return HttpResponseNotFound("tournament_not_found")
 
