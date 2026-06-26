@@ -174,42 +174,79 @@ class TournamentDetailView(GenericAPIView):
         return Response(status=204)
 
     def patch(self, request, tournament_id):
+        """`PATCH {"name": str}` — rename (MANAGER-allowed: admins / co-organizers
+        / org owner). `PATCH {"active": bool}` — deactivate/reactivate
+        (ORGANIZER-only). Either or both; renaming keeps the slug stable so
+        existing public ``(slug, UUID)`` links keep resolving (invariant 1)."""
         tournament = _get_tournament_or_404(request.user, tournament_id)
-        if not is_tournament_organizer(request.user, tournament):
-            raise PermissionDenied("not_tournament_organizer")
+        name = request.data.get("name")
         active = request.data.get("active")
-        if not isinstance(active, bool):
-            raise DRFValidationError({"detail": "active_required"})
+        if name is None and active is None:
+            raise DRFValidationError({"detail": "nothing_to_update"})
 
-        before = {"status": tournament.status}
-        meta = dict(tournament.stage_meta or {})
-        if active is False and tournament.status != TournamentStatus.ARCHIVED:
-            # Deactivate: remember where we were so reactivation restores it.
-            meta["status_before_archive"] = tournament.status
-            tournament.stage_meta = meta
-            tournament.status = TournamentStatus.ARCHIVED
-            tournament.save(update_fields=["status", "stage_meta", "updated_at"])
-        elif active is True and tournament.status == TournamentStatus.ARCHIVED:
-            restored = meta.pop("status_before_archive", None) or TournamentStatus.DRAFT
-            tournament.stage_meta = meta
-            tournament.status = restored
-            tournament.save(update_fields=["status", "stage_meta", "updated_at"])
+        from apps.audit.models import ActorRole
+        from apps.audit.services import emit_audit
 
-        if tournament.status != before["status"]:
-            from apps.audit.models import ActorRole
-            from apps.audit.services import emit_audit
+        # Rename — a management action (not delete/deactivate), so invited
+        # tournament admins/co-organizers may do it, not just the organizer.
+        if name is not None:
+            if not can_manage_tournament(request.user, tournament):
+                raise PermissionDenied("not_tournament_manager")
+            new_name = str(name).strip()
+            if not new_name:
+                raise DRFValidationError({"detail": "name_required"})
+            if len(new_name) > 200:
+                raise DRFValidationError({"detail": "name_too_long"})
+            if new_name != tournament.name:
+                old_name = tournament.name
+                tournament.name = new_name
+                tournament.save(update_fields=["name", "updated_at"])
+                emit_audit(
+                    actor_user=request.user,
+                    actor_role=ActorRole.ADMIN,
+                    event_type="tournament_renamed",
+                    target_type="tournament",
+                    target_id=tournament.id,
+                    organization_id=tournament.organization_id,
+                    payload_before={"name": old_name},
+                    payload_after={"name": new_name},
+                    request=request,
+                )
 
-            emit_audit(
-                actor_user=request.user,
-                actor_role=ActorRole.ADMIN,
-                event_type="tournament_active_changed",
-                target_type="tournament",
-                target_id=tournament.id,
-                organization_id=tournament.organization_id,
-                payload_before=before,
-                payload_after={"status": tournament.status},
-                request=request,
-            )
+        # Deactivate / reactivate — ORGANIZER-only (the creator / workspace
+        # org admin); invited managers may rename above but never archive.
+        if active is not None:
+            if not isinstance(active, bool):
+                raise DRFValidationError({"detail": "active_required"})
+            if not is_tournament_organizer(request.user, tournament):
+                raise PermissionDenied("not_tournament_organizer")
+
+            before = {"status": tournament.status}
+            meta = dict(tournament.stage_meta or {})
+            if active is False and tournament.status != TournamentStatus.ARCHIVED:
+                # Deactivate: remember where we were so reactivation restores it.
+                meta["status_before_archive"] = tournament.status
+                tournament.stage_meta = meta
+                tournament.status = TournamentStatus.ARCHIVED
+                tournament.save(update_fields=["status", "stage_meta", "updated_at"])
+            elif active is True and tournament.status == TournamentStatus.ARCHIVED:
+                restored = meta.pop("status_before_archive", None) or TournamentStatus.DRAFT
+                tournament.stage_meta = meta
+                tournament.status = restored
+                tournament.save(update_fields=["status", "stage_meta", "updated_at"])
+
+            if tournament.status != before["status"]:
+                emit_audit(
+                    actor_user=request.user,
+                    actor_role=ActorRole.ADMIN,
+                    event_type="tournament_active_changed",
+                    target_type="tournament",
+                    target_id=tournament.id,
+                    organization_id=tournament.organization_id,
+                    payload_before=before,
+                    payload_after={"status": tournament.status},
+                    request=request,
+                )
         return Response(TournamentSerializer(tournament).data)
 
 

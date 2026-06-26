@@ -158,3 +158,81 @@ def test_settings_payload_separates_manage_from_delete():
 
     theirs = _client(member).get(f"/api/tournaments/{t.id}/settings/").json()
     assert theirs["can_manage"] is True and theirs["can_delete"] is False
+
+
+def test_organizer_can_rename_keeps_slug_stable():
+    """Rename trims + updates the name but never the slug, so existing public
+    (slug, UUID) links keep resolving (invariant 1)."""
+    admin = _verified("a@test.local")
+    t = create_tournament(user=admin, name="Cup")
+    slug = t.slug
+    r = _client(admin).patch(
+        f"/api/tournaments/{t.id}/", {"name": "  Spring Cup  "}, format="json"
+    )
+    assert r.status_code == 200
+    assert r.json()["name"] == "Spring Cup"
+    t.refresh_from_db()
+    assert t.name == "Spring Cup"
+    assert t.slug == slug
+
+
+def test_invited_admin_can_rename():
+    """Renaming is a manage action (not delete/deactivate), so an invited
+    tournament-admin may do it — unlike archiving/deleting."""
+    organizer = _verified("a@test.local")
+    t = create_tournament(user=organizer, name="Cup")
+    member = _invited_admin(t, organizer)
+    r = _client(member).patch(
+        f"/api/tournaments/{t.id}/", {"name": "Renamed"}, format="json"
+    )
+    assert r.status_code == 200
+    t.refresh_from_db()
+    assert t.name == "Renamed"
+
+
+def test_rename_rejects_blank_name():
+    admin = _verified("a@test.local")
+    t = create_tournament(user=admin, name="Cup")
+    r = _client(admin).patch(
+        f"/api/tournaments/{t.id}/", {"name": "   "}, format="json"
+    )
+    assert r.status_code == 400
+    t.refresh_from_db()
+    assert t.name == "Cup"
+
+
+def test_non_manager_member_cannot_rename():
+    """A member with a non-managing role (e.g. match scorer) is 403, not 404
+    (they can see the tournament)."""
+    from apps.tournaments.models import (
+        TournamentMembership,
+        TournamentMembershipRole,
+        TournamentMembershipStatus,
+    )
+
+    organizer = _verified("a@test.local")
+    t = create_tournament(user=organizer, name="Cup")
+    scorer = _verified("scorer@test.local")
+    TournamentMembership.objects.create(
+        user=scorer,
+        tournament=t,
+        role=TournamentMembershipRole.MATCH_SCORER,
+        status=TournamentMembershipStatus.ACTIVE,
+        assigned_by=organizer,
+    )
+    r = _client(scorer).patch(
+        f"/api/tournaments/{t.id}/", {"name": "Hacked"}, format="json"
+    )
+    assert r.status_code == 403
+    t.refresh_from_db()
+    assert t.name == "Cup"
+
+
+def test_outsider_cannot_rename():
+    admin = _verified("a@test.local")
+    t = create_tournament(user=admin, name="Cup")
+    outsider = _verified("out@test.local")
+    r = _client(outsider).patch(
+        f"/api/tournaments/{t.id}/", {"name": "X"}, format="json"
+    )
+    assert r.status_code == 404

@@ -608,6 +608,10 @@ export const tournamentsApi = {
   /** Deactivate (archive) or reactivate a tournament. */
   setActive: (id: string, active: boolean) =>
     api.patch<Tournament>(`/api/tournaments/${id}/`, { active }),
+  /** Rename a tournament (display name only — the slug/public URL stays
+   * stable). Manager-allowed; the server enforces the permission. */
+  rename: (id: string, name: string) =>
+    api.patch<Tournament>(`/api/tournaments/${id}/`, { name }),
 
   // --- Fixture generation + FET scheduling engine (WS6) ---
   constraintTypes: () =>

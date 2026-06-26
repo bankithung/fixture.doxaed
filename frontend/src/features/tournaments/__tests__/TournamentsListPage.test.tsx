@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TournamentsListPage } from "../TournamentsListPage";
+import { ToastProvider } from "@/components/ui/toast";
 import { tournamentsApi, type Tournament } from "@/api/tournaments";
 
 vi.mock("@/api/tournaments");
@@ -13,9 +15,11 @@ function renderPage() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <TournamentsListPage />
-      </MemoryRouter>
+      <ToastProvider>
+        <MemoryRouter>
+          <TournamentsListPage />
+        </MemoryRouter>
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -88,5 +92,34 @@ describe("TournamentsListPage", () => {
     expect(
       await screen.findByText(/haven't started any tournaments/i),
     ).toBeInTheDocument();
+  });
+
+  it("lets a manager rename a tournament from the list", async () => {
+    vi.mocked(tournamentsApi.list).mockResolvedValue([SAMPLE]);
+    vi.mocked(tournamentsApi.rename).mockResolvedValue({
+      ...SAMPLE,
+      name: "Kohima Open",
+    });
+    renderPage();
+    await screen.findByText("Kohima Cup");
+
+    await userEvent.click(screen.getByTestId("rename-tournament"));
+    const input = await screen.findByTestId("rename-input");
+    await userEvent.clear(input);
+    await userEvent.type(input, "Kohima Open");
+    await userEvent.click(screen.getByTestId("confirm-rename"));
+
+    await waitFor(() =>
+      expect(tournamentsApi.rename).toHaveBeenCalledWith("t1", "Kohima Open"),
+    );
+  });
+
+  it("hides the Edit name action from non-managing members", async () => {
+    vi.mocked(tournamentsApi.list).mockResolvedValue([
+      { ...SAMPLE, origin: "invited", my_roles: ["match_scorer"] },
+    ]);
+    renderPage();
+    await screen.findByText("Kohima Cup");
+    expect(screen.queryByTestId("rename-tournament")).toBeNull();
   });
 });

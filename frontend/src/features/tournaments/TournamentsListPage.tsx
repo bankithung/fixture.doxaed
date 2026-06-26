@@ -9,6 +9,8 @@ import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { useBreakpoint } from "@/lib/useBreakpoint";
+import { RenameTournamentButton } from "./RenameTournamentButton";
+import { canManageTournament } from "./tournamentPermissions";
 
 /** Show the search/filter row only once the list is long enough to need it. */
 const SEARCH_THRESHOLD = 4;
@@ -298,11 +300,19 @@ function TournamentTable({
                 <td className="whitespace-nowrap px-3 py-3 font-tabular text-muted-foreground">
                   {formatCreated(tn.created_at)}
                 </td>
-                <td className="px-4 py-3 text-right">
-                  <ChevronRight
-                    aria-hidden="true"
-                    className="ml-auto h-4 w-4 text-muted-foreground/50 transition-all group-hover:translate-x-0.5 group-hover:text-foreground"
-                  />
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-1">
+                    {canManageTournament(tn.origin, tn.my_roles) ? (
+                      <RenameTournamentButton
+                        tournamentId={tn.id}
+                        currentName={tn.name}
+                      />
+                    ) : null}
+                    <ChevronRight
+                      aria-hidden="true"
+                      className="h-4 w-4 text-muted-foreground/50 transition-all group-hover:translate-x-0.5 group-hover:text-foreground"
+                    />
+                  </div>
                 </td>
               </tr>
             ))}
@@ -317,26 +327,33 @@ function TournamentCards({ items }: { items: Tournament[] }): React.ReactElement
   return (
     <div className="flex flex-col gap-2">
       {items.map((tn) => (
-        <Link
+        <div
           key={tn.id}
-          to={routes.tournamentDetail(tn.id)}
-          className="flex items-center gap-3 rounded-xl border border-border bg-card p-3.5 shadow-sm transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex items-center gap-1 rounded-xl border border-border bg-card pr-2 shadow-sm transition-colors hover:bg-accent/40"
         >
-          <Monogram name={tn.name} />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="truncate font-medium">{tn.name}</span>
-              <StatusPill status={tn.status} />
-              <AccessBadge tn={tn} />
+          <Link
+            to={routes.tournamentDetail(tn.id)}
+            className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-3.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Monogram name={tn.name} />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="truncate font-medium">{tn.name}</span>
+                <StatusPill status={tn.status} />
+                <AccessBadge tn={tn} />
+              </div>
+              <div className="mt-0.5 truncate font-tabular text-xs text-muted-foreground">
+                <span>{tn.slug}</span>
+                {tn.sport_code ? <span className="capitalize"> · {sportLabel(tn.sport_code)}</span> : null}
+                <span> · {formatCreated(tn.created_at)}</span>
+              </div>
             </div>
-            <div className="mt-0.5 truncate font-tabular text-xs text-muted-foreground">
-              <span>{tn.slug}</span>
-              {tn.sport_code ? <span className="capitalize"> · {sportLabel(tn.sport_code)}</span> : null}
-              <span> · {formatCreated(tn.created_at)}</span>
-            </div>
-          </div>
+          </Link>
+          {canManageTournament(tn.origin, tn.my_roles) ? (
+            <RenameTournamentButton tournamentId={tn.id} currentName={tn.name} />
+          ) : null}
           <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground/50" />
-        </Link>
+        </div>
       ))}
     </div>
   );
