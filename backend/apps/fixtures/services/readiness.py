@@ -158,12 +158,17 @@ def fixture_readiness(tournament) -> dict[str, Any]:
                 "teams",
             ))
 
-        # format_chosen — ok once a format is explicitly stored anywhere in
-        # the layering (leaf / "*" / legacy rules); the default still resolves.
+        # format_chosen — ok once a format is explicitly stored anywhere in the
+        # layering (leaf / sport / "*" / legacy rules); the default still
+        # resolves. The sport layer is how the format board saves "all of a
+        # sport plays X" — omitting it left per-sport picks reading as "no
+        # format chosen" on the Ready-to-go cards (owner bug 2026-06-26).
+        sport_key = leaf.get("sport_key") or leaf_key.split(".")[0]
         explicit = any(
             "format" in (layer or {})
             for layer in (
                 stored_cfg.get(leaf_key),
+                stored_cfg.get(f"sport:{sport_key}"),
                 stored_cfg.get("*"),
                 tournament.rules,
             )

@@ -71,5 +71,5 @@ def run_assistant(*, tournament, user, messages, request, focus=None) -> dict[st
     resp = gemini.generate(
         system_text=system_prompt(tournament), contents=contents, tools=None,
     )
-    return {"reply": gemini.text_of(resp) or "I've applied several changes — check the form to confirm.",
-            "actions": actions, "changed": changed}
+    closing = gemini.text_of(resp) or "I've applied several changes — check the form to confirm."
+    return {"reply": closing, "actions": actions, "changed": changed}

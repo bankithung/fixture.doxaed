@@ -328,3 +328,29 @@ def test_endpoint_membership_gate_and_shape():
     assert _client(admin).get(url).status_code == 200
     # read-only: GET twice, same body
     assert _client(admin).get(url).json() == body
+
+
+# ---------------------------------------------- format_chosen layer resolution
+def test_format_chosen_ok_when_set_at_sport_layer():
+    # Regression (owner bug 2026-06-26): the format board saves a sport-wide
+    # pick to draw_config["sport:<key>"]; readiness must read that layer, or the
+    # Ready-to-go cards wrongly warn "no format chosen" and offer League.
+    admin = _verified("a@test.local")
+    t = _tournament(admin)
+    _register(t, 4, leaf=LEAF_U15)
+    _register(t, 4, leaf=LEAF_U17, school="X")
+
+    # No format anywhere yet -> both competitions warn.
+    body = fixture_readiness(t)
+    assert _checks(_leaf(body, LEAF_U15))["format_chosen"]["status"] == "warn"
+
+    # Pick a format for the WHOLE SPORT (what "all Football plays knockout" writes).
+    update_draw_config(tournament=t, leaf_key="sport:football",
+                       partial={"format": "knockout"}, by=admin)
+    t.refresh_from_db()
+
+    body = fixture_readiness(t)
+    for leaf_key in (LEAF_U15, LEAF_U17):
+        chk = _checks(_leaf(body, leaf_key))["format_chosen"]
+        assert chk["status"] == "ok", leaf_key
+        assert chk["hint"] == "knockout"

@@ -110,7 +110,9 @@ def build_state(tournament) -> dict[str, Any]:
 
     sections = {
         "dates_set": bool(cal.get("date_start") and cal.get("date_end")),
-        "play_times_set": bool(cal.get("daily_start") and cal.get("daily_end") and cal.get("slot_minutes")),
+        "play_times_set": bool(
+            cal.get("daily_start") and cal.get("daily_end") and cal.get("slot_minutes")
+        ),
         "venues": len(venues),
         "courts": sum(v["courts"] for v in venues),
         "breaks_set": bool(_count("min_rest_minutes") or _count("max_matches_per_team_per_day")),
@@ -197,7 +199,8 @@ def render_state(state: dict[str, Any]) -> str:
         f"(the rest fall back to the league default). Use these exact identifiers:"
     )
     for c in state["competitions"]:
-        chosen = _fmt(c["format"]) if c["format_chosen"] else f"{_fmt(c['format'])} (DEFAULT, not chosen)"
+        chosen = (_fmt(c["format"]) if c["format_chosen"]
+                  else f"{_fmt(c['format'])} (DEFAULT, not chosen)")
         extra = ""
         if c["format"] == "groups_knockout":
             extra = f", groups of {c['group_size']}, top {c['advance_per_group']} advance"

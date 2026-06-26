@@ -9,7 +9,8 @@ the human receipt shown under the assistant's reply.
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from django.utils import timezone
 
@@ -41,23 +42,36 @@ def _lookups(tournament):
 _ALL = {"all", "*", "everything", "whole tournament", "tournament", "every competition"}
 
 
-def _resolve_draw_target(tournament, scope: Any) -> str:
-    """-> draw_config leaf_key: '*' | 'sport:<key>' | '<leaf_key>'."""
+def _resolve_draw_targets(tournament, scope: Any) -> list[str]:
+    """-> one or more draw_config keys: ['*'] | ['sport:<key>'] | ['<leaf_key>',...].
+
+    Forgiving: accepts 'all', a sport key/name, an exact leaf_key/label, OR an
+    intermediate category path (e.g. 'table_tennis.u_14') which expands to all of
+    its descendant leaves — the model sometimes references a category group, and
+    the manual board only writes '*'/'sport:<k>'/leaf, so we fan out to leaves.
+    """
     s = str(scope or "all").strip()
     low = s.lower()
     if low in _ALL:
-        return "*"
-    _, by_leaf, by_label, sports, sport_by_name = _lookups(tournament)
+        return ["*"]
+    leaves, by_leaf, by_label, sports, sport_by_name = _lookups(tournament)
     if s in by_leaf:
-        return s
+        return [s]
     if low in by_label:
-        return by_label[low]["leaf_key"]
+        return [by_label[low]["leaf_key"]]
     if s.startswith("sport:") and s[6:] in sports:
-        return s
+        return [s]
     if s in sports:
-        return f"sport:{s}"
+        return [f"sport:{s}"]
     if low in sport_by_name:
-        return f"sport:{sport_by_name[low]}"
+        return [f"sport:{sport_by_name[low]}"]
+    # Intermediate category node (a strict prefix of >=1 leaf) -> its leaves.
+    descendants = [
+        lf["leaf_key"] for lf in leaves
+        if lf["leaf_key"] == s or lf["leaf_key"].startswith(s + ".")
+    ]
+    if descendants:
+        return descendants
     raise ValueError(f"unknown competition or sport '{scope}'")
 
 
@@ -246,7 +260,8 @@ def h_set_spare_days(t, u, r, a):
 def h_set_ceremony(t, u, r, a):
     which = str(a.get("which", "")).strip().lower()
     if which not in {"opening", "closing"}:
-        return {"ok": False, "changed": False, "message": "Ceremony must be 'opening' or 'closing'."}
+        return {"ok": False, "changed": False,
+                "message": "Ceremony must be 'opening' or 'closing'."}
     date = str(a.get("date") or "").strip()
     if not date:
         return {"ok": False, "changed": False, "message": f"Give a date for the {which} ceremony."}
@@ -265,11 +280,12 @@ def h_set_ceremony(t, u, r, a):
 
 
 def h_set_format(t, u, r, a):
-    target = _resolve_draw_target(t, a.get("scope", "all"))
+    targets = _resolve_draw_targets(t, a.get("scope", "all"))
     fmt = str(a.get("format") or "").strip()
     if fmt not in VALID_FORMATS:
+        opts = ", ".join(sorted(VALID_FORMATS))
         return {"ok": False, "changed": False,
-                "message": f"Unknown format '{fmt}'. Use one of: {', '.join(sorted(VALID_FORMATS))}."}
+                "message": f"Unknown format '{fmt}'. Use one of: {opts}."}
     partial: dict[str, Any] = {"format": fmt}
     if a.get("group_size") is not None:
         partial["group_size"] = _int(a.get("group_size"))
@@ -279,10 +295,17 @@ def h_set_format(t, u, r, a):
         partial["balance_groups"] = bool(a.get("balance_groups"))
     elif fmt == "groups_knockout":
         partial["balance_groups"] = True  # FIFA-style default for a fresh pick
-    update_draw_config(tournament=t, leaf_key=target, partial=partial, by=u,
-                       event_id=uuid7(), request=r)
-    where = ("the whole tournament" if target == "*"
-             else f"all {target[6:]}" if target.startswith("sport:") else target)
+    for target in targets:
+        update_draw_config(tournament=t, leaf_key=target, partial=partial, by=u,
+                           event_id=uuid7(), request=r)
+    if targets == ["*"]:
+        where = "the whole tournament"
+    elif len(targets) == 1 and targets[0].startswith("sport:"):
+        where = f"all {targets[0][6:]}"
+    elif len(targets) == 1:
+        where = targets[0]
+    else:
+        where = f"{len(targets)} competitions"
     return {"ok": True, "changed": True,
             "message": f"Format for {where} set to {FORMAT_LABELS.get(fmt, fmt)}."}
 
@@ -344,8 +367,8 @@ def h_add_clash_rule(t, u, r, a):
         add=[rec],
     )
     tail = f" (with a {gap} min gap)" if gap else ""
-    return {"ok": True, "changed": True,
-            "message": f"Clash rule added: {len(keys)} competitions can't run at the same time{tail}."}
+    msg = f"Clash rule added: {len(keys)} competitions can't run at the same time{tail}."
+    return {"ok": True, "changed": True, "message": msg}
 
 
 def h_set_concurrency_cap(t, u, r, a):
@@ -425,22 +448,27 @@ _DATES = {"type": "array", "items": {"type": "string", "description": "ISO date 
 TOOL_DECLARATIONS: list[dict] = [
     {
         "name": "set_schedule_window",
-        "description": "Set the first/last match day and the daily play window + minutes per match.",
+        "description": ("Set the first/last match day and the daily play window "
+                        "+ minutes per match."),
         "parameters": {
             "type": "object",
             "properties": {
                 "date_start": {**_STR, "description": "First match day, YYYY-MM-DD"},
                 "date_end": {**_STR, "description": "Last match day, YYYY-MM-DD"},
                 "daily_start": {**_STR, "description": "Earliest start each day, HH:MM 24h"},
-                "daily_end": {**_STR, "description": "Latest a match may start, HH:MM 24h"},
-                "slot_minutes": {**_INT, "description": "Minutes allotted per match incl. changeover"},
+                "daily_end": {**_STR, "description": "Latest a match may start, HH:MM"},
+                "slot_minutes": {**_INT, "description": "Minutes per match incl. changeover"},
             },
             "required": ["date_start", "date_end"],
         },
     },
     {
         "name": "set_breaks",
-        "description": "Set rest between a team's matches, max matches per team per day, and whether Sunday mornings stay free. Send only the fields you want to change.",
+        "description": (
+            "Set rest between a team's matches, max matches per team per day, "
+            "and whether Sunday mornings stay free. Send only the fields you "
+            "want to change."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -452,12 +480,14 @@ TOOL_DECLARATIONS: list[dict] = [
     },
     {
         "name": "set_days_off",
-        "description": "Set the full list of days with NO matches (holidays/exams). Replaces the current list.",
+        "description": ("Set the full list of days with NO matches "
+                        "(holidays/exams). Replaces the current list."),
         "parameters": {"type": "object", "properties": {"dates": _DATES}, "required": ["dates"]},
     },
     {
         "name": "set_spare_days",
-        "description": "Set reserve/buffer days matches can move to if a day is rained out. Replaces the current list.",
+        "description": ("Set reserve/buffer days matches can move to if a day is "
+                        "rained out. Replaces the current list."),
         "parameters": {"type": "object", "properties": {"dates": _DATES}, "required": ["dates"]},
     },
     {
@@ -476,7 +506,8 @@ TOOL_DECLARATIONS: list[dict] = [
     },
     {
         "name": "set_format",
-        "description": "Choose how a competition plays. scope = 'all' (whole tournament), a sport_key, or a leaf_key from the setup state.",
+        "description": ("Choose how a competition plays. scope = 'all' (whole "
+                        "tournament), a sport_key, or a leaf_key from the state."),
         "parameters": {
             "type": "object",
             "properties": {
@@ -491,7 +522,9 @@ TOOL_DECLARATIONS: list[dict] = [
     },
     {
         "name": "add_or_update_venue",
-        "description": "Create or update a venue by name. courts = parallel matches it can run. sports = sport_keys it is dedicated to (empty = any).",
+        "description": ("Create or update a venue by name. courts = parallel "
+                        "matches it can run. sports = sport_keys it is dedicated "
+                        "to (empty = any)."),
         "parameters": {
             "type": "object",
             "properties": {
@@ -512,7 +545,9 @@ TOOL_DECLARATIONS: list[dict] = [
     },
     {
         "name": "add_clash_rule",
-        "description": "Stop competitions from running at the same time (e.g. girls in two sports). members = leaf_keys and/or sport_keys.",
+        "description": ("Stop competitions from running at the same time (e.g. "
+                        "girls in two sports). members = leaf_keys and/or "
+                        "sport_keys."),
         "parameters": {
             "type": "object",
             "properties": {
@@ -524,7 +559,8 @@ TOOL_DECLARATIONS: list[dict] = [
     },
     {
         "name": "set_concurrency_cap",
-        "description": "Cap how many matches run at once. scope = 'all' or a sport_key (e.g. only 2 umpires).",
+        "description": ("Cap how many matches run at once. scope = 'all' or a "
+                        "sport_key (e.g. only 2 umpires)."),
         "parameters": {
             "type": "object",
             "properties": {"scope": _STR, "count": _INT},
@@ -533,7 +569,9 @@ TOOL_DECLARATIONS: list[dict] = [
     },
     {
         "name": "set_session_window",
-        "description": "Pin a competition or sport to a daily time window (e.g. U-14 in the mornings). scope = a leaf_key or sport_key.",
+        "description": ("Pin a competition or sport to a daily time window "
+                        "(e.g. U-14 in the mornings). scope = a leaf_key or "
+                        "sport_key."),
         "parameters": {
             "type": "object",
             "properties": {

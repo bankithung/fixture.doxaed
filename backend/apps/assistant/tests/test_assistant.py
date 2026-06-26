@@ -194,3 +194,29 @@ def test_gemini_not_configured_returns_503(monkeypatch):
     resp = _post(_client(admin), t)
     assert resp.status_code == 503
     assert resp.json()["code"] == "gemini_not_configured"
+
+
+@pytest.mark.django_db
+def test_set_format_expands_an_intermediate_category_node(monkeypatch):
+    # Regression: the model sometimes passes a category path ("table_tennis.u14")
+    # that is neither a sport nor a leaf. set_format must fan out to its leaves
+    # instead of erroring "unknown competition or sport".
+    _queue(monkeypatch, [
+        _call("set_format", {"scope": "table_tennis.u14", "format": "knockout"}),
+        _text("Done."),
+    ])
+    admin = _verified("a@test.local")
+    t = create_tournament(user=admin, name="Deep Cup")
+    t.sports = normalize_sports([
+        {"name": "Table Tennis", "nodes": [
+            {"name": "U14", "children": [{"name": "Boys"}, {"name": "Girls"}]},
+        ]},
+    ])
+    t.save(update_fields=["sports"])
+
+    resp = _post(_client(admin), t, "make u14 table tennis knockout")
+    assert resp.status_code == 200
+    assert resp.json()["changed"] is True
+    t.refresh_from_db()
+    assert t.draw_config["table_tennis.u14.boys"]["format"] == "knockout"
+    assert t.draw_config["table_tennis.u14.girls"]["format"] == "knockout"
