@@ -21,7 +21,6 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
   };
 });
 
-/** §2.d live-points fields every public match row now carries. */
 const LIVE_FIELDS = {
   home_pens: null as number | null,
   away_pens: null as number | null,
@@ -30,6 +29,8 @@ const LIVE_FIELDS = {
   current_period: "",
 };
 
+// leaf_labels carry the joined EM DASH on purpose — the page must never render
+// the dashed string; it splits into chips.
 const PAYLOAD: PublicSchedulePayload = {
   tournament: {
     id: "t1",
@@ -40,8 +41,8 @@ const PAYLOAD: PublicSchedulePayload = {
   },
   matches: [
     {
-      id: "m1", leaf_key: "football.u15", leaf_label: "Football · U15",
-      stage: "group", group_label: "Group A", round_no: 1, match_no: 1,
+      id: "m1", leaf_key: "football.u15", leaf_label: "Football — U-15 — Boys",
+      stage: "group", group_label: "Football — U-15 — Boys — Group A", round_no: 1, match_no: 1,
       status: "completed", day: "2026-06-20",
       scheduled_at: "2026-06-20T03:30:00Z", venue: "Main Ground",
       home: { id: "tm1", name: "Alpha FC", short_name: "A", school: "Alpha" },
@@ -50,8 +51,8 @@ const PAYLOAD: PublicSchedulePayload = {
       ...LIVE_FIELDS, home_pens: 4, away_pens: 3,
     },
     {
-      id: "m2", leaf_key: "football.u15", leaf_label: "Football · U15",
-      stage: "group", group_label: "Group A", round_no: 1, match_no: 2,
+      id: "m2", leaf_key: "football.u15", leaf_label: "Football — U-15 — Boys",
+      stage: "group", group_label: "Football — U-15 — Boys — Group A", round_no: 1, match_no: 2,
       status: "live", day: "2026-06-20",
       scheduled_at: "2026-06-20T05:30:00Z", venue: "Main Ground",
       home: { id: "tm3", name: "Carol FC", short_name: "C", school: "Carol" },
@@ -60,7 +61,7 @@ const PAYLOAD: PublicSchedulePayload = {
       ...LIVE_FIELDS, current_period: "first_half",
     },
     {
-      id: "m3", leaf_key: "football.u17", leaf_label: "Football · U17",
+      id: "m3", leaf_key: "football.u17", leaf_label: "Football — U-17 — Boys",
       stage: "knockout", group_label: "", round_no: 1, match_no: 3,
       status: "scheduled", day: "2026-06-21",
       scheduled_at: "2026-06-21T04:00:00Z", venue: "Side Pitch",
@@ -68,16 +69,15 @@ const PAYLOAD: PublicSchedulePayload = {
       ...LIVE_FIELDS,
     },
     {
-      id: "m4", leaf_key: "football.u17", leaf_label: "Football · U17",
+      id: "m4", leaf_key: "football.u17", leaf_label: "Football — U-17 — Boys",
       stage: "knockout", group_label: "", round_no: 2, match_no: 4,
       status: "scheduled", day: null, scheduled_at: null, venue: "",
       home: null, away: null, home_score: null, away_score: null,
       ...LIVE_FIELDS,
     },
     {
-      // Set sport mid-match: home/away_score = sets won, per-set points along.
-      id: "m5", leaf_key: "tt.open", leaf_label: "Table Tennis · Open",
-      stage: "group", group_label: "Group T", round_no: 1, match_no: 5,
+      id: "m5", leaf_key: "tt.open", leaf_label: "Table Tennis — Open — Boys",
+      stage: "group", group_label: "Table Tennis — Open — Boys — Group T", round_no: 1, match_no: 5,
       status: "live", day: "2026-06-20",
       scheduled_at: "2026-06-20T06:30:00Z", venue: "Table Hall",
       home: { id: "tm5", name: "Echo TT", short_name: "E", school: "Echo" },
@@ -92,7 +92,7 @@ const PAYLOAD: PublicSchedulePayload = {
 const STANDINGS = {
   groups: [
     {
-      group_label: "Group A",
+      group_label: "Football — U-15 — Boys — Group A",
       rows: [
         { team_id: "tm1", name: "Alpha FC", school: "Alpha",
           P: 1, W: 1, D: 0, L: 0, GF: 2, GA: 1, GD: 1, Pts: 3 },
@@ -100,11 +100,10 @@ const STANDINGS = {
           P: 1, W: 0, D: 0, L: 1, GF: 1, GA: 2, GD: -1, Pts: 0 },
       ],
     },
-    { group_label: "", rows: [] }, // empty groups never render
+    { group_label: "", rows: [] },
   ],
 };
 
-/** Minimal EventSource double: registry + manual open/tick/error firing. */
 class MockEventSource {
   static instances: MockEventSource[] = [];
   static CONNECTING = 0;
@@ -115,27 +114,22 @@ class MockEventSource {
   onopen: (() => void) | null = null;
   onerror: (() => void) | null = null;
   private listeners = new Map<string, ((e: MessageEvent) => void)[]>();
-
   constructor(url: string) {
     this.url = url;
     MockEventSource.instances.push(this);
   }
-
   addEventListener(type: string, fn: (e: MessageEvent) => void): void {
     const list = this.listeners.get(type) ?? [];
     list.push(fn);
     this.listeners.set(type, list);
   }
-
   close(): void {
     this.readyState = 2;
   }
-
   open(): void {
     this.readyState = 1;
     this.onopen?.();
   }
-
   emit(type: string, data: unknown): void {
     for (const fn of this.listeners.get(type) ?? []) {
       fn({ data: JSON.stringify(data) } as MessageEvent);
@@ -165,92 +159,108 @@ beforeEach(() => {
 });
 
 describe("PublicSchedulePage", () => {
-  it("renders the read-only schedule grouped by day, in tournament-local time", async () => {
-    mount();
-    expect(
-      await screen.findByTestId("public-day-2026-06-20"),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("public-day-2026-06-21")).toBeInTheDocument();
-    expect(
-      tournamentsApi.publicSchedule,
-    ).toHaveBeenCalledWith("nagaland-cup", "t1");
+  it("defaults to a Today overview with chip labels and ZERO dashes", async () => {
+    const { container } = mount();
+    // smart default day = nearest >= today, else first day → 2026-06-20
+    const day = await screen.findByTestId("public-day-2026-06-20");
+    expect(tournamentsApi.publicSchedule).toHaveBeenCalledWith("nagaland-cup", "t1");
 
-    // 03:30Z in Asia/Kolkata = 09:00 wall clock (invariant 14)
-    const m1 = screen.getByTestId("public-match-m1");
-    expect(m1).toHaveTextContent("09:00");
-    expect(m1).toHaveTextContent("Main Ground");
-    expect(m1).toHaveTextContent("2 – 1"); // final score shown
+    // grouped under competition headers, rendered as chips (never the dashed blob)
+    expect(within(day).getByText("Football")).toBeInTheDocument();
+    expect(within(day).getByText("U15")).toBeInTheDocument(); // "U-14" hyphen stripped
+    expect(screen.queryByText(/Football — U-15 — Boys/)).toBeNull();
+    // the en/em dash is the #1 tell: it must appear NOWHERE on the page
+    expect(container.textContent).not.toMatch(/[—–]/);
+
+    // a completed match shows an ASCII scoreboard hyphen, not a dash
+    const m1 = within(day).getByTestId("public-match-m1");
+    expect(m1).toHaveTextContent("09:00"); // 03:30Z in Asia/Kolkata (invariant 14)
+    expect(m1).toHaveTextContent("2 - 1");
     expect(m1).toHaveTextContent("Full time");
+    expect(within(m1).getByTestId("points-m1")).toHaveTextContent("(4-3 pens)");
 
-    // competition chip + TBD sides for the unresolved knockout match
-    const m3 = screen.getByTestId("public-match-m3");
-    expect(m3).toHaveTextContent("Football · U17");
-    expect(within(m3).getAllByText("TBD")).toHaveLength(2);
-
-    // no auth chrome: it is a standalone page, not the app shell — but it does
-    // carry the public viewer tabs (Schedule / Live / Bracket).
+    // standalone page: viewer tabs, no app shell; a competition panel is NOT
+    // open by default (you pick one from the rail)
     expect(screen.queryByTestId("app-sidebar")).toBeNull();
-    expect(
-      screen.getByRole("navigation", { name: "Tournament views" }),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("viewer-tab-live")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Tournament views" })).toBeInTheDocument();
+    expect(screen.queryByTestId("public-competition-football.u15")).toBeNull();
   });
 
-  it("shows the live pulse on in-flight matches", async () => {
+  it("pins live matches in the Now-playing band and pulses only live rows", async () => {
     mount();
-    const m2 = await screen.findByTestId("public-match-m2");
+    const band = await screen.findByTestId("live-band");
+    expect(within(band).getByTestId("live-tile-m2")).toBeInTheDocument();
+    expect(within(band).getByTestId("live-tile-m5")).toBeInTheDocument();
+    // inline live row still carries the pulse + period for context
+    const m2 = screen.getByTestId("public-match-m2");
     expect(within(m2).getByTestId("live-pulse")).toBeInTheDocument();
     expect(m2).toHaveTextContent("Live");
   });
 
-  it("collects unscheduled matches under 'Time to be announced'", async () => {
+  it("shows live points: period chip, set scores, shootout result (ASCII)", async () => {
     mount();
-    const bucket = await screen.findByTestId("public-unscheduled");
-    expect(within(bucket).getByTestId("public-match-m4")).toBeInTheDocument();
-  });
-
-  it("shows live match points: period chip, set scores and a shootout result", async () => {
-    mount();
-    // live football: the running period rides next to the status pill
     const m2 = await screen.findByTestId("public-match-m2");
     expect(within(m2).getByTestId("period-m2")).toHaveTextContent("first half");
-    // set sport: sets won as the score + per-set points underneath
     const m5 = screen.getByTestId("public-match-m5");
-    expect(m5).toHaveTextContent("1 – 1");
+    expect(m5).toHaveTextContent("1 - 1");
     expect(within(m5).getByTestId("points-m5")).toHaveTextContent("11-7 · 8-11");
     expect(within(m5).getByTestId("period-m5")).toHaveTextContent("set 3");
-    // decided on penalties: the shootout result tags the final score
-    const m1 = screen.getByTestId("public-match-m1");
-    expect(within(m1).getByTestId("points-m1")).toHaveTextContent("(4–3 pens)");
-    // a plain scheduled match carries no points line
-    expect(
-      within(screen.getByTestId("public-match-m3")).queryByTestId("points-m3"),
-    ).toBeNull();
   });
 
-  it("renders collapsible standings per group from the public endpoint", async () => {
+  it("rail → competition reveals the standings hero + fixtures in one click", async () => {
     mount();
-    const section = await screen.findByTestId("public-standings");
-    expect(tournamentsApi.publicStandings).toHaveBeenCalledWith(
-      "nagaland-cup",
-      "t1",
-    );
-    // collapsed by default — no rows on screen yet
-    expect(within(section).queryByTestId("standing-tm1")).toBeNull();
-    // empty groups never render a toggle
-    expect(within(section).queryByTestId("standings-toggle-Overall")).toBeNull();
+    await screen.findByTestId("public-day-2026-06-20");
+    await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
 
-    await userEvent.click(
-      within(section).getByTestId("standings-toggle-Group A"),
+    const panel = await screen.findByTestId("public-competition-football.u15");
+    // inline FIFA-style group table
+    expect(within(panel).getByTestId("group-standing-tm1")).toHaveTextContent("Alpha FC");
+    expect(within(panel).getByTestId("group-standing-tm1")).toHaveTextContent("3");
+    // its fixtures sit under the table
+    expect(within(panel).getByTestId("public-match-m1")).toBeInTheDocument();
+    expect(within(panel).getByTestId("public-match-m2")).toBeInTheDocument();
+  });
+
+  it("filters the active scope by a team search and clears", async () => {
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+    // today scope = 3 matches on 2026-06-20 (m1, m2, m5)
+    expect(screen.getByTestId("filter-count")).toHaveTextContent("3 matches");
+
+    await userEvent.type(screen.getByTestId("filter-team"), "Echo");
+    await waitFor(() =>
+      expect(screen.getByTestId("filter-count")).toHaveTextContent("1 of 3"),
     );
-    expect(within(section).getByTestId("standing-tm1")).toHaveTextContent(
-      "Alpha FC",
+    expect(screen.getByTestId("public-match-m5")).toBeInTheDocument();
+    expect(screen.queryByTestId("public-match-m1")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("filter-clear"));
+    await waitFor(() =>
+      expect(screen.getByTestId("public-match-m1")).toBeInTheDocument(),
     );
-    expect(within(section).getByTestId("standing-tm1")).toHaveTextContent("3");
+  });
+
+  it("competition → Order of play: day sections, unscheduled bucket, print", async () => {
+    const print = vi.fn();
+    window.print = print;
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+
+    await userEvent.click(screen.getByTestId("rail-comp-football.u17"));
+    await userEvent.click(screen.getByTestId("view-day"));
+
+    expect(await screen.findByTestId("public-day-2026-06-21")).toBeInTheDocument();
+    const bucket = screen.getByTestId("public-unscheduled");
+    expect(within(bucket).getByTestId("public-match-m4")).toBeInTheDocument();
+
+    // print sheet renders the chosen day's per-venue order of play
+    const sheet = screen.getByTestId("print-sheet");
+    expect(within(sheet).getByTestId("print-venue-Side Pitch")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("print-button"));
+    expect(print).toHaveBeenCalled();
   });
 
   it("stays on the polling indicator when SSE is unavailable", async () => {
-    // jsdom has no EventSource — the page keeps today's 60 s poll behavior.
     mount();
     await screen.findByTestId("public-day-2026-06-20");
     expect(screen.getByTestId("stream-indicator")).toHaveTextContent(
@@ -259,51 +269,11 @@ describe("PublicSchedulePage", () => {
   });
 
   it("renders a friendly error when the schedule is not public", async () => {
-    vi.mocked(tournamentsApi.publicSchedule).mockRejectedValue(
-      new Error("404"),
-    );
+    vi.mocked(tournamentsApi.publicSchedule).mockRejectedValue(new Error("404"));
     mount();
     expect(
       await screen.findByText("This schedule is not available."),
     ).toBeInTheDocument();
-  });
-
-  it("print sheet: first day by default, grouped by venue, time-ordered", async () => {
-    mount();
-    await screen.findByTestId("public-day-2026-06-20");
-
-    const sheet = screen.getByTestId("print-sheet");
-    // page-per-venue order-of-play for the default (first) day
-    const venue = within(sheet).getByTestId("print-venue-Main Ground");
-    expect(venue.className).toContain("break-after-page");
-    expect(venue).toHaveTextContent("Nagaland Schools Cup - Order of play");
-    const rows = within(venue).getAllByRole("row").slice(1); // skip header
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveTextContent("09:00"); // time-ordered
-    expect(rows[0]).toHaveTextContent("Alpha FC vs Bravo FC");
-    expect(rows[1]).toHaveTextContent("11:00");
-    // day 2's venue is not on day 1's sheet
-    expect(within(sheet).queryByTestId("print-venue-Side Pitch")).toBeNull();
-  });
-
-  it("the day picker re-targets the print sheet; Print calls window.print", async () => {
-    const print = vi.fn();
-    window.print = print;
-    mount();
-    await screen.findByTestId("public-day-2026-06-20");
-
-    await userEvent.click(screen.getByRole("button", { name: "Day to print" }));
-    await userEvent.click(screen.getByRole("option", { name: /June 21/ }));
-    const sheet = screen.getByTestId("print-sheet");
-    expect(
-      within(sheet).getByTestId("print-venue-Side Pitch"),
-    ).toBeInTheDocument();
-    expect(
-      within(sheet).queryByTestId("print-venue-Main Ground"),
-    ).toBeNull();
-
-    await userEvent.click(screen.getByTestId("print-button"));
-    expect(print).toHaveBeenCalled();
   });
 
   describe("live over SSE", () => {
@@ -318,7 +288,6 @@ describe("PublicSchedulePage", () => {
     it("subscribes to the public stream and refetches on a tick", async () => {
       mount();
       await screen.findByTestId("public-day-2026-06-20");
-
       await waitFor(() =>
         expect(MockEventSource.instances.length).toBeGreaterThan(0),
       );
@@ -332,21 +301,13 @@ describe("PublicSchedulePage", () => {
         ),
       );
 
-      const scheduleCalls =
-        vi.mocked(tournamentsApi.publicSchedule).mock.calls.length;
-      const standingsCalls =
-        vi.mocked(tournamentsApi.publicStandings).mock.calls.length;
+      const scheduleCalls = vi.mocked(tournamentsApi.publicSchedule).mock.calls.length;
       es.emit("tick", { tournament_id: "t1", match_id: "m2", kind: "score" });
-      // tick → debounced invalidation → schedule AND standings refetch
       await waitFor(
-        () => {
+        () =>
           expect(
             vi.mocked(tournamentsApi.publicSchedule).mock.calls.length,
-          ).toBeGreaterThan(scheduleCalls);
-          expect(
-            vi.mocked(tournamentsApi.publicStandings).mock.calls.length,
-          ).toBeGreaterThan(standingsCalls);
-        },
+          ).toBeGreaterThan(scheduleCalls),
         { timeout: 2000 },
       );
     });
@@ -358,16 +319,13 @@ describe("PublicSchedulePage", () => {
         expect(MockEventSource.instances.length).toBeGreaterThan(0),
       );
       const es = MockEventSource.instances[0];
-
       es.open();
       await waitFor(() =>
         expect(screen.getByTestId("stream-indicator")).toHaveTextContent(
           "live updates",
         ),
       );
-
       es.onerror?.();
-      // graceful fallback: exactly the pre-SSE page (60 s poll + plain copy)
       await waitFor(() =>
         expect(screen.getByTestId("stream-indicator")).toHaveTextContent(
           "updates automatically",
