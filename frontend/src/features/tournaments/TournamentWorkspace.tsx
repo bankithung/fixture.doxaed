@@ -6,7 +6,14 @@ import {
   useParams,
 } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Check, ChevronRight, Lock, Trophy } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  ExternalLink,
+  Lock,
+  Trophy,
+} from "lucide-react";
 import { tournamentsApi } from "@/api/tournaments";
 import { DeleteTournamentButton } from "./DeleteTournamentButton";
 import { StageContinue } from "./StageContinue";
@@ -68,8 +75,15 @@ export function TournamentWorkspace(): React.ReactElement {
 
   const name = tournament.data?.name ?? t("Tournament");
   const status = tournament.data?.status ?? "draft";
+  const slug = tournament.data?.slug ?? "";
   const stage = stageQ.data;
   const curIdx = stage ? stage.order.indexOf(stage.stage) : -1;
+
+  // Once fixtures are generated (`ready`) the workspace is live-operations
+  // software, not a setup wizard: full-width, the setup stepper gives way to a
+  // compact ops status ribbon, and the sidebar's Operations group leads
+  // (computeTournamentNav). Applies to every role at `ready` (ops 2026-06-26).
+  const opsMode = !!stage && stage.stage === "ready";
 
   // A tab is locked until the tournament reaches its stage. Until the stage
   // payload loads, nothing is locked (avoids a flash of all-locked tabs).
@@ -103,7 +117,12 @@ export function TournamentWorkspace(): React.ReactElement {
   const canDelete = !!stage?.can_delete;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-6 sm:px-6 lg:px-8">
+    <div
+      className={cn(
+        "flex w-full flex-col px-4 py-6 sm:px-6 lg:px-8",
+        opsMode ? "" : "mx-auto max-w-5xl",
+      )}
+    >
       <div className="mb-4 flex items-center justify-between gap-2">
         <NavLink
           to={routes.tournaments()}
@@ -117,33 +136,73 @@ export function TournamentWorkspace(): React.ReactElement {
         ) : null}
       </div>
 
-      {/* Stage progress sits ABOVE the tournament name (owner request); the
-          DOM keeps the name first so screen readers announce the title before
-          the progress nav, while `flex-col-reverse` paints the stages on top. */}
-      <div className="flex flex-col-reverse gap-4">
-        <div className="flex items-center gap-2.5 min-w-0">
+      {opsMode ? (
+        // Operations ribbon — replaces the setup stepper once fixtures exist.
+        <div
+          data-testid="ops-ribbon"
+          className="flex flex-wrap items-center gap-3"
+        >
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10">
             <Trophy aria-hidden="true" className="h-5 w-5 text-primary" />
           </span>
           <div className="min-w-0">
-            <h1 className="truncate text-xl font-semibold tracking-tight">{name}</h1>
-            <span
-              className={cn(
-                "mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize",
-                STATUS_CLS[status] ?? "bg-muted text-muted-foreground",
-              )}
-            >
-              {t(status.replace(/_/g, " "))}
-            </span>
+            <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              {t("Live operations")}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate text-xl font-semibold tracking-tight">
+                {name}
+              </h1>
+              <span
+                className={cn(
+                  "inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize",
+                  STATUS_CLS[status] ?? "bg-muted text-muted-foreground",
+                )}
+              >
+                {t(status.replace(/_/g, " "))}
+              </span>
+            </div>
           </div>
+          {slug ? (
+            <a
+              href={routes.publicSchedule(slug, id)}
+              target="_blank"
+              rel="noreferrer"
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ExternalLink aria-hidden="true" className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("Public page")}</span>
+            </a>
+          ) : null}
         </div>
+      ) : (
+        /* Stage progress sits ABOVE the tournament name (owner request); the
+           DOM keeps the name first so screen readers announce the title before
+           the progress nav, while `flex-col-reverse` paints the stages on top. */
+        <div className="flex flex-col-reverse gap-4">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10">
+              <Trophy aria-hidden="true" className="h-5 w-5 text-primary" />
+            </span>
+            <div className="min-w-0">
+              <h1 className="truncate text-xl font-semibold tracking-tight">{name}</h1>
+              <span
+                className={cn(
+                  "mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize",
+                  STATUS_CLS[status] ?? "bg-muted text-muted-foreground",
+                )}
+              >
+                {t(status.replace(/_/g, " "))}
+              </span>
+            </div>
+          </div>
 
-        {stage ? (
-          <nav
-            aria-label={t("Setup progress")}
-            className="flex flex-wrap items-center gap-x-1 gap-y-2"
-          >
-            {stage.order.map((s, i) => {
+          {stage ? (
+            <nav
+              aria-label={t("Setup progress")}
+              className="flex flex-wrap items-center gap-x-1 gap-y-2"
+            >
+              {stage.order.map((s, i) => {
               const info = stage.stages[i];
               const reached = i <= curIdx;
               const isCurrent = i === curIdx;
@@ -208,9 +267,10 @@ export function TournamentWorkspace(): React.ReactElement {
                 </span>
               );
             })}
-          </nav>
-        ) : null}
-      </div>
+            </nav>
+          ) : null}
+        </div>
+      )}
 
       {/* Navigation lives in the contextual left sidebar now (no horizontal tabs). */}
       <div className="mt-6">

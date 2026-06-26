@@ -74,9 +74,19 @@ export const routes = {
     `/tournaments/${encodeURIComponent(id)}/fixtures/preview?all=1`,
   tournamentSettings: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/settings`,
-  /** Live-ops cockpit: day lanes, call-ups, repair verbs (control room spec). */
+  /** Live-ops cockpit: day lanes, call-ups, repair verbs (control room spec).
+   * Also the post-generation HOME — the workspace lands here once fixtures are
+   * generated (stage `ready`). */
   tournamentControl: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/control`,
+  /** Operations: flat, filterable tournament-wide matches board. */
+  tournamentMatches: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/matches`,
+  /** Operations: admin-context live standings & bracket per competition. */
+  tournamentStandings: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/standings`,
+  /** Operations: officials, scorer & task assignment cockpit. */
+  tournamentCrew: (id: string) => `/tournaments/${encodeURIComponent(id)}/crew`,
   /** Public, read-only live match viewer (no login). */
   liveViewer: (matchId: string) => `/m/${encodeURIComponent(matchId)}`,
   /** Public, read-only tournament schedule (no login; slug+UUID pair). */

@@ -242,6 +242,15 @@ describe("ControlRoomPage", () => {
     expect(within(rail).getByTestId("queue-called-m2")).toBeInTheDocument();
   });
 
+  it("shows the operations band with the day's live + progress counts", async () => {
+    mount();
+    const band = await screen.findByTestId("ops-band");
+    // Today cell: 1 of 4 done; On-now cell: 1 live.
+    expect(band).toHaveTextContent("1/4");
+    expect(band).toHaveTextContent(/on now/i);
+    expect(band).toHaveTextContent(/up next/i);
+  });
+
   it("selecting another day re-fetches the aggregate for it", async () => {
     mount();
     await screen.findByTestId("day-chip-2026-06-21");

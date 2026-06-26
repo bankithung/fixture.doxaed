@@ -253,6 +253,99 @@ describe("computeTournamentNav", () => {
     expect(items.map((i) => i.key)).not.toContain("control");
   });
 
+  // --- Post-generation operations mode (stage `ready`) ---
+
+  const readyStage = (
+    over: { can_manage?: boolean; modules?: string[] } = {},
+  ) => ({
+    ...STAGE,
+    stage: "ready",
+    ...over,
+  });
+
+  it("at ready, pivots to a two-group Operations + Setup nav (Operations leads)", () => {
+    const groups = computeTournamentNav(TID, {
+      user: makeUser(["admin"], []),
+      slug: "acme",
+      stage: readyStage({ can_manage: true }),
+    });
+    expect(groupKeys(groups)).toEqual(["operations", "setup"]);
+    const ops = groups.find((g) => g.key === "operations")!;
+    expect(ops.items.map((i) => i.key)).toEqual([
+      "control",
+      "matches",
+      "standings",
+      "crew",
+      "directory",
+    ]);
+    const setup = groups.find((g) => g.key === "setup")!;
+    expect(setup.items.map((i) => i.key)).toEqual([
+      "overview",
+      "sports",
+      "forms",
+      "institutions",
+      "members",
+      "fixtures",
+      "settings",
+    ]);
+  });
+
+  it("ops-mode items are never stage-locked (all reachable at ready)", () => {
+    const items = computeTournamentNav(TID, {
+      user: makeUser(["admin"], []),
+      slug: "acme",
+      stage: readyStage({ can_manage: true }),
+    }).flatMap((g) => g.items);
+    expect(items.every((i) => !i.locked)).toBe(true);
+  });
+
+  it("a scorer at ready gets a trimmed Operations rail, no Setup admin items", () => {
+    const groups = computeTournamentNav(TID, {
+      user: makeUser(["match_scorer"], []),
+      slug: "acme",
+      stage: readyStage({
+        can_manage: false,
+        modules: ["match.center_admin_view", "match.scoring_console"],
+      }),
+    });
+    const keys = flatKeys(groups);
+    expect(keys).toContain("control");
+    expect(keys).toContain("matches");
+    expect(keys).toContain("standings");
+    expect(keys).toContain("directory");
+    // No schedule_editor → no assignment cockpit; no manage → no admin tabs.
+    expect(keys).not.toContain("crew");
+    expect(keys).not.toContain("members");
+    expect(keys).not.toContain("sports");
+    expect(keys).not.toContain("settings");
+  });
+
+  it("the coordinator (schedule_editor) gets the Officials & assignments item", () => {
+    const items = computeTournamentNav(TID, {
+      user: makeUser(["game_coordinator"], []),
+      slug: "acme",
+      stage: readyStage({
+        can_manage: false,
+        modules: ["match.center_admin_view", "tournament.schedule_editor"],
+      }),
+    }).flatMap((g) => g.items);
+    expect(items.map((i) => i.key)).toContain("crew");
+  });
+
+  it("ops items link to their operations routes", () => {
+    const items = computeTournamentNav(TID, {
+      user: makeUser(["admin"], []),
+      slug: "acme",
+      stage: readyStage({ can_manage: true }),
+    }).flatMap((g) => g.items);
+    const byKey = Object.fromEntries(items.map((i) => [i.key, i]));
+    expect(byKey.control.href).toBe(routes.tournamentControl(TID));
+    expect(byKey.matches.href).toBe(routes.tournamentMatches(TID));
+    expect(byKey.standings.href).toBe(routes.tournamentStandings(TID));
+    expect(byKey.crew.href).toBe(routes.tournamentCrew(TID));
+    expect(byKey.directory.href).toBe(routes.tournamentTeams(TID));
+  });
+
   it("links sections to the right routes", () => {
     const items = computeTournamentNav(TID, {
       user: makeUser(["admin"], []),

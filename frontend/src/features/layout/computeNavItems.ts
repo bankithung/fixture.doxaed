@@ -1,8 +1,10 @@
 import {
+  BarChart3,
   Building2,
   CalendarClock,
   FileText,
   LayoutDashboard,
+  ListChecks,
   Mail,
   Radio,
   Settings,
@@ -141,6 +143,130 @@ export function computeTournamentNav(
     }
     return {};
   };
+
+  // Once the fixtures are generated (stage `ready`+), the whole workspace
+  // pivots from a setup wizard into live-operations software (ops 2026-06-26):
+  // an OPERATIONS group leads (Today / Matches / Standings / Officials /
+  // Schools & teams — everything revolving around the generated fixture) and
+  // the former setup tabs demote into a muted, still-reachable "Setup & config"
+  // group. The gate is one index check against the same stage order the rail
+  // already has; below `ready` we return the unchanged single setup nav.
+  const readyIdx = order.indexOf("ready");
+  const opsMode = readyIdx >= 0 && curIdx >= readyIdx;
+  if (opsMode) {
+    const operations: (NavItem | null)[] = [
+      // Today = the live control room; the post-generation default landing.
+      allowed("match.center_admin_view")
+        ? {
+            key: "control",
+            label: t("Today"),
+            href: routes.tournamentControl(tournamentId),
+            icon: Radio,
+          }
+        : null,
+      // The flat, filterable tournament-wide matches board (bulk find-and-act).
+      allowed("match.center_admin_view")
+        ? {
+            key: "matches",
+            label: t("Matches"),
+            href: routes.tournamentMatches(tournamentId),
+            icon: ListChecks,
+          }
+        : null,
+      // Live outcomes — visible to every member (read).
+      {
+        key: "standings",
+        label: t("Standings & bracket"),
+        href: routes.tournamentStandings(tournamentId),
+        icon: BarChart3,
+      },
+      // Assignment cockpit — schedule editors (admin/co-org/coordinator).
+      allowed("tournament.schedule_editor")
+        ? {
+            key: "crew",
+            label: t("Officials & assignments"),
+            href: routes.tournamentCrew(tournamentId),
+            icon: UserCog,
+          }
+        : null,
+      // Participant directory, fixture-centric — every member (read).
+      {
+        key: "directory",
+        label: t("Schools & teams"),
+        href: routes.tournamentTeams(tournamentId),
+        icon: Building2,
+      },
+    ];
+
+    // Demoted but fully reachable — late registrations, reschedules, settings,
+    // regeneration. Same permission gating as setup mode, minus the stage locks
+    // (everything is reached at `ready`).
+    const setup: (NavItem | null)[] = [
+      {
+        key: "overview",
+        label: t("Overview"),
+        href: routes.tournamentOverview(tournamentId),
+        icon: LayoutDashboard,
+      },
+      allowed("tournament.editor")
+        ? {
+            key: "sports",
+            label: t("Sports"),
+            href: routes.tournamentSports(tournamentId),
+            icon: Trophy,
+          }
+        : null,
+      allowed("forms")
+        ? {
+            key: "forms",
+            label: t("Forms"),
+            href: routes.tournamentForms(tournamentId),
+            icon: FileText,
+          }
+        : null,
+      {
+        key: "institutions",
+        label: t("Institutions"),
+        href: routes.tournamentInstitutions(tournamentId),
+        icon: Building2,
+      },
+      canManage
+        ? {
+            key: "members",
+            label: t("Members"),
+            href: routes.tournamentMembers(tournamentId),
+            icon: UserCog,
+          }
+        : null,
+      {
+        key: "fixtures",
+        label: t("Fixtures"),
+        href: routes.tournamentFixtures(tournamentId),
+        icon: CalendarClock,
+      },
+      allowed("tournament.editor")
+        ? {
+            key: "settings",
+            label: t("Settings"),
+            href: routes.tournamentSettings(tournamentId),
+            icon: Settings,
+          }
+        : null,
+    ];
+
+    return [
+      {
+        key: "operations",
+        label: t("Operations"),
+        items: operations.filter((i): i is NavItem => i !== null),
+      },
+      {
+        key: "setup",
+        label: t("Setup & config"),
+        items: setup.filter((i): i is NavItem => i !== null),
+      },
+    ].filter((g) => g.items.length > 0);
+  }
 
   const manage: (NavItem | null)[] = [
     {

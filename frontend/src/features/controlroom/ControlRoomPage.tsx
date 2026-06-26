@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, History, Radio } from "lucide-react";
-import { tournamentsApi } from "@/api/tournaments";
+import { tournamentsApi, type ControlRoomPayload } from "@/api/tournaments";
 import { Select } from "@/components/ui/Select";
 import { useAuthStore } from "@/features/auth/authStore";
 import { ScheduleChangesPanel } from "@/features/fixtures/ScheduleChangesPanel";
@@ -11,11 +11,156 @@ import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { useBreakpoint } from "@/lib/useBreakpoint";
-import { delayMap, fmtDayLabel } from "./format";
+import {
+  delayFor,
+  delayMap,
+  FINAL,
+  fmtDayLabel,
+  fmtKickoff,
+  IN_PLAY,
+  type SlotDelay,
+} from "./format";
 import type { ControlRoomPerms } from "./MatchActionsMenu";
 import { QueueRail } from "./QueueRail";
 import { useControlRoom } from "./useControlRoom";
 import { VenueLane } from "./VenueLane";
+
+/** A scheduled match whose kickoff slot has passed but still has no result —
+ * "awaiting result" in the ops band. Kept a plain helper so the wall-clock read
+ * stays out of render (matches the codebase's relative-time helpers). */
+function isOverdue(scheduledAt: string | null): boolean {
+  if (!scheduledAt) return false;
+  return new Date(scheduledAt).getTime() < Date.now();
+}
+
+/**
+ * Operations band atop the control room (ops 2026-06-26): what is live now, how
+ * far through the day, what still needs attention, and what is up next. Every
+ * value is derived from the day aggregate already in scope (zero backend) and
+ * rides the same SSE tick, so it stays live without a second connection. Cells
+ * are hairline-separated (gap-px over a border fill), font-tabular, one accent
+ * reserved for "live"; wraps 2-up then 4-up.
+ */
+function OpsHeaderBand({
+  data,
+  selectedDay,
+  delays,
+  tz,
+}: {
+  data: ControlRoomPayload;
+  selectedDay: string;
+  delays: Map<string, SlotDelay>;
+  tz: string;
+}): React.ReactElement {
+  const all = data.venues.flatMap((v) => v.matches);
+  const counts = data.days.find((d) => d.date === selectedDay)?.counts;
+  const total = counts?.total ?? all.length;
+  const completed =
+    counts?.completed ?? all.filter((m) => FINAL.has(m.status)).length;
+  const liveCount =
+    counts?.live ?? all.filter((m) => IN_PLAY.has(m.status)).length;
+  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const delayed = all.filter((m) => delayFor(delays, m) != null).length;
+  const awaiting = all.filter(
+    (m) => m.status === "scheduled" && isOverdue(m.scheduled_at),
+  ).length;
+  const noVenue = all.filter((m) => !m.venue).length;
+  const next = data.queue.find((m) => m.status === "scheduled") ?? null;
+  const teamName = (tm: { name: string; short_name?: string } | null): string =>
+    tm?.short_name ?? tm?.name ?? t("TBD");
+
+  const overline =
+    "text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground";
+  const chip =
+    "inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400";
+  return (
+    <div
+      data-testid="ops-band"
+      className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border lg:grid-cols-4"
+    >
+      <div className="flex flex-col bg-card p-4">
+        <p className={overline}>{t("On now")}</p>
+        <p className="mt-1 flex items-baseline gap-1.5">
+          <span className="font-tabular text-2xl font-semibold leading-none">
+            {liveCount}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {liveCount === 1 ? t("match live") : t("matches live")}
+          </span>
+          {liveCount > 0 ? (
+            <span className="relative ml-0.5 flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+            </span>
+          ) : null}
+        </p>
+      </div>
+
+      <div className="flex flex-col bg-card p-4">
+        <p className={overline}>{t("Today")}</p>
+        <p className="mt-1 flex items-baseline gap-1.5">
+          <span className="font-tabular text-2xl font-semibold leading-none">
+            {completed}
+            <span className="text-muted-foreground">/{total}</span>
+          </span>
+          <span className="text-xs text-muted-foreground">{t("done")}</span>
+        </p>
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-primary transition-[width]"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        {delayed > 0 ? (
+          <p className="mt-1.5 font-tabular text-xs text-amber-600 dark:text-amber-400">
+            {delayed} {t("running late")}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="flex flex-col bg-card p-4">
+        <p className={overline}>{t("Needs you")}</p>
+        {awaiting > 0 || noVenue > 0 ? (
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {awaiting > 0 ? (
+              <span className={chip}>
+                <span className="font-tabular">{awaiting}</span>{" "}
+                {t("awaiting result")}
+              </span>
+            ) : null}
+            {noVenue > 0 ? (
+              <span className={chip}>
+                <span className="font-tabular">{noVenue}</span> {t("no venue")}
+              </span>
+            ) : null}
+          </div>
+        ) : (
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t("All caught up")}
+          </p>
+        )}
+      </div>
+
+      <div className="flex flex-col bg-card p-4">
+        <p className={overline}>{t("Up next")}</p>
+        {next ? (
+          <div className="mt-1 min-w-0">
+            <p className="font-tabular text-sm font-semibold">
+              {next.scheduled_at ? fmtKickoff(next.scheduled_at, tz) : t("TBD")}
+            </p>
+            <p className="truncate text-xs text-muted-foreground">
+              {teamName(next.home_team)} v {teamName(next.away_team)}
+            </p>
+          </div>
+        ) : (
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t("Nothing queued")}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /**
  * The live-ops cockpit (control room spec 2026-06-12 §1/§3.1): a day-by-day,
@@ -153,6 +298,13 @@ export function ControlRoomPage(): React.ReactElement {
         </section>
       ) : (
         <>
+          <OpsHeaderBand
+            data={data}
+            selectedDay={selectedDay}
+            delays={delays}
+            tz={tz}
+          />
+
           {/* Day selector — chips on desktop, the custom Select on mobile. */}
           {isMobile ? (
             <Select
