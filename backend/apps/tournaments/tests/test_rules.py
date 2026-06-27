@@ -48,6 +48,75 @@ def test_merge_rules_none_returns_defaults():
     assert merge_rules(None) == DEFAULT_RULES
 
 
+# --- per-game (by_leaf) overrides: scoring + tiebreakers --------------------
+
+_TT = {"type": "sets", "best_of": 3, "points": 15, "win_by": 2, "cap": 17}
+
+
+def test_by_leaf_scoring_merge_keeps_other_leaves():
+    base = merge_rules({"by_leaf": {"tt.open": {"scoring": _TT}}})
+    # a second leaf merges in without dropping the first
+    r = merge_rules({"by_leaf": {"tt.u14": {"scoring": {"type": "sets", "best_of": 5,
+                     "points": 11, "win_by": 2}}}}, base=base)
+    assert r["by_leaf"]["tt.open"]["scoring"] == _TT
+    assert r["by_leaf"]["tt.u14"]["scoring"]["best_of"] == 5
+
+
+def test_by_leaf_scoring_with_deciding_set():
+    r = merge_rules({"by_leaf": {"tt.open": {"scoring": {
+        "type": "sets", "best_of": 5, "points": 21, "win_by": 2, "cap": 25,
+        "deciding": {"points": 15, "win_by": 2, "cap": 17}}}}})
+    assert r["by_leaf"]["tt.open"]["scoring"]["deciding"]["cap"] == 17
+
+
+def test_by_leaf_goals_override():
+    r = merge_rules({"by_leaf": {"football.u17": {"scoring": {"type": "goals"}}}})
+    assert r["by_leaf"]["football.u17"]["scoring"] == {"type": "goals"}
+
+
+def test_by_leaf_clearing_scoring_removes_the_entry():
+    base = merge_rules({"by_leaf": {"tt.open": {"scoring": _TT}}})
+    r = merge_rules({"by_leaf": {"tt.open": {"scoring": None}}}, base=base)
+    assert "tt.open" not in r["by_leaf"]
+
+
+def test_by_leaf_setting_leaf_to_none_clears_it():
+    base = merge_rules({"by_leaf": {"tt.open": {"scoring": _TT}}})
+    r = merge_rules({"by_leaf": {"tt.open": None}}, base=base)
+    assert r["by_leaf"] == {}
+
+
+def test_by_leaf_tiebreakers_override():
+    r = merge_rules({"by_leaf": {"tt.open": {"tiebreakers": [
+        "points", "head_to_head", "set_difference", "point_difference",
+        "points_for", "coin_toss"]}}})
+    assert r["by_leaf"]["tt.open"]["tiebreakers"][-1] == "coin_toss"
+
+
+@pytest.mark.parametrize("bad", [
+    {"type": "innings"},                                   # unknown type
+    {"type": "sets", "best_of": 0},                        # best_of < 1
+    {"type": "sets", "points": 0},                         # points < 1
+    {"type": "sets", "points": 15, "cap": 10},             # cap < points
+    {"type": "sets", "win_by": 0},                         # win_by < 1
+    {"type": "goals", "points": 11},                       # goals takes no params
+    {"type": "sets", "bogus": 1},                          # unknown key
+])
+def test_by_leaf_scoring_rejects_invalid(bad):
+    with pytest.raises(ValueError):
+        merge_rules({"by_leaf": {"x": {"scoring": bad}}})
+
+
+def test_by_leaf_rejects_unknown_tiebreaker():
+    with pytest.raises(ValueError):
+        merge_rules({"by_leaf": {"x": {"tiebreakers": ["points", "vibes"]}}})
+
+
+def test_by_leaf_rejects_unknown_inner_key():
+    with pytest.raises(ValueError):
+        merge_rules({"by_leaf": {"x": {"discipline": {}}}})
+
+
 def test_can_edit_rules_in_draft_then_frozen():
     admin = _user()
     t = create_tournament(user=admin, name="Rules Cup")

@@ -845,6 +845,14 @@ export const tournamentsApi = {
     }>(`/api/tournaments/${id}/fixtures/publish-all/`, body),
 };
 
+/** Per-game (category leaf) overrides — the owner's "everything is per game"
+ * rule. Scoring + ranking are participant-facing, so they live under the
+ * invariant-7 freeze (in `rules`), not draw_config. */
+export interface LeafRules {
+  scoring?: SportScoringConfig | null;
+  tiebreakers?: string[] | null;
+}
+
 export interface TournamentRules {
   format: string;
   group_size: number;
@@ -854,6 +862,8 @@ export interface TournamentRules {
   match: { halves: number; half_minutes: number; extra_time: boolean; penalties: boolean };
   squad: { min_players: number; max_players: number; max_subs: number };
   discipline: { yellow_suspension_threshold: number; red_matches_banned: number };
+  /** Per-game scoring/tiebreaker overrides, keyed by competition leaf key. */
+  by_leaf?: Record<string, LeafRules>;
 }
 
 /** A stored scheduling-constraint record (`{type, scope, hard, weight, params}`,
@@ -887,6 +897,9 @@ export interface TournamentSettings {
   /** Stored scheduling preferences from the last engine run (slot length,
    * rests, auto_reflow, …) — lets the Schedule wizard pre-seed its controls. */
   scheduling_config?: Record<string, unknown> | null;
+  /** Per-sport scoring baseline (override → profile) each game inherits until a
+   * per-game override is set. Keyed by sport key; null = goal-based/unknown. */
+  scoring_defaults?: Record<string, SportScoringConfig | null>;
 }
 
 export interface ConstraintType {

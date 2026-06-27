@@ -16,6 +16,8 @@ import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { ScoringControl } from "./ScoringControl";
+import { scoringEqual, type Scoring } from "./scoring";
 
 interface Comp {
   leafKey: string;
@@ -81,6 +83,11 @@ export function CompetitionFormatBoard({
   // Staged layer writes keyed by layer ("sport:<k>" or a leaf key); empty = clean.
   const [staged, setStaged] = useState<Record<string, DrawConfigLayer>>({});
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  // Staged per-GAME scoring overrides, keyed by leaf (value = override; null =
+  // clear back to the sport default). Saved via the settings PATCH (frozen
+  // rules), not draw_config — scoring is participant-facing (invariant 7).
+  const [stagedScoring, setStagedScoring] = useState<Record<string, Scoring | null>>({});
+  const [amendReason, setAmendReason] = useState("");
 
   const dcQ = useQuery({
     queryKey: qk.drawConfig(tournamentId),
@@ -89,6 +96,10 @@ export function CompetitionFormatBoard({
   const sportsQ = useQuery({
     queryKey: ["tournament-sports", tournamentId],
     queryFn: () => tournamentsApi.sports(tournamentId),
+  });
+  const settingsQ = useQuery({
+    queryKey: ["tournament-settings", tournamentId],
+    queryFn: () => tournamentsApi.settings(tournamentId),
   });
 
   const sportName = (key: string): string =>
@@ -179,7 +190,49 @@ export function CompetitionFormatBoard({
     stage(`sport:${sp}`, patch);
   };
 
-  const dirty = Object.keys(staged).length > 0;
+  // --- Per-game scoring (settings/rules.by_leaf) ---------------------------
+  const settings = settingsQ.data;
+  const byLeaf = settings?.rules.by_leaf ?? {};
+  const scoringDefaults = settings?.scoring_defaults ?? {};
+  const canManage = settings?.can_manage ?? true;
+  const rulesFrozen = settings ? !settings.can_edit : false;
+
+  const storedLeafScoring = (leafKey: string): Scoring | null =>
+    (byLeaf[leafKey]?.scoring as Scoring | undefined) ?? null;
+  const effLeafScoring = (leafKey: string): Scoring | null =>
+    leafKey in stagedScoring ? stagedScoring[leafKey]! : storedLeafScoring(leafKey);
+  const inheritedScoring = (sp: string): Scoring | null =>
+    (scoringDefaults[sp] as Scoring | null | undefined) ?? null;
+
+  const stageLeafScoring = (leafKey: string, s: Scoring | null): void =>
+    setStagedScoring((m) => ({ ...m, [leafKey]: s }));
+  // The sport-level control is a convenience: it stages the same scoring for
+  // every game in the sport (rules has no sport layer — it's leaf-keyed).
+  const stageSportScoring = (sp: string, s: Scoring | null): void =>
+    setStagedScoring((m) => {
+      const next = { ...m };
+      for (const c of leavesBySport.get(sp)!) next[c.leafKey] = s;
+      return next;
+    });
+  // Representative value for the sport control: the common override if every
+  // game agrees, else null (mixed → show the inherited default).
+  const sportScoringValue = (sp: string): Scoring | null => {
+    const ls = leavesBySport.get(sp)!.map((c) => effLeafScoring(c.leafKey));
+    const first = ls[0] ?? null;
+    return ls.every((x) => scoringEqual(x, first)) ? first : null;
+  };
+
+  const scoringChanges = (): Record<string, { scoring: Scoring | null }> => {
+    const out: Record<string, { scoring: Scoring | null }> = {};
+    for (const [leafKey, s] of Object.entries(stagedScoring)) {
+      if (!scoringEqual(s, storedLeafScoring(leafKey))) out[leafKey] = { scoring: s };
+    }
+    return out;
+  };
+  const scoringDirty = Object.keys(scoringChanges()).length > 0;
+  const needsAmendReason = scoringDirty && rulesFrozen && !amendReason.trim();
+
+  const dirty = Object.keys(staged).length > 0 || scoringDirty;
 
   const save = useMutation({
     mutationFn: async () => {
@@ -196,10 +249,27 @@ export function CompetitionFormatBoard({
           throw e instanceof ApiError ? e : new Error(String(e));
         }
       }
+      // Scoring rides the settings PATCH (frozen rules → amend + reason).
+      const byLeafPatch = scoringChanges();
+      if (Object.keys(byLeafPatch).length > 0) {
+        try {
+          await tournamentsApi.updateSettings(tournamentId, {
+            rules: { by_leaf: byLeafPatch },
+            amend: rulesFrozen,
+            reason: amendReason,
+            event_id: newEventId(),
+          });
+        } catch (e) {
+          throw e instanceof ApiError ? e : new Error(String(e));
+        }
+      }
     },
     onSuccess: () => {
       setStaged({});
+      setStagedScoring({});
+      setAmendReason("");
       invalidateTournament(qc, tournamentId);
+      qc.invalidateQueries({ queryKey: ["tournament-settings", tournamentId] });
       toast.push({ kind: "success", title: t("Formats saved") });
     },
     onError: (e) =>
@@ -318,6 +388,17 @@ export function CompetitionFormatBoard({
                   </span>
                 </div>
 
+                <div className="mt-3">
+                  <ScoringControl
+                    testId={`format-sport-${sp}-scoring`}
+                    label={leaves.length > 1 ? t("Scoring (all categories)") : t("Scoring")}
+                    value={sportScoringValue(sp)}
+                    inherited={inheritedScoring(sp)}
+                    disabled={!canManage}
+                    onChange={(s) => stageSportScoring(sp, s)}
+                  />
+                </div>
+
                 {isGroups ? (
                   <div className="mt-3 flex flex-wrap items-center gap-4">
                     <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -403,8 +484,9 @@ export function CompetitionFormatBoard({
                           return (
                             <div
                               key={c.leafKey}
-                              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-1.5"
+                              className="flex flex-col gap-2 rounded-md border border-border px-3 py-2"
                             >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
                               <span className="text-sm">{c.label}</span>
                               <div className="flex items-center gap-2">
                                 {!overridden ? (
@@ -445,6 +527,14 @@ export function CompetitionFormatBoard({
                                   />
                                 </label>
                               </div>
+                              </div>
+                              <ScoringControl
+                                testId={`format-leaf-${c.leafKey}-scoring`}
+                                value={effLeafScoring(c.leafKey)}
+                                inherited={inheritedScoring(sp)}
+                                disabled={!canManage}
+                                onChange={(s) => stageLeafScoring(c.leafKey, s)}
+                              />
                             </div>
                           );
                         })}
@@ -458,21 +548,37 @@ export function CompetitionFormatBoard({
         )}
 
         {sportsInOrder.length > 0 ? (
-          <div className="flex items-center justify-between border-t border-border pt-3">
-            <p className="text-xs text-muted-foreground">
-              {dirty
-                ? t("Unsaved format changes.")
-                : t("All formats saved. Generate each draw from its card.")}
-            </p>
-            <Button
-              size="sm"
-              disabled={!dirty || save.isPending}
-              data-testid="save-formats"
-              onClick={() => save.mutate()}
-            >
-              <Save aria-hidden="true" className="h-3.5 w-3.5" />
-              {save.isPending ? t("Saving…") : t("Save formats")}
-            </Button>
+          <div className="flex flex-col gap-2 border-t border-border pt-3">
+            {scoringDirty && rulesFrozen ? (
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t(
+                  "Scoring is locked once registration opens — give a reason to amend (teams are notified).",
+                )}
+                <Input
+                  data-testid="scoring-amend-reason"
+                  className="h-8 max-w-md"
+                  placeholder={t("Reason for the change")}
+                  value={amendReason}
+                  onChange={(e) => setAmendReason(e.target.value)}
+                />
+              </label>
+            ) : null}
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                {dirty
+                  ? t("Unsaved changes.")
+                  : t("All formats saved. Generate each draw from its card.")}
+              </p>
+              <Button
+                size="sm"
+                disabled={!dirty || save.isPending || needsAmendReason}
+                data-testid="save-formats"
+                onClick={() => save.mutate()}
+              >
+                <Save aria-hidden="true" className="h-3.5 w-3.5" />
+                {save.isPending ? t("Saving…") : t("Save formats")}
+              </Button>
+            </div>
           </div>
         ) : null}
       </div>

@@ -11,10 +11,11 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.matches.models import Match, MatchStatus
-from apps.matches.services.set_scoring import compute_sets
+from apps.matches.services.set_scoring import compute_sets, rules_for_match
 from apps.teams.models import Team
 from apps.teams.services.registration import register_school
 from apps.tournaments.services.create import create_tournament
+from apps.tournaments.services.rules import merge_rules
 
 User = get_user_model()
 pytestmark = pytest.mark.django_db
@@ -130,6 +131,53 @@ def test_sets_after_decision_rejected():
     # 2-0 already decides a best-of-3; a third set is physically impossible
     with pytest.raises(DjangoValidationError):
         compute_sets([[11, 8], [11, 8], [11, 5]], TT)
+
+
+# --- per-game (leaf) scoring resolution (owner: "everything is per game") ----
+
+def _tt_match_with(t, *, leaf_key, sport="table_tennis"):
+    m = _match(t, sport=sport)
+    m.leaf_key = leaf_key
+    m.save(update_fields=["leaf_key"])
+    return Match.objects.select_related("tournament").get(pk=m.pk)
+
+
+def test_rules_for_match_leaf_override_beats_sport():
+    admin = _admin()
+    t = create_tournament(user=admin, name="TT Cup")
+    # per-SPORT default = best-of-3 to 21; per-GAME override = best-of-3 to 15 cap 17
+    t.sports = [{"key": "table_tennis", "label": "Table Tennis",
+                 "scoring": {"type": "sets", "best_of": 3, "points": 21,
+                             "win_by": 2, "cap": None}}]
+    t.rules = merge_rules({"by_leaf": {"tt.open": {"scoring": {
+        "type": "sets", "best_of": 3, "points": 15, "win_by": 2, "cap": 17}}}})
+    t.save(update_fields=["sports", "rules"])
+    m = _tt_match_with(t, leaf_key="tt.open")
+    rules = rules_for_match(m)
+    assert rules["points"] == 15 and rules["cap"] == 17  # the game's own rule wins
+
+
+def test_rules_for_match_falls_back_to_sport_without_leaf_override():
+    admin = _admin()
+    t = create_tournament(user=admin, name="TT Cup")
+    t.sports = [{"key": "table_tennis", "label": "Table Tennis",
+                 "scoring": {"type": "sets", "best_of": 3, "points": 21,
+                             "win_by": 2, "cap": None}}]
+    t.save(update_fields=["sports"])
+    m = _tt_match_with(t, leaf_key="tt.u14")  # no by_leaf entry for this game
+    assert rules_for_match(m)["points"] == 21  # the per-sport default
+
+
+def test_rules_for_match_leaf_goals_override_turns_set_sport_goal_based():
+    admin = _admin()
+    t = create_tournament(user=admin, name="TT Cup")
+    t.sports = [{"key": "table_tennis", "label": "Table Tennis",
+                 "scoring": {"type": "sets", "best_of": 3, "points": 21,
+                             "win_by": 2, "cap": None}}]
+    t.rules = merge_rules({"by_leaf": {"tt.open": {"scoring": {"type": "goals"}}}})
+    t.save(update_fields=["sports", "rules"])
+    m = _tt_match_with(t, leaf_key="tt.open")
+    assert rules_for_match(m) is None  # goal-based → no set rules
 
 
 def test_set_sport_requires_set_scores_on_goal_path():

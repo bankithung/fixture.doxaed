@@ -4,7 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "@/components/ui/toast";
-import { tournamentsApi, type DrawConfigResponse } from "@/api/tournaments";
+import {
+  tournamentsApi,
+  type DrawConfigResponse,
+  type TournamentSettings,
+} from "@/api/tournaments";
 import { CompetitionFormatBoard } from "../CompetitionFormatBoard";
 
 vi.mock("@/api/tournaments", async (importOriginal) => {
@@ -16,9 +20,31 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       drawConfig: vi.fn(),
       updateDrawConfig: vi.fn(),
       sports: vi.fn(),
+      settings: vi.fn(),
+      updateSettings: vi.fn(),
     },
   };
 });
+
+function settingsPayload(over: Partial<TournamentSettings> = {}): TournamentSettings {
+  return {
+    rules: {
+      format: "round_robin", group_size: 4, advance_per_group: 2,
+      points: { win: 3, draw: 1, loss: 0 }, tiebreakers: ["points"],
+      match: { halves: 2, half_minutes: 45, extra_time: false, penalties: true },
+      squad: { min_players: 7, max_players: 23, max_subs: 5 },
+      discipline: { yellow_suspension_threshold: 2, red_matches_banned: 1 },
+      by_leaf: {},
+    },
+    constraints: [], rules_frozen_at: null, can_edit: true, can_manage: true,
+    can_delete: true, scheduling_config: {},
+    scoring_defaults: {
+      table_tennis: { type: "sets", best_of: 3, points: 21, win_by: 2, cap: null },
+      sepak_takraw: { type: "sets", best_of: 3, points: 21, win_by: 2, cap: 25 },
+    },
+    ...over,
+  } as unknown as TournamentSettings;
+}
 
 const COMPS = [
   { leafKey: "table_tennis.u14.boys.singles", label: "U-14 Boys Singles", sport: "table_tennis" },
@@ -63,6 +89,8 @@ beforeEach(() => {
       { key: "sepak_takraw", name: "Sepak Takraw" },
     ],
   });
+  vi.mocked(tournamentsApi.settings).mockResolvedValue(settingsPayload());
+  vi.mocked(tournamentsApi.updateSettings).mockResolvedValue({} as never);
 });
 
 describe("CompetitionFormatBoard", () => {
@@ -184,6 +212,69 @@ describe("CompetitionFormatBoard", () => {
           leaf_key: "sport:sepak_takraw",
           config: expect.objectContaining({ match_duration_minutes: 20 }),
         }),
+      ),
+    );
+  });
+
+  it("inherits the sport's scoring default on each game's card", async () => {
+    mount();
+    // sepak is single-category → its scoring control sits on the sport card,
+    // showing the inherited sepak profile (best of 3 · 21 pts · cap 25).
+    const summary = await screen.findByTestId("format-sport-sepak_takraw-scoring-summary");
+    expect(summary).toHaveTextContent("Best of 3");
+    expect(summary).toHaveTextContent("21 pts");
+    expect(summary).toHaveTextContent("cap 25");
+  });
+
+  it("saves a per-game scoring override via the settings PATCH", async () => {
+    mount();
+    await userEvent.click(
+      await screen.findByTestId("format-sport-table_tennis-customize"),
+    );
+    const id = "format-leaf-table_tennis.u14.boys.doubles-scoring";
+    await userEvent.click(screen.getByTestId(`${id}-toggle`));
+    fireEvent.change(screen.getByTestId(`${id}-points`), { target: { value: "15" } });
+    fireEvent.change(screen.getByTestId(`${id}-cap`), { target: { value: "17" } });
+    await userEvent.click(screen.getByTestId("save-formats"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateSettings).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({
+          amend: false,
+          rules: {
+            by_leaf: {
+              "table_tennis.u14.boys.doubles": {
+                scoring: expect.objectContaining({ type: "sets", points: 15, cap: 17 }),
+              },
+            },
+          },
+        }),
+      ),
+    );
+    // draw-config was untouched (scoring rides the settings PATCH only)
+    expect(tournamentsApi.updateDrawConfig).not.toHaveBeenCalled();
+  });
+
+  it("requires an amend reason to change scoring once rules are frozen", async () => {
+    vi.mocked(tournamentsApi.settings).mockResolvedValue(
+      settingsPayload({ can_edit: false, rules_frozen_at: "2026-06-01T00:00:00Z" }),
+    );
+    mount();
+    const id = "format-sport-sepak_takraw-scoring";
+    await userEvent.click(await screen.findByTestId(`${id}-toggle`));
+    fireEvent.change(screen.getByTestId(`${id}-points`), { target: { value: "25" } });
+    // amend reason appears and the save is blocked until it's filled
+    expect(screen.getByTestId("scoring-amend-reason")).toBeInTheDocument();
+    expect(screen.getByTestId("save-formats")).toBeDisabled();
+    fireEvent.change(screen.getByTestId("scoring-amend-reason"), {
+      target: { value: "corrected after a referee meeting" },
+    });
+    expect(screen.getByTestId("save-formats")).not.toBeDisabled();
+    await userEvent.click(screen.getByTestId("save-formats"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateSettings).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({ amend: true, reason: "corrected after a referee meeting" }),
       ),
     );
   });

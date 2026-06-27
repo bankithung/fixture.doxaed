@@ -38,6 +38,14 @@ DEFAULT_RULES: dict[str, Any] = {
         "fixtures": "walkover",
         "rr_results": "void_if_under_half_played",
     },
+    # Per-GAME (category leaf) overrides — the owner's "everything is per game"
+    # rule. `{leaf_key: {"scoring": {...}, "tiebreakers": [...]}}`. Scoring and
+    # ranking are participant-facing, so they correctly live under the
+    # invariant-7 freeze (here in `rules`), NOT in draw_config. Resolved by
+    # apps.matches.services.set_scoring.rules_for_match (scoring) and
+    # apps.matches.services.standings.compute_standings (tiebreakers), each with
+    # precedence: per-game override -> tournament default -> sport/profile.
+    "by_leaf": {},
 }
 
 # Keys whose value is a dict and may be partially overridden (per-key merge).
@@ -45,6 +53,104 @@ _NESTED = {
     "points", "match", "squad", "discipline", "small_group_double_rr",
     "withdrawal_policy",
 }
+
+# Tiebreaker criteria the standings engine understands (validation whitelist).
+# Goal-sport tokens + set/point tokens for racket/net sports + the terminal
+# coin_toss. set_difference/sets_for are aliases of goal_difference/goals_for
+# for set sports (set wins mirror into the score).
+_TIEBREAKERS = {
+    "points", "goal_difference", "goals_for", "goals_against", "wins",
+    "head_to_head", "name", "set_difference", "sets_for",
+    "point_difference", "points_for", "points_against", "coin_toss",
+}
+
+
+def _validate_set_params(d: dict, where: str) -> None:
+    """Validate a {points, win_by, cap} block (a regular or deciding set)."""
+    if not isinstance(d, dict):
+        raise ValueError(f"{where} must be an object")
+    unknown = set(d) - {"points", "win_by", "cap"}
+    if unknown:
+        raise ValueError(f"unknown {where} keys: {sorted(unknown)}")
+    points = d.get("points", 11)
+    if not (isinstance(points, int) and not isinstance(points, bool) and points >= 1):
+        raise ValueError(f"{where}.points must be a positive integer")
+    win_by = d.get("win_by", 2)
+    if not (isinstance(win_by, int) and not isinstance(win_by, bool) and win_by >= 1):
+        raise ValueError(f"{where}.win_by must be a positive integer")
+    cap = d.get("cap")
+    if cap is not None and not (
+        isinstance(cap, int) and not isinstance(cap, bool) and cap >= points
+    ):
+        raise ValueError(f"{where}.cap must be an integer >= points")
+
+
+def _validate_scoring(d: dict) -> None:
+    """Validate a per-game scoring block (sets or goals/timed)."""
+    if not isinstance(d, dict):
+        raise ValueError("scoring must be an object")
+    typ = d.get("type")
+    if typ not in {"sets", "goals"}:
+        raise ValueError("scoring.type must be 'sets' or 'goals'")
+    if typ == "goals":
+        extra = set(d) - {"type"}
+        if extra:
+            raise ValueError(f"unknown goals scoring keys: {sorted(extra)}")
+        return
+    unknown = set(d) - {"type", "best_of", "points", "win_by", "cap", "deciding"}
+    if unknown:
+        raise ValueError(f"unknown scoring keys: {sorted(unknown)}")
+    best_of = d.get("best_of", 3)
+    if not (isinstance(best_of, int) and not isinstance(best_of, bool) and best_of >= 1):
+        raise ValueError("scoring.best_of must be a positive integer")
+    _validate_set_params(
+        {k: d[k] for k in ("points", "win_by", "cap") if k in d}, "scoring"
+    )
+    deciding = d.get("deciding")
+    if deciding is not None:
+        _validate_set_params(deciding, "scoring.deciding")
+
+
+def _validate_tiebreakers(tbs) -> None:
+    if not isinstance(tbs, list) or not all(isinstance(x, str) for x in tbs):
+        raise ValueError("tiebreakers must be a list of strings")
+    unknown = sorted({x for x in tbs if x not in _TIEBREAKERS})
+    if unknown:
+        raise ValueError(f"unknown tiebreakers: {unknown}")
+
+
+def _merge_by_leaf(out: dict, partial) -> None:
+    """Merge per-game overrides into `out` in place. A leaf set to None clears
+    it; a leaf's `scoring`/`tiebreakers` set to None clears just that override.
+    Each surviving block is validated."""
+    if not isinstance(partial, dict):
+        raise ValueError("by_leaf must be an object")
+    for leaf, entry in partial.items():
+        if entry is None:
+            out.pop(leaf, None)
+            continue
+        if not isinstance(entry, dict):
+            raise ValueError(f"by_leaf[{leaf}] must be an object")
+        unknown = set(entry) - {"scoring", "tiebreakers"}
+        if unknown:
+            raise ValueError(f"unknown by_leaf keys: {sorted(unknown)}")
+        cur = dict(out.get(leaf) or {})
+        if "scoring" in entry:
+            if entry["scoring"] is None:
+                cur.pop("scoring", None)
+            else:
+                _validate_scoring(entry["scoring"])
+                cur["scoring"] = entry["scoring"]
+        if "tiebreakers" in entry:
+            if entry["tiebreakers"] is None:
+                cur.pop("tiebreakers", None)
+            else:
+                _validate_tiebreakers(entry["tiebreakers"])
+                cur["tiebreakers"] = entry["tiebreakers"]
+        if cur:
+            out[leaf] = cur
+        else:
+            out.pop(leaf, None)
 
 
 def merge_rules(
@@ -65,7 +171,9 @@ def merge_rules(
         if unknown:
             raise ValueError(f"unknown rule keys: {sorted(unknown)}")
         for key, value in layer.items():
-            if key in _NESTED and isinstance(value, dict):
+            if key == "by_leaf":
+                _merge_by_leaf(out["by_leaf"], value)
+            elif key in _NESTED and isinstance(value, dict):
                 sub_unknown = set(value) - set(DEFAULT_RULES[key])
                 if sub_unknown:
                     raise ValueError(f"unknown {key} keys: {sorted(sub_unknown)}")

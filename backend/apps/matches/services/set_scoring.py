@@ -107,10 +107,22 @@ def sport_override(match: Match) -> dict | None:
     return None
 
 
+def leaf_override(match: Match) -> dict | None:
+    """The organizer's per-GAME (category leaf) scoring override, from
+    Tournament.rules['by_leaf'][leaf_key]['scoring'] (the owner's "everything is
+    per game" rule). Takes precedence over the per-sport override, so one Table
+    Tennis category can play best-of-3 while another plays best-of-5."""
+    if not match.leaf_key:
+        return None
+    by_leaf = (match.tournament.rules or {}).get("by_leaf") or {}
+    return (by_leaf.get(match.leaf_key) or {}).get("scoring")
+
+
 def rules_for_match(match: Match) -> dict | None:
-    """Resolved set-scoring rules for a match (override → profile default), or
-    None for goal-based matches. The single entry point views/serializers use."""
-    return scoring_rules(match.sport, sport_override(match))
+    """Resolved set-scoring rules for a match, or None for goal-based matches.
+    Precedence: per-game override → per-sport override → sport profile default.
+    The single entry point views/serializers use."""
+    return scoring_rules(match.sport, leaf_override(match) or sport_override(match))
 
 
 def is_set_based(sport_key: str | None, override: dict | None = None) -> bool:

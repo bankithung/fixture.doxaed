@@ -285,6 +285,23 @@ class TournamentInvitationCreateView(GenericAPIView):
         )
 
 
+def _scoring_defaults(tournament) -> dict:
+    """Per-sport scoring baseline (per-tournament sport override → researched
+    profile) so the format board can show what each game INHERITS before a
+    per-game override. Keyed by top-level sport key; value is a sets/goals block
+    or None (unknown sport → goal-based)."""
+    from apps.matches.services.set_scoring import SPORT_PROFILES, _norm
+
+    out: dict = {}
+    for s in tournament.sports or []:
+        key = s.get("key")
+        if not key:
+            continue
+        prof = SPORT_PROFILES.get(_norm(key)) or {}
+        out[key] = s.get("scoring") or prof.get("scoring")
+    return out
+
+
 def _settings_payload(tournament, user) -> dict:
     return {
         "rules": merge_rules(tournament.rules),
@@ -300,6 +317,9 @@ def _settings_payload(tournament, user) -> dict:
         # Stored scheduling preferences (slot length, rests, auto_reflow, …) so the
         # Schedule wizard can pre-seed its controls from the last run.
         "scheduling_config": tournament.scheduling_config or {},
+        # Per-sport scoring baseline so the format board shows what each game
+        # inherits (owner 2026-06-27: per-game scoring lives in rules.by_leaf).
+        "scoring_defaults": _scoring_defaults(tournament),
     }
 
 

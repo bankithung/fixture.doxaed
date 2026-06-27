@@ -39,6 +39,39 @@ def test_get_settings_returns_defaults_and_can_edit():
     assert body["rules_frozen_at"] is None
 
 
+def test_get_settings_exposes_per_sport_scoring_defaults():
+    admin = _user("a@test.local")
+    t = create_tournament(user=admin, name="Cup")
+    t.sports = [{"key": "table_tennis", "label": "TT"}, {"key": "football", "label": "FB"}]
+    t.save(update_fields=["sports"])
+    body = _client(admin).get(f"/api/tournaments/{t.id}/settings/").json()
+    # researched profile is surfaced so each game shows what it inherits
+    assert body["scoring_defaults"]["table_tennis"]["type"] == "sets"
+    assert body["scoring_defaults"]["table_tennis"]["points"] == 11  # the TT profile
+    assert body["scoring_defaults"]["football"]["type"] == "goals"
+
+
+def test_patch_persists_and_clears_a_per_game_scoring_override():
+    admin = _user("a@test.local")
+    t = create_tournament(user=admin, name="Cup")
+    c = _client(admin)
+    tt = {"type": "sets", "best_of": 3, "points": 15, "win_by": 2, "cap": 17}
+    r = c.patch(
+        f"/api/tournaments/{t.id}/settings/",
+        {"rules": {"by_leaf": {"tt.open": {"scoring": tt}}}, "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 200, r.content
+    assert r.json()["rules"]["by_leaf"]["tt.open"]["scoring"]["cap"] == 17
+    # clearing the override removes the game's entry
+    r = c.patch(
+        f"/api/tournaments/{t.id}/settings/",
+        {"rules": {"by_leaf": {"tt.open": {"scoring": None}}}, "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.json()["rules"]["by_leaf"] == {}
+
+
 def test_patch_merges_rules_onto_current():
     admin = _user("a@test.local")
     t = create_tournament(user=admin, name="Cup")
