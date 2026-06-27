@@ -15,6 +15,10 @@ export interface VenueDraft {
   /** Daily availability window; both empty = always open. */
   from: string;
   to: string;
+  /** Optional daily break for THIS venue (lunch/prayer); both empty = none.
+   * No match is scheduled here during it. */
+  break_from: string;
+  break_to: string;
   /** Sport keys allowed on this venue; empty = any sport (owner ask
    * 2026-06-25). Binds e.g. "TT Court" to table tennis so a Sepak match
    * never lands there. */
@@ -98,6 +102,26 @@ export function VenueRow({
           value={value.to}
           aria-label={t("Venue closes at")}
           onChange={(e) => set({ to: e.target.value })}
+          className="h-9"
+        />
+      </label>
+      <label className="flex w-[6.5rem] flex-col gap-1">
+        <span className="text-xs font-medium">{t("Break from")}</span>
+        <Input
+          type="time"
+          value={value.break_from}
+          aria-label={t("Venue break starts at")}
+          onChange={(e) => set({ break_from: e.target.value })}
+          className="h-9"
+        />
+      </label>
+      <label className="flex w-[6.5rem] flex-col gap-1">
+        <span className="text-xs font-medium">{t("Break until")}</span>
+        <Input
+          type="time"
+          value={value.break_to}
+          aria-label={t("Venue break ends at")}
+          onChange={(e) => set({ break_to: e.target.value })}
           className="h-9"
         />
       </label>

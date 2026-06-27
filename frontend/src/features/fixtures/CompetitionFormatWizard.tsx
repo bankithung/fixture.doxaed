@@ -154,6 +154,8 @@ interface Form {
   /** Swiss round count. */
   swissRounds: number;
   order: SeedTeam[];
+  /** Per-competition match length (minutes); 0 = use the tournament default. */
+  matchDuration: number;
 }
 
 /**
@@ -267,6 +269,15 @@ export function CompetitionFormatWizard({
         plate: Boolean(eff.plate),
         swissRounds: eff.swiss_rounds ?? suggestedSwissRounds(teamCount),
         order: bySeed(teams),
+        // Seed from THIS scope's own override only (blank = inherit), not the
+        // merged effective value, so the input shows the override and saving
+        // it doesn't accidentally de-inherit the tournament default.
+        matchDuration: Number(
+          (leafKey
+            ? drawConfig.data.draw_config[leafKey]
+            : drawConfig.data.draw_config["*"]
+          )?.match_duration_minutes ?? 0,
+        ),
       });
       setSeededSig(sig);
     }
@@ -300,6 +311,9 @@ export function CompetitionFormatWizard({
   const buildConfig = (): DrawConfigLayer => {
     if (!f) return {};
     const cfg: DrawConfigLayer = { seeding: f.seeding };
+    // Per-competition match length — sparse: only stored when overridden, so an
+    // unset competition keeps inheriting the tournament default.
+    if (f.matchDuration > 0) cfg.match_duration_minutes = f.matchDuration;
     if (f.ui === "knockout") {
       cfg.format = "knockout";
       cfg.third_place = f.thirdPlace;
@@ -581,6 +595,29 @@ export function CompetitionFormatWizard({
               </p>
             </div>
           ) : null}
+
+          {/* Per-competition match length (owner ask 2026-06-27): blank = use
+              the tournament default set in Step 1 · Play times. */}
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium">
+              {t("Match length for this competition (minutes)")}
+            </span>
+            <Input
+              type="number"
+              min={1}
+              data-testid="match-duration"
+              value={f.matchDuration > 0 ? f.matchDuration : ""}
+              placeholder={t("Tournament default")}
+              aria-label={t("Match length in minutes (blank uses the default)")}
+              onChange={(e) =>
+                set("matchDuration", Math.max(0, Number(e.target.value) || 0))
+              }
+              className="h-9 w-40 font-tabular"
+            />
+            <span className="text-xs text-muted-foreground">
+              {t("Leave blank to use the tournament-wide default duration.")}
+            </span>
+          </label>
 
           {/* §4.3 progressive disclosure — every secondary knob, nothing dropped. */}
           <div className="overflow-hidden rounded-lg border border-border">

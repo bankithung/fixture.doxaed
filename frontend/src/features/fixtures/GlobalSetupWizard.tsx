@@ -46,6 +46,9 @@ interface Form {
   rest_minutes: number;
   max_per_day: number;
   sunday_church: boolean;
+  /** Overall daily break (all venues), every day; empty = none. */
+  daily_break_from: string;
+  daily_break_to: string;
 }
 
 const EMPTY_FORM: Form = {
@@ -62,6 +65,8 @@ const EMPTY_FORM: Form = {
   rest_minutes: 60,
   max_per_day: 1,
   sunday_church: true,
+  daily_break_from: "",
+  daily_break_to: "",
 };
 
 function isAll(c: ConstraintRecord): boolean {
@@ -87,11 +92,19 @@ function venueDraft(v: VenueRecord): VenueDraft {
     from: v.windows?.[0]?.from ?? "",
     to: v.windows?.[0]?.to ?? "",
     sports: v.sports ?? [],
+    break_from: v.breaks?.[0]?.from ?? "",
+    break_to: v.breaks?.[0]?.to ?? "",
   };
 }
 
 function draftWindows(d: VenueDraft): { from: string; to: string }[] {
   return d.from && d.to ? [{ from: d.from, to: d.to }] : [];
+}
+
+function draftBreaks(d: VenueDraft): { from: string; to: string }[] {
+  return d.break_from && d.break_to
+    ? [{ from: d.break_from, to: d.break_to }]
+    : [];
 }
 
 /** "2026-06-12" → "Jun 12" — the review reads in words, not ISO. */
@@ -202,8 +215,22 @@ export function GlobalSetupWizard({
       const ceremonies = records.filter(
         (c) => c.type === "ceremony_block" && isAll(c),
       );
+      // Both the Sunday-church block and the overall daily break are
+      // recurring_blackout_window @ scope "all"; tell them apart by label
+      // (legacy church records have no label but carry days:["sun"]).
       const church = records.find(
-        (c) => c.type === "recurring_blackout_window" && isAll(c),
+        (c) =>
+          c.type === "recurring_blackout_window" &&
+          isAll(c) &&
+          (c.params?.label === "sunday_church" ||
+            (Array.isArray(c.params?.days) &&
+              (c.params.days as string[]).includes("sun"))),
+      );
+      const dailyBreak = records.find(
+        (c) =>
+          c.type === "recurring_blackout_window" &&
+          isAll(c) &&
+          c.params?.label === "daily_break",
       );
       setForm({
         date_start: String(cal?.date_start ?? ""),
@@ -227,6 +254,8 @@ export function GlobalSetupWizard({
         // Default ON (Nagaland Sunday-morning church) until the wizard has been
         // saved once; after that the stored record is the truth.
         sunday_church: church !== undefined || cal === null,
+        daily_break_from: String(dailyBreak?.params.from ?? ""),
+        daily_break_to: String(dailyBreak?.params.to ?? ""),
       });
       setSeededSig(sig);
     }
@@ -244,6 +273,7 @@ export function GlobalSetupWizard({
           windows: draftWindows(d),
           count: d.count,
           sports: d.sports,
+          breaks: draftBreaks(d),
         };
         if (!d.id) {
           await tournamentsApi.createVenue(tournamentId, body);
@@ -256,7 +286,8 @@ export function GlobalSetupWizard({
           prev.venue_type !== body.venue_type ||
           (prev.count ?? 1) !== body.count ||
           JSON.stringify(prev.windows ?? []) !== JSON.stringify(body.windows) ||
-          JSON.stringify(prev.sports ?? []) !== JSON.stringify(body.sports);
+          JSON.stringify(prev.sports ?? []) !== JSON.stringify(body.sports) ||
+          JSON.stringify(prev.breaks ?? []) !== JSON.stringify(body.breaks);
         if (changed) await tournamentsApi.updateVenue(tournamentId, d.id, body);
       }
       for (const v of stored) {
@@ -281,7 +312,14 @@ export function GlobalSetupWizard({
       }
       if (form.sunday_church) {
         next.push({ type: "recurring_blackout_window", scope: "all",
-          params: { days: ["sun"], from: "00:00", to: "13:00" } });
+          params: { days: ["sun"], from: "00:00", to: "13:00",
+            label: "sunday_church" } });
+      }
+      if (form.daily_break_from && form.daily_break_to) {
+        // Overall daily break — every day (empty `days`), all venues.
+        next.push({ type: "recurring_blackout_window", scope: "all",
+          params: { days: [], from: form.daily_break_from,
+            to: form.daily_break_to, label: "daily_break" } });
       }
       if (form.rest_minutes > 0) {
         next.push({ type: "min_rest_minutes", scope: "all",
@@ -483,7 +521,10 @@ export function GlobalSetupWizard({
               onClick={() =>
                 set("venues", [
                   ...form.venues,
-                  { name: "", venue_type: "ground", count: 1, from: "", to: "", sports: [] },
+                  {
+                    name: "", venue_type: "ground", count: 1, from: "", to: "",
+                    sports: [], break_from: "", break_to: "",
+                  },
                 ])
               }
             >
@@ -537,6 +578,32 @@ export function GlobalSetupWizard({
                   min={1}
                   value={form.max_per_day}
                   onChange={(e) => set("max_per_day", Number(e.target.value))}
+                />
+              </Field>
+            </div>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {t("Daily break")}
+            </h4>
+            <p className="-mt-2 text-xs text-muted-foreground">
+              {t(
+                "A break every day across all venues — no match is scheduled during it. Leave blank for none. Set a break on a single venue under Venues.",
+              )}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={t("Break starts at")}>
+                <Input
+                  type="time"
+                  value={form.daily_break_from}
+                  aria-label={t("Daily break starts at")}
+                  onChange={(e) => set("daily_break_from", e.target.value)}
+                />
+              </Field>
+              <Field label={t("Break ends at")}>
+                <Input
+                  type="time"
+                  value={form.daily_break_to}
+                  aria-label={t("Daily break ends at")}
+                  onChange={(e) => set("daily_break_to", e.target.value)}
                 />
               </Field>
             </div>

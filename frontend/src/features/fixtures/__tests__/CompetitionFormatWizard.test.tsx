@@ -462,4 +462,34 @@ describe("CompetitionFormatWizard", () => {
     expect(screen.getByTestId("save-format")).toBeDisabled();
     expect(screen.getByTestId("confirm-generate")).toBeDisabled();
   });
+
+  it("persists a per-competition match duration override", async () => {
+    mount();
+    fireEvent.change(await screen.findByTestId("match-duration"), {
+      target: { value: "30" },
+    });
+    await userEvent.click(screen.getByTestId("save-format"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith("t1", {
+        leaf_key: "football.u15",
+        config: expect.objectContaining({ match_duration_minutes: 30 }),
+        event_id: expect.any(String),
+      }),
+    );
+  });
+
+  it("prefills a stored match duration; blank means inherit (no key sent)", async () => {
+    vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
+      draw_config: { "football.u15": { match_duration_minutes: 25 } },
+      defaults: DEFAULTS,
+    });
+    mount();
+    expect(await screen.findByTestId("match-duration")).toHaveValue(25);
+
+    fireEvent.change(screen.getByTestId("match-duration"), { target: { value: "" } });
+    await userEvent.click(screen.getByTestId("save-format"));
+    await waitFor(() => expect(tournamentsApi.updateDrawConfig).toHaveBeenCalled());
+    const sent = vi.mocked(tournamentsApi.updateDrawConfig).mock.calls.at(-1)![1];
+    expect("match_duration_minutes" in sent.config).toBe(false);
+  });
 });

@@ -916,6 +916,9 @@ export interface VenueRecord {
   /** Sport keys allowed on this venue (owner ask 2026-06-25); empty = any
    * sport. The scheduler keeps a sport's matches on its own courts. */
   sports?: string[];
+  /** Daily breaks for THIS venue (lunch/prayer); no match is scheduled here
+   * during them (owner ask 2026-06-27). */
+  breaks?: { from: string; to: string }[];
 }
 
 /** `POST …/fixtures/next-round/` response (Swiss, increment P). */
@@ -974,6 +977,10 @@ export interface DrawConfig {
   /** ISO timestamp of "Mark reviewed" (§9 A10). */
   constraints_reviewed_at: string | null;
   calendar?: DrawCalendar | null;
+  /** Per-competition match length in minutes (owner ask 2026-06-27). Layered:
+   * "*" = tournament default, "<leaf>" = override. null = inherit. Scheduling-
+   * only (excluded from inputs_hash). */
+  match_duration_minutes?: number | null;
 }
 
 /** One stored layer is SPARSE — only the keys the organizer set. */
