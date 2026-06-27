@@ -79,6 +79,11 @@ class ScheduleConfig:
     # Per-venue availability override: {venue: [(start, end)]}. Empty means the
     # venue inherits the tournament daily window every non-excluded day.
     venue_windows: dict[str, list[tuple[time, time]]] = field(default_factory=dict)
+    # Per-venue daily BREAKS: {venue: [(start, end)]} — lunch/prayer windows
+    # subtracted from THAT venue's grid every day (no match lands there during
+    # the break). Composes with the all-venue daily break (a "recurring_blackout_
+    # window" scope:"all"). Set from Venue.breaks via config_from_dict.
+    venue_breaks: dict[str, list[tuple[time, time]]] = field(default_factory=dict)
     # Venue typing ({venue: "ground"|"indoor_court"|...}); a match requiring a
     # type only lands on venues of that type (untyped venues accept anything).
     venue_types: dict[str, str] = field(default_factory=dict)
@@ -178,6 +183,7 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
 
     venues: list[str] = []
     venue_windows: dict[str, list[tuple[time, time]]] = {}
+    venue_breaks: dict[str, list[tuple[time, time]]] = {}
     venue_types: dict[str, str] = {}
     venue_counts: dict[str, int] = {}
     venue_unavailable: dict[str, set[date]] = {}
@@ -217,6 +223,14 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
             ]
             if wins:
                 venue_windows[name] = wins
+            brks = [
+                (_parse_time(b.get("from"), daily_start),
+                 _parse_time(b.get("to"), daily_end))
+                for b in (v.get("breaks") or [])
+                if isinstance(b, dict) and b.get("from") and b.get("to")
+            ]
+            if brks:
+                venue_breaks[name] = brks
         elif str(v).strip():
             venues.append(str(v).strip())
     if not venues:
@@ -239,6 +253,7 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
         max_per_team_per_day=int(d.get("max_per_team_per_day", 1)),
         excluded_dates=excluded,
         venue_windows=venue_windows,
+        venue_breaks=venue_breaks,
         venue_types=venue_types,
         venue_counts=venue_counts,
         venue_unavailable_dates=venue_unavailable,
@@ -579,6 +594,8 @@ def build_slots(cfg: ScheduleConfig) -> list[tuple[datetime, str, datetime]]:
                         or base in r.params["venues"] or venue in r.params["venues"]
                     )
                 ]
+                # Per-venue daily breaks (this venue only, every day).
+                cuts += cfg.venue_breaks.get(base, [])
                 for w_start, w_end in _subtract_windows(windows, cuts):
                     cur = datetime.combine(d, w_start)
                     end = datetime.combine(d, w_end)
@@ -1618,7 +1635,18 @@ def build_schedule_inputs(
         s.get("key"): (s.get("scheduling") or {}) for s in tournament.sports or []
     }
 
-    def duration_for(sport: str) -> int | None:
+    from apps.fixtures.services.draw_config import effective_draw_config
+
+    def duration_for(sport: str, leaf_key: str = "") -> int | None:
+        # Per-competition override (draw_config[leaf].match_duration_minutes,
+        # layered over the "*" default) wins; then the per-sport scheduling
+        # override; then the sport profile; else None → caller's slot_minutes.
+        if leaf_key:
+            d = effective_draw_config(tournament, leaf_key).get(
+                "match_duration_minutes"
+            )
+            if d:
+                return int(d)
         o = sched_overrides.get(sport) or {}
         if o.get("duration_minutes"):
             return int(o["duration_minutes"])
@@ -1663,7 +1691,7 @@ def build_schedule_inputs(
                 away=str(m.away_team_id) if m.away_team_id else None,
                 leaf_key=m.leaf_key,
                 sport=m.sport,
-                duration_minutes=duration_for(m.sport),
+                duration_minutes=duration_for(m.sport, m.leaf_key or ""),
                 venue_type=venue_type_for(m.sport),
                 stage=m.stage,
             )
@@ -1686,7 +1714,7 @@ def build_schedule_inputs(
                 away=str(p.away_team_id) if p.away_team_id else None,
                 leaf_key=p.leaf_key,
                 sport=p.sport,
-                duration_minutes=duration_for(p.sport),
+                duration_minutes=duration_for(p.sport, p.leaf_key or ""),
                 venue_type=venue_type_for(p.sport),
                 stage=p.stage,
             )
@@ -1699,7 +1727,7 @@ def build_schedule_inputs(
         if m.id in excluded_ids or m.scheduled_at is None:
             continue
         start = dj_tz.localtime(m.scheduled_at, tz).replace(tzinfo=None)
-        dmin = duration_for(m.sport) or cfg.slot_minutes
+        dmin = duration_for(m.sport, m.leaf_key or "") or cfg.slot_minutes
         teams = [str(t) for t in (m.home_team_id, m.away_team_id) if t]
         preoccupied.append((
             m.venue, start, start + timedelta(minutes=dmin), teams,

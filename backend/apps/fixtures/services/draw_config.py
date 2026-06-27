@@ -54,6 +54,12 @@ DEFAULT_DRAW_CONFIG: dict[str, Any] = {
     # Global-setup wizard calendar (§5.1 "wizard-saved dates"; only meaningful
     # on the "*" layer): slot-time data, excluded from the draw inputs_hash.
     "calendar": None,
+    # Per-competition match length (minutes). Layered scalar: "*" = tournament
+    # default, "<leaf>" = per-category override. Scheduling-only (it changes how
+    # long a match BLOCKS the calendar, never WHO plays WHOM) so it is excluded
+    # from inputs_hash. None = inherit (sport override → SPORT_PROFILES → global
+    # slot_minutes). Resolved by scheduler.duration_for().
+    "match_duration_minutes": None,
 }
 
 _FORMATS = {"round_robin", "knockout", "groups_knockout", "swiss",
@@ -151,6 +157,11 @@ def _validate_layer(layer: dict[str, Any]) -> None:
         raise ValueError("constraints_reviewed_at must be an ISO timestamp string")
     if "calendar" in layer:
         _validate_calendar(layer["calendar"])
+    if "match_duration_minutes" in layer \
+            and layer["match_duration_minutes"] is not None \
+            and (not _is_int(layer["match_duration_minutes"])
+                 or layer["match_duration_minutes"] < 1):
+        raise ValueError("match_duration_minutes must be a positive integer")
     if "balance_groups" in layer and not isinstance(layer["balance_groups"], bool):
         raise ValueError("balance_groups must be a boolean")
 

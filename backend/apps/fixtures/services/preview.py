@@ -58,7 +58,7 @@ def stored_venue_records(tournament) -> list[dict[str, Any]]:
         {"name": v.name, "venue_type": v.venue_type,
          "windows": v.windows, "count": v.count,
          "unavailable_dates": v.unavailable_dates or [],
-         "sports": v.sports or []}
+         "sports": v.sports or [], "breaks": v.breaks or []}
         for v in Venue.objects.filter(
             organization=tournament.organization, deleted_at__isnull=True
         ).order_by("name")

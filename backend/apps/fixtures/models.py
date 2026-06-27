@@ -40,6 +40,12 @@ class Venue(models.Model):
     # convention: a TT match never sits on a Sepak Takraw court even when both
     # share the "indoor_court" type. Stored as a list of sport keys.
     sports = models.JSONField(default=list, blank=True)
+    # Daily recurring BREAKS for THIS venue (owner ask 2026-06-27): a list of
+    # {"from": "HH:MM", "to": "HH:MM"} windows subtracted from the venue's grid
+    # every day, so no match is scheduled here during lunch/prayer. Distinct
+    # from `windows` (daily open hours) and from the tournament-wide daily break
+    # (a recurring_blackout_window constraint at scope "all").
+    breaks = models.JSONField(default=list, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="venues_created",

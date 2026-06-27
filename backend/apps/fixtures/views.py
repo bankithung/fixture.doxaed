@@ -852,6 +852,7 @@ def _venue_payload(v: Venue) -> dict:
         "windows": v.windows or [], "count": v.count,
         "unavailable_dates": v.unavailable_dates or [],
         "sports": v.sports or [],
+        "breaks": v.breaks or [],
     }
 
 
@@ -936,6 +937,7 @@ class TournamentVenuesView(GenericAPIView):
                 request.data.get("unavailable_dates")
             ),
             sports=_clean_sports(request.data.get("sports")),
+            breaks=_clean_windows(request.data.get("breaks")),
             created_by=request.user,
         )
         return Response(_venue_payload(v), status=201)
@@ -983,8 +985,11 @@ class TournamentVenueDetailView(GenericAPIView):
             )
         if "sports" in request.data:
             v.sports = _clean_sports(request.data["sports"])
+        if "breaks" in request.data:
+            v.breaks = _clean_windows(request.data["breaks"])
         v.save(update_fields=["name", "venue_type", "windows", "count",
-                              "unavailable_dates", "sports", "updated_at"])
+                              "unavailable_dates", "sports", "breaks",
+                              "updated_at"])
         return Response(_venue_payload(v))
 
     def delete(self, request, tournament_id, venue_id):

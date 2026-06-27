@@ -429,7 +429,7 @@ def _group_hash(group: list) -> str:
 # into scheduling staleness, never the draw), not a generation input, and
 # the Swiss bye ledger (increment P) is likewise persisted BY generation.
 _HASH_EXCLUDED_KEYS = ("seed", "constraints_reviewed_at", "calendar",
-                       "swiss_byes")
+                       "swiss_byes", "match_duration_minutes")
 
 
 def pairing_scope_constraints(
