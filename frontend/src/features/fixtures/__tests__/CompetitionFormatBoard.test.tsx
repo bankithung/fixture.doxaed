@@ -255,6 +255,32 @@ describe("CompetitionFormatBoard", () => {
     expect(tournamentsApi.updateDrawConfig).not.toHaveBeenCalled();
   });
 
+  it("saves a per-game tie-breaker order via the settings PATCH", async () => {
+    mount();
+    // sepak is single-category → its tie-breakers sit on the sport card
+    const id = "format-sport-sepak_takraw-tiebreakers";
+    await userEvent.click(await screen.findByTestId(`${id}-toggle`));
+    await userEvent.click(screen.getByTestId(`${id}-down-head_to_head`));
+    await userEvent.click(screen.getByTestId("save-formats"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateSettings).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({
+          rules: {
+            by_leaf: {
+              "sepak_takraw.u14.boys": {
+                tiebreakers: [
+                  "points", "set_difference", "head_to_head",
+                  "point_difference", "points_for", "coin_toss",
+                ],
+              },
+            },
+          },
+        }),
+      ),
+    );
+  });
+
   it("requires an amend reason to change scoring once rules are frozen", async () => {
     vi.mocked(tournamentsApi.settings).mockResolvedValue(
       settingsPayload({ can_edit: false, rules_frozen_at: "2026-06-01T00:00:00Z" }),

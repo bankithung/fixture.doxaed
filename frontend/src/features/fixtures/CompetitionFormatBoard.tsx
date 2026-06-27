@@ -18,6 +18,8 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { ScoringControl } from "./ScoringControl";
 import { scoringEqual, type Scoring } from "./scoring";
+import { TiebreakerControl } from "./TiebreakerControl";
+import { tiebreakersEqual } from "./tiebreakers";
 
 interface Comp {
   leafKey: string;
@@ -87,6 +89,7 @@ export function CompetitionFormatBoard({
   // clear back to the sport default). Saved via the settings PATCH (frozen
   // rules), not draw_config — scoring is participant-facing (invariant 7).
   const [stagedScoring, setStagedScoring] = useState<Record<string, Scoring | null>>({});
+  const [stagedTiebreakers, setStagedTiebreakers] = useState<Record<string, string[] | null>>({});
   const [amendReason, setAmendReason] = useState("");
 
   const dcQ = useQuery({
@@ -222,17 +225,40 @@ export function CompetitionFormatBoard({
     return ls.every((x) => scoringEqual(x, first)) ? first : null;
   };
 
-  const scoringChanges = (): Record<string, { scoring: Scoring | null }> => {
-    const out: Record<string, { scoring: Scoring | null }> = {};
+  // --- Per-game tie-breakers (settings/rules.by_leaf[leaf].tiebreakers) -----
+  const storedLeafTbs = (leafKey: string): string[] | null =>
+    (byLeaf[leafKey]?.tiebreakers as string[] | undefined) ?? null;
+  const effLeafTbs = (leafKey: string): string[] | null =>
+    leafKey in stagedTiebreakers ? stagedTiebreakers[leafKey]! : storedLeafTbs(leafKey);
+  const stageLeafTbs = (leafKey: string, tbs: string[] | null): void =>
+    setStagedTiebreakers((m) => ({ ...m, [leafKey]: tbs }));
+  const stageSportTbs = (sp: string, tbs: string[] | null): void =>
+    setStagedTiebreakers((m) => {
+      const next = { ...m };
+      for (const c of leavesBySport.get(sp)!) next[c.leafKey] = tbs;
+      return next;
+    });
+  const sportTbsValue = (sp: string): string[] | null => {
+    const ls = leavesBySport.get(sp)!.map((c) => effLeafTbs(c.leafKey));
+    const first = ls[0] ?? null;
+    return ls.every((x) => tiebreakersEqual(x, first)) ? first : null;
+  };
+
+  // One settings PATCH carries every changed game's scoring + tiebreakers.
+  const byLeafChanges = (): Record<string, { scoring?: Scoring | null; tiebreakers?: string[] | null }> => {
+    const out: Record<string, { scoring?: Scoring | null; tiebreakers?: string[] | null }> = {};
     for (const [leafKey, s] of Object.entries(stagedScoring)) {
-      if (!scoringEqual(s, storedLeafScoring(leafKey))) out[leafKey] = { scoring: s };
+      if (!scoringEqual(s, storedLeafScoring(leafKey))) (out[leafKey] ??= {}).scoring = s;
+    }
+    for (const [leafKey, tbs] of Object.entries(stagedTiebreakers)) {
+      if (!tiebreakersEqual(tbs, storedLeafTbs(leafKey))) (out[leafKey] ??= {}).tiebreakers = tbs;
     }
     return out;
   };
-  const scoringDirty = Object.keys(scoringChanges()).length > 0;
-  const needsAmendReason = scoringDirty && rulesFrozen && !amendReason.trim();
+  const rulesDirty = Object.keys(byLeafChanges()).length > 0;
+  const needsAmendReason = rulesDirty && rulesFrozen && !amendReason.trim();
 
-  const dirty = Object.keys(staged).length > 0 || scoringDirty;
+  const dirty = Object.keys(staged).length > 0 || rulesDirty;
 
   const save = useMutation({
     mutationFn: async () => {
@@ -249,8 +275,8 @@ export function CompetitionFormatBoard({
           throw e instanceof ApiError ? e : new Error(String(e));
         }
       }
-      // Scoring rides the settings PATCH (frozen rules → amend + reason).
-      const byLeafPatch = scoringChanges();
+      // Scoring + tiebreakers ride the settings PATCH (frozen → amend + reason).
+      const byLeafPatch = byLeafChanges();
       if (Object.keys(byLeafPatch).length > 0) {
         try {
           await tournamentsApi.updateSettings(tournamentId, {
@@ -267,6 +293,7 @@ export function CompetitionFormatBoard({
     onSuccess: () => {
       setStaged({});
       setStagedScoring({});
+      setStagedTiebreakers({});
       setAmendReason("");
       invalidateTournament(qc, tournamentId);
       qc.invalidateQueries({ queryKey: ["tournament-settings", tournamentId] });
@@ -388,7 +415,7 @@ export function CompetitionFormatBoard({
                   </span>
                 </div>
 
-                <div className="mt-3">
+                <div className="mt-3 flex flex-col gap-3">
                   <ScoringControl
                     testId={`format-sport-${sp}-scoring`}
                     label={leaves.length > 1 ? t("Scoring (all categories)") : t("Scoring")}
@@ -396,6 +423,13 @@ export function CompetitionFormatBoard({
                     inherited={inheritedScoring(sp)}
                     disabled={!canManage}
                     onChange={(s) => stageSportScoring(sp, s)}
+                  />
+                  <TiebreakerControl
+                    testId={`format-sport-${sp}-tiebreakers`}
+                    value={sportTbsValue(sp)}
+                    scoring={sportScoringValue(sp) ?? inheritedScoring(sp)}
+                    disabled={!canManage}
+                    onChange={(tbs) => stageSportTbs(sp, tbs)}
                   />
                 </div>
 
@@ -535,6 +569,13 @@ export function CompetitionFormatBoard({
                                 disabled={!canManage}
                                 onChange={(s) => stageLeafScoring(c.leafKey, s)}
                               />
+                              <TiebreakerControl
+                                testId={`format-leaf-${c.leafKey}-tiebreakers`}
+                                value={effLeafTbs(c.leafKey)}
+                                scoring={effLeafScoring(c.leafKey) ?? inheritedScoring(sp)}
+                                disabled={!canManage}
+                                onChange={(tbs) => stageLeafTbs(c.leafKey, tbs)}
+                              />
                             </div>
                           );
                         })}
@@ -549,10 +590,10 @@ export function CompetitionFormatBoard({
 
         {sportsInOrder.length > 0 ? (
           <div className="flex flex-col gap-2 border-t border-border pt-3">
-            {scoringDirty && rulesFrozen ? (
+            {rulesDirty && rulesFrozen ? (
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t(
-                  "Scoring is locked once registration opens — give a reason to amend (teams are notified).",
+                  "Scoring & tie-breakers lock once registration opens — give a reason to amend (teams are notified).",
                 )}
                 <Input
                   data-testid="scoring-amend-reason"

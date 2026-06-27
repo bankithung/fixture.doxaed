@@ -6,6 +6,8 @@ table without code changes. See the rules/constraints design spec.
 """
 from __future__ import annotations
 
+import hashlib
+
 from django.db.models import Q
 
 from apps.matches.models import Match, MatchStatus
@@ -16,18 +18,31 @@ def _sort_key(row: dict, tiebreakers: list[str]):
     for tb in tiebreakers:
         if tb == "points":
             key.append(-row["Pts"])
-        elif tb == "goal_difference":
+        elif tb in ("goal_difference", "set_difference"):
+            # For set sports the "score" is sets won, so GD == set difference.
             key.append(-row["GD"])
-        elif tb == "goals_for":
+        elif tb in ("goals_for", "sets_for"):
             key.append(-row["GF"])
         elif tb == "goals_against":
             key.append(row["GA"])
+        elif tb == "point_difference":
+            # Raw points within sets (e.g. 21-15), summed across the games.
+            key.append(-row["PD_pts"])
+        elif tb == "points_for":
+            key.append(-row["PF_pts"])
+        elif tb == "points_against":
+            key.append(row["PA_pts"])
         elif tb == "wins":
             key.append(-row["W"])
         elif tb == "head_to_head":
             # Mini-table rank among the teams tied on every PRIOR key,
             # precomputed by _apply_head_to_head (0 = best; 0 for untied rows).
             key.append(row.get("_h2h_rank", 0))
+        elif tb == "coin_toss":
+            # Terminal, non-computable tiebreak. A deterministic seeded ordinal
+            # (reproducible so preview == commit) stands in until a referee
+            # records a manual draw. Always a total order — nothing ties after.
+            key.append(row["_coin"])
         elif tb == "name":
             key.append(row["name"])
     key.append(row["name"])  # stable final fallback
@@ -128,13 +143,31 @@ def _voided_team_ids(tournament, matches, rules, group_label) -> set:
     return voided
 
 
+def _resolve_tiebreakers(rules: dict, matches: list) -> list[str]:
+    """Per-GAME tiebreaker order (owner: "everything is per game"): when every
+    match in scope belongs to one competition leaf, that game's
+    ``rules.by_leaf[leaf].tiebreakers`` wins; otherwise the tournament default."""
+    leaves = {m.leaf_key for m in matches if m.leaf_key}
+    if len(leaves) == 1:
+        by_leaf = (rules.get("by_leaf") or {}).get(next(iter(leaves))) or {}
+        if by_leaf.get("tiebreakers"):
+            return by_leaf["tiebreakers"]
+    return rules["tiebreakers"]
+
+
+def _coin_ordinal(tournament_id, group_label: str | None, team_id: str) -> int:
+    """A deterministic pseudo-random ordinal for the coin-toss tiebreak —
+    stable across preview/commit (no Math.random/process hash)."""
+    seed = f"{tournament_id}:{group_label or ''}:{team_id}".encode()
+    return int(hashlib.sha256(seed).hexdigest()[:16], 16)
+
+
 def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
     from apps.tournaments.services.rules import merge_rules
 
     rules = merge_rules(getattr(tournament, "rules", None))
     pts = rules["points"]
     win_pts, draw_pts, loss_pts = pts["win"], pts["draw"], pts["loss"]
-    tiebreakers = rules["tiebreakers"]
 
     # Walkovers enter the table only when they carry a scoreline (the
     # withdrawal executor awards 3-0); legacy score-less walkovers keep
@@ -165,6 +198,8 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
                 "name": team.name,
                 "school": team.school,
                 "P": 0, "W": 0, "D": 0, "L": 0, "GF": 0, "GA": 0, "Pts": 0,
+                # Raw points within sets (set sports) for point-based tiebreaks.
+                "PF_pts": 0, "PA_pts": 0,
             }
             table[team.id] = r
         return r
@@ -180,6 +215,11 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
         results.append((str(m.home_team_id), str(m.away_team_id), hs, as_))
         h["P"] += 1; a["P"] += 1
         h["GF"] += hs; h["GA"] += as_; a["GF"] += as_; a["GA"] += hs
+        # Sum raw set points (e.g. 21-15, 19-21) for point_difference/points_for.
+        for s in m.set_scores or []:
+            if isinstance(s, (list, tuple)) and len(s) == 2:
+                h["PF_pts"] += s[0]; h["PA_pts"] += s[1]
+                a["PF_pts"] += s[1]; a["PA_pts"] += s[0]
         if hs > as_:
             h["W"] += 1; a["L"] += 1; h["Pts"] += win_pts; a["Pts"] += loss_pts
         elif as_ > hs:
@@ -187,11 +227,15 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
         else:
             h["D"] += 1; a["D"] += 1; h["Pts"] += draw_pts; a["Pts"] += draw_pts
 
+    tiebreakers = _resolve_tiebreakers(rules, matches)
     rows = list(table.values())
     for r in rows:
         r["GD"] = r["GF"] - r["GA"]
+        r["PD_pts"] = r["PF_pts"] - r["PA_pts"]
+        r["_coin"] = _coin_ordinal(tournament.id, group_label, r["team_id"])
     _apply_head_to_head(rows, results, tiebreakers, pts)
     rows.sort(key=lambda r: _sort_key(r, tiebreakers))
     for r in rows:
-        r.pop("_h2h_rank", None)  # internal key — keep the response shape
+        r.pop("_h2h_rank", None)  # internal keys — keep the response shape
+        r.pop("_coin", None)
     return rows
