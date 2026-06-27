@@ -130,8 +130,10 @@ def test_generate_api_reads_third_place_from_stored_draw_config():
     )
     assert r.status_code == 201, r.content
     assert r.json()["generated"] == 4
+    # The label is prefixed with the competition now ("Football — … — 3rd
+    # Place"), so match on the suffix rather than the bare string.
     assert Match.objects.filter(
-        tournament=t, group_label="3rd Place", deleted_at__isnull=True
+        tournament=t, group_label__endswith="3rd Place", deleted_at__isnull=True
     ).count() == 1
 
 

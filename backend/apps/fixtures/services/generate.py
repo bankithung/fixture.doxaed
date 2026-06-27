@@ -586,11 +586,13 @@ def plan_single_elimination(
     sport: str = "", third_place: bool = False,
     seeding: str = "registration", seed: int | None = None,
     separators: list[tuple[dict, dict]] | None = None,
-    warnings: list | None = None,
+    warnings: list | None = None, label_prefix: str = "",
 ) -> list[MatchPlan]:
     """Pure pairing core for a single-elimination bracket (byes, winner_of /
     loser_of pointers as plan refs, optional 3rd-place playoff — §4.4). Zero
-    DB writes."""
+    DB writes. ``label_prefix`` (e.g. "Table Tennis — u-14 — boys — 1v1 — ")
+    names every bracket match so the schedule shows the competition, not a bare
+    "R1" (a knockout has no group_label otherwise — owner ask 2026-06-27)."""
     n = len(teams)
     if n < 2:
         raise ValueError("single elimination requires at least 2 teams")
@@ -614,7 +616,11 @@ def plan_single_elimination(
         size *= 2
     entrants = [teams[s - 1] if s <= n else None for s in _bracket_order(size)]
 
-    common = {"stage": stage, "leaf_key": leaf_key, "sport": sport}
+    bracket_label = label_prefix.rstrip(" —").strip()
+    common = {
+        "stage": stage, "leaf_key": leaf_key, "sport": sport,
+        "group_label": bracket_label,
+    }
     plans: list[MatchPlan] = []
     # Round 1: pairs with two teams play; a pair with a bye forwards its team
     # straight to round 2 as a concrete slot.
@@ -651,10 +657,13 @@ def plan_single_elimination(
             # the final in match order (spec §4.4).
             plans.append(
                 MatchPlan(
-                    round_no=round_no, group_label="3rd Place",
+                    round_no=round_no,
                     home_source={"type": "loser_of", "ref": slots[0]["plan"]},
                     away_source={"type": "loser_of", "ref": slots[1]["plan"]},
-                    ref=len(plans), **common,
+                    ref=len(plans),
+                    **{**common, "group_label":
+                        f"{bracket_label} — 3rd Place" if bracket_label
+                        else "3rd Place"},
                 )
             )
         for i in range(0, len(slots), 2):
@@ -1501,6 +1510,10 @@ def generate_single_elimination(
     plans = plan_single_elimination(
         list(teams), stage=stage, leaf_key=leaf_key or "", sport=sport,
         third_place=third_place, seeding=seeding, seed=seed,
+        label_prefix=(
+            f"{leaf_label(tournament.sports or [], leaf_key)} — "
+            if leaf_key else ""
+        ),
         separators=_keep_apart_separators(
             tournament, list(teams), leaf_key or "", sport, warnings,
         ),

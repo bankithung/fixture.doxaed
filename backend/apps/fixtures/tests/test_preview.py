@@ -103,7 +103,11 @@ def test_preview_shape_refs_and_sources():
     final = out["matches"][-1]
     assert final["home"]["source"]["type"] == "winner_of"
     assert final["home"]["source"]["ref"].startswith("p")  # plan-ref pointers
-    third = next(m for m in out["matches"] if m["group_label"] == "3rd Place")
+    # Knockout matches now carry the competition label, so the 3rd-place match
+    # reads "<leaf> — 3rd Place" rather than a bare "3rd Place".
+    third = next(
+        m for m in out["matches"] if m["group_label"].endswith("3rd Place")
+    )
     assert third["home"]["source"]["type"] == "loser_of"
     semis = [m for m in out["matches"] if m["round_no"] == 1]
     assert all("team_id" in m["home"] and "team_id" in m["away"] for m in semis)

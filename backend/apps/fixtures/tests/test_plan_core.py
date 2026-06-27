@@ -81,6 +81,25 @@ def test_plan_single_elimination_uses_ref_pointers_not_match_ids():
     assert plans.index(third) < plans.index(final)
 
 
+def test_plan_single_elimination_label_prefix_names_every_match():
+    """A knockout has no group_label by default → the schedule showed a bare
+    "R1". With a label_prefix every bracket match carries the competition name
+    (owner ask 2026-06-27: "i cannt see tt")."""
+    teams = _teams(4)
+    plans = plan_single_elimination(
+        teams, third_place=True,
+        label_prefix="Table Tennis — u-14 — boys — 1v1 — ",
+    )
+    bracket = "Table Tennis — u-14 — boys — 1v1"
+    third = next(p for p in plans if p.group_label.endswith("3rd Place"))
+    assert third.group_label == f"{bracket} — 3rd Place"
+    assert all(
+        p.group_label == bracket
+        for p in plans
+        if not p.group_label.endswith("3rd Place")
+    )
+
+
 def test_plan_single_elimination_byes_carry_team_sources():
     teams = _teams(3)
     plans = plan_single_elimination(teams)
