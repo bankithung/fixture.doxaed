@@ -1090,6 +1090,8 @@ export interface PreviewMatch {
   /** Tournament-local wall clock (invariant 14); null = unscheduled. */
   scheduled_at: string | null;
   venue: string | null;
+  /** This match's own length in minutes (per-competition duration). */
+  duration_minutes?: number | null;
 }
 
 /** A concrete relaxation suggestion (§3) — stable `code` + params; the FE

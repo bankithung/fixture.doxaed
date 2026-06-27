@@ -63,4 +63,25 @@ describe("MatchesByDayGrid", () => {
       screen.getByText("No matches were scheduled in this preview."),
     ).toBeInTheDocument();
   });
+
+  it("shows each match's length and end time on the chip", () => {
+    render(
+      <MatchesByDayGrid
+        teamNames={TEAMS}
+        matches={[
+          pm({
+            ref: "p1",
+            scheduled_at: "2026-06-20T09:30:00",
+            duration_minutes: 15,
+          }),
+        ]}
+      />,
+    );
+    const chip = screen.getByTestId("chip-p1");
+    expect(chip).toHaveTextContent("09:30");
+    expect(chip).toHaveTextContent("09:45"); // 09:30 + 15 min
+    expect(within(chip).getByTestId("chip-p1-duration")).toHaveTextContent(
+      "15 min",
+    );
+  });
 });

@@ -29,6 +29,15 @@ function fmtTime(iso: string): string {
   return iso.slice(11, 16);
 }
 
+/** start ("…T09:30") + minutes → "09:50" wall clock (no Date math, no TZ). */
+function addMinutes(iso: string, mins: number): string {
+  const [h, m] = iso.slice(11, 16).split(":").map(Number);
+  const total = h * 60 + m + mins;
+  const hh = Math.floor(total / 60) % 24;
+  const mm = total % 60;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
 function Chip({
   match,
   accent,
@@ -38,21 +47,47 @@ function Chip({
   accent: string;
   teamNames: ReadonlyMap<string, string>;
 }): React.ReactElement {
+  const start = match.scheduled_at;
+  const dur = match.duration_minutes ?? null;
   return (
     <div
       data-testid={`chip-${match.ref}`}
       className={cn(
-        "flex flex-col gap-0.5 rounded-lg border border-border border-l-2 bg-card px-2.5 py-1.5 shadow-sm",
+        "flex flex-col gap-1 rounded-lg border border-border border-l-2 bg-card px-2.5 py-1.5 shadow-sm",
         accent,
       )}
     >
-      <span className="font-tabular text-[0.6875rem] text-muted-foreground">
-        {match.scheduled_at ? fmtTime(match.scheduled_at) : "—"}
-        {match.group_label ? ` · ${match.group_label}` : ""}
-        {match.round_no ? (
-          <> · {t("R")}{match.round_no}</>
+      <div className="flex items-center gap-1.5">
+        <span className="font-tabular text-xs font-semibold">
+          {start ? fmtTime(start) : "—"}
+          {start && dur ? (
+            <span className="font-normal text-muted-foreground">
+              {" – "}
+              {addMinutes(start, dur)}
+            </span>
+          ) : null}
+        </span>
+        {dur ? (
+          <span
+            data-testid={`chip-${match.ref}-duration`}
+            className="rounded-full bg-muted px-1.5 py-px font-tabular text-[0.625rem] font-medium text-muted-foreground"
+            title={t("Match length")}
+          >
+            {dur} {t("min")}
+          </span>
         ) : null}
-      </span>
+        {match.round_no ? (
+          <span className="font-tabular text-[0.625rem] text-muted-foreground">
+            {t("R")}
+            {match.round_no}
+          </span>
+        ) : null}
+      </div>
+      {match.group_label ? (
+        <span className="truncate text-[0.6875rem] text-muted-foreground">
+          {match.group_label}
+        </span>
+      ) : null}
       <span className="truncate text-sm">
         <span className="font-medium">{sideName(match.home, teamNames)}</span>
         <span className="text-muted-foreground"> {t("vs")} </span>

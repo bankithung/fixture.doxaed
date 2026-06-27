@@ -646,7 +646,9 @@ describe("FixtureSetupHub", () => {
     await waitFor(() =>
       expect(summary).toHaveTextContent("Aug 1 to Aug 5"),
     );
-    expect(summary).toHaveTextContent("08:00 to 17:00, 60 min per match");
+    // Match length moved to the per-competition format step, so the re-run
+    // summary no longer shows "min per match".
+    expect(summary).toHaveTextContent("08:00 to 17:00");
     expect(summary).toHaveTextContent("45 min between matches, max 2 per day");
 
     await userEvent.click(screen.getByTestId("rerun-schedule-submit"));

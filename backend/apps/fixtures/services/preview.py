@@ -348,6 +348,9 @@ def _schedule_and_payload(
     soft_score: float | None = None
     fairness: dict[str, Any] = {}
     explanation: list[str] = []
+    # ref → the match's own length in minutes (per-competition duration, the
+    # value the scheduler actually blocks) so the UI can show "15 min".
+    dur_by_ref: dict[str, int] = {}
     if include_schedule:
         payload = dict(schedule or {}) or dict(tournament.scheduling_config or {})
         if not payload.get("venues"):
@@ -366,6 +369,9 @@ def _schedule_and_payload(
         reqs, preoccupied, linked = build_schedule_inputs(
             tournament, sched_cfg, leaf_key=leaf_key, plans=plans,
         )
+        dur_by_ref = {
+            r.id: int(r.duration_minutes or sched_cfg.slot_minutes) for r in reqs
+        }
         result = schedule_matches(
             reqs, sched_cfg, preoccupied=preoccupied, linked=linked,
         )
@@ -400,6 +406,7 @@ def _schedule_and_payload(
             # Tournament-local wall clock (invariant 14) — naive ISO string.
             "scheduled_at": slot[0].isoformat() if slot else None,
             "venue": slot[1] if slot else None,
+            "duration_minutes": dur_by_ref.get(rid),
         })
 
     return {

@@ -23,6 +23,8 @@ import { useBreakpoint } from "@/lib/useBreakpoint";
 import { FairnessPanel } from "./FairnessPanel";
 import { InputsChangedBanner } from "./InputsChangedBanner";
 import { MatchesByDayGrid } from "./MatchesByDayGrid";
+import { PreviewFilterBar } from "./PreviewFilterBar";
+import { sportKey } from "./previewFilters";
 import { SetupJourneyHeader } from "./SetupJourneyHeader";
 import { sideName } from "./sideName";
 import { ViolationsPanel } from "./ViolationsPanel";
@@ -80,6 +82,9 @@ export function DryRunPreviewPage(): React.ReactElement {
   const [roll, setRoll] = useState(0);
   const [stale, setStale] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Schedule filter (owner ask) — narrow to one sport, then one category.
+  const [sportFilter, setSportFilter] = useState<string | null>(null);
+  const [catFilter, setCatFilter] = useState<string | null>(null);
 
   const drawConfig = useQuery({
     queryKey: qk.drawConfig(id),
@@ -415,7 +420,21 @@ export function DryRunPreviewPage(): React.ReactElement {
             ) : null}
           </section>
 
-          <MatchesByDayGrid matches={p.matches} teamNames={teamNames} />
+          <PreviewFilterBar
+            matches={p.matches}
+            sport={sportFilter}
+            category={catFilter}
+            onSport={setSportFilter}
+            onCategory={setCatFilter}
+          />
+          <MatchesByDayGrid
+            matches={p.matches.filter(
+              (m) =>
+                (!sportFilter || sportKey(m) === sportFilter) &&
+                (!catFilter || m.leaf_key === catFilter),
+            )}
+            teamNames={teamNames}
+          />
 
           {p.unscheduled.length ? (
             <section className="rounded-xl border border-warning/40 bg-warning-muted px-4 py-3">
