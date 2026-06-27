@@ -431,6 +431,50 @@ def _group_hash(group: list) -> str:
 _HASH_EXCLUDED_KEYS = ("seed", "constraints_reviewed_at", "calendar",
                        "swiss_byes", "match_duration_minutes")
 
+# Flat draw-config keys that a multi-stage `stages` list supersedes — dropped
+# from the hash payload when `stages` is authoritative so the derived mirror is
+# never double-counted (multi-stage design §10.3, R1).
+_STAGE_MIRROR_KEYS = ("format", "group_size", "advance_per_group",
+                      "advance_best_thirds", "knockout_seeding", "third_place",
+                      "plate", "legs", "balance_groups", "swiss_rounds")
+
+
+def _canonicalize_stages_for_hash(stages: list) -> list:
+    """Replace each stage's stable `id` with its positional index, rewrite
+    `from.stage` (an id) to the source index, and strip the cosmetic `name` — so
+    structure/params drive the hash, not a fresh uuid7 or a rename."""
+    id_to_idx = {
+        s["id"]: i for i, s in enumerate(stages)
+        if isinstance(s, dict) and "id" in s
+    }
+    out: list = []
+    for s in stages:
+        if not isinstance(s, dict):
+            out.append(s)
+            continue
+        c = {k: v for k, v in s.items() if k not in ("id", "name")}
+        frm = c.get("from")
+        if isinstance(frm, dict) and "stage" in frm:
+            c["from"] = {**frm, "stage": id_to_idx.get(frm["stage"], frm["stage"])}
+        out.append(c)
+    return out
+
+
+def _canonical_draw_for_hash(cfg: dict) -> dict:
+    """Canonical draw-config payload for inputs_hash (invariant 10, R1). Drops
+    hash-excluded keys; when `stages` is absent/empty the result is BYTE-identical
+    to the legacy hash (no platform-wide perturbation when the feature ships).
+    When `stages` is authoritative, the derived flat mirror is dropped and stages
+    are canonicalized (ids → positions, cosmetic name stripped)."""
+    c = {k: v for k, v in cfg.items() if k not in _HASH_EXCLUDED_KEYS}
+    if not c.get("stages"):
+        c.pop("stages", None)  # legacy: identical hash to today
+    else:
+        for k in _STAGE_MIRROR_KEYS:
+            c.pop(k, None)
+        c["stages"] = _canonicalize_stages_for_hash(c["stages"])
+    return c
+
 
 def pairing_scope_constraints(
     tournament, leaf_key: str | None, sport: str = "",
@@ -462,11 +506,7 @@ def compute_inputs_hash(tournament, leaf_key: str | None = None) -> str:
     hash read as "inputs changed" — correct per spec D9."""
     from apps.fixtures.services.draw_config import effective_draw_config
 
-    cfg = {
-        k: v
-        for k, v in effective_draw_config(tournament, leaf_key).items()
-        if k not in _HASH_EXCLUDED_KEYS
-    }
+    cfg = _canonical_draw_for_hash(effective_draw_config(tournament, leaf_key))
     payload = json.dumps(
         {
             "teams": sorted(
