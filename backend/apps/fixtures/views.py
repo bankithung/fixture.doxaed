@@ -1067,6 +1067,7 @@ class PublicTournamentScheduleView(GenericAPIView):
                 "leaf_key": m.leaf_key,
                 "leaf_label": labels.get(m.leaf_key, ""),
                 "stage": m.stage,
+                "stage_no": m.stage_no,
                 "group_label": m.group_label,
                 "round_no": m.round_no,
                 "match_no": m.match_no,
@@ -1078,6 +1079,10 @@ class PublicTournamentScheduleView(GenericAPIView):
                 "venue": m.venue,
                 "home": side(m.home_team),
                 "away": side(m.away_team),
+                # Typed dependency pointers so an unresolved bracket slot shows
+                # "Group A #1" / "Winner of …" and fills in live (invariant 9).
+                "home_source": m.home_source,
+                "away_source": m.away_source,
                 "home_score": m.home_score,
                 "away_score": m.away_score,
                 # Live points (control room spec 2026-06-12 §2.d): shootout

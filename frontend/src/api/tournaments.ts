@@ -242,6 +242,22 @@ export interface MatchRow {
   /** "Called to the venue" annotation of `scheduled` (control room §2.b) —
    * presentation-only, NOT a lifecycle state. */
   called_at?: string | null;
+  /** Multi-stage index (0 = single / first stage). */
+  stage_no?: number;
+  /** Typed dependency pointer for an unresolved bracket slot (invariant 9):
+   * group_position → "Group A #1", winner_of/loser_of → another match. */
+  home_source?: MatchSource | null;
+  away_source?: MatchSource | null;
+}
+
+/** A typed match-dependency pointer (home_source/away_source, invariant 9). */
+export interface MatchSource {
+  type: "team" | "winner_of" | "loser_of" | "group_position" | "tbd" | string;
+  match_id?: string;
+  team_id?: string;
+  group_label?: string;
+  position?: number;
+  [k: string]: unknown;
 }
 
 // --- Control room day-view aggregate (control room spec §2.a) ---
@@ -335,6 +351,8 @@ export interface PublicScheduleMatch {
   leaf_key: string;
   leaf_label: string;
   stage: string;
+  /** Multi-stage index (0 = single / first stage). */
+  stage_no?: number;
   group_label: string;
   round_no: number;
   match_no: number;
@@ -345,6 +363,10 @@ export interface PublicScheduleMatch {
   venue: string;
   home: PublicScheduleSide | null;
   away: PublicScheduleSide | null;
+  /** Typed dependency pointers — an unresolved bracket slot shows
+   * "Group A #1" / "Winner of …" and fills in live (invariant 9). */
+  home_source?: MatchSource | null;
+  away_source?: MatchSource | null;
   home_score: number | null;
   away_score: number | null;
   /** Live match points (control room spec §2.d): shootout result, sport +

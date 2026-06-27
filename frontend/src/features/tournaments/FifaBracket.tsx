@@ -1,7 +1,18 @@
 import { Check, Trophy } from "lucide-react";
-import type { MatchRow } from "@/api/tournaments";
+import type { MatchRow, MatchSource } from "@/api/tournaments";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+
+/** Human label for an unresolved bracket slot from its typed pointer:
+ * group_position → "Group A #1"; winner/loser pointers stay TBD (the tree's
+ * connector line already shows which match feeds the slot). */
+export function sourceLabel(src: MatchSource | null | undefined): string | null {
+  if (!src) return null;
+  if (src.type === "group_position" && src.position) {
+    return src.group_label ? `${src.group_label} #${src.position}` : `#${src.position}`;
+  }
+  return null;
+}
 
 // Deterministic geometry so the connectors line up (shared with the legacy tree).
 const CARD_H = 56;
@@ -29,6 +40,8 @@ function roundLabel(distanceFromFinal: number): string {
 
 function MatchCard({ m, mirror }: { m: MatchRow; mirror?: boolean }): React.ReactElement {
   const win = winnerSide(m);
+  const homeName = m.home_team?.name ?? sourceLabel(m.home_source) ?? undefined;
+  const awayName = m.away_team?.name ?? sourceLabel(m.away_source) ?? undefined;
   const row = (name: string | undefined, score: number | null, side: Side) => (
     <div
       className={cn(
@@ -48,9 +61,9 @@ function MatchCard({ m, mirror }: { m: MatchRow; mirror?: boolean }): React.Reac
   );
   return (
     <div className="w-48 overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-sm">
-      {row(m.home_team?.name, m.home_score, "home")}
+      {row(homeName, m.home_score, "home")}
       <div className="h-px bg-border" />
-      {row(m.away_team?.name, m.away_score, "away")}
+      {row(awayName, m.away_score, "away")}
     </div>
   );
 }

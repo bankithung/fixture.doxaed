@@ -36,6 +36,10 @@ function toMatchRow(m: PublicScheduleMatch): MatchRow {
     scheduled_at: m.scheduled_at,
     home_pens: m.home_pens,
     away_pens: m.away_pens,
+    stage_no: m.stage_no,
+    // pass the typed pointers through so an unresolved slot shows "Group A #1"
+    home_source: m.home_source,
+    away_source: m.away_source,
   };
 }
 

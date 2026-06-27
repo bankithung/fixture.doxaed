@@ -23,11 +23,11 @@ class MatchSerializer(serializers.ModelSerializer):
     class Meta:
         model = Match
         fields = [
-            "id", "stage", "group_label", "round_no", "match_no", "status",
-            "home_team", "away_team", "home_score", "away_score",
+            "id", "stage", "stage_no", "group_label", "round_no", "match_no",
+            "status", "home_team", "away_team", "home_score", "away_score",
             "home_pens", "away_pens", "scheduled_at", "locked_at", "called_at",
             "current_period", "sport", "set_scores", "leaf_key", "venue",
-            "scoring",
+            "scoring", "home_source", "away_source",
         ]
 
     def get_scoring(self, obj):
