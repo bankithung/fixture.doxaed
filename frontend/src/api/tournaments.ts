@@ -994,6 +994,38 @@ export interface DrawConfig {
    * "*" = tournament default, "<leaf>" = override. null = inherit. Scheduling-
    * only (excluded from inputs_hash). */
   match_duration_minutes?: number | null;
+  /** Composable multi-stage plan (owner ask 2026-06-27). null/[] = single-stage
+   * (the flat `format` governs); a non-empty ordered list supersedes it. */
+  stages?: DrawStage[] | null;
+}
+
+export type StageType = "round_robin" | "knockout" | "swiss" | "double_elim";
+
+/** Qualification INTO a stage (lives on the downstream stage). */
+export interface StageIntake {
+  /** id of an earlier stage (defaults to the immediately preceding one). */
+  stage?: string;
+  method?: "top_n_per_group" | string;
+  advance_per_group: number;
+  advance_best_thirds: number;
+  seeding: "cross" | "overall";
+}
+
+/** One stage in a competition's multi-stage plan (draw_config[leaf].stages). */
+export interface DrawStage {
+  /** uuid7 handle (server auto-fills if omitted); stable across reorder. */
+  id?: string;
+  name?: string;
+  type: StageType;
+  group_size?: number;
+  balance_groups?: boolean;
+  /** Partial round-robin target: each team plays >= N. null = full RR. */
+  min_matches_per_team?: number | null;
+  legs?: number;
+  third_place?: boolean;
+  plate?: boolean;
+  swiss_rounds?: number | null;
+  from?: StageIntake;
 }
 
 /** One stored layer is SPARSE — only the keys the organizer set. */

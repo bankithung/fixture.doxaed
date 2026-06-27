@@ -255,6 +255,34 @@ describe("CompetitionFormatBoard", () => {
     expect(tournamentsApi.updateDrawConfig).not.toHaveBeenCalled();
   });
 
+  it("composes multiple stages and saves them to the sport layer", async () => {
+    mount();
+    await userEvent.click(
+      await screen.findByTestId("format-sport-sepak_takraw-stages-toggle"),
+    );
+    const ed = "format-sport-sepak_takraw-stages";
+    await userEvent.click(screen.getByTestId(`${ed}-add`)); // round_robin
+    await userEvent.click(screen.getByTestId(`${ed}-add`)); // knockout
+    await userEvent.click(screen.getByTestId("save-formats"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({
+          leaf_key: "sport:sepak_takraw",
+          config: expect.objectContaining({
+            stages: expect.arrayContaining([
+              expect.objectContaining({ type: "round_robin" }),
+              expect.objectContaining({
+                type: "knockout",
+                from: expect.objectContaining({ advance_per_group: 2 }),
+              }),
+            ]),
+          }),
+        }),
+      ),
+    );
+  });
+
   it("saves a per-game tie-breaker order via the settings PATCH", async () => {
     mount();
     // sepak is single-category → its tie-breakers sit on the sport card

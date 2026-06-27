@@ -5,6 +5,7 @@ import {
   tournamentsApi,
   type DrawConfig,
   type DrawConfigLayer,
+  type DrawStage,
 } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,8 @@ import { ScoringControl } from "./ScoringControl";
 import { scoringEqual, type Scoring } from "./scoring";
 import { TiebreakerControl } from "./TiebreakerControl";
 import { tiebreakersEqual } from "./tiebreakers";
+import { StagesEditor } from "./StagesEditor";
+import { validateStages, type Stage } from "./stagesModel";
 
 interface Comp {
   leafKey: string;
@@ -85,6 +88,7 @@ export function CompetitionFormatBoard({
   // Staged layer writes keyed by layer ("sport:<k>" or a leaf key); empty = clean.
   const [staged, setStaged] = useState<Record<string, DrawConfigLayer>>({});
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [stagesOpen, setStagesOpen] = useState<Record<string, boolean>>({});
   // Staged per-GAME scoring overrides, keyed by leaf (value = override; null =
   // clear back to the sport default). Saved via the settings PATCH (frozen
   // rules), not draw_config — scoring is participant-facing (invariant 7).
@@ -258,6 +262,18 @@ export function CompetitionFormatBoard({
   const rulesDirty = Object.keys(byLeafChanges()).length > 0;
   const needsAmendReason = rulesDirty && rulesFrozen && !amendReason.trim();
 
+  // --- Multi-stage plan (draw_config[sport:<k>].stages) --------------------
+  const sportStages = (sp: string): Stage[] => {
+    const raw = (staged[`sport:${sp}`]?.stages ??
+      dc?.draw_config[`sport:${sp}`]?.stages) as DrawStage[] | null | undefined;
+    return Array.isArray(raw) ? raw.map((s) => ({ ...s, id: s.id ?? newEventId() })) : [];
+  };
+  const setSportStages = (sp: string, stages: Stage[]): void =>
+    stage(`sport:${sp}`, { stages });
+  const stagesHaveErrors = sportsInOrder.some(
+    (sp) => Object.keys(validateStages(sportStages(sp))).length > 0,
+  );
+
   const dirty = Object.keys(staged).length > 0 || rulesDirty;
 
   const save = useMutation({
@@ -393,6 +409,52 @@ export function CompetitionFormatBoard({
                 {hint ? (
                   <p className="mt-2 text-xs text-muted-foreground">{hint}</p>
                 ) : null}
+
+                {(() => {
+                  const stages = sportStages(sp);
+                  const showing = (stagesOpen[sp] ?? false) || stages.length > 0;
+                  return (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        data-testid={`format-sport-${sp}-stages-toggle`}
+                        aria-expanded={showing}
+                        onClick={() =>
+                          setStagesOpen((o) => ({ ...o, [sp]: !showing }))
+                        }
+                        className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                      >
+                        <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
+                        {stages.length > 0
+                          ? `${t("Multiple stages")} (${stages.length})`
+                          : t("Use multiple stages instead")}
+                      </button>
+                      {showing ? (
+                        <div className="mt-2 flex flex-col gap-2">
+                          {stages.length > 0 ? (
+                            <p className="text-xs text-muted-foreground">
+                              {t(
+                                "These stages run in order and replace the single format above.",
+                              )}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              {t(
+                                "Add stages (e.g. group league → top teams advance → knockout). Leave empty to use the single format above.",
+                              )}
+                            </p>
+                          )}
+                          <StagesEditor
+                            testId={`format-sport-${sp}-stages`}
+                            stages={stages}
+                            disabled={!canManage}
+                            onChange={(next) => setSportStages(sp, next)}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })()}
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -612,7 +674,7 @@ export function CompetitionFormatBoard({
               </p>
               <Button
                 size="sm"
-                disabled={!dirty || save.isPending || needsAmendReason}
+                disabled={!dirty || save.isPending || needsAmendReason || stagesHaveErrors}
                 data-testid="save-formats"
                 onClick={() => save.mutate()}
               >
