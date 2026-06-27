@@ -86,6 +86,26 @@ def test_rest_minutes_forces_spacing_for_shared_team():
     assert (t2 - t1).total_seconds() >= (60 + 60) * 60  # slot + rest
 
 
+def test_later_stage_is_timed_after_an_earlier_stage():
+    # multi-stage: a stage-1 knockout (round 1) must still be placed AFTER every
+    # stage-0 group match, even those in a HIGHER round_no — stage_no leads the
+    # ordering so a bracket never lands mid-group.
+    matches = [
+        MatchSlotReq(id="g1", round_no=1, match_no=1, home="a", away="b", stage_no=0),
+        MatchSlotReq(id="g2", round_no=2, match_no=2, home="c", away="d", stage_no=0),
+        MatchSlotReq(id="ko", round_no=1, match_no=3, home="e", away="f", stage_no=1),
+    ]
+    cfg = ScheduleConfig(date_start=date(2026, 8, 1), date_end=date(2026, 8, 3),
+                         daily_start=time(9, 0), daily_end=time(18, 0),
+                         slot_minutes=90, venues=["A"], rest_minutes=0,
+                         max_per_team_per_day=99)
+    res = schedule_matches(matches, cfg)
+    assert not res.unscheduled
+    ko_start = res.assignments["ko"][0]
+    group_starts = [res.assignments[m][0] for m in ("g1", "g2")]
+    assert ko_start > max(group_starts)  # knockout after all groups
+
+
 def test_max_per_team_per_day_blocks_same_day():
     matches = [
         MatchSlotReq(id="m1", round_no=1, match_no=1, home="x", away="a"),

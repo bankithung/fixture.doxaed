@@ -8,9 +8,13 @@ and the groups→knockout bridge. Multi-stage is orchestration, not new pairing.
 """
 from __future__ import annotations
 
+import logging
+
 from django.db import transaction
 
 from apps.matches.models import Match, MatchStatus
+
+logger = logging.getLogger(__name__)
 
 _FINAL = (MatchStatus.COMPLETED, MatchStatus.WALKOVER)
 
@@ -70,15 +74,54 @@ def _generate_entry_stage(tournament, leaf_key: str, stage: dict, warnings: list
     )
 
 
+def _maybe_eager_next_knockout(tournament, leaf_key: str, stages: list, warnings: list):
+    """Mode A (multi-stage §5.4): when stage 0 is a group stage and the VERY
+    next stage is a knockout sourcing from it by positional cross-seed (no
+    best-thirds / overall reseed — both need results), draw that knockout
+    EAGERLY so the full bracket is visible up front and fills in live as groups
+    finish. Returns [] (knockout stays DEFERRED to materialize_ready_stages) for
+    any other shape, or if eager drawing fails — the deferred path is the
+    always-correct fallback."""
+    if stages[0].get("type") != "round_robin" or len(stages) < 2:
+        return []
+    nxt = stages[1]
+    frm = nxt.get("from") or {}
+    if (
+        nxt.get("type") != "knockout"
+        or _stage_idx(stages, frm.get("stage"), 0) != 0
+        or int(frm.get("advance_best_thirds", 0)) != 0
+        or str(frm.get("seeding", "cross")) != "cross"
+    ):
+        return []
+    from apps.fixtures.services.generate import generate_eager_knockout_from_groups
+
+    try:
+        return generate_eager_knockout_from_groups(
+            tournament=tournament,
+            advance_per_group=int(frm.get("advance_per_group", 2)),
+            leaf_key=leaf_key or None,
+            third_place=bool(nxt.get("third_place", False)),
+            stage_no=1, warnings=warnings,
+        )
+    except Exception:  # pragma: no cover - defensive: deferred path still works
+        logger.exception("eager knockout draw failed for leaf %s; deferring", leaf_key)
+        return []
+
+
 def generate_stages_for_leaf(*, tournament, leaf_key, stages, cfg=None, warnings=None):
-    """Generate the entry stage now; later stages are deferred to the
-    finalization hook. Idempotent: returns the leaf's matches if any exist."""
+    """Generate the entry stage now. A group→knockout next stage is drawn
+    EAGERLY (Mode A) so the bracket shows immediately; any other later stage is
+    deferred to the finalization hook. Idempotent: returns the leaf's matches if
+    any exist."""
     existing = list(Match.objects.filter(
         tournament=tournament, leaf_key=leaf_key, deleted_at__isnull=True,
     ))
     if existing:
         return existing
-    return _generate_entry_stage(tournament, leaf_key, stages[0], warnings or [])
+    warnings = warnings or []
+    entry = _generate_entry_stage(tournament, leaf_key, stages[0], warnings)
+    eager = _maybe_eager_next_knockout(tournament, leaf_key, stages, warnings)
+    return [*entry, *eager]
 
 
 def materialize_ready_stages(match) -> list:

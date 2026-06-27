@@ -1887,6 +1887,148 @@ def generate_knockout_from_groups(
     )
 
 
+def _positional_qualifier_slots(
+    groups: list[str], advance_per_group: int,
+) -> list[dict]:
+    """Cross-seeded list of group_position POINTERS — the results-free analogue
+    of ``plan_knockout_qualifiers`` for an EAGER groups→knockout draw (multi-
+    stage §5.4, Mode A). Top ``advance_per_group`` of each group, arranged by
+    the same ``_cross_seed`` (run on positional tokens, not resolved teams) so a
+    group winner meets another group's runner-up in round 1. Each slot is a
+    ``{"type":"group_position","group_label":G,"position":P}`` pointer that
+    advance.py fills once group G finishes (invariant #9)."""
+    if advance_per_group < 1:
+        raise ValueError("advance_per_group must be at least 1.")
+    quals = [
+        [f"{gi}:{p}" for p in range(advance_per_group)]
+        for gi in range(len(groups))
+    ]
+    tokens = quals[0] if len(groups) == 1 else _cross_seed(quals)
+    slots: list[dict] = []
+    for tok in tokens:
+        gi, p = tok.split(":")
+        slots.append({
+            "type": "group_position",
+            "group_label": groups[int(gi)],
+            "position": int(p) + 1,
+        })
+    return slots
+
+
+def plan_knockout_from_positions(
+    slots: list[dict], *, stage: str = "knockout", leaf_key: str = "",
+    sport: str = "", third_place: bool = False, label_prefix: str = "",
+) -> list[MatchPlan]:
+    """Pure pairing core for an EAGER groups→knockout bracket (multi-stage §5.4):
+    the same seeded single-elimination shape as ``plan_single_elimination`` but
+    with POINTER leaves. ``slots`` are cross-seeded group_position pointers (not
+    yet resolved to teams); round-1 sides carry those pointers, byes forward a
+    pointer straight to round 2, and later rounds carry winner_of pointers —
+    every side resolved by advance.py as groups finish then knockout games play.
+    Zero DB writes; mirrors plan_single_elimination's bye/tree logic."""
+    n = len(slots)
+    if n < 2:
+        raise ValueError("a knockout needs at least 2 qualifiers")
+    size = 1
+    while size < n:
+        size *= 2
+    entrants = [slots[s - 1] if s <= n else None for s in _bracket_order(size)]
+
+    bracket_label = label_prefix.rstrip(" —").strip()
+    common = {
+        "stage": stage, "leaf_key": leaf_key, "sport": sport,
+        "group_label": bracket_label,
+    }
+    plans: list[MatchPlan] = []
+    bslots: list[dict] = []  # {"plan": ref} | {"ptr": pointer}
+    for i in range(0, size, 2):
+        home, away = entrants[i], entrants[i + 1]
+        if home is not None and away is not None:
+            plans.append(MatchPlan(
+                round_no=1, home_source=home, away_source=away,
+                ref=len(plans), **common,
+            ))
+            bslots.append({"plan": plans[-1].ref})
+        else:
+            bslots.append({"ptr": home or away})  # bye → forwards its pointer
+
+    def _side(slot: dict) -> dict:
+        return slot["ptr"] if "ptr" in slot else {
+            "type": "winner_of", "ref": slot["plan"]
+        }
+
+    round_no = 2
+    while len(bslots) > 1:
+        nxt: list[dict] = []
+        if third_place and len(bslots) == 2 and all("plan" in s for s in bslots):
+            plans.append(MatchPlan(
+                round_no=round_no,
+                home_source={"type": "loser_of", "ref": bslots[0]["plan"]},
+                away_source={"type": "loser_of", "ref": bslots[1]["plan"]},
+                ref=len(plans),
+                **{**common, "group_label":
+                    f"{bracket_label} — 3rd Place" if bracket_label else "3rd Place"},
+            ))
+        for i in range(0, len(bslots), 2):
+            plans.append(MatchPlan(
+                round_no=round_no,
+                home_source=_side(bslots[i]), away_source=_side(bslots[i + 1]),
+                ref=len(plans), **common,
+            ))
+            nxt.append({"plan": plans[-1].ref})
+        bslots = nxt
+        round_no += 1
+    return plans
+
+
+def generate_eager_knockout_from_groups(
+    *, tournament, advance_per_group: int = 2, leaf_key: str | None = None,
+    third_place: bool = False, stage_no: int = 0, warnings: list | None = None,
+) -> list[Match]:
+    """Draw a groups→knockout bracket EAGERLY (before groups finish) as typed
+    group_position pointers — the full bracket is visible immediately and fills
+    in live (multi-stage §5.4, Mode A: positional cross-seeding, no best-thirds /
+    overall reseed, which both need results). Idempotent per (knockout, leaf)
+    scope. Returns [] (caller falls back to deferred) when there's no group
+    stage or fewer than 2 qualifiers."""
+    ko_scope = Match.objects.filter(
+        tournament=tournament, stage="knockout", deleted_at__isnull=True,
+    )
+    if leaf_key:
+        ko_scope = ko_scope.filter(leaf_key=leaf_key)
+    existing = list(ko_scope)
+    if existing:
+        return existing
+
+    group_scope = Match.objects.filter(
+        tournament=tournament, stage="group", deleted_at__isnull=True,
+    )
+    if leaf_key:
+        group_scope = group_scope.filter(leaf_key=leaf_key)
+    groups = sorted(
+        g for g in group_scope.values_list("group_label", flat=True).distinct() if g
+    )
+    if not groups:
+        return []
+    slots = _positional_qualifier_slots(groups, advance_per_group)
+    if len(slots) < 2:
+        return []
+
+    sport = sport_for_leaf(tournament.sports or [], leaf_key) if leaf_key else ""
+    plans = plan_knockout_from_positions(
+        slots, leaf_key=leaf_key or "", sport=sport, third_place=third_place,
+        label_prefix=(
+            f"{leaf_label(tournament.sports or [], leaf_key)} — " if leaf_key else ""
+        ),
+    )
+    ih = compute_inputs_hash(tournament, leaf_key or None)
+    for p in plans:
+        p.inputs_hash = ih
+        p.stage_no = stage_no
+    with transaction.atomic():
+        return _persist_plans(tournament, plans)
+
+
 def generate_for_leaf(
     *, tournament, leaf_key: str, cfg: dict, warnings: list | None = None,
 ) -> list[Match]:

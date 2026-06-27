@@ -628,6 +628,7 @@ class MatchSlotReq:
     duration_minutes: int | None = None   # None → cfg.slot_minutes
     venue_type: str = ""                  # "" → any venue
     stage: str = ""                       # "group"|"knockout" — pinned-round resolution
+    stage_no: int = 0                     # multi-stage index: earlier stages time first
 
 
 @dataclass
@@ -1098,12 +1099,15 @@ def schedule_matches(
 
         def _order_key(m: MatchSlotReq) -> tuple:
             if m.id in fair_pos:
-                return (0, fair_pos[m.id], m.leaf_key, m.match_no)
-            return (1, m.round_no, m.leaf_key, m.match_no)
+                return (0, m.stage_no, fair_pos[m.id], m.leaf_key, m.match_no)
+            return (1, m.stage_no, m.round_no, m.leaf_key, m.match_no)
 
         by_order = sorted(matches, key=_order_key)
     else:
-        by_order = sorted(matches, key=lambda m: (m.round_no, m.match_no))
+        # stage_no first: a multi-stage leaf's group rounds all precede its
+        # knockout in time (a stage-1 bracket depends on stage-0 results). It is
+        # 0 for every single-stage tournament, so this is a no-op there.
+        by_order = sorted(matches, key=lambda m: (m.stage_no, m.round_no, m.match_no))
     ordered = [m for m in by_order if m.id in pin_of] + \
               [m for m in by_order if m.id not in pin_of]
     for m in ordered:
@@ -1700,6 +1704,7 @@ def build_schedule_inputs(
                 duration_minutes=duration_for(m.sport, m.leaf_key or ""),
                 venue_type=venue_type_for(m.sport),
                 stage=m.stage,
+                stage_no=m.stage_no,
             )
             for m in targets
         ]
@@ -1723,6 +1728,7 @@ def build_schedule_inputs(
                 duration_minutes=duration_for(p.sport, p.leaf_key or ""),
                 venue_type=venue_type_for(p.sport),
                 stage=p.stage,
+                stage_no=p.stage_no,
             )
             for p in plans
         ]
