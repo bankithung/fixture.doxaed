@@ -63,7 +63,10 @@ const EMPTY_FORM: Form = {
   venues: [],
   daily_start: "09:00",
   daily_end: "18:00",
-  slot_minutes: 90,
+  // Start-grid step + fallback when a competition sets no length of its own.
+  // Match LENGTHS are now set per competition on the format step; this is just
+  // the scheduling granularity, so a fine default keeps schedules tight.
+  slot_minutes: 30,
   rest_minutes: 60,
   max_per_day: 1,
   sunday_church: true,
@@ -263,7 +266,7 @@ export function GlobalSetupWizard({
         venues: venues.data.venues.map(venueDraft),
         daily_start: String(cal?.daily_start ?? "09:00"),
         daily_end: String(cal?.daily_end ?? "18:00"),
-        slot_minutes: Number(cal?.slot_minutes ?? 90),
+        slot_minutes: Number(cal?.slot_minutes ?? 30),
         rest_minutes: Number(one("min_rest_minutes")?.params.minutes ?? 60),
         max_per_day: Number(
           one("max_matches_per_team_per_day")?.params.count ?? 1,
@@ -639,15 +642,12 @@ export function GlobalSetupWizard({
             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {t("Pace")}
             </h4>
+            <p className="-mt-1 text-xs text-muted-foreground">
+              {t(
+                "Each match's length is set per competition on the “How each competition plays” step.",
+              )}
+            </p>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label={t("Minutes per match (including changeover)")}>
-                <Input
-                  type="number"
-                  min={10}
-                  value={form.slot_minutes}
-                  onChange={(e) => set("slot_minutes", Number(e.target.value))}
-                />
-              </Field>
               <Field
                 label={t("Shortest break between a team's matches (minutes)")}
               >
@@ -689,13 +689,28 @@ export function GlobalSetupWizard({
             />
             <Row
               k={t("Play times")}
-              v={t(
-                `${form.daily_start} to ${form.daily_end}, ${form.slot_minutes} min per match`,
-              )}
+              v={t(`${form.daily_start} to ${form.daily_end}`)}
             />
             <Row
               k={t("Venues")}
               v={String(form.venues.filter((v) => v.name.trim()).length)}
+            />
+            <Row
+              k={t("Break time")}
+              v={
+                form.break_mode === "overall" &&
+                form.daily_break_from &&
+                form.daily_break_to
+                  ? t(
+                      `${form.daily_break_from} to ${form.daily_break_to}, all venues`,
+                    )
+                  : form.break_mode === "per_venue" &&
+                      form.venues.some((v) => v.break_from && v.break_to)
+                    ? t(
+                        `per venue (${form.venues.filter((v) => v.break_from && v.break_to).length})`,
+                      )
+                    : t("none")
+              }
             />
             <Row
               k={t("Breaks")}

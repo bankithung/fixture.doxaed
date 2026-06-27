@@ -127,7 +127,7 @@ describe("GlobalSetupWizard", () => {
             date_end: "2026-08-05",
             daily_start: "09:00",
             daily_end: "18:00",
-            slot_minutes: 90,
+            slot_minutes: 30,
           },
         },
         event_id: expect.any(String),
@@ -360,7 +360,14 @@ describe("GlobalSetupWizard", () => {
       target: { value: "14:00" },
     });
 
-    await toStep(2); // play times → review
+    await userEvent.click(screen.getByRole("button", { name: "Next" })); // play times
+    // Match length moved to the format step — no minutes-per-match field here.
+    expect(
+      screen.queryByLabelText("Minutes per match (including changeover)"),
+    ).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Next" })); // review
+    // The review summary surfaces the main break time.
+    expect(screen.getByText("13:00 to 14:00, all venues")).toBeInTheDocument();
     await userEvent.click(screen.getByTestId("save-global-setup"));
 
     await waitFor(() =>
