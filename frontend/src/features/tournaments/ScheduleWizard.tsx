@@ -100,7 +100,10 @@ export function ScheduleWizard({
   const toast = useToast();
   const [result, setResult] = useState<ScheduleResultDTO | null>(null);
   const [adjustOpen, setAdjustOpen] = useState(false);
-  const [seeded, setSeeded] = useState(false);
+  // See GlobalSetupWizard: re-seed when stored data changes while pristine, so
+  // assistant-made changes flow in instead of going stale until remount.
+  const [seededSig, setSeededSig] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [form, setForm] = useState<Form>({
     date_start: "",
     date_end: "",
@@ -114,8 +117,10 @@ export function ScheduleWizard({
     optimize: false,
     optimize_engine: "local",
   });
-  const set = <K extends keyof Form>(k: K, v: Form[K]): void =>
+  const set = <K extends keyof Form>(k: K, v: Form[K]): void => {
+    setDirty(true);
     setForm((f) => ({ ...f, [k]: v }));
+  };
 
   const drawConfig = useQuery({
     queryKey: qk.drawConfig(tournamentId),
@@ -133,32 +138,35 @@ export function ScheduleWizard({
     enabled: open,
   });
 
-  // Seed ONCE from the stored Step 1 answers (guarded render-phase
-  // adjustment — the wizard is mounted conditionally so reopening reseeds).
-  if (!seeded && drawConfig.data && settings.data) {
+  // Seed from the stored Step 1 answers, and re-seed when they change while the
+  // form is pristine (guarded render-phase adjustment — see GlobalSetupWizard).
+  if (drawConfig.data && settings.data) {
     const cal = drawConfig.data.draw_config["*"]?.calendar ?? null;
     const records = settings.data.constraints ?? [];
-    const one = (type: string): ConstraintRecord | undefined =>
-      records.find((c) => c.type === type && isAll(c));
-    setForm({
-      date_start: String(cal?.date_start ?? ""),
-      date_end: String(cal?.date_end ?? cal?.date_start ?? ""),
-      daily_start: String(cal?.daily_start ?? "09:00"),
-      daily_end: String(cal?.daily_end ?? "18:00"),
-      slot_minutes: Number(cal?.slot_minutes ?? 90),
-      venues: "",
-      rest_minutes: Number(one("min_rest_minutes")?.params.minutes ?? 60),
-      max_per_team_per_day: Number(
-        one("max_matches_per_team_per_day")?.params.count ?? 1,
-      ),
-      auto_reflow: Boolean(settings.data.scheduling_config?.auto_reflow),
-      optimize: Boolean(settings.data.scheduling_config?.optimize),
-      optimize_engine:
-        settings.data.scheduling_config?.optimize_engine === "cpsat"
-          ? "cpsat"
-          : "local",
-    });
-    setSeeded(true);
+    const sig = JSON.stringify([cal, records, settings.data.scheduling_config]);
+    if (sig !== seededSig && !dirty) {
+      const one = (type: string): ConstraintRecord | undefined =>
+        records.find((c) => c.type === type && isAll(c));
+      setForm({
+        date_start: String(cal?.date_start ?? ""),
+        date_end: String(cal?.date_end ?? cal?.date_start ?? ""),
+        daily_start: String(cal?.daily_start ?? "09:00"),
+        daily_end: String(cal?.daily_end ?? "18:00"),
+        slot_minutes: Number(cal?.slot_minutes ?? 90),
+        venues: "",
+        rest_minutes: Number(one("min_rest_minutes")?.params.minutes ?? 60),
+        max_per_team_per_day: Number(
+          one("max_matches_per_team_per_day")?.params.count ?? 1,
+        ),
+        auto_reflow: Boolean(settings.data.scheduling_config?.auto_reflow),
+        optimize: Boolean(settings.data.scheduling_config?.optimize),
+        optimize_engine:
+          settings.data.scheduling_config?.optimize_engine === "cpsat"
+            ? "cpsat"
+            : "local",
+      });
+      setSeededSig(sig);
+    }
   }
 
   const run = useMutation({

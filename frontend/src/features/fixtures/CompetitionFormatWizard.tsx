@@ -206,8 +206,15 @@ export function CompetitionFormatWizard({
   const [form, setForm] = useState<Form | null>(null);
   const [advanced, setAdvanced] = useState(focusSeeds);
   const seedsRef = useRef<HTMLDivElement>(null);
-  const set = <K extends keyof Form>(k: K, v: Form[K]): void =>
+  // Re-seed when the stored layers change while the form is pristine (see
+  // GlobalSetupWizard) so an assistant-set format flows into an open wizard
+  // instead of going stale until remount.
+  const [dirty, setDirty] = useState(false);
+  const [seededSig, setSeededSig] = useState<string | null>(null);
+  const set = <K extends keyof Form>(k: K, v: Form[K]): void => {
+    setDirty(true);
     setForm((f) => (f ? { ...f, [k]: v } : f));
+  };
 
   const drawConfig = useQuery({
     queryKey: qk.drawConfig(tournamentId),
@@ -220,40 +227,49 @@ export function CompetitionFormatWizard({
     enabled: open,
   });
 
-  // Seed ONCE from the stored layers (guarded render-phase adjustment; the
-  // wizard is mounted conditionally so reopening reseeds).
-  if (form === null && drawConfig.data) {
-    const stored = {
-      ...(drawConfig.data.draw_config["*"] ?? {}),
-      ...(leafKey ? (drawConfig.data.draw_config[leafKey] ?? {}) : {}),
-    };
-    const eff = effectiveFor(drawConfig.data, leafKey);
-    const hasStored = stored.format !== undefined || stored.group_size !== undefined;
-    const ui: UiFormat =
-      eff.format === "knockout"
-        ? "knockout"
-        : eff.format === "groups_knockout"
-          ? "groups_knockout"
-          : eff.format === "swiss"
-            ? "swiss"
-            : eff.format === "double_elim"
-              ? "double_elim"
-              : !hasStored || teamCount < 2 || eff.group_size >= teamCount
-                ? "league"
-                : "groups";
-    setForm({
-      ui,
-      groupSize: Math.max(2, eff.group_size),
-      advance: Math.max(1, eff.advance_per_group),
-      bestThirds: Math.max(0, eff.advance_best_thirds ?? 0),
-      twoLegs: eff.legs === 2,
-      seeding: eff.seeding,
-      knockoutSeeding: eff.knockout_seeding ?? "cross",
-      thirdPlace: Boolean(eff.third_place),
-      plate: Boolean(eff.plate),
-      swissRounds: eff.swiss_rounds ?? suggestedSwissRounds(teamCount),
-      order: bySeed(teams),
-    });
+  // Seed from the stored layers, and re-seed when they change while the form is
+  // pristine (guarded render-phase adjustment; see GlobalSetupWizard).
+  if (drawConfig.data) {
+    const sig = JSON.stringify([
+      drawConfig.data.draw_config["*"] ?? null,
+      leafKey ? (drawConfig.data.draw_config[leafKey] ?? null) : null,
+      teamCount,
+    ]);
+    if ((form === null || sig !== seededSig) && !dirty) {
+      const stored = {
+        ...(drawConfig.data.draw_config["*"] ?? {}),
+        ...(leafKey ? (drawConfig.data.draw_config[leafKey] ?? {}) : {}),
+      };
+      const eff = effectiveFor(drawConfig.data, leafKey);
+      const hasStored =
+        stored.format !== undefined || stored.group_size !== undefined;
+      const ui: UiFormat =
+        eff.format === "knockout"
+          ? "knockout"
+          : eff.format === "groups_knockout"
+            ? "groups_knockout"
+            : eff.format === "swiss"
+              ? "swiss"
+              : eff.format === "double_elim"
+                ? "double_elim"
+                : !hasStored || teamCount < 2 || eff.group_size >= teamCount
+                  ? "league"
+                  : "groups";
+      setForm({
+        ui,
+        groupSize: Math.max(2, eff.group_size),
+        advance: Math.max(1, eff.advance_per_group),
+        bestThirds: Math.max(0, eff.advance_best_thirds ?? 0),
+        twoLegs: eff.legs === 2,
+        seeding: eff.seeding,
+        knockoutSeeding: eff.knockout_seeding ?? "cross",
+        thirdPlace: Boolean(eff.third_place),
+        plate: Boolean(eff.plate),
+        swissRounds: eff.swiss_rounds ?? suggestedSwissRounds(teamCount),
+        order: bySeed(teams),
+      });
+      setSeededSig(sig);
+    }
   }
 
   const f = form;

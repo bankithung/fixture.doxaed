@@ -158,10 +158,16 @@ export function GlobalSetupWizard({
   const qc = useQueryClient();
   const toast = useToast();
   const [step, setStep] = useState(initialStep);
-  const [seeded, setSeeded] = useState(false);
+  // Signature of the server data we last seeded from; `dirtyRef` flips on the
+  // first user edit. Together they let us re-seed when the data changes while
+  // the form is still pristine (see the reconcile block below).
+  const [seededSig, setSeededSig] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [form, setForm] = useState<Form>(EMPTY_FORM);
-  const set = <K extends keyof Form>(k: K, v: Form[K]): void =>
+  const set = <K extends keyof Form>(k: K, v: Form[K]): void => {
+    setDirty(true);
     setForm((f) => ({ ...f, [k]: v }));
+  };
 
   const drawConfig = useQuery({
     queryKey: qk.drawConfig(tournamentId),
@@ -181,43 +187,49 @@ export function GlobalSetupWizard({
   });
   const sportOptions = sportsQ.data?.sports ?? [];
 
-  // Seed the form ONCE from the three stored sources (guarded render-phase
-  // adjustment — mount the wizard conditionally so reopening reseeds).
-  if (!seeded && drawConfig.data && venues.data && settings.data) {
+  // Reconcile the form with the stored sources whenever they change AND the
+  // user hasn't edited yet (pristine): seeds on first load and ALSO absorbs
+  // changes made elsewhere — e.g. the AI assistant setting dates/venues behind
+  // an open wizard — instead of going stale until remount. The first user edit
+  // flips `dirtyRef`, after which we never clobber their in-progress changes.
+  if (drawConfig.data && venues.data && settings.data) {
     const cal = drawConfig.data.draw_config["*"]?.calendar ?? null;
     const records = settings.data.constraints ?? [];
-    const one = (type: string): ConstraintRecord | undefined =>
-      records.find((c) => c.type === type && isAll(c));
-    const ceremonies = records.filter(
-      (c) => c.type === "ceremony_block" && isAll(c),
-    );
-    const church = records.find(
-      (c) => c.type === "recurring_blackout_window" && isAll(c),
-    );
-    setForm({
-      date_start: String(cal?.date_start ?? ""),
-      date_end: String(cal?.date_end ?? ""),
-      blackouts: (one("blackout_dates")?.params.dates as string[]) ?? [],
-      reserves: (one("reserve_days")?.params.dates as string[]) ?? [],
-      opening: ceremonyFrom(
-        ceremonies.find((c) => c.params.label === "opening") ?? ceremonies[0],
-      ),
-      closing: ceremonyFrom(
-        ceremonies.find((c) => c.params.label === "closing") ?? ceremonies[1],
-      ),
-      venues: venues.data.venues.map(venueDraft),
-      daily_start: String(cal?.daily_start ?? "09:00"),
-      daily_end: String(cal?.daily_end ?? "18:00"),
-      slot_minutes: Number(cal?.slot_minutes ?? 90),
-      rest_minutes: Number(one("min_rest_minutes")?.params.minutes ?? 60),
-      max_per_day: Number(
-        one("max_matches_per_team_per_day")?.params.count ?? 1,
-      ),
-      // Default ON (Nagaland Sunday-morning church) until the wizard has been
-      // saved once; after that the stored record is the truth.
-      sunday_church: church !== undefined || cal === null,
-    });
-    setSeeded(true);
+    const sig = JSON.stringify([cal, records, venues.data.venues]);
+    if (sig !== seededSig && !dirty) {
+      const one = (type: string): ConstraintRecord | undefined =>
+        records.find((c) => c.type === type && isAll(c));
+      const ceremonies = records.filter(
+        (c) => c.type === "ceremony_block" && isAll(c),
+      );
+      const church = records.find(
+        (c) => c.type === "recurring_blackout_window" && isAll(c),
+      );
+      setForm({
+        date_start: String(cal?.date_start ?? ""),
+        date_end: String(cal?.date_end ?? ""),
+        blackouts: (one("blackout_dates")?.params.dates as string[]) ?? [],
+        reserves: (one("reserve_days")?.params.dates as string[]) ?? [],
+        opening: ceremonyFrom(
+          ceremonies.find((c) => c.params.label === "opening") ?? ceremonies[0],
+        ),
+        closing: ceremonyFrom(
+          ceremonies.find((c) => c.params.label === "closing") ?? ceremonies[1],
+        ),
+        venues: venues.data.venues.map(venueDraft),
+        daily_start: String(cal?.daily_start ?? "09:00"),
+        daily_end: String(cal?.daily_end ?? "18:00"),
+        slot_minutes: Number(cal?.slot_minutes ?? 90),
+        rest_minutes: Number(one("min_rest_minutes")?.params.minutes ?? 60),
+        max_per_day: Number(
+          one("max_matches_per_team_per_day")?.params.count ?? 1,
+        ),
+        // Default ON (Nagaland Sunday-morning church) until the wizard has been
+        // saved once; after that the stored record is the truth.
+        sunday_church: church !== undefined || cal === null,
+      });
+      setSeededSig(sig);
+    }
   }
 
   const save = useMutation({

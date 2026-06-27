@@ -9,6 +9,7 @@ import {
   type DrawConfig,
   type TournamentSettings,
 } from "@/api/tournaments";
+import { qk } from "@/lib/queryKeys";
 import { GlobalSetupWizard } from "../GlobalSetupWizard";
 
 vi.mock("@/api/tournaments", async (importOriginal) => {
@@ -251,5 +252,85 @@ describe("GlobalSetupWizard", () => {
       within(panel).getByText("Step 1 · When & where"),
     ).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("absorbs calendar changes made elsewhere while the form is pristine", async () => {
+    // Open with no stored calendar (fields blank).
+    vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
+      draw_config: {},
+      defaults: DEFAULTS,
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <ToastProvider>
+          <MemoryRouter>
+            <GlobalSetupWizard tournamentId="t1" onClose={() => {}} />
+          </MemoryRouter>
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByLabelText("First match day")).toHaveValue("");
+
+    // The assistant writes dates behind the open wizard → the query refetches.
+    vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
+      draw_config: {
+        "*": {
+          calendar: {
+            date_start: "2026-07-01",
+            date_end: "2026-07-02",
+            daily_start: "09:00",
+            daily_end: "18:00",
+            slot_minutes: 45,
+          },
+        },
+      },
+      defaults: DEFAULTS,
+    });
+    await client.invalidateQueries({ queryKey: qk.drawConfig("t1") });
+
+    // Pristine form picks up the new dates without a remount.
+    await waitFor(() =>
+      expect(screen.getByLabelText("First match day")).toHaveValue("2026-07-01"),
+    );
+    expect(screen.getByLabelText("Last match day")).toHaveValue("2026-07-02");
+  });
+
+  it("does not clobber an in-progress edit when data changes elsewhere", async () => {
+    vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
+      draw_config: {},
+      defaults: DEFAULTS,
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <ToastProvider>
+          <MemoryRouter>
+            <GlobalSetupWizard tournamentId="t1" onClose={() => {}} />
+          </MemoryRouter>
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+    // User starts typing a date → the form is now dirty.
+    fireEvent.change(await screen.findByLabelText("First match day"), {
+      target: { value: "2026-09-09" },
+    });
+
+    // A concurrent change lands and refetches…
+    vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
+      draw_config: {
+        "*": { calendar: { date_start: "2026-07-01", date_end: "2026-07-02" } },
+      },
+      defaults: DEFAULTS,
+    });
+    await client.invalidateQueries({ queryKey: qk.drawConfig("t1") });
+
+    // …but the user's in-progress edit is preserved (not overwritten).
+    await waitFor(() => expect(tournamentsApi.drawConfig).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText("First match day")).toHaveValue("2026-09-09");
   });
 });
