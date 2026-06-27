@@ -169,4 +169,47 @@ describe("CompetitionFormatBoard", () => {
       ),
     );
   });
+
+  it("sets a sport-level match duration (applies to all its categories)", async () => {
+    mount();
+    fireEvent.change(
+      await screen.findByTestId("format-sport-sepak_takraw-duration"),
+      { target: { value: "20" } },
+    );
+    await userEvent.click(screen.getByTestId("save-formats"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({
+          leaf_key: "sport:sepak_takraw",
+          config: expect.objectContaining({ match_duration_minutes: 20 }),
+        }),
+      ),
+    );
+  });
+
+  it("overrides one category's match duration; clearing sends null (inherit)", async () => {
+    vi.mocked(tournamentsApi.drawConfig).mockResolvedValue(
+      dc({ "table_tennis.u14.boys.singles": { match_duration_minutes: 15 } }),
+    );
+    mount();
+    await userEvent.click(
+      await screen.findByTestId("format-sport-table_tennis-customize"),
+    );
+    const input = screen.getByTestId(
+      "format-leaf-table_tennis.u14.boys.singles-duration",
+    );
+    expect(input).toHaveValue(15);
+    fireEvent.change(input, { target: { value: "" } });
+    await userEvent.click(screen.getByTestId("save-formats"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({
+          leaf_key: "table_tennis.u14.boys.singles",
+          config: expect.objectContaining({ match_duration_minutes: null }),
+        }),
+      ),
+    );
+  });
 });

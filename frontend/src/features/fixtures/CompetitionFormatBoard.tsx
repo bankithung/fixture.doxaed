@@ -139,6 +139,32 @@ export function CompetitionFormatBoard({
   const leafOwnFormat = (leafKey: string): string =>
     (staged[leafKey]?.format ?? dc?.draw_config[leafKey]?.format ?? "") as string;
 
+  // Per-category match length (owner ask 2026-06-27): a sport-level default
+  // (`sport:<k>`) covers all its categories; a leaf can override; both blank =
+  // the tournament default from Step 1 · Play times. Read each layer's OWN value
+  // (0 = blank/inherit) so the input shows the override, not the merged value.
+  const num = (v: unknown): number => Number(v ?? 0) || 0;
+  const starDuration = num(
+    staged["*"]?.match_duration_minutes ??
+      dc?.draw_config["*"]?.match_duration_minutes,
+  );
+  const sportOwnDuration = (sp: string): number =>
+    num(
+      staged[`sport:${sp}`]?.match_duration_minutes ??
+        dc?.draw_config[`sport:${sp}`]?.match_duration_minutes,
+    );
+  const leafOwnDuration = (leafKey: string): number =>
+    num(
+      staged[leafKey]?.match_duration_minutes ??
+        dc?.draw_config[leafKey]?.match_duration_minutes,
+    );
+  /** Stage a duration; null clears the override (the PATCH carries it, so an
+   * emptied field truly inherits again — unlike the sparse modal wizard). */
+  const stageDuration = (layerKey: string, raw: string): void =>
+    stage(layerKey, {
+      match_duration_minutes: Number(raw) >= 1 ? Math.floor(Number(raw)) : null,
+    });
+
   const stage = (layerKey: string, patch: DrawConfigLayer): void =>
     setStaged((s) => ({ ...s, [layerKey]: { ...s[layerKey], ...patch } }));
 
@@ -271,6 +297,27 @@ export function CompetitionFormatBoard({
                   <p className="mt-2 text-xs text-muted-foreground">{hint}</p>
                 ) : null}
 
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    {t("Match length (minutes)")}
+                    <Input
+                      type="number"
+                      min={1}
+                      data-testid={`format-sport-${sp}-duration`}
+                      className="h-8 w-24 font-tabular"
+                      placeholder={starDuration ? String(starDuration) : t("Default")}
+                      value={sportOwnDuration(sp) || ""}
+                      aria-label={`${t("Match length for")} ${sportName(sp)}`}
+                      onChange={(e) => stageDuration(`sport:${sp}`, e.target.value)}
+                    />
+                  </label>
+                  <span className="text-xs text-muted-foreground">
+                    {leaves.length > 1
+                      ? t("applies to every category — override one below")
+                      : t("leave blank to use the tournament default")}
+                  </span>
+                </div>
+
                 {isGroups ? (
                   <div className="mt-3 flex flex-wrap items-center gap-4">
                     <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -378,6 +425,25 @@ export function CompetitionFormatBoard({
                                     aria-label={`${t("Format for")} ${c.label}`}
                                   />
                                 </div>
+                                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                  {t("Length")}
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    data-testid={`format-leaf-${c.leafKey}-duration`}
+                                    className="h-8 w-20 font-tabular"
+                                    placeholder={
+                                      sportOwnDuration(sp) || starDuration
+                                        ? String(sportOwnDuration(sp) || starDuration)
+                                        : t("Default")
+                                    }
+                                    value={leafOwnDuration(c.leafKey) || ""}
+                                    aria-label={`${t("Match length for")} ${c.label}`}
+                                    onChange={(e) =>
+                                      stageDuration(c.leafKey, e.target.value)
+                                    }
+                                  />
+                                </label>
                               </div>
                             </div>
                           );

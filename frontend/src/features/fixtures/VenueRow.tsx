@@ -41,6 +41,7 @@ export function VenueRow({
   onChange,
   onRemove,
   sportOptions = [],
+  showBreak = false,
 }: {
   value: VenueDraft;
   index: number;
@@ -49,6 +50,8 @@ export function VenueRow({
   /** Tournament sports — when there are 2+, the row offers a "Used by" picker
    * so the organiser bonds courts to a sport (TT tables vs Sepak courts). */
   sportOptions?: { key: string; name: string }[];
+  /** Show this venue's own Break from/until inputs (per-venue break mode). */
+  showBreak?: boolean;
 }): React.ReactElement {
   const set = (patch: Partial<VenueDraft>): void =>
     onChange({ ...value, ...patch });
@@ -105,26 +108,30 @@ export function VenueRow({
           className="h-9"
         />
       </label>
-      <label className="flex w-[6.5rem] flex-col gap-1">
-        <span className="text-xs font-medium">{t("Break from")}</span>
-        <Input
-          type="time"
-          value={value.break_from}
-          aria-label={t("Venue break starts at")}
-          onChange={(e) => set({ break_from: e.target.value })}
-          className="h-9"
-        />
-      </label>
-      <label className="flex w-[6.5rem] flex-col gap-1">
-        <span className="text-xs font-medium">{t("Break until")}</span>
-        <Input
-          type="time"
-          value={value.break_to}
-          aria-label={t("Venue break ends at")}
-          onChange={(e) => set({ break_to: e.target.value })}
-          className="h-9"
-        />
-      </label>
+      {showBreak ? (
+        <>
+          <label className="flex w-[6.5rem] flex-col gap-1">
+            <span className="text-xs font-medium">{t("Break from")}</span>
+            <Input
+              type="time"
+              value={value.break_from}
+              aria-label={t("Venue break starts at")}
+              onChange={(e) => set({ break_from: e.target.value })}
+              className="h-9"
+            />
+          </label>
+          <label className="flex w-[6.5rem] flex-col gap-1">
+            <span className="text-xs font-medium">{t("Break until")}</span>
+            <Input
+              type="time"
+              value={value.break_to}
+              aria-label={t("Venue break ends at")}
+              onChange={(e) => set({ break_to: e.target.value })}
+              className="h-9"
+            />
+          </label>
+        </>
+      ) : null}
       <label className="flex w-20 flex-col gap-1">
         <span className="text-xs font-medium">{t("Courts")}</span>
         <Input

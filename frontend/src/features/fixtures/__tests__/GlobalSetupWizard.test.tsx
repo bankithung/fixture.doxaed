@@ -336,7 +336,7 @@ describe("GlobalSetupWizard", () => {
     expect(screen.getByLabelText("First match day")).toHaveValue("2026-09-09");
   });
 
-  it("saves an overall daily break and a per-venue break", async () => {
+  it("overall break mode: saves one daily_break window, no per-venue break", async () => {
     wrap(<GlobalSetupWizard tournamentId="t1" onClose={() => {}} />);
     fireEvent.change(await screen.findByLabelText("First match day"), {
       target: { value: "2026-08-01" },
@@ -345,8 +345,55 @@ describe("GlobalSetupWizard", () => {
       target: { value: "2026-08-05" },
     });
 
-    // Step 1 — a venue with its own break.
+    // Step 1 — Venues. Overall is the default break mode; its inputs are here.
     await toStep(1);
+    await userEvent.click(screen.getByTestId("add-venue"));
+    fireEvent.change(screen.getByTestId("venue-name-0"), {
+      target: { value: "MP Hall" },
+    });
+    // Per-venue inputs are hidden in overall mode.
+    expect(screen.queryByLabelText("Venue break starts at")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Daily break starts at"), {
+      target: { value: "13:00" },
+    });
+    fireEvent.change(screen.getByLabelText("Daily break ends at"), {
+      target: { value: "14:00" },
+    });
+
+    await toStep(2); // play times → review
+    await userEvent.click(screen.getByTestId("save-global-setup"));
+
+    await waitFor(() =>
+      expect(tournamentsApi.createVenue).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({ name: "MP Hall", breaks: [] }),
+      ),
+    );
+    const constraints =
+      vi.mocked(tournamentsApi.updateSettings).mock.calls.at(-1)![1].constraints!;
+    const dailyBreak = constraints.find(
+      (c) =>
+        c.type === "recurring_blackout_window" && c.params.label === "daily_break",
+    );
+    expect(dailyBreak?.params).toEqual({
+      days: [],
+      from: "13:00",
+      to: "14:00",
+      label: "daily_break",
+    });
+  });
+
+  it("per-venue break mode: saves Venue.breaks, no daily_break window", async () => {
+    wrap(<GlobalSetupWizard tournamentId="t1" onClose={() => {}} />);
+    fireEvent.change(await screen.findByLabelText("First match day"), {
+      target: { value: "2026-08-01" },
+    });
+    fireEvent.change(screen.getByLabelText("Last match day"), {
+      target: { value: "2026-08-05" },
+    });
+
+    await toStep(1); // Venues
+    await userEvent.click(screen.getByTestId("break-mode-per-venue"));
     await userEvent.click(screen.getByTestId("add-venue"));
     fireEvent.change(screen.getByTestId("venue-name-0"), {
       target: { value: "MP Hall" },
@@ -358,17 +405,7 @@ describe("GlobalSetupWizard", () => {
       target: { value: "13:00" },
     });
 
-    // Step 2 — the overall daily break (all venues).
-    await toStep(1);
-    fireEvent.change(screen.getByLabelText("Daily break starts at"), {
-      target: { value: "13:00" },
-    });
-    fireEvent.change(screen.getByLabelText("Daily break ends at"), {
-      target: { value: "14:00" },
-    });
-
-    // Step 3 — save.
-    await toStep(1);
+    await toStep(2); // play times → review
     await userEvent.click(screen.getByTestId("save-global-setup"));
 
     await waitFor(() =>
@@ -382,16 +419,12 @@ describe("GlobalSetupWizard", () => {
     );
     const constraints =
       vi.mocked(tournamentsApi.updateSettings).mock.calls.at(-1)![1].constraints!;
-    const dailyBreak = constraints.find(
-      (c) =>
-        c.type === "recurring_blackout_window" &&
-        c.params.label === "daily_break",
-    );
-    expect(dailyBreak?.params).toEqual({
-      days: [],
-      from: "13:00",
-      to: "14:00",
-      label: "daily_break",
-    });
+    expect(
+      constraints.find(
+        (c) =>
+          c.type === "recurring_blackout_window" &&
+          c.params.label === "daily_break",
+      ),
+    ).toBeUndefined();
   });
 });

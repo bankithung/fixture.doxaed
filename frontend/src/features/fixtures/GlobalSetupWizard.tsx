@@ -46,6 +46,8 @@ interface Form {
   rest_minutes: number;
   max_per_day: number;
   sunday_church: boolean;
+  /** How breaks are set: one window for every venue, or per-venue rows. */
+  break_mode: "overall" | "per_venue";
   /** Overall daily break (all venues), every day; empty = none. */
   daily_break_from: string;
   daily_break_to: string;
@@ -65,6 +67,7 @@ const EMPTY_FORM: Form = {
   rest_minutes: 60,
   max_per_day: 1,
   sunday_church: true,
+  break_mode: "overall",
   daily_break_from: "",
   daily_break_to: "",
 };
@@ -181,6 +184,20 @@ export function GlobalSetupWizard({
     setDirty(true);
     setForm((f) => ({ ...f, [k]: v }));
   };
+  // Switching break mode clears the OTHER side so the two never coexist (the
+  // engine would otherwise apply both) — a true overall-OR-per-venue choice.
+  const setBreakMode = (mode: Form["break_mode"]): void => {
+    setDirty(true);
+    setForm((f) =>
+      mode === "overall"
+        ? {
+            ...f,
+            break_mode: mode,
+            venues: f.venues.map((v) => ({ ...v, break_from: "", break_to: "" })),
+          }
+        : { ...f, break_mode: mode, daily_break_from: "", daily_break_to: "" },
+    );
+  };
 
   const drawConfig = useQuery({
     queryKey: qk.drawConfig(tournamentId),
@@ -254,6 +271,9 @@ export function GlobalSetupWizard({
         // Default ON (Nagaland Sunday-morning church) until the wizard has been
         // saved once; after that the stored record is the truth.
         sunday_church: church !== undefined || cal === null,
+        break_mode: venues.data.venues.some((v) => (v.breaks?.length ?? 0) > 0)
+          ? "per_venue"
+          : "overall",
         daily_break_from: String(dailyBreak?.params.from ?? ""),
         daily_break_to: String(dailyBreak?.params.to ?? ""),
       });
@@ -498,12 +518,78 @@ export function GlobalSetupWizard({
                 )}
               </p>
             ) : null}
+
+            {/* Break timings — overall OR per-venue (owner ask 2026-06-27). No
+                match is scheduled during a break; the engine cuts it from the
+                slot grid. */}
+            <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-muted/20 p-3">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t("Break timings")}
+                </span>
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    "No match is scheduled during a break. Use one daily break for every venue, or set a different break on each venue.",
+                  )}
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:gap-5">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="break-mode"
+                    data-testid="break-mode-overall"
+                    checked={form.break_mode === "overall"}
+                    onChange={() => setBreakMode("overall")}
+                    className="h-4 w-4 border-input text-primary"
+                  />
+                  {t("One break for all venues")}
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="break-mode"
+                    data-testid="break-mode-per-venue"
+                    checked={form.break_mode === "per_venue"}
+                    onChange={() => setBreakMode("per_venue")}
+                    className="h-4 w-4 border-input text-primary"
+                  />
+                  {t("A different break per venue")}
+                </label>
+              </div>
+              {form.break_mode === "overall" ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label={t("Break starts at")}>
+                    <Input
+                      type="time"
+                      value={form.daily_break_from}
+                      aria-label={t("Daily break starts at")}
+                      onChange={(e) => set("daily_break_from", e.target.value)}
+                    />
+                  </Field>
+                  <Field label={t("Break ends at")}>
+                    <Input
+                      type="time"
+                      value={form.daily_break_to}
+                      aria-label={t("Daily break ends at")}
+                      onChange={(e) => set("daily_break_to", e.target.value)}
+                    />
+                  </Field>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {t("Set each venue's break in its row below — “Break from / until”.")}
+                </p>
+              )}
+            </div>
+
             {form.venues.map((v, i) => (
               <VenueRow
                 key={v.id ?? `new-${i}`}
                 value={v}
                 index={i}
                 sportOptions={sportOptions}
+                showBreak={form.break_mode === "per_venue"}
                 onChange={(nv) =>
                   set("venues", form.venues.map((x, j) => (j === i ? nv : x)))
                 }
@@ -581,32 +667,9 @@ export function GlobalSetupWizard({
                 />
               </Field>
             </div>
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {t("Daily break")}
-            </h4>
-            <p className="-mt-2 text-xs text-muted-foreground">
-              {t(
-                "A break every day across all venues — no match is scheduled during it. Leave blank for none. Set a break on a single venue under Venues.",
-              )}
+            <p className="text-xs text-muted-foreground">
+              {t("Break timings are set on the Venues step.")}
             </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label={t("Break starts at")}>
-                <Input
-                  type="time"
-                  value={form.daily_break_from}
-                  aria-label={t("Daily break starts at")}
-                  onChange={(e) => set("daily_break_from", e.target.value)}
-                />
-              </Field>
-              <Field label={t("Break ends at")}>
-                <Input
-                  type="time"
-                  value={form.daily_break_to}
-                  aria-label={t("Daily break ends at")}
-                  onChange={(e) => set("daily_break_to", e.target.value)}
-                />
-              </Field>
-            </div>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
