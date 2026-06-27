@@ -80,7 +80,8 @@ describe("PublicBracketPage", () => {
     // competition heading + the teams.
     expect(await screen.findByTestId("bracket-tt.u14")).toBeInTheDocument();
     expect(screen.getByText("Table Tennis · U14")).toBeInTheDocument();
-    expect(screen.getByText("Asen")).toBeInTheDocument();
+    // Asen won the only match → appears in the final card AND the champion box.
+    expect(screen.getAllByText("Asen").length).toBeGreaterThan(0);
     // The group-stage competition does NOT get a bracket section.
     expect(screen.queryByTestId("bracket-sepak.u14")).not.toBeInTheDocument();
   });

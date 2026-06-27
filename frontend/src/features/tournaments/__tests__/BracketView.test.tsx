@@ -31,7 +31,7 @@ describe("BracketView", () => {
     expect(screen.getByText(/no fixtures yet/i)).toBeInTheDocument();
   });
 
-  it("lays out rounds as columns with match boxes", () => {
+  it("renders a knockout band as a FIFA-style bracket with a champion box", () => {
     render(
       <BracketView
         matches={[
@@ -57,8 +57,10 @@ describe("BracketView", () => {
         ]}
       />,
     );
-    expect(screen.getByText(/round 1/i)).toBeInTheDocument();
-    expect(screen.getByText(/round 2/i)).toBeInTheDocument();
+    // distance-from-final labels (no hardcoded "Round N") + the champion box
+    expect(screen.getByText("Final")).toBeInTheDocument();
+    expect(screen.getByText("Semi-finals")).toBeInTheDocument();
+    expect(screen.getByText("Champion")).toBeInTheDocument();
     expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0);
     expect(screen.getByText("Beta")).toBeInTheDocument();
   });
