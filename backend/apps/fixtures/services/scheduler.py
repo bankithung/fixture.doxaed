@@ -71,7 +71,13 @@ class ScheduleConfig:
     date_end: date
     daily_start: time = time(9, 0)
     daily_end: time = time(18, 0)
-    slot_minutes: int = 90          # default duration + start-grid step
+    slot_minutes: int = 90          # default duration + fallback start-grid step
+    # Start-grid granularity. When None, build_schedule_inputs derives it as the
+    # GCD of slot_minutes and every match's own duration, so per-competition
+    # durations pack back-to-back (a 20-min match runs 09:30-09:50, the next
+    # starts 09:50 — not snapped up to a coarse slot_minutes boundary). Stays
+    # == slot_minutes when all matches share that length (no behaviour change).
+    grid_step_minutes: int | None = None
     venues: list[str] = field(default_factory=lambda: ["Main Ground"])
     rest_minutes: int = 60          # min gap between a team's matches
     max_per_team_per_day: int = 1
@@ -574,7 +580,7 @@ def build_slots(cfg: ScheduleConfig) -> list[tuple[datetime, str, datetime]]:
             reserved |= r.params.get("dates") or set()
     d = cfg.date_start
     one_day = timedelta(days=1)
-    step = timedelta(minutes=cfg.slot_minutes)
+    step = timedelta(minutes=cfg.grid_step_minutes or cfg.slot_minutes)
     while d <= cfg.date_end:
         if d not in cfg.excluded_dates and d not in reserved:
             for venue, base in expand_venues(cfg):
@@ -1378,7 +1384,7 @@ def validate_schedule(
     venue_items: dict[str, list[Interval]] = defaultdict(list)
     team_items: dict[str, list[Interval]] = defaultdict(list)
     # (start, end, sport, leaf, match_id|None) for mutual-exclusion checking.
-    ex_items: list[tuple[datetime, datetime, str, str, "str | None"]] = []
+    ex_items: list[tuple[datetime, datetime, str, str, str | None]] = []
     for mid, (dt, venue) in assignments.items():
         end = dt + dur_of(mid)
         venue_items[venue].append((dt, end, mid))
@@ -1748,6 +1754,20 @@ def build_schedule_inputs(
         if len(tids) > 1:
             for a in tids:
                 linked.setdefault(a, set()).update(tids - {a})
+
+    # Derive the start-grid granularity from the actual match lengths so
+    # per-competition durations pack tightly (a 20-min and a 15-min sport on the
+    # same day → a 5-min grid, not a coarse slot_minutes one). GCD with
+    # slot_minutes keeps it == slot_minutes when every match shares that length
+    # (no behaviour change); a 5-minute floor avoids a pathologically fine grid.
+    if cfg.grid_step_minutes is None:
+        from math import gcd
+
+        grid = int(cfg.slot_minutes)
+        for r in reqs:
+            if r.duration_minutes:
+                grid = gcd(grid, int(r.duration_minutes))
+        cfg.grid_step_minutes = max(grid, 5)
 
     return reqs, preoccupied, linked
 

@@ -88,3 +88,35 @@ def test_match_duration_excluded_from_inputs_hash():
     t.save(update_fields=["draw_config"])
     after = compute_inputs_hash(t)
     assert before == after  # duration changes scheduling, not pairings
+
+
+def test_grid_step_is_gcd_of_durations():
+    """Mixed per-competition lengths refine the start grid so matches pack
+    back-to-back (a 20-min match at 09:00 → next at 09:20, not snapped to a
+    coarse 25-min slot)."""
+    _admin, t, teams = _setup()
+    t.draw_config = {
+        "sport:table_tennis": {"match_duration_minutes": 15},
+        "sport:sepak_takraw": {"match_duration_minutes": 20},
+    }
+    t.save(update_fields=["draw_config"])
+    _match(t, teams[0], teams[1], leaf="table_tennis.a", n=1, sport="table_tennis")
+    _match(t, teams[2], teams[3], leaf="sepak_takraw.b", n=2, sport="sepak_takraw")
+
+    cfg = config_from_dict({**CFG, "slot_minutes": 25})
+    build_schedule_inputs(t, cfg)
+    assert cfg.grid_step_minutes == 5  # gcd(25, 20, 15)
+
+
+def test_grid_step_unchanged_when_uniform():
+    """When every match shares slot_minutes' length, the grid stays at
+    slot_minutes, so existing schedules don't move."""
+    _admin, t, teams = _setup()
+    t.draw_config = {"*": {"match_duration_minutes": 30}}
+    t.save(update_fields=["draw_config"])
+    _match(t, teams[0], teams[1], leaf="tt.u14", n=1)
+    _match(t, teams[2], teams[3], leaf="tt.u14", n=2)
+
+    cfg = config_from_dict({**CFG, "slot_minutes": 30})
+    build_schedule_inputs(t, cfg)
+    assert cfg.grid_step_minutes == 30  # gcd(30, 30, 30)
