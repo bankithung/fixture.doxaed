@@ -109,7 +109,7 @@ export function ScheduleWizard({
     date_end: "",
     daily_start: "09:00",
     daily_end: "18:00",
-    slot_minutes: 90,
+    slot_minutes: 30,
     venues: "",
     rest_minutes: 60,
     max_per_team_per_day: 1,
@@ -152,7 +152,7 @@ export function ScheduleWizard({
         date_end: String(cal?.date_end ?? cal?.date_start ?? ""),
         daily_start: String(cal?.daily_start ?? "09:00"),
         daily_end: String(cal?.daily_end ?? "18:00"),
-        slot_minutes: Number(cal?.slot_minutes ?? 90),
+        slot_minutes: Number(cal?.slot_minutes ?? 30),
         venues: "",
         rest_minutes: Number(one("min_rest_minutes")?.params.minutes ?? 60),
         max_per_team_per_day: Number(
@@ -289,9 +289,7 @@ export function ScheduleWizard({
               />
               <SummaryRow
                 k={t("Play times")}
-                v={t(
-                  `${form.daily_start} to ${form.daily_end}, ${form.slot_minutes} min per match`,
-                )}
+                v={t(`${form.daily_start} to ${form.daily_end}`)}
               />
               <SummaryRow k={t("Venues")} v={String(venueCount)} />
               <SummaryRow
@@ -396,14 +394,6 @@ export function ScheduleWizard({
                         type="time"
                         value={form.daily_end}
                         onChange={(e) => set("daily_end", e.target.value)}
-                      />
-                    </Field>
-                    <Field label={t("Minutes per match (including changeover)")}>
-                      <Input
-                        type="number"
-                        min={10}
-                        value={form.slot_minutes}
-                        onChange={(e) => set("slot_minutes", Number(e.target.value))}
                       />
                     </Field>
                     <Field
