@@ -72,6 +72,11 @@ def advance_from_match(match_id) -> list[Match]:
     resolved.extend(_resolve_group_positions(m))
     for dep in resolved:
         _settle_unopposed(dep)
+    # Deferred multi-stage materialization: when this match's stage has fully
+    # finalized, draw the next stage that sources from it (multi-stage §5.4).
+    from apps.fixtures.services.stages import materialize_ready_stages
+
+    materialize_ready_stages(m)
     return resolved
 
 

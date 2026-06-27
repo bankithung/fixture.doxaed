@@ -75,6 +75,41 @@ def _round_robin(teams: list, *, legs: int = 1) -> list[tuple]:
     return pairings
 
 
+def _truncate_to_min_matches(
+    pairings: list[tuple], group: list, min_matches: int,
+    *, label: str = "", warnings: list | None = None,
+) -> list[tuple]:
+    """Keep the shortest ROUND prefix of a circle-method schedule so every team
+    has played >= ``min_matches`` (multi-stage design §4). Slicing on round
+    boundaries preserves the home/away alternation and creates NO phantom
+    matches (an odd group's bye just means "didn't play that round" → some teams
+    land on min, some on min+1 — hence the owner's "at least N"). Degenerates to
+    the full schedule when min_matches >= len(group)-1."""
+    from collections import defaultdict
+
+    n = len(group)
+    target = min(int(min_matches), max(1, n - 1))
+    if target >= n - 1:
+        return pairings  # already a full single round-robin
+    by_round: dict[int, list] = defaultdict(list)
+    for p in pairings:
+        by_round[p[0]].append(p)
+    counts: dict = {t.id: 0 for t in group}
+    kept: list[tuple] = []
+    for rno in sorted(by_round):
+        for (r, home, away) in by_round[rno]:
+            kept.append((r, home, away))
+            counts[home.id] += 1
+            counts[away.id] += 1
+        if counts and min(counts.values()) >= target:
+            break
+    if warnings is not None and counts:
+        lo, hi = min(counts.values()), max(counts.values())
+        if lo != hi:
+            warnings.append(f"matches_per_team_uneven:{label}:{lo}-{hi}")
+    return kept
+
+
 def _small_group_max(tournament) -> int:
     """rules.small_group_double_rr.max_size (0 = off): groups at/under this
     size auto-play double round-robin so every team in e.g. a 3-team group
@@ -533,6 +568,7 @@ def _plan_pool(
     group: list, *, label: str, leaf_key: str, sport: str, legs: int,
     small_group_max: int, start_ref: int,
     separators: list[tuple[dict, dict]] | None = None,
+    min_matches_per_team: int | None = None,
     warnings: list | None = None,
 ) -> list[MatchPlan]:
     """Circle-method plans for ONE round-robin pool (opening-pair repair,
@@ -549,9 +585,17 @@ def _plan_pool(
             warnings if warnings is not None else [],
         )
     ih = _group_hash(group)
-    group_legs = _legs_for_group(len(group), legs, small_group_max)
+    if min_matches_per_team:
+        # Partial RR (target-N round prefix) bypasses small-group double-RR.
+        rr = _truncate_to_min_matches(
+            _round_robin(group, legs=1), group, min_matches_per_team,
+            label=label, warnings=warnings,
+        )
+    else:
+        group_legs = _legs_for_group(len(group), legs, small_group_max)
+        rr = _round_robin(group, legs=group_legs)
     plans: list[MatchPlan] = []
-    for round_no, home, away in _round_robin(group, legs=group_legs):
+    for round_no, home, away in rr:
         plans.append(
             MatchPlan(
                 stage="group", group_label=label, round_no=round_no,
@@ -569,12 +613,15 @@ def plan_round_robin(
     seed: int | None = None, small_group_max: int = 0,
     separators: list[tuple[dict, dict]] | None = None,
     balance_groups: bool = False,
+    min_matches_per_team: int | None = None,
     warnings: list | None = None,
 ) -> list[MatchPlan]:
     """Pure pairing core for the grouped round-robin: seed order, institution
     spread, chunk/snake/balanced grouping, per-group circle pairing. Zero DB
     writes. ``balance_groups`` (R3) sizes the groups FIFA-style — even sizes,
-    no orphan group — for any seeding method (snake already balances)."""
+    no orphan group — for any seeding method (snake already balances).
+    ``min_matches_per_team`` (multi-stage §4) truncates each pool to a target-N
+    round prefix instead of a full round-robin."""
     if len(teams) < 2:
         raise ValueError("Need at least 2 registered teams to generate fixtures.")
     teams = _seed_order(list(teams), seeding=seeding, seed=seed)
@@ -600,7 +647,8 @@ def plan_round_robin(
             _plan_pool(
                 group, label=label, leaf_key=leaf_key, sport=sport, legs=legs,
                 small_group_max=small_group_max, start_ref=len(plans),
-                separators=separators, warnings=warnings,
+                separators=separators, min_matches_per_team=min_matches_per_team,
+                warnings=warnings,
             )
         )
     return plans
@@ -1332,7 +1380,8 @@ def _persist_plans(tournament, plans: list[MatchPlan]) -> list[Match]:
 def generate_round_robin(
     *, tournament, group_size: int = 5, leaf_key: str | None = None,
     legs: int = 1, seeding: str = "registration", seed: int | None = None,
-    balance_groups: bool = False, warnings: list | None = None,
+    balance_groups: bool = False, min_matches_per_team: int | None = None,
+    warnings: list | None = None,
 ) -> list[Match]:
     """Split registered teams into groups of ``group_size`` and round-robin each
     group. With ``leaf_key``, only that competition's teams are drawn and the
@@ -1367,6 +1416,7 @@ def generate_round_robin(
         label_prefix=f"{leaf_label(sports_cfg, leaf_key)} — " if leaf_key else "",
         legs=legs, seeding=seeding, seed=seed,
         balance_groups=balance_groups,
+        min_matches_per_team=min_matches_per_team,
         small_group_max=_small_group_max(tournament),
         separators=_keep_apart_separators(
             tournament, teams, leaf_key or "", sport, warnings,
@@ -1850,6 +1900,19 @@ def generate_for_leaf(
     (defaults < rules < draw_config["*"] < draw_config[leaf]); the caller owns
     layering so this stays a pure dispatch."""
     warnings = [] if warnings is None else warnings
+    # Multi-stage front door: an explicit >1-element `stages` plan runs the
+    # stage runner (entry stage now, later stages deferred). A single stage
+    # (legacy / derived) falls through to the unchanged format dispatch below.
+    from apps.fixtures.services.draw_config import effective_stages
+
+    stages = effective_stages(tournament, leaf_key, cfg)
+    if len(stages) > 1:
+        from apps.fixtures.services.stages import generate_stages_for_leaf
+
+        return generate_stages_for_leaf(
+            tournament=tournament, leaf_key=leaf_key, stages=stages,
+            cfg=cfg, warnings=warnings,
+        )
     fmt = str(cfg.get("format") or "round_robin")
     seeding = str(cfg.get("seeding") or "registration")
     seed = int(cfg["seed"]) if cfg.get("seed") is not None else None
