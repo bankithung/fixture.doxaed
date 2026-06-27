@@ -283,6 +283,33 @@ describe("CompetitionFormatBoard", () => {
     );
   });
 
+  it("composes stages for ONE category, saved to that leaf layer (per-game)", async () => {
+    mount();
+    await userEvent.click(
+      await screen.findByTestId("format-sport-table_tennis-customize"),
+    );
+    const leaf = "table_tennis.u14.boys.doubles";
+    await userEvent.click(screen.getByTestId(`format-leaf-${leaf}-stages-toggle`));
+    const ed = `format-leaf-${leaf}-stages`;
+    await userEvent.click(screen.getByTestId(`${ed}-add`)); // round_robin
+    await userEvent.click(screen.getByTestId(`${ed}-add`)); // knockout
+    await userEvent.click(screen.getByTestId("save-formats"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({
+          leaf_key: leaf,
+          config: expect.objectContaining({
+            stages: expect.arrayContaining([
+              expect.objectContaining({ type: "round_robin" }),
+              expect.objectContaining({ type: "knockout" }),
+            ]),
+          }),
+        }),
+      ),
+    );
+  });
+
   it("saves a per-game tie-breaker order via the settings PATCH", async () => {
     mount();
     // sepak is single-category → its tie-breakers sit on the sport card

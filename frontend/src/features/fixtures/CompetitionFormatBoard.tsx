@@ -262,16 +262,24 @@ export function CompetitionFormatBoard({
   const rulesDirty = Object.keys(byLeafChanges()).length > 0;
   const needsAmendReason = rulesDirty && rulesFrozen && !amendReason.trim();
 
-  // --- Multi-stage plan (draw_config[sport:<k>].stages) --------------------
-  const sportStages = (sp: string): Stage[] => {
-    const raw = (staged[`sport:${sp}`]?.stages ??
-      dc?.draw_config[`sport:${sp}`]?.stages) as DrawStage[] | null | undefined;
+  // --- Multi-stage plan (draw_config[<layer>].stages) ----------------------
+  // A plan lives on any layer: "sport:<k>" (applies to all the sport's
+  // categories) or a leaf key (one category overrides the sport plan).
+  const layerStages = (key: string): Stage[] => {
+    const raw = (staged[key]?.stages ?? dc?.draw_config[key]?.stages) as
+      DrawStage[] | null | undefined;
     return Array.isArray(raw) ? raw.map((s) => ({ ...s, id: s.id ?? newEventId() })) : [];
   };
+  const setLayerStages = (key: string, stages: Stage[]): void => stage(key, { stages });
+  const sportStages = (sp: string): Stage[] => layerStages(`sport:${sp}`);
   const setSportStages = (sp: string, stages: Stage[]): void =>
-    stage(`sport:${sp}`, { stages });
+    setLayerStages(`sport:${sp}`, stages);
   const stagesHaveErrors = sportsInOrder.some(
-    (sp) => Object.keys(validateStages(sportStages(sp))).length > 0,
+    (sp) =>
+      Object.keys(validateStages(sportStages(sp))).length > 0 ||
+      leavesBySport.get(sp)!.some(
+        (c) => Object.keys(validateStages(layerStages(c.leafKey))).length > 0,
+      ),
   );
 
   const dirty = Object.keys(staged).length > 0 || rulesDirty;
@@ -638,6 +646,45 @@ export function CompetitionFormatBoard({
                                 disabled={!canManage}
                                 onChange={(tbs) => stageLeafTbs(c.leafKey, tbs)}
                               />
+                              {(() => {
+                                const okey = `leaf:${c.leafKey}`;
+                                const stages = layerStages(c.leafKey);
+                                const showing =
+                                  (stagesOpen[okey] ?? false) || stages.length > 0;
+                                return (
+                                  <div>
+                                    <button
+                                      type="button"
+                                      data-testid={`format-leaf-${c.leafKey}-stages-toggle`}
+                                      aria-expanded={showing}
+                                      onClick={() =>
+                                        setStagesOpen((o) => ({ ...o, [okey]: !showing }))
+                                      }
+                                      className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                                    >
+                                      <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
+                                      {stages.length > 0
+                                        ? `${t("Multiple stages")} (${stages.length})`
+                                        : t("Use multiple stages instead")}
+                                    </button>
+                                    {showing ? (
+                                      <div className="mt-2 flex flex-col gap-2">
+                                        <p className="text-xs text-muted-foreground">
+                                          {stages.length > 0
+                                            ? t("These stages run in order and replace the format above for this category.")
+                                            : t("Add stages just for this category (overrides the sport plan above).")}
+                                        </p>
+                                        <StagesEditor
+                                          testId={`format-leaf-${c.leafKey}-stages`}
+                                          stages={stages}
+                                          disabled={!canManage}
+                                          onChange={(next) => setLayerStages(c.leafKey, next)}
+                                        />
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           );
                         })}
