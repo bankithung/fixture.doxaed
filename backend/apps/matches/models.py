@@ -58,6 +58,11 @@ class Match(models.Model):
         "tournaments.Tournament", on_delete=models.CASCADE, related_name="matches"
     )
     stage = models.CharField(max_length=40, blank=True)  # e.g. "group", "knockout"
+    # 0-based position in the competition's multi-stage plan (multi-stage design
+    # §6.1). `stage` stays the bracket-ROLE type label; `stage_no` namespaces
+    # which stage a match belongs to. default=0 so every legacy row reads as
+    # stage 0 and every query that doesn't filter stage_no is unchanged.
+    stage_no = models.PositiveSmallIntegerField(default=0, db_index=True)
     group_label = models.CharField(max_length=80, blank=True)  # e.g. "Group A"
     round_no = models.PositiveSmallIntegerField(default=1)
     match_no = models.PositiveIntegerField(default=0)  # order within tournament

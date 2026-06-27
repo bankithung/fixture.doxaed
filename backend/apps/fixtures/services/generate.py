@@ -44,6 +44,9 @@ class MatchPlan:
     away_source: dict | None = None
     inputs_hash: str = ""
     ref: int = 0
+    # 0-based index in the competition's multi-stage plan (default 0 = the only
+    # stage, so every existing single-stage planner is unchanged).
+    stage_no: int = 0
 
 
 def _round_robin(teams: list, *, legs: int = 1) -> list[tuple]:
@@ -1309,6 +1312,7 @@ def _persist_plans(tournament, plans: list[MatchPlan]) -> list[Match]:
         match_no += 1
         m = Match(
             organization=org, tournament=tournament, stage=p.stage,
+            stage_no=p.stage_no,
             group_label=p.group_label, sport=p.sport, leaf_key=p.leaf_key,
             round_no=p.round_no, match_no=match_no,
             home_team_id=p.home_team_id, away_team_id=p.away_team_id,

@@ -60,6 +60,13 @@ DEFAULT_DRAW_CONFIG: dict[str, Any] = {
     # from inputs_hash. None = inherit (sport override → SPORT_PROFILES → global
     # slot_minutes). Resolved by scheduler.duration_for().
     "match_duration_minutes": None,
+    # Composable MULTI-STAGE plan (owner ask 2026-06-27). None/[] = single-stage
+    # (derive from `format`, back-compat). A non-empty ordered list is the
+    # authoritative stage plan: each element a StageSpec (see _validate_stages).
+    # Multi-stage design §3; canonicalized out of inputs_hash double-counting by
+    # _canonical_draw_for_hash. Participant-facing SCORING still lives in
+    # rules.by_leaf (frozen) — stages are structure, governed by invariant 10.
+    "stages": None,
 }
 
 _FORMATS = {"round_robin", "knockout", "groups_knockout", "swiss",
@@ -68,6 +75,16 @@ _SEEDINGS = {"registration", "random", "snake", "seeded"}
 _KNOCKOUT_SEEDINGS = {"cross", "overall"}
 _BYE_POLICIES = {"seeded_byes"}
 _MIN_ENTRIES_ACTIONS = {"prompt", "cancel"}
+
+# --- Multi-stage (stages) schema ------------------------------------------
+_STAGE_TYPES = {"round_robin", "knockout", "swiss", "double_elim"}
+_QUAL_METHODS = {"top_n_per_group", "winners", "losers", "all", "overall_top_n"}
+_MAX_STAGES = 4
+_STAGE_KEYS = {"id", "name", "type", "group_size", "balance_groups",
+               "min_matches_per_team", "legs", "partition", "seeding",
+               "third_place", "plate", "swiss_rounds", "from"}
+_FROM_KEYS = {"stage", "method", "advance_per_group", "advance_best_thirds",
+              "seeding"}
 
 # Legacy rules keys that act as a fallback layer below draw_config (§2.1).
 _LEGACY_RULES_KEYS = ("format", "group_size", "advance_per_group")
@@ -112,6 +129,109 @@ def _validate_calendar(cal: Any) -> None:
     sm = cal.get("slot_minutes")
     if sm is not None and (not _is_int(sm) or sm < 1):
         raise ValueError("calendar.slot_minutes must be a positive integer")
+
+
+def _validate_stage_params(s: dict[str, Any]) -> None:
+    """Per-type scalar checks for one stage's own params (mirrors the flat
+    scalar rules so greedy/validate never diverge)."""
+    if "group_size" in s and (not _is_int(s["group_size"]) or s["group_size"] < 2):
+        raise ValueError("stage group_size must be an integer >= 2")
+    if "legs" in s and s["legs"] not in (1, 2):
+        raise ValueError("stage legs must be 1 or 2")
+    if "seeding" in s and s["seeding"] not in _SEEDINGS:
+        raise ValueError(f"unknown stage seeding: {s['seeding']!r}")
+    if "swiss_rounds" in s and s["swiss_rounds"] is not None \
+            and (not _is_int(s["swiss_rounds"]) or s["swiss_rounds"] < 1):
+        raise ValueError("stage swiss_rounds must be a positive integer")
+    for b in ("balance_groups", "third_place", "plate"):
+        if b in s and not isinstance(s[b], bool):
+            raise ValueError(f"stage {b} must be a boolean")
+    if "partition" in s and s["partition"] not in ("", "category"):
+        raise ValueError("stage partition must be '' or 'category'")
+    mm = s.get("min_matches_per_team")
+    if "min_matches_per_team" in s and mm is not None:
+        if s.get("type") != "round_robin":
+            raise ValueError("min_matches_per_team is only valid on a round_robin stage")
+        if not _is_int(mm) or mm < 1:
+            raise ValueError("min_matches_per_team must be a positive integer")
+
+
+def _validate_stages(stages: Any) -> None:
+    """Validate the multi-stage plan (multi-stage design §3.4). None/[] is OK
+    (single-stage). Enforces: known type, unique ids, a backward-only `from`
+    on every stage past the first (none on the first), the FIFA cross-field
+    guard (top_n advance < source group_size), terminal-stage-must-be-last, and
+    the v1 single-swiss / single-randomized guard."""
+    if stages is None:
+        return
+    if not isinstance(stages, list):
+        raise ValueError("stages must be a list")
+    if not stages:
+        return  # [] = single-stage (derive from the flat format)
+    if len(stages) > _MAX_STAGES:
+        raise ValueError(f"stages must have at most {_MAX_STAGES} entries")
+
+    for i, s in enumerate(stages):
+        if not isinstance(s, dict):
+            raise ValueError("each stage must be an object")
+        unknown = set(s) - _STAGE_KEYS
+        if unknown:
+            raise ValueError(f"unknown stage keys: {sorted(unknown)}")
+        if s.get("type") not in _STAGE_TYPES:
+            raise ValueError(f"unknown stage type: {s.get('type')!r}")
+        if "id" in s and (not isinstance(s["id"], str) or not s["id"]):
+            raise ValueError("stage id must be a non-empty string")
+        _validate_stage_params(s)
+        frm = s.get("from")
+        if i == 0:
+            if frm:
+                raise ValueError("the first stage cannot have a 'from' block")
+        elif frm is not None:
+            if not isinstance(frm, dict):
+                raise ValueError("stage 'from' must be an object")
+            unk = set(frm) - _FROM_KEYS
+            if unk:
+                raise ValueError(f"unknown from keys: {sorted(unk)}")
+            if frm.get("method", "top_n_per_group") not in _QUAL_METHODS:
+                raise ValueError(f"unknown qualification method: {frm.get('method')!r}")
+            apg = frm.get("advance_per_group", 1)
+            if not _is_int(apg) or apg < 1:
+                raise ValueError("from.advance_per_group must be an integer >= 1")
+            abt = frm.get("advance_best_thirds", 0)
+            if not _is_int(abt) or abt < 0:
+                raise ValueError("from.advance_best_thirds must be an integer >= 0")
+            if "seeding" in frm and frm["seeding"] not in _KNOCKOUT_SEEDINGS:
+                raise ValueError("from.seeding must be 'cross' or 'overall'")
+
+    ids = [s["id"] for s in stages if "id" in s]
+    if len(ids) != len(set(ids)):
+        raise ValueError("stage ids must be unique")
+    idx_by_id = {s["id"]: i for i, s in enumerate(stages) if "id" in s}
+
+    # terminal (single-winner) brackets must be the last stage
+    for s in stages[:-1]:
+        if s["type"] in ("knockout", "double_elim"):
+            raise ValueError("a knockout must be the last stage")
+
+    for i, s in enumerate(stages):
+        if i == 0:
+            continue
+        frm = s.get("from") or {}
+        ref = frm.get("stage")
+        if ref is not None and (ref not in idx_by_id or idx_by_id[ref] >= i):
+            raise ValueError("from.stage must reference an earlier stage")
+        src_i = idx_by_id.get(ref, i - 1) if ref else i - 1
+        src = stages[src_i]
+        if frm.get("method", "top_n_per_group") == "top_n_per_group" \
+                and src.get("type") == "round_robin":
+            gs = src.get("group_size", DEFAULT_DRAW_CONFIG["group_size"])
+            if frm.get("advance_per_group", 1) >= gs:
+                raise ValueError("advance_per_group must be smaller than the source group_size")
+
+    if sum(1 for s in stages if s["type"] == "swiss") > 1:
+        raise ValueError("at most one swiss stage is allowed in v1")
+    if sum(1 for s in stages if s.get("seeding") == "random") > 1:
+        raise ValueError("at most one randomized-seeding stage is allowed in v1")
 
 
 def _validate_layer(layer: dict[str, Any]) -> None:
@@ -164,6 +284,8 @@ def _validate_layer(layer: dict[str, Any]) -> None:
         raise ValueError("match_duration_minutes must be a positive integer")
     if "balance_groups" in layer and not isinstance(layer["balance_groups"], bool):
         raise ValueError("balance_groups must be a boolean")
+    if "stages" in layer:
+        _validate_stages(layer["stages"])
 
     group_size = layer.get("group_size", DEFAULT_DRAW_CONFIG["group_size"])
     advance = layer.get("advance_per_group", DEFAULT_DRAW_CONFIG["advance_per_group"])
@@ -236,6 +358,63 @@ def effective_draw_config(
     return out
 
 
+def _derive_stages_from_format(cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """A one-stage plan derived from the legacy flat `format` — so single-format
+    competitions read as a one-element stage list and generate byte-identically.
+    `groups_knockout` derives ONE round_robin stage (its knockout stays the
+    manual knockout_from_groups call); multi-stage auto-fire is opt-in only via
+    an explicit `stages` list (multi-stage design §3.5, P0 #5)."""
+    fmt = cfg.get("format", "round_robin")
+    seeding = cfg.get("seeding", "registration")
+    if fmt == "knockout":
+        return [{"type": "knockout", "seeding": seeding,
+                 "third_place": cfg.get("third_place", False),
+                 "plate": cfg.get("plate", False)}]
+    if fmt == "swiss":
+        return [{"type": "swiss", "seeding": seeding,
+                 "swiss_rounds": cfg.get("swiss_rounds")}]
+    if fmt == "double_elim":
+        return [{"type": "double_elim", "seeding": seeding}]
+    if fmt == "by_category":
+        return [{"type": "round_robin", "legs": cfg.get("legs", 1),
+                 "seeding": seeding, "partition": "category"}]
+    # round_robin AND groups_knockout → a single round_robin stage
+    return [{"type": "round_robin", "group_size": cfg.get("group_size", 5),
+             "balance_groups": cfg.get("balance_groups", False),
+             "legs": cfg.get("legs", 1), "seeding": seeding}]
+
+
+def effective_stages(
+    tournament, leaf_key: str | None = None, cfg: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """The normalized ordered stage list for one competition. A non-empty stored
+    `stages` wins; otherwise derive a one-stage plan from the flat format (zero
+    migration, byte-identical generation). Derived stages carry deterministic
+    synthetic ids so id-keyed code stays uniform."""
+    if cfg is None:
+        cfg = effective_draw_config(tournament, leaf_key)
+    stages = cfg.get("stages")
+    if stages:
+        return [dict(s) for s in stages]
+    derived = _derive_stages_from_format(cfg)
+    for i, s in enumerate(derived):
+        s.setdefault("id", f"legacy:{leaf_key or '*'}:{i}")
+    return derived
+
+
+def fill_stage_ids(stages: Any) -> Any:
+    """Auto-fill any missing stage `id` with a uuid7 (invariant 1) so stored
+    stages always carry a stable handle, even if a client omits one."""
+    if not isinstance(stages, list):
+        return stages
+    from apps.accounts.models import uuid7
+
+    for s in stages:
+        if isinstance(s, dict) and not s.get("id"):
+            s["id"] = str(uuid7())
+    return stages
+
+
 def leaf_has_matches(tournament, leaf_key: str | None) -> bool:
     """True once non-deleted matches exist in scope — the per-leaf freeze
     signal (§2.1): edits stay allowed but the UI shows the invariant-10
@@ -293,6 +472,8 @@ def update_draw_config(
     stored = dict(tournament.draw_config or {})
     before = stored.get(leaf_key)
     merged = merge_draw_config(partial, base=before)
+    if isinstance(merged.get("stages"), list):
+        fill_stage_ids(merged["stages"])
 
     with transaction.atomic():
         stored[leaf_key] = merged
