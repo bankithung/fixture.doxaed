@@ -60,7 +60,7 @@ export function FairnessPanel({
         <div className="min-w-0">
           <h3 className="text-sm font-semibold">{t("Fairness check")}</h3>
           <p className="text-xs text-muted-foreground">
-            {t("How evenly teams get rest, early starts and venues in this trial schedule.")}
+            {t("How evenly teams get rest, early starts and venues.")}
           </p>
         </div>
       </div>

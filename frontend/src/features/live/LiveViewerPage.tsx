@@ -126,7 +126,7 @@ export function LiveViewerPage(): React.ReactElement {
                 </section>
 
                 <p className="text-center text-xs text-muted-foreground">
-                  {t("Updates automatically every few seconds.")}
+                  {t("Updates automatically.")}
                 </p>
               </>
             );

@@ -88,7 +88,7 @@ export function RoleLandingShell({
           <CardHeader>
             <CardTitle>{t("More coming soon")}</CardTitle>
             <CardDescription>
-              {t("Deeper tools we're still building on top of what works today.")}
+              {t("Deeper tools we're still building.")}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -111,9 +111,7 @@ export function RoleLandingShell({
         <CardHeader>
           <CardTitle>{t("What you can do today")}</CardTitle>
           <CardDescription>
-            {t(
-              "Phase 1A surfaces available to every authenticated member.",
-            )}
+            {t("Available to every member today.")}
           </CardDescription>
         </CardHeader>
         <CardContent>

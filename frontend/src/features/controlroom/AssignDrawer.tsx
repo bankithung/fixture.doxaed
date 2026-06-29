@@ -247,7 +247,7 @@ export function AssignDrawer({
             {courtConflicts ? (
               <div className="flex flex-col gap-1.5 pt-1">
                 <p className="text-xs font-medium text-destructive">
-                  {t("That court clashes with the schedule. Assign it anyway and the warning is kept in the change history.")}
+                  {t("That court clashes with the schedule. Assign anyway and we'll log the warning.")}
                 </p>
                 <RepairViolationsList violations={courtConflicts} />
                 <Button

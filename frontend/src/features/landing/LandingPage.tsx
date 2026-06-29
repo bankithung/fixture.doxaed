@@ -96,7 +96,7 @@ export function LandingPage(): React.ReactElement {
             </h1>
             <p className="mt-5 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
               {t(
-                "Run tournaments, schedule matches, follow live scores. A multi-tenant platform built for local sport — football first, more to come.",
+                "Run tournaments, schedule matches, follow live scores. Built for local sport, football first.",
               )}
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
@@ -142,42 +142,42 @@ export function LandingPage(): React.ReactElement {
             icon={<Users aria-hidden="true" className="h-5 w-5" />}
             title={t("Multi-tenant from day one")}
             body={t(
-              "Every organization gets its own isolated workspace, members, and roles — no data ever crosses tenants.",
+              "Each organization gets its own workspace, members, and roles. No data crosses tenants.",
             )}
           />
           <Feature
             icon={<Calendar aria-hidden="true" className="h-5 w-5" />}
             title={t("Auto-generated schedules")}
             body={t(
-              "Brackets and fixtures are generated for you, with conflict warnings and manual overrides when you need them.",
+              "Brackets and fixtures generated for you, with conflict warnings and manual overrides.",
             )}
           />
           <Feature
             icon={<Radio aria-hidden="true" className="h-5 w-5" />}
             title={t("Live updates over SSE")}
             body={t(
-              "Fans follow real-time scores instantly; scorers and referees collaborate live without refreshing.",
+              "Fans follow live scores instantly. Scorers and referees collaborate without refreshing.",
             )}
           />
           <Feature
             icon={<Trophy aria-hidden="true" className="h-5 w-5" />}
             title={t("Tournaments & live scoring")}
             body={t(
-              "Lineups, match events, and standings stay in sync from kickoff to the final whistle.",
+              "Lineups, events, and standings stay in sync from kickoff to full time.",
             )}
           />
           <Feature
             icon={<ShieldCheck aria-hidden="true" className="h-5 w-5" />}
             title={t("Role-based access & audit")}
             body={t(
-              "Fine-grained roles, per-user module grants, and an append-only audit trail keep everyone accountable.",
+              "Granular roles, module grants, and an append-only audit trail keep everyone accountable.",
             )}
           />
           <Feature
             icon={<Activity aria-hidden="true" className="h-5 w-5" />}
             title={t("A chassis that scales")}
             body={t(
-              "Football ships first, but the same engine extends to volleyball, basketball, archery, and more.",
+              "Football first; the same engine extends to volleyball, basketball, archery, and more.",
             )}
           />
         </div>
@@ -243,9 +243,7 @@ export function LandingPage(): React.ReactElement {
                 {t("Ready to run your first tournament?")}
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                {t(
-                  "Create a free account and spin up an organization in minutes.",
-                )}
+                {t("Create a free account in minutes.")}
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap gap-3">

@@ -672,7 +672,7 @@ function PrintSheet({
           data-testid={`print-venue-${venue}`}
           className="break-after-page pb-6 last:break-after-auto"
         >
-          <h1 className="text-lg font-bold">
+          <h1 className="text-lg font-semibold">
             {tournamentName} · {t("Order of play")}
           </h1>
           <p className="pb-3 text-sm">
@@ -1099,7 +1099,7 @@ export function PublicSchedulePage(): React.ReactElement {
           {allMatches.length === 0 ? (
             <div className="px-4 py-6 sm:px-6 lg:px-8">
               <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-                {t("No matches have been scheduled yet. Check back soon.")}
+                {t("No matches scheduled yet. Check back soon.")}
               </p>
             </div>
           ) : (

@@ -83,7 +83,7 @@ function WalkoverDialog({
       <DialogHeader>
         <DialogTitle>{t("Award walkover")}</DialogTitle>
         <DialogDescription>
-          {t("The chosen team wins without play. This ends the match and the winner advances; the change is recorded in the audit log.")}
+          {t("The chosen team wins without play. The winner advances and the change is logged.")}
         </DialogDescription>
       </DialogHeader>
       <div className="flex flex-col gap-1.5 py-2">
@@ -247,11 +247,9 @@ export function QuickResultDialog({
         <DialogDescription>
           {isSets
             ? t(
-                "Enter the points for each set played. The winner and standings update automatically.",
+                "Points for each set played. Winner and standings update automatically.",
               )
-            : t(
-                "Enter the final score. This completes the match and advances the winner.",
-              )}
+            : t("Enter the final score. The winner advances.")}
         </DialogDescription>
       </DialogHeader>
 

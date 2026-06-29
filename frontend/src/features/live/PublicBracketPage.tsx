@@ -114,7 +114,7 @@ export function PublicBracketPage(): React.ReactElement {
               {t("The knockout bracket appears here once the group stage finishes.")}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {t("Follow the group tables on the Schedule tab in the meantime.")}
+              {t("See group tables on the Schedule tab.")}
             </p>
           </div>
         ) : (

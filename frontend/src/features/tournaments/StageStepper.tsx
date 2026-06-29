@@ -65,12 +65,12 @@ const STAGE_ICON: Record<string, typeof Building2> = {
 };
 
 const STAGE_HINT: Record<string, string> = {
-  setup: "Start the setup — invite institutions next.",
-  org_registration: "Register the schools/colleges taking part (form or add directly).",
-  team_registration: "Collect each institution's teams (form or add directly).",
-  members: "Invite people to help run this tournament and assign their roles.",
-  fixtures: "Generate the fixtures and schedule them with your constraints.",
-  ready: "Setup is complete — the tournament is scheduled.",
+  setup: "Start setup. Invite institutions next.",
+  org_registration: "Register the schools and colleges taking part.",
+  team_registration: "Collect each institution's teams.",
+  members: "Invite people and assign their roles.",
+  fixtures: "Generate and schedule the fixtures.",
+  ready: "Setup complete. The tournament is scheduled.",
 };
 
 function blockerText(code: string): string {
@@ -352,8 +352,8 @@ export function StageStepper({
               : blockers.length
                 ? t("This can't be done yet:")
                 : warnings.length
-                  ? t("Please confirm the following before continuing:")
-                  : t("This will move the tournament to the next stage.")}
+                  ? t("Confirm before continuing:")
+                  : t("Moves the tournament to the next stage.")}
           </DialogDescription>
         </DialogHeader>
 

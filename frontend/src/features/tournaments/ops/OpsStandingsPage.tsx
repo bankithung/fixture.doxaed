@@ -221,7 +221,7 @@ export function OpsStandingsPage(): React.ReactElement {
         <section className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center">
           <p className="text-sm font-medium">{t("No fixtures yet")}</p>
           <p className="max-w-sm text-sm text-muted-foreground">
-            {t("Standings and brackets appear once fixtures are generated.")}
+            {t("Shown once fixtures are generated.")}
           </p>
         </section>
       </div>

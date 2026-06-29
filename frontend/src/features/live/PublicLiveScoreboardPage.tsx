@@ -42,7 +42,7 @@ function LiveCard({ m }: { m: PublicScheduleMatch }): React.ReactElement {
             ({pens})
           </span>
         ) : null}
-        <span className="font-tabular text-3xl font-bold tabular-nums sm:text-4xl">
+        <span className="font-tabular text-3xl font-semibold tabular-nums sm:text-4xl">
           {score ?? 0}
         </span>
       </span>
@@ -154,7 +154,7 @@ export function PublicLiveScoreboardPage(): React.ReactElement {
           <div className="rounded-xl border border-border bg-card p-8 text-center">
             <p className="text-sm font-medium">{t("No matches are live right now.")}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {t("This page updates the moment a match kicks off.")}
+              {t("Updates the moment a match kicks off.")}
             </p>
           </div>
         ) : (

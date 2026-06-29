@@ -108,17 +108,22 @@ export function TournamentWorkspace(): React.ReactElement {
     .sort((a, b) => b.to.length - a.to.length)[0];
   const activeLocked = activeTab ? isLocked(activeTab.stageKey) : false;
   // The flow's "Continue" rides under stage WORK pages — Overview has the
-  // full stepper, Settings/Forms aren't stages, and Sports carries its OWN
-  // staged continue (pick → categories → review → generate), so a second
-  // stage button there competed with the flow (owner 2026-06-10).
+  // full stepper, Settings/Forms aren't stages, and Sports + Fixtures each carry
+  // their OWN staged journey (Sports: pick → categories → review → generate;
+  // Fixtures: When & where → Clashes → Formats → Preview & publish, which only
+  // hands off to Ready on its last step), so a second stage button there
+  // competed with the flow (owner 2026-06-10, Fixtures 2026-06-29).
   const flowPage =
     !!activeTab &&
-    !["Overview", "Settings", "Forms", "Sports"].includes(activeTab.label);
+    !["Overview", "Settings", "Forms", "Sports", "Fixtures"].includes(
+      activeTab.label,
+    );
 
-  // The Sports setup page (its Review org-chart especially) needs the full width
-  // so wide category trees fit without a horizontal scrollbar; every other setup
-  // stage keeps the readable, centred max-w-5xl column.
-  const fullWidth = opsMode || viewedKey === "setup";
+  // Every setup WORK page (Sports, Institution/Team registration, Members,
+  // Fixtures) carries a wide table/grid/wizard, so they all use the full width
+  // (`viewedKey` is non-null only on those pages). The stage-agnostic
+  // Overview/Settings pages keep the readable, centred max-w-5xl column.
+  const fullWidth = opsMode || viewedKey !== null;
 
   return (
     <div
@@ -183,12 +188,15 @@ export function TournamentWorkspace(): React.ReactElement {
            (desktop) and the mobile strip below, so this header just carries the
            tournament's identity. */
         <div className="flex flex-col gap-4">
-          <section className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
+          {/* Identity header is redundant on desktop (the topbar breadcrumb + the
+              stepper sidebar already name the tournament), so it shows only on
+              mobile, where neither is visible (owner: "no use of that"). */}
+          <section className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5 md:hidden">
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-primary text-primary-foreground sm:h-14 sm:w-14">
               <Trophy aria-hidden="true" className="h-6 w-6 sm:h-7 sm:w-7" />
             </span>
             <div className="min-w-0">
-              <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">
+              <h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">
                 {name}
               </h1>
               <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
@@ -292,7 +300,7 @@ export function TournamentWorkspace(): React.ReactElement {
             <p className="max-w-sm text-sm text-muted-foreground">
               {t("It unlocks when the tournament reaches")}{" "}
               <span className="font-medium">{lockLabel(activeTab?.stageKey ?? null)}</span>.{" "}
-              {t("Advance from Overview when you're ready.")}
+              {t("Advance from Overview when ready.")}
             </p>
           </div>
         ) : (

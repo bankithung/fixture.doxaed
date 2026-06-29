@@ -89,7 +89,7 @@ export function RenameTournamentButton({
         <DialogHeader>
           <DialogTitle>{t("Rename tournament")}</DialogTitle>
           <DialogDescription>
-            {t("Change the display name. The link to this tournament stays the same.")}
+            {t("Renames the display name. The link stays the same.")}
           </DialogDescription>
         </DialogHeader>
         <div className="py-1">

@@ -1,5 +1,6 @@
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, GitFork, Plus, Shuffle, Trash2, Trophy, Users } from "lucide-react";
 import type { StageType } from "@/api/tournaments";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/tailwind";
@@ -16,7 +17,23 @@ import {
 
 const num = (v: string, min: number) => Math.max(min, Math.floor(Number(v) || min));
 
-/** The qualification band BETWEEN two stages ("Top 2 of each group advance →"). */
+/** Icon per stage type, so a stage card reads at a glance. */
+const STAGE_ICON: Record<StageType, typeof Users> = {
+  round_robin: Users,
+  knockout: Trophy,
+  swiss: Shuffle,
+  double_elim: GitFork,
+};
+
+/** One muted line describing what each stage produces. */
+const STAGE_SUBTITLE: Record<StageType, string> = {
+  round_robin: t("Teams play a mini league; the standings decide who advances."),
+  knockout: t("Single elimination bracket down to one winner."),
+  swiss: t("A fixed number of rounds; pairs similar records, never a rematch. No eliminations."),
+  double_elim: t("Lose twice and you are out; losers drop to a second bracket."),
+};
+
+/** The qualification band BETWEEN two stages ("Who advances"). */
 function Connector({
   stage,
   onChange,
@@ -32,41 +49,52 @@ function Connector({
   return (
     <div
       data-testid={testId}
-      className="ml-3 flex flex-wrap items-center gap-2 border-l-2 border-dashed border-border py-1.5 pl-3 text-xs text-muted-foreground"
+      className="ml-3 rounded-md border-l-2 border-dashed border-primary/40 bg-primary/5 px-3 py-2"
     >
-      {t("Top")}
-      <Input
-        type="number"
-        min={1}
-        disabled={disabled}
-        data-testid={`${testId}-advance`}
-        className="h-7 w-16 font-tabular"
-        value={from.advance_per_group}
-        onChange={(e) => onChange({ advance_per_group: num(e.target.value, 1) })}
-      />
-      {t("of each group advance")}
-      <span className="text-muted-foreground/60">·</span>
-      {t("+ best")}
-      <Input
-        type="number"
-        min={0}
-        disabled={disabled}
-        data-testid={`${testId}-thirds`}
-        className="h-7 w-14 font-tabular"
-        value={from.advance_best_thirds}
-        onChange={(e) => onChange({ advance_best_thirds: num(e.target.value, 0) })}
-      />
-      <div className="w-32" data-testid={`${testId}-seeding`}>
-        <Select
-          value={from.seeding}
-          onChange={(v) => onChange({ seeding: v as "cross" | "overall" })}
-          options={[
-            { value: "cross", label: t("Cross-group") },
-            { value: "overall", label: t("Overall rank") },
-          ]}
-          aria-label={t("Seeding")}
+      <p className="text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
+        {t("Who advances")}
+      </p>
+      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        {t("Top")}
+        <Input
+          type="number"
+          min={1}
+          disabled={disabled}
+          data-testid={`${testId}-advance`}
+          className="h-8 w-16 font-tabular"
+          value={from.advance_per_group}
+          onChange={(e) => onChange({ advance_per_group: num(e.target.value, 1) })}
         />
+        {t("of each group advance")}
+        {t("plus the best")}
+        <Input
+          type="number"
+          min={0}
+          disabled={disabled}
+          data-testid={`${testId}-thirds`}
+          className="h-8 w-14 font-tabular"
+          value={from.advance_best_thirds}
+          onChange={(e) => onChange({ advance_best_thirds: num(e.target.value, 0) })}
+        />
+        {t("runners-up")}
+        {t("Seeding")}
+        <div className="w-32" data-testid={`${testId}-seeding`}>
+          <Select
+            value={from.seeding}
+            onChange={(v) => onChange({ seeding: v as "cross" | "overall" })}
+            options={[
+              { value: "cross", label: t("Cross-group") },
+              { value: "overall", label: t("Overall rank") },
+            ]}
+            aria-label={t("Seeding")}
+          />
+        </div>
       </div>
+      <p className="mt-1.5 text-xs text-muted-foreground">
+        {t(
+          "Best runners-up are the strongest teams that did not finish top of their group. Cross-group seeding keeps group winners apart in the bracket.",
+        )}
+      </p>
     </div>
   );
 }
@@ -92,6 +120,8 @@ function StageCard({
   disabled?: boolean;
   testId: string;
 }): React.ReactElement {
+  const TIcon = STAGE_ICON[stage.type] ?? Trophy;
+  const advanced = stage.type === "swiss" || stage.type === "double_elim";
   return (
     <div
       data-testid={testId}
@@ -102,9 +132,10 @@ function StageCard({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-xs font-semibold font-tabular">
+          <span className="grid h-6 w-6 place-items-center rounded-full border border-primary text-xs font-semibold font-tabular text-primary">
             {index + 1}
           </span>
+          <TIcon aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
           <div className="w-48" data-testid={`${testId}-type`}>
             <Select
               value={stage.type}
@@ -121,9 +152,9 @@ function StageCard({
             aria-label={t("Move up")}
             data-testid={`${testId}-up`}
             onClick={() => onMove(-1)}
-            className="rounded p-1 hover:bg-muted disabled:opacity-30"
+            className="rounded p-1.5 hover:bg-muted disabled:opacity-30"
           >
-            <ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />
+            <ArrowUp aria-hidden="true" className="h-4 w-4" />
           </button>
           <button
             type="button"
@@ -131,9 +162,9 @@ function StageCard({
             aria-label={t("Move down")}
             data-testid={`${testId}-down`}
             onClick={() => onMove(1)}
-            className="rounded p-1 hover:bg-muted disabled:opacity-30"
+            className="rounded p-1.5 hover:bg-muted disabled:opacity-30"
           >
-            <ArrowDown aria-hidden="true" className="h-3.5 w-3.5" />
+            <ArrowDown aria-hidden="true" className="h-4 w-4" />
           </button>
           <button
             type="button"
@@ -141,50 +172,57 @@ function StageCard({
             aria-label={t("Remove stage")}
             data-testid={`${testId}-remove`}
             onClick={onRemove}
-            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
+            className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive"
           >
-            <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+            <Trash2 aria-hidden="true" className="h-4 w-4" />
           </button>
         </div>
       </div>
 
+      <p className="mt-2 text-xs text-muted-foreground">{STAGE_SUBTITLE[stage.type]}</p>
+
       {stage.type === "round_robin" ? (
-        <div className="mt-2 flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {t("Teams per group")}
-            <Input
-              type="number" min={2} disabled={disabled}
-              data-testid={`${testId}-group-size`}
-              className="h-8 w-20 font-tabular"
-              value={stage.group_size ?? 4}
-              onChange={(e) => onPatch({ group_size: num(e.target.value, 2) })}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {t("Matches each team plays")}
-            <Input
-              type="number" min={1} disabled={disabled}
-              data-testid={`${testId}-min-matches`}
-              className="h-8 w-24 font-tabular"
-              placeholder={t("all")}
-              value={stage.min_matches_per_team ?? ""}
-              onChange={(e) =>
-                onPatch({
-                  min_matches_per_team: e.target.value === "" ? null : num(e.target.value, 1),
-                })
-              }
-            />
-          </label>
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <input
-              type="checkbox" disabled={disabled}
-              data-testid={`${testId}-balance`}
-              className="h-4 w-4 rounded border-input text-primary"
-              checked={stage.balance_groups ?? true}
-              onChange={(e) => onPatch({ balance_groups: e.target.checked })}
-            />
-            {t("Balance group sizes")}
-          </label>
+        <div className="mt-2 flex flex-col gap-2">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {t("Teams per group")}
+              <Input
+                type="number" min={2} disabled={disabled}
+                data-testid={`${testId}-group-size`}
+                className="h-9 w-20 font-tabular"
+                value={stage.group_size ?? 4}
+                onChange={(e) => onPatch({ group_size: num(e.target.value, 2) })}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {t("Matches each team plays")}
+              <Input
+                type="number" min={1} disabled={disabled}
+                data-testid={`${testId}-min-matches`}
+                className="h-9 w-24 font-tabular"
+                placeholder={t("all")}
+                value={stage.min_matches_per_team ?? ""}
+                onChange={(e) =>
+                  onPatch({
+                    min_matches_per_team: e.target.value === "" ? null : num(e.target.value, 1),
+                  })
+                }
+              />
+            </label>
+            <label className="flex items-center gap-2 pb-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox" disabled={disabled}
+                data-testid={`${testId}-balance`}
+                className="h-4 w-4 rounded border-input accent-[var(--primary)]"
+                checked={stage.balance_groups ?? true}
+                onChange={(e) => onPatch({ balance_groups: e.target.checked })}
+              />
+              {t("Balance group sizes")}
+            </label>
+          </div>
+          <span className="text-[0.6875rem] text-muted-foreground">
+            {t("Leave blank to play everyone in the group.")}
+          </span>
         </div>
       ) : null}
 
@@ -193,12 +231,18 @@ function StageCard({
           <input
             type="checkbox" disabled={disabled}
             data-testid={`${testId}-third-place`}
-            className="h-4 w-4 rounded border-input text-primary"
+            className="h-4 w-4 rounded border-input accent-[var(--primary)]"
             checked={stage.third_place ?? false}
             onChange={(e) => onPatch({ third_place: e.target.checked })}
           />
           {t("Third-place match")}
         </label>
+      ) : null}
+
+      {advanced ? (
+        <span className="mt-2 inline-block rounded bg-muted px-1.5 py-0.5 text-[0.6875rem] text-muted-foreground">
+          {t("Advanced format")}
+        </span>
       ) : null}
 
       {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
@@ -215,8 +259,8 @@ function blankStageKeep(prev: Stage, type: StageType, isFirst: boolean): Stage {
 /**
  * Compose an ordered list of stages for one competition (owner ask 2026-06-27:
  * "allow the user to add any number of stages of any type"). Controlled:
- * `stages` is the plan (empty = single-format, the dropdown governs). The board
- * persists it to draw_config[layer].stages.
+ * `stages` is the plan (empty = single-format, the structure mode governs). The
+ * board persists it to draw_config[layer].stages.
  */
 export function StagesEditor({
   stages,
@@ -235,8 +279,48 @@ export function StagesEditor({
   const add = () =>
     onChange([...stages, blankStage(stages.length === 0 ? "round_robin" : "knockout", stages.length === 0)]);
 
+  const presets: { label: string; build: () => Stage[] }[] = [
+    {
+      label: t("Groups then knockout"),
+      build: () => [blankStage("round_robin", true), blankStage("knockout", false)],
+    },
+    { label: t("League only"), build: () => [blankStage("round_robin", true)] },
+    { label: t("Knockout only"), build: () => [blankStage("knockout", true)] },
+    {
+      label: t("Swiss then knockout"),
+      build: () => [blankStage("swiss", true), blankStage("knockout", false)],
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-2" data-testid={testId}>
+      {stages.length === 0 ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
+              {t("Tournament plan")}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {t("Build the rounds teams play, in order. The last stage decides the winner.")}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {presets.map((p) => (
+              <Button
+                key={p.label}
+                size="sm"
+                variant="outline"
+                disabled={disabled}
+                onClick={() => onChange(p.build())}
+              >
+                <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+                {p.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {stages.map((s, i) => (
         <div key={s.id} className="flex flex-col gap-2">
           {i > 0 ? (
@@ -281,7 +365,7 @@ export function StagesEditor({
         disabled={disabled || lastTerminal}
         data-testid={`${testId}-add`}
         onClick={add}
-        className="flex items-center gap-1.5 self-start rounded-lg border border-dashed border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-40"
+        className="flex items-center gap-1.5 self-start rounded-lg border border-dashed border-primary/50 px-3 py-1.5 text-xs font-medium text-primary hover:bg-accent disabled:opacity-40"
       >
         <Plus aria-hidden="true" className="h-3.5 w-3.5" />
         {lastTerminal ? t("A knockout ends the competition") : t("Add stage")}

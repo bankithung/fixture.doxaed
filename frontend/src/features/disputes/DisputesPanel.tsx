@@ -286,7 +286,7 @@ export function DisputesPanel({
               : t("Resolve dispute")}
           </DialogTitle>
           <DialogDescription>
-            {t("Add a resolution note (minimum 5 characters).")}
+            {t("Add a resolution note (5+ characters).")}
           </DialogDescription>
         </DialogHeader>
         <textarea

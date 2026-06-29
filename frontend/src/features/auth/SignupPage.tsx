@@ -90,9 +90,7 @@ export function SignupPage(): React.ReactElement {
     return (
       <AuthLayout
         title={t("Check your email")}
-        subtitle={t(
-          "We've sent a verification link. Click it to activate your account.",
-        )}
+        subtitle={t("We sent a link to activate your account.")}
       >
         <div
           role="status"
@@ -104,9 +102,7 @@ export function SignupPage(): React.ReactElement {
             <span className="font-semibold">{submittedEmail}</span>.
           </p>
           <p className="mt-3 text-xs text-emerald-900/70">
-            {t(
-              "In development, the link is also printed to the Django console.",
-            )}
+            {t("In development, the link also prints to the Django console.")}
           </p>
         </div>
         <div className="mt-6 flex flex-col gap-2 text-sm">
@@ -137,7 +133,7 @@ export function SignupPage(): React.ReactElement {
   return (
     <AuthLayout
       title={t("Create your account")}
-      subtitle={t("You'll verify your email and (optionally) enable 2FA next.")}
+      subtitle={t("Verify your email next, then optionally add 2FA.")}
     >
       {error ? (
         <div

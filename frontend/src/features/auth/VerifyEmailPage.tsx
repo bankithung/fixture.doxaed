@@ -46,7 +46,7 @@ export function VerifyEmailPage(): React.ReactElement {
           {state === "idle" ? (
             <p className="text-sm text-muted-foreground">
               {t(
-                "Check your inbox for a verification link. Click it to activate your account.",
+                "Open the verification link in your inbox to activate your account.",
               )}
             </p>
           ) : null}

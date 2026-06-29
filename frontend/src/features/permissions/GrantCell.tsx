@@ -96,7 +96,7 @@ export function GrantCell({
       data-state={state}
       data-role-default={roleDefault ? "true" : "false"}
       className={cn(
-        "inline-flex h-7 w-7 items-center justify-center rounded border text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50",
+        "inline-flex h-7 w-7 items-center justify-center rounded border text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50",
         styles,
       )}
     >

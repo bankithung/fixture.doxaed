@@ -232,7 +232,7 @@ export function OpsSettingsPage(): React.ReactElement {
           <div>
             <h3 className="text-sm font-semibold">{t("Public pages")}</h3>
             <p className="text-xs text-muted-foreground">
-              {t("Share these read-only links with schools and spectators.")}
+              {t("Read-only links for schools and spectators.")}
             </p>
           </div>
           <div className="flex flex-col gap-2">
@@ -257,7 +257,7 @@ export function OpsSettingsPage(): React.ReactElement {
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">{t("Audit log")}</div>
           <div className="text-xs text-muted-foreground">
-            {t("Every stage change, score, and admin action — append-only.")}
+            {t("Every stage change, score and admin action. Append-only.")}
           </div>
         </div>
         <ChevronRight
@@ -274,7 +274,7 @@ export function OpsSettingsPage(): React.ReactElement {
           <div>
             <h3 className="text-sm font-semibold">{t("Setup & configuration")}</h3>
             <p className="text-xs text-muted-foreground">
-              {t("The setup pages, for late registrations, rule amendments and regenerating fixtures.")}
+              {t("For late registrations, rule changes and regenerating fixtures.")}
             </p>
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -313,8 +313,8 @@ export function OpsSettingsPage(): React.ReactElement {
             <h3 className="text-sm font-semibold">{t("Status & danger zone")}</h3>
             <p className="text-xs text-muted-foreground">
               {archived
-                ? t("This tournament is inactive (archived). Reactivate it to resume.")
-                : t("Deactivate to hide it without deleting, or delete it permanently if it was created by mistake.")}
+                ? t("Inactive (archived). Reactivate it to resume.")
+                : t("Deactivate to hide it, or delete it permanently.")}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

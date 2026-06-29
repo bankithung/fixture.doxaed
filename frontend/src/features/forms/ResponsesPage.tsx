@@ -446,7 +446,7 @@ function SendStage2Dialog({
           </p>
           {result.links.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              {t("No accepted respondents yet — accept some responses first.")}
+              {t("No accepted respondents yet. Accept some responses first.")}
             </p>
           ) : (
             <ul className="flex max-h-[40vh] flex-col gap-2 overflow-auto pr-1">
@@ -478,7 +478,7 @@ function SendStage2Dialog({
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
             {t(
-              "Pick the team-registration form to invite accepted respondents to. One single-use link is minted per accepted response.",
+              "Pick the team-registration form for accepted respondents. Each gets one single-use link.",
             )}
           </p>
           <div className="flex flex-col gap-1.5">
@@ -500,7 +500,7 @@ function SendStage2Dialog({
             />
             {!formsQuery.isLoading && targets.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                {t("No team-registration forms exist in this tournament yet.")}
+                {t("No team-registration forms yet.")}
               </p>
             ) : null}
           </div>

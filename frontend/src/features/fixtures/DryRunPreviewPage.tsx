@@ -7,13 +7,19 @@ import {
   type ConstraintDraft,
   type DrawCalendar,
   type FixturePreview,
+  type MatchRow,
+  type MatchSource,
+  type MiniTeam,
+  type PreviewMatch,
   type PreviewRelaxation,
+  type PreviewSide,
   type PreviewViolation,
   type ScheduleRequest,
 } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { FifaBracket } from "@/features/tournaments/FifaBracket";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
@@ -22,21 +28,59 @@ import { t } from "@/lib/t";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { FairnessPanel } from "./FairnessPanel";
 import { InputsChangedBanner } from "./InputsChangedBanner";
+import { LeafLabel } from "./LeafLabel";
 import { MatchesByDayGrid } from "./MatchesByDayGrid";
+import { GroupCompositionView } from "./GroupCompositionView";
+import { MatchesByGroupGrid } from "./MatchesByGroupGrid";
 import { PreviewFilterBar } from "./PreviewFilterBar";
-import { sportKey } from "./previewFilters";
+import { competitionLabel, sportKey } from "./previewFilters";
 import { SetupJourneyHeader } from "./SetupJourneyHeader";
 import { sideName } from "./sideName";
 import { ViolationsPanel } from "./ViolationsPanel";
 
+/** Adapt a previewed (placeholder) match to the MatchRow shape the FIFA
+ * bracket renders — no scores yet, typed pointers passed through so an
+ * unresolved slot shows the clean "Group A #1" label. */
+function previewToMatchRow(
+  pm: PreviewMatch,
+  teamNames: ReadonlyMap<string, string>,
+): MatchRow {
+  const team = (s: PreviewSide): MiniTeam | null =>
+    s.team_id
+      ? { id: s.team_id, name: teamNames.get(s.team_id) ?? t("TBD"), short_name: "" }
+      : null;
+  const source = (s: PreviewSide): MatchSource | null =>
+    (s.source as MatchSource | undefined) ?? null;
+  return {
+    id: pm.ref,
+    stage: pm.stage,
+    group_label: pm.group_label,
+    round_no: pm.round_no,
+    match_no: 0,
+    status: "scheduled",
+    home_team: team(pm.home),
+    away_team: team(pm.away),
+    home_score: null,
+    away_score: null,
+    sport: "",
+    set_scores: [],
+    leaf_key: pm.leaf_key,
+    venue: pm.venue ?? "",
+    scoring: null,
+    scheduled_at: pm.scheduled_at,
+    home_source: source(pm.home),
+    away_source: source(pm.away),
+  };
+}
+
 /** Pairing-layer warning labels per stable code (§7.7). */
 const WARNING_LABELS: Record<string, string> = {
   keep_apart_relaxed:
-    "We could not fully keep those teams apart, so the rule was relaxed for this draw.",
+    "Could not fully keep those teams apart, so the rule was relaxed for this draw.",
   keep_apart_missing_district:
-    "Some teams have no district saved, so the keep-apart rule skipped them.",
+    "Some teams have no district, so keep-apart skipped them.",
   keep_apart_missing_seed:
-    "Some teams have no seed number, so the keep-apart rule skipped them.",
+    "Some teams have no seed, so keep-apart skipped them.",
   keep_apart_unknown_key:
     "A keep-apart rule uses an unknown setting and was skipped.",
 };
@@ -85,6 +129,9 @@ export function DryRunPreviewPage(): React.ReactElement {
   // Schedule filter (owner ask) — narrow to one sport, then one category.
   const [sportFilter, setSportFilter] = useState<string | null>(null);
   const [catFilter, setCatFilter] = useState<string | null>(null);
+  // Preview view: schedule "By day" / "By group", or the "Draw" (groups +
+  // bracket) structure view.
+  const [viewMode, setViewMode] = useState<"day" | "group" | "draw">("day");
 
   const drawConfig = useQuery({
     queryKey: qk.drawConfig(id),
@@ -140,6 +187,56 @@ export function DryRunPreviewPage(): React.ReactElement {
     : (readiness.data?.competitions.find((c) => c.leaf_key === leaf)?.label ??
       // Raw leaf keys are internal codes — never flash one while loading.
       (readiness.data === undefined ? "" : leaf || t("All competitions")));
+
+  // The schedule both views render: every match honouring the sport/category
+  // filter (shared by the day grid and the group grid).
+  const filteredMatches = useMemo(
+    () =>
+      (preview.data?.matches ?? []).filter(
+        (m) =>
+          (!sportFilter || sportKey(m) === sportFilter) &&
+          (!catFilter || m.leaf_key === catFilter),
+      ),
+    [preview.data, sportFilter, catFilter],
+  );
+
+  // One FIFA bracket per competition leaf that has placeholder knockout matches
+  // (the multi-stage preview now ships a timed, placeholder Stage 2). Honours
+  // the same sport/category filter as the day-grid below.
+  const knockoutBrackets = useMemo(() => {
+    const filtered = (preview.data?.matches ?? []).filter(
+      (m) =>
+        (!sportFilter || sportKey(m) === sportFilter) &&
+        (!catFilter || m.leaf_key === catFilter),
+    );
+    const byLeaf = new Map<string, PreviewMatch[]>();
+    for (const m of filtered) {
+      if (m.stage !== "knockout") continue;
+      if (!byLeaf.has(m.leaf_key)) byLeaf.set(m.leaf_key, []);
+      byLeaf.get(m.leaf_key)!.push(m);
+    }
+    return [...byLeaf.entries()].map(([leafKey, ms]) => {
+      const byRound = new Map<number, MatchRow[]>();
+      for (const m of ms) {
+        if (!byRound.has(m.round_no)) byRound.set(m.round_no, []);
+        byRound.get(m.round_no)!.push(previewToMatchRow(m, teamNames));
+      }
+      const columns = [...byRound.entries()].sort((a, b) => a[0] - b[0]) as [
+        number,
+        MatchRow[],
+      ][];
+      // Prefer the rich competition label off a group match (LeafLabel turns it
+      // into pills); fall back to the readiness label, then the bare key.
+      const grouped = filtered.find(
+        (m) => m.leaf_key === leafKey && m.group_label,
+      );
+      const leafLabel =
+        (grouped ? competitionLabel(grouped) : "") ||
+        readiness.data?.competitions.find((c) => c.leaf_key === leafKey)?.label ||
+        leafKey;
+      return { leafKey, leafLabel, columns };
+    });
+  }, [preview.data, sportFilter, catFilter, teamNames, readiness.data]);
 
   const rePreview = (): void => {
     setStale(false);
@@ -404,7 +501,7 @@ export function DryRunPreviewPage(): React.ReactElement {
                   {p.seed != null ? (
                     <span
                       data-testid="preview-seed"
-                      title={t("Saved when you publish, so this exact draw can be reproduced.")}
+                      title={t("Saved on publish so this draw can be reproduced.")}
                       className="rounded-full bg-muted px-2 py-0.5"
                     >
                       {t("Draw number")} {p.seed}
@@ -427,14 +524,64 @@ export function DryRunPreviewPage(): React.ReactElement {
             onSport={setSportFilter}
             onCategory={setCatFilter}
           />
-          <MatchesByDayGrid
-            matches={p.matches.filter(
-              (m) =>
-                (!sportFilter || sportKey(m) === sportFilter) &&
-                (!catFilter || m.leaf_key === catFilter),
-            )}
-            teamNames={teamNames}
-          />
+          <div className="flex items-center justify-end">
+            <div
+              role="radiogroup"
+              aria-label={t("Preview view")}
+              className="inline-flex rounded-lg border border-border bg-muted/20 p-0.5"
+            >
+              {(
+                [
+                  ["day", t("By day")],
+                  ["group", t("By group")],
+                  ["draw", t("Draw")],
+                ] as const
+              ).map(([mode, lbl]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={viewMode === mode}
+                  data-testid={`preview-view-${mode}`}
+                  onClick={() => setViewMode(mode)}
+                  className={cn(
+                    "h-8 rounded-md px-3 text-xs font-medium transition-colors",
+                    viewMode === mode
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
+          {viewMode === "day" ? (
+            <MatchesByDayGrid matches={filteredMatches} teamNames={teamNames} />
+          ) : viewMode === "group" ? (
+            <MatchesByGroupGrid matches={filteredMatches} teamNames={teamNames} />
+          ) : (
+            <GroupCompositionView matches={filteredMatches} teamNames={teamNames} />
+          )}
+
+          {/* FIFA bracket tree for any competition with a (placeholder)
+              knockout stage — the organiser reviews Stage 2 before publishing.
+              Placeholder slots show the clean "Group A #1" labels. */}
+          {viewMode === "draw" && knockoutBrackets.length ? (
+            <section data-testid="preview-bracket" className="flex flex-col gap-4">
+              <h2 className="text-sm font-semibold">{t("Knockout bracket")}</h2>
+              {knockoutBrackets.map((b) => (
+                <div
+                  key={b.leafKey}
+                  data-testid={`preview-bracket-${b.leafKey}`}
+                  className="flex flex-col gap-2"
+                >
+                  <LeafLabel label={b.leafLabel} />
+                  <FifaBracket columns={b.columns} />
+                </div>
+              ))}
+            </section>
+          ) : null}
 
           {p.unscheduled.length ? (
             <section className="rounded-xl border border-warning/40 bg-warning-muted px-4 py-3">

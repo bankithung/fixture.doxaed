@@ -140,7 +140,7 @@ export function LoginPage(): React.ReactElement {
       subtitle={
         requires2FA
           ? t("Enter the 6-digit code from your authenticator app.")
-          : t("Welcome back. Enter your credentials to continue.")
+          : t("Welcome back. Sign in to continue.")
       }
     >
       {unverifiedEmail ? (

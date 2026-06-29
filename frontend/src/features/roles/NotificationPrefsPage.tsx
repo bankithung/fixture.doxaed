@@ -27,7 +27,7 @@ export function NotificationPrefsPage(): React.ReactElement {
           {t("Notifications")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          {t("Choose which events alert you and on which channel.")}
+          {t("Choose which events alert you and where.")}
         </p>
       </header>
 
@@ -41,7 +41,7 @@ export function NotificationPrefsPage(): React.ReactElement {
         <CardContent className="text-sm text-muted-foreground">
           <p>
             {t(
-              "Once tournaments and matches go live, you will be able to opt in or out of in-app, email, and digest notifications per event type.",
+              "When matches go live, opt in or out of in-app, email, and digest alerts per event.",
             )}
           </p>
           <p className="mt-3">

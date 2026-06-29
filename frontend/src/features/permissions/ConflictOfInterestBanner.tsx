@@ -31,7 +31,7 @@ export function ConflictOfInterestBanner({
       )}
     >
       <div className="flex items-start gap-2">
-        <span aria-hidden="true" className="text-base font-bold">
+        <span aria-hidden="true" className="text-base font-semibold">
           !
         </span>
         <div className="flex-1">

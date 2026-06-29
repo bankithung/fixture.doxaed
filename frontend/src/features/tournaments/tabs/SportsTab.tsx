@@ -404,7 +404,7 @@ function AddNodeForm({
             />
           </div>
           <p className="flex-1 pb-1 text-xs text-muted-foreground">
-            {t("Squad size — raise the max for substitutes.")}
+            {t("Raise the max for substitutes.")}
           </p>
         </div>
       ) : null}
@@ -934,7 +934,7 @@ export function SportsTab(): React.ReactElement {
           {effectiveStep === "pick"
             ? t("Pick the sports this tournament runs.")
             : effectiveStep === "configure"
-              ? t("Add each sport's categories. The last level of each is one competition.")
+              ? t("Add each sport's categories. The last level is one competition.")
               : t("Review the competitions, then create the registration form.")}
         </p>
       </div>
@@ -954,7 +954,7 @@ export function SportsTab(): React.ReactElement {
                 {t("No sports yet. Add at least one below.")}
               </p>
             ) : (
-              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <ul className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-3">
                 {selected.map((s) => {
                   const leaves = leafLabels(s.nodes ?? []).length;
                   return (
@@ -1024,7 +1024,7 @@ export function SportsTab(): React.ReactElement {
               </Button>
             ) : null}
 
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-2">
               {matches.map((c) => {
                 const added = isAdded(c.code);
                 return (
@@ -1070,7 +1070,7 @@ export function SportsTab(): React.ReactElement {
               <p className="text-sm text-muted-foreground">{t("Loading sports…")}</p>
             ) : matches.length === 0 && !customName ? (
               <p className="text-sm text-muted-foreground">
-                {t("Start typing to find a sport, or type a custom name.")}
+                {t("Type to find a sport, or add a custom one.")}
               </p>
             ) : null}
           </section>
@@ -1186,7 +1186,7 @@ export function SportsTab(): React.ReactElement {
                 </div>
                 {(activeSport.nodes ?? []).length === 0 ? (
                   <p className="rounded-lg border border-dashed border-border bg-muted/20 px-3 py-4 text-center text-sm text-muted-foreground">
-                    {t("No categories yet — the whole sport runs as one competition. Add levels below.")}
+                    {t("No categories yet. The whole sport runs as one competition.")}
                   </p>
                 ) : (
                   <ul className="rounded-lg border border-border px-1 py-1.5">
@@ -1427,7 +1427,7 @@ export function SportsTab(): React.ReactElement {
                         </div>
                       ) : (
                         <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
-                          {t("No categories — the whole sport runs as ONE open competition. That's fine if intended; otherwise add age groups / formats via Edit.")}
+                          {t("No categories. The whole sport runs as one competition. Add age groups or formats via Edit.")}
                         </p>
                       )}
                     </section>
@@ -1447,8 +1447,8 @@ export function SportsTab(): React.ReactElement {
               </h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {orgForm?.stale
-                  ? t("Your category changes aren't in the form yet — continuing refreshes it.")
-                  : t("Builds the registration form and opens institute registration. You can edit it first.")}
+                  ? t("Your category changes aren't in the form yet. Continuing refreshes it.")
+                  : t("Builds the form and opens institute registration. You can edit it first.")}
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">

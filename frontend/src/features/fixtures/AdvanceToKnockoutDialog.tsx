@@ -96,7 +96,7 @@ export function AdvanceToKnockoutDialog({
         </DialogTitle>
         <DialogDescription>
           {t(
-            "The top teams from each group go into the bracket. Group winners meet other groups' runners-up first.",
+            "Top teams from each group enter the bracket, cross-seeded against other groups' runners-up.",
           )}
         </DialogDescription>
       </DialogHeader>
@@ -112,7 +112,7 @@ export function AdvanceToKnockoutDialog({
           className="h-9 w-24"
         />
         <span className="text-xs text-muted-foreground">
-          {t("Already set in Step 2. Change it here only if you mean to.")}
+          {t("Set in Step 2. Change only if you mean to.")}
         </span>
       </label>
       <DialogFooter>

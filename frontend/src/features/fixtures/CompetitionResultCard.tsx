@@ -49,7 +49,7 @@ function Row({
       {match.locked_at ? (
         <span
           data-testid={`locked-${match.id}`}
-          title={t("This match is pinned. Re-runs and delays will not move it.")}
+          title={t("Pinned. Re-runs and delays won't move it.")}
           className="inline-flex shrink-0 items-center rounded-full bg-muted px-1 py-0.5 text-muted-foreground"
         >
           <Lock aria-hidden="true" className="h-3 w-3" />

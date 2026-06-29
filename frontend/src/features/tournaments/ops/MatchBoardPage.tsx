@@ -422,7 +422,7 @@ export function MatchesBoardPage(): React.ReactElement {
         <section className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center">
           <p className="text-sm font-medium">{t("No fixtures yet")}</p>
           <p className="max-w-sm text-sm text-muted-foreground">
-            {t("Every generated match will appear here, ready to schedule, staff and score.")}
+            {t("Every generated match appears here to schedule, staff and score.")}
           </p>
         </section>
       </div>

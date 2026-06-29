@@ -229,7 +229,7 @@ export function TeamsTab(): React.ReactElement {
         <div>
           <h2 className="text-lg font-semibold">{t("Teams")}</h2>
           <p className="text-sm text-muted-foreground">
-            {t("Each institution's teams. Add them directly, or collect them via the registration form.")}
+            {t("Each institution's teams. Add directly, or collect via the form.")}
           </p>
         </div>
         {canManage ? (
@@ -295,7 +295,7 @@ export function TeamsTab(): React.ReactElement {
 
       {canManage && (institutions.data?.length ?? 0) > 0 && !teamForm ? (
         <p className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-          {t("Tip: “Auto-generate team form” builds a registration form from the categories each institution selected — a conditional section per category — for you to review and open.")}
+          {t("Tip: “Auto-generate team form” builds a form from each institution's selected categories, with a section per category, ready to review and open.")}
         </p>
       ) : null}
 
@@ -331,7 +331,7 @@ export function TeamsTab(): React.ReactElement {
           <DialogTitle>{t("Team access codes")}</DialogTitle>
           <DialogDescription>
             {t(
-              "Each school needs its emailed code before it can register or edit teams. Send to everyone at once, or to one school at a time.",
+              "Schools need their emailed code to register or edit teams. Send to all at once, or one at a time.",
             )}
           </DialogDescription>
         </DialogHeader>

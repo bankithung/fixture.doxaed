@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { CalendarRange, Pencil } from "lucide-react";
+import { CalendarDays, Pencil } from "lucide-react";
 import { tournamentsApi, type ConstraintRecord } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { AskAiButton } from "@/features/assistant/AskAiButton";
@@ -129,68 +129,81 @@ export function GlobalSetupCard({
       : []),
   ];
 
-  const chipCls =
-    "inline-flex max-w-full items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-xs";
+  const chipBase =
+    "inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium";
 
   return (
     <section
       data-testid="global-setup-strip"
-      className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border border-border bg-card px-4 py-2.5 shadow-sm"
+      className="w-full rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7 lg:p-8"
     >
-      <CalendarRange
-        aria-hidden="true"
-        className="h-4 w-4 shrink-0 text-muted-foreground"
-      />
-      <h3 className="text-sm font-semibold">{t("Step 1 · When & where")}</h3>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3.5">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+            <CalendarDays aria-hidden="true" className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold">
+              {t("Step 1 · When & where")}
+            </h3>
+            <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
+              {t("Your match days, venues, play times and breaks. Edit any time.")}
+            </p>
+          </div>
+        </div>
+        {canManage ? (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <AskAiButton
+              focus={{
+                label: t("When & where"),
+                hint: "the 'When & where' section: match days, daily play times, venues and courts, breaks, and ceremonies",
+              }}
+            />
+            <Button
+              size="sm"
+              variant={unset ? "default" : "outline"}
+              data-testid="global-setup-edit"
+              onClick={() => onEdit(0)}
+            >
+              <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
+              {unset ? t("Start Step 1") : t("Edit")}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+
       {loading ? (
         <div
-          className="h-5 w-48 animate-pulse rounded-full bg-muted/40"
+          className="mt-5 h-7 w-56 animate-pulse rounded-full bg-muted/40"
           aria-busy="true"
         />
       ) : (
-        rows.map((r) =>
-          canManage ? (
-            <button
-              key={r.key}
-              type="button"
-              aria-label={t(`Edit: ${r.value}`)}
-              title={t("Edit in Step 1")}
-              data-testid={`setup-chip-${r.key}`}
-              className={`${chipCls} text-foreground transition-colors hover:bg-accent hover:text-accent-foreground`}
-              onClick={() => onEdit(r.step)}
-            >
-              <span className="truncate font-tabular">{r.value}</span>
-            </button>
-          ) : (
-            <span
-              key={r.key}
-              data-testid={`setup-chip-${r.key}`}
-              className={`${chipCls} text-muted-foreground`}
-            >
-              <span className="truncate font-tabular">{r.value}</span>
-            </span>
-          ),
-        )
-      )}
-      {canManage ? (
-        <div className="ml-auto flex items-center gap-1.5">
-          <AskAiButton
-            focus={{
-              label: t("When & where"),
-              hint: "the 'When & where' section: match days, daily play times, venues and courts, breaks, and ceremonies",
-            }}
-          />
-          <Button
-            size="sm"
-            variant={unset ? "default" : "outline"}
-            data-testid="global-setup-edit"
-            onClick={() => onEdit(0)}
-          >
-            <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
-            {unset ? t("Start Step 1") : t("Edit")}
-          </Button>
+        <div className="mt-5 flex flex-wrap gap-2">
+          {rows.map((r) =>
+            canManage ? (
+              <button
+                key={r.key}
+                type="button"
+                aria-label={t(`Edit: ${r.value}`)}
+                title={t("Edit in Step 1")}
+                data-testid={`setup-chip-${r.key}`}
+                className={`${chipBase} bg-muted text-foreground transition-colors hover:bg-accent hover:text-accent-foreground`}
+                onClick={() => onEdit(r.step)}
+              >
+                <span className="truncate font-tabular">{r.value}</span>
+              </button>
+            ) : (
+              <span
+                key={r.key}
+                data-testid={`setup-chip-${r.key}`}
+                className={`${chipBase} bg-muted/50 text-muted-foreground`}
+              >
+                <span className="truncate font-tabular">{r.value}</span>
+              </span>
+            ),
+          )}
         </div>
-      ) : null}
+      )}
     </section>
   );
 }

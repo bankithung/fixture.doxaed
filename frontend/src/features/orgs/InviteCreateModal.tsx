@@ -255,14 +255,14 @@ function SentView({ invitation, onDone }: SentViewProps): React.ReactElement {
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
         {t(
-          `An email has been sent to ${invitation.email}. Share the link below directly if needed.`,
+          `Email sent to ${invitation.email}. Or share the link below.`,
         )}
       </p>
       <CopyField
         label={t("Invitation token")}
         value={token}
         testId="invite-token"
-        helpText={t("One-shot token. It will not be shown again.")}
+        helpText={t("Shown once. Copy it now.")}
       />
       <CopyField
         label={t("Share link")}

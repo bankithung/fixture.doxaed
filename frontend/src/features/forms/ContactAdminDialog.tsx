@@ -63,7 +63,7 @@ export function ContactAdminDialog({
       <DialogHeader>
         <DialogTitle>{t("Contact the organisers")}</DialogTitle>
         <DialogDescription>
-          {t("Have a question or an issue? Send the organisers a message.")}
+          {t("Send the organisers a message.")}
         </DialogDescription>
       </DialogHeader>
 

@@ -75,7 +75,9 @@ export function StageContinue({
     queryFn: () => tournamentsApi.stage(tournamentId),
   });
   const data = stageQ.data;
-  const nextStage = data ? data.order[data.order.indexOf(data.stage) + 1] : undefined;
+  const nextStage = data?.order
+    ? data.order[data.order.indexOf(data.stage) + 1]
+    : undefined;
 
   const previewQ = useQuery({
     queryKey: ["tournament-stage-preview", tournamentId, nextStage],
@@ -104,7 +106,7 @@ export function StageContinue({
       }),
   });
 
-  if (!data) return null;
+  if (!data || !data.order) return null;
   const curIdx = data.order.indexOf(data.stage);
   // If you've navigated back to an already-completed stage's page (e.g. viewing
   // Institution registration while the tournament is at Fixtures), the flow's
@@ -195,8 +197,8 @@ export function StageContinue({
               : blockers.length
                 ? t("This can't be done yet:")
                 : warnings.length
-                  ? t("Please confirm the following before continuing:")
-                  : t("This moves the tournament to the next stage.")}
+                  ? t("Confirm before continuing:")
+                  : t("Moves the tournament to the next stage.")}
           </DialogDescription>
         </DialogHeader>
 

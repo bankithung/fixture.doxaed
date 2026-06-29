@@ -233,7 +233,7 @@ export function InstitutionsTab(): React.ReactElement {
       <div>
         <h2 className="text-lg font-semibold">{t("Institution registration")}</h2>
         <p className="text-sm text-muted-foreground">
-          {t("One form to register schools — share it, or add them yourself.")}
+          {t("Share one form, or add schools yourself.")}
         </p>
       </div>
 
@@ -245,7 +245,7 @@ export function InstitutionsTab(): React.ReactElement {
             <div>
               <p className="text-sm font-medium">{t("Create the registration form first")}</p>
               <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                {t("Add your questions, then share the form or add schools yourself.")}
+                {t("Add questions, then share the form or add schools.")}
               </p>
             </div>
             <Button onClick={() => setCreateOpen(true)}>
@@ -652,7 +652,7 @@ function ReviewMenu({
           <DialogTitle>{t("Delete this application?")}</DialogTitle>
           <DialogDescription>
             {t(
-              "This removes the institution, its teams and players, and the original submission. Reject instead if you only want to hide it from the public.",
+              "Removes the institution, its teams, players and submission. To only hide it, reject instead.",
             )}
           </DialogDescription>
         </DialogHeader>

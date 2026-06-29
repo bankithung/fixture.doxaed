@@ -69,6 +69,34 @@ const PREVIEW: FixturePreview = {
   leaf_key: "football.u15",
 };
 
+// A two-stage preview: a group stage + a PLACEHOLDER knockout whose slots are
+// group_position pointers (the backend ships these with the FULL legacy label).
+const MULTISTAGE_PREVIEW: FixturePreview = {
+  ...PREVIEW,
+  matches: [
+    {
+      ref: "g1", leaf_key: "football.u15", stage: "group",
+      group_label: "Football — U15 — Group A", round_no: 1,
+      home: { team_id: "tm1" }, away: { team_id: "tm2" },
+      scheduled_at: "2026-06-20T09:00:00", venue: "Main Ground",
+    },
+    {
+      ref: "k1", leaf_key: "football.u15", stage: "knockout", group_label: "",
+      round_no: 1,
+      home: { source: { type: "group_position", group_label: "Football — U15 — Group A", position: 1 } },
+      away: { source: { type: "group_position", group_label: "Football — U15 — Group B", position: 2 } },
+      scheduled_at: "2026-06-21T10:00:00", venue: "Main Ground",
+    },
+    {
+      ref: "k2", leaf_key: "football.u15", stage: "knockout", group_label: "",
+      round_no: 2,
+      home: { source: { type: "winner_of", ref: "k1" } },
+      away: { source: { type: "winner_of", ref: "k1" } },
+      scheduled_at: "2026-06-21T11:00:00", venue: "Main Ground",
+    },
+  ],
+};
+
 const TEAMS = [
   { id: "tm1", name: "Alpha FC", short_name: "A", school: "A", pool: "",
     sport: "football", leaf_key: "football.u15", status: "registered",
@@ -177,6 +205,44 @@ describe("DryRunPreviewPage", () => {
     expect(screen.getByTestId("chip-p2")).toHaveTextContent("Winner of p1");
     // nothing persisted by the preview itself
     expect(tournamentsApi.generateFixtures).not.toHaveBeenCalled();
+  });
+
+  it("times the placeholder knockout in the day grid; bracket + groups live in the Draw tab (Gap 5c)", async () => {
+    vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue(MULTISTAGE_PREVIEW);
+    mount();
+
+    // Default day view: the knockout is timed with a clean placeholder label.
+    const k1 = await screen.findByTestId("chip-k1");
+    expect(k1).toHaveTextContent("Group A top 1");
+    expect(k1).not.toHaveTextContent("Football"); // never the raw em-dash label
+    expect(k1).toHaveTextContent("10:00");
+    expect(screen.getByTestId("day-2026-06-21")).toBeInTheDocument();
+    // The bracket is NOT in the schedule views.
+    expect(screen.queryByTestId("preview-bracket")).toBeNull();
+
+    // Draw tab: the full bracket tree + the numbered group composition.
+    await userEvent.click(screen.getByTestId("preview-view-draw"));
+    expect(screen.getByTestId("preview-bracket")).toBeInTheDocument();
+    expect(screen.getByTestId("preview-bracket-football.u15")).toBeInTheDocument();
+    expect(screen.getByTestId("draw-groups")).toBeInTheDocument();
+    expect(screen.getAllByText("Group A top 1").length).toBeGreaterThan(0);
+  });
+
+  it("switches the schedule between By day and By group (owner ask)", async () => {
+    vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue(MULTISTAGE_PREVIEW);
+    mount();
+    // Default view is by day.
+    expect(await screen.findByTestId("day-2026-06-21")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("preview-view-group"));
+    // By group: a "Group A" bucket and a "Knockout" bucket, no day bands.
+    expect(screen.getByTestId("group-football.u15::Group A")).toBeInTheDocument();
+    expect(screen.getByTestId("group-football.u15::__ko__")).toBeInTheDocument();
+    expect(screen.queryByTestId("day-2026-06-21")).toBeNull();
+    // The knockout bucket still shows the placeholder Stage 2 flow.
+    expect(screen.getAllByText("Group A top 1").length).toBeGreaterThan(0);
+    // Back to by day.
+    await userEvent.click(screen.getByTestId("preview-view-day"));
+    expect(screen.getByTestId("day-2026-06-21")).toBeInTheDocument();
   });
 
   it("keeps the draw number and quality behind the closed Advanced details", async () => {

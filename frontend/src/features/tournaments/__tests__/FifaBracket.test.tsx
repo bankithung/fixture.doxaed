@@ -17,9 +17,24 @@ const team = (id: string, name: string) => ({ id, name, short_name: name.slice(0
 describe("sourceLabel", () => {
   it("labels a group_position pointer and ignores winner_of", () => {
     expect(sourceLabel({ type: "group_position", group_label: "Group A", position: 1 }))
-      .toBe("Group A #1");
+      .toBe("Group A top 1");
     expect(sourceLabel({ type: "winner_of", match_id: "x" })).toBeNull();
     expect(sourceLabel(null)).toBeNull();
+  });
+
+  it("labels a best_third placeholder via the shared helper", () => {
+    expect(sourceLabel({ type: "group_position", best_third: true, rank: 1 }))
+      .toBe("Best 3rd #1");
+  });
+
+  it("strips the full em-dash legacy label down to 'Group A top 2'", () => {
+    expect(
+      sourceLabel({
+        type: "group_position",
+        group_label: "Football — U15 — Group A",
+        position: 2,
+      }),
+    ).toBe("Group A top 2");
   });
 });
 
@@ -37,28 +52,60 @@ describe("FifaBracket", () => {
     }, "s1");
     const fin = m({ round_no: 2 }, "f1");
     render(<FifaBracket columns={[[1, [semi]], [2, [fin]]]} />);
-    expect(screen.getByText("Group A #1")).toBeInTheDocument();
-    expect(screen.getByText("Group B #2")).toBeInTheDocument();
+    expect(screen.getByText("Group A top 1")).toBeInTheDocument();
+    expect(screen.getByText("Group B top 2")).toBeInTheDocument();
   });
 
-  it("mirrors a 4-team bracket into two halves with a centre champion", () => {
-    // 2 semi-finals (round 1) → final (round 2), final won by Alpha
+  it("draws every entrant as an edge card and a centre champion (rough sketch)", () => {
+    // The sketch reads ENTRANTS, not matchups: 4 teams across the round-1
+    // matches become 4 edge cards converging to a champion + trophy.
+    const m1 = m({ round_no: 1, home_team: team("a", "Alpha"), away_team: team("b", "Beta") }, "m1");
+    const m2 = m({ round_no: 1, home_team: team("c", "Gamma"), away_team: team("d", "Delta") }, "m2");
+    const fin = m({ round_no: 2 }, "fin");
+    render(<FifaBracket columns={[[1, [m1, m2]], [2, [fin]]]} />);
+
+    for (const name of ["Alpha", "Beta", "Gamma", "Delta"]) {
+      expect(screen.getByText(name)).toBeInTheDocument();
+    }
+    expect(screen.getByText("Champion")).toBeInTheDocument();
+    // FIFA round headers (mirrored on both halves) — structure, not a forecast.
+    expect(screen.getAllByText("Semi-finals")).toHaveLength(2);
+    expect(screen.getByText("Final")).toBeInTheDocument();
+    expect(screen.queryByText("Quarter-finals")).toBeNull(); // only 4 entrants
+  });
+
+  it("does not invent a winner (champion stays a placeholder even with results)", () => {
     const sf1 = m({ round_no: 1, status: "completed", home_team: team("a", "Alpha"),
       away_team: team("b", "Beta"), home_score: 2, away_score: 0 }, "sf1");
-    const sf2 = m({ round_no: 1, status: "completed", home_team: team("c", "Gamma"),
-      away_team: team("d", "Delta"), home_score: 1, away_score: 0 }, "sf2");
-    const fin = m({ round_no: 2, status: "completed", home_team: team("a", "Alpha"),
-      away_team: team("c", "Gamma"), home_score: 3, away_score: 1 }, "fin");
-    render(<FifaBracket columns={[[1, [sf1, sf2]], [2, [fin]]]} />);
-
-    // "Semi-finals" header on each mirrored half
-    expect(screen.getAllByText("Semi-finals").length).toBe(2);
-    expect(screen.getByText("Final")).toBeInTheDocument();
-    // both semi-finals render (one per mirrored half)
-    expect(screen.getByText("Beta")).toBeInTheDocument();
-    expect(screen.getByText("Delta")).toBeInTheDocument();
-    // the final's winner fills the champion box
+    const fin = m({ round_no: 2 }, "fin");
+    render(<FifaBracket columns={[[1, [sf1]], [2, [fin]]]} />);
     expect(screen.getByText("Champion")).toBeInTheDocument();
-    expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0);
+    // "Alpha" appears once, as its entrant card — never promoted to champion.
+    expect(screen.getAllByText("Alpha")).toHaveLength(1);
+  });
+
+  it("scales the sketch with the entrant count (more entrants, same shape)", () => {
+    // 6 group winners -> an 8-slot sketch (2 byes), all six rendered.
+    const cols: [number, MatchRow[]][] = [[1, [
+      m({ round_no: 1,
+        home_source: { type: "group_position", group_label: "Group A", position: 1 },
+        away_source: { type: "group_position", group_label: "Group B", position: 1 } }, "k1"),
+      m({ round_no: 1,
+        home_source: { type: "group_position", group_label: "Group C", position: 1 },
+        away_source: { type: "group_position", group_label: "Group A", position: 2 } }, "k2"),
+      m({ round_no: 1,
+        home_source: { type: "group_position", group_label: "Group B", position: 2 },
+        away_source: { type: "group_position", group_label: "Group C", position: 2 } }, "k3"),
+    ]]];
+    render(<FifaBracket columns={cols} />);
+    for (const label of ["Group A top 1", "Group B top 1", "Group C top 1",
+      "Group A top 2", "Group B top 2", "Group C top 2"]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    // 6 entrants -> 8-slot bracket: Quarter-finals -> Semi-finals -> Final.
+    expect(screen.getAllByText("Quarter-finals")).toHaveLength(2);
+    expect(screen.getAllByText("Semi-finals")).toHaveLength(2);
+    expect(screen.getByText("Final")).toBeInTheDocument();
+    expect(screen.getByText("Champion")).toBeInTheDocument();
   });
 });

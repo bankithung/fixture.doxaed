@@ -29,9 +29,7 @@ export function NotFoundPage(): React.ReactElement {
           </span>
           <CardTitle>{t("404 — page not found")}</CardTitle>
           <CardDescription>
-            {t(
-              "The page you're looking for doesn't exist or has been moved.",
-            )}
+            {t("This page doesn't exist or has moved.")}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col items-center gap-3">

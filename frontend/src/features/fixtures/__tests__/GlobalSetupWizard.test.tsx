@@ -248,11 +248,10 @@ describe("GlobalSetupWizard", () => {
       <GlobalSetupWizard tournamentId="t1" onClose={() => {}} initialStep={1} />,
     );
     expect(await screen.findByTestId("add-venue")).toBeInTheDocument();
-    // full-page panel: heading + reassurance line, zero Dialog chrome
+    // full-page panel: its own header tracks the deep-linked sub-step (Venues =
+    // "Step 2 of 4"), zero Dialog chrome
     const panel = screen.getByTestId("global-setup-inline");
-    expect(
-      within(panel).getByText("Step 1 · When & where"),
-    ).toBeInTheDocument();
+    expect(within(panel).getByText("Step 2 of 4")).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 

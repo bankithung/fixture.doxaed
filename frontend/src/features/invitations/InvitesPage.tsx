@@ -437,7 +437,7 @@ export function InvitesPage(): React.ReactElement {
                     {t("No pending invitations.")}
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {t("When someone invites you, it'll show up here.")}
+                    {t("New invites will appear here.")}
                   </p>
                 </div>
               </div>
@@ -568,7 +568,7 @@ export function InvitesPage(): React.ReactElement {
             {t(
               `Decline the invitation to ${
                 pendingDecline ? scopeName(pendingDecline) : ""
-              }? This can't be undone — they'd need to re-invite you.`,
+              }? They'd need to re-invite you.`,
             )}
           </DialogDescription>
         </DialogHeader>

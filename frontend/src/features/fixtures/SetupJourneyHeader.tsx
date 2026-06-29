@@ -37,7 +37,7 @@ const NEXT_LINE: Record<"1" | "2" | "3" | "done", string> = {
  * not the readiness pointer (which tracks draw generation, a later concern). */
 const ACTIVE_NEXT: Record<VisibleStep, string> = {
   1: "Next: set your tournament dates and venues.",
-  2: "Optional — stop competitions clashing, or skip ahead to formats.",
+  2: "Optional. Stop competitions clashing, or skip ahead to formats.",
   3: "Choose how each competition plays, then preview & publish.",
   4: "Preview each competition's draw below, then publish the schedule.",
 };

@@ -53,9 +53,7 @@ function NoPermissionCard(): React.ReactElement {
         <CardHeader>
           <CardTitle>{t("Branding")}</CardTitle>
           <CardDescription>
-            {t(
-              "You don't have permission to edit this organization's branding.",
-            )}
+            {t("You can't edit this organization's branding.")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -65,7 +63,7 @@ function NoPermissionCard(): React.ReactElement {
             className="text-sm text-muted-foreground"
           >
             {t(
-              "Ask an organization admin to enable the Branding module for your role.",
+              "Ask an admin to enable the Branding module for your role.",
             )}
           </p>
         </CardContent>
@@ -126,9 +124,7 @@ export function OrgBrandingPage(): React.ReactElement {
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold">{t("Branding")}</h1>
         <p className="text-sm text-muted-foreground">
-          {t(
-            "Configure the public-facing appearance of your organization's pages.",
-          )}
+          {t("Set how your organization's pages look in public.")}
         </p>
       </header>
 
@@ -136,9 +132,7 @@ export function OrgBrandingPage(): React.ReactElement {
         <CardHeader>
           <CardTitle>{t("Identity preview")}</CardTitle>
           <CardDescription>
-            {t(
-              "How your organization currently appears across the platform.",
-            )}
+            {t("How your organization appears across the platform.")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -199,7 +193,7 @@ export function OrgBrandingPage(): React.ReactElement {
           <CardTitle>{t("Brand assets")}</CardTitle>
           <CardDescription>
             {t(
-              "Primary brand color and logo will be editable in Phase 1B; the controls below are previewed only.",
+              "Color and logo are previewed only for now. Editable in Phase 1B.",
             )}
           </CardDescription>
         </CardHeader>
@@ -245,7 +239,7 @@ export function OrgBrandingPage(): React.ReactElement {
             className="mt-3 rounded-md border border-dashed bg-muted/40 p-3 text-xs text-muted-foreground"
           >
             {t(
-              "Branding fields coming with Phase 1B. The Organization model does not yet store color or logo, so saves are disabled until that migration ships.",
+              "Branding fields arrive in Phase 1B. Saves stay disabled until then.",
             )}
           </p>
         </CardContent>

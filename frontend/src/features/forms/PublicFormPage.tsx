@@ -515,7 +515,7 @@ export function PublicFormPage(): React.ReactElement {
             {t("Registration closed")}
           </h1>
           <p role="status" className="mt-2 text-sm text-muted-foreground">
-            {t("This form is no longer accepting submissions.")}
+            {t("No longer accepting submissions.")}
           </p>
           {data.has_directory && data.form_id ? (
             <a
@@ -738,7 +738,7 @@ export function PublicFormPage(): React.ReactElement {
             <ShieldCheck aria-hidden="true" className="h-4 w-4 text-primary" />
             <span>
               {t(
-                "You're signed in as an organizer — add or replace any school's teams without a code.",
+                "Signed in as an organizer. Add or replace any school's teams without a code.",
               )}
             </span>
           </div>
@@ -778,9 +778,7 @@ export function PublicFormPage(): React.ReactElement {
                 {t("Review your registration")}
               </h2>
               <p className="mt-0.5 text-sm text-muted-foreground">
-                {t(
-                  "Check your answers below, then submit. Use Back to change anything.",
-                )}
+                {t("Check your answers, then submit. Use Back to edit.")}
               </p>
             </div>
             {sections.map((s, i) => {
@@ -839,9 +837,9 @@ export function PublicFormPage(): React.ReactElement {
                     <span>
                       {editingPrior
                         ? t(
-                            "Code verified — you're editing your school's existing registration. Submitting replaces it.",
+                            "Code verified. You're editing your existing registration; submitting replaces it.",
                           )
-                        : t("Code verified — you can register your teams.")}
+                        : t("Code verified. You can register your teams.")}
                     </span>
                   </div>
                 ) : (
@@ -852,7 +850,7 @@ export function PublicFormPage(): React.ReactElement {
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {t(
-                        "A code was emailed to your school's contact when team registration opened. Enter it to add or edit your teams. No code? Ask the organizer.",
+                        "A code was emailed to your school's contact. Enter it to add or edit teams. No code? Ask the organizer.",
                       )}
                     </p>
                     <div className="flex flex-wrap items-center gap-2">

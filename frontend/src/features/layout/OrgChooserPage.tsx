@@ -125,7 +125,7 @@ export function OrgChooserPage(): React.ReactElement {
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {t(
-                "You haven't started any tournaments yet. Create one to open your workspace.",
+                "No tournaments yet. Create one to get started.",
               )}
             </p>
           </div>
@@ -181,7 +181,7 @@ export function OrgChooserPage(): React.ReactElement {
                 )}
               </p>
               <p className="text-xs text-muted-foreground">
-                {t("Accept to join the tournaments you've been invited to.")}
+                {t("Accept to join these tournaments.")}
               </p>
             </div>
           </div>

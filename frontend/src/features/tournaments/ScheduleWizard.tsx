@@ -229,7 +229,7 @@ export function ScheduleWizard({
         </DialogTitle>
         <DialogDescription>
           {t(
-            "Every unlocked match gets a fresh time and venue using your Step 1 answers. Locked matches stay where they are.",
+            "Unlocked matches get a fresh time and venue from your Step 1 answers. Locked ones stay put.",
           )}
         </DialogDescription>
       </DialogHeader>
@@ -316,7 +316,7 @@ export function ScheduleWizard({
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {t(
-                      "Searches many arrangements and keeps the best — better spacing, fewer clashes. Never adopts a worse or rule-breaking schedule, so it's always safe. Takes a little longer to run.",
+                      "Tries many arrangements and keeps the best: better spacing, fewer clashes. Never adopts a worse or rule-breaking one. Takes a little longer.",
                     )}
                   </span>
                 </span>
@@ -431,14 +431,14 @@ export function ScheduleWizard({
                       </span>
                       <span className="text-xs text-muted-foreground">
                         {t(
-                          "As each match finishes, the later matches on the same court shift to follow the real end time — only when it breaks no rule. You can still move any match by hand.",
+                          "When a match ends, later matches on the same court shift to the real end time, if no rule breaks. You can still move any by hand.",
                         )}
                       </span>
                     </span>
                   </label>
                   <Field
                     label={t("Venues")}
-                    hint={t("One per line (or comma-separated). Leave empty to use your saved venues with their availability windows.")}
+                    hint={t("One per line or comma-separated. Leave empty to use your saved venues.")}
                   >
                     <textarea
                       rows={3}

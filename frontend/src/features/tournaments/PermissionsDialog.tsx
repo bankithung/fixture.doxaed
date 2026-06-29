@@ -108,7 +108,7 @@ export function PermissionsDialog({
             {t("Access for")} {email}
           </DialogTitle>
           <DialogDescription>
-            {t("Role defaults are on automatically. Grant adds a capability this member's roles don't include; Deny removes one they'd otherwise have.")}
+            {t("Role defaults apply automatically. Grant adds an extra capability; Deny removes one.")}
           </DialogDescription>
         </DialogHeader>
 
@@ -123,7 +123,7 @@ export function PermissionsDialog({
           <p className="text-xs text-muted-foreground">
             {reasonOk
               ? t("Recorded in the audit log with every change.")
-              : t(`At least ${MIN_REASON} characters — required before changes unlock.`)}
+              : t(`At least ${MIN_REASON} characters to unlock changes.`)}
           </p>
         </div>
 
@@ -183,7 +183,7 @@ export function PermissionsDialog({
           </div>
         ) : (
           <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-sm text-muted-foreground">
-            {t("This person has no active membership in the tournament.")}
+            {t("No active membership in this tournament.")}
           </p>
         )}
 

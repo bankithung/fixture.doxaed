@@ -68,7 +68,7 @@ export function VenueRow({
 
   return (
     <div className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-muted/30 p-2.5">
-      <label className="flex min-w-[10rem] flex-1 flex-col gap-1">
+      <label className="flex min-w-[8rem] flex-1 flex-col gap-1">
         <span className="text-xs font-medium">{t("Venue name")}</span>
         <Input
           value={value.name}
@@ -88,7 +88,7 @@ export function VenueRow({
           aria-label={t("Venue type")}
         />
       </label>
-      <label className="flex w-[6.5rem] flex-col gap-1">
+      <label className="flex w-36 flex-col gap-1">
         <span className="text-xs font-medium">{t("Open from")}</span>
         <Input
           type="time"
@@ -98,7 +98,7 @@ export function VenueRow({
           className="h-9"
         />
       </label>
-      <label className="flex w-[6.5rem] flex-col gap-1">
+      <label className="flex w-36 flex-col gap-1">
         <span className="text-xs font-medium">{t("Until")}</span>
         <Input
           type="time"
@@ -110,7 +110,7 @@ export function VenueRow({
       </label>
       {showBreak ? (
         <>
-          <label className="flex w-[6.5rem] flex-col gap-1">
+          <label className="flex w-36 flex-col gap-1">
             <span className="text-xs font-medium">{t("Break from")}</span>
             <Input
               type="time"
@@ -120,7 +120,7 @@ export function VenueRow({
               className="h-9"
             />
           </label>
-          <label className="flex w-[6.5rem] flex-col gap-1">
+          <label className="flex w-36 flex-col gap-1">
             <span className="text-xs font-medium">{t("Break until")}</span>
             <Input
               type="time"
@@ -160,7 +160,7 @@ export function VenueRow({
             {t("Used by")}
             <span className="ml-1 font-normal text-muted-foreground">
               {value.sports.length === 0
-                ? t("(any sport — pick to dedicate this venue)")
+                ? t("(any sport, pick to dedicate this venue)")
                 : null}
             </span>
           </span>

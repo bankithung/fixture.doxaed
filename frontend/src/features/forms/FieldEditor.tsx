@@ -349,7 +349,7 @@ export function FieldEditor({
               </Button>
             </div>
             <p className="text-[0.6875rem] text-muted-foreground">
-              {t("Commas or new lines both work. Press Enter to add; duplicates are skipped.")}
+              {t("Commas or new lines work. Enter adds; duplicates are skipped.")}
             </p>
           </div>
         </div>
@@ -475,7 +475,7 @@ export function FieldEditor({
           <span>
             {t("Show in the public directory (filter + breakdown)")}
             <span className="block text-xs text-muted-foreground">
-              {t("Every included field adds a filter on the public page — keep only the genuinely useful ones.")}
+              {t("Each adds a filter on the public page; keep only the useful ones.")}
             </span>
           </span>
         </label>
@@ -536,7 +536,7 @@ export function FieldEditor({
           {field.key}
         </code>
         <span>
-          {t("Stays the same if you rename the label or change the type.")}
+          {t("Unchanged if you rename the label or change the type.")}
         </span>
       </div>
     </div>

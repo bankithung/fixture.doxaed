@@ -200,7 +200,7 @@ function SettingsPanel({
               )}
             />
             <p className="text-xs text-muted-foreground">
-              {t("Respondents read this before they start filling the form.")}
+              {t("Shown before respondents start the form.")}
             </p>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -229,7 +229,7 @@ function SettingsPanel({
                 ]}
               />
               <p className="text-xs text-muted-foreground">
-                {t("What the public directory shows at the top of the page.")}
+                {t("Shown at the top of the public directory.")}
               </p>
               {kpiMode === "games" && games.length > 0 ? (
                 <div className="mt-1 flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
@@ -598,7 +598,7 @@ export function FormBuilderPage(): React.ReactElement {
       {form.stale ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
           <p className="text-sm">
-            {t("The sports/categories changed after this form was generated — it may be missing competitions.")}
+            {t("Sports or categories changed since this was generated; it may be missing competitions.")}
           </p>
           <Button
             size="sm"
@@ -624,7 +624,7 @@ export function FormBuilderPage(): React.ReactElement {
         <DialogHeader>
           <DialogTitle>{t("Delete this form?")}</DialogTitle>
           <DialogDescription>
-            {t("The form and its public link stop working immediately. Submitted responses are kept for your records.")}
+            {t("The form and its public link stop working immediately. Submitted responses are kept.")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

@@ -44,7 +44,7 @@ export function AuthLayout({
           </h2>
           <p className="text-sm text-white/80 leading-relaxed">
             {t(
-              "Run tournaments, schedule matches, and follow live scores — built for local sport, on a chassis that scales.",
+              "Run tournaments, schedule matches, and follow live scores. Built for local sport.",
             )}
           </p>
         </div>

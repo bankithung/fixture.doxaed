@@ -132,7 +132,7 @@ export function ConstraintRow({
           </div>
           {days.length === 0 ? (
             <span className="text-xs text-muted-foreground">
-              {t("No days selected. Applies every day.")}
+              {t("Applies every day.")}
             </span>
           ) : null}
         </div>

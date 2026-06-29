@@ -47,7 +47,7 @@ export function ErrorPage({
           </span>
           <CardTitle>{t("Something went wrong")}</CardTitle>
           <CardDescription>
-            {t("Try refreshing the page. If it keeps happening, let us know.")}
+            {t("Try refreshing. If it keeps happening, let us know.")}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col items-center gap-4">

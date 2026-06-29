@@ -23,6 +23,7 @@ import { ApiError } from "@/types/api";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { ScheduleWizard } from "@/features/tournaments/ScheduleWizard";
+import { StageContinue } from "@/features/tournaments/StageContinue";
 import {
   EmptyState,
   StandingsTable,
@@ -48,7 +49,7 @@ import {
   type CardAction,
   type Competition,
 } from "./setupJourney";
-import { SetupJourneyHeader } from "./SetupJourneyHeader";
+import { useFixtureStepStore } from "./fixtureStepStore";
 import { SETUP_STEP } from "./setupSteps";
 import { ShiftDayDialog } from "./ShiftDayDialog";
 
@@ -182,7 +183,7 @@ function HubMoreMenu({
             role="menuitem"
             data-testid="print-order-of-play"
             disabled={!shareReady}
-            title={t("Opens the public schedule. Print from there.")}
+            title={t("Opens the public schedule to print.")}
             className={itemCls}
             onClick={() => {
               setOpen(false);
@@ -232,17 +233,19 @@ function SetupSubPage({
 }): React.ReactElement {
   return (
     <div className="flex flex-col gap-5">
-      <button
-        type="button"
-        data-testid="subpage-back"
-        onClick={onBack}
-        className="flex w-fit items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ChevronLeft aria-hidden="true" className="h-4 w-4" />
-        {t("Back to setup")}
-      </button>
       {children}
-      <div className="flex justify-end border-t border-border pt-4">
+      {/* "Back to setup" and the step's primary "Next" both live at the bottom,
+          so they're reachable right after the user finishes the step's work. */}
+      <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
+        <button
+          type="button"
+          data-testid="subpage-back"
+          onClick={onBack}
+          className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+          {t("Back to setup")}
+        </button>
         <Button variant="outline" data-testid="subpage-next" onClick={onNext}>
           {nextLabel}
           <ChevronRight aria-hidden="true" className="h-4 w-4" />
@@ -274,7 +277,12 @@ export function FixtureSetupHub({
   const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
-  const [setup, setSetup] = useState<{ step: number } | null>(null);
+  // `flow` marks a Step-1 opening that's part of the sequential journey (the
+  // gate, the "Start Step 1" CTA, a Step-1 stepper click) — saving then advances
+  // to Clashes & sessions. Edits/fixes open without it and just return to the hub.
+  const [setup, setSetup] = useState<{ step: number; flow?: boolean } | null>(
+    null,
+  );
   // Cancelled out of the gate's auto-opened Step 1 — fall back to the gate
   // card until the next explicit open.
   const [gateDismissed, setGateDismissed] = useState(false);
@@ -474,7 +482,7 @@ export function FixtureSetupHub({
   /** Card actions (§7.2) → their surfaces. */
   const onCardAction = (c: Competition, a: CardAction): void => {
     if (a.action === "teams") navigate(routes.tournamentTeams(id));
-    else if (a.action === "step1") setSetup({ step: 0 });
+    else if (a.action === "step1") setSetup({ step: 0, flow: true });
     else if (a.action === "seeds") {
       setDraw({ leafKey: c.leafKey, label: c.label, teams: c.teams, focusSeeds: true });
     } else if (a.action === "format") {
@@ -501,10 +509,22 @@ export function FixtureSetupHub({
    * explicit opens (gate CTA, receipt Edit, chips, fix deep-links) win; in
    * the gate state it IS the page until cancelled back to the gate card. */
   const setupView =
-    setup ?? (globalsUnset && canManage && !gateDismissed ? { step: 0 } : null);
+    setup ??
+    (globalsUnset && canManage && !gateDismissed
+      ? { step: 0, flow: true }
+      : null);
   const closeSetup = (): void => {
     setSetup(null);
     setGateDismissed(true);
+  };
+  /** After the When & Where wizard SAVES: close it, and — when it was opened as
+   * part of the sequential journey — advance to the next step, Clashes &
+   * sessions, instead of dropping onto the competition list. */
+  const savedSetup = (): void => {
+    const wasFlow = setupView?.flow;
+    setSetup(null);
+    setGateDismissed(true);
+    if (wasFlow) setView("clashes");
   };
 
   /** Which page the body is currently showing — so the stepper highlights the
@@ -592,7 +612,7 @@ export function FixtureSetupHub({
   const onStepClick = (n: 1 | 2 | 3 | 4): void => {
     if (n === 1) {
       setView("overview");
-      setSetup({ step: 0 });
+      setSetup({ step: 0, flow: true });
     } else {
       // Leaving Step 1 for a later page closes the inline wizard if it's open
       // (e.g. a receipt edit), so the page actually swaps.
@@ -600,6 +620,28 @@ export function FixtureSetupHub({
       setView(n === 2 ? "clashes" : n === 3 ? "formats" : "overview");
     }
   };
+
+  // Publish the journey state UP to the AppShell sticky sub-toolbar, which
+  // renders the stepper under the top bar — the same placement as the Sports
+  // setup page. The hub keeps all the state + logic; the bar is just a view.
+  // The Step 1 "When & Where" wizard keeps the bar visible too (it's journey
+  // step 1, so the four stages stay on screen even while the wizard — with its
+  // OWN inner sub-step rail — owns the page body).
+  const publishStep = useFixtureStepStore((s) => s.publish);
+  const clearStep = useFixtureStepStore((s) => s.clear);
+  useEffect(() => {
+    if (!readiness.data) {
+      clearStep();
+      return;
+    }
+    publishStep({
+      step: journey,
+      activeStep,
+      doneSteps,
+      onStepClick: canManage && !globalsUnset ? onStepClick : undefined,
+    });
+  });
+  useEffect(() => () => clearStep(), [clearStep]);
 
   const shareReady = Boolean(tournament.data?.slug);
   const showDoneBanner = journey === "done" && !doneDismissed;
@@ -614,55 +656,52 @@ export function FixtureSetupHub({
     view === "overview";
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold">{t("Fixture setup")}</h2>
-          <p className="text-sm text-muted-foreground">
-            {t("Three steps: set dates and venues, choose each competition's format, then preview and publish the schedule.")}
-          </p>
-        </div>
-        {showToolbar ? (
-          <div className="flex flex-wrap items-center gap-1.5">
-            {!showDoneBanner ? (
-              <Button
-                size="sm"
-                data-testid="share-schedule"
-                disabled={!shareReady}
-                onClick={() => void shareSchedule()}
-              >
-                <Share2 aria-hidden="true" className="h-4 w-4" />
-                {t("Share schedule")}
-              </Button>
-            ) : null}
-            <HubMoreMenu
-              canRepair={canRepair}
-              shareReady={shareReady}
-              bracketTo={routes.tournamentBracket(id)}
-              onReRun={() => setWizard({})}
-              onShiftDay={() => setShiftOpen(true)}
-              onPrint={openPublicSchedule}
-            />
+    // Reserve bottom clearance when the floating "Ask AI" launcher is shown
+    // (canManage) so the FAB never sits on top of a page's bottom-right actions
+    // (the wizard's Next/Save, StageContinue's Continue).
+    <div className={cn("flex flex-col gap-5", canManage && "pb-20")}>
+      {/* The "Fixture setup" page title is hidden while the When & Where wizard
+          owns the page — the wizard's own header (eyebrow + title) replaces it,
+          matching its reference design. */}
+      {!setupView ? (
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold">{t("Fixture setup")}</h2>
+            <p className="text-sm text-muted-foreground">
+              {t("Three steps: dates and venues, formats, then preview and publish.")}
+            </p>
           </div>
-        ) : null}
-      </div>
-
-      {readiness.data ? (
-        /* The journey stepper is a sticky sub-toolbar pinned under the top bar —
-         * same placement as the Sports setup page — so the steps stay visible
-         * while you scroll the setup. Full-bleed within the content column via
-         * negative margins that cancel the page padding; frosted like the top
-         * bar. Step 1 stays the active journey step while the inline setup is
-         * open. */
-        <div className="sticky top-14 z-10 -mx-4 border-b border-border bg-card/80 px-4 py-2.5 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-          <SetupJourneyHeader
-            step={setupView ? 1 : journey}
-            activeStep={activeStep}
-            doneSteps={doneSteps}
-            onStepClick={canManage && !globalsUnset ? onStepClick : undefined}
-          />
+          {showToolbar ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {!showDoneBanner ? (
+                <Button
+                  size="sm"
+                  data-testid="share-schedule"
+                  disabled={!shareReady}
+                  onClick={() => void shareSchedule()}
+                >
+                  <Share2 aria-hidden="true" className="h-4 w-4" />
+                  {t("Share schedule")}
+                </Button>
+              ) : null}
+              <HubMoreMenu
+                canRepair={canRepair}
+                shareReady={shareReady}
+                bracketTo={routes.tournamentBracket(id)}
+                onReRun={() => setWizard({})}
+                onShiftDay={() => setShiftOpen(true)}
+                onPrint={openPublicSchedule}
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
+
+      {/* The journey stepper lives in a sticky sub-toolbar pinned under the top
+          bar (FixtureStepBar, rendered by AppShell) — same placement as the
+          Sports setup page. The hub publishes its state to useFixtureStepStore
+          (see the publishStep effect above) and stops publishing while the Step
+          1 wizard owns the page. */}
 
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2" aria-busy="true">
@@ -680,6 +719,7 @@ export function FixtureSetupHub({
           tournamentId={id}
           initialStep={setupView.step}
           onClose={closeSetup}
+          onSaved={savedSetup}
         />
       ) : globalsUnset ? (
         /* §6.1 empty state — nothing else is actionable before dates + venues. */
@@ -694,26 +734,26 @@ export function FixtureSetupHub({
             {t("Let's set up your fixtures")}
           </h3>
           <p className="max-w-sm text-sm text-muted-foreground">
-            {t("Start with Step 1: pick your tournament dates and add your venues. Everything else builds on those.")}
+            {t("Start with Step 1: set your dates and venues. Everything builds on those.")}
           </p>
           {canManage ? (
             <Button
               data-testid="global-setup-cta"
-              onClick={() => setSetup({ step: 0 })}
+              onClick={() => setSetup({ step: 0, flow: true })}
             >
               <CalendarRange aria-hidden="true" className="h-4 w-4" />
               {t("Start Step 1")}
             </Button>
           ) : (
             <p className="text-xs text-muted-foreground">
-              {t("An organizer sets dates and venues before fixtures can be drawn.")}
+              {t("An organizer sets dates and venues first.")}
             </p>
           )}
         </section>
       ) : view === "clashes" ? (
         /* Journey Step 2 — its OWN page (owner: not stacked with formats). */
         <SetupSubPage
-          onBack={() => setView("overview")}
+          onBack={() => onStepClick(1)}
           nextLabel={t("Next: How each competition plays")}
           onNext={() => setView("formats")}
         >
@@ -732,14 +772,14 @@ export function FixtureSetupHub({
             <EmptyState
               icon={<CalendarClock className="h-8 w-8" />}
               title={t("Nothing to schedule yet")}
-              hint={t("Clashes and session windows apply across competitions. Add sports and categories in Settings first.")}
+              hint={t("Clashes span competitions. Add sports and categories in Settings first.")}
             />
           )}
         </SetupSubPage>
       ) : view === "formats" ? (
         /* Journey Step 3 — its OWN page (owner: not stacked with clashes). */
         <SetupSubPage
-          onBack={() => setView("overview")}
+          onBack={() => onStepClick(1)}
           nextLabel={t("Done — review competitions")}
           onNext={() => setView("overview")}
         >
@@ -758,7 +798,7 @@ export function FixtureSetupHub({
             <EmptyState
               icon={<Users className="h-8 w-8" />}
               title={t("No competitions yet")}
-              hint={t("Add sports and categories in Settings. Each one then gets its own format here.")}
+              hint={t("Add sports and categories in Settings. Each gets its own format here.")}
             />
           )}
         </SetupSubPage>
@@ -786,7 +826,7 @@ export function FixtureSetupHub({
                   {t("See & publish the whole tournament at once")}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  {t("One combined schedule for every sport — drawn and timed together so courts and clashes line up — then publish it all in one step.")}
+                  {t("One combined schedule for every sport, drawn and timed together. Publish it all in one step.")}
                 </p>
               </div>
               <Button
@@ -816,7 +856,7 @@ export function FixtureSetupHub({
                   {t("Your schedule is out")}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  {t("Every competition is drawn and scheduled. Share it with schools, or print the order of play.")}
+                  {t("Every competition is drawn and scheduled. Share it or print the order of play.")}
                 </p>
               </div>
               <span className="flex shrink-0 flex-wrap items-center gap-3">
@@ -843,7 +883,7 @@ export function FixtureSetupHub({
                   type="button"
                   data-testid="done-print"
                   disabled={!shareReady}
-                  title={t("Opens the public schedule. Print from there.")}
+                  title={t("Opens the public schedule to print.")}
                   className="text-sm font-medium text-primary hover:underline disabled:opacity-50"
                   onClick={openPublicSchedule}
                 >
@@ -877,7 +917,7 @@ export function FixtureSetupHub({
             <EmptyState
               icon={<Users className="h-8 w-8" />}
               title={t("No competitions yet")}
-              hint={t("Add sports and categories in Settings. Teams then register into them, and each one gets its own draw here.")}
+              hint={t("Add sports and categories in Settings. Teams register into them, and each gets its own draw here.")}
             >
               {canManage ? (
                 <Link
@@ -1040,6 +1080,12 @@ export function FixtureSetupHub({
               ) : null}
             </section>
           ) : null}
+
+          {/* The tournament-level "Continue to Ready" lives ONLY here, on the
+              last journey step (Preview & publish). Earlier steps advance within
+              the journey (wizard save -> Clashes -> Formats -> here), so this is
+              the single place the whole fixture stage hands off to Ready. */}
+          <StageContinue tournamentId={id} />
         </>
       )}
 

@@ -109,7 +109,7 @@ export function CopyFromDialog({
       <DialogHeader>
         <DialogTitle>{t("Copy from a template or form")}</DialogTitle>
         <DialogDescription>
-          {t("This replaces the current questions with the copied ones. You can edit them afterwards.")}
+          {t("Replaces the current questions. You can edit them after.")}
         </DialogDescription>
       </DialogHeader>
 

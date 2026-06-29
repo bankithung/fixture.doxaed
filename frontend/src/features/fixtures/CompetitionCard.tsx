@@ -6,6 +6,7 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { CompetitionResultCard } from "./CompetitionResultCard";
 import { InputsChangedBanner } from "./InputsChangedBanner";
+import { LeafLabel } from "./LeafLabel";
 import { ReadinessChecklist } from "./ReadinessChecklist";
 import {
   competitionSentence,
@@ -107,20 +108,18 @@ export function CompetitionCard({
   return (
     <div
       data-testid={`competition-card-${key}`}
-      className="flex flex-col gap-2 border-t border-border px-4 py-3 first:border-t-0"
+      className="flex flex-col gap-3 border-t border-border px-5 py-4 first:border-t-0"
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-start gap-3">
         {drawn ? (
           <button
             type="button"
             data-testid={`competition-row-${key}`}
             aria-expanded={detailOpen}
             onClick={onToggleDetail}
-            className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
           >
-            <span className="truncate text-sm font-semibold">
-              {c.label || t("General")}
-            </span>
+            <LeafLabel label={c.label || ""} size="md" />
             <ChevronDown
               aria-hidden="true"
               className={cn(
@@ -130,22 +129,24 @@ export function CompetitionCard({
             />
           </button>
         ) : (
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-            {c.label || t("General")}
-          </span>
+          <div className="min-w-0 flex-1">
+            <LeafLabel label={c.label || ""} size="md" />
+          </div>
         )}
-        <span className="shrink-0 font-tabular text-xs text-muted-foreground">
-          {c.teams.length} {t("teams")}
-          {drawn ? <> · {c.matches.length} {t("matches")}</> : null}
-        </span>
-        <span
-          className={cn(
-            "shrink-0 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium",
-            CHIP[st].cls,
-          )}
-        >
-          {t(CHIP[st].label)}
-        </span>
+        <div className="flex shrink-0 items-center gap-2.5 pt-0.5">
+          <span className="font-tabular text-xs text-muted-foreground">
+            {c.teams.length} {t("teams")}
+            {drawn ? <> · {c.matches.length} {t("matches")}</> : null}
+          </span>
+          <span
+            className={cn(
+              "rounded-full px-2 py-0.5 text-xs font-medium",
+              CHIP[st].cls,
+            )}
+          >
+            {t(CHIP[st].label)}
+          </span>
+        </div>
       </div>
 
       {pres.staleBanner ? (
@@ -257,7 +258,7 @@ export function CompetitionCard({
             {t("See what's missing")}
           </Button>
           {detailOpen ? (
-            <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/20 p-3">
+            <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-muted/20 p-3">
               <ReadinessChecklist
                 competition={c.readiness}
                 onFix={canManage ? onFix : undefined}

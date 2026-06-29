@@ -1,6 +1,14 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Sparkles } from "lucide-react";
+import {
+  CalendarDays,
+  Check,
+  ChevronRight,
+  Info,
+  Lightbulb,
+  Plus,
+  Sparkles,
+} from "lucide-react";
 import {
   tournamentsApi,
   type ConstraintDraft,
@@ -9,15 +17,14 @@ import {
 } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { StepRail } from "@/components/ui/StepRail";
+import { Input, type InputProps } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
+import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { BlackoutDatesField } from "./BlackoutDatesField";
 import { CeremonyField, type CeremonyValue } from "./CeremonyField";
-import { GLOBAL_SETUP_STEPS } from "./setupSteps";
 import { VenueRow, type VenueDraft } from "./VenueRow";
 
 /** Constraint types the wizard OWNS at `scope:"all"` — its save replaces
@@ -121,6 +128,36 @@ function fmtDay(iso: string): string {
   });
 }
 
+/** The four sub-steps of the When & Where wizard — display titles + the
+ * one-liners shown in the left rail and the header. Indices map 1:1 to the
+ * form's `step` (Dates / Venues / Play times / Check & save). */
+const WIZARD_STEPS = [
+  {
+    key: "calendar",
+    title: "When & Where",
+    sub: "Dates and key days",
+    subtitle: "Set your date range and any key days.",
+  },
+  {
+    key: "venues",
+    title: "Venues",
+    sub: "Add competition venues",
+    subtitle: "Add your match venues and any breaks.",
+  },
+  {
+    key: "defaults",
+    title: "Play Times",
+    sub: "Set daily play times",
+    subtitle: "Set daily play times and team limits.",
+  },
+  {
+    key: "review",
+    title: "Check & Save",
+    sub: "Review and finish",
+    subtitle: "Review and save. You can change it any time.",
+  },
+] as const;
+
 function Field({
   label,
   hint,
@@ -132,18 +169,70 @@ function Field({
 }): React.ReactElement {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-sm font-medium">{label}</span>
+      <span className="text-[0.8125rem] font-medium text-foreground">{label}</span>
       {children}
       {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
     </label>
   );
 }
 
+/** A bordered content card — the reference's `.panel`. Supabase-style: a slim
+ * section surface; an optional header (title + description) sits above a divided
+ * body so each step reads as a settings card, not a chunky box. */
+function Panel({
+  title,
+  description,
+  children,
+  className,
+}: {
+  title?: string;
+  description?: string;
+  children: React.ReactNode;
+  className?: string;
+}): React.ReactElement {
+  return (
+    <section className={cn("rounded-lg border border-border bg-card", className)}>
+      {title ? (
+        <header className="border-b border-border px-4 py-3 sm:px-5">
+          <h3 className="text-sm font-semibold">{t(title)}</h3>
+          {description ? (
+            <p className="mt-0.5 text-xs text-muted-foreground">{t(description)}</p>
+          ) : null}
+        </header>
+      ) : null}
+      <div className="p-4 sm:p-5">{children}</div>
+    </section>
+  );
+}
+
+/** A native date/time input dressed as the reference's "control" box: a tall
+ * bordered field with a leading icon (the native picker indicator sits at the
+ * right; `color-scheme` keeps it legible in dark mode). */
+function ControlInput({
+  icon,
+  className,
+  ...props
+}: { icon: React.ReactNode } & InputProps): React.ReactElement {
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+        {icon}
+      </span>
+      <Input
+        {...props}
+        className={cn("h-9 pl-9 dark:[color-scheme:dark]", className)}
+      />
+    </div>
+  );
+}
+
 function Row({ k, v }: { k: string; v: string }): React.ReactElement {
   return (
     <div>
-      <dt className="text-muted-foreground">{k}</dt>
-      <dd className="font-tabular">{v}</dd>
+      <dt className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground">
+        {k}
+      </dt>
+      <dd className="mt-0.5 font-tabular text-foreground">{v}</dd>
     </div>
   );
 }
@@ -166,11 +255,15 @@ function Row({ k, v }: { k: string; v: string }): React.ReactElement {
 export function GlobalSetupWizard({
   tournamentId,
   onClose,
+  onSaved,
   initialStep = 0,
 }: {
   tournamentId: string;
-  /** Return to the hub view (Cancel, and after a successful save). */
+  /** Return to the hub view (Cancel, and — if `onSaved` is absent — after save). */
   onClose: () => void;
+  /** Called after a successful save instead of `onClose`, so the hub can route
+   * to the next journey step (Clashes & sessions) rather than just closing. */
+  onSaved?: () => void;
   /** Deep-link target (a GlobalSetupCard pencil / readiness fix action). */
   initialStep?: number;
 }): React.ReactElement {
@@ -400,7 +493,7 @@ export function GlobalSetupWizard({
     onSuccess: () => {
       invalidateTournament(qc, tournamentId);
       toast.push({ kind: "success", title: t("Step 1 saved") });
-      onClose();
+      (onSaved ?? onClose)();
     },
     onError: (e) =>
       toast.push({
@@ -416,80 +509,193 @@ export function GlobalSetupWizard({
   const canProceed =
     step !== 0 || (form.date_start !== "" && form.date_end !== "");
 
+  const cur = WIZARD_STEPS[step] ?? WIZARD_STEPS[0];
+  const isLast = step === WIZARD_STEPS.length - 1;
+  const datesSet = form.date_start !== "" && form.date_end !== "";
+
+  /** The header / footer primary action (single set — Next while stepping,
+   * Save on the last step). Kept in one place so it stays unambiguous. */
+  const primaryAction = isLast ? (
+    <Button
+      disabled={save.isPending || loading}
+      data-testid="save-global-setup"
+      onClick={() => save.mutate()}
+    >
+      <Sparkles aria-hidden="true" className="h-4 w-4" />
+      {save.isPending ? t("Saving…") : t("Save")}
+    </Button>
+  ) : (
+    <Button
+      disabled={!canProceed || loading}
+      onClick={() => setStep((s) => s + 1)}
+    >
+      {t("Next")}
+      <ChevronRight aria-hidden="true" className="h-4 w-4" />
+    </Button>
+  );
+
   return (
     <section
       aria-label={t("Step 1 · When & where")}
       data-testid="global-setup-inline"
-      className="flex w-full flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6"
+      className="w-full rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6"
     >
-      <div className="flex flex-col gap-1.5">
-        <h3 className="text-base font-semibold">
-          {t("Step 1 · When & where")}
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          {t(
-            "Answer these once. Every competition's schedule is built from them, and you can come back and change them any time.",
-          )}
+      {/* Header — eyebrow + title + subtitle. The actions (Cancel / Next / Save)
+          live in the footer beside the Tip, so they're within reach right after
+          the user finishes entering details and scrolls down. */}
+      <header className="min-w-0">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {t(`Step ${step + 1} of 4`)}
         </p>
-      </div>
+        <h1 className="mt-1 text-lg font-semibold tracking-tight sm:text-xl">
+          {t(cur.title)}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {t(cur.subtitle)}
+        </p>
+      </header>
 
-      <StepRail steps={GLOBAL_SETUP_STEPS} current={step} />
+      <div className="mt-6 grid gap-6 lg:grid-cols-[200px_1fr] lg:gap-8">
+        {/* Left rail — the four sub-steps + a reassurance card. */}
+        <aside>
+          <ol className="flex flex-col">
+            {WIZARD_STEPS.map((s, i) => {
+              const isActive = i === step;
+              const done = i < step;
+              // Can't jump past the Dates gate until both match days are set.
+              const locked = i > 0 && step === 0 && !datesSet;
+              const clickable = !isActive && !locked;
+              const last = i === WIZARD_STEPS.length - 1;
+              return (
+                <li key={s.key} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <button
+                      type="button"
+                      aria-current={isActive ? "step" : undefined}
+                      disabled={!clickable}
+                      onClick={() => clickable && setStep(i)}
+                      className={cn(
+                        "grid h-6 w-6 shrink-0 place-items-center rounded-full border text-xs font-semibold transition-colors",
+                        isActive
+                          ? "border-primary text-primary"
+                          : done
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-input text-muted-foreground",
+                        clickable && "cursor-pointer hover:border-primary/60",
+                      )}
+                    >
+                      {done ? (
+                        <Check aria-hidden="true" className="h-3.5 w-3.5" />
+                      ) : (
+                        <span className="font-tabular">{i + 1}</span>
+                      )}
+                    </button>
+                    {!last ? (
+                      <span className="my-1 min-h-[20px] w-0 flex-1 border-l border-dashed border-border" />
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!clickable}
+                    onClick={() => clickable && setStep(i)}
+                    className={cn("pb-5 text-left", clickable && "cursor-pointer")}
+                  >
+                    <div
+                      className={cn(
+                        "text-[0.8125rem] font-medium leading-tight",
+                        isActive ? "text-primary" : "text-foreground",
+                      )}
+                    >
+                      {t(s.title)}
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      {t(s.sub)}
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
 
-      <div className="min-h-[14rem] py-2" aria-busy={loading}>
-        {loading ? (
-          <div className="h-40 animate-pulse rounded-lg bg-muted/40" />
-        ) : step === 0 ? (
-          <div className="flex flex-col gap-5">
-            {/* Match window — the two dates everything else is built from. */}
-            <div className="flex flex-col gap-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label={t("First match day")}>
-                  <Input
-                    type="date"
-                    value={form.date_start}
-                    max={form.date_end || undefined}
-                    onChange={(e) => set("date_start", e.target.value)}
-                  />
-                </Field>
-                <Field label={t("Last match day")}>
-                  <Input
-                    type="date"
-                    value={form.date_end}
-                    min={form.date_start || undefined}
-                    onChange={(e) => set("date_end", e.target.value)}
-                  />
-                </Field>
-              </div>
-              {!form.date_start || !form.date_end ? (
-                /* Why the Next button is disabled — never leave it a mystery. */
-                <p className="text-xs text-muted-foreground">
-                  {t("Pick the first and last match days to continue.")}
-                </p>
-              ) : null}
-            </div>
-
-            {/* Calendar exceptions — days the schedule should avoid or hold. */}
-            <div className="flex flex-col gap-4 border-t border-border pt-4">
-              <BlackoutDatesField
-                label={t("Days off")}
-                hint={t("No matches on these days (exams, holidays).")}
-                value={form.blackouts}
-                onChange={(v) => set("blackouts", v)}
-                testId="blackouts"
+          <div className="mt-1 hidden rounded-lg border border-border bg-muted/30 p-3 lg:block">
+            <div className="flex items-center gap-2">
+              <CalendarDays
+                aria-hidden="true"
+                className="h-3.5 w-3.5 shrink-0 text-primary"
               />
-              <BlackoutDatesField
-                label={t("Spare days")}
-                hint={t("Kept free as a buffer. If rain washes out a day, matches move here.")}
-                value={form.reserves}
-                onChange={(v) => set("reserves", v)}
-                testId="reserves"
-              />
+              <h4 className="text-xs font-semibold">
+                {t("Your schedule, your control")}
+              </h4>
             </div>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              {t("Come back anytime to adjust dates, venues or times.")}
+            </p>
+          </div>
+        </aside>
 
-            {/* Ceremonies — dates auto-fill from the match window above. */}
-            <div className="flex flex-col gap-3 border-t border-border pt-4">
+        {/* Right — the current sub-step's content. */}
+        <div className="min-w-0" aria-busy={loading}>
+          {loading ? (
+            <div className="h-64 animate-pulse rounded-xl bg-muted/40" />
+          ) : step === 0 ? (
+            <div className="flex flex-col gap-4">
+              <Panel
+                title="Tournament dates"
+                description="First and last match day, plus any days to skip or keep spare."
+              >
+                {/* Match window — the two dates everything else is built from. */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label={t("First match day")}>
+                    <ControlInput
+                      icon={<CalendarDays className="h-4 w-4" />}
+                      type="date"
+                      value={form.date_start}
+                      max={form.date_end || undefined}
+                      onChange={(e) => set("date_start", e.target.value)}
+                    />
+                  </Field>
+                  <Field label={t("Last match day")}>
+                    <ControlInput
+                      icon={<CalendarDays className="h-4 w-4" />}
+                      type="date"
+                      value={form.date_end}
+                      min={form.date_start || undefined}
+                      onChange={(e) => set("date_end", e.target.value)}
+                    />
+                  </Field>
+                </div>
+                {!form.date_start || !form.date_end ? (
+                  /* Why the Next button is disabled — never leave it a mystery. */
+                  <p className="mt-2.5 text-xs text-muted-foreground">
+                    {t("Pick the first and last match days to continue.")}
+                  </p>
+                ) : null}
+
+                <hr className="my-5 border-border" />
+
+                {/* Calendar exceptions — days the schedule avoids or holds. */}
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <BlackoutDatesField
+                    label={t("Days off")}
+                    hint={t("No matches on these days (exams, holidays).")}
+                    value={form.blackouts}
+                    onChange={(v) => set("blackouts", v)}
+                    testId="blackouts"
+                  />
+                  <BlackoutDatesField
+                    label={t("Spare days")}
+                    hint={t("Buffer days. If rain washes out a day, matches move here.")}
+                    value={form.reserves}
+                    onChange={(v) => set("reserves", v)}
+                    testId="reserves"
+                  />
+                </div>
+              </Panel>
+
+              {/* Ceremonies — own panels with a coloured icon; dates auto-fill. */}
               <CeremonyField
                 label={t("Opening ceremony")}
+                tone="opening"
                 value={form.opening}
                 onChange={(v) => set("opening", v)}
                 testId="opening"
@@ -497,27 +703,31 @@ export function GlobalSetupWizard({
               />
               <CeremonyField
                 label={t("Closing ceremony")}
+                tone="closing"
                 value={form.closing}
                 onChange={(v) => set("closing", v)}
                 testId="closing"
                 defaultDate={form.date_end}
-              />
-              <p className="text-xs text-muted-foreground">
-                {t("No matches are scheduled while a ceremony is on.")}
-              </p>
+              >
+                <div className="mt-4 flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                  <Info
+                    aria-hidden="true"
+                    className="h-4 w-4 shrink-0 text-muted-foreground/70"
+                  />
+                  {t("No matches run during a ceremony.")}
+                </div>
+              </CeremonyField>
             </div>
-          </div>
-        ) : step === 1 ? (
-          <div className="flex flex-col gap-3">
-            <p className="text-xs text-muted-foreground">
-              {t(
-                "Your venues, shared by every competition. A hall with 4 courts runs 4 matches at the same time.",
-              )}
-            </p>
+          ) : step === 1 ? (
+            <Panel
+              title="Venues"
+              description="Venues shared by every competition. A hall with 4 courts runs 4 matches at once."
+            >
+              <div className="flex flex-col gap-3">
             {sportOptions.length > 1 ? (
               <p className="text-xs text-muted-foreground">
                 {t(
-                  "With more than one sport, use “Used by” on a venue to dedicate it — e.g. give Table Tennis its own tables so its matches never share a Sepak Takraw court.",
+                  "With more than one sport, use “Used by” to dedicate a venue, e.g. give Table Tennis its own tables.",
                 )}
               </p>
             ) : null}
@@ -532,7 +742,7 @@ export function GlobalSetupWizard({
                 </span>
                 <p className="text-xs text-muted-foreground">
                   {t(
-                    "No match is scheduled during a break. Use one daily break for every venue, or set a different break on each venue.",
+                    "No match runs during a break. Use one daily break, or set a different break per venue.",
                   )}
                 </p>
               </div>
@@ -565,6 +775,7 @@ export function GlobalSetupWizard({
                   <Field label={t("Break starts at")}>
                     <Input
                       type="time"
+                      className="h-9"
                       value={form.daily_break_from}
                       aria-label={t("Daily break starts at")}
                       onChange={(e) => set("daily_break_from", e.target.value)}
@@ -573,6 +784,7 @@ export function GlobalSetupWizard({
                   <Field label={t("Break ends at")}>
                     <Input
                       type="time"
+                      className="h-9"
                       value={form.daily_break_to}
                       aria-label={t("Daily break ends at")}
                       onChange={(e) => set("daily_break_to", e.target.value)}
@@ -581,7 +793,7 @@ export function GlobalSetupWizard({
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  {t("Set each venue's break in its row below — “Break from / until”.")}
+                  {t("Set each venue's break in its row below.")}
                 </p>
               )}
             </div>
@@ -620,13 +832,19 @@ export function GlobalSetupWizard({
               <Plus aria-hidden="true" className="h-3.5 w-3.5" />
               {t("Add venue")}
             </Button>
-          </div>
-        ) : step === 2 ? (
-          <div className="flex flex-col gap-4">
+              </div>
+            </Panel>
+          ) : step === 2 ? (
+            <Panel
+              title="Play times"
+              description="Daily play window, rest between matches and per-day limits."
+            >
+              <div className="flex flex-col gap-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label={t("First match of the day starts at")}>
                 <Input
                   type="time"
+                  className="h-9"
                   value={form.daily_start}
                   onChange={(e) => set("daily_start", e.target.value)}
                 />
@@ -634,6 +852,7 @@ export function GlobalSetupWizard({
               <Field label={t("Last match must start by")}>
                 <Input
                   type="time"
+                  className="h-9"
                   value={form.daily_end}
                   onChange={(e) => set("daily_end", e.target.value)}
                 />
@@ -644,7 +863,7 @@ export function GlobalSetupWizard({
             </h4>
             <p className="-mt-1 text-xs text-muted-foreground">
               {t(
-                "Each match's length is set per competition on the “How each competition plays” step.",
+                "Match length is set per competition on the “How each competition plays” step.",
               )}
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -654,6 +873,7 @@ export function GlobalSetupWizard({
                 <Input
                   type="number"
                   min={0}
+                  className="h-9"
                   value={form.rest_minutes}
                   onChange={(e) => set("rest_minutes", Number(e.target.value))}
                 />
@@ -662,6 +882,7 @@ export function GlobalSetupWizard({
                 <Input
                   type="number"
                   min={1}
+                  className="h-9"
                   value={form.max_per_day}
                   onChange={(e) => set("max_per_day", Number(e.target.value))}
                 />
@@ -680,9 +901,14 @@ export function GlobalSetupWizard({
               />
               {t("Keep Sunday mornings free (no matches before 13:00)")}
             </label>
-          </div>
-        ) : (
-          <dl className="grid gap-2 text-sm sm:grid-cols-2">
+              </div>
+            </Panel>
+          ) : (
+            <Panel
+              title="Check & save"
+              description="Review below, then save. Change it any time."
+            >
+              <dl className="grid gap-x-8 gap-y-4 text-xs sm:grid-cols-2">
             <Row
               k={t("Dates")}
               v={`${form.date_start ? fmtDay(form.date_start) : t("not set")} ${t("to")} ${form.date_end ? fmtDay(form.date_end) : t("not set")}`}
@@ -735,37 +961,38 @@ export function GlobalSetupWizard({
               k={t("Sunday mornings")}
               v={form.sunday_church ? t("Free until 13:00") : t("Open")}
             />
-          </dl>
-        )}
+              </dl>
+            </Panel>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center justify-between gap-2 border-t border-border pt-4">
-        <Button variant="ghost" onClick={onClose}>
-          {t("Cancel")}
-        </Button>
-        <div className="flex gap-2">
+      {/* Footer — a reassurance tip alongside the step actions (Back / Cancel /
+          Next / Save), kept on one row so the controls are right where the user
+          lands after scrolling through the step's fields. */}
+      <div className="mt-7 flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-1 items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+          <Lightbulb
+            aria-hidden="true"
+            className="h-5 w-5 shrink-0 text-primary"
+          />
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-primary">{t("Tip")}</div>
+            <div className="text-xs text-muted-foreground">
+              {t("Revisit these settings any time.")}
+            </div>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center justify-end gap-3">
           {step > 0 ? (
             <Button variant="outline" onClick={() => setStep((s) => s - 1)}>
               {t("Back")}
             </Button>
           ) : null}
-          {step < GLOBAL_SETUP_STEPS.length - 1 ? (
-            <Button
-              disabled={!canProceed || loading}
-              onClick={() => setStep((s) => s + 1)}
-            >
-              {t("Next")}
-            </Button>
-          ) : (
-            <Button
-              disabled={save.isPending || loading}
-              data-testid="save-global-setup"
-              onClick={() => save.mutate()}
-            >
-              <Sparkles aria-hidden="true" className="h-4 w-4" />
-              {save.isPending ? t("Saving…") : t("Save")}
-            </Button>
-          )}
+          <Button variant="outline" onClick={onClose}>
+            {t("Cancel")}
+          </Button>
+          {primaryAction}
         </div>
       </div>
     </section>

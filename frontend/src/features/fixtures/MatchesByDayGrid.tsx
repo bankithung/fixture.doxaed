@@ -7,7 +7,7 @@ import { sideName } from "./sideName";
 
 /** Token-only accent palette — one left-border colour per competition so
  * multi-sport days stay scannable (no hardcoded hex, design system rule). */
-const LEAF_ACCENTS = [
+export const LEAF_ACCENTS = [
   "border-l-primary",
   "border-l-info",
   "border-l-success",
@@ -38,7 +38,7 @@ function addMinutes(iso: string, mins: number): string {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
-function Chip({
+export function MatchChip({
   match,
   accent,
   teamNames,
@@ -163,7 +163,7 @@ export function MatchesByDayGrid({
               {[...venues.entries()].flatMap(([venue, ms]) =>
                 ms.map((m) => (
                   <div key={m.ref} className="flex flex-col gap-0.5">
-                    <Chip match={m} accent={accentOf(m.leaf_key)} teamNames={teamNames} />
+                    <MatchChip match={m} accent={accentOf(m.leaf_key)} teamNames={teamNames} />
                     <span className="px-1 text-[0.6875rem] text-muted-foreground">
                       {venue}
                     </span>
@@ -184,7 +184,7 @@ export function MatchesByDayGrid({
                     {venue}
                   </h4>
                   {ms.map((m) => (
-                    <Chip
+                    <MatchChip
                       key={m.ref}
                       match={m}
                       accent={accentOf(m.leaf_key)}

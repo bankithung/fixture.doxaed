@@ -91,9 +91,7 @@ function NoPermissionCard(): React.ReactElement {
         <CardHeader>
           <CardTitle>{t("Org settings")}</CardTitle>
           <CardDescription>
-            {t(
-              "You don't have permission to edit this organization's settings.",
-            )}
+            {t("You can't edit this organization's settings.")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -103,7 +101,7 @@ function NoPermissionCard(): React.ReactElement {
             className="text-sm text-muted-foreground"
           >
             {t(
-              "Ask an organization admin to enable the Org settings module for your role.",
+              "Ask an admin to enable the Org settings module for your role.",
             )}
           </p>
         </CardContent>
@@ -213,9 +211,7 @@ export function OrgSettingsPage(): React.ReactElement {
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold">{t("Org settings")}</h1>
         <p className="text-sm text-muted-foreground">
-          {t(
-            "Edit organization name, time zone, and other core settings.",
-          )}
+          {t("Edit your organization's name and time zone.")}
         </p>
       </header>
 
@@ -223,9 +219,7 @@ export function OrgSettingsPage(): React.ReactElement {
         <CardHeader>
           <CardTitle>{t("General")}</CardTitle>
           <CardDescription>
-            {t(
-              "These values appear across the platform and on public pages.",
-            )}
+            {t("Shown across the platform and on public pages.")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -290,7 +284,7 @@ export function OrgSettingsPage(): React.ReactElement {
                   className="text-xs text-muted-foreground"
                 >
                   {t(
-                    "Slugs are immutable here. Contact a super-admin to rename an organization.",
+                    "Slugs can't change here. Ask a super-admin to rename.",
                   )}
                 </p>
               </div>
@@ -312,7 +306,7 @@ export function OrgSettingsPage(): React.ReactElement {
                 </select>
                 <p className="text-xs text-muted-foreground">
                   {t(
-                    "Used for default tournament scheduling. Personal viewer time zones still render local times.",
+                    "Default for scheduling. Viewers still see their local time.",
                   )}
                 </p>
                 {form.formState.errors.time_zone ? (

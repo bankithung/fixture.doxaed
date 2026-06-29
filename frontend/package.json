@@ -17,6 +17,7 @@
     "gen:types": "openapi-typescript ../backend/schema.yml -o src/types/api.generated.ts"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
     "@hookform/resolvers": "^5.2.2",
     "@tanstack/react-query": "^5.100.8",
     "class-variance-authority": "^0.7.1",

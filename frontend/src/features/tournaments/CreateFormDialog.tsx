@@ -133,8 +133,8 @@ export function CreateFormDialog({
         <DialogTitle>{t("Create form")}</DialogTitle>
         <DialogDescription>
           {mode === "choose"
-            ? t("Start from scratch, or copy a ready-made template or one of your existing forms.")
-            : t("Pick a template or form to copy. You can edit everything afterwards.")}
+            ? t("Start blank, or copy a template or one of your forms.")
+            : t("Pick something to copy. Edit it afterwards.")}
         </DialogDescription>
       </DialogHeader>
 
@@ -153,7 +153,7 @@ export function CreateFormDialog({
           >
             <FilePlus2 aria-hidden="true" className="h-5 w-5 text-primary" />
             <span className="text-sm font-medium">{t("Start blank")}</span>
-            <span className="text-xs text-muted-foreground">{t("An empty form you build from scratch.")}</span>
+            <span className="text-xs text-muted-foreground">{t("Build from scratch.")}</span>
           </button>
           <button
             type="button"
@@ -163,7 +163,7 @@ export function CreateFormDialog({
             <LayoutTemplate aria-hidden="true" className="h-5 w-5 text-primary" />
             <span className="text-sm font-medium">{t("Use a template or existing form")}</span>
             <span className="text-xs text-muted-foreground">
-              {t("Copy questions from a ready-made template or another form.")}
+              {t("Copy questions from a template or another form.")}
             </span>
           </button>
         </div>

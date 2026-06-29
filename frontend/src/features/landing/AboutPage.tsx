@@ -18,7 +18,7 @@ export function AboutPage(): React.ReactElement {
           >
             <span
               aria-hidden="true"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-emerald-700 text-white font-bold"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-emerald-700 text-white font-semibold"
             >
               F
             </span>

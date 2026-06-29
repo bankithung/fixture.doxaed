@@ -49,6 +49,15 @@ export function defaultTiebreakers(scoring: Scoring | null | undefined): string[
     : ["points", "goal_difference", "goals_for", "head_to_head", "name"];
 }
 
+/** Keep `coin_toss` last: a coin toss settles everything, so it always goes at
+ * the end. A no-op when coin_toss is absent or already last (so a reorder that
+ * does not touch it returns an equivalent list). */
+export function snapCoinTossLast(rest: string[]): string[] {
+  if (!rest.includes("coin_toss")) return rest;
+  if (rest[rest.length - 1] === "coin_toss") return rest;
+  return [...rest.filter((c) => c !== "coin_toss"), "coin_toss"];
+}
+
 /** Move item at `i` up (-1) or down (+1), returning a new array. */
 export function moveItem<T>(arr: T[], i: number, dir: -1 | 1): T[] {
   const j = i + dir;

@@ -213,7 +213,7 @@ export function ModuleMatrixPage(): React.ReactElement {
               <h2 className="text-lg font-semibold">{t("Access required")}</h2>
               <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                 {t(
-                  "You don't have access to the module override matrix in this organisation.",
+                  "No access to the module override matrix here.",
                 )}
               </p>
             </div>
@@ -282,7 +282,7 @@ export function ModuleMatrixPage(): React.ReactElement {
           <h2 className="text-sm font-semibold">{t("Module override matrix")}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {t(
-              "Click a cell to cycle: default → grant → deny → default. Press Save to persist a row's edits.",
+              "Click a cell to cycle default, grant, deny. Save persists a row's edits.",
             )}
           </p>
           <Legend />
@@ -438,7 +438,7 @@ function PageHeader({
       </h1>
       <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
         {t(
-          "Per-user module overrides. Default cells defer to the role; toggle to grant or deny explicitly. Saves are atomic per row.",
+          "Per-user module overrides. Default defers to the role; toggle to grant or deny. Saves are per row.",
         )}
       </p>
       <p className="mt-2 text-xs text-muted-foreground">

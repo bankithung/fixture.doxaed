@@ -216,7 +216,7 @@ export function ConstraintBuilder({
         <div className="min-w-0">
           <h3 className="text-sm font-semibold">{t("Scheduling rules")}</h3>
           <p className="text-xs text-muted-foreground">
-            {t('Rules the schedule must follow. "Must" rules block a time slot; "prefer" rules guide it.')}
+            {t('Rules the schedule follows. "Must" blocks a slot; "Prefer" guides it.')}
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
@@ -249,7 +249,7 @@ export function ConstraintBuilder({
           <div className="h-16 animate-pulse rounded-lg bg-muted/40" />
         ) : rows.every((r) => OWNED_BY_CLASHES.has(r.type)) ? (
           <p className="text-sm text-muted-foreground">
-            {t("No extra rules yet. Step 1 already added the common ones (days off, rest time, Sunday mornings). Add anything sharper here.")}
+            {t("No extra rules yet. Step 1 added the common ones. Add anything sharper here.")}
           </p>
         ) : (
           rows.map((record, i) => {

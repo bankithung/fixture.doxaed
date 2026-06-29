@@ -62,7 +62,7 @@ export function FormPreviewDialog({
         <Eye aria-hidden="true" className="h-4 w-4 text-primary" />
         <span className="text-sm font-semibold">{t("Preview")}</span>
         <span className="hidden text-xs text-muted-foreground sm:inline">
-          {t("This is how respondents see your form. Nothing is saved.")}
+          {t("How respondents see your form. Nothing is saved.")}
         </span>
         <button
           type="button"
@@ -87,10 +87,10 @@ export function FormPreviewDialog({
           {done ? (
             <div className="rounded-b-xl border border-border bg-card p-6">
               <p className="text-sm">
-                {schema && t("Thanks — this is the end of the preview.")}
+                {schema && t("That's the end of the preview.")}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {t("Responses are not recorded in preview mode.")}
+                {t("Nothing is recorded in preview.")}
               </p>
               <div className="mt-4">
                 <Button
@@ -109,7 +109,7 @@ export function FormPreviewDialog({
           ) : sections.length === 0 || !current ? (
             <div className="rounded-b-xl border border-border bg-card p-6">
               <p className="text-sm text-muted-foreground">
-                {t("Add a section and some fields to preview the form.")}
+                {t("Add a section and fields to preview.")}
               </p>
             </div>
           ) : (

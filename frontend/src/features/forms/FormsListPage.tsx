@@ -206,7 +206,7 @@ function InstitutionLinksDialog({
         <DialogTitle>{t("Per-institution links")}</DialogTitle>
         <DialogDescription>
           {t(
-            "Each registered institution gets a private link that pre-fills and locks its details — copy and send these. Links created earlier can't be shown again.",
+            "Each institution gets a private link with details pre-filled and locked. Copy and send each one. Links created earlier can't be shown again.",
           )}
         </DialogDescription>
       </DialogHeader>
@@ -436,7 +436,7 @@ export function FormsListPage(): React.ReactElement {
         <div className="min-w-0">
           <h2 className="text-lg font-semibold">{t("Registration forms")}</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {t("Build data-driven registration forms with branching logic.")}
+            {t("Registration forms with branching logic.")}
           </p>
         </div>
         {newCta}
@@ -471,7 +471,7 @@ export function FormsListPage(): React.ReactElement {
               {t("No registration forms yet")}
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              {t("Create a form to collect institution or team registrations.")}
+              {t("Collect institution or team registrations.")}
             </p>
           </div>
           {newCta}
@@ -521,7 +521,7 @@ export function FormsListPage(): React.ReactElement {
           <DialogDescription>
             {pendingResponses > 0
               ? t(
-                  `Delete "${pendingTitle}"? It has ${pendingResponses} ${pendingResponses === 1 ? "response" : "responses"} that will no longer be accessible. This can't be undone.`,
+                  `Delete "${pendingTitle}"? Its ${pendingResponses} ${pendingResponses === 1 ? "response" : "responses"} will be lost. This can't be undone.`,
                 )
               : t(`Delete "${pendingTitle}"? This can't be undone.`)}
           </DialogDescription>

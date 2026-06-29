@@ -46,7 +46,7 @@ export function FormPreview({
 
       {sections.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          {t("Add a section and some fields to preview the form.")}
+          {t("Add a section and fields to preview.")}
         </p>
       ) : (
         sections.map((sec) => (

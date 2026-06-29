@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Sidebar } from "./Sidebar";
 import { SetupStepperSidebar } from "./SetupStepperSidebar";
 import { SportsStepBar } from "./SportsStepBar";
+import { FixtureStepBar } from "./FixtureStepBar";
 import {
   computeTournamentNav,
   computeWorkspaceNav,
@@ -551,6 +552,13 @@ export function AppShell(): React.ReactElement {
         setupSidebar &&
         pathStageKey(location.pathname) === "setup" ? (
           <SportsStepBar tournamentId={tournamentId as string} />
+        ) : null}
+
+        {/* Sticky sub-toolbar — the Fixtures setup journey, only there. Same
+            placement as the Sports step bar; the hub publishes its state and
+            FixtureStepBar self-hides until it does. */}
+        {pathStageKey(location.pathname) === "fixtures" ? (
+          <FixtureStepBar />
         ) : null}
 
         <main className="flex flex-1 flex-col">

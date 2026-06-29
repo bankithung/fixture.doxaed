@@ -131,7 +131,7 @@ export function InviteAcceptPage(): React.ReactElement {
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
               {t(
-                `This invitation was sent to ${mismatch.invited}, but you're signed in as ${mismatch.current}. Switch accounts to accept it.`,
+                `Sent to ${mismatch.invited}. You're signed in as ${mismatch.current}. Switch accounts to accept.`,
               )}
             </p>
             <Button onClick={handleSwitchAccount}>
@@ -175,7 +175,7 @@ export function InviteAcceptPage(): React.ReactElement {
           <CardDescription>
             {user
               ? t("Accept to join this tournament.")
-              : t("Create your account to join, or sign in if you have one.")}
+              : t("Create an account to join, or sign in.")}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">

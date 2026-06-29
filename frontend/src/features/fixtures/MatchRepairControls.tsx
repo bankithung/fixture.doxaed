@@ -154,7 +154,7 @@ export function ConflictsBlock({
   return (
     <div className="flex flex-col gap-1.5 pt-2">
       <p className="text-xs font-medium text-destructive">
-        {t("This change breaks the rules below. You can still force it, and the warnings are kept in the change history.")}
+        {t("This breaks the rules below. You can still force it; warnings are logged in the change history.")}
       </p>
       <RepairViolationsList violations={conflicts} />
     </div>
@@ -235,7 +235,7 @@ function MoveMatchDialog({
       <DialogHeader>
         <DialogTitle>{t("Move match")}</DialogTitle>
         <DialogDescription>
-          {t("Pick a new time and/or venue. The change is checked against the live schedule.")}
+          {t("Pick a new time or venue. Checked against the live schedule.")}
         </DialogDescription>
       </DialogHeader>
       <div className="flex flex-col gap-3">
@@ -338,7 +338,7 @@ function DelayMatchDialog({
       <DialogHeader>
         <DialogTitle>{t("Delay match")}</DialogTitle>
         <DialogDescription>
-          {t("Push the kick-off back. Tick the box below to also push the later matches at this venue, keeping rest gaps.")}
+          {t("Push the kick-off back. Optionally move later matches at this venue too, keeping rest gaps.")}
         </DialogDescription>
       </DialogHeader>
       <div className="flex flex-col gap-3">
@@ -468,7 +468,7 @@ function SwapMatchDialog({
       <DialogHeader>
         <DialogTitle>{t("Swap slots")}</DialogTitle>
         <DialogDescription>
-          {t("Exchange time and venue with another match in this competition.")}
+          {t("Swap slots with another match in this competition.")}
         </DialogDescription>
       </DialogHeader>
       <div className="flex flex-col gap-3">
@@ -487,7 +487,7 @@ function SwapMatchDialog({
           />
           {options.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              {t("No other movable, scheduled match in this competition.")}
+              {t("No other movable match in this competition.")}
             </p>
           ) : null}
         </div>

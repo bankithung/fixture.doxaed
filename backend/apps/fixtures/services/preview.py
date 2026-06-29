@@ -14,18 +14,23 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any
 
-from apps.fixtures.services.draw_config import effective_draw_config
+from apps.fixtures.services.draw_config import (
+    effective_draw_config,
+    effective_stages,
+)
 from apps.fixtures.services.generate import (
     MatchPlan,
     _keep_apart_separators,
     _new_seed,
     _plan_by_category,
     _plate_label,
+    _positional_qualifier_slots,
     _registered_teams,
     _small_group_max,
     _swiss_label,
     compute_inputs_hash,
     plan_double_elimination,
+    plan_knockout_from_positions,
     plan_knockout_qualifiers,
     plan_plate_for_plans,
     plan_round_robin,
@@ -79,6 +84,110 @@ def _with_plate(
     )
 
 
+def _groups_knockout_params(
+    cfg: dict[str, Any], stages: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Return the group-stage + qualifier params for a two-stage groups→knockout
+    PREVIEW, or ``None`` if this config is not one. Handles BOTH shapes:
+
+    * an explicit ``stages`` plan whose stage 0 is a ``round_robin`` and stage 1
+      a ``knockout`` sourcing from it (``effective_stages`` returns it verbatim);
+    * the flat ``format == "groups_knockout"`` (whose derived stages collapse to
+      a single round_robin — Gap 2 left commit untouched on purpose — so it is
+      detected straight from the flat draw_config keys).
+
+    The knockout stays drawn only after results at COMMIT (deferred /
+    eager-positional); this is the PREVIEW analogue that shows the full bracket
+    up front with the eventual committed SIZE."""
+    fmt = str(cfg.get("format") or "round_robin")
+    seeding = str(cfg.get("seeding") or "registration")
+    if (len(stages) >= 2 and stages[0].get("type") == "round_robin"
+            and stages[1].get("type") == "knockout"):
+        # `_validate_stages` makes a knockout the LAST stage and its `from`
+        # reference an earlier stage, so a knockout at index 1 sources stage 0.
+        s0, s1 = stages[0], stages[1]
+        frm = s1.get("from") or {}
+        return {
+            "group_size": int(s0.get("group_size", cfg.get("group_size", 5))),
+            "balance_groups": bool(
+                s0.get("balance_groups", cfg.get("balance_groups", False))),
+            "legs": int(s0.get("legs", cfg.get("legs", 1))),
+            "seeding": str(s0.get("seeding", seeding)),
+            "min_matches_per_team": s0.get("min_matches_per_team"),
+            "advance_per_group": int(frm.get("advance_per_group", 2)),
+            "advance_best_thirds": int(frm.get("advance_best_thirds", 0)),
+            "third_place": bool(s1.get("third_place", False)),
+        }
+    if fmt == "groups_knockout":
+        return {
+            "group_size": int(cfg.get("group_size", 5)),
+            "balance_groups": bool(cfg.get("balance_groups", False)),
+            "legs": int(cfg.get("legs", 1)),
+            "seeding": seeding,
+            "min_matches_per_team": None,
+            "advance_per_group": int(cfg.get("advance_per_group", 2)),
+            "advance_best_thirds": int(cfg.get("advance_best_thirds") or 0),
+            "third_place": bool(cfg.get("third_place", False)),
+        }
+    return None
+
+
+def _plan_groups_to_knockout_preview(
+    tournament, leaf_key: str | None, *, sports_cfg, sport: str,
+    seed: int | None, group_size: int, balance_groups: bool, legs: int,
+    seeding: str, min_matches_per_team: int | None, advance_per_group: int,
+    advance_best_thirds: int, third_place: bool, warnings: list,
+) -> list[MatchPlan]:
+    """Preview a two-stage groups→knockout: the entry round-robin plans PLUS a
+    PLACEHOLDER knockout drawn from group-position pointers, timed AFTER the
+    groups via ``stage_no=1``. PURE — the placeholder bracket's group labels come
+    from the PLANNED groups, never from committed ``Match`` rows (tenet 3 / the
+    preview-must-not-read-or-write invariant), and only ``plan_*`` cores run.
+
+    Bracket SIZE = ``advance_per_group * num_groups + advance_best_thirds`` — the
+    eventual committed size (``generate_knockout_from_groups``). Best-thirds and
+    overall-reseed need standings for their true identities/matchups, so each
+    best-third is a results-free placeholder appended as a bottom seed and the
+    positional cross-seed placement stands in for an overall reseed (that only
+    changes matchups, not the count or the schedule)."""
+    teams = _registered_teams(tournament, leaf_key)
+    label_prefix = f"{leaf_label(sports_cfg, leaf_key)} — " if leaf_key else ""
+    entry = plan_round_robin(
+        teams, group_size=group_size, leaf_key=leaf_key or "", sport=sport,
+        label_prefix=label_prefix, legs=legs, seeding=seeding, seed=seed,
+        balance_groups=balance_groups,
+        min_matches_per_team=min_matches_per_team,
+        small_group_max=_small_group_max(tournament),
+        separators=_keep_apart_separators(
+            tournament, teams, leaf_key or "", sport, warnings,
+        ),
+        warnings=warnings,
+    )
+    groups = sorted({
+        p.group_label for p in entry
+        if p.stage == "group" and p.group_label
+    })
+    if not groups:
+        return entry
+    slots = _positional_qualifier_slots(groups, advance_per_group)
+    # Best-thirds (increment N) / overall-reseed (increment O): the COUNT is the
+    # committed bracket size; identities need standings, so each is a generic
+    # placeholder appended as a bottom seed ("Best 3rd #k").
+    for k in range(advance_best_thirds):
+        slots.append({"type": "group_position", "best_third": True, "rank": k + 1})
+    if len(slots) < 2:
+        return entry  # not enough qualifiers to form a bracket
+    knockout = plan_knockout_from_positions(
+        slots, leaf_key=leaf_key or "", sport=sport, third_place=third_place,
+        label_prefix=label_prefix,
+    )
+    for p in knockout:
+        p.stage_no = 1  # times after the groups (scheduler orders by stage_no)
+    # Rebase the knockout block's refs (and its winner_of/loser_of pointers) past
+    # the entry plans so p{ref+1} ids stay globally unique and self-consistent.
+    return entry + _rebase_plans(knockout, len(entry))
+
+
 def _plan_for_config(
     tournament, leaf_key: str | None, cfg: dict[str, Any],
     *, seed: int | None, warnings: list,
@@ -91,6 +200,17 @@ def _plan_for_config(
     seeding = str(cfg.get("seeding") or "registration")
     sports_cfg = tournament.sports or []
     sport = sport_for_leaf(sports_cfg, leaf_key or "")
+
+    # Two-stage groups→knockout (explicit `stages` OR flat `groups_knockout`):
+    # preview the group stage AND a placeholder knockout with times (Gap 1/3).
+    gk = _groups_knockout_params(
+        cfg, effective_stages(tournament, leaf_key, cfg=cfg),
+    )
+    if gk is not None:
+        return _plan_groups_to_knockout_preview(
+            tournament, leaf_key, sports_cfg=sports_cfg, sport=sport,
+            seed=seed, warnings=warnings, **gk,
+        )
 
     if fmt == "knockout":
         teams_qs = Team.objects.filter(
@@ -169,8 +289,8 @@ def _plan_for_config(
             seeding=seeding, seed=seed, warnings=warnings,
         )
         return plans
-    # "round_robin" and "groups_knockout" both draw the group stage now (the
-    # knockout is advanced later via format="knockout_from_groups").
+    # Plain "round_robin": the group stage only ("groups_knockout" is handled
+    # above, where its placeholder knockout is previewed too).
     teams = _registered_teams(tournament, leaf_key)
     return plan_round_robin(
         teams,

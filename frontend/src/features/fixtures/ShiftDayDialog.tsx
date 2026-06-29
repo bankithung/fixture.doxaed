@@ -130,7 +130,7 @@ export function ShiftDayDialog({
       <DialogHeader>
         <DialogTitle>{t("Shift a day")}</DialogTitle>
         <DialogDescription>
-          {t("Move every match of a day onto another date. Matches keep their time and venue. Locked or finished matches stay.")}
+          {t("Move a day's matches to another date. They keep their time and venue; locked or finished matches stay.")}
         </DialogDescription>
       </DialogHeader>
       <div className="flex flex-col gap-3">
@@ -150,7 +150,7 @@ export function ShiftDayDialog({
           {dayOptions.length === 0 ? (
             /* An empty picker with no explanation strands the user. */
             <p className="text-xs text-muted-foreground">
-              {t("No day has matches that can move. Locked or finished matches stay where they are.")}
+              {t("No day has matches that can move. Locked or finished ones stay put.")}
             </p>
           ) : null}
         </div>
@@ -167,7 +167,7 @@ export function ShiftDayDialog({
             }}
           />
           <p className="text-xs text-muted-foreground">
-            {t("Leave blank to use the first spare day on or after the moved day.")}
+            {t("Leave blank to use the next spare day.")}
           </p>
         </div>
         {competitions.length > 0 ? (

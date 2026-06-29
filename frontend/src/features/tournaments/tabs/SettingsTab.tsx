@@ -121,14 +121,14 @@ export function SettingsTab(): React.ReactElement {
       <div>
         <h2 className="text-lg font-semibold">{t("Settings")}</h2>
         <p className="text-sm text-muted-foreground">
-          {t("Scoring rules, match format and squad limits, plus admin tools. Stage changes happen on Overview.")}
+          {t("Scoring rules, match format and squad limits. Stage changes happen on Overview.")}
         </p>
       </div>
 
       {frozen ? (
         <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
           <Lock aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-          <span>{t("Rules are frozen because registration is open — they're read-only to keep the competition fair.")}</span>
+          <span>{t("Frozen while registration is open, to keep the competition fair.")}</span>
         </div>
       ) : null}
 
@@ -217,7 +217,7 @@ export function SettingsTab(): React.ReactElement {
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">{t("Audit log")}</div>
           <div className="text-xs text-muted-foreground">
-            {t("Every stage change, score, and admin action — append-only.")}
+            {t("Every stage change, score and admin action. Append-only.")}
           </div>
         </div>
         <ChevronRight aria-hidden="true" className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
@@ -232,8 +232,8 @@ export function SettingsTab(): React.ReactElement {
             <h3 className="text-sm font-semibold">{t("Status & danger zone")}</h3>
             <p className="text-xs text-muted-foreground">
               {archived
-                ? t("This tournament is inactive (archived). Reactivate it to resume.")
-                : t("Deactivate to hide it without deleting, or delete it permanently if it was created by mistake.")}
+                ? t("Inactive (archived). Reactivate it to resume.")
+                : t("Deactivate to hide it, or delete it permanently.")}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

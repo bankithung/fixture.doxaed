@@ -325,7 +325,7 @@ function EmptyState({
       <div>
         <h3 className="text-base font-semibold">{t("No members yet")}</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          {t("Invite teammates to collaborate on this organization.")}
+          {t("Invite teammates to collaborate.")}
         </p>
       </div>
       {canInvite ? (
@@ -349,7 +349,7 @@ function NoPermissionCard(): React.ReactElement {
       <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
         <h2 className="text-lg font-semibold">{t("No access")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          {t("You don't have permission to view this organization's members.")}
+          {t("You can't view this organization's members.")}
         </p>
         <p
           role="status"
@@ -357,7 +357,7 @@ function NoPermissionCard(): React.ReactElement {
           className="mt-4 text-sm text-muted-foreground"
         >
           {t(
-            "Ask an organization admin to enable the Member directory module for your role.",
+            "Ask an admin to enable the Member directory module for your role.",
           )}
         </p>
       </div>

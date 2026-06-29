@@ -1,6 +1,22 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Save, SlidersHorizontal } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Clock,
+  GitFork,
+  Info,
+  Layers,
+  Lock,
+  Medal,
+  Repeat,
+  Save,
+  Shuffle,
+  SlidersHorizontal,
+  Target,
+  Trophy,
+  Users,
+} from "lucide-react";
 import {
   tournamentsApi,
   type DrawConfig,
@@ -17,12 +33,13 @@ import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { LeafLabel } from "./LeafLabel";
 import { ScoringControl } from "./ScoringControl";
 import { scoringEqual, type Scoring } from "./scoring";
 import { TiebreakerControl } from "./TiebreakerControl";
 import { tiebreakersEqual } from "./tiebreakers";
 import { StagesEditor } from "./StagesEditor";
-import { validateStages, type Stage } from "./stagesModel";
+import { STAGE_TYPE_LABELS, validateStages, type Stage } from "./stagesModel";
 
 interface Comp {
   leafKey: string;
@@ -41,7 +58,7 @@ const BOARD_FORMATS: { value: string; label: string; hint: string }[] = [
   },
   {
     value: "groups_knockout",
-    label: "Group stage → Knockout",
+    label: "Group stage to Knockout",
     hint: "Round-robin groups first (FIFA-style), then the top teams from each group advance into a knockout bracket.",
   },
   {
@@ -52,7 +69,7 @@ const BOARD_FORMATS: { value: string; label: string; hint: string }[] = [
   {
     value: "swiss",
     label: "Swiss",
-    hint: "A set number of rounds — each round pairs teams on similar records, never repeating a match.",
+    hint: "A set number of rounds; each round pairs teams on similar records, never repeating a match.",
   },
   {
     value: "double_elim",
@@ -61,6 +78,15 @@ const BOARD_FORMATS: { value: string; label: string; hint: string }[] = [
   },
 ];
 
+/** Icon per board format, so the visual picker reads at a glance. */
+const FORMAT_ICON: Record<string, typeof Trophy> = {
+  knockout: Trophy,
+  groups_knockout: Users,
+  round_robin: Repeat,
+  swiss: Shuffle,
+  double_elim: GitFork,
+};
+
 const prettySport = (key: string): string =>
   key
     .split(/[_\s]+/)
@@ -68,11 +94,95 @@ const prettySport = (key: string): string =>
     .map((w) => w[0]!.toUpperCase() + w.slice(1))
     .join(" ");
 
+/** A settings panel sub-card (Supabase dense recipe): titled header strip over a
+ * padded body, used for each section of a sport card. */
+function SubCard({
+  icon: Icon,
+  title,
+  right,
+  children,
+}: {
+  icon: typeof Trophy;
+  title: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <div className="rounded-lg border border-border bg-card">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+        <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+        <span className="text-[0.8125rem] font-semibold text-foreground">{title}</span>
+        {right}
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  );
+}
+
+/** Mutually-exclusive structure mode: one single format, or a multi-stage plan.
+ * "Multiple stages" keeps the historical `-stages-toggle` testid; a single click
+ * enters stages mode and mounts the editor. */
+function ModeSegmented({
+  ariaLabel,
+  multi,
+  disabled,
+  onFormat,
+  onStages,
+  formatTestId,
+  stagesTestId,
+}: {
+  ariaLabel: string;
+  multi: boolean;
+  disabled?: boolean;
+  onFormat: () => void;
+  onStages: () => void;
+  formatTestId: string;
+  stagesTestId: string;
+}): React.ReactElement {
+  const seg = (active: boolean): string =>
+    cn(
+      "h-8 rounded-md px-3 text-xs font-medium transition-colors disabled:opacity-50",
+      active
+        ? "bg-card text-foreground shadow-sm"
+        : "text-muted-foreground hover:text-foreground",
+    );
+  return (
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      className="inline-flex rounded-lg border border-border bg-muted/20 p-0.5"
+    >
+      <button
+        type="button"
+        role="radio"
+        aria-checked={!multi}
+        disabled={disabled}
+        data-testid={formatTestId}
+        onClick={onFormat}
+        className={seg(!multi)}
+      >
+        {t("One format")}
+      </button>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={multi}
+        disabled={disabled}
+        data-testid={stagesTestId}
+        onClick={onStages}
+        className={seg(multi)}
+      >
+        {t("Multiple stages")}
+      </button>
+    </div>
+  );
+}
+
 /**
  * "How each competition plays" — pick a game type (format) for every category
  * at once (owner ask 2026-06-25). One choice per sport sets the format for all
  * its categories via the `sport:<key>` draw-config layer ("all Table Tennis is
- * Knockout"); a category can override it underneath. Group stage → Knockout
+ * Knockout"); a category can override it underneath. Group stage to Knockout
  * exposes its group size + how many advance. Detailed seeding/legs/third-place
  * stay in each competition's own draw wizard.
  */
@@ -284,6 +394,33 @@ export function CompetitionFormatBoard({
 
   const dirty = Object.keys(staged).length > 0 || rulesDirty;
 
+  /** A short, derived label for the card header: the stage pipeline (joined with
+   * the plain word "then") when a plan exists, else the chosen single format. */
+  const structureSummary = (sp: string): string => {
+    const st = sportStages(sp);
+    if (st.length > 0) {
+      if (st.length <= 3) return st.map((s) => STAGE_TYPE_LABELS[s.type]).join(` ${t("then")} `);
+      return `${t("Multiple stages")} (${st.length})`;
+    }
+    return t(BOARD_FORMATS.find((f) => f.value === sportFormat(sp))?.label ?? sportFormat(sp));
+  };
+
+  /** Does this sport have any staged (unsaved) layer/scoring/tie-breaker edit? */
+  const sportDirty = (sp: string): boolean => {
+    const leaves = leavesBySport.get(sp)!;
+    if (`sport:${sp}` in staged) return true;
+    if (leaves.some((c) => c.leafKey in staged)) return true;
+    return leaves.some((c) => c.leafKey in stagedScoring || c.leafKey in stagedTiebreakers);
+  };
+
+  /** Does a leaf diverge from its sport (its own format/length/plan/rules)? */
+  const leafDiverges = (c: Comp): boolean =>
+    leafOwnFormat(c.leafKey) !== "" ||
+    leafOwnDuration(c.leafKey) > 0 ||
+    layerStages(c.leafKey).length > 0 ||
+    effLeafScoring(c.leafKey) != null ||
+    effLeafTbs(c.leafKey) != null;
+
   const save = useMutation({
     mutationFn: async () => {
       // One PATCH per changed layer; draw-config edits are governed by the
@@ -334,7 +471,7 @@ export function CompetitionFormatBoard({
 
   if (dcQ.isLoading) {
     return (
-      <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
+      <section className="w-full rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
         <div className="h-20 animate-pulse rounded-lg bg-muted/40" />
       </section>
     );
@@ -345,279 +482,403 @@ export function CompetitionFormatBoard({
   return (
     <section
       id="format-board"
-      className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+      className="w-full rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6"
     >
-      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold">{t("How each competition plays")}</h3>
-          <p className="text-xs text-muted-foreground">
-            {t(
-              "Pick a game type for each sport — it applies to every category. Open a sport to give one category a different format.",
-            )}
-          </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <Trophy aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold tracking-tight">
+              {t("How each competition plays")}
+            </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {t(
+                "Pick how each sport is played, it applies to every category. Open a sport to give one category a different format.",
+              )}
+            </p>
+          </div>
         </div>
         <AskAiButton
-          className="mt-0.5"
+          className="shrink-0"
           focus={{
             label: t("How each competition plays"),
             hint: "the 'How each competition plays' section: choosing a format (knockout, group stage -> knockout, or round-robin league) for each sport or category",
           }}
         />
-      </div>
+      </header>
 
-      <div className="flex flex-col gap-4 px-4 py-4">
+      <div className="mt-6 flex flex-col gap-5">
         {sportsInOrder.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <div className="flex items-center gap-2.5 rounded-lg bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
+            <Info
+              aria-hidden="true"
+              className="h-[18px] w-[18px] shrink-0 text-muted-foreground/70"
+            />
             {t("Add competitions to this tournament to choose their formats.")}
-          </p>
+          </div>
         ) : (
           sportsInOrder.map((sp) => {
             const leaves = leavesBySport.get(sp)!;
             const fmt = sportFormat(sp);
-            const hint = BOARD_FORMATS.find((f) => f.value === fmt)?.hint;
             const isGroups = fmt === "groups_knockout";
             const expanded = open[sp] ?? false;
+            const sportStagesArr = sportStages(sp);
+            const hasStages = sportStagesArr.length > 0;
+            const multi = (stagesOpen[sp] ?? false) || hasStages;
+            const divergeCount = leaves.filter((c) => leafDiverges(c)).length;
             return (
               <div
                 key={sp}
                 data-testid={`format-sport-${sp}`}
-                className="rounded-lg border border-border bg-muted/10 p-3"
+                className="overflow-hidden rounded-lg border border-border bg-card"
               >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-semibold">{sportName(sp)}</span>
+                {/* Card header — the sport's identity + a derived structure summary. */}
+                <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <Medal aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+                    <h3 className="text-sm font-semibold">{sportName(sp)}</h3>
+                    <span className="rounded-full bg-secondary px-2 py-0.5 font-tabular text-[0.6875rem] font-medium text-secondary-foreground">
+                      {leaves.length === 1
+                        ? t("1 category")
+                        : `${leaves.length} ${t("categories")}`}
+                    </span>
+                    <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[0.6875rem] font-medium text-muted-foreground">
+                      {structureSummary(sp)}
+                    </span>
+                    {sportDirty(sp) ? (
+                      <span
+                        aria-hidden="true"
+                        className="h-1.5 w-1.5 rounded-full bg-primary"
+                      />
+                    ) : null}
+                  </div>
+                  <AskAiButton
+                    variant="icon"
+                    focus={{
+                      label: t(`${sportName(sp)} format`),
+                      hint: `the format for the sport "${sportName(sp)}" (sport_key=${sp}) — should it be knockout, group stage -> knockout, or round-robin league`,
+                    }}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-4 p-4">
+                  {/* 1 · Structure — single format OR a multi-stage plan. */}
+                  <SubCard icon={Layers} title={t("Structure")}>
+                    <div className="flex flex-col gap-3">
+                      <ModeSegmented
+                        ariaLabel={`${t("How")} ${sportName(sp)} ${t("is structured")}`}
+                        multi={multi}
+                        disabled={!canManage}
+                        formatTestId={`format-sport-${sp}-mode-format`}
+                        stagesTestId={`format-sport-${sp}-stages-toggle`}
+                        onFormat={() => {
+                          setStagesOpen((o) => ({ ...o, [sp]: false }));
+                          if (hasStages) setSportStages(sp, []);
+                        }}
+                        onStages={() => setStagesOpen((o) => ({ ...o, [sp]: true }))}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {multi
+                          ? t("Stages run in order. The last stage decides the winner.")
+                          : t("One format runs the same bracket for every team in this sport.")}
+                      </p>
+                      {hasStages ? (
+                        <p className="flex items-start gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                          <Info aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          {t("Switching to one format clears the stages below.")}
+                        </p>
+                      ) : null}
+
+                      {multi ? (
+                        <StagesEditor
+                          testId={`format-sport-${sp}-stages`}
+                          stages={sportStagesArr}
+                          disabled={!canManage}
+                          onChange={(next) => setSportStages(sp, next)}
+                        />
+                      ) : (
+                        <div className="flex flex-col gap-3">
+                          <span className="text-[0.8125rem] font-medium text-foreground">
+                            {leaves.length > 1 ? t("Format (all categories)") : t("Format")}
+                          </span>
+                          <div
+                            role="radiogroup"
+                            aria-label={`${t("Format for")} ${sportName(sp)}`}
+                            className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
+                          >
+                            {BOARD_FORMATS.map((f) => {
+                              const on = fmt === f.value;
+                              const FIcon = FORMAT_ICON[f.value] ?? Trophy;
+                              return (
+                                <button
+                                  key={f.value}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={on}
+                                  data-testid={`format-sport-${sp}-format-${f.value}`}
+                                  onClick={() => setSportFormat(sp, f.value)}
+                                  className={cn(
+                                    "flex items-center gap-2 rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                    on
+                                      ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                                      : "border-border bg-card hover:bg-muted/50",
+                                  )}
+                                >
+                                  <FIcon
+                                    aria-hidden="true"
+                                    className={cn(
+                                      "h-4 w-4 shrink-0",
+                                      on ? "text-primary" : "text-muted-foreground",
+                                    )}
+                                  />
+                                  <span className="text-[0.8125rem] font-semibold">
+                                    {t(f.label)}
+                                  </span>
+                                  {on ? (
+                                    <Check
+                                      aria-hidden="true"
+                                      className="ml-auto h-4 w-4 text-primary"
+                                    />
+                                  ) : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="text-xs leading-relaxed text-muted-foreground">
+                            {t(BOARD_FORMATS.find((f) => f.value === fmt)?.hint ?? "")}
+                          </p>
+
+                          {isGroups ? (
+                            <div className="flex flex-col gap-3 rounded-lg border border-primary/40 bg-primary/5 p-4">
+                              <div className="flex flex-wrap items-end gap-4">
+                                <label className="flex flex-col gap-1.5">
+                                  <span className="text-[0.8125rem] font-medium text-foreground">
+                                    {t("Teams per group")}
+                                  </span>
+                                  <Input
+                                    type="number"
+                                    min={2}
+                                    data-testid={`format-sport-${sp}-group-size`}
+                                    className="h-9 w-24 font-tabular"
+                                    value={sportParam(sp, "group_size", 4)}
+                                    onChange={(e) =>
+                                      stage(`sport:${sp}`, {
+                                        group_size: Math.max(2, Number(e.target.value) || 2),
+                                      })
+                                    }
+                                  />
+                                </label>
+                                <label className="flex flex-col gap-1.5">
+                                  <span className="text-[0.8125rem] font-medium text-foreground">
+                                    {t("Advance per group")}
+                                  </span>
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    data-testid={`format-sport-${sp}-advance`}
+                                    className="h-9 w-24 font-tabular"
+                                    value={sportParam(sp, "advance_per_group", 2)}
+                                    onChange={(e) =>
+                                      stage(`sport:${sp}`, {
+                                        advance_per_group: Math.max(1, Number(e.target.value) || 1),
+                                      })
+                                    }
+                                  />
+                                </label>
+                                <label className="flex items-center gap-2 pb-2 text-sm text-foreground">
+                                  <input
+                                    type="checkbox"
+                                    data-testid={`format-sport-${sp}-balance`}
+                                    className="h-4 w-4 rounded border-input accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    checked={boolParam(sp, "balance_groups", true)}
+                                    onChange={(e) =>
+                                      stage(`sport:${sp}`, { balance_groups: e.target.checked })
+                                    }
+                                  />
+                                  {t("Balance group sizes (FIFA-style)")}
+                                </label>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {boolParam(sp, "balance_groups", true)
+                                  ? t(
+                                      "Teams per group is the target; groups come out even (for example 10 teams becomes 4, 3, 3), never one tiny leftover group.",
+                                    )
+                                  : t(
+                                      "Teams are split into fixed groups of this size; the last group may be smaller.",
+                                    )}
+                              </p>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  </SubCard>
+
+                  {/* 2 · Match length — one neutral number. */}
+                  <SubCard icon={Clock} title={t("Match length")}>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="flex flex-col gap-1.5">
+                        <span className="text-[0.8125rem] font-medium text-foreground">
+                          {t("Match length (minutes)")}
+                        </span>
+                        <Input
+                          type="number"
+                          min={1}
+                          data-testid={`format-sport-${sp}-duration`}
+                          className="h-9 w-32 font-tabular"
+                          placeholder={starDuration ? String(starDuration) : t("Default")}
+                          value={sportOwnDuration(sp) || ""}
+                          aria-label={`${t("Match length for")} ${sportName(sp)}`}
+                          onChange={(e) => stageDuration(`sport:${sp}`, e.target.value)}
+                        />
+                      </label>
                       <span className="text-xs text-muted-foreground">
-                        {leaves.length === 1
-                          ? t("1 category")
-                          : `${leaves.length} ${t("categories")}`}
+                        {leaves.length > 1
+                          ? t("applies to every category, override one below")
+                          : t("leave blank to use the tournament default")}
                       </span>
                     </div>
-                    <AskAiButton
-                      variant="icon"
-                      focus={{
-                        label: t(`${sportName(sp)} format`),
-                        hint: `the format for the sport "${sportName(sp)}" (sport_key=${sp}) — should it be knockout, group stage -> knockout, or round-robin league`,
-                      }}
-                    />
-                  </div>
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    {t("All categories play")}
-                    <div className="w-64" data-testid={`format-sport-${sp}-select`}>
-                      <Select
-                        value={fmt}
-                        onChange={(v) => setSportFormat(sp, v)}
-                        options={formatOptions}
-                        aria-label={`${t("Format for")} ${sportName(sp)}`}
+                  </SubCard>
+
+                  {/* 3 · Match rules — scoring + tie-breakers, lock-flagged together. */}
+                  <SubCard
+                    icon={Target}
+                    title={t("Match rules")}
+                    right={
+                      rulesFrozen ? (
+                        <span className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-1.5 py-0.5 text-[0.6875rem] font-medium text-muted-foreground">
+                          <Lock aria-hidden="true" className="h-3 w-3" />
+                          {t("Changes notify teams")}
+                        </span>
+                      ) : undefined
+                    }
+                  >
+                    <div className="flex flex-col gap-3">
+                      <ScoringControl
+                        testId={`format-sport-${sp}-scoring`}
+                        label={leaves.length > 1 ? t("Scoring (all categories)") : t("Scoring")}
+                        value={sportScoringValue(sp)}
+                        inherited={inheritedScoring(sp)}
+                        disabled={!canManage}
+                        onChange={(s) => stageSportScoring(sp, s)}
+                      />
+                      <TiebreakerControl
+                        testId={`format-sport-${sp}-tiebreakers`}
+                        value={sportTbsValue(sp)}
+                        scoring={sportScoringValue(sp) ?? inheritedScoring(sp)}
+                        disabled={!canManage}
+                        onChange={(tbs) => stageSportTbs(sp, tbs)}
                       />
                     </div>
-                  </label>
-                </div>
+                  </SubCard>
 
-                {hint ? (
-                  <p className="mt-2 text-xs text-muted-foreground">{hint}</p>
-                ) : null}
-
-                {(() => {
-                  const stages = sportStages(sp);
-                  const showing = (stagesOpen[sp] ?? false) || stages.length > 0;
-                  return (
-                    <div className="mt-2">
+                  {/* 4 · Per-category overrides — the rare escape hatch, disclosed. */}
+                  {leaves.length > 1 ? (
+                    <div className="rounded-lg border border-border bg-card">
                       <button
                         type="button"
-                        data-testid={`format-sport-${sp}-stages-toggle`}
-                        aria-expanded={showing}
-                        onClick={() =>
-                          setStagesOpen((o) => ({ ...o, [sp]: !showing }))
-                        }
-                        className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-                      >
-                        <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
-                        {stages.length > 0
-                          ? `${t("Multiple stages")} (${stages.length})`
-                          : t("Use multiple stages instead")}
-                      </button>
-                      {showing ? (
-                        <div className="mt-2 flex flex-col gap-2">
-                          {stages.length > 0 ? (
-                            <p className="text-xs text-muted-foreground">
-                              {t(
-                                "These stages run in order and replace the single format above.",
-                              )}
-                            </p>
-                          ) : (
-                            <p className="text-xs text-muted-foreground">
-                              {t(
-                                "Add stages (e.g. group league → top teams advance → knockout). Leave empty to use the single format above.",
-                              )}
-                            </p>
-                          )}
-                          <StagesEditor
-                            testId={`format-sport-${sp}-stages`}
-                            stages={stages}
-                            disabled={!canManage}
-                            onChange={(next) => setSportStages(sp, next)}
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })()}
-
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    {t("Match length (minutes)")}
-                    <Input
-                      type="number"
-                      min={1}
-                      data-testid={`format-sport-${sp}-duration`}
-                      className="h-8 w-24 font-tabular"
-                      placeholder={starDuration ? String(starDuration) : t("Default")}
-                      value={sportOwnDuration(sp) || ""}
-                      aria-label={`${t("Match length for")} ${sportName(sp)}`}
-                      onChange={(e) => stageDuration(`sport:${sp}`, e.target.value)}
-                    />
-                  </label>
-                  <span className="text-xs text-muted-foreground">
-                    {leaves.length > 1
-                      ? t("applies to every category — override one below")
-                      : t("leave blank to use the tournament default")}
-                  </span>
-                </div>
-
-                <div className="mt-3 flex flex-col gap-3">
-                  <ScoringControl
-                    testId={`format-sport-${sp}-scoring`}
-                    label={leaves.length > 1 ? t("Scoring (all categories)") : t("Scoring")}
-                    value={sportScoringValue(sp)}
-                    inherited={inheritedScoring(sp)}
-                    disabled={!canManage}
-                    onChange={(s) => stageSportScoring(sp, s)}
-                  />
-                  <TiebreakerControl
-                    testId={`format-sport-${sp}-tiebreakers`}
-                    value={sportTbsValue(sp)}
-                    scoring={sportScoringValue(sp) ?? inheritedScoring(sp)}
-                    disabled={!canManage}
-                    onChange={(tbs) => stageSportTbs(sp, tbs)}
-                  />
-                </div>
-
-                {isGroups ? (
-                  <div className="mt-3 flex flex-wrap items-center gap-4">
-                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                      {t("Teams per group")}
-                      <Input
-                        type="number"
-                        min={2}
-                        data-testid={`format-sport-${sp}-group-size`}
-                        className="h-8 w-20 font-tabular"
-                        value={sportParam(sp, "group_size", 4)}
-                        onChange={(e) =>
-                          stage(`sport:${sp}`, {
-                            group_size: Math.max(2, Number(e.target.value) || 2),
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                      {t("Advance per group")}
-                      <Input
-                        type="number"
-                        min={1}
-                        data-testid={`format-sport-${sp}-advance`}
-                        className="h-8 w-20 font-tabular"
-                        value={sportParam(sp, "advance_per_group", 2)}
-                        onChange={(e) =>
-                          stage(`sport:${sp}`, {
-                            advance_per_group: Math.max(1, Number(e.target.value) || 1),
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        data-testid={`format-sport-${sp}-balance`}
-                        className="h-4 w-4 rounded border-input text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        checked={boolParam(sp, "balance_groups", true)}
-                        onChange={(e) =>
-                          stage(`sport:${sp}`, { balance_groups: e.target.checked })
-                        }
-                      />
-                      {t("Balance group sizes (FIFA-style)")}
-                    </label>
-                  </div>
-                ) : null}
-                {isGroups ? (
-                  <p className="mt-1.5 text-xs text-muted-foreground">
-                    {boolParam(sp, "balance_groups", true)
-                      ? t(
-                          "“Teams per group” is the target — groups come out even (e.g. 10 teams → 4, 3, 3), never one tiny leftover group.",
-                        )
-                      : t(
-                          "Teams are split into fixed groups of this size; the last group may be smaller.",
-                        )}
-                  </p>
-                ) : null}
-
-                {leaves.length > 1 ? (
-                  <div className="mt-3 border-t border-border/60 pt-2">
-                    <button
-                      type="button"
-                      data-testid={`format-sport-${sp}-customize`}
-                      aria-expanded={expanded}
-                      onClick={() => setOpen((o) => ({ ...o, [sp]: !expanded }))}
-                      className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-                    >
-                      <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
-                      {t("Give a category a different format")}
-                      <ChevronDown
-                        aria-hidden="true"
+                        data-testid={`format-sport-${sp}-customize`}
+                        aria-expanded={expanded}
+                        onClick={() => setOpen((o) => ({ ...o, [sp]: !expanded }))}
                         className={cn(
-                          "h-3.5 w-3.5 transition-transform",
-                          expanded && "rotate-180",
+                          "flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-muted/40",
+                          expanded && "border-b border-border",
                         )}
-                      />
-                    </button>
-                    {expanded ? (
-                      <div className="mt-2 flex flex-col gap-2">
-                        {leaves.map((c) => {
-                          const own = leafOwnFormat(c.leafKey);
-                          const overridden = own !== "" && own !== fmt;
-                          return (
-                            <div
-                              key={c.leafKey}
-                              className="flex flex-col gap-2 rounded-md border border-border px-3 py-2"
-                            >
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="text-sm">{c.label}</span>
-                              <div className="flex items-center gap-2">
-                                {!overridden ? (
-                                  <span className="text-xs text-muted-foreground">
-                                    {t("Same as")} {sportName(sp)}
-                                  </span>
-                                ) : null}
-                                <div
-                                  className="w-56"
-                                  data-testid={`format-leaf-${c.leafKey}-select`}
-                                >
-                                  <Select
-                                    value={own || fmt}
-                                    onChange={(v) =>
-                                      stage(c.leafKey, { format: v })
-                                    }
-                                    options={formatOptions}
-                                    aria-label={`${t("Format for")} ${c.label}`}
-                                  />
+                      >
+                        <SlidersHorizontal aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+                        <span className="text-[0.8125rem] font-semibold text-foreground">
+                          {t("Per-category overrides")}
+                        </span>
+                        {divergeCount > 0 ? (
+                          <span className="rounded-full bg-primary/15 px-1.5 py-0.5 font-tabular text-[0.6875rem] font-semibold text-primary">
+                            {divergeCount}
+                          </span>
+                        ) : null}
+                        <ChevronDown
+                          aria-hidden="true"
+                          className={cn(
+                            "ml-auto h-4 w-4 transition-transform",
+                            expanded && "rotate-180",
+                          )}
+                        />
+                      </button>
+                      {expanded ? (
+                        <div className="flex flex-col gap-3 p-4">
+                          {leaves.map((c) => {
+                            const own = leafOwnFormat(c.leafKey);
+                            const okey = `leaf:${c.leafKey}`;
+                            const leafStagesArr = layerStages(c.leafKey);
+                            const leafMulti =
+                              (stagesOpen[okey] ?? false) || leafStagesArr.length > 0;
+                            const diverges = leafDiverges(c);
+                            return (
+                              <div
+                                key={c.leafKey}
+                                className={cn(
+                                  "flex flex-col gap-3 rounded-lg border p-4",
+                                  diverges
+                                    ? "border-primary/40 bg-primary/5"
+                                    : "border-border bg-muted/20",
+                                )}
+                              >
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <LeafLabel label={c.label} size="md" />
+                                  {!diverges ? (
+                                    <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                                      {t("Inherits")} {sportName(sp)}
+                                    </span>
+                                  ) : null}
                                 </div>
-                                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                  {t("Length")}
+
+                                <ModeSegmented
+                                  ariaLabel={`${t("How")} ${c.label} ${t("is structured")}`}
+                                  multi={leafMulti}
+                                  disabled={!canManage}
+                                  formatTestId={`format-leaf-${c.leafKey}-mode-format`}
+                                  stagesTestId={`format-leaf-${c.leafKey}-stages-toggle`}
+                                  onFormat={() => {
+                                    setStagesOpen((o) => ({ ...o, [okey]: false }));
+                                    if (leafStagesArr.length > 0) setLayerStages(c.leafKey, []);
+                                  }}
+                                  onStages={() => setStagesOpen((o) => ({ ...o, [okey]: true }))}
+                                />
+                                {leafStagesArr.length > 0 ? (
+                                  <p className="flex items-start gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                                    <Info aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                    {t("Switching to one format clears the stages below.")}
+                                  </p>
+                                ) : null}
+
+                                {leafMulti ? (
+                                  <StagesEditor
+                                    testId={`format-leaf-${c.leafKey}-stages`}
+                                    stages={leafStagesArr}
+                                    disabled={!canManage}
+                                    onChange={(next) => setLayerStages(c.leafKey, next)}
+                                  />
+                                ) : (
+                                  <div
+                                    className="w-56"
+                                    data-testid={`format-leaf-${c.leafKey}-select`}
+                                  >
+                                    <Select
+                                      value={own || fmt}
+                                      onChange={(v) => stage(c.leafKey, { format: v })}
+                                      options={formatOptions}
+                                      aria-label={`${t("Format for")} ${c.label}`}
+                                    />
+                                  </div>
+                                )}
+
+                                <label className="flex flex-col gap-1.5">
+                                  <span className="text-xs font-medium text-foreground">
+                                    {t("Length")}
+                                  </span>
                                   <Input
                                     type="number"
                                     min={1}
                                     data-testid={`format-leaf-${c.leafKey}-duration`}
-                                    className="h-8 w-20 font-tabular"
+                                    className="h-9 w-24 font-tabular"
                                     placeholder={
                                       sportOwnDuration(sp) || starDuration
                                         ? String(sportOwnDuration(sp) || starDuration)
@@ -625,96 +886,57 @@ export function CompetitionFormatBoard({
                                     }
                                     value={leafOwnDuration(c.leafKey) || ""}
                                     aria-label={`${t("Match length for")} ${c.label}`}
-                                    onChange={(e) =>
-                                      stageDuration(c.leafKey, e.target.value)
-                                    }
+                                    onChange={(e) => stageDuration(c.leafKey, e.target.value)}
                                   />
                                 </label>
+
+                                <ScoringControl
+                                  testId={`format-leaf-${c.leafKey}-scoring`}
+                                  value={effLeafScoring(c.leafKey)}
+                                  inherited={inheritedScoring(sp)}
+                                  disabled={!canManage}
+                                  onChange={(s) => stageLeafScoring(c.leafKey, s)}
+                                />
+                                <TiebreakerControl
+                                  testId={`format-leaf-${c.leafKey}-tiebreakers`}
+                                  value={effLeafTbs(c.leafKey)}
+                                  scoring={effLeafScoring(c.leafKey) ?? inheritedScoring(sp)}
+                                  disabled={!canManage}
+                                  onChange={(tbs) => stageLeafTbs(c.leafKey, tbs)}
+                                />
                               </div>
-                              </div>
-                              <ScoringControl
-                                testId={`format-leaf-${c.leafKey}-scoring`}
-                                value={effLeafScoring(c.leafKey)}
-                                inherited={inheritedScoring(sp)}
-                                disabled={!canManage}
-                                onChange={(s) => stageLeafScoring(c.leafKey, s)}
-                              />
-                              <TiebreakerControl
-                                testId={`format-leaf-${c.leafKey}-tiebreakers`}
-                                value={effLeafTbs(c.leafKey)}
-                                scoring={effLeafScoring(c.leafKey) ?? inheritedScoring(sp)}
-                                disabled={!canManage}
-                                onChange={(tbs) => stageLeafTbs(c.leafKey, tbs)}
-                              />
-                              {(() => {
-                                const okey = `leaf:${c.leafKey}`;
-                                const stages = layerStages(c.leafKey);
-                                const showing =
-                                  (stagesOpen[okey] ?? false) || stages.length > 0;
-                                return (
-                                  <div>
-                                    <button
-                                      type="button"
-                                      data-testid={`format-leaf-${c.leafKey}-stages-toggle`}
-                                      aria-expanded={showing}
-                                      onClick={() =>
-                                        setStagesOpen((o) => ({ ...o, [okey]: !showing }))
-                                      }
-                                      className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-                                    >
-                                      <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
-                                      {stages.length > 0
-                                        ? `${t("Multiple stages")} (${stages.length})`
-                                        : t("Use multiple stages instead")}
-                                    </button>
-                                    {showing ? (
-                                      <div className="mt-2 flex flex-col gap-2">
-                                        <p className="text-xs text-muted-foreground">
-                                          {stages.length > 0
-                                            ? t("These stages run in order and replace the format above for this category.")
-                                            : t("Add stages just for this category (overrides the sport plan above).")}
-                                        </p>
-                                        <StagesEditor
-                                          testId={`format-leaf-${c.leafKey}-stages`}
-                                          stages={stages}
-                                          disabled={!canManage}
-                                          onChange={(next) => setLayerStages(c.leafKey, next)}
-                                        />
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             );
           })
         )}
 
         {sportsInOrder.length > 0 ? (
-          <div className="flex flex-col gap-2 border-t border-border pt-3">
+          <div className="flex flex-col gap-4 border-t border-border pt-6">
             {rulesDirty && rulesFrozen ? (
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                {t(
-                  "Scoring & tie-breakers lock once registration opens — give a reason to amend (teams are notified).",
-                )}
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-foreground">
+                  {t(
+                    "Scoring and tie-breakers lock once registration opens. Give a reason to amend (teams are notified).",
+                  )}
+                </span>
                 <Input
                   data-testid="scoring-amend-reason"
-                  className="h-8 max-w-md"
+                  className="h-9 max-w-md"
                   placeholder={t("Reason for the change")}
                   value={amendReason}
                   onChange={(e) => setAmendReason(e.target.value)}
                 />
               </label>
             ) : null}
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
                 {dirty
                   ? t("Unsaved changes.")
                   : t("All formats saved. Generate each draw from its card.")}
@@ -725,7 +947,7 @@ export function CompetitionFormatBoard({
                 data-testid="save-formats"
                 onClick={() => save.mutate()}
               >
-                <Save aria-hidden="true" className="h-3.5 w-3.5" />
+                <Save aria-hidden="true" className="h-4 w-4" />
                 {save.isPending ? t("Saving…") : t("Save formats")}
               </Button>
             </div>

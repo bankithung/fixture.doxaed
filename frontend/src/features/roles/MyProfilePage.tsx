@@ -242,7 +242,7 @@ export function MyProfilePage(): React.ReactElement {
         <CardHeader>
           <CardTitle>{t("Memberships")}</CardTitle>
           <CardDescription>
-            {t("Organizations you belong to and the roles you hold there.")}
+            {t("Your organizations and roles.")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -282,7 +282,7 @@ export function MyProfilePage(): React.ReactElement {
         <CardHeader>
           <CardTitle>{t("Your tournaments")}</CardTitle>
           <CardDescription>
-            {t("Tournaments you organise or have a role in, plus pending invitations.")}
+            {t("Tournaments you're part of, plus pending invitations.")}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -354,9 +354,7 @@ export function MyProfilePage(): React.ReactElement {
               {t("Change password")}
             </Link>
             <p className="text-xs text-muted-foreground">
-              {t(
-                "We will email you a one-time link to set a new password.",
-              )}
+              {t("We'll email a one-time reset link.")}
             </p>
           </div>
           <div>
@@ -370,9 +368,7 @@ export function MyProfilePage(): React.ReactElement {
               {t("Sign out everywhere")}
             </Button>
             <p className="mt-1 text-xs text-muted-foreground">
-              {t(
-                "Ends every session you have, including this one. You will need to sign in again.",
-              )}
+              {t("Ends all sessions, including this one. You'll sign in again.")}
             </p>
           </div>
         </CardContent>

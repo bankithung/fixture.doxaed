@@ -15,6 +15,7 @@ import {
 } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { FixtureSetupHub } from "../FixtureSetupHub";
+import { FixtureStepBar } from "@/features/layout/FixtureStepBar";
 
 vi.mock("@/api/tournaments", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/tournaments")>();
@@ -112,7 +113,18 @@ function wrap(ui: React.ReactElement) {
       <ToastProvider>
         <MemoryRouter initialEntries={["/tournaments/t1/fixtures"]}>
           <Routes>
-            <Route path="/tournaments/t1/fixtures" element={ui} />
+            {/* AppShell renders the journey stepper (FixtureStepBar) under the
+                top bar from state the hub publishes; mount it alongside so the
+                journey-* testids resolve in these unit tests. */}
+            <Route
+              path="/tournaments/t1/fixtures"
+              element={
+                <>
+                  <FixtureStepBar />
+                  {ui}
+                </>
+              }
+            />
             <Route
               path="/tournaments/t1/teams"
               element={<div data-testid="teams-page" />}
@@ -252,12 +264,12 @@ describe("FixtureSetupHub", () => {
 
     // globals not done → the inline Step 1 wizard IS the page (no modal)
     const panel = await screen.findByTestId("global-setup-inline");
-    expect(
-      within(panel).getByText("Step 1 · When & where"),
-    ).toBeInTheDocument();
+    // the wizard's own header carries the step context (its reference design);
+    // the journey bar stays visible so the four stages are always on screen,
+    // now highlighting step 1 (When & where)
+    expect(within(panel).getByText("Step 1 of 4")).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByTestId("global-setup-gate")).toBeNull();
-    // the journey header points at step 1
     expect(screen.getByTestId("journey-next")).toHaveTextContent(
       "Next: set your tournament dates and venues.",
     );
@@ -364,14 +376,14 @@ describe("FixtureSetupHub", () => {
     ).toBeInTheDocument();
     expect(screen.queryByTestId("add-clash-rule")).toBeNull();
 
-    // Back → the competition overview again.
+    // Back to setup → the When & where step (the wizard owns the page again).
     await userEvent.click(screen.getByTestId("subpage-back"));
     expect(
-      await screen.findByTestId("competition-card-football.u15"),
+      await screen.findByTestId("global-setup-inline"),
     ).toBeInTheDocument();
     expect(screen.queryByTestId("format-sport-football")).toBeNull();
 
-    // Step 3 jumps straight to the formats page from the overview.
+    // Step 3 jumps straight to the formats page.
     await userEvent.click(screen.getByTestId("journey-step-3"));
     expect(
       await screen.findByTestId("format-sport-football"),
@@ -501,7 +513,9 @@ describe("FixtureSetupHub", () => {
     // the panel replaces the hub content (receipt strip + competition cards)
     expect(screen.queryByTestId("global-setup-strip")).toBeNull();
     expect(screen.queryByTestId("competition-card-football.u15")).toBeNull();
-    // the journey header keeps Step 1 active while the inline setup is open
+    // the wizard's own header carries the step context; the journey bar stays
+    // visible while the wizard owns the page, now highlighting step 1
+    expect(within(panel).getByText("Step 1 of 4")).toBeInTheDocument();
     expect(screen.getByTestId("journey-next")).toHaveTextContent(
       "Next: set your tournament dates and venues.",
     );

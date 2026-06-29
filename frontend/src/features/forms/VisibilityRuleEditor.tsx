@@ -117,7 +117,7 @@ export function VisibilityRuleEditor({
               </legend>
               {valueOpts.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  {t("The selected field has no options to choose from.")}
+                  {t("This field has no options.")}
                 </p>
               ) : (
                 valueOpts.map((o) => {

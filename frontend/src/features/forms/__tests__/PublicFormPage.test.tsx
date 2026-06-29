@@ -484,7 +484,7 @@ describe("PublicFormPage", () => {
     });
     // Edit mode confirmed + prior answers prefilled + hidden fields return.
     expect(
-      await screen.findByText(/editing your school's existing registration/i),
+      await screen.findByText(/editing your existing registration/i),
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/contact person/i)).toBeInTheDocument();
 

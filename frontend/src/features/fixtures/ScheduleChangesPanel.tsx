@@ -129,7 +129,7 @@ export function ScheduleChangesPanel({
         <History aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
         <h3 className="text-sm font-semibold">{t("Change history")}</h3>
         <p className="hidden text-xs text-muted-foreground sm:block">
-          {t("Every time and venue change, with who did it and why.")}
+          {t("Who changed each time or venue, and why.")}
         </p>
         {competitions.length > 0 ? (
           <Select

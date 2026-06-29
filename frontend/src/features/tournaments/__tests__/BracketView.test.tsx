@@ -65,6 +65,48 @@ describe("BracketView", () => {
     expect(screen.getByText("Beta")).toBeInTheDocument();
   });
 
+  it("keeps two categories' 'Group A' in separate bands (Gap 5b)", () => {
+    render(
+      <BracketView
+        matches={[
+          m(
+            {
+              leaf_key: "football.u15",
+              group_label: "Group A",
+              stage: "group",
+              round_no: 1,
+              status: "completed",
+              home_team: { id: "a", name: "Alpha", short_name: "ALP" },
+              away_team: { id: "b", name: "Beta", short_name: "BET" },
+              home_score: 1,
+              away_score: 0,
+            },
+            "x1",
+          ),
+          m(
+            {
+              leaf_key: "football.u17",
+              group_label: "Group A",
+              stage: "group",
+              round_no: 1,
+              status: "completed",
+              home_team: { id: "c", name: "Gamma", short_name: "GAM" },
+              away_team: { id: "d", name: "Delta", short_name: "DEL" },
+              home_score: 2,
+              away_score: 1,
+            },
+            "x2",
+          ),
+        ]}
+      />,
+    );
+    // Two separate "Group A" headings (one per leaf), NOT one merged band.
+    expect(screen.getAllByText("Group A")).toHaveLength(2);
+    // Each band keeps its own teams.
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Gamma")).toBeInTheDocument();
+  });
+
   it("renders a round-robin group as a standings table", () => {
     render(
       <BracketView

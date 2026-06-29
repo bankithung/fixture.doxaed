@@ -101,7 +101,7 @@ export function BranchingEditor({
         />
       ) : (
         <p className="text-xs text-muted-foreground">
-          {t("Add choice fields earlier in the form to gate this field on an answer.")}
+          {t("Add a choice field earlier to gate this field on an answer.")}
         </p>
       )}
     </div>

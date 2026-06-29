@@ -296,7 +296,7 @@ export function ControlRoomPage(): React.ReactElement {
             {t("Nothing is on the calendar yet")}
           </p>
           <p className="max-w-sm text-sm text-muted-foreground">
-            {t("The control room lights up once matches are scheduled.")}
+            {t("Schedule matches to see them here.")}
           </p>
           {perms.canManage ? (
             <Link
@@ -445,7 +445,7 @@ export function ControlRoomPage(): React.ReactElement {
                 <History aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <h3 className="text-sm font-semibold">{t("Change history")}</h3>
                 <span className="hidden text-xs text-muted-foreground sm:block">
-                  {t("Every time and venue change, with who did it and why.")}
+                  {t("Time and venue changes, with who and why.")}
                 </span>
                 <ChevronDown
                   aria-hidden="true"

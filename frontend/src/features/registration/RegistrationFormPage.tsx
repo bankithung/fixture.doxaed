@@ -183,7 +183,7 @@ export function RegistrationFormPage(): React.ReactElement {
             {t("Register for")} {info.data?.tournament_name ?? "…"}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("Enter your school's teams and players, then submit. No account needed.")}
+            {t("Add your teams and players, then submit. No account needed.")}
           </p>
         </div>
 
@@ -323,7 +323,7 @@ export function RegistrationFormPage(): React.ReactElement {
 
         <div className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">
-            {t("Double-check names and jersey numbers — these feed the fixtures.")}
+            {t("Check names and jersey numbers; these feed the fixtures.")}
           </p>
           <Button
             type="button"

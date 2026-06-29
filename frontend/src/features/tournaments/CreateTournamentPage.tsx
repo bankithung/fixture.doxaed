@@ -62,7 +62,7 @@ export function CreateTournamentPage(): React.ReactElement {
           {t("Start a tournament")}
         </h1>
         <p className="mt-2 text-center text-sm text-muted-foreground">
-          {t("Give it a name. You'll be its admin and can invite people next.")}
+          {t("Name it. You'll be admin and can invite people next.")}
         </p>
 
         {error ? (

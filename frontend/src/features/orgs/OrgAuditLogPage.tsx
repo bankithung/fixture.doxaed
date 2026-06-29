@@ -119,7 +119,7 @@ export function OrgAuditLogPage(): React.ReactElement {
           </span>
           <h1 className="text-lg font-semibold">{t("Access required")}</h1>
           <p className="max-w-md text-sm text-muted-foreground">
-            {t("You don't have access to the audit log in this organization.")}
+            {t("You can't view this organization's audit log.")}
           </p>
         </div>
       </div>
@@ -164,7 +164,7 @@ export function OrgAuditLogPage(): React.ReactElement {
             {t("Audit log")}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("Append-only record of state-changing actions in this organization.")}
+            {t("Append-only record of every change in this org.")}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">

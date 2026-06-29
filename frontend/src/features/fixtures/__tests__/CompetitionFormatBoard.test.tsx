@@ -105,10 +105,7 @@ describe("CompetitionFormatBoard", () => {
   it("sets a whole sport's format in one write to the sport layer", async () => {
     mount();
     await userEvent.click(
-      await screen.findByRole("button", { name: "Format for Table Tennis" }),
-    );
-    await userEvent.click(
-      screen.getByRole("option", { name: "Knockout (single elimination)" }),
+      await screen.findByTestId("format-sport-table_tennis-format-knockout"),
     );
     await userEvent.click(screen.getByTestId("save-formats"));
     await waitFor(() =>
@@ -125,10 +122,9 @@ describe("CompetitionFormatBoard", () => {
   it("group-stage→knockout exposes group size + advance and saves them", async () => {
     mount();
     await userEvent.click(
-      await screen.findByRole("button", { name: "Format for Sepak Takraw" }),
-    );
-    await userEvent.click(
-      screen.getByRole("option", { name: "Group stage → Knockout" }),
+      await screen.findByTestId(
+        "format-sport-sepak_takraw-format-groups_knockout",
+      ),
     );
     const adv = await screen.findByTestId("format-sport-sepak_takraw-advance");
     fireEvent.change(adv, { target: { value: "3" } });
@@ -151,10 +147,9 @@ describe("CompetitionFormatBoard", () => {
   it("defaults groups to balanced sizing and lets you turn it off", async () => {
     mount();
     await userEvent.click(
-      await screen.findByRole("button", { name: "Format for Sepak Takraw" }),
-    );
-    await userEvent.click(
-      screen.getByRole("option", { name: "Group stage → Knockout" }),
+      await screen.findByTestId(
+        "format-sport-sepak_takraw-format-groups_knockout",
+      ),
     );
     // FIFA-style balance is on by default after choosing the group format.
     const balance = await screen.findByTestId("format-sport-sepak_takraw-balance");

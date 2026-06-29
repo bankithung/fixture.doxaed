@@ -117,12 +117,28 @@ describe("ClashesSection", () => {
     await userEvent.click(await screen.findByTestId("add-clash-rule"));
     // toggle one off → only one member left → not a real clash
     await userEvent.click(screen.getByTestId("clash-0-member-table_tennis.u14"));
+    // a half-built clash alone is not a real change — Save stays disabled
+    expect(screen.getByTestId("save-clashes")).toBeDisabled();
+    // make a real change so we can save; the half-built clash must be dropped
+    await userEvent.click(screen.getByTestId("cap-all-toggle"));
     await userEvent.click(screen.getByTestId("save-clashes"));
     await waitFor(() =>
       expect(tournamentsApi.updateSettings).toHaveBeenCalled(),
     );
     const body = vi.mocked(tournamentsApi.updateSettings).mock.calls[0][1];
-    expect(body.constraints).toEqual([]);
+    expect(body.constraints).toEqual([
+      { type: "official_capacity", scope: "all", hard: true, weight: 5,
+        params: { count: 1 } },
+    ]);
+  });
+
+  it("keeps Save disabled when an added clash rule has no real change", async () => {
+    mount();
+    await userEvent.click(await screen.findByTestId("add-clash-rule"));
+    // both pre-selected, but removing one leaves a half-built rule that's
+    // dropped on save → no real change → Save disabled
+    await userEvent.click(screen.getByTestId("clash-0-member-sepaktakraw.u14"));
+    expect(screen.getByTestId("save-clashes")).toBeDisabled();
   });
 
   it("gives a competition its own session window and preserves other rules", async () => {

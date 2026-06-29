@@ -53,10 +53,11 @@ export function AssistantWidget({
           type="button"
           data-testid="assistant-launcher"
           onClick={openPlain}
-          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          aria-label={t("Ask AI")}
+          className="fixed bottom-4 right-4 z-40 inline-flex h-11 w-11 items-center justify-center gap-2 rounded-full bg-primary text-sm font-semibold text-primary-foreground shadow-lg transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:bottom-5 sm:right-5 sm:h-auto sm:w-auto sm:px-4 sm:py-3"
         >
-          <Sparkles aria-hidden="true" className="h-4 w-4" />
-          {t("Ask AI")}
+          <Sparkles aria-hidden="true" className="h-4 w-4 shrink-0" />
+          <span className="hidden sm:inline">{t("Ask AI")}</span>
         </button>
       ) : null}
       {open ? (
@@ -205,9 +206,9 @@ function AssistantPanel({
           <div className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">
               {focus
-                ? t(`Ask me about ${focus.label}, or tell me to set it up for you.`)
+                ? t(`Ask about ${focus.label}, or tell me to set it up.`)
                 : t(
-                    "I can set your dates, venues, formats, breaks and clash rules — just ask. I won't publish anything; that's still your click.",
+                    "I can set dates, venues, formats, breaks and clash rules. I won't publish anything; that's still your call.",
                   )}
             </p>
             <div className="flex flex-col gap-1.5">

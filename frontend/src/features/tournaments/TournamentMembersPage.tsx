@@ -417,7 +417,7 @@ function InvitePanel({ tournamentId }: { tournamentId: string }): React.ReactEle
         <h2 className="text-sm font-semibold">{t("Invite a member")}</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {t(
-            "They'll appear in the roster once they accept. Invite someone again with a different role to give them an extra role.",
+            "They join the roster once they accept. Invite again with another role to add a role.",
           )}
         </p>
       </div>
@@ -633,7 +633,7 @@ export function TournamentMembersPage(): React.ReactElement {
               <div>
                 <h3 className="text-base font-semibold">{t("No members yet")}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {t("Invite people to give them a role in this tournament.")}
+                  {t("Invite people to give them a role.")}
                 </p>
               </div>
             </div>

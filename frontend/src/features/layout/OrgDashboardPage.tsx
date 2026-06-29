@@ -454,7 +454,7 @@ export function OrgDashboardPage(): React.ReactElement {
         <DialogHeader>
           <DialogTitle>{t("Send feedback")}</DialogTitle>
           <DialogDescription>
-            {t("Share a bug, feature idea, or general note. The platform team will see it.")}
+            {t("Share a bug or idea. The team will see it.")}
           </DialogDescription>
         </DialogHeader>
         <textarea

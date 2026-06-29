@@ -317,7 +317,7 @@ function SectionCard({
       <div className="flex flex-col gap-3 p-4">
         {section.fields.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">
-            {t("No questions yet — add one from “Add a field”.")}
+            {t("No questions yet. Add one from “Add a field”.")}
           </p>
         ) : (
           section.fields.map((f, i) => (
