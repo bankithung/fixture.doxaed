@@ -187,3 +187,70 @@
     color: black !important;
   }
 }
+
+/* Org-chart tree — the Review step renders Sports -> categories -> competitions
+   as a top-down hierarchy: a centered root heading, with connector lines fanning
+   down to each child level. Lines use the --border token so they track the
+   theme. width:max-content + margin auto centers the tree when it fits and lets
+   the wrapper scroll from the left (no clipping) when it doesn't. */
+.orgtree {
+  width: max-content;
+  margin-inline: auto;
+}
+.orgtree ul {
+  display: flex;
+  justify-content: center;
+  position: relative;
+  padding-top: 1rem;
+  margin: 0;
+  list-style: none;
+}
+.orgtree > ul {
+  padding-top: 0;
+}
+.orgtree li {
+  list-style: none;
+  position: relative;
+  padding: 1rem 0.5rem 0 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.orgtree li::before,
+.orgtree li::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 50%;
+  height: 1rem;
+  border-top: 1px solid hsl(var(--border));
+}
+.orgtree li::after {
+  right: auto;
+  left: 50%;
+  border-left: 1px solid hsl(var(--border));
+}
+.orgtree li:only-child::before,
+.orgtree li:only-child::after {
+  display: none;
+}
+.orgtree li:only-child {
+  padding-top: 0;
+}
+.orgtree li:first-child::before,
+.orgtree li:last-child::after {
+  border: 0 none;
+}
+.orgtree li:last-child::before {
+  border-right: 1px solid hsl(var(--border));
+}
+.orgtree ul ul::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 0;
+  height: 1rem;
+  border-left: 1px solid hsl(var(--border));
+}

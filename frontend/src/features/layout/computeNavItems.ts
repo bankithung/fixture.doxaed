@@ -17,6 +17,36 @@ import type { User } from "@/types/user";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 
+/**
+ * The work page each setup stage opens to. Shared by the vertical stepper
+ * sidebar and the mobile stage strip so they navigate identically. "ready"
+ * lands on Overview — its own page once the tournament is live.
+ */
+export const STAGE_WORK_ROUTE: Record<string, (id: string) => string> = {
+  setup: routes.tournamentSports,
+  org_registration: routes.tournamentInstitutions,
+  team_registration: routes.tournamentTeams,
+  members: routes.tournamentMembers,
+  fixtures: routes.tournamentFixtures,
+  ready: routes.tournamentOverview,
+};
+
+/**
+ * Reverse-map the current pathname to the setup stage whose page you're on, so
+ * the stepper highlights the PAGE you're viewing — not the tournament's
+ * server-side stage (owner: on the Sports page, Setup must be highlighted, not
+ * Fixtures). Stage-agnostic pages (Overview/Settings) return null; callers fall
+ * back to the tournament's current stage there.
+ */
+export function pathStageKey(pathname: string): string | null {
+  if (/\/sports(\/|$)/.test(pathname)) return "setup";
+  if (/\/(forms|institutions)(\/|$)/.test(pathname)) return "org_registration";
+  if (/\/teams(\/|$)/.test(pathname)) return "team_registration";
+  if (/\/members(\/|$)/.test(pathname)) return "members";
+  if (/\/fixtures(\/|$)/.test(pathname)) return "fixtures";
+  return null;
+}
+
 /** One sidebar item. Pure data — the Sidebar renders it (incl. locked state). */
 export interface NavItem {
   /** Stable identifier for tests / keys; not user-visible. */

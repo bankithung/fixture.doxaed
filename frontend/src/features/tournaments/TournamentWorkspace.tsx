@@ -15,8 +15,8 @@ import {
   Trophy,
 } from "lucide-react";
 import { tournamentsApi } from "@/api/tournaments";
-import { DeleteTournamentButton } from "./DeleteTournamentButton";
 import { StageContinue } from "./StageContinue";
+import { pathStageKey } from "@/features/layout/computeNavItems";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -78,6 +78,11 @@ export function TournamentWorkspace(): React.ReactElement {
   const slug = tournament.data?.slug ?? "";
   const stage = stageQ.data;
   const curIdx = stage ? stage.order.indexOf(stage.stage) : -1;
+  // Highlight the stage whose PAGE we're on, not the tournament's server stage
+  // (so Setup is highlighted on the Sports page, not Fixtures). Stage-agnostic
+  // pages (Overview/Settings) fall back to the tournament's current stage.
+  const viewedKey = pathStageKey(location.pathname);
+  const activeIdx = stage && viewedKey ? stage.order.indexOf(viewedKey) : curIdx;
 
   // Once fixtures are generated (`ready`) the workspace is live-operations
   // software, not a setup wizard: full-width, the setup stepper gives way to a
@@ -110,20 +115,21 @@ export function TournamentWorkspace(): React.ReactElement {
     !!activeTab &&
     !["Overview", "Settings", "Forms", "Sports"].includes(activeTab.label);
 
-  // Setup flow (W2-C): until the tournament is ready, managers work in a
-  // focused no-sidebar flow — delete must stay reachable from the top, but
-  // only for the ORGANIZER (invited managers can't delete; owner 2026-06-11).
-  const setupMode = !!stage && stage.can_manage && stage.stage !== "ready";
-  const canDelete = !!stage?.can_delete;
+  // The Sports setup page (its Review org-chart especially) needs the full width
+  // so wide category trees fit without a horizontal scrollbar; every other setup
+  // stage keeps the readable, centred max-w-5xl column.
+  const fullWidth = opsMode || viewedKey === "setup";
 
   return (
     <div
       className={cn(
         "flex w-full flex-col px-4 py-6 sm:px-6 lg:px-8",
-        opsMode ? "" : "mx-auto max-w-5xl",
+        fullWidth ? "" : "mx-auto max-w-5xl",
       )}
     >
-      <div className="mb-4 flex items-center justify-between gap-2">
+      {/* "All tournaments" is in the stepper sidebar on desktop; only the mobile
+          view (no sidebar during setup) needs this back link. */}
+      <div className="mb-4 flex items-center justify-between gap-2 md:hidden">
         <NavLink
           to={routes.tournaments()}
           className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -131,9 +137,6 @@ export function TournamentWorkspace(): React.ReactElement {
           <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
           {t("All tournaments")}
         </NavLink>
-        {setupMode && canDelete ? (
-          <DeleteTournamentButton tournamentId={id} compact />
-        ) : null}
       </div>
 
       {opsMode ? (
@@ -176,36 +179,42 @@ export function TournamentWorkspace(): React.ReactElement {
           ) : null}
         </div>
       ) : (
-        /* Stage progress sits ABOVE the tournament name (owner request); the
-           DOM keeps the name first so screen readers announce the title before
-           the progress nav, while `flex-col-reverse` paints the stages on top. */
-        <div className="flex flex-col-reverse gap-4">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10">
-              <Trophy aria-hidden="true" className="h-5 w-5 text-primary" />
+        /* The full Setup -> Ready journey now lives in the left stepper sidebar
+           (desktop) and the mobile strip below, so this header just carries the
+           tournament's identity. */
+        <div className="flex flex-col gap-4">
+          <section className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-primary text-primary-foreground sm:h-14 sm:w-14">
+              <Trophy aria-hidden="true" className="h-6 w-6 sm:h-7 sm:w-7" />
             </span>
             <div className="min-w-0">
-              <h1 className="truncate text-xl font-semibold tracking-tight">{name}</h1>
-              <span
-                className={cn(
-                  "mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize",
-                  STATUS_CLS[status] ?? "bg-muted text-muted-foreground",
-                )}
-              >
-                {t(status.replace(/_/g, " "))}
-              </span>
+              <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">
+                {name}
+              </h1>
+              <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    status === "draft" ? "bg-muted-foreground/50" : "bg-success",
+                  )}
+                />
+                <span className="capitalize">{t(status.replace(/_/g, " "))}</span>
+              </div>
             </div>
-          </div>
+          </section>
 
+          {/* Mobile stage strip — the desktop sidebar owns this on md+. The chip
+              for the page you're on is highlighted (route-aware). */}
           {stage ? (
             <nav
               aria-label={t("Setup progress")}
-              className="flex flex-wrap items-center gap-x-1 gap-y-2"
+              className="flex flex-wrap items-center gap-x-1 gap-y-2 md:hidden"
             >
               {stage.order.map((s, i) => {
               const info = stage.stages[i];
               const reached = i <= curIdx;
-              const isCurrent = i === curIdx;
+              const isCurrent = i === activeIdx;
               const dest = STAGE_ROUTE[s]?.(id);
               // Every reached stage (the CURRENT one included) navigates to
               // its work page — from a sub-page like Forms, the current chip

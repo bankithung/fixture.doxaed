@@ -1,18 +1,16 @@
 import { useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   Check,
   ChevronLeft,
-  ChevronRight,
   Copy as CopyIcon,
-  CornerDownRight,
   FileText,
   Pencil,
   Plus,
   Search,
-  SlidersHorizontal,
+  Trash2,
   Trophy,
   X,
 } from "lucide-react";
@@ -93,6 +91,37 @@ function leafLabels(nodes: SportNode[], prefix: string[] = []): string[] {
     else out.push(path.join(" — "));
   }
   return out;
+}
+
+/** Like leafLabels, but each competition as its path segments — so the live
+ * preview can structure them (group by top-level category) instead of showing
+ * one hard-to-scan dashed string per competition. */
+function leafPaths(nodes: SportNode[], prefix: string[] = []): string[][] {
+  const out: string[][] = [];
+  for (const n of nodes) {
+    const path = [...prefix, n.name];
+    if (n.children?.length) out.push(...leafPaths(n.children, path));
+    else out.push(path);
+  }
+  return out;
+}
+
+/** Group competition paths by their first segment for the preview panel:
+ * `{ head: "U-14", subs: ["Girls · 1v1", "Boys · 1v1"] }`. A top-level leaf
+ * (no nesting) yields an empty `subs` — it IS the competition. */
+function groupLeaves(paths: string[][]): { head: string; subs: string[] }[] {
+  const map = new Map<string, string[]>();
+  for (const path of paths) {
+    const head = path[0] ?? "";
+    const rest = path.slice(1).join(" · ");
+    const arr = map.get(head);
+    if (arr) arr.push(rest);
+    else map.set(head, [rest]);
+  }
+  return [...map].map(([head, rests]) => ({
+    head,
+    subs: rests.filter((r) => r !== ""),
+  }));
 }
 
 /** Immutable node-tree ops addressed by index path. */
@@ -256,14 +285,6 @@ const NODE_KIND_OPTIONS = [
   { value: "custom", label: t("Custom") },
 ];
 
-const KIND_LABELS: Record<string, string> = {
-  age_group: "Age group",
-  gender: "Gender",
-  format: "Format",
-  level: "Level",
-  custom: "Custom",
-};
-
 /**
  * Add-category form (W2 refinement, owner 2026-06-10): name, TYPE and team
  * size are captured together at add time — the type chooser shows on every
@@ -338,7 +359,7 @@ function AddNodeForm({
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder={t("e.g. U-14, Girls, 5v5, Doubles")}
+            placeholder={t("e.g. U-14, Girls, 5v5")}
             className="h-9"
           />
         </div>
@@ -383,7 +404,7 @@ function AddNodeForm({
             />
           </div>
           <p className="flex-1 pb-1 text-xs text-muted-foreground">
-            {t("Teams register exactly this squad; raise Squad max to allow substitutes.")}
+            {t("Squad size — raise the max for substitutes.")}
           </p>
         </div>
       ) : null}
@@ -535,11 +556,26 @@ export function SportsTab(): React.ReactElement {
   // up, then apply the same tree to all/selected others).
   const [copyOpen, setCopyOpen] = useState(false);
   const [copyTargets, setCopyTargets] = useState<Set<string>>(new Set());
-  const [showSettings, setShowSettings] = useState(false);
   // Two-step sub-flow: pick sports → configure each one (focused, via tabs).
   // Three-step sub-flow (owner 2026-06-10): pick sports → configure each
   // one's categories in turn → REVIEW everything before generating.
-  const [step, setStep] = useState<"pick" | "configure" | "review">("pick");
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The active sub-step lives in the URL (?step=) so the left sidebar's "Set up
+  // sports" section can read it and drive navigation. Invalid/missing → "pick".
+  const stepParam = searchParams.get("step");
+  const step: "pick" | "configure" | "review" =
+    stepParam === "configure" || stepParam === "review" ? stepParam : "pick";
+  const setStep = (next: "pick" | "configure" | "review"): void => {
+    setSearchParams(
+      (prev) => {
+        const sp = new URLSearchParams(prev);
+        if (next === "pick") sp.delete("step");
+        else sp.set("step", next);
+        return sp;
+      },
+      { replace: true },
+    );
+  };
   const [activeKey, setActiveKey] = useState<string>("");
 
   const catalog = useQuery({
@@ -739,72 +775,76 @@ export function SportsTab(): React.ReactElement {
   const effectiveStep = selected.length === 0 ? "pick" : step;
   const activeSport = selected.find((s) => s.key === activeKey) ?? selected[0];
   const activeLeaves = activeSport ? leafLabels(activeSport.nodes ?? []) : [];
-
-  const stepChip = (active: boolean): string =>
-    cn(
-      "rounded-full px-2 py-0.5",
-      active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
-    );
+  // Grouped competitions for the live preview panel (right of the editor).
+  const activeLeafGroups = groupLeaves(
+    activeSport ? leafPaths(activeSport.nodes ?? []) : [],
+  );
 
   /** One node row + its children, recursively. */
   const renderNode = (
     sport: TournamentSport,
     node: SportNode,
     path: number[],
-    depth: number,
   ): React.ReactElement => {
+    const hasChildren = !!node.children?.length;
+    // One quiet descriptor line instead of a row of badges: the age rule
+    // and/or the team size — the only details that aren't obvious from the name.
+    const bits: string[] = [];
+    if (node.age) bits.push(ageLabel(node.age));
+    if (node.format?.players_per_side) {
+      const pps = node.format.players_per_side;
+      let f = `${pps}${t("-a-side")}`;
+      if (node.format.squad_max && node.format.squad_max !== pps) {
+        f += ` · ${t("squad")} ${node.format.squad_min ?? pps}–${node.format.squad_max}`;
+      }
+      bits.push(f);
+    }
+    const descriptor = bits.join(" · ");
+    const actionCls =
+      "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:text-muted-foreground";
     return (
       <li key={node.key ?? `${path.join(".")}-${node.name}`} className="min-w-0">
-        <div className="group flex items-center gap-1.5 rounded-md py-1 pl-2 pr-1 hover:bg-accent/60">
-          {depth > 0 ? (
-            <CornerDownRight
-              aria-hidden="true"
-              className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50"
-            />
-          ) : null}
+        <div className="group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/50">
           <span
+            aria-hidden="true"
             className={cn(
-              "min-w-0 truncate text-sm",
-              node.children?.length ? "font-medium" : "",
+              "h-1.5 w-1.5 shrink-0 rounded-full",
+              hasChildren ? "bg-muted-foreground/40" : "bg-primary",
             )}
-            title={node.name}
-          >
-            {node.name}
-          </span>
-          {node.kind ? (
-            <span className="rounded bg-muted px-1.5 text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground">
-              {t(KIND_LABELS[node.kind] ?? node.kind)}
-            </span>
-          ) : null}
-          {node.age ? (
-            <span className="rounded bg-secondary px-1.5 font-tabular text-[0.625rem] font-medium text-secondary-foreground">
-              {ageLabel(node.age)}
-            </span>
-          ) : null}
-          {!node.children?.length ? (
-            <span className="rounded bg-primary/10 px-1.5 text-[0.625rem] font-medium uppercase tracking-wide text-primary">
-              {t("competition")}
-            </span>
-          ) : null}
-          {node.format?.players_per_side ? (
-            <span className="rounded bg-secondary px-1.5 font-tabular text-[0.625rem] font-medium text-secondary-foreground">
-              {node.format.players_per_side}{t("-a-side")}
-              {node.format.squad_max &&
-              node.format.squad_max !== node.format.players_per_side
-                ? ` · ${t("squad")} ${node.format.squad_min ?? node.format.players_per_side}–${node.format.squad_max}`
-                : ""}
-            </span>
-          ) : null}
-          <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <span
+                className={cn(
+                  "truncate text-sm",
+                  hasChildren ? "font-semibold" : "font-medium",
+                )}
+                title={node.name}
+              >
+                {node.name}
+              </span>
+              {hasChildren ? null : (
+                <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[0.625rem] font-medium uppercase tracking-wide text-primary">
+                  {t("competition")}
+                </span>
+              )}
+            </div>
+            {descriptor ? (
+              <div className="truncate text-xs text-muted-foreground">
+                {descriptor}
+              </div>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5">
             <button
               type="button"
               onClick={() => setKindTarget({ sportKey: sport.key, path })}
               aria-label={t(`Edit ${node.name} — name, type and team size`)}
               aria-haspopup="dialog"
-              className="inline-flex h-6 items-center gap-0.5 rounded px-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              title={t("Edit")}
+              className={actionCls}
             >
-              <Pencil aria-hidden="true" className="h-3 w-3" />
-              {t("edit")}
+              <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
@@ -813,25 +853,67 @@ export function SportsTab(): React.ReactElement {
               }
               aria-label={t(`Add a level under ${node.name}`)}
               aria-haspopup="dialog"
-              className="inline-flex h-6 items-center gap-0.5 rounded px-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              title={t("Add level")}
+              className={actionCls}
             >
-              <Plus aria-hidden="true" className="h-3 w-3" />
-              {t("level")}
+              <Plus aria-hidden="true" className="h-3.5 w-3.5" />
             </button>
-            <button
-              type="button"
-              onClick={() => removeNode(sport.key, path)}
-              aria-label={t(`Remove ${node.name}`)}
-              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <X aria-hidden="true" className="h-3.5 w-3.5" />
-            </button>
-          </span>
+          </div>
         </div>
-        {node.children?.length ? (
-          <ul className="ml-3 border-l border-border pl-2">
+        {hasChildren ? (
+          <ul className="ml-3.5 border-l border-border pl-2.5">
             {(node.children ?? []).map((c, i) =>
-              renderNode(sport, c, [...path, i], depth + 1),
+              renderNode(sport, c, [...path, i]),
+            )}
+          </ul>
+        ) : null}
+      </li>
+    );
+  };
+
+  // One node of the Review org-chart tree (CSS in index.css draws the
+  // connectors). A branch is a plain box with its name + age rule; a leaf is a
+  // competition — trophy marker, matchup name, and the format/squad beneath.
+  const renderOrgNode = (
+    node: SportNode,
+    path: number[],
+  ): React.ReactElement => {
+    const hasChildren = !!node.children?.length;
+    const age = node.age ? ageLabel(node.age) : "";
+    const pps = node.format?.players_per_side;
+    const fmt = pps ? `${pps}${t("-a-side")}` : "";
+    const squad =
+      node.format?.squad_max && node.format.squad_max !== pps
+        ? `${t("squad")} ${node.format.squad_min ?? pps}–${node.format.squad_max}`
+        : "";
+    const meta = [age, fmt, squad].filter(Boolean).join(" · ");
+    return (
+      <li key={node.key ?? `${path.join(".")}-${node.name}`}>
+        <div
+          className={cn(
+            "inline-flex flex-col items-center rounded-lg border px-3 py-1.5 text-center shadow-sm",
+            hasChildren ? "border-border bg-card" : "border-primary/30 bg-card",
+          )}
+        >
+          <span className="flex items-center gap-1.5 text-sm font-medium">
+            {hasChildren ? null : (
+              <Trophy
+                aria-hidden="true"
+                className="h-3.5 w-3.5 shrink-0 text-primary"
+              />
+            )}
+            <span className="whitespace-nowrap">{node.name}</span>
+          </span>
+          {meta ? (
+            <span className="mt-0.5 whitespace-nowrap text-[0.6875rem] text-muted-foreground">
+              {meta}
+            </span>
+          ) : null}
+        </div>
+        {hasChildren ? (
+          <ul>
+            {(node.children ?? []).map((c, i) =>
+              renderOrgNode(c, [...path, i]),
             )}
           </ul>
         ) : null}
@@ -845,35 +927,22 @@ export function SportsTab(): React.ReactElement {
 
   return (
     <div className="flex w-full flex-col gap-6">
-      {/* Header + step indicator */}
+      {/* Header */}
       <div className="min-w-0">
         <h2 className="text-lg font-semibold">{t("Sports")}</h2>
         <p className="mt-0.5 text-sm text-muted-foreground">
           {effectiveStep === "pick"
-            ? t("Pick the sport(s) this tournament runs — you'll set up each one's categories next.")
+            ? t("Pick the sports this tournament runs.")
             : effectiveStep === "configure"
-              ? t("Build each sport's category tree. Every last level is one competition with its own entries and fixtures.")
-              : t("Check every sport's competitions — once it all looks right, generate the registration form.")}
+              ? t("Add each sport's categories. The last level of each is one competition.")
+              : t("Review the competitions, then create the registration form.")}
         </p>
-        <div className="mt-2 flex items-center gap-1.5 text-xs font-medium">
-          <span className={stepChip(effectiveStep === "pick")}>
-            1 · {t("Choose sports")}
-          </span>
-          <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground/40" />
-          <span className={stepChip(effectiveStep === "configure")}>
-            2 · {t("Categories")}
-          </span>
-          <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground/40" />
-          <span className={stepChip(effectiveStep === "review")}>
-            3 · {t("Review & generate")}
-          </span>
-        </div>
       </div>
 
       {effectiveStep === "pick" ? (
         <>
-          {/* Selected — compact chips (no per-sport detail here). */}
-          <section className="flex flex-col gap-2">
+          {/* Selected — cards (icon tile, name, competition count, remove). */}
+          <section className="flex flex-col gap-3">
             <h3 className="text-sm font-semibold">
               {t("Selected")}{" "}
               <span className="font-tabular text-muted-foreground">
@@ -885,29 +954,35 @@ export function SportsTab(): React.ReactElement {
                 {t("No sports yet. Add at least one below.")}
               </p>
             ) : (
-              <ul className="flex flex-wrap gap-2">
+              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {selected.map((s) => {
                   const leaves = leafLabels(s.nodes ?? []).length;
                   return (
                     <li
                       key={s.key}
                       data-testid={`sport-${s.key}`}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card py-1 pl-3 pr-1.5 text-sm shadow-sm"
+                      className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-sm"
                     >
-                      <Trophy aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
-                      <span className="font-medium">{s.name}</span>
-                      {(s.nodes ?? []).length ? (
-                        <span className="font-tabular text-xs text-muted-foreground">
-                          · {leaves} {t("comp")}
-                        </span>
-                      ) : null}
+                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-accent text-primary">
+                        <Trophy aria-hidden="true" className="h-5 w-5" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-semibold">
+                          {s.name}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {leaves > 0
+                            ? `${leaves} ${leaves === 1 ? t("competition") : t("competitions")}`
+                            : t("No categories yet")}
+                        </div>
+                      </div>
                       <button
                         type="button"
                         onClick={() => remove(s.key)}
                         aria-label={t(`Remove ${s.name}`)}
-                        className="ml-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
-                        <X aria-hidden="true" className="h-3.5 w-3.5" />
+                        <X aria-hidden="true" className="h-4 w-4" />
                       </button>
                     </li>
                   );
@@ -927,7 +1002,7 @@ export function SportsTab(): React.ReactElement {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder={t("Search sports (e.g. football, sepak takraw)…")}
+                placeholder={t("Search sports…")}
                 className="h-9 pl-9"
                 aria-label={t("Search sports")}
               />
@@ -966,8 +1041,8 @@ export function SportsTab(): React.ReactElement {
                     className={cn(
                       "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       added
-                        ? "border-primary/50 bg-primary/10"
-                        : "border-border bg-background hover:border-primary/40 hover:bg-accent",
+                        ? "border-primary bg-accent"
+                        : "border-border bg-card hover:border-primary/40 hover:bg-muted",
                     )}
                   >
                     {added ? (
@@ -1017,50 +1092,48 @@ export function SportsTab(): React.ReactElement {
         </>
       ) : effectiveStep === "configure" ? (
         <>
-          <button
-            type="button"
-            onClick={() => setStep("pick")}
-            className="inline-flex w-fit items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ChevronLeft aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("Back to choosing sports")}
-          </button>
-
-          {/* Sport tabs — configure one sport at a time. */}
-          <div role="tablist" aria-label={t("Sports")} className="flex flex-wrap gap-2">
-            {selected.map((s) => {
-              const count = leafLabels(s.nodes ?? []).length;
-              const isActive = activeSport?.key === s.key;
-              return (
-                <button
-                  key={s.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => setActiveKey(s.key)}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                  )}
+          {/* Editor with folder-style sport tabs (left) + live preview (right). */}
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+            <div className="flex min-w-0 flex-1 flex-col">
+              {/* Sport tabs — bookmarked onto the editor card below: the active
+                  tab is the same surface as the panel, with no line between. */}
+              <div
+                role="tablist"
+                aria-label={t("Sports")}
+                className="flex flex-wrap items-end gap-1"
+              >
+                {selected.map((s) => {
+                  const count = leafLabels(s.nodes ?? []).length;
+                  const isActive = activeSport?.key === s.key;
+                  return (
+                    <button
+                      key={s.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => setActiveKey(s.key)}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-t-lg px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        isActive
+                          ? "relative z-10 -mb-px border border-border border-b-transparent bg-card text-foreground"
+                          : "border border-transparent bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      <Trophy aria-hidden="true" className="h-3.5 w-3.5" />
+                      {s.name}
+                      {(s.nodes ?? []).length ? (
+                        <span className="font-tabular opacity-70">({count})</span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Active sport's category tree — the panel the tabs attach to. */}
+              {activeSport ? (
+                <section
+                  className="flex flex-col gap-3 rounded-b-xl rounded-tr-xl border border-border bg-card p-4 shadow-sm"
+                  data-testid={`sport-${activeSport.key}`}
                 >
-                  <Trophy aria-hidden="true" className="h-3.5 w-3.5" />
-                  {s.name}
-                  {(s.nodes ?? []).length ? (
-                    <span className="font-tabular opacity-70">({count})</span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Active sport's category tree (recursive, any depth). */}
-          {activeSport ? (
-            <section
-              className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm"
-              data-testid={`sport-${activeSport.key}`}
-            >
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Trophy aria-hidden="true" className="h-4 w-4 text-primary" />
@@ -1071,28 +1144,34 @@ export function SportsTab(): React.ReactElement {
                     </span>
                   ) : null}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   {(activeSport.nodes ?? []).length > 0 && selected.length > 1 ? (
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
+                      size="sm"
                       onClick={() => {
                         setCopyTargets(new Set());
                         setCopyOpen(true);
                       }}
                       aria-haspopup="dialog"
-                      className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                      aria-label={t("Copy categories to other sports")}
                     >
-                      <CopyIcon aria-hidden="true" className="h-3.5 w-3.5" />
-                      {t("Copy categories to…")}
-                    </button>
+                      <CopyIcon aria-hidden="true" className="h-4 w-4" />
+                      {t("Copy to…")}
+                    </Button>
                   ) : null}
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
                     onClick={() => remove(activeSport.key)}
-                    className="text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
+                    aria-label={t("Remove sport")}
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                   >
-                    {t("Remove sport")}
-                  </button>
+                    <Trash2 aria-hidden="true" className="h-4 w-4" />
+                    {t("Remove")}
+                  </Button>
                 </div>
               </div>
 
@@ -1102,17 +1181,17 @@ export function SportsTab(): React.ReactElement {
                     {t("Categories")}
                   </span>
                   <span className="text-[0.6875rem] text-muted-foreground/70">
-                    {t("nest levels as deep as you need — age, gender, format")}
+                    {t("Nest as deep as you like: age, gender, format")}
                   </span>
                 </div>
                 {(activeSport.nodes ?? []).length === 0 ? (
                   <p className="rounded-lg border border-dashed border-border bg-muted/20 px-3 py-4 text-center text-sm text-muted-foreground">
-                    {t("No categories yet — the whole sport is one competition. Add levels below (e.g. U-15 → Girls → 5v5).")}
+                    {t("No categories yet — the whole sport runs as one competition. Add levels below.")}
                   </p>
                 ) : (
                   <ul className="rounded-lg border border-border px-1 py-1.5">
                     {(activeSport.nodes ?? []).map((n, i) =>
-                      renderNode(activeSport, n, [i], 0),
+                      renderNode(activeSport, n, [i]),
                     )}
                   </ul>
                 )}
@@ -1134,92 +1213,74 @@ export function SportsTab(): React.ReactElement {
                   <Plus aria-hidden="true" className="h-4 w-4" />
                   {t("Add category")}
                 </Button>
-
-                {/* Competitions preview — what registration + fixtures will see. */}
-                {activeLeaves.length > 0 ? (
-                  <div className="flex flex-col gap-1.5 border-t border-border pt-2.5">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {t("Competitions")}{" "}
-                      <span className="font-tabular">({activeLeaves.length})</span>
-                      <span className="ml-1 font-normal text-muted-foreground/70">
-                        {t("— each gets its own entries and fixtures")}
-                      </span>
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {activeLeaves.map((label) => (
-                        <span
-                          key={label}
-                          className="rounded-full bg-muted px-2.5 py-0.5 text-xs"
-                        >
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              {/* Match settings — feeds the scheduler (duration, venue type). */}
-              <div className="border-t border-border pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowSettings((v) => !v)}
-                  aria-expanded={showSettings}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
-                  {t("Match settings")}
-                  <span className="font-normal text-muted-foreground/70">
-                    {activeSport.scheduling?.duration_minutes
-                      ? t(`${activeSport.scheduling.duration_minutes} min / match`)
-                      : t("(defaults from the sport profile)")}
-                  </span>
-                </button>
-                {showSettings ? (
-                  <div className="mt-2.5 grid max-w-md grid-cols-2 gap-3">
-                    <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                      {t("Match duration (minutes)")}
-                      <Input
-                        inputMode="numeric"
-                        defaultValue={activeSport.scheduling?.duration_minutes ?? ""}
-                        onBlur={(e) => {
-                          const v = parseInt(e.target.value, 10);
-                          updateSport(activeSport.key, {
-                            scheduling: {
-                              ...(activeSport.scheduling ?? {}),
-                              duration_minutes:
-                                Number.isFinite(v) && v > 0 ? v : undefined,
-                            },
-                          });
-                        }}
-                        placeholder={t("e.g. 90")}
-                        className="h-8 font-tabular"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                      {t("Venue type")}
-                      <Input
-                        defaultValue={activeSport.scheduling?.venue_type ?? ""}
-                        onBlur={(e) =>
-                          updateSport(activeSport.key, {
-                            scheduling: {
-                              ...(activeSport.scheduling ?? {}),
-                              venue_type: e.target.value.trim() || undefined,
-                            },
-                          })
-                        }
-                        placeholder={t("e.g. ground, indoor_court")}
-                        className="h-8"
-                      />
-                    </label>
-                    <p className="col-span-2 text-[0.6875rem] leading-relaxed text-muted-foreground/80">
-                      {t("Fixtures only land on venues of a matching type, and the calendar reserves this much time per match. Leave blank to use the sport's standard values.")}
-                    </p>
-                  </div>
-                ) : null}
               </div>
             </section>
-          ) : null}
+              ) : null}
+            </div>
+
+          {/* Live competitions preview — updates in real time as you add
+              categories; grouped by top-level category so it stays scannable. */}
+          <aside className="flex w-full flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:w-80 lg:shrink-0 lg:overflow-y-auto">
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-semibold">
+                {t("Competitions")}
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 font-tabular text-xs text-primary">
+                  {activeLeaves.length}
+                </span>
+              </h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {t("Each gets its own entries and fixtures.")}
+              </p>
+            </div>
+            {activeLeaves.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border bg-muted/20 px-3 py-8 text-center text-xs text-muted-foreground">
+                {t("Add categories on the left to see competitions here.")}
+              </div>
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {activeLeafGroups.map(({ head, subs }) =>
+                  subs.length === 0 ? (
+                    <li
+                      key={head}
+                      className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-2 text-xs"
+                    >
+                      <Trophy
+                        aria-hidden="true"
+                        className="h-3.5 w-3.5 shrink-0 text-primary"
+                      />
+                      <span className="truncate font-medium">{head}</span>
+                    </li>
+                  ) : (
+                    <li key={head} className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {head}
+                        </span>
+                        <span className="rounded-full bg-muted px-1.5 font-tabular text-[0.625rem] text-muted-foreground">
+                          {subs.length}
+                        </span>
+                      </div>
+                      <ul className="flex flex-col gap-1 border-l-2 border-border pl-2.5">
+                        {subs.map((rest, i) => (
+                          <li
+                            key={i}
+                            className="flex items-center gap-2 rounded-md bg-muted/40 px-2 py-1 text-xs"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary/60"
+                            />
+                            <span className="truncate">{rest}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  ),
+                )}
+              </ul>
+            )}
+          </aside>
+          </div>
 
           {/* Per-sport progression (owner 2026-06-10): walk every sport
               before anything generates — no skipping straight to the form
@@ -1228,100 +1289,156 @@ export function SportsTab(): React.ReactElement {
             const idx = selected.findIndex((s) => s.key === activeSport?.key);
             const nextSport = idx >= 0 ? selected[idx + 1] : undefined;
             return (
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                {nextSport ? (
-                  <>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setStep("review")}
-                    >
-                      {t("Skip to review")}
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => setActiveKey(nextSport.key)}
-                    >
-                      {t("Next sport")}: {nextSport.name}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setStep("pick")}
+                >
+                  <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+                  {t("Back to choosing sports")}
+                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {nextSport ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setStep("review")}
+                      >
+                        {t("Skip to review")}
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => setActiveKey(nextSport.key)}
+                      >
+                        {t("Next sport")}: {nextSport.name}
+                        <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                      </Button>
+                    </>
+                  ) : (
+                    <Button type="button" onClick={() => setStep("review")}>
+                      {t("Review competitions")}
                       <ArrowRight aria-hidden="true" className="h-4 w-4" />
                     </Button>
-                  </>
-                ) : (
-                  <Button type="button" onClick={() => setStep("review")}>
-                    {t("Review competitions")}
-                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
-                  </Button>
-                )}
+                  )}
+                </div>
               </div>
             );
           })()}
         </>
       ) : (
         <>
-          <button
-            type="button"
-            onClick={() => setStep("configure")}
-            className="inline-flex w-fit items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ChevronLeft aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("Back to categories")}
-          </button>
+          {/* Review — folder-tabbed by sport, mirroring the Categories step:
+              the active sport's tab is the same surface as the panel below. */}
+          <div>
+            <div
+              role="tablist"
+              aria-label={t("Sports")}
+              className="flex flex-wrap items-end gap-1"
+            >
+              {selected.map((s) => {
+                const count = leafLabels(s.nodes ?? []).length;
+                const isActive = activeSport?.key === s.key;
+                return (
+                  <button
+                    key={s.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setActiveKey(s.key)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-t-lg px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      isActive
+                        ? "relative z-10 -mb-px border border-border border-b-transparent bg-card text-foreground"
+                        : "border border-transparent bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <Trophy aria-hidden="true" className="h-3.5 w-3.5" />
+                    {s.name}
+                    {(s.nodes ?? []).length ? (
+                      <span className="font-tabular opacity-70">({count})</span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
 
-          {/* Review — every sport's competitions, verified before generating. */}
-          <section className="flex flex-col gap-3">
-            {selected.map((s) => {
-              const leaves = leafLabels(s.nodes ?? []);
-              return (
-                <div
-                  key={s.key}
-                  className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4 shadow-sm"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="flex items-center gap-2 text-sm font-semibold">
-                      <Trophy aria-hidden="true" className="h-4 w-4 text-primary" />
-                      {s.name}
-                      <span className="font-tabular font-normal text-muted-foreground">
-                        {leaves.length
-                          ? `${leaves.length} ${leaves.length === 1 ? t("competition") : t("competitions")}`
-                          : ""}
-                      </span>
-                    </h3>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setActiveKey(s.key);
-                        setStep("configure");
-                      }}
+            {activeSport
+              ? (() => {
+                  const paths = leafPaths(activeSport.nodes ?? []);
+                  return (
+                    <section
+                      className="flex flex-col gap-3 rounded-b-xl rounded-tr-xl border border-border bg-card p-4 shadow-sm"
+                      data-testid={`review-${activeSport.key}`}
                     >
-                      {t("Edit")}
-                    </Button>
-                  </div>
-                  {leaves.length ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {leaves.map((label) => (
-                        <span
-                          key={label}
-                          className="rounded-full bg-muted px-2.5 py-0.5 text-xs"
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm text-muted-foreground">
+                          {paths.length
+                            ? `${paths.length} ${paths.length === 1 ? t("competition") : t("competitions")}`
+                            : t("No categories yet")}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setActiveKey(activeSport.key);
+                            setStep("configure");
+                          }}
                         >
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
-                      {t("No categories — the whole sport runs as ONE open competition. That's fine if intended; otherwise add age groups / formats via Edit.")}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </section>
+                          <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
+                          {t("Edit")}
+                        </Button>
+                      </div>
+                      {paths.length ? (
+                        // Top-down org chart: the sport is the root heading,
+                        // categories branch beneath it, competitions are leaves.
+                        <div className="overflow-x-auto pb-2">
+                          <div className="orgtree">
+                            <ul>
+                              <li>
+                                <div className="inline-flex flex-col items-center rounded-xl border border-primary/40 bg-primary/5 px-4 py-2 text-center shadow-sm">
+                                  <span className="flex items-center gap-1.5 text-sm font-semibold">
+                                    <Trophy
+                                      aria-hidden="true"
+                                      className="h-4 w-4 shrink-0 text-primary"
+                                    />
+                                    <span className="whitespace-nowrap">
+                                      {activeSport.name}
+                                    </span>
+                                  </span>
+                                  <span className="mt-0.5 font-tabular text-[0.6875rem] text-muted-foreground">
+                                    {paths.length}{" "}
+                                    {paths.length === 1
+                                      ? t("competition")
+                                      : t("competitions")}
+                                  </span>
+                                </div>
+                                <ul>
+                                  {(activeSport.nodes ?? []).map((n, i) =>
+                                    renderOrgNode(n, [i]),
+                                  )}
+                                </ul>
+                              </li>
+                            </ul>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+                          {t("No categories — the whole sport runs as ONE open competition. That's fine if intended; otherwise add age groups / formats via Edit.")}
+                        </p>
+                      )}
+                    </section>
+                  );
+                })()
+              : null}
+          </div>
 
-          {/* Generate the form AND move into the institute-registration stage. */}
-          <section className="flex flex-col gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+          {/* Footer — context + nav: a proper Back button (same as the other
+              steps) on the left, the generate CTA on the right. */}
+          <div className="flex flex-col gap-3 border-t border-border pt-4">
             <div className="min-w-0">
               <h3 className="text-sm font-semibold">
                 {orgForm
@@ -1330,25 +1447,35 @@ export function SportsTab(): React.ReactElement {
               </h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {orgForm?.stale
-                  ? t("Your category changes haven't reached the registration form yet — continuing refreshes it automatically.")
-                  : t("Builds the registration form from these sports + categories and moves the tournament into the institute-registration stage. You can review and edit it before opening.")}
+                  ? t("Your category changes aren't in the form yet — continuing refreshes it.")
+                  : t("Builds the registration form and opens institute registration. You can edit it first.")}
               </p>
             </div>
-            <Button
-              type="button"
-              disabled={generate.isPending}
-              onClick={() => generate.mutate()}
-              data-testid="generate-institution-form"
-              className="shrink-0"
-            >
-              <FileText aria-hidden="true" className="h-4 w-4" />
-              {generate.isPending
-                ? t("Setting up…")
-                : orgForm
-                  ? t("Continue to registration")
-                  : t("Generate & start registration")}
-            </Button>
-          </section>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setStep("configure")}
+              >
+                <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+                {t("Back to categories")}
+              </Button>
+              <Button
+                type="button"
+                disabled={generate.isPending}
+                onClick={() => generate.mutate()}
+                data-testid="generate-institution-form"
+                className="shrink-0"
+              >
+                <FileText aria-hidden="true" className="h-4 w-4" />
+                {generate.isPending
+                  ? t("Setting up…")
+                  : orgForm
+                    ? t("Continue to registration")
+                    : t("Generate & start registration")}
+              </Button>
+            </div>
+          </div>
         </>
       )}
 
@@ -1367,7 +1494,7 @@ export function SportsTab(): React.ReactElement {
                 {t("Copy")} {activeSport.name} {t("categories to…")}
               </DialogTitle>
               <DialogDescription>
-                {t("Applies the whole tree — age groups, genders, formats and team sizes — to the sports you pick. Their existing categories are replaced.")}
+                {t("Replaces the picked sports' current categories with this tree.")}
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-2">
@@ -1418,7 +1545,7 @@ export function SportsTab(): React.ReactElement {
                       <span className="flex-1">{s.name}</span>
                       {existing > 0 ? (
                         <span className="text-xs text-amber-600 dark:text-amber-400">
-                          {existing} {t("existing — will be replaced")}
+                          {existing} {t("will be replaced")}
                         </span>
                       ) : null}
                     </label>
@@ -1459,7 +1586,7 @@ export function SportsTab(): React.ReactElement {
                   : `${t("Add a level under")} ${addTarget.label}`}
               </DialogTitle>
               <DialogDescription>
-                {t("Name it, say what it is, and — for formats like 5v5 — set the team size. Every last level becomes one competition.")}
+                {t("Name it and choose a type.")}
               </DialogDescription>
             </DialogHeader>
             <AddNodeForm
@@ -1485,7 +1612,7 @@ export function SportsTab(): React.ReactElement {
                 {t("Edit category")} — {kindNode.name}
               </DialogTitle>
               <DialogDescription>
-                {t("Rename it, or change its type. Formats (1v1, 5v5…) carry a team size that the registration form enforces.")}
+                {t("Rename it or change its type.")}
               </DialogDescription>
             </DialogHeader>
             <NodeKindEditor
@@ -1505,7 +1632,20 @@ export function SportsTab(): React.ReactElement {
                 }
               }}
             />
-            <div className="flex justify-end">
+            <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-4">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => {
+                  removeNode(kindTarget.sportKey, kindTarget.path);
+                  setKindTarget(null);
+                }}
+              >
+                <Trash2 aria-hidden="true" className="h-4 w-4" />
+                {t("Delete")}
+              </Button>
               <Button type="button" size="sm" onClick={() => setKindTarget(null)}>
                 {t("Done")}
               </Button>

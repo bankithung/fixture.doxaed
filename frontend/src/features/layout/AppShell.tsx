@@ -29,9 +29,12 @@ import { NotificationBell } from "@/features/notifications/NotificationBell";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/button";
 import { Sidebar } from "./Sidebar";
+import { SetupStepperSidebar } from "./SetupStepperSidebar";
+import { SportsStepBar } from "./SportsStepBar";
 import {
   computeTournamentNav,
   computeWorkspaceNav,
+  pathStageKey,
   type NavGroup,
   type NavItem,
 } from "./computeNavItems";
@@ -216,6 +219,16 @@ export function AppShell(): React.ReactElement {
         stageQuery.data.can_manage &&
         stageQuery.data.stage !== "ready"));
 
+  // Once the stage payload has loaded for a manager mid-setup, the left rail
+  // becomes the vertical stage stepper (the guided Setup -> Ready flow). While
+  // it's still loading we render no rail at all (avoids the flash the old code
+  // guarded against); members and `ready` tournaments get the normal Sidebar.
+  const setupSidebar =
+    inTournamentContext &&
+    stageQuery.data != null &&
+    stageQuery.data.can_manage &&
+    stageQuery.data.stage !== "ready";
+
   const handleSignOut = async (): Promise<void> => {
     setMenuOpen(false);
     await logout();
@@ -271,7 +284,14 @@ export function AppShell(): React.ReactElement {
 
   return (
     <div className="flex min-h-screen bg-background">
-      {setupMode ? null : (
+      {setupMode ? (
+        setupSidebar ? (
+          <SetupStepperSidebar
+            tournamentId={tournamentId as string}
+            stage={stageQuery.data ?? null}
+          />
+        ) : null
+      ) : (
         <Sidebar
           groups={navGroups}
           collapsed={collapsed}
@@ -524,6 +544,13 @@ export function AppShell(): React.ReactElement {
               </div>
             </div>
           </div>
+        ) : null}
+
+        {/* Sticky sub-toolbar — the Sports page's own sub-steps, only there. */}
+        {setupMode &&
+        setupSidebar &&
+        pathStageKey(location.pathname) === "setup" ? (
+          <SportsStepBar tournamentId={tournamentId as string} />
         ) : null}
 
         <main className="flex flex-1 flex-col">

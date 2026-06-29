@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -6,6 +6,7 @@ import {
   Archive,
   Building2,
   Check,
+  ChevronDown,
   Download,
   ExternalLink,
   Eye,
@@ -14,7 +15,9 @@ import {
   Pencil,
   Plus,
   Send,
+  SlidersHorizontal,
   Trash2,
+  Trophy,
   X,
 } from "lucide-react";
 import { institutionsApi, type Institution } from "@/api/institutions";
@@ -49,15 +52,27 @@ const ORG_STAGE = "org_registration";
 const CHOICE = new Set(["single_choice", "multi_choice", "dropdown"]);
 const NAME_KEYS = new Set(["institution_name", "name", "title"]);
 
-/** Human-readable cell: map option values to their labels; join multi-selects. */
-function fmtAnswer(field: Field, val: unknown): string {
-  if (val == null || val === "") return "—";
-  const arr = Array.isArray(val) ? val : [val];
-  if (field.options?.length) {
-    const labels = new Map(field.options.map((o) => [o.value, o.label]));
-    return arr.map((v) => labels.get(String(v)) ?? String(v)).join(", ");
+/** Group an institution's competitions by sport (the first " — " label segment),
+ *  first-seen order. Each game keeps its remaining path segments as an array so
+ *  the expandable row can render them as separate pills (age / gender / format). */
+function groupCompetitions(
+  comps: { label: string }[],
+): { sport: string; items: string[][] }[] {
+  const out: { sport: string; items: string[][] }[] = [];
+  const idx = new Map<string, number>();
+  for (const c of comps) {
+    const segs = c.label.split(" — ");
+    const sport = segs[0] ?? c.label;
+    const rest = segs.slice(1);
+    const at = idx.get(sport);
+    if (at == null) {
+      idx.set(sport, out.length);
+      out.push({ sport, items: rest.length ? [rest] : [] });
+    } else if (rest.length) {
+      out[at].items.push(rest);
+    }
   }
-  return arr.map(String).join(", ");
+  return out;
 }
 
 export function InstitutionsTab(): React.ReactElement {
@@ -69,6 +84,7 @@ export function InstitutionsTab(): React.ReactElement {
   const [createOpen, setCreateOpen] = useState(false);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const forms = useQuery({ queryKey: ["forms", id], queryFn: () => formsApi.list(id) });
   const list = useQuery({ queryKey: ["t-institutions", id], queryFn: () => institutionsApi.list(id) });
@@ -194,11 +210,23 @@ export function InstitutionsTab(): React.ReactElement {
   });
   const hasActiveFilters =
     q !== "" || compSel.size > 0 || Object.values(filters).some(Boolean);
+  const activeFilterCount =
+    (q ? 1 : 0) + compSel.size + Object.values(filters).filter(Boolean).length;
   const clearFilters = (): void => {
     setFilters({});
     setCompSel(new Set());
     setSearch("");
   };
+
+  // Close the filter slide-over on Escape.
+  useEffect(() => {
+    if (!filtersOpen) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setFiltersOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [filtersOpen]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -295,85 +323,122 @@ export function InstitutionsTab(): React.ReactElement {
         )
       ) : null}
 
-      {/* Registered institutions — flexible table driven by the form's fields,
-          with the directory-style filter rail on the side (right on desktop,
-          above the table on mobile). */}
+      {/* Registered institutions — the flexible table driven by the form's
+          fields. The directory-style filters live in a right slide-over opened
+          on demand (toggle below), so the table keeps the full width. */}
       <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold">{t("Registered institutions")}</h3>
-          <span className="font-tabular text-xs text-muted-foreground">
-            {filteredItems.length === items.length ? items.length : `${filteredItems.length}/${items.length}`}
-          </span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold">{t("Registered institutions")}</h3>
+            <span className="font-tabular text-xs text-muted-foreground">
+              {filteredItems.length === items.length ? items.length : `${filteredItems.length}/${items.length}`}
+            </span>
+          </div>
+          {items.length > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setFiltersOpen(true)}
+              aria-haspopup="dialog"
+            >
+              <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
+              {t("Filters")}
+              {activeFilterCount > 0 ? (
+                <span className="grid h-5 min-w-[1.25rem] place-items-center rounded-full bg-primary px-1 font-tabular text-[0.6875rem] font-semibold text-primary-foreground">
+                  {activeFilterCount}
+                </span>
+              ) : null}
+            </Button>
+          ) : null}
         </div>
 
-        <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
-          {items.length > 0 ? (
-            <aside
-              aria-label={t("Filters")}
-              className="w-full shrink-0 lg:order-last lg:w-72"
-            >
-              <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
-                <div className="flex items-center justify-between">
+        {list.isLoading ? (
+          <div className="h-40 animate-pulse rounded-xl border border-border bg-muted" />
+        ) : items.length === 0 ? (
+          <EmptyState
+            icon={<Building2 className="h-8 w-8" />}
+            title={t("No institutions registered yet")}
+            hint={t("Share the form, or add a school yourself.")}
+          />
+        ) : filteredItems.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">
+            {t("No institutions match your filters.")}
+          </p>
+        ) : (
+          <InstitutionTable
+            items={filteredItems}
+            tournamentId={id}
+            canManage={canManage}
+          />
+        )}
+      </div>
+
+      {/* Filter slide-over (right). Toggled by the Filters button; portaled so
+          it overlays the whole workspace, not just this column. */}
+      {filtersOpen
+        ? createPortal(
+            <div className="fixed inset-0 z-50 flex justify-end">
+              <div
+                className="absolute inset-0 bg-foreground/40 backdrop-blur-sm"
+                aria-hidden="true"
+                onClick={() => setFiltersOpen(false)}
+              />
+              <aside
+                role="dialog"
+                aria-modal="true"
+                aria-label={t("Filters")}
+                className="relative z-10 flex h-full w-full max-w-sm flex-col border-l border-border bg-card shadow-xl"
+              >
+                <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
                   <h4 className="text-sm font-semibold">{t("Filters")}</h4>
-                  {hasActiveFilters ? (
+                  <div className="flex items-center gap-1">
+                    {hasActiveFilters ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={clearFilters}
+                        className="h-8 px-2"
+                      >
+                        <X aria-hidden="true" className="h-3.5 w-3.5" />
+                        {t("Clear")}
+                      </Button>
+                    ) : null}
                     <Button
                       variant="ghost"
-                      size="sm"
-                      onClick={clearFilters}
-                      className="h-7 px-2"
+                      size="icon"
+                      onClick={() => setFiltersOpen(false)}
+                      aria-label={t("Close filters")}
                     >
-                      <X aria-hidden="true" className="h-3.5 w-3.5" />
-                      {t("Clear")}
+                      <X aria-hidden="true" className="h-4 w-4" />
                     </Button>
-                  ) : null}
+                  </div>
                 </div>
-                <FilterPanel
-                  search={search}
-                  onSearch={setSearch}
-                  compTree={compTree}
-                  compSel={compSel}
-                  onToggleComp={toggleComp}
-                  expanded={expanded}
-                  onExpand={toggleExpand}
-                  filters={choiceFields.map((f) => ({
-                    key: f.key,
-                    label: f.label,
-                    options: (f.options ?? []).map((o) => ({
-                      value: String(o.value),
-                      label: o.label,
-                    })),
-                  }))}
-                  values={filters}
-                  onValue={(key, v) => setFilters((s) => ({ ...s, [key]: v }))}
-                />
-              </div>
-            </aside>
-          ) : null}
-
-          <div className="flex min-w-0 flex-1 flex-col gap-3">
-            {list.isLoading ? (
-              <div className="h-40 animate-pulse rounded-xl border border-border bg-muted" />
-            ) : items.length === 0 ? (
-              <EmptyState
-                icon={<Building2 className="h-8 w-8" />}
-                title={t("No institutions registered yet")}
-                hint={t("Share the form, or add a school yourself.")}
-              />
-            ) : filteredItems.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">
-                {t("No institutions match your filters.")}
-              </p>
-            ) : (
-              <InstitutionTable
-                items={filteredItems}
-                fields={fieldDefs}
-                tournamentId={id}
-                canManage={canManage}
-              />
-            )}
-          </div>
-        </div>
-      </div>
+                <div className="flex-1 overflow-y-auto p-4">
+                  <FilterPanel
+                    search={search}
+                    onSearch={setSearch}
+                    compTree={compTree}
+                    compSel={compSel}
+                    onToggleComp={toggleComp}
+                    expanded={expanded}
+                    onExpand={toggleExpand}
+                    filters={choiceFields.map((f) => ({
+                      key: f.key,
+                      label: f.label,
+                      options: (f.options ?? []).map((o) => ({
+                        value: String(o.value),
+                        label: o.label,
+                      })),
+                    }))}
+                    values={filters}
+                    onValue={(key, v) => setFilters((s) => ({ ...s, [key]: v }))}
+                  />
+                </div>
+              </aside>
+            </div>,
+            document.body,
+          )
+        : null}
 
       <CreateFormDialog
         tournamentId={id}
@@ -617,29 +682,34 @@ const TD = "border-b border-border px-3 py-2.5 align-top group-hover:bg-accent/4
 
 function InstitutionTable({
   items,
-  fields,
   tournamentId,
   canManage,
 }: {
   items: Institution[];
-  fields: Field[];
   tournamentId: string;
   canManage: boolean;
 }): React.ReactElement {
+  // Per-row expand: the Competitions cell is a toggle that reveals the school's
+  // individual games as a list, instead of listing them inline.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = (instId: string): void =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(instId)) next.delete(instId);
+      else next.add(instId);
+      return next;
+    });
   return (
     <div className="max-h-[34rem] overflow-auto rounded-xl border border-border bg-card shadow-sm">
       <table className="w-full border-separate border-spacing-0 text-sm">
         <thead>
           <tr className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground">
-            {/* Institution stays pinned to the left while the dynamic columns scroll. */}
+            {/* Institution stays pinned to the left while the rest scrolls. */}
             <th className={cn(TH, "sticky left-0 z-30 px-4")}>{t("Institution")}</th>
             <th className={TH}>{t("Type")}</th>
             <th className={TH}>{t("Region")}</th>
-            {fields.map((f) => (
-              <th key={f.key} className={TH} title={f.label}>
-                <span className="block max-w-[11rem] truncate">{f.label}</span>
-              </th>
-            ))}
+            <th className={TH}>{t("Contact")}</th>
+            <th className={TH}>{t("Competitions")}</th>
             <th className={cn(TH, "text-right")}>{t("Teams")}</th>
             <th className={TH}>{t("Status")}</th>
             {canManage ? (
@@ -650,35 +720,125 @@ function InstitutionTable({
           </tr>
         </thead>
         <tbody>
-          {items.map((i) => (
-            <tr key={i.id} className={cn("group", i.status === "withdrawn" && "opacity-60")}>
-              <td
-                className="sticky left-0 z-10 border-b border-border bg-card px-4 py-2.5 align-top font-medium"
-                title={i.name}
-              >
-                <span className="block max-w-[14rem] truncate">{i.name}</span>
-              </td>
-              <td className={cn(TD, "capitalize text-muted-foreground")}>{t(i.kind)}</td>
-              <td className={cn(TD, "text-muted-foreground")}>{i.region || "—"}</td>
-              {fields.map((f) => {
-                const v = fmtAnswer(f, i.answers[f.key]);
-                return (
-                  <td key={f.key} className={cn(TD, "text-muted-foreground")} title={v}>
-                    <span className="block max-w-[12rem] truncate">{v}</span>
+          {items.map((i) => {
+            const comps = i.competitions ?? [];
+            const hasContact =
+              !!i.contact_name || !!i.contact_phone || !!i.contact_email;
+            const isExpanded = expanded.has(i.id);
+            return (
+              <Fragment key={i.id}>
+                <tr className={cn("group", i.status === "withdrawn" && "opacity-60")}>
+                  <td
+                    className="sticky left-0 z-10 border-b border-border bg-card px-4 py-2.5 align-top font-medium"
+                    title={i.name}
+                  >
+                    <span className="block max-w-[14rem] truncate">{i.name}</span>
                   </td>
-                );
-              })}
-              <td className={cn(TD, "text-right font-tabular")}>{i.team_count}</td>
-              <td className={TD}>
-                <StatusPill status={i.status} />
-              </td>
-              {canManage ? (
-                <td className={cn(TD, "text-right")}>
-                  <ReviewMenu tournamentId={tournamentId} inst={i} />
-                </td>
-              ) : null}
-            </tr>
-          ))}
+                  <td className={cn(TD, "capitalize text-muted-foreground")}>{t(i.kind)}</td>
+                  <td className={cn(TD, "text-muted-foreground")}>{i.region || "—"}</td>
+                  <td className={TD}>
+                    {hasContact ? (
+                      <div className="flex max-w-[16rem] flex-col">
+                        {i.contact_name ? (
+                          <span className="truncate">{i.contact_name}</span>
+                        ) : null}
+                        {i.contact_phone || i.contact_email ? (
+                          <span className="truncate text-xs text-muted-foreground">
+                            {[i.contact_phone, i.contact_email]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className={TD}>
+                    {comps.length ? (
+                      <button
+                        type="button"
+                        onClick={() => toggle(i.id)}
+                        aria-expanded={isExpanded}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span className="font-tabular">{comps.length}</span>
+                        {comps.length === 1 ? t("competition") : t("competitions")}
+                        <ChevronDown
+                          aria-hidden="true"
+                          className={cn(
+                            "h-3.5 w-3.5 transition-transform",
+                            isExpanded && "rotate-180",
+                          )}
+                        />
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className={cn(TD, "text-right font-tabular")}>{i.team_count}</td>
+                  <td className={TD}>
+                    <StatusPill status={i.status} />
+                  </td>
+                  {canManage ? (
+                    <td className={cn(TD, "text-right")}>
+                      <ReviewMenu tournamentId={tournamentId} inst={i} />
+                    </td>
+                  ) : null}
+                </tr>
+                {isExpanded && comps.length ? (
+                  <tr>
+                    <td
+                      colSpan={canManage ? 8 : 7}
+                      className="border-b border-border bg-muted/20 px-4 py-3"
+                    >
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {groupCompetitions(comps).map((g) => (
+                          <div
+                            key={g.sport}
+                            className="rounded-lg border border-border bg-card p-3"
+                          >
+                            <div className="mb-2 flex items-center gap-1.5">
+                              <Trophy
+                                aria-hidden="true"
+                                className="h-3.5 w-3.5 shrink-0 text-primary"
+                              />
+                              <span className="truncate text-sm font-medium">
+                                {g.sport}
+                              </span>
+                            </div>
+                            {g.items.length ? (
+                              <ul className="flex flex-col gap-1">
+                                {g.items.map((segs, k) => (
+                                  <li
+                                    key={k}
+                                    className="flex flex-wrap items-center gap-1"
+                                  >
+                                    {segs.map((seg, j) => (
+                                      <span
+                                        key={j}
+                                        className="rounded bg-muted px-1.5 py-0.5 text-[0.6875rem] font-medium"
+                                      >
+                                        {seg}
+                                      </span>
+                                    ))}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">
+                                {t("Whole sport")}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>

@@ -648,13 +648,20 @@ export function FixtureSetupHub({
       </div>
 
       {readiness.data ? (
-        /* Step 1 stays the active journey step while the inline setup is open. */
-        <SetupJourneyHeader
-          step={setupView ? 1 : journey}
-          activeStep={activeStep}
-          doneSteps={doneSteps}
-          onStepClick={canManage && !globalsUnset ? onStepClick : undefined}
-        />
+        /* The journey stepper is a sticky sub-toolbar pinned under the top bar —
+         * same placement as the Sports setup page — so the steps stay visible
+         * while you scroll the setup. Full-bleed within the content column via
+         * negative margins that cancel the page padding; frosted like the top
+         * bar. Step 1 stays the active journey step while the inline setup is
+         * open. */
+        <div className="sticky top-14 z-10 -mx-4 border-b border-border bg-card/80 px-4 py-2.5 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <SetupJourneyHeader
+            step={setupView ? 1 : journey}
+            activeStep={activeStep}
+            doneSteps={doneSteps}
+            onStepClick={canManage && !globalsUnset ? onStepClick : undefined}
+          />
+        </div>
       ) : null}
 
       {isLoading ? (

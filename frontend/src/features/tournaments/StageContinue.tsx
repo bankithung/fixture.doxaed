@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowRight, Check } from "lucide-react";
 import { tournamentsApi, type StageConsequences } from "@/api/tournaments";
@@ -17,6 +17,7 @@ import { newEventId } from "@/lib/eventId";
 import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
+import { pathStageKey } from "@/features/layout/computeNavItems";
 
 /** Each stage's work page (so advancing carries you to the next one). */
 const STAGE_ROUTE: Record<string, (id: string) => string> = {
@@ -65,6 +66,7 @@ export function StageContinue({
   const qc = useQueryClient();
   const toast = useToast();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const [ack, setAck] = useState(false);
 
@@ -103,6 +105,39 @@ export function StageContinue({
   });
 
   if (!data) return null;
+  const curIdx = data.order.indexOf(data.stage);
+  // If you've navigated back to an already-completed stage's page (e.g. viewing
+  // Institution registration while the tournament is at Fixtures), the flow's
+  // Continue button belongs elsewhere. Rather than showing a misleading
+  // "Continue to «far-ahead stage»" — or nothing at all — point to where the
+  // flow actually is: the current stage's page. (At `ready` the completion
+  // banner below shows on every flow page.)
+  const viewedStage = pathStageKey(pathname);
+  if (viewedStage && data.stage !== "ready" && viewedStage !== data.stage) {
+    // Viewing an already-completed stage's page. Step forward ONE stage (to the
+    // next stage's page) rather than jumping to the tournament's current stage,
+    // so the flow reads as a sequence (owner). Pure navigation — these stages
+    // are already done, so there's nothing to transition.
+    const viewedIdx = data.order.indexOf(viewedStage);
+    const nextViewed = data.order[viewedIdx + 1];
+    const nextStepLabel = data.stages[viewedIdx + 1]?.label ?? t("the next step");
+    const dest = nextViewed ? STAGE_ROUTE[nextViewed]?.(tournamentId) : null;
+    if (!data.can_manage || !dest) return null;
+    return (
+      <div className="mt-6 flex flex-col gap-2 rounded-xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">
+          {t("This step is done.")}{" "}
+          <span className="font-medium text-foreground">
+            {t("Next")}: {nextStepLabel}
+          </span>
+        </p>
+        <Button className="shrink-0" onClick={() => navigate(dest)}>
+          {t("Continue")}
+          <ArrowRight aria-hidden="true" className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  }
   const allowed = new Set(data.allowed_to);
   const canAdvance = data.can_manage && !!nextStage && allowed.has(nextStage);
   if (!canAdvance) {
@@ -116,7 +151,6 @@ export function StageContinue({
     }
     return null;
   }
-  const curIdx = data.order.indexOf(data.stage);
   const nextLabel = data.stages[curIdx + 1]?.label ?? t("next stage");
   const blockers = previewQ.data?.blockers ?? [];
   // Freeze still happens server-side; the ack line is flow noise (W2-C).

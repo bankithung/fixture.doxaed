@@ -676,6 +676,34 @@ const TEAM_TH =
   "sticky top-0 z-10 border-b border-border bg-muted px-3 py-2.5 text-left text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground";
 const TEAM_TD = "border-b border-border px-3 py-2.5 align-middle";
 
+/** Render a competition leaf label ("Sport — Age — Gender — Format") as separate
+ *  pills instead of a dashed string — the sport tinted, the rest muted (owner:
+ *  no dashed strings). Empty label → "Uncategorized". */
+function CompetitionLabel({ label }: { label: string }): React.ReactElement {
+  if (!label) {
+    return (
+      <span className="text-xs text-muted-foreground">{t("Uncategorized")}</span>
+    );
+  }
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {label.split(" — ").map((seg, i) => (
+        <span
+          key={i}
+          className={cn(
+            "rounded px-1.5 py-0.5 text-xs",
+            i === 0
+              ? "bg-primary/10 font-medium text-primary"
+              : "bg-muted text-foreground",
+          )}
+        >
+          {seg}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /**
  * Teams as a proper TABLE (owner 2026-06-10): collapsible institution group
  * rows, and every team row expands to its full player roster inline. Phones
@@ -779,8 +807,11 @@ function TeamsTable({
                         />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium">{tm.name}</span>
-                          <span className="mt-0.5 block truncate font-tabular text-xs text-muted-foreground">
-                            {tm.pool || t("Unseeded")} · {tm.player_count} {t("players")}
+                          <span className="mt-1 block">
+                            <CompetitionLabel label={tm.pool} />
+                          </span>
+                          <span className="mt-0.5 block font-tabular text-xs text-muted-foreground">
+                            {tm.player_count} {t("players")}
                           </span>
                         </span>
                       </button>
@@ -884,8 +915,8 @@ function TeamsTable({
                           </button>
                         </td>
                         <td className={cn(TEAM_TD, "font-medium")}>{tm.name}</td>
-                        <td className={cn(TEAM_TD, "text-muted-foreground")}>
-                          {tm.pool || t("Unseeded")}
+                        <td className={TEAM_TD}>
+                          <CompetitionLabel label={tm.pool} />
                         </td>
                         <td className={cn(TEAM_TD, "text-right font-tabular")}>
                           {tm.player_count}

@@ -457,6 +457,21 @@ export function FormBuilderPage(): React.ReactElement {
 
   const form = query.data;
   const status = form.status;
+  // Back goes to the page that OWNS this form (where "Edit form" was clicked) —
+  // the stage's own page — not the generic Forms list (owner: go to the main
+  // page, not the forms page).
+  const backHref =
+    form.stage === "org_registration"
+      ? routes.tournamentInstitutions(id)
+      : form.stage === "team_registration"
+        ? routes.tournamentTeams(id)
+        : routes.tournamentForms(id);
+  const backLabel =
+    form.stage === "org_registration"
+      ? t("← Back to institutions")
+      : form.stage === "team_registration"
+        ? t("← Back to teams")
+        : t("← Back to forms");
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
@@ -464,10 +479,10 @@ export function FormBuilderPage(): React.ReactElement {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <Link
-            to={routes.tournamentForms(id)}
+            to={backHref}
             className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
           >
-            {t("← Back to forms")}
+            {backLabel}
           </Link>
           <div className="mt-1 flex items-center gap-3">
             <h1 className="truncate text-lg font-semibold tracking-tight sm:text-xl">
