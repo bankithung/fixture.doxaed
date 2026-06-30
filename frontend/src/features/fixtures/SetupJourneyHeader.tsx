@@ -134,7 +134,7 @@ export function SetupJourneyHeader({
               >
                 <span
                   className={cn(
-                    "grid h-6 w-6 shrink-0 place-items-center rounded-full",
+                    "grid h-5 w-5 shrink-0 place-items-center rounded-full text-[0.6875rem]",
                     state === "done"
                       ? "bg-primary text-primary-foreground"
                       : state === "current"
@@ -145,7 +145,7 @@ export function SetupJourneyHeader({
                   )}
                 >
                   {state === "done" ? (
-                    <Check aria-hidden="true" className="h-3.5 w-3.5" />
+                    <Check aria-hidden="true" className="h-3 w-3" />
                   ) : (
                     <span className="font-tabular">{s.n}</span>
                   )}
@@ -171,7 +171,7 @@ export function SetupJourneyHeader({
           {t(`Step ${shownStep} of 4: ${shownLabel}`)}
         </p>
       ) : null}
-      <p data-testid="journey-next" className="text-sm text-muted-foreground">
+      <p data-testid="journey-next" className="text-xs text-muted-foreground">
         {t(nextLine)}
       </p>
     </nav>

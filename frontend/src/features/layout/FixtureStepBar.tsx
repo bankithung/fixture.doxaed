@@ -22,7 +22,7 @@ export function FixtureStepBar(): React.ReactElement | null {
 
   return (
     <div className="sticky top-14 z-10 border-b border-border bg-card/80 backdrop-blur">
-      <div className="px-4 py-2.5 sm:px-6 lg:px-8">
+      <div className="px-4 py-2 sm:px-6 lg:px-8">
         <SetupJourneyHeader
           step={step}
           activeStep={activeStep}

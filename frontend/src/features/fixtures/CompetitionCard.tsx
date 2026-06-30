@@ -108,18 +108,20 @@ export function CompetitionCard({
   return (
     <div
       data-testid={`competition-card-${key}`}
-      className="flex flex-col gap-3 border-t border-border px-5 py-4 first:border-t-0"
+      className="flex flex-col gap-1.5 border-t border-border px-4 py-2.5 transition-colors first:border-t-0 hover:bg-muted/20"
     >
-      <div className="flex items-start gap-3">
+      {/* Identity + meta + status + the ONE primary action, all on one line
+          (wraps on narrow widths) — the dense Supabase-style row. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         {drawn ? (
           <button
             type="button"
             data-testid={`competition-row-${key}`}
             aria-expanded={detailOpen}
             onClick={onToggleDetail}
-            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+            className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
           >
-            <LeafLabel label={c.label || ""} size="md" />
+            <LeafLabel label={c.label || ""} size="sm" />
             <ChevronDown
               aria-hidden="true"
               className={cn(
@@ -130,23 +132,32 @@ export function CompetitionCard({
           </button>
         ) : (
           <div className="min-w-0 flex-1">
-            <LeafLabel label={c.label || ""} size="md" />
+            <LeafLabel label={c.label || ""} size="sm" />
           </div>
         )}
-        <div className="flex shrink-0 items-center gap-2.5 pt-0.5">
-          <span className="font-tabular text-xs text-muted-foreground">
-            {c.teams.length} {t("teams")}
-            {drawn ? <> · {c.matches.length} {t("matches")}</> : null}
-          </span>
-          <span
-            className={cn(
-              "rounded-full px-2 py-0.5 text-xs font-medium",
-              CHIP[st].cls,
-            )}
+        <span className="shrink-0 font-tabular text-xs text-muted-foreground">
+          {c.teams.length} {t("teams")}
+          {drawn ? <> · {c.matches.length} {t("matches")}</> : null}
+        </span>
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+            CHIP[st].cls,
+          )}
+        >
+          {t(CHIP[st].label)}
+        </span>
+        {!pres.staleBanner && primary ? (
+          <Button
+            size="sm"
+            className="shrink-0"
+            disabled={busy}
+            data-testid={primaryTestId(primary.action, key)}
+            onClick={() => onAction(primary)}
           >
-            {t(CHIP[st].label)}
-          </span>
-        </div>
+            {primary.label}
+          </Button>
+        ) : null}
       </div>
 
       {pres.staleBanner ? (
@@ -163,7 +174,7 @@ export function CompetitionCard({
       ) : (
         <>
           {pres.sentence ? (
-            <p className="text-sm text-muted-foreground">{pres.sentence}</p>
+            <p className="text-xs text-muted-foreground">{pres.sentence}</p>
           ) : null}
           {pres.note ? (
             <p className="text-xs text-muted-foreground">
@@ -186,19 +197,9 @@ export function CompetitionCard({
               ) : null}
             </p>
           ) : null}
-          {primary || links.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              {primary ? (
-                <Button
-                  size="sm"
-                  className="w-full sm:w-auto"
-                  disabled={busy}
-                  data-testid={primaryTestId(primary.action, key)}
-                  onClick={() => onAction(primary)}
-                >
-                  {primary.label}
-                </Button>
-              ) : null}
+          {links.length > 0 ||
+          (primary?.action === "preview" && !pres.note && canManage) ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
               {links.map((a) => (
                 <button
                   key={a.action}
@@ -207,7 +208,7 @@ export function CompetitionCard({
                   aria-expanded={
                     a.action === "view_matches" ? detailOpen : undefined
                   }
-                  className="text-sm font-medium text-primary hover:underline"
+                  className="font-medium text-primary hover:underline"
                   onClick={() =>
                     a.action === "view_matches" ? onToggleDetail() : onAction(a)
                   }
@@ -221,7 +222,7 @@ export function CompetitionCard({
                 <button
                   type="button"
                   data-testid={`change-format-${key}`}
-                  className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline"
+                  className="font-medium text-muted-foreground hover:text-foreground hover:underline"
                   onClick={() =>
                     onAction({
                       label: t("Change format"),
@@ -245,7 +246,7 @@ export function CompetitionCard({
             size="sm"
             data-testid={`whats-missing-${key}`}
             aria-expanded={detailOpen}
-            className="w-fit px-2 text-xs text-muted-foreground"
+            className="-ml-2 h-7 w-fit px-2 text-xs text-muted-foreground"
             onClick={onToggleDetail}
           >
             <ChevronDown
@@ -258,7 +259,7 @@ export function CompetitionCard({
             {t("See what's missing")}
           </Button>
           {detailOpen ? (
-            <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-muted/20 p-3">
+            <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-muted/20 p-2.5">
               <ReadinessChecklist
                 competition={c.readiness}
                 onFix={canManage ? onFix : undefined}
@@ -273,7 +274,7 @@ export function CompetitionCard({
       ) : null}
 
       {drawn && detailOpen ? (
-        <div className="flex flex-col gap-3 border-t border-border pt-3">
+        <div className="flex flex-col gap-3 border-t border-border pt-2.5">
           <CompetitionResultCard
             matches={c.matches}
             tournamentId={tournamentId}

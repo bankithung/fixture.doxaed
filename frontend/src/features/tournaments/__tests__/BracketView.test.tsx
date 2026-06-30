@@ -48,6 +48,14 @@ describe("BracketView", () => {
           ),
           m(
             {
+              round_no: 1,
+              home_team: { id: "c", name: "Gamma", short_name: "GAM" },
+              away_team: { id: "d", name: "Delta", short_name: "DEL" },
+            },
+            "m1b",
+          ),
+          m(
+            {
               round_no: 2,
               home_team: { id: "a", name: "Alpha", short_name: "ALP" },
               away_team: null,
@@ -57,9 +65,12 @@ describe("BracketView", () => {
         ]}
       />,
     );
-    // distance-from-final labels (no hardcoded "Round N") + the champion box
+    // FIFA-style distance-from-final column labels (no hardcoded "Round N"):
+    // four entrants draw a Semi-finals round (mirrored on each half) feeding
+    // the Final + the champion box. The sketch reads entrant count, so the
+    // label appears once per half.
     expect(screen.getByText("Final")).toBeInTheDocument();
-    expect(screen.getByText("Semi-finals")).toBeInTheDocument();
+    expect(screen.getAllByText("Semi-finals").length).toBeGreaterThan(0);
     expect(screen.getByText("Champion")).toBeInTheDocument();
     expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0);
     expect(screen.getByText("Beta")).toBeInTheDocument();

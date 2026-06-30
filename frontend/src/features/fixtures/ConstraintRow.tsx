@@ -179,7 +179,7 @@ export function ConstraintRow({
   return (
     <div
       data-testid={tid("row")}
-      className="flex flex-col gap-3 rounded-lg border border-border bg-background p-3"
+      className="flex flex-col gap-2.5 rounded-lg border border-border bg-background p-2.5"
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium">{t(spec.label)}</span>
@@ -233,7 +233,7 @@ export function ConstraintRow({
         </button>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-end gap-2.5">
         <label className="flex min-w-44 flex-col gap-1">
           <span className="text-xs font-medium">{t("Applies to")}</span>
           <Select

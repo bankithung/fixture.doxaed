@@ -210,9 +210,9 @@ export function ConstraintBuilder({
   return (
     <section
       id="constraint-builder"
-      className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+      className="overflow-hidden rounded-lg border border-border bg-card"
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-2.5">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold">{t("Scheduling rules")}</h3>
           <p className="text-xs text-muted-foreground">
@@ -244,7 +244,7 @@ export function ConstraintBuilder({
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 px-4 py-3" aria-busy={loading}>
+      <div className="flex flex-col gap-2.5 px-4 py-3" aria-busy={loading}>
         {loading ? (
           <div className="h-16 animate-pulse rounded-lg bg-muted/40" />
         ) : rows.every((r) => OWNED_BY_CLASHES.has(r.type)) ? (

@@ -659,15 +659,15 @@ export function FixtureSetupHub({
     // Reserve bottom clearance when the floating "Ask AI" launcher is shown
     // (canManage) so the FAB never sits on top of a page's bottom-right actions
     // (the wizard's Next/Save, StageContinue's Continue).
-    <div className={cn("flex flex-col gap-5", canManage && "pb-20")}>
+    <div className={cn("flex flex-col gap-4", canManage && "pb-20")}>
       {/* The "Fixture setup" page title is hidden while the When & Where wizard
           owns the page — the wizard's own header (eyebrow + title) replaces it,
           matching its reference design. */}
       {!setupView ? (
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold">{t("Fixture setup")}</h2>
-            <p className="text-sm text-muted-foreground">
+            <h2 className="text-base font-semibold">{t("Fixture setup")}</h2>
+            <p className="text-xs text-muted-foreground">
               {t("Three steps: dates and venues, formats, then preview and publish.")}
             </p>
           </div>
@@ -815,21 +815,22 @@ export function FixtureSetupHub({
           {canManage && competitions.some((c) => c.leafKey) ? (
             <section
               data-testid="preview-all-cta"
-              className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3"
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5"
             >
               <CalendarClock
                 aria-hidden="true"
-                className="h-5 w-5 shrink-0 text-primary"
+                className="h-4 w-4 shrink-0 text-primary"
               />
               <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-semibold">
+                <h3 className="text-sm font-semibold leading-tight">
                   {t("See & publish the whole tournament at once")}
                 </h3>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   {t("One combined schedule for every sport, drawn and timed together. Publish it all in one step.")}
                 </p>
               </div>
               <Button
+                size="sm"
                 data-testid="preview-all"
                 onClick={() =>
                   navigate(routes.tournamentFixturesPreviewAll(id))
@@ -845,17 +846,17 @@ export function FixtureSetupHub({
             /* §6.3 celebrate state. */
             <section
               data-testid="done-banner"
-              className="flex flex-wrap items-center gap-3 rounded-xl border border-success/40 bg-success-muted px-4 py-3"
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-success/40 bg-success-muted px-4 py-2.5"
             >
               <PartyPopper
                 aria-hidden="true"
-                className="h-5 w-5 shrink-0 text-success"
+                className="h-4 w-4 shrink-0 text-success"
               />
               <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-semibold">
+                <h3 className="text-sm font-semibold leading-tight">
                   {t("Your schedule is out")}
                 </h3>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   {t("Every competition is drawn and scheduled. Share it or print the order of play.")}
                 </p>
               </div>
@@ -930,18 +931,18 @@ export function FixtureSetupHub({
               ) : null}
             </EmptyState>
           ) : (
-            <div id="competition-list" className="flex flex-col gap-4">
+            <div id="competition-list" className="flex flex-col gap-3">
               {GROUPS.map((g) => {
                 const list = grouped[g.key];
                 if (list.length === 0) return null;
                 const open = openSections[g.key];
                 return (
-                  <section key={g.key} className="flex flex-col gap-2">
+                  <section key={g.key} className="flex flex-col gap-1.5">
                     <button
                       type="button"
                       data-testid={`section-${g.key}`}
                       aria-expanded={open}
-                      className="flex items-center gap-2 text-left"
+                      className="flex items-center gap-1.5 text-left"
                       onClick={() =>
                         setOpenSections((p) => ({ ...p, [g.key]: !p[g.key] }))
                       }
@@ -957,13 +958,15 @@ export function FixtureSetupHub({
                           className="h-4 w-4 shrink-0 text-muted-foreground"
                         />
                       )}
-                      <h3 className="text-sm font-semibold">{t(g.title)}</h3>
-                      <span className="rounded-full bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {t(g.title)}
+                      </h3>
+                      <span className="rounded-full bg-muted px-1.5 py-0.5 font-tabular text-[0.6875rem] text-muted-foreground">
                         {list.length}
                       </span>
                     </button>
                     {open ? (
-                      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+                      <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
                         {list.map((c) => {
                           const key = c.leafKey || "general";
                           return (
@@ -998,13 +1001,13 @@ export function FixtureSetupHub({
           {tabs.length > 0 ? (
             <section
               data-testid="advanced-tools"
-              className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+              className="overflow-hidden rounded-lg border border-border bg-card shadow-sm"
             >
               <button
                 type="button"
                 data-testid="advanced-tools-toggle"
                 aria-expanded={advancedOpen}
-                className="flex w-full items-center gap-2 px-4 py-3 text-left"
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left"
                 onClick={() => setAdvancedOpen((o) => !o)}
               >
                 <SlidersHorizontal
