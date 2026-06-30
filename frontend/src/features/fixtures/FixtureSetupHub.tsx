@@ -321,6 +321,9 @@ export function FixtureSetupHub({
   const [view, setView] = useState<"overview" | "clashes" | "formats">(
     "overview",
   );
+  // Sport to focus when arriving on the formats page from a card's "Change
+  // format" deep-link; null = navigated via the step bar (no focus).
+  const [formatsFocus, setFormatsFocus] = useState<string | null>(null);
 
   const tournament = useQuery({
     queryKey: qk.tournament(id),
@@ -462,16 +465,16 @@ export function FixtureSetupHub({
           ?.scrollIntoView?.({ behavior: "smooth", block: "start" });
       }, 0);
     } else if (fix === "teams") navigate(routes.tournamentTeams(id));
-    else if (fix === "format" || fix === "seeds") {
-      // The Step 2 wizard owns seeding too (SeedListEditor under Advanced).
+    else if (fix === "format") {
+      // Same destination as a card's "Change format": the How-each-plays page.
+      const c = competitions.find((x) => x.leafKey === leafKey);
+      setFormatsFocus(c?.sport || leafKey.split(".")[0] || null);
+      setView("formats");
+    } else if (fix === "seeds") {
+      // The Step 2 wizard owns seeding (SeedListEditor under Advanced).
       const c = competitions.find((x) => x.leafKey === leafKey);
       if (c) {
-        setDraw({
-          leafKey,
-          label: c.label,
-          teams: c.teams,
-          focusSeeds: fix === "seeds",
-        });
+        setDraw({ leafKey, label: c.label, teams: c.teams, focusSeeds: true });
       }
     } else if (fix === "diff") {
       // Inputs changed since the draw — a fresh preview shows the new draw.
@@ -486,7 +489,10 @@ export function FixtureSetupHub({
     else if (a.action === "seeds") {
       setDraw({ leafKey: c.leafKey, label: c.label, teams: c.teams, focusSeeds: true });
     } else if (a.action === "format") {
-      setDraw({ leafKey: c.leafKey, label: c.label, teams: c.teams });
+      // "Change format" / "Choose format" send the user to the How-each-plays
+      // page (Step 3), focused on this competition's sport.
+      setFormatsFocus(c.sport || c.leafKey.split(".")[0] || null);
+      setView("formats");
     } else if (a.action === "preview") {
       navigate(routes.tournamentFixturesPreview(id, c.leafKey || undefined));
     } else if (a.action === "advance") {
@@ -610,6 +616,8 @@ export function FixtureSetupHub({
    * Clashes and Formats pages; 4 returns to the competition list (Preview &
    * publish), where each competition's Preview button lives. */
   const onStepClick = (n: 1 | 2 | 3 | 4): void => {
+    // Stepper navigation is not a per-sport deep-link — clear any card focus.
+    setFormatsFocus(null);
     if (n === 1) {
       setView("overview");
       setSetup({ step: 0, flow: true });
@@ -786,6 +794,7 @@ export function FixtureSetupHub({
           {canManage && competitions.some((c) => c.leafKey) ? (
             <CompetitionFormatBoard
               tournamentId={id}
+              focusSport={formatsFocus ?? undefined}
               competitions={competitions
                 .filter((c) => c.leafKey)
                 .map((c) => ({

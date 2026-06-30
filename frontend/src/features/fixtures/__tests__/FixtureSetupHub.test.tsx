@@ -475,16 +475,16 @@ describe("FixtureSetupHub", () => {
     );
   });
 
-  it("Change format on a ready card opens the Step 2 wizard", async () => {
+  it("Change format on a ready card jumps to the How-each-plays formats page", async () => {
     wrap(<FixtureSetupHub tournamentId="t1" />);
     await userEvent.click(
       await screen.findByTestId("change-format-football.u15"),
     );
+    // Lands on Step 3 (the format board), focused on the sport — not a dialog.
     expect(
-      await screen.findByRole("dialog", {
-        name: "Step 2 · How Football · U15 plays",
-      }),
+      await screen.findByTestId("format-sport-football"),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("deep-links a venues fix into the inline Step 1 panel", async () => {

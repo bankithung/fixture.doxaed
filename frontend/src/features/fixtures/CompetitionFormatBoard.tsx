@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
@@ -189,9 +189,13 @@ function ModeSegmented({
 export function CompetitionFormatBoard({
   tournamentId,
   competitions,
+  focusSport,
 }: {
   tournamentId: string;
   competitions: Comp[];
+  /** Sport key to scroll to + expand on arrival — the deep-link target when a
+   * card's "Change format" sends the user here. Undefined = no focus. */
+  focusSport?: string;
 }): React.ReactElement {
   const qc = useQueryClient();
   const toast = useToast();
@@ -203,6 +207,19 @@ export function CompetitionFormatBoard({
   // clear back to the sport default). Saved via the settings PATCH (frozen
   // rules), not draw_config — scoring is participant-facing (invariant 7).
   const [stagedScoring, setStagedScoring] = useState<Record<string, Scoring | null>>({});
+
+  // Arriving from a card's "Change format": open the targeted sport's
+  // per-category overrides and scroll its card into view.
+  useEffect(() => {
+    if (!focusSport) return;
+    setOpen((o) => (o[focusSport] ? o : { ...o, [focusSport]: true }));
+    const id = window.setTimeout(() => {
+      document
+        .querySelector(`[data-testid="format-sport-${focusSport}"]`)
+        ?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [focusSport]);
   const [stagedTiebreakers, setStagedTiebreakers] = useState<Record<string, string[] | null>>({});
   const [amendReason, setAmendReason] = useState("");
 
