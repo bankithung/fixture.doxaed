@@ -20,6 +20,8 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 
+import redis.exceptions
+
 from asgiref.sync import sync_to_async
 from django.db import connection, transaction
 from django.http import HttpResponseNotFound, StreamingHttpResponse
@@ -93,7 +95,16 @@ async def _frames(tournament_id: str) -> AsyncIterator[str]:
                 message = await asyncio.wait_for(
                     layer.receive(channel), timeout=KEEPALIVE_SECONDS
                 )
-            except TimeoutError:
+            except (TimeoutError, redis.exceptions.TimeoutError):
+                # Two idle paths, both meaning "no tick yet — keep the stream
+                # open": the asyncio.wait_for window elapsing (builtin
+                # TimeoutError) OR the channel layer's underlying Redis blocking
+                # read (bzpopmin) hitting its socket timeout first. The latter
+                # raises redis.exceptions.TimeoutError, which is NOT a subclass
+                # of the builtin TimeoutError, so it must be caught explicitly —
+                # otherwise it escapes, kills the generator, drops the SSE
+                # connection, and every public viewer's EventSource reconnects
+                # in a tight loop (the reconnect storm this guards against).
                 yield ": keep-alive\n\n"
                 continue
             if message.get("type") == "tournament.tick":
