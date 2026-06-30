@@ -60,9 +60,11 @@ def _team_counts(tournament) -> dict[str, int]:
 
 def _format_is_explicit(draw_config: dict, leaf_key: str, sport_key: str) -> bool:
     """True if a format was actually chosen at any layer (not the implicit
-    league default the cards warn about)."""
+    league default the cards warn about). A multi-stage plan (stored under
+    `stages`, not `format`) counts as an explicit choice too."""
     for layer in ("*", f"sport:{sport_key}", leaf_key):
-        if isinstance(draw_config.get(layer), dict) and draw_config[layer].get("format"):
+        cfg = draw_config.get(layer)
+        if isinstance(cfg, dict) and (cfg.get("format") or cfg.get("stages")):
             return True
     return False
 

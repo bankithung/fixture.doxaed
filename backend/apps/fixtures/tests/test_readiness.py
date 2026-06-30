@@ -354,3 +354,37 @@ def test_format_chosen_ok_when_set_at_sport_layer():
         chk = _checks(_leaf(body, leaf_key))["format_chosen"]
         assert chk["status"] == "ok", leaf_key
         assert chk["hint"] == "knockout"
+
+
+def test_format_chosen_ok_for_a_multi_stage_plan():
+    # Regression (owner bug 2026-06-30): the format board stores a multi-stage
+    # pick under `stages`, NOT `format`. Readiness must count a stages plan as
+    # an explicit choice, or the Ready-to-go card wrongly warns "no format
+    # chosen" and falls back to League (e.g. a multi-stage Sepak Takraw read
+    # as unchosen).
+    admin = _verified("a@test.local")
+    t = _tournament(admin)
+    _register(t, 4, leaf=LEAF_U15)
+
+    # No plan yet -> warns.
+    assert _checks(_leaf(fixture_readiness(t), LEAF_U15))[
+        "format_chosen"]["status"] == "warn"
+
+    # Store a two-stage plan (round-robin -> knockout), as the format board does.
+    update_draw_config(
+        tournament=t,
+        leaf_key=LEAF_U15,
+        partial={"stages": [
+            {"id": "g", "type": "round_robin", "group_size": 4},
+            {"id": "k", "type": "knockout",
+             "from": {"stage": "g", "method": "top_n_per_group",
+                      "advance_per_group": 2, "seeding": "cross",
+                      "advance_best_thirds": 0}},
+        ]},
+        by=admin,
+    )
+    t.refresh_from_db()
+
+    chk = _checks(_leaf(fixture_readiness(t), LEAF_U15))["format_chosen"]
+    assert chk["status"] == "ok"
+    assert chk["hint"] == "2 stages"

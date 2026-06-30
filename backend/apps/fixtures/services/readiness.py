@@ -163,17 +163,26 @@ def fixture_readiness(tournament) -> dict[str, Any]:
         # resolves. The sport layer is how the format board saves "all of a
         # sport plays X" — omitting it left per-sport picks reading as "no
         # format chosen" on the Ready-to-go cards (owner bug 2026-06-26).
+        # A multi-stage plan is an explicit choice too: the format board stores
+        # it under `stages`, not `format`, so a multi-stage pick must NOT warn
+        # "no format chosen" / fall back to League (owner bug 2026-06-30).
         sport_key = leaf.get("sport_key") or leaf_key.split(".")[0]
-        explicit = any(
-            "format" in (layer or {})
-            for layer in (
-                stored_cfg.get(leaf_key),
-                stored_cfg.get(f"sport:{sport_key}"),
-                stored_cfg.get("*"),
-                tournament.rules,
-            )
+        layers = (
+            stored_cfg.get(leaf_key),
+            stored_cfg.get(f"sport:{sport_key}"),
+            stored_cfg.get("*"),
+            tournament.rules,
         )
-        if explicit:
+        stages = next(
+            (layer["stages"] for layer in layers if (layer or {}).get("stages")),
+            None,
+        )
+        if stages:
+            checks.append(_check(
+                "format_chosen", "ok",
+                _("%(count)d stages") % {"count": len(stages)},
+            ))
+        elif any("format" in (layer or {}) for layer in layers):
             checks.append(_check("format_chosen", "ok", str(cfg.get("format"))))
         else:
             checks.append(_check(
