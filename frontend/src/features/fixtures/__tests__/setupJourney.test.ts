@@ -184,10 +184,10 @@ describe("competitionSentence (§7.2, first match wins)", () => {
       }),
       "",
     );
-    expect(p.sentence).toBe("Waiting for teams - 1 of 2 minimum.");
+    expect(p.sentence).toBe("1 of 2 teams. Needs 2 to draw.");
     expect(p.blocked).toBe(true);
     expect(p.actions).toEqual([
-      { label: "See registered teams", kind: "link", action: "teams" },
+      { label: "See teams", kind: "link", action: "teams" },
     ]);
   });
 
@@ -198,11 +198,9 @@ describe("competitionSentence (§7.2, first match wins)", () => {
       }),
       "",
     );
-    expect(p.sentence).toBe(
-      "2 team(s) still need a seed number before this draw can run.",
-    );
+    expect(p.sentence).toBe("2 team(s) need a seed number.");
     expect(p.actions[0]).toEqual({
-      label: "Set seed numbers", kind: "primary", action: "seeds",
+      label: "Set seeds", kind: "primary", action: "seeds",
     });
     expect(p.blocked).toBe(true);
   });
@@ -212,7 +210,7 @@ describe("competitionSentence (§7.2, first match wins)", () => {
       withChecks([{ id: "calendar_set", status: "fail" }], false),
       "",
     );
-    expect(p.sentence).toBe("Finish Step 1 first - dates or venues are missing.");
+    expect(p.sentence).toBe("Dates or venues missing. Finish Step 1.");
     expect(p.actions[0]).toEqual({
       label: "Open Step 1", kind: "primary", action: "step1",
     });
@@ -229,14 +227,12 @@ describe("competitionSentence (§7.2, first match wins)", () => {
     expect(
       competitionSentence(comp({ matches: [match({})] }), "", false, true)
         .sentence,
-    ).toContain("Drawn");
+    ).toContain("drawn");
   });
 
   it("U4: ready, with the quiet format note on a format_chosen warn", () => {
     const ready = competitionSentence(withChecks([], true), "");
-    expect(ready.sentence).toBe(
-      "Ready to preview. Nothing is saved until you publish.",
-    );
+    expect(ready.sentence).toBe("Ready to preview.");
     expect(ready.actions[0]).toEqual({
       label: "Preview the draw", kind: "primary", action: "preview",
     });
@@ -248,7 +244,7 @@ describe("competitionSentence (§7.2, first match wins)", () => {
       "",
     );
     expect(noted.note).toEqual({
-      text: "You haven't picked a format. League (everyone plays everyone once) will be used.",
+      text: "No format picked. League used by default.",
       actionLabel: "Choose format",
     });
   });
@@ -258,9 +254,7 @@ describe("competitionSentence (§7.2, first match wins)", () => {
       withChecks([{ id: "constraints_reviewed", status: "fail" }], false),
       "",
     );
-    expect(p.sentence).toBe(
-      "A few checks still need attention before the draw can run.",
-    );
+    expect(p.sentence).toBe("A few checks still need attention.");
     expect(p.blocked).toBe(true);
     expect(p.actions).toEqual([]);
   });
@@ -275,7 +269,7 @@ describe("competitionSentence (§7.2, first match wins)", () => {
       }),
       "",
     );
-    expect(p.sentence).toBe("Matches are being played - 1 of 2 finished.");
+    expect(p.sentence).toBe("Playing now. 1 of 2 finished.");
     expect(p.actions[0]).toEqual({
       label: "Open match console", kind: "link", action: "console", matchId: "m1",
     });
@@ -289,7 +283,7 @@ describe("competitionSentence (§7.2, first match wins)", () => {
     // "Keep this draw" pressed → D5 takes over
     const keptP = competitionSentence(c, "", true);
     expect(keptP.staleBanner).toBe(false);
-    expect(keptP.sentence).toContain("Drawn");
+    expect(keptP.sentence).toContain("drawn");
   });
 
   it("D3: finished group stage offers the bracket", () => {
@@ -297,9 +291,7 @@ describe("competitionSentence (§7.2, first match wins)", () => {
       comp({ matches: [match({ status: "completed" })] }),
       "round_robin",
     );
-    expect(p.sentence).toBe(
-      "The group stage is finished. Build the knockout bracket from the standings.",
-    );
+    expect(p.sentence).toBe("Group stage finished. Build the bracket.");
     expect(p.actions[0]).toEqual({
       label: "Build the bracket", kind: "primary", action: "advance",
     });
@@ -314,9 +306,7 @@ describe("competitionSentence (§7.2, first match wins)", () => {
       }),
       "swiss",
     );
-    expect(p.sentence).toBe(
-      "Round 2 is finished. Pair the next round from the standings.",
-    );
+    expect(p.sentence).toBe("Round 2 finished. Pair the next round.");
     expect(p.actions[0]).toEqual({
       label: "Pair the next round", kind: "primary", action: "next_round",
     });
@@ -332,13 +322,13 @@ describe("competitionSentence (§7.2, first match wins)", () => {
       }),
       "",
     );
-    expect(scheduled.sentence).toBe("Scheduled - 2 matches over 2 day(s).");
+    expect(scheduled.sentence).toBe("2 matches over 2 days.");
     expect(scheduled.actions.map((a) => a.action)).toEqual([
       "view_matches",
       "adjust_schedule",
     ]);
 
     const unscheduled = competitionSentence(comp({ matches: [match({})] }), "");
-    expect(unscheduled.sentence).toBe("Drawn - 1 match, not yet scheduled.");
+    expect(unscheduled.sentence).toBe("1 match drawn, no times yet.");
   });
 });

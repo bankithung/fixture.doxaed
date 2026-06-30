@@ -271,7 +271,7 @@ describe("FixtureSetupHub", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByTestId("global-setup-gate")).toBeNull();
     expect(screen.getByTestId("journey-next")).toHaveTextContent(
-      "Next: set your tournament dates and venues.",
+      "Set your dates and venues.",
     );
     // competitions, the receipt strip and the Advanced tools are all hidden
     expect(screen.queryByTestId("competition-card-football.u15")).toBeNull();
@@ -328,7 +328,7 @@ describe("FixtureSetupHub", () => {
     // The overview is the Preview & publish page (step 4) — its line + the
     // stepper highlight follow the page you're on, not the readiness pointer.
     expect(screen.getByTestId("journey-next")).toHaveTextContent(
-      "Preview each competition's draw below, then publish the schedule.",
+      "Preview each draw below, then publish.",
     );
 
     // u15 (ready) sits in the open "Ready to go" section as a card with ONE
@@ -339,7 +339,7 @@ describe("FixtureSetupHub", () => {
     );
     const card = screen.getByTestId("competition-card-football.u15");
     expect(
-      within(card).getByText("Ready to preview. Nothing is saved until you publish."),
+      within(card).getByText("Ready to preview."),
     ).toBeInTheDocument();
     expect(within(card).queryByText("5/5")).toBeNull();
     // no toolbar before the journey is done
@@ -416,7 +416,7 @@ describe("FixtureSetupHub", () => {
     // active page is 4, so step 4 is the highlighted "you are here".
     expect(await screen.findByTestId("global-setup-strip")).toBeInTheDocument();
     expect(screen.getByTestId("journey-next")).toHaveTextContent(
-      "Preview each competition's draw below, then publish the schedule.",
+      "Preview each draw below, then publish.",
     );
     // Step 2 is configured → it renders a tick (no "2"), even from the overview.
     expect(screen.getByTestId("journey-step-2")).not.toHaveTextContent("2");
@@ -440,7 +440,7 @@ describe("FixtureSetupHub", () => {
     await userEvent.click(needsTeams);
     const card = screen.getByTestId("competition-card-football.u17");
     expect(
-      within(card).getByText("Waiting for teams - 0 of 2 minimum."),
+      within(card).getByText("0 of 2 teams. Needs 2 to draw."),
     ).toBeInTheDocument();
   });
 
@@ -517,7 +517,7 @@ describe("FixtureSetupHub", () => {
     // visible while the wizard owns the page, now highlighting step 1
     expect(within(panel).getByText("Step 1 of 4")).toBeInTheDocument();
     expect(screen.getByTestId("journey-next")).toHaveTextContent(
-      "Next: set your tournament dates and venues.",
+      "Set your dates and venues.",
     );
 
     // Cancel returns to the hub view
@@ -527,7 +527,7 @@ describe("FixtureSetupHub", () => {
     expect(screen.queryByTestId("global-setup-inline")).toBeNull();
     expect(await screen.findByTestId("global-setup-strip")).toBeInTheDocument();
     expect(screen.getByTestId("journey-next")).toHaveTextContent(
-      "Preview each competition's draw below, then publish the schedule.",
+      "Preview each draw below, then publish.",
     );
 
     // a receipt chip deep-links to its wizard step (Play times)
@@ -576,7 +576,7 @@ describe("FixtureSetupHub", () => {
     await userEvent.click(await screen.findByTestId("keep-draw"));
     expect(screen.queryByTestId("inputs-changed-banner")).toBeNull();
     expect(
-      screen.getByText("Drawn - 1 match, not yet scheduled."),
+      screen.getByText("1 match drawn, no times yet."),
     ).toBeInTheDocument();
   });
 
@@ -733,9 +733,7 @@ describe("FixtureSetupHub", () => {
     wrap(<FixtureSetupHub tournamentId="t1" />);
 
     expect(
-      await screen.findByText(
-        "Round 1 is finished. Pair the next round from the standings.",
-      ),
+      await screen.findByText("Round 1 finished. Pair the next round."),
     ).toBeInTheDocument();
     await userEvent.click(screen.getByTestId("next-round-football.u15"));
     await waitFor(() =>
@@ -809,7 +807,7 @@ describe("FixtureSetupHub", () => {
 
     expect(
       await screen.findByText(
-        "The group stage is finished. Build the knockout bracket from the standings.",
+        "Group stage finished. Build the bracket.",
       ),
     ).toBeInTheDocument();
     await userEvent.click(screen.getByTestId("advance-football.u15"));

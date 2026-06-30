@@ -36,10 +36,10 @@ const NEXT_LINE: Record<"1" | "2" | "3" | "done", string> = {
  * page you're currently looking at, since the stepper is page navigation —
  * not the readiness pointer (which tracks draw generation, a later concern). */
 const ACTIVE_NEXT: Record<VisibleStep, string> = {
-  1: "Next: set your tournament dates and venues.",
-  2: "Optional. Stop competitions clashing, or skip ahead to formats.",
-  3: "Choose how each competition plays, then preview & publish.",
-  4: "Preview each competition's draw below, then publish the schedule.",
+  1: "Set your dates and venues.",
+  2: "Optional: stop competitions clashing, or skip to formats.",
+  3: "Choose how each competition plays.",
+  4: "Preview each draw below, then publish.",
 };
 
 /** Required dots are done strictly before the pointer; in the mixed step-3

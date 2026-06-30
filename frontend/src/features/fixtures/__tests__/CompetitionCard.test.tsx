@@ -88,9 +88,7 @@ function mount(
 describe("CompetitionCard", () => {
   it("ready: one sentence, ONE primary (legacy generate testid) and a quiet format link", async () => {
     const { onAction } = mount(comp([]));
-    expect(
-      screen.getByText("Ready to preview. Nothing is saved until you publish."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Ready to preview.")).toBeInTheDocument();
     expect(screen.getByText("Ready")).toBeInTheDocument();
     const primary = screen.getByTestId("generate-football.u15");
     expect(primary).toHaveTextContent("Preview the draw");
@@ -124,9 +122,7 @@ describe("CompetitionCard", () => {
   it("format warn: quiet note with an inline Choose format button (primary stays preview)", async () => {
     const { onAction } = mount(comp([{ id: "format_chosen", status: "warn" }]));
     expect(
-      screen.getByText(
-        /You haven't picked a format. League \(everyone plays everyone once\) will be used./,
-      ),
+      screen.getByText(/No format picked. League used by default./),
     ).toBeInTheDocument();
     expect(screen.getByTestId("generate-football.u15")).toBeInTheDocument();
     expect(screen.queryByTestId("change-format-football.u15")).toBeNull();
@@ -143,7 +139,7 @@ describe("CompetitionCard", () => {
     );
     const { onToggleDetail } = mount(blocked);
     expect(
-      screen.getByText("Waiting for teams - 0 of 2 minimum."),
+      screen.getByText("0 of 2 teams. Needs 2 to draw."),
     ).toBeInTheDocument();
     // the n/5 badge is gone from the card face
     expect(screen.queryByText("3/5")).toBeNull();
@@ -173,7 +169,7 @@ describe("CompetitionCard", () => {
     });
     const { onToggleDetail } = mount(drawn);
     expect(
-      screen.getByText("Scheduled - 1 match over 1 day(s)."),
+      screen.getByText("1 match over 1 day."),
     ).toBeInTheDocument();
     expect(screen.queryByTestId("competition-result-card")).toBeNull();
     await userEvent.click(
@@ -202,7 +198,7 @@ describe("CompetitionCard", () => {
     });
     const { onAction } = mount(stale);
     expect(screen.getByTestId("inputs-changed-banner")).toBeInTheDocument();
-    expect(screen.queryByText(/Drawn - /)).toBeNull();
+    expect(screen.queryByText(/no times yet/)).toBeNull();
     await userEvent.click(screen.getByTestId("keep-draw"));
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({ action: "keep" }),
@@ -219,7 +215,7 @@ describe("CompetitionCard", () => {
     });
     mount(stale, { canManage: false });
     expect(screen.queryByTestId("inputs-changed-banner")).toBeNull();
-    expect(screen.getByText("Drawn - 1 match, not yet scheduled.")).toBeInTheDocument();
+    expect(screen.getByText("1 match drawn, no times yet.")).toBeInTheDocument();
     expect(screen.queryByTestId("card-link-adjust_schedule-football.u15")).toBeNull();
     mount(comp([]), { canManage: false });
     expect(screen.queryByTestId("generate-football.u15")).toBeNull();

@@ -177,7 +177,7 @@ export function competitionSentence(
       return {
         ...none,
         sentence: t(
-          `Matches are being played - ${done} of ${c.matches.length} finished.`,
+          `Playing now. ${done} of ${c.matches.length} finished.`,
         ),
         actions: [
           { label: t("Open match console"), kind: "link", action: "console", matchId: live.id },
@@ -192,9 +192,7 @@ export function competitionSentence(
     if (groupsDone(c)) {
       return {
         ...none,
-        sentence: t(
-          "The group stage is finished. Build the knockout bracket from the standings.",
-        ),
+        sentence: t("Group stage finished. Build the bracket."),
         actions: [{ label: t("Build the bracket"), kind: "primary", action: "advance" }],
       };
     }
@@ -205,9 +203,7 @@ export function competitionSentence(
       );
       return {
         ...none,
-        sentence: t(
-          `Round ${r} is finished. Pair the next round from the standings.`,
-        ),
+        sentence: t(`Round ${r} finished. Pair the next round.`),
         actions: [
           { label: t("Pair the next round"), kind: "primary", action: "next_round" },
         ],
@@ -224,12 +220,12 @@ export function competitionSentence(
       ...none,
       sentence:
         days > 0
-          ? t(`Scheduled - ${m} ${m === 1 ? "match" : "matches"} over ${days} day(s).`)
-          : t(`Drawn - ${m} ${m === 1 ? "match" : "matches"}, not yet scheduled.`),
+          ? t(`${m} ${m === 1 ? "match" : "matches"} over ${days} ${days === 1 ? "day" : "days"}.`)
+          : t(`${m} ${m === 1 ? "match" : "matches"} drawn, no times yet.`),
       actions: [
         { label: t("View matches"), kind: "link", action: "view_matches" },
         {
-          label: t("Adjust this competition's schedule"),
+          label: t("Adjust schedule"),
           kind: "link",
           action: "adjust_schedule",
         },
@@ -241,8 +237,8 @@ export function competitionSentence(
   if (failed(c, "enough_teams")) {
     return {
       ...none,
-      sentence: t(`Waiting for teams - ${c.teams.length} of 2 minimum.`),
-      actions: [{ label: t("See registered teams"), kind: "link", action: "teams" }],
+      sentence: t(`${c.teams.length} of 2 teams. Needs 2 to draw.`),
+      actions: [{ label: t("See teams"), kind: "link", action: "teams" }],
       blocked: true,
     };
   }
@@ -251,10 +247,8 @@ export function competitionSentence(
     const n = c.teams.filter((tm) => tm.seed == null).length || c.teams.length;
     return {
       ...none,
-      sentence: t(
-        `${n} team(s) still need a seed number before this draw can run.`,
-      ),
-      actions: [{ label: t("Set seed numbers"), kind: "primary", action: "seeds" }],
+      sentence: t(`${n} team(s) need a seed number.`),
+      actions: [{ label: t("Set seeds"), kind: "primary", action: "seeds" }],
       blocked: true,
     };
   }
@@ -262,7 +256,7 @@ export function competitionSentence(
   if (failed(c, "calendar_set") || failed(c, "venues_defined")) {
     return {
       ...none,
-      sentence: t("Finish Step 1 first - dates or venues are missing."),
+      sentence: t("Dates or venues missing. Finish Step 1."),
       actions: [{ label: t("Open Step 1"), kind: "primary", action: "step1" }],
       blocked: true,
     };
@@ -282,14 +276,12 @@ export function competitionSentence(
   if (ready) {
     return {
       ...none,
-      sentence: t("Ready to preview. Nothing is saved until you publish."),
+      sentence: t("Ready to preview."),
       actions: [{ label: t("Preview the draw"), kind: "primary", action: "preview" }],
       note: warned(c, "format_chosen")
         ? {
             // "League" (not "round robin") — the Step 2 wizard's name for it.
-            text: t(
-              "You haven't picked a format. League (everyone plays everyone once) will be used.",
-            ),
+            text: t("No format picked. League used by default."),
             actionLabel: t("Choose format"),
           }
         : undefined,
@@ -298,7 +290,7 @@ export function competitionSentence(
   // Fallback — some other check fails; the checklist detail carries the why.
   return {
     ...none,
-    sentence: t("A few checks still need attention before the draw can run."),
+    sentence: t("A few checks still need attention."),
     actions: [],
     blocked: true,
   };

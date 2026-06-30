@@ -668,7 +668,7 @@ export function FixtureSetupHub({
           <div className="min-w-0">
             <h2 className="text-base font-semibold">{t("Fixture setup")}</h2>
             <p className="text-xs text-muted-foreground">
-              {t("Three steps: dates and venues, formats, then preview and publish.")}
+              {t("Set up, then preview and publish.")}
             </p>
           </div>
           {showToolbar ? (
@@ -826,7 +826,7 @@ export function FixtureSetupHub({
                   {t("See & publish the whole tournament at once")}
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  {t("One combined schedule for every sport, drawn and timed together. Publish it all in one step.")}
+                  {t("Draw and time every sport together, then publish.")}
                 </p>
               </div>
               <Button
@@ -857,7 +857,7 @@ export function FixtureSetupHub({
                   {t("Your schedule is out")}
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  {t("Every competition is drawn and scheduled. Share it or print the order of play.")}
+                  {t("Every competition is scheduled. Share or print it.")}
                 </p>
               </div>
               <span className="flex shrink-0 flex-wrap items-center gap-3">
@@ -1016,7 +1016,7 @@ export function FixtureSetupHub({
                 />
                 <h3 className="text-sm font-semibold">{t("Advanced tools")}</h3>
                 <span className="hidden text-xs text-muted-foreground sm:block">
-                  {t("Scheduling rules, change history and group tables")}
+                  {t("Rules, history and group tables")}
                 </span>
                 <ChevronDown
                   aria-hidden="true"
@@ -1031,7 +1031,7 @@ export function FixtureSetupHub({
                   <div
                     role="tablist"
                     aria-label={t("Advanced tools")}
-                    className="flex items-center gap-1 border-b border-border"
+                    className="inline-flex w-fit items-center gap-0.5 rounded-lg border border-border bg-muted/50 p-0.5"
                   >
                     {tabs.map((x) => (
                       <button
@@ -1041,10 +1041,10 @@ export function FixtureSetupHub({
                         aria-selected={activeTab === x}
                         data-testid={`hub-tab-${x}`}
                         className={cn(
-                          "-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+                          "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                           activeTab === x
-                            ? "border-primary text-foreground"
-                            : "border-transparent text-muted-foreground hover:text-foreground",
+                            ? "bg-card text-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground",
                         )}
                         onClick={() => setTab(x)}
                       >

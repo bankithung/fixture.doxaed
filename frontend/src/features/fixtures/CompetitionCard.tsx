@@ -105,6 +105,11 @@ export function CompetitionCard({
   const links = actions.filter((a) => a.kind === "link");
   const hasKnockout = c.matches.some((m) => m.stage === "knockout");
 
+  // Secondary actions ("View matches", "Adjust schedule", "Change format")
+  // read as real, visible controls — a bordered chip-button, not faint text.
+  const secondaryBtn =
+    "inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
   return (
     <div
       data-testid={`competition-card-${key}`}
@@ -199,7 +204,7 @@ export function CompetitionCard({
           ) : null}
           {links.length > 0 ||
           (primary?.action === "preview" && !pres.note && canManage) ? (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+            <div className="flex flex-wrap items-center gap-1.5">
               {links.map((a) => (
                 <button
                   key={a.action}
@@ -208,7 +213,7 @@ export function CompetitionCard({
                   aria-expanded={
                     a.action === "view_matches" ? detailOpen : undefined
                   }
-                  className="font-medium text-primary hover:underline"
+                  className={secondaryBtn}
                   onClick={() =>
                     a.action === "view_matches" ? onToggleDetail() : onAction(a)
                   }
@@ -216,13 +221,13 @@ export function CompetitionCard({
                   {a.label}
                 </button>
               ))}
-              {/* Quiet secondary: a ready card with a chosen format can still
-                  revisit Step 2 (capability map — the wizard stays reachable). */}
+              {/* A ready card with a chosen format can still revisit Step 2
+                  (capability map — the wizard stays reachable). */}
               {primary?.action === "preview" && !pres.note && canManage ? (
                 <button
                   type="button"
                   data-testid={`change-format-${key}`}
-                  className="font-medium text-muted-foreground hover:text-foreground hover:underline"
+                  className={secondaryBtn}
                   onClick={() =>
                     onAction({
                       label: t("Change format"),

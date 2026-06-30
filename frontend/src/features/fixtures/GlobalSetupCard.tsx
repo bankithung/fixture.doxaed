@@ -146,7 +146,7 @@ export function GlobalSetupCard({
             {t("Step 1 · When & where")}
           </h3>
           <p className="truncate text-xs text-muted-foreground">
-            {t("Your match days, venues, play times and breaks. Edit any time.")}
+            {t("Match days, venues, times and breaks.")}
           </p>
         </div>
         {canManage ? (
