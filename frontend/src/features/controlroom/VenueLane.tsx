@@ -7,6 +7,9 @@ import { IN_PLAY, isCalled, type SlotDelay, delayFor } from "./format";
 import { MatchTile } from "./MatchTile";
 import type { ControlRoomPerms } from "./MatchActionsMenu";
 
+/** How many upcoming matches a lane shows before folding the rest behind a toggle. */
+const LANE_CAP = 6;
+
 /**
  * One venue's lane for the selected day (spec §1.1): a NOW slot (the in-play
  * match, else the called one) followed by the NEXT list in kick-off order.
@@ -38,8 +41,12 @@ export function VenueLane({
     null;
   // Mobile accordion: lanes with a NOW slot start open.
   const [open, setOpen] = useState(now !== null);
+  // Busy courts run 20+ slots a day; show the next handful and fold the rest
+  // behind a toggle so the lane stays a professional height, not a wall.
+  const [showAll, setShowAll] = useState(false);
   const expanded = !isMobile || open;
   const rest = now === null ? matches : matches.filter((m) => m.id !== now.id);
+  const visibleRest = showAll ? rest : rest.slice(0, LANE_CAP);
   const liveCount = matches.filter((m) => IN_PLAY.has(m.status)).length;
 
   const header = (
@@ -107,7 +114,7 @@ export function VenueLane({
               ) : null}
             </>
           ) : null}
-          {rest.map((m) => (
+          {visibleRest.map((m) => (
             <MatchTile
               key={m.id}
               match={m}
@@ -118,6 +125,16 @@ export function VenueLane({
               delayMinutes={delayFor(delays, m)}
             />
           ))}
+          {rest.length > LANE_CAP ? (
+            <button
+              type="button"
+              data-testid={`lane-more-${venue || "unassigned"}`}
+              onClick={() => setShowAll((o) => !o)}
+              className="mt-0.5 self-start rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {showAll ? t("Show fewer") : `${t("Show all")} ${rest.length}`}
+            </button>
+          ) : null}
         </div>
       ) : null}
     </section>

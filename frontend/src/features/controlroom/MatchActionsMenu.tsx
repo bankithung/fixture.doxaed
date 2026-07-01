@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Megaphone, Minus, Plus, Radio, SquarePen, UserCog } from "lucide-react";
+import { Flag, Megaphone, Minus, Plus, Radio, SquarePen, UserCog } from "lucide-react";
 import { liveApi } from "@/api/live";
 import {
   tournamentsApi,
@@ -410,14 +410,16 @@ export function MatchActionsMenu({
     return null; // read-only member — the tile stays a pure status card
   }
 
+  const iconBtn =
+    "inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
   return (
-    <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
+    <div className="flex flex-wrap items-center gap-1 border-t border-border pt-2">
       {showQuick ? (
         <Button
           size="sm"
           variant="outline"
           data-testid={`quick-result-${match.id}`}
-          className="border-primary/40 text-primary hover:bg-primary/10"
+          className="h-8 border-primary/40 text-primary hover:bg-primary/10"
           onClick={() => setQuick(true)}
         >
           <SquarePen aria-hidden="true" className="h-3.5 w-3.5" />
@@ -428,6 +430,7 @@ export function MatchActionsMenu({
         <Button
           size="sm"
           variant={called ? "ghost" : "outline"}
+          className="h-8"
           data-testid={`call-${match.id}`}
           disabled={call.isPending}
           onClick={() => call.mutate()}
@@ -436,37 +439,43 @@ export function MatchActionsMenu({
           {called ? t("Clear call") : t("Call to court")}
         </Button>
       ) : null}
-      {showConsole ? (
-        <Link
-          to={routes.matchConsole(tournamentId, match.id)}
-          data-testid={`console-${match.id}`}
-          className="inline-flex h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-primary transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Radio aria-hidden="true" className="h-3.5 w-3.5" />
-          {t("Open console")}
-        </Link>
-      ) : null}
-      <span className="ml-auto flex items-center gap-1.5">
-        {showAssign ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            data-testid={`assign-${match.id}`}
-            onClick={() => setAssign(true)}
+      {/* Secondary verbs collapse to labelled icon buttons — the ops board runs
+          20+ tiles a lane, so a five-button row per tile was the clutter. */}
+      <span className="ml-auto flex items-center gap-0.5">
+        {showConsole ? (
+          <Link
+            to={routes.matchConsole(tournamentId, match.id)}
+            data-testid={`console-${match.id}`}
+            aria-label={t("Open console")}
+            title={t("Open console")}
+            className={`${iconBtn} text-primary`}
           >
-            <UserCog aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("Assign")}
-          </Button>
+            <Radio aria-hidden="true" className="h-4 w-4" />
+          </Link>
+        ) : null}
+        {showAssign ? (
+          <button
+            type="button"
+            data-testid={`assign-${match.id}`}
+            aria-label={t("Assign officials")}
+            title={t("Assign")}
+            onClick={() => setAssign(true)}
+            className={`${iconBtn} text-muted-foreground hover:text-foreground`}
+          >
+            <UserCog aria-hidden="true" className="h-4 w-4" />
+          </button>
         ) : null}
         {showWalkover ? (
-          <Button
-            size="sm"
-            variant="ghost"
+          <button
+            type="button"
             data-testid={`walkover-${match.id}`}
+            aria-label={t("Award walkover")}
+            title={t("Walkover")}
             onClick={() => setWalkover(true)}
+            className={`${iconBtn} text-muted-foreground hover:text-foreground`}
           >
-            {t("Walkover…")}
-          </Button>
+            <Flag aria-hidden="true" className="h-4 w-4" />
+          </button>
         ) : null}
         {perms.canSchedule ? (
           <MatchRepairMenu

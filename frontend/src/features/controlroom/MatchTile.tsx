@@ -1,9 +1,26 @@
 import { Lock, Radio, UserCog } from "lucide-react";
 import type { ControlRoomMatch, MatchRow } from "@/api/tournaments";
+import { LeafLabel } from "@/features/fixtures/LeafLabel";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { FINAL, IN_PLAY, fmtKickoff, isCalled } from "./format";
 import { MatchActionsMenu, type ControlRoomPerms } from "./MatchActionsMenu";
+
+/**
+ * The group / round sub-label WITHOUT repeating the competition: the last
+ * dash-segment of `group_label` when it adds something over the leaf. The
+ * server sends the whole chain twice ("Sepak — u-14 — girls — 3v3" then
+ * "… — 3v3 — Group A"); we show the leaf as pills once and just "Group A" here.
+ */
+function groupSuffix(
+  leafLabel: string,
+  groupLabel: string | null | undefined,
+): string | null {
+  if (!groupLabel || groupLabel === leafLabel) return null;
+  const last = groupLabel.split(" — ").pop()?.trim();
+  if (!last || leafLabel.endsWith(last)) return null;
+  return last;
+}
 
 /** Status → pill presentation, tokens only (mirrors MatchConsolePage). */
 function statusMeta(m: ControlRoomMatch): {
@@ -100,29 +117,24 @@ export function MatchTile({
   const showScore = IN_PLAY.has(match.status) || FINAL.has(match.status);
   const sets = match.set_scores ?? [];
   const hasPens = match.home_pens != null && match.away_pens != null;
+  const grp = groupSuffix(match.leaf_label, match.group_label);
 
   return (
     <article
       data-testid={`tile-${match.id}`}
       className={cn(
-        "flex flex-col gap-1.5 rounded-xl border border-border bg-card p-3 shadow-sm",
+        "flex flex-col gap-2 rounded-lg border border-border bg-card p-2.5 shadow-sm",
         highlight && "ring-1 ring-primary",
       )}
     >
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        <span className="font-tabular font-semibold text-foreground">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="font-tabular text-sm font-semibold text-foreground">
           {fmtKickoff(match.scheduled_at, timeZone)}
         </span>
-        {match.leaf_label ? (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[0.6875rem]">
-            {match.leaf_label}
-          </span>
-        ) : null}
-        {match.group_label ? <span>{match.group_label}</span> : null}
         {delayMinutes ? (
           <span
             data-testid={`delay-${match.id}`}
-            className="rounded-full bg-warning-muted px-2 py-0.5 font-tabular text-[0.6875rem] font-medium text-warning-foreground"
+            className="rounded bg-warning-muted px-1.5 py-0.5 font-tabular text-[0.6875rem] font-medium text-warning-foreground"
           >
             +{delayMinutes} {t("min")}
           </span>
@@ -139,6 +151,17 @@ export function MatchTile({
         </span>
       </div>
 
+      {match.leaf_label ? (
+        <div className="flex flex-wrap items-center gap-1">
+          <LeafLabel label={match.leaf_label} />
+          {grp ? (
+            <span className="rounded bg-secondary px-1.5 py-0.5 text-xs font-medium text-secondary-foreground">
+              {grp}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm">
         <span className="truncate text-right font-medium">
           {match.home_team?.name ?? t("TBD")}
@@ -146,7 +169,7 @@ export function MatchTile({
         <span
           className={cn(
             "px-1 text-center font-tabular",
-            showScore ? "font-semibold" : "text-xs text-muted-foreground",
+            showScore ? "text-base font-semibold" : "text-xs text-muted-foreground",
           )}
         >
           {showScore
