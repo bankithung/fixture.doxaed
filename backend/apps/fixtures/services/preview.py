@@ -403,8 +403,14 @@ def _fairness(
     rest_median_all = (
         median(rest_min_by_team.values()) if rest_min_by_team else None
     )
+    # An early-start outlier must be BOTH more than double the median AND a
+    # meaningful absolute count. Without the floor, a median of 0 (most teams
+    # never open a court) makes "> 2*median" fire for EVERY team that plays a
+    # single morning match — flooding the check with "1 vs median 0" noise.
+    # Opening one or two morning sessions is normal; 3+ is the real outlier.
+    EARLY_OUTLIER_FLOOR = 3
     for e in teams:
-        if e["early"] > 2 * early_median:
+        if e["early"] >= EARLY_OUTLIER_FLOOR and e["early"] > 2 * early_median:
             flags.append({
                 "code": "early_outlier", "team_id": e["team_id"],
                 "value": e["early"], "median": early_median,

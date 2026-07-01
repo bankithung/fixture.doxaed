@@ -132,6 +132,52 @@ def test_fairness_flags_early_slot_outlier_over_double_median():
     assert flags[0]["median"] == 1  # early counts [3,1,1,1]
 
 
+def test_fairness_no_early_outlier_for_single_morning_match_when_median_zero():
+    # Regression: with median 0 (most teams never open a court), "> 2*median"
+    # used to flag EVERY team that played one morning match, flooding the check
+    # with "1 vs median 0" noise. Opening one session is normal -> no flags.
+    cfg = _cfg(venues=["G1"], rest_minutes=0)
+    reqs = [
+        _req("m1", "A", "B", 1), _req("m2", "C", "D", 2),
+        _req("m3", "E", "F", 3), _req("m4", "G", "H", 4),
+        _req("m5", "I", "J", 5),
+    ]
+    assignments = {
+        "m1": (datetime(2026, 8, 1, 9, 0), "G1"),   # A, B early
+        "m2": (datetime(2026, 8, 1, 9, 30), "G1"),  # C, D early
+        "m3": (datetime(2026, 8, 1, 14, 0), "G1"),  # rest are afternoon
+        "m4": (datetime(2026, 8, 1, 14, 30), "G1"),
+        "m5": (datetime(2026, 8, 1, 15, 0), "G1"),
+    }
+    out = _fairness(assignments, reqs, cfg)
+    # early counts: A,B,C,D=1, E..J=0 -> median 0; nobody opens 3+ sessions.
+    assert [f for f in out["flags"] if f["code"] == "early_outlier"] == []
+
+
+def test_fairness_early_outlier_flags_repeat_opener_when_median_zero():
+    # A opens the day three times while most teams never do -> a real outlier.
+    cfg = _cfg(venues=["G1", "G2"], rest_minutes=0)
+    reqs = [
+        _req("m1", "A", "B", 1), _req("m2", "A", "C", 2), _req("m3", "A", "D", 3),
+        _req("m4", "E", "F", 4), _req("m5", "G", "H", 5),
+        _req("m6", "I", "J", 6), _req("m7", "K", "L", 7),
+    ]
+    assignments = {
+        "m1": (datetime(2026, 8, 1, 9, 0), "G1"),
+        "m2": (datetime(2026, 8, 2, 9, 0), "G1"),
+        "m3": (datetime(2026, 8, 3, 9, 0), "G1"),
+        "m4": (datetime(2026, 8, 1, 14, 0), "G1"),
+        "m5": (datetime(2026, 8, 1, 14, 0), "G2"),
+        "m6": (datetime(2026, 8, 1, 15, 0), "G1"),
+        "m7": (datetime(2026, 8, 1, 15, 0), "G2"),
+    }
+    out = _fairness(assignments, reqs, cfg)
+    flags = [f for f in out["flags"] if f["code"] == "early_outlier"]
+    # early counts: A=3, B,C,D=1, E..L=0 -> median 0, only A opens 3+.
+    assert [f["team_id"] for f in flags] == ["A"]
+    assert flags[0]["value"] == 3 and flags[0]["median"] == 0
+
+
 # ---------------------------------------------------------- preview response
 @pytest.mark.django_db
 def test_preview_fairness_block_resolves_names_and_persists_nothing():
