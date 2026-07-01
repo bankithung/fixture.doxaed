@@ -1,27 +1,16 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ListChecks, MapPin, Radio, Search, SquarePen, UserCog } from "lucide-react";
+import { ListChecks, Search } from "lucide-react";
 import { liveApi } from "@/api/live";
 import { tournamentsApi, type ControlRoomMatch } from "@/api/tournaments";
 import { useAuthStore } from "@/features/auth/authStore";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
-import { AssignDrawer } from "@/features/controlroom/AssignDrawer";
-import {
-  QuickResultDialog,
-  type ControlRoomPerms,
-} from "@/features/controlroom/MatchActionsMenu";
-import { StatusPill } from "@/features/controlroom/MatchTile";
-import {
-  FINAL,
-  IN_PLAY,
-  fmtDayLabel,
-  fmtKickoff,
-} from "@/features/controlroom/format";
+import type { ControlRoomPerms } from "@/features/controlroom/MatchActionsMenu";
+import { MatchRow } from "@/features/controlroom/MatchRow";
+import { FINAL, IN_PLAY, fmtDayLabel } from "@/features/controlroom/format";
 import { qk } from "@/lib/queryKeys";
-import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { useEventStream } from "@/lib/useEventStream";
@@ -88,129 +77,7 @@ const STATUS_GROUP_LABEL: Record<string, string> = {
 };
 const STATUS_GROUP_ORDER = ["live", "upcoming", "done", "other"];
 
-/** One match line on the board — time, match-up, competition + venue, crew
- * chips, score/status, and the permission-gated inline actions. */
-function BoardRow({
-  match,
-  tz,
-  tournamentId,
-  perms,
-  onAssign,
-  onResult,
-}: {
-  match: ControlRoomMatch;
-  tz: string;
-  tournamentId: string;
-  perms: ControlRoomPerms;
-  onAssign: () => void;
-  onResult: () => void;
-}): React.ReactElement {
-  const officials = match.officials ?? [];
-  const isScorer = match.scorer !== null && match.scorer.id === perms.userId;
-  const showConsole = perms.canScore || isScorer;
-  const showResult =
-    showConsole && (match.status === "scheduled" || match.status === "live");
-  const showScore = IN_PLAY.has(match.status) || FINAL.has(match.status);
-
-  return (
-    <div
-      data-testid={`board-row-${match.id}`}
-      className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3 shadow-sm lg:flex-row lg:items-center"
-    >
-      {/* Time + matchup */}
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <span className="w-12 shrink-0 font-tabular text-sm font-semibold tabular-nums">
-          {match.scheduled_at ? fmtKickoff(match.scheduled_at, tz) : t("TBD")}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm">
-            <span className="truncate text-right font-medium">
-              {match.home_team?.name ?? t("TBD")}
-            </span>
-            <span
-              className={cn(
-                "px-1 text-center font-tabular",
-                showScore ? "font-semibold" : "text-xs text-muted-foreground",
-              )}
-            >
-              {showScore
-                ? `${match.home_score ?? 0} – ${match.away_score ?? 0}`
-                : t("vs")}
-            </span>
-            <span className="truncate font-medium">
-              {match.away_team?.name ?? t("TBD")}
-            </span>
-          </div>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-            <span>{leafLabelOf(match)}</span>
-            {match.venue ? (
-              <span className="inline-flex items-center gap-0.5">
-                <MapPin aria-hidden="true" className="h-3 w-3" />
-                {match.venue}
-              </span>
-            ) : null}
-          </p>
-        </div>
-      </div>
-
-      {/* Crew + status + actions */}
-      <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
-        {match.scorer ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[0.6875rem] text-muted-foreground">
-            <Radio aria-hidden="true" className="h-3 w-3" />
-            {match.scorer.name}
-          </span>
-        ) : null}
-        {officials.map((o) => (
-          <span
-            key={o.id}
-            title={o.role}
-            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[0.6875rem] text-muted-foreground"
-          >
-            <UserCog aria-hidden="true" className="h-3 w-3" />
-            {o.name}
-          </span>
-        ))}
-        <StatusPill match={match} />
-
-        {showResult ? (
-          <Button
-            size="sm"
-            variant="outline"
-            data-testid={`board-result-${match.id}`}
-            className="border-primary/40 text-primary hover:bg-primary/10"
-            onClick={onResult}
-          >
-            <SquarePen aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("Result")}
-          </Button>
-        ) : null}
-        {showConsole ? (
-          <Link
-            to={routes.matchConsole(tournamentId, match.id)}
-            data-testid={`board-console-${match.id}`}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-primary transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <Radio aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("Console")}
-          </Link>
-        ) : null}
-        {perms.canSchedule ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            data-testid={`board-assign-${match.id}`}
-            onClick={onAssign}
-          >
-            <UserCog aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("Assign")}
-          </Button>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
+/** A headline count cell in the stats strip. */
 function StatCell({
   label,
   value,
@@ -258,8 +125,6 @@ export function MatchesBoardPage(): React.ReactElement {
   const [needsOfficial, setNeedsOfficial] = useState(false);
   const [mine, setMine] = useState(false);
   const [search, setSearch] = useState("");
-  const [assignMatch, setAssignMatch] = useState<ControlRoomMatch | null>(null);
-  const [resultMatch, setResultMatch] = useState<ControlRoomMatch | null>(null);
 
   const tournamentQ = useQuery({
     queryKey: qk.tournament(id),
@@ -293,6 +158,9 @@ export function MatchesBoardPage(): React.ReactElement {
   });
 
   const matches = useMemo(() => matchesQ.data ?? [], [matchesQ.data]);
+  // Same-competition matches for the repair menu's swap picker.
+  const siblingsOf = (m: ControlRoomMatch): ControlRoomMatch[] =>
+    matches.filter((x) => x.leaf_key === m.leaf_key);
 
   const competitions = useMemo(() => {
     const map = new Map<string, string>();
@@ -549,16 +417,16 @@ export function MatchesBoardPage(): React.ReactElement {
                   {g.matches.length}
                 </span>
               </div>
-              <div className="flex flex-col gap-2">
+              <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
                 {g.matches.map((m) => (
-                  <BoardRow
+                  <MatchRow
                     key={m.id}
                     match={m}
-                    tz={tz}
+                    timeZone={tz}
                     tournamentId={id}
+                    siblings={siblingsOf(m)}
                     perms={perms}
-                    onAssign={() => setAssignMatch(m)}
-                    onResult={() => setResultMatch(m)}
+                    showCourt={groupBy !== "venue"}
                   />
                 ))}
               </div>
@@ -566,21 +434,6 @@ export function MatchesBoardPage(): React.ReactElement {
           ))}
         </div>
       )}
-
-      {assignMatch ? (
-        <AssignDrawer
-          tournamentId={id}
-          match={assignMatch}
-          onClose={() => setAssignMatch(null)}
-        />
-      ) : null}
-      {resultMatch ? (
-        <QuickResultDialog
-          tournamentId={id}
-          match={resultMatch}
-          onClose={() => setResultMatch(null)}
-        />
-      ) : null}
     </div>
   );
 }

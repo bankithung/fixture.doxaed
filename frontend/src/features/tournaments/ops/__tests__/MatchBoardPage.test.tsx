@@ -137,43 +137,45 @@ afterEach(() => {
 describe("MatchesBoardPage", () => {
   it("lists every match with headline counts and manager actions", async () => {
     mount();
-    expect(await screen.findByTestId("board-row-m1")).toBeInTheDocument();
-    expect(screen.getByTestId("board-row-m2")).toBeInTheDocument();
-    expect(screen.getByTestId("board-row-m3")).toBeInTheDocument();
+    expect(await screen.findByTestId("tile-m1")).toBeInTheDocument();
+    expect(screen.getByTestId("tile-m2")).toBeInTheDocument();
+    expect(screen.getByTestId("tile-m3")).toBeInTheDocument();
 
     // Counts over the whole fixture: 1 completed, 2 missing a scorer.
     expect(screen.getByText("Completed").parentElement).toHaveTextContent("1");
     expect(screen.getByText("No scorer").parentElement).toHaveTextContent("2");
 
-    // Manager: assign + inline result on a live/scheduled match; the completed
-    // match offers no result entry.
-    expect(screen.getByTestId("board-assign-m1")).toBeInTheDocument();
-    expect(screen.getByTestId("board-result-m1")).toBeInTheDocument();
-    expect(screen.queryByTestId("board-result-m3")).toBeNull();
+    // Manager: the row's action menu offers assign + inline result on a
+    // scheduled match; the completed match offers no result entry.
+    await userEvent.click(screen.getByTestId("actions-m1"));
+    expect(screen.getByTestId("assign-m1")).toBeInTheDocument();
+    expect(screen.getByTestId("quick-result-m1")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("actions-m3"));
+    expect(screen.queryByTestId("quick-result-m3")).toBeNull();
   });
 
   it("filters to matches needing a scorer", async () => {
     mount();
-    await screen.findByTestId("board-row-m1");
+    await screen.findByTestId("tile-m1");
     await userEvent.click(screen.getByTestId("board-needs-scorer"));
-    expect(screen.queryByTestId("board-row-m1")).toBeNull(); // has a scorer
-    expect(screen.getByTestId("board-row-m2")).toBeInTheDocument();
-    expect(screen.getByTestId("board-row-m3")).toBeInTheDocument();
+    expect(screen.queryByTestId("tile-m1")).toBeNull(); // has a scorer
+    expect(screen.getByTestId("tile-m2")).toBeInTheDocument();
+    expect(screen.getByTestId("tile-m3")).toBeInTheDocument();
   });
 
   it("filters by status and by free-text search", async () => {
     mount();
-    await screen.findByTestId("board-row-m1");
+    await screen.findByTestId("tile-m1");
 
     await userEvent.click(screen.getByTestId("board-status-done"));
-    expect(screen.queryByTestId("board-row-m1")).toBeNull();
-    expect(screen.getByTestId("board-row-m3")).toBeInTheDocument();
+    expect(screen.queryByTestId("tile-m1")).toBeNull();
+    expect(screen.getByTestId("tile-m3")).toBeInTheDocument();
 
     // Reset status, then search narrows to the U17 competition.
     await userEvent.click(screen.getByTestId("board-status-all"));
     await userEvent.type(screen.getByTestId("board-search"), "u17");
-    expect(screen.queryByTestId("board-row-m1")).toBeNull();
-    expect(screen.queryByTestId("board-row-m2")).toBeNull();
-    expect(screen.getByTestId("board-row-m3")).toBeInTheDocument();
+    expect(screen.queryByTestId("tile-m1")).toBeNull();
+    expect(screen.queryByTestId("tile-m2")).toBeNull();
+    expect(screen.getByTestId("tile-m3")).toBeInTheDocument();
   });
 });

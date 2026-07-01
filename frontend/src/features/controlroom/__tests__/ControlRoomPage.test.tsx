@@ -169,10 +169,6 @@ const STAGE_BASE: StagePayload = {
   stages: [],
 };
 const MANAGER: StagePayload = { ...STAGE_BASE, can_manage: true };
-const SCORER: StagePayload = {
-  ...STAGE_BASE,
-  modules: ["match.center_admin_view", "match.scoring_console"],
-};
 const VIEWER: StagePayload = {
   ...STAGE_BASE,
   modules: ["match.center_admin_view"],
@@ -219,7 +215,7 @@ afterEach(() => {
 });
 
 describe("ControlRoomPage", () => {
-  it("renders day chips, court groups and the board", async () => {
+  it("renders the today dashboard: day chips + analytics panels", async () => {
     mount();
 
     // Day chips with progress counts; the server-defaulted day is selected.
@@ -228,28 +224,28 @@ describe("ControlRoomPage", () => {
     expect(chip).toHaveTextContent("1/4");
     expect(screen.getByTestId("day-chip-2026-06-21")).toBeInTheDocument();
 
-    // One lane per venue, matches in time order.
-    const main = screen.getByTestId("lane-Main Ground");
-    expect(within(main).getByTestId("tile-m1")).toBeInTheDocument();
-    expect(within(main).getByTestId("tile-m2")).toBeInTheDocument();
-    expect(screen.getByTestId("lane-Side Pitch")).toBeInTheDocument();
+    // The dashboard panels are present.
+    expect(screen.getByText("Live now")).toBeInTheDocument();
+    expect(screen.getByText("Courts today")).toBeInTheDocument();
+    expect(screen.getByText("Competition progress")).toBeInTheDocument();
+    expect(screen.getByText("Recent results")).toBeInTheDocument();
+    expect(screen.getByText("Needs attention")).toBeInTheDocument();
 
-    // The live match: pulse + running score + period; tournament-TZ kick-off.
-    const m1 = screen.getByTestId("tile-m1");
-    expect(within(m1).getByTestId("live-pulse-m1")).toBeInTheDocument();
-    expect(m1).toHaveTextContent("1 – 0");
-    expect(m1).toHaveTextContent("first half");
-    expect(m1).toHaveTextContent("09:00"); // 03:30Z in Asia/Kolkata
+    // Live-now surfaces the in-play match; courts list both venues.
+    const live = screen.getByText("Live now").closest("section")!;
+    expect(within(live).getByText("Alpha FC")).toBeInTheDocument();
+    const courts = screen.getByText("Courts today").closest("section")!;
+    expect(within(courts).getByText("Main Ground")).toBeInTheDocument();
+    expect(within(courts).getByText("Side Pitch")).toBeInTheDocument();
 
-    // Called state shows on the scheduled-but-called match.
-    expect(screen.getByTestId("pill-m2")).toHaveTextContent("Called");
+    // The completed match's score shows in recent results.
+    const recent = screen.getByText("Recent results").closest("section")!;
+    expect(within(recent).getByText("2 – 1")).toBeInTheDocument();
 
-    // The board is the single source of truth; "By time" is the cross-court
-    // up-next that replaced the old queue rail.
-    expect(screen.getByTestId("board")).toBeInTheDocument();
-    await userEvent.click(screen.getByTestId("group-time"));
-    expect(screen.getByTestId("tile-m2")).toBeInTheDocument();
-    expect(screen.getByTestId("tile-m4")).toBeInTheDocument();
+    // And a jump to the full matches board (where every action lives).
+    expect(
+      screen.getByRole("link", { name: "Matches board" }),
+    ).toBeInTheDocument();
   });
 
   it("shows the operations band with the day's live + progress counts", async () => {
@@ -279,70 +275,6 @@ describe("ControlRoomPage", () => {
     );
   });
 
-  it("managers get call / clear-call, walkover and the repair menu", async () => {
-    mount();
-    await screen.findByTestId("tile-m4");
-
-    // Repair overflow (move/delay/swap/lock) rides the row directly; absent on
-    // the completed match.
-    expect(screen.getByTestId("repair-menu-m4")).toBeInTheDocument();
-    expect(screen.queryByTestId("repair-menu-m3")).toBeNull();
-
-    // Open m4's action menu: Call to court + Award walkover.
-    await userEvent.click(screen.getByTestId("actions-m4"));
-    expect(screen.getByTestId("call-m4")).toHaveTextContent("Call to court");
-    expect(screen.getByTestId("walkover-m4")).toBeInTheDocument();
-    await userEvent.click(screen.getByTestId("call-m4"));
-    await waitFor(() => expect(liveApi.callMatch).toHaveBeenCalledWith("m4"));
-
-    // The called match shows Clear call in its own menu.
-    await userEvent.click(screen.getByTestId("actions-m2"));
-    expect(screen.getByTestId("call-m2")).toHaveTextContent("Clear call");
-  });
-
-  it("clearing a call hits the DELETE path", async () => {
-    mount();
-    await userEvent.click(await screen.findByTestId("actions-m2"));
-    await userEvent.click(await screen.findByTestId("call-m2"));
-    await waitFor(() => expect(liveApi.uncallMatch).toHaveBeenCalledWith("m2"));
-    expect(liveApi.callMatch).not.toHaveBeenCalled();
-  });
-
-  it("walkover requires picking the winner, then posts the transition", async () => {
-    mount();
-    await userEvent.click(await screen.findByTestId("actions-m4"));
-    await userEvent.click(await screen.findByTestId("walkover-m4"));
-
-    // Confirm is disabled until a winner is chosen.
-    expect(screen.getByTestId("walkover-confirm-m4")).toBeDisabled();
-    await userEvent.click(
-      screen.getByRole("button", { name: "Winning team" }),
-    );
-    await userEvent.click(screen.getByRole("option", { name: "Alpha FC" }));
-    await userEvent.click(screen.getByTestId("walkover-confirm-m4"));
-
-    await waitFor(() =>
-      expect(liveApi.transition).toHaveBeenCalledWith("m4", "walkover", {
-        winner_team_id: "tmh",
-      }),
-    );
-  });
-
-  it("Enter result: a manager records a goal score from the board in one dialog", async () => {
-    mount();
-    await userEvent.click(await screen.findByTestId("actions-m4"));
-    await userEvent.click(await screen.findByTestId("quick-result-m4"));
-    // Bump the home score to 1, leave away at 0, then save.
-    await userEvent.click(screen.getByTestId("qr-home-m4-inc"));
-    await userEvent.click(screen.getByTestId("quick-result-confirm-m4"));
-    await waitFor(() =>
-      expect(tournamentsApi.score).toHaveBeenCalledWith(
-        "m4",
-        expect.objectContaining({ home_score: 1, away_score: 0 }),
-      ),
-    );
-  });
-
   it("a plain member assigned as scorer gets a focused 'My matches' lane", async () => {
     useAuthStore.setState({ user: { id: "u-me" } as unknown as User });
     vi.mocked(tournamentsApi.stage).mockResolvedValue(VIEWER);
@@ -365,38 +297,9 @@ describe("ControlRoomPage", () => {
     expect(screen.getByTestId("quick-result-mine")).toBeInTheDocument();
   });
 
-  it("scorers see only their console link — no schedule verbs", async () => {
-    vi.mocked(tournamentsApi.stage).mockResolvedValue(SCORER);
-    mount();
-    await screen.findByTestId("tile-m1");
-
-    // Open m1's menu: console link present, no schedule verbs anywhere.
-    await userEvent.click(screen.getByTestId("actions-m1"));
-    expect(screen.getByTestId("console-m1")).toHaveAttribute(
-      "href",
-      "/tournaments/t1/matches/m1",
-    );
-    expect(screen.queryByTestId("call-m1")).toBeNull();
-    expect(screen.queryByTestId("walkover-m1")).toBeNull();
-    expect(screen.queryByTestId("repair-menu-m4")).toBeNull();
-  });
-
-  it("members without scheduling/scoring modules are read-only", async () => {
-    vi.mocked(tournamentsApi.stage).mockResolvedValue(VIEWER);
-    mount();
-    await screen.findByTestId("tile-m1");
-
-    // No action affordance at all for a read-only member.
-    expect(screen.queryByTestId("actions-m1")).toBeNull();
-    expect(screen.queryByTestId("console-m1")).toBeNull();
-    expect(screen.queryByTestId("repair-menu-m4")).toBeNull();
-    // The board itself stays visible.
-    expect(screen.getByTestId("board")).toBeInTheDocument();
-  });
-
   it("subscribes to the public SSE stream and refetches on a tick", async () => {
     mount();
-    await screen.findByTestId("tile-m1");
+    await screen.findByText("Live now");
 
     await waitFor(() =>
       expect(MockEventSource.instances.length).toBeGreaterThan(0),
@@ -425,7 +328,7 @@ describe("ControlRoomPage", () => {
 
   it("degrades to the polling indicator when the stream errors", async () => {
     mount();
-    await screen.findByTestId("tile-m1");
+    await screen.findByText("Live now");
     await waitFor(() =>
       expect(MockEventSource.instances.length).toBeGreaterThan(0),
     );
