@@ -255,21 +255,141 @@ function MatchCard({ match, tz }: { match: MatchRow; tz?: string }): React.React
   );
 }
 
-/** Even, centred y-positions per round: round 1 spread across `height`, then
- * every later match centred on its two positional children (2i, 2i+1). */
-function yCenters(rounds: MatchRow[][], height: number): number[][] {
-  const ys: number[][] = [];
-  const first = rounds[0] ?? [];
-  ys[0] = first.map((_, i) => ((i + 0.5) * height) / Math.max(first.length, 1));
-  for (let c = 1; c < rounds.length; c++) {
-    const prev = ys[c - 1]!;
-    ys[c] = (rounds[c] ?? []).map((_, i) => {
-      const a = prev[2 * i] ?? prev[prev.length - 1] ?? height / 2;
-      const b = prev[2 * i + 1] ?? a;
-      return (a + b) / 2;
-    });
+/** The match a winner_of pointer feeds from (DB uses match_id; the preview uses
+ * ref). "" for non-winner_of (a real team / group_position / tbd side). */
+function feederId(src: MatchSource | null | undefined): string {
+  if (!src || src.type !== "winner_of") return "";
+  const raw =
+    (src as Record<string, unknown>).match_id ?? (src as Record<string, unknown>).ref;
+  return raw != null ? String(raw) : "";
+}
+
+/** Round name by DISTANCE-TO-FINAL (byes/play-ins make match count unreliable):
+ * 0 -> Final, 1 -> Semi-finals, 2 -> Quarter-finals, else Round of 2^(d+1). */
+function roundNameByDepth(d: number): string {
+  if (d <= 0) return t("Final");
+  if (d === 1) return t("Semi-finals");
+  if (d === 2) return t("Quarter-finals");
+  return `${t("Round of")} ${2 ** (d + 1)}`;
+}
+
+interface BracketLayout {
+  pos: Map<string, { x: number; y: number }>;
+  feedersByParent: Map<string, string[]>;
+  colLabels: { x: number; label: string }[];
+  H: number;
+  canvasW: number;
+  finalX: number;
+  finalY: number;
+}
+
+/**
+ * Lay a knockout out as the REAL tree defined by its winner_of feeder pointers:
+ * each match sits one column LEFT of the slot it feeds, centred on its two
+ * children (a terminal side — real team / group slot — takes one leaf row).
+ * This keeps byes/play-ins correct (a play-in round no longer looks bigger than
+ * the round it feeds, and columns are named by distance-to-final, not by count).
+ * Falls back to round_no columns with even spacing when the pointers don't form
+ * one clean rooted tree.
+ */
+function layoutBracket(matches: MatchRow[]): BracketLayout {
+  const byId = new Map(matches.map((m) => [m.id, m]));
+  const feedersByParent = new Map<string, string[]>();
+  const parent = new Map<string, string>();
+  for (const m of matches) {
+    for (const src of [m.home_source, m.away_source]) {
+      const fid = feederId(src);
+      if (fid && byId.has(fid)) {
+        parent.set(fid, m.id);
+        const list = feedersByParent.get(m.id);
+        if (list) list.push(fid);
+        else feedersByParent.set(m.id, [fid]);
+      }
+    }
   }
-  return ys;
+  const roots = matches.filter((m) => !parent.has(m.id));
+  const colX = (c: number): number => c * (CARD_W + COL_GAP);
+  const pos = new Map<string, { x: number; y: number }>();
+
+  // Clean single-elimination tree? one root, every match reachable from it.
+  const depth = new Map<string, number>();
+  let treeOk = roots.length === 1;
+  if (treeOk) {
+    depth.set(roots[0]!.id, 0);
+    const stack = [roots[0]!.id];
+    while (stack.length) {
+      const id = stack.pop()!;
+      for (const fid of feedersByParent.get(id) ?? []) {
+        if (!depth.has(fid)) {
+          depth.set(fid, depth.get(id)! + 1);
+          stack.push(fid);
+        }
+      }
+    }
+    treeOk = depth.size === matches.length;
+  }
+
+  if (treeOk) {
+    const maxDepth = Math.max(...depth.values());
+    const cols = maxDepth + 1;
+    let slot = 0;
+    const placeY = (id: string): number => {
+      const m = byId.get(id)!;
+      const centers: number[] = [];
+      for (const src of [m.home_source, m.away_source]) {
+        const fid = feederId(src);
+        if (fid && byId.has(fid)) centers.push(placeY(fid));
+        else {
+          centers.push((slot + 0.5) * ROW);
+          slot += 1;
+        }
+      }
+      const yc = centers.reduce((a, b) => a + b, 0) / centers.length;
+      pos.set(id, { x: colX(maxDepth - depth.get(id)!), y: yc });
+      return yc;
+    };
+    const finalY = placeY(roots[0]!.id);
+    return {
+      pos,
+      feedersByParent,
+      colLabels: Array.from({ length: cols }, (_, c) => ({
+        x: colX(c) + CARD_W / 2,
+        label: roundNameByDepth(maxDepth - c),
+      })),
+      H: Math.max(slot, 1) * ROW,
+      canvasW: cols * CARD_W + (cols - 1) * COL_GAP,
+      finalX: colX(maxDepth),
+      finalY,
+    };
+  }
+
+  // Fallback: columns by round_no, each round spread evenly across the tallest.
+  const byRound = new Map<number, MatchRow[]>();
+  for (const m of matches) {
+    const list = byRound.get(m.round_no);
+    if (list) list.push(m);
+    else byRound.set(m.round_no, [m]);
+  }
+  const keys = [...byRound.keys()].sort((a, b) => a - b);
+  const maxCount = Math.max(1, ...keys.map((r) => byRound.get(r)!.length));
+  const H = maxCount * ROW;
+  keys.forEach((r, c) => {
+    const col = byRound.get(r)!.slice().sort((a, b) => a.match_no - b.match_no);
+    col.forEach((m, i) => pos.set(m.id, { x: colX(c), y: ((i + 0.5) * H) / col.length }));
+  });
+  const lastCol = byRound.get(keys[keys.length - 1] ?? 0) ?? [];
+  return {
+    pos,
+    feedersByParent,
+    colLabels: keys.map((r, c) => ({
+      x: colX(c) + CARD_W / 2,
+      label: roundName(byRound.get(r)!.length * 2),
+    })),
+    H,
+    canvasW: Math.max(1, keys.length) * CARD_W + (keys.length - 1) * COL_GAP,
+    finalX: colX(Math.max(0, keys.length - 1)),
+    finalY: (lastCol[0] && pos.get(lastCol[0].id)?.y) || H / 2,
+  };
 }
 
 /**
@@ -318,21 +438,14 @@ export function FifaBracket({
   };
 
   // A loser_of-fed match is a consolation (3rd-place playoff), NOT part of the
-  // winner tree — pull it out (else the single-final check collapses) and draw
-  // it below the Final.
-  const consolation = columns
-    .flatMap(([, ms]) => ms)
+  // winner tree — pull it out and draw it below the Final.
+  const all = columns.flatMap(([, ms]) => ms);
+  const consolation = all
     .filter(isConsolation)
     .sort((a, b) => a.match_no - b.match_no);
-  const rounds = [...columns]
-    .sort((a, b) => a[0] - b[0])
-    .map(([, ms]) =>
-      ms.filter((m) => !isConsolation(m)).sort((a, b) => a.match_no - b.match_no),
-    )
-    .filter((r) => r.length > 0);
+  const bracketMatches = all.filter((m) => !isConsolation(m));
 
-  const R = rounds.length;
-  if (R === 0) {
+  if (bracketMatches.length === 0) {
     return (
       <div className="w-full rounded-2xl p-6" style={{ background: STAGE_BG }}>
         <p className="text-sm" style={{ color: "rgba(255,255,255,0.75)" }}>
@@ -342,22 +455,18 @@ export function FifaBracket({
     );
   }
 
-  const n0 = rounds[0]!.length;
-  const H = Math.max(n0, 1) * ROW;
-  const y = yCenters(rounds, H);
-  const xOf = (c: number): number => c * (CARD_W + COL_GAP);
+  const { pos, feedersByParent, colLabels, H, canvasW, finalX, finalY } =
+    layoutBracket(bracketMatches);
 
   // Consolation cards stack in the Final column, below the Final.
-  const finalX = xOf(R - 1);
-  const consTop = H / 2 + CARD_H / 2 + 24;
+  const consTop = finalY + CARD_H / 2 + 24;
   const consBlock = LABEL_H + 4 + CARD_H + 18;
   const canvasH = Math.max(
     H,
     consolation.length ? consTop + consolation.length * consBlock : H,
   );
-  const canvasW = R * CARD_W + (R - 1) * COL_GAP;
 
-  // Connectors: each parent (round c>=1) joins its two children (2i, 2i+1).
+  // Connectors: each feeder joins the slot it feeds (elbow via a shared bus).
   const seg: React.ReactElement[] = [];
   let segKey = 0;
   const hline = (x1: number, x2: number, yy: number): void => {
@@ -366,37 +475,34 @@ export function FifaBracket({
   const vline = (x: number, y1: number, y2: number): void => {
     seg.push(<span key={`s${segKey++}`} className="absolute" style={{ left: x - 1, top: Math.min(y1, y2), width: 2, height: Math.abs(y2 - y1), background: C.line }} />);
   };
-  for (let c = 1; c < R; c++) {
-    rounds[c]!.forEach((_, i) => {
-      const c0 = y[c - 1]?.[2 * i];
-      const c1 = y[c - 1]?.[2 * i + 1];
-      if (c0 == null || c1 == null) return;
-      const childR = xOf(c - 1) + CARD_W;
-      const parentL = xOf(c);
-      const bus = (childR + parentL) / 2;
-      hline(childR, bus, c0);
-      hline(childR, bus, c1);
-      vline(bus, c0, c1);
-      hline(bus, parentL, y[c]![i]!);
-    });
+  for (const [pid, kids] of feedersByParent) {
+    const p = pos.get(pid);
+    const kp = kids
+      .map((k) => pos.get(k))
+      .filter((v): v is { x: number; y: number } => !!v);
+    if (!p || kp.length === 0) continue;
+    const bus = (Math.max(...kp.map((k) => k.x + CARD_W)) + p.x) / 2;
+    for (const k of kp) hline(k.x + CARD_W, bus, k.y);
+    const ys = [...kp.map((k) => k.y), p.y];
+    vline(bus, Math.min(...ys), Math.max(...ys));
+    hline(bus, p.x, p.y);
   }
 
-  const cards: React.ReactElement[] = [];
-  rounds.forEach((col, c) =>
-    col.forEach((m, i) =>
-      cards.push(
-        <div key={`m-${c}-${i}`} className="absolute" style={{ left: xOf(c), top: (y[c]?.[i] ?? H / 2) - CARD_H / 2, width: CARD_W }}>
-          <MatchCard match={m} tz={timeZone} />
-        </div>,
-      ),
-    ),
-  );
+  const cards = bracketMatches.map((m) => {
+    const p = pos.get(m.id) ?? { x: 0, y: H / 2 };
+    return (
+      <div key={`m-${m.id}`} className="absolute" style={{ left: p.x, top: p.y - CARD_H / 2, width: CARD_W }}>
+        <MatchCard match={m} tz={timeZone} />
+      </div>
+    );
+  });
 
-  const anyPlaceholder = rounds.some((r) => r.some((m) => !m.home_team || !m.away_team));
-  const fromGroups = rounds.some((r) =>
-    r.some((m) => m.home_source?.type === "group_position" || m.away_source?.type === "group_position"),
+  const anyPlaceholder = bracketMatches.some((m) => !m.home_team || !m.away_team);
+  const fromGroups = bracketMatches.some(
+    (m) => m.home_source?.type === "group_position" || m.away_source?.type === "group_position",
   );
-  const hasDates = rounds.some((r) => r.some((m) => m.scheduled_at)) || consolation.some((m) => m.scheduled_at);
+  const hasDates =
+    bracketMatches.some((m) => m.scheduled_at) || consolation.some((m) => m.scheduled_at);
   const canScroll = !(nav.start && nav.end);
 
   const arrowBtn = (dir: 1 | -1, disabled: boolean): React.ReactElement => (
@@ -444,15 +550,15 @@ export function FifaBracket({
         style={{ scrollbarWidth: "thin" }}
       >
         <div style={{ width: canvasW }}>
-          {/* round headers, one per column */}
+          {/* round headers, one per column (named by distance-to-final) */}
           <div className="relative" style={{ width: canvasW, height: HEADER_H }}>
-            {rounds.map((r, c) => (
+            {colLabels.map((h, c) => (
               <span
                 key={`h-${c}`}
                 className="absolute -translate-x-1/2 whitespace-nowrap text-[0.625rem] font-semibold uppercase tracking-wider"
-                style={{ left: xOf(c) + CARD_W / 2, top: 4, color: C.goldHi }}
+                style={{ left: h.x, top: 4, color: C.goldHi }}
               >
-                {roundName(r.length * 2)}
+                {h.label}
               </span>
             ))}
           </div>

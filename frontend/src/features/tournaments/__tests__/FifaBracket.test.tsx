@@ -97,6 +97,31 @@ describe("FifaBracket", () => {
     expect(screen.getAllByText("Alpha")).toHaveLength(2);
   });
 
+  it("lays out a play-in / bye bracket by feeder pointers, not by round size", () => {
+    // A play-in feeds the round of 8: round match-counts are [1,2,1,1] — the old
+    // "each round halves" layout mislabelled + overlapped these. The tree layout
+    // names columns by distance-to-final instead.
+    const p1 = m({ round_no: 1, home_team: team("a", "Alpha"), away_team: team("b", "Beta"),
+      home_source: { type: "team", team_id: "a" }, away_source: { type: "team", team_id: "b" } }, "p1");
+    const q1 = m({ round_no: 2, away_team: team("c", "Gamma"),
+      home_source: { type: "winner_of", ref: "p1" }, away_source: { type: "team", team_id: "c" } }, "q1");
+    const q2 = m({ round_no: 2, home_team: team("d", "Delta"), away_team: team("e", "Epsilon"),
+      home_source: { type: "team", team_id: "d" }, away_source: { type: "team", team_id: "e" } }, "q2");
+    const s1 = m({ round_no: 3,
+      home_source: { type: "winner_of", ref: "q1" }, away_source: { type: "winner_of", ref: "q2" } }, "s1");
+    const f1 = m({ round_no: 4, away_team: team("f", "Zeta"),
+      home_source: { type: "winner_of", ref: "s1" }, away_source: { type: "team", team_id: "f" } }, "f1");
+    render(<FifaBracket columns={[[1, [p1]], [2, [q1, q2]], [3, [s1]], [4, [f1]]]} />);
+    // Depth-based headers, each exactly once and correctly ordered by DEPTH.
+    expect(screen.getByText("Round of 16")).toBeInTheDocument();
+    expect(screen.getAllByText("Quarter-finals")).toHaveLength(1);
+    expect(screen.getAllByText("Semi-finals")).toHaveLength(1);
+    expect(screen.getAllByText("Final")).toHaveLength(1);
+    // The play-in teams render (fixed first-round matchup); later slots are TBD.
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Beta")).toBeInTheDocument();
+  });
+
   it("pulls a 3rd-place playoff out of the winner tree and labels it below", () => {
     const sf1 = m({ round_no: 1, home_team: team("a", "Alpha"), away_team: team("b", "Beta") }, "sf1");
     const sf2 = m({ round_no: 1, home_team: team("c", "Gamma"), away_team: team("d", "Delta") }, "sf2");
