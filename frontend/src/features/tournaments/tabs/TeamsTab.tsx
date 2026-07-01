@@ -310,6 +310,7 @@ export function TeamsTab(): React.ReactElement {
           <p className="font-tabular text-xs text-muted-foreground">
             {submittedCount}/{schoolCount} {t("schools have submitted teams")}
           </p>
+          <CategoryKpis teams={teams.data ?? []} />
           <TeamsTable
             groups={schoolGroups}
             tournamentId={id}
@@ -701,6 +702,96 @@ function CompetitionLabel({ label }: { label: string }): React.ReactElement {
         </span>
       ))}
     </span>
+  );
+}
+
+/** Per-competition registration summary (teams / schools / players), one entry
+ * per leaf, sorted by label (which groups by sport since the sport leads). */
+export interface CategoryKpi {
+  key: string;
+  label: string;
+  teams: number;
+  schools: number;
+  players: number;
+}
+
+export function categoryKpis(rows: TeamRow[]): CategoryKpi[] {
+  const map = new Map<
+    string,
+    { label: string; teams: number; schools: Set<string>; players: number }
+  >();
+  for (const tm of rows) {
+    const key = tm.leaf_key || "__uncategorized";
+    let c = map.get(key);
+    if (!c) {
+      c = { label: tm.pool, teams: 0, schools: new Set(), players: 0 };
+      map.set(key, c);
+    }
+    c.teams += 1;
+    if (tm.institution_id) c.schools.add(tm.institution_id);
+    c.players += tm.player_count ?? 0;
+  }
+  return [...map.entries()]
+    .map(([key, c]) => ({
+      key,
+      label: c.label,
+      teams: c.teams,
+      schools: c.schools.size,
+      players: c.players,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** A KPI panel: how many teams / schools / players registered in each
+ * competition category, so the organiser sees at a glance which are full and
+ * which still need entries. */
+function CategoryKpis({ teams }: { teams: TeamRow[] }): React.ReactElement | null {
+  const { cats, totalSchools } = useMemo(() => {
+    const cats = categoryKpis(teams);
+    const totalSchools = new Set(
+      teams.map((tm) => tm.institution_id).filter(Boolean),
+    ).size;
+    return { cats, totalSchools };
+  }, [teams]);
+  if (cats.length === 0) return null;
+
+  return (
+    <section className="flex flex-col gap-2" data-testid="category-kpis">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h3 className="text-sm font-semibold">{t("Registrations by category")}</h3>
+        <span className="font-tabular text-xs text-muted-foreground">
+          {cats.length} {cats.length === 1 ? t("category") : t("categories")}
+          {" · "}
+          {teams.length} {t("teams")}
+          {" · "}
+          {totalSchools} {t("schools")}
+        </span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {cats.map((c) => (
+          <div
+            key={c.key}
+            data-testid={`kpi-${c.key}`}
+            className="flex flex-col gap-1.5 rounded-lg border border-border bg-card p-3 shadow-sm"
+          >
+            <CompetitionLabel label={c.label} />
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-tabular text-xl font-semibold leading-none">
+                {c.teams}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {c.teams === 1 ? t("team") : t("teams")}
+              </span>
+            </div>
+            <div className="font-tabular text-[0.6875rem] text-muted-foreground">
+              {c.schools} {c.schools === 1 ? t("school") : t("schools")}
+              {" · "}
+              {c.players} {t("players")}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
