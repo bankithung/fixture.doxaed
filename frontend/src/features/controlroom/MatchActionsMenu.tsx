@@ -1,7 +1,16 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Flag, Megaphone, Minus, Plus, Radio, SquarePen, UserCog } from "lucide-react";
+import {
+  Flag,
+  Megaphone,
+  Minus,
+  MoreVertical,
+  Plus,
+  Radio,
+  SquarePen,
+  UserCog,
+} from "lucide-react";
 import { liveApi } from "@/api/live";
 import {
   tournamentsApi,
@@ -26,7 +35,9 @@ import { AssignDrawer } from "./AssignDrawer";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
+import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { IN_PLAY, isOverdue } from "./format";
 
 /**
  * The caller's control-room capabilities, derived ONCE from the stage payload
@@ -45,7 +56,7 @@ export interface ControlRoomPerms {
 }
 
 /** Manager-only walkover with an explicit winner (spec §1.3 / §2.e). */
-function WalkoverDialog({
+export function WalkoverDialog({
   tournamentId,
   match,
   onClose,
@@ -485,6 +496,267 @@ export function MatchActionsMenu({
           />
         ) : null}
       </span>
+      {walkover ? (
+        <WalkoverDialog
+          tournamentId={tournamentId}
+          match={match}
+          onClose={() => setWalkover(false)}
+        />
+      ) : null}
+      {quick ? (
+        <QuickResultDialog
+          tournamentId={tournamentId}
+          match={match}
+          onClose={() => setQuick(false)}
+        />
+      ) : null}
+      {assign ? (
+        <AssignDrawer
+          tournamentId={tournamentId}
+          match={match}
+          onClose={() => setAssign(false)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Dense-board / triage-strip action affordance: a MoreVertical overflow menu
+ * carrying the SAME role-gated verbs + dialogs as {@link MatchActionsMenu} (kept
+ * for the mobile card), plus an optional state-chosen PRIMARY button for the
+ * Needs-you strip. `idScope` namespaces the testids so the same match can render
+ * in both the strip and the board without id collisions — the board keeps the
+ * canonical testids the domain tests resolve against.
+ */
+export function RowActions({
+  tournamentId,
+  match,
+  siblings,
+  perms,
+  primary = false,
+  idScope = "",
+  showRepair = true,
+}: {
+  tournamentId: string;
+  match: ControlRoomMatch;
+  siblings: MatchRow[];
+  perms: ControlRoomPerms;
+  /** Needs-you strip: surface the single most-likely verb as a filled button. */
+  primary?: boolean;
+  /** Testid prefix (default "" = canonical). The strip passes "needs-". */
+  idScope?: string;
+  /** The board shows the repair overflow; the strip omits it. */
+  showRepair?: boolean;
+}): React.ReactElement | null {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [walkover, setWalkover] = useState(false);
+  const [quick, setQuick] = useState(false);
+  const [assign, setAssign] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const called = Boolean(match.called_at);
+  const call = useMutation({
+    mutationFn: () =>
+      called ? liveApi.uncallMatch(match.id) : liveApi.callMatch(match.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.controlRoom(tournamentId) });
+      qc.invalidateQueries({ queryKey: qk.matches(tournamentId) });
+      toast.push({
+        kind: "success",
+        title: called ? t("Call cleared") : t("Match called to the venue"),
+      });
+    },
+    onError: (e) =>
+      toast.push({
+        kind: "error",
+        title: t("Could not update the call"),
+        description: errorDetail(e),
+      }),
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent): void => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const showCall = perms.canSchedule && match.status === "scheduled";
+  const showConsole =
+    perms.canScore ||
+    (match.scorer !== null && match.scorer.id === perms.userId);
+  const showQuick =
+    showConsole && (match.status === "scheduled" || match.status === "live");
+  const showWalkover =
+    perms.canManage &&
+    match.status === "scheduled" &&
+    match.home_team !== null &&
+    match.away_team !== null;
+  const showAssign = perms.canSchedule;
+  const anyItem = showQuick || showCall || showConsole || showAssign || showWalkover;
+
+  if (!anyItem && !perms.canSchedule) return null; // read-only member
+
+  // The single verb the Needs-you strip promotes to a filled button.
+  const verb: "result" | "call" | "assign" | null = !primary
+    ? null
+    : showQuick && (IN_PLAY.has(match.status) || isOverdue(match))
+      ? "result"
+      : showCall && !called
+        ? "call"
+        : showAssign && (!match.venue || !match.scorer)
+          ? "assign"
+          : showQuick
+            ? "result"
+            : null;
+
+  const tid = (name: string): string => `${idScope}${name}-${match.id}`;
+  const item =
+    "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground disabled:opacity-50";
+
+  return (
+    <div ref={ref} className="relative flex shrink-0 items-center gap-1">
+      {verb === "result" ? (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 border-primary/40 text-primary hover:bg-primary/10"
+          data-testid={tid("quick-result")}
+          onClick={() => setQuick(true)}
+        >
+          <SquarePen aria-hidden="true" className="h-3.5 w-3.5" />
+          {t("Enter result")}
+        </Button>
+      ) : null}
+      {verb === "call" ? (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8"
+          data-testid={tid("call")}
+          disabled={call.isPending}
+          onClick={() => call.mutate()}
+        >
+          <Megaphone aria-hidden="true" className="h-3.5 w-3.5" />
+          {t("Call to court")}
+        </Button>
+      ) : null}
+      {verb === "assign" ? (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8"
+          data-testid={tid("assign")}
+          onClick={() => setAssign(true)}
+        >
+          <UserCog aria-hidden="true" className="h-3.5 w-3.5" />
+          {t("Assign")}
+        </Button>
+      ) : null}
+
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={t("Match actions")}
+        data-testid={tid("actions")}
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <MoreVertical aria-hidden="true" className="h-4 w-4" />
+      </button>
+
+      {open ? (
+        <div
+          role="menu"
+          aria-label={t("Match actions")}
+          className="absolute right-0 top-full z-40 mt-1 w-52 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg"
+        >
+          {showQuick && verb !== "result" ? (
+            <button
+              type="button"
+              role="menuitem"
+              data-testid={tid("quick-result")}
+              className={cn(item, "text-primary")}
+              onClick={() => {
+                setQuick(true);
+                setOpen(false);
+              }}
+            >
+              <SquarePen aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+              {t("Enter result")}
+            </button>
+          ) : null}
+          {showCall && verb !== "call" ? (
+            <button
+              type="button"
+              role="menuitem"
+              data-testid={tid("call")}
+              className={item}
+              disabled={call.isPending}
+              onClick={() => {
+                call.mutate();
+                setOpen(false);
+              }}
+            >
+              <Megaphone aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              {called ? t("Clear call") : t("Call to court")}
+            </button>
+          ) : null}
+          {showConsole ? (
+            <Link
+              to={routes.matchConsole(tournamentId, match.id)}
+              role="menuitem"
+              data-testid={tid("console")}
+              className={item}
+              onClick={() => setOpen(false)}
+            >
+              <Radio aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              {t("Open console")}
+            </Link>
+          ) : null}
+          {showAssign && verb !== "assign" ? (
+            <button
+              type="button"
+              role="menuitem"
+              data-testid={tid("assign")}
+              className={item}
+              onClick={() => {
+                setAssign(true);
+                setOpen(false);
+              }}
+            >
+              <UserCog aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              {t("Assign")}
+            </button>
+          ) : null}
+          {showWalkover ? (
+            <button
+              type="button"
+              role="menuitem"
+              data-testid={tid("walkover")}
+              className={cn(item, "text-destructive")}
+              onClick={() => {
+                setWalkover(true);
+                setOpen(false);
+              }}
+            >
+              <Flag aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+              {t("Award walkover")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {showRepair && perms.canSchedule ? (
+        <MatchRepairMenu tournamentId={tournamentId} match={match} siblings={siblings} />
+      ) : null}
+
       {walkover ? (
         <WalkoverDialog
           tournamentId={tournamentId}

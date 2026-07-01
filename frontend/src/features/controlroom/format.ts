@@ -27,6 +27,29 @@ export function fmtKickoff(iso: string | null, timeZone: string): string {
   }
 }
 
+/** A scheduled slot whose kickoff passed (+grace) with no result yet — the
+ * "awaiting result" exception the triage strip floats up. Excludes in-play. */
+export function isOverdue(m: ControlRoomMatch, graceMin = 10): boolean {
+  if (m.status !== "scheduled" || !m.scheduled_at) return false;
+  return new Date(m.scheduled_at).getTime() + graceMin * 60_000 < Date.now();
+}
+
+/** True when a match wants an operator's attention (drives the Needs-you strip
+ * + the "Needs you" KPI): overdue, live, called, or missing a court. */
+export function needsAttention(m: ControlRoomMatch): boolean {
+  return urgencyWeight(m) > 0;
+}
+
+/** Triage rank, higher = more urgent. Orders the Needs-you strip + the urgency
+ * sort. Done/quietly-scheduled matches score 0 (never in the strip). */
+export function urgencyWeight(m: ControlRoomMatch): number {
+  if (isOverdue(m)) return 100;
+  if (IN_PLAY.has(m.status)) return 80;
+  if (isCalled(m)) return 60;
+  if (m.status === "scheduled" && !m.venue) return 40;
+  return 0;
+}
+
 /** Compact day-chip label ("Sat, Jun 20") for an ISO tournament-TZ date. */
 export function fmtDayLabel(iso: string): string {
   return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {

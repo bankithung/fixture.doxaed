@@ -3,7 +3,6 @@ import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, History, Radio } from "lucide-react";
 import { tournamentsApi, type ControlRoomPayload } from "@/api/tournaments";
-import { Select } from "@/components/ui/Select";
 import { useAuthStore } from "@/features/auth/authStore";
 import { ScheduleChangesPanel } from "@/features/fixtures/ScheduleChangesPanel";
 import { qk } from "@/lib/queryKeys";
@@ -15,16 +14,16 @@ import {
   delayFor,
   delayMap,
   FINAL,
-  fmtDayLabel,
   fmtKickoff,
   IN_PLAY,
   type SlotDelay,
 } from "./format";
+import { BoardControls } from "./BoardControls";
+import { BoardTable, type BoardFilter, type BoardGroup } from "./BoardTable";
 import type { ControlRoomPerms } from "./MatchActionsMenu";
 import { MatchTile } from "./MatchTile";
-import { QueueRail } from "./QueueRail";
+import { NeedsYouStrip } from "./NeedsYouStrip";
 import { useControlRoom } from "./useControlRoom";
-import { VenueLane } from "./VenueLane";
 
 /** A scheduled match whose kickoff slot has passed but still has no result —
  * "awaiting result" in the ops band. Kept a plain helper so the wall-clock read
@@ -178,6 +177,9 @@ export function ControlRoomPage(): React.ReactElement {
   const user = useAuthStore((s) => s.user);
   const [day, setDay] = useState<string | null>(null);
   const [changesOpen, setChangesOpen] = useState(false);
+  const [group, setGroup] = useState<BoardGroup>("court");
+  const [filter, setFilter] = useState<BoardFilter>("all");
+  const [search, setSearch] = useState("");
 
   const stageQ = useQuery({
     queryKey: qk.stage(id),
@@ -318,66 +320,6 @@ export function ControlRoomPage(): React.ReactElement {
             />
           )}
 
-          {/* Day selector — chips on desktop, the custom Select on mobile. */}
-          {isMobile ? (
-            <Select
-              aria-label={t("Match day")}
-              className="w-full"
-              value={selectedDay}
-              onChange={(v) => setDay(v)}
-              options={data.days.map((d) => ({
-                value: d.date,
-                label: `${fmtDayLabel(d.date)} · ${d.counts.completed}/${d.counts.total}`,
-              }))}
-            />
-          ) : (
-            <div
-              role="group"
-              aria-label={t("Match day")}
-              className="flex flex-wrap items-center gap-1.5"
-            >
-              {data.days.map((d) => {
-                const active = d.date === selectedDay;
-                return (
-                  <button
-                    key={d.date}
-                    type="button"
-                    data-testid={`day-chip-${d.date}`}
-                    aria-pressed={active}
-                    onClick={() => setDay(d.date)}
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      active
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-card text-foreground hover:bg-accent",
-                    )}
-                  >
-                    {fmtDayLabel(d.date)}
-                    <span
-                      className={cn(
-                        "font-tabular",
-                        active
-                          ? "text-primary-foreground/80"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {d.counts.completed}/{d.counts.total}
-                    </span>
-                    {d.counts.live > 0 ? (
-                      <span
-                        aria-label={t("Live now")}
-                        className={cn(
-                          "h-1.5 w-1.5 rounded-full",
-                          active ? "bg-primary-foreground" : "bg-primary",
-                        )}
-                      />
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
           {showMine ? (
             // Focused member lane: just the matches this user is scoring today.
             <section data-testid="my-matches" className="flex flex-col gap-2">
@@ -406,28 +348,43 @@ export function ControlRoomPage(): React.ReactElement {
             </section>
           ) : (
             <>
-              <QueueRail queue={data.queue} timeZone={tz} delays={delays} />
+              <NeedsYouStrip
+                matches={allMatches}
+                timeZone={tz}
+                tournamentId={id}
+                perms={perms}
+                siblingsOf={siblingsOf}
+              />
 
-              {/* Per-venue lanes. */}
+              <BoardControls
+                days={data.days}
+                selectedDay={selectedDay}
+                onDay={(d) => setDay(d)}
+                group={group}
+                onGroup={setGroup}
+                filter={filter}
+                onFilter={setFilter}
+                query={search}
+                onQuery={setSearch}
+                isMobile={isMobile}
+              />
+
               {data.venues.length === 0 ? (
                 <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
                   {t("No matches on this day.")}
                 </p>
               ) : (
-                <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {data.venues.map((v) => (
-                    <VenueLane
-                      key={v.venue || "unassigned"}
-                      venue={v.venue}
-                      matches={v.matches}
-                      timeZone={tz}
-                      tournamentId={id}
-                      perms={perms}
-                      delays={delays}
-                      siblingsOf={siblingsOf}
-                    />
-                  ))}
-                </div>
+                <BoardTable
+                  venues={data.venues}
+                  timeZone={tz}
+                  tournamentId={id}
+                  perms={perms}
+                  delays={delays}
+                  siblingsOf={siblingsOf}
+                  group={group}
+                  filter={filter}
+                  query={search}
+                />
               )}
             </>
           )}

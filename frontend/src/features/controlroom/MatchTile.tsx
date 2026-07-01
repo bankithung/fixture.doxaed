@@ -12,7 +12,7 @@ import { MatchActionsMenu, type ControlRoomPerms } from "./MatchActionsMenu";
  * server sends the whole chain twice ("Sepak — u-14 — girls — 3v3" then
  * "… — 3v3 — Group A"); we show the leaf as pills once and just "Group A" here.
  */
-function groupSuffix(
+export function groupSuffix(
   leafLabel: string,
   groupLabel: string | null | undefined,
 ): string | null {
@@ -63,18 +63,26 @@ function statusMeta(m: ControlRoomMatch): {
   };
 }
 
-export function StatusPill({ match }: { match: ControlRoomMatch }): React.ReactElement {
+export function StatusPill({
+  match,
+  idScope = "",
+}: {
+  match: ControlRoomMatch;
+  /** Testid prefix so the same match's pill can render in both the board and
+   * the triage strip without colliding (strip passes "needs-"). */
+  idScope?: string;
+}): React.ReactElement {
   const sm = statusMeta(match);
   return (
     <span
-      data-testid={`pill-${match.id}`}
+      data-testid={`${idScope}pill-${match.id}`}
       className={cn(
         "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium capitalize",
         sm.cls,
       )}
     >
       {sm.live ? (
-        <span className="relative flex h-2 w-2" data-testid={`live-pulse-${match.id}`}>
+        <span className="relative flex h-2 w-2" data-testid={`${idScope}live-pulse-${match.id}`}>
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
           <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
         </span>

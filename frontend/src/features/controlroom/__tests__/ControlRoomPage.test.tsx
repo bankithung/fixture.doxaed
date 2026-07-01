@@ -219,7 +219,7 @@ afterEach(() => {
 });
 
 describe("ControlRoomPage", () => {
-  it("renders day chips, per-venue lanes and the cross-venue queue", async () => {
+  it("renders day chips, court groups and the board", async () => {
     mount();
 
     // Day chips with progress counts; the server-defaulted day is selected.
@@ -244,11 +244,12 @@ describe("ControlRoomPage", () => {
     // Called state shows on the scheduled-but-called match.
     expect(screen.getByTestId("pill-m2")).toHaveTextContent("Called");
 
-    // Cross-venue queue: the day's unfinished matches, with the called badge.
-    const rail = screen.getByTestId("queue-rail");
-    expect(within(rail).getByTestId("queue-m2")).toBeInTheDocument();
-    expect(within(rail).getByTestId("queue-m4")).toBeInTheDocument();
-    expect(within(rail).getByTestId("queue-called-m2")).toBeInTheDocument();
+    // The board is the single source of truth; "By time" is the cross-court
+    // up-next that replaced the old queue rail.
+    expect(screen.getByTestId("board")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("group-time"));
+    expect(screen.getByTestId("tile-m2")).toBeInTheDocument();
+    expect(screen.getByTestId("tile-m4")).toBeInTheDocument();
   });
 
   it("shows the operations band with the day's live + progress counts", async () => {
@@ -282,22 +283,26 @@ describe("ControlRoomPage", () => {
     mount();
     await screen.findByTestId("tile-m4");
 
-    // Call to court on the uncalled scheduled match; Clear call on the called.
-    expect(screen.getByTestId("call-m4")).toHaveTextContent("Call to court");
-    expect(screen.getByTestId("call-m2")).toHaveTextContent("Clear call");
-    // Walkover + the reused repair overflow menu (move/delay/swap/lock).
-    expect(screen.getByTestId("walkover-m4")).toBeInTheDocument();
+    // Repair overflow (move/delay/swap/lock) rides the row directly; absent on
+    // the completed match.
     expect(screen.getByTestId("repair-menu-m4")).toBeInTheDocument();
-    // No call/walkover/repair on the live or completed matches.
-    expect(screen.queryByTestId("call-m1")).toBeNull();
     expect(screen.queryByTestId("repair-menu-m3")).toBeNull();
 
+    // Open m4's action menu: Call to court + Award walkover.
+    await userEvent.click(screen.getByTestId("actions-m4"));
+    expect(screen.getByTestId("call-m4")).toHaveTextContent("Call to court");
+    expect(screen.getByTestId("walkover-m4")).toBeInTheDocument();
     await userEvent.click(screen.getByTestId("call-m4"));
     await waitFor(() => expect(liveApi.callMatch).toHaveBeenCalledWith("m4"));
+
+    // The called match shows Clear call in its own menu.
+    await userEvent.click(screen.getByTestId("actions-m2"));
+    expect(screen.getByTestId("call-m2")).toHaveTextContent("Clear call");
   });
 
   it("clearing a call hits the DELETE path", async () => {
     mount();
+    await userEvent.click(await screen.findByTestId("actions-m2"));
     await userEvent.click(await screen.findByTestId("call-m2"));
     await waitFor(() => expect(liveApi.uncallMatch).toHaveBeenCalledWith("m2"));
     expect(liveApi.callMatch).not.toHaveBeenCalled();
@@ -305,6 +310,7 @@ describe("ControlRoomPage", () => {
 
   it("walkover requires picking the winner, then posts the transition", async () => {
     mount();
+    await userEvent.click(await screen.findByTestId("actions-m4"));
     await userEvent.click(await screen.findByTestId("walkover-m4"));
 
     // Confirm is disabled until a winner is chosen.
@@ -324,6 +330,7 @@ describe("ControlRoomPage", () => {
 
   it("Enter result: a manager records a goal score from the board in one dialog", async () => {
     mount();
+    await userEvent.click(await screen.findByTestId("actions-m4"));
     await userEvent.click(await screen.findByTestId("quick-result-m4"));
     // Bump the home score to 1, leave away at 0, then save.
     await userEvent.click(screen.getByTestId("qr-home-m4-inc"));
@@ -363,13 +370,14 @@ describe("ControlRoomPage", () => {
     mount();
     await screen.findByTestId("tile-m1");
 
+    // Open m1's menu: console link present, no schedule verbs anywhere.
+    await userEvent.click(screen.getByTestId("actions-m1"));
     expect(screen.getByTestId("console-m1")).toHaveAttribute(
       "href",
       "/tournaments/t1/matches/m1",
     );
-    expect(screen.queryByTestId("call-m4")).toBeNull();
-    expect(screen.queryByTestId("call-m2")).toBeNull();
-    expect(screen.queryByTestId("walkover-m4")).toBeNull();
+    expect(screen.queryByTestId("call-m1")).toBeNull();
+    expect(screen.queryByTestId("walkover-m1")).toBeNull();
     expect(screen.queryByTestId("repair-menu-m4")).toBeNull();
   });
 
@@ -378,12 +386,12 @@ describe("ControlRoomPage", () => {
     mount();
     await screen.findByTestId("tile-m1");
 
+    // No action affordance at all for a read-only member.
+    expect(screen.queryByTestId("actions-m1")).toBeNull();
     expect(screen.queryByTestId("console-m1")).toBeNull();
-    expect(screen.queryByTestId("call-m4")).toBeNull();
-    expect(screen.queryByTestId("walkover-m4")).toBeNull();
     expect(screen.queryByTestId("repair-menu-m4")).toBeNull();
     // The board itself stays visible.
-    expect(screen.getByTestId("queue-rail")).toBeInTheDocument();
+    expect(screen.getByTestId("board")).toBeInTheDocument();
   });
 
   it("subscribes to the public SSE stream and refetches on a tick", async () => {
