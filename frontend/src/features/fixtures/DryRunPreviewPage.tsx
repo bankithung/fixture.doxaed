@@ -582,7 +582,11 @@ export function DryRunPreviewPage(): React.ReactElement {
             <GroupCompositionView matches={filteredMatches} teamNames={teamNames} />
           ) : scheduleMatches.length > 0 ? (
             viewMode === "day" ? (
-              <MatchesByDayGrid matches={scheduleMatches} teamNames={teamNames} />
+              <MatchesByDayGrid
+                matches={scheduleMatches}
+                teamNames={teamNames}
+                occupancy={preview.data?.matches}
+              />
             ) : (
               <MatchesByGroupGrid matches={scheduleMatches} teamNames={teamNames} />
             )

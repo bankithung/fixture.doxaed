@@ -77,10 +77,14 @@ function BreakRow({
   );
 }
 
-/** Render a court's matches in play order, inserting a BreakRow wherever the
- * next match starts BREAK_MIN+ minutes after the previous one ends. */
+/** Render a court's matches in play order, inserting a BreakRow only where the
+ * COURT is genuinely idle: the next shown match starts BREAK_MIN+ minutes later
+ * AND no other match (from the full `busy` occupancy — every category + stage on
+ * that court) fills the gap. This is what stops a filtered view (one category)
+ * from inventing "breaks" for time the court is actually busy with others. */
 function withBreaks(
   ms: PreviewMatch[],
+  busy: [number, number][],
   renderMatch: (m: PreviewMatch) => React.ReactElement,
 ): React.ReactElement[] {
   const out: React.ReactElement[] = [];
@@ -88,8 +92,11 @@ function withBreaks(
     out.push(renderMatch(m));
     const next = ms[i + 1];
     if (next && m.scheduled_at && next.scheduled_at && m.duration_minutes != null) {
-      const gap = toMinutes(next.scheduled_at) - (toMinutes(m.scheduled_at) + m.duration_minutes);
-      if (gap >= BREAK_MIN) {
+      const gapStart = toMinutes(m.scheduled_at) + m.duration_minutes;
+      const gapEnd = toMinutes(next.scheduled_at);
+      const gap = gapEnd - gapStart;
+      const idle = !busy.some(([s, e]) => s < gapEnd && e > gapStart);
+      if (gap >= BREAK_MIN && idle) {
         out.push(
           <BreakRow
             key={`brk-${m.ref}`}
@@ -195,12 +202,32 @@ export function MatchChip({
 export function MatchesByDayGrid({
   matches,
   teamNames,
+  occupancy,
 }: {
   matches: PreviewMatch[];
   /** team_id → display name (the preview carries ids only). */
   teamNames: ReadonlyMap<string, string>;
+  /** ALL scheduled matches (every category + stage) on these courts, so a break
+   * only shows when the court is truly free — not when the filtered-out matches
+   * (other categories, the knockout) are using it. Defaults to `matches`. */
+  occupancy?: PreviewMatch[];
 }): React.ReactElement {
   const { isMobile } = useBreakpoint();
+
+  // Busy intervals [startMin, endMin] per `${day}|${venue}` from the FULL
+  // occupancy — the truth about when each court is in use.
+  const busyByCourt = useMemo(() => {
+    const map = new Map<string, [number, number][]>();
+    for (const m of occupancy ?? matches) {
+      if (!m.scheduled_at || m.duration_minutes == null) continue;
+      const key = `${m.scheduled_at.slice(0, 10)}|${m.venue || t("Unassigned venue")}`;
+      const s = toMinutes(m.scheduled_at);
+      const arr = map.get(key);
+      if (arr) arr.push([s, s + m.duration_minutes]);
+      else map.set(key, [[s, s + m.duration_minutes]]);
+    }
+    return map;
+  }, [occupancy, matches]);
 
   const { days, accentOf } = useMemo(() => {
     const scheduled = matches
@@ -251,7 +278,7 @@ export function MatchesByDayGrid({
           {isMobile ? (
             <div className="flex flex-col gap-2 px-3 py-3">
               {[...venues.entries()].flatMap(([venue, ms]) =>
-                withBreaks(ms, (m) => (
+                withBreaks(ms, busyByCourt.get(`${day}|${venue}`) ?? [], (m) => (
                   <div key={m.ref} className="flex flex-col gap-0.5">
                     <MatchChip match={m} accent={accentOf(m.leaf_key)} teamNames={teamNames} />
                     <span className="px-1 text-[0.6875rem] text-muted-foreground">
@@ -273,7 +300,7 @@ export function MatchesByDayGrid({
                   <h4 className="truncate text-xs font-medium text-muted-foreground">
                     {venue}
                   </h4>
-                  {withBreaks(ms, (m) => (
+                  {withBreaks(ms, busyByCourt.get(`${day}|${venue}`) ?? [], (m) => (
                     <MatchChip
                       key={m.ref}
                       match={m}

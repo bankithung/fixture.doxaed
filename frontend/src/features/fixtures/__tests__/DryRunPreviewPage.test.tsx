@@ -245,6 +245,35 @@ describe("DryRunPreviewPage", () => {
     expect(await screen.findByText(/09:30-10:30/)).toBeInTheDocument();
   });
 
+  it("does NOT mark a Break when another match fills the court gap", async () => {
+    vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
+      ...PREVIEW,
+      matches: [
+        {
+          ref: "g1", leaf_key: "football.u15", stage: "group", group_label: "A",
+          round_no: 1, home: { team_id: "tm1" }, away: { team_id: "tm2" },
+          scheduled_at: "2026-06-20T09:00:00", venue: "Court 1", duration_minutes: 30,
+        },
+        {
+          ref: "g2", leaf_key: "football.u15", stage: "group", group_label: "A",
+          round_no: 2, home: { team_id: "tm1" }, away: { team_id: "tm2" },
+          scheduled_at: "2026-06-20T10:30:00", venue: "Court 1", duration_minutes: 30,
+        },
+        // A knockout match uses the SAME court 09:45-10:15 — hidden from the
+        // schedule list, but it means the court is NOT idle in that gap.
+        {
+          ref: "k1", leaf_key: "football.u15", stage: "knockout", group_label: "",
+          round_no: 1, home: { team_id: "tm3" }, away: { team_id: "tm4" },
+          scheduled_at: "2026-06-20T09:45:00", venue: "Court 1", duration_minutes: 30,
+        },
+      ],
+    });
+    mount();
+    expect(await screen.findByTestId("chip-g1")).toBeInTheDocument();
+    // The court is busy (knockout) during the display gap -> no false break.
+    expect(screen.queryByText(/09:30-10:30/)).toBeNull();
+  });
+
   it("switches the schedule between By day and By group (owner ask)", async () => {
     vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue(MULTISTAGE_PREVIEW);
     mount();
