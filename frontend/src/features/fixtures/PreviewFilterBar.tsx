@@ -8,6 +8,14 @@ import {
   type FacetEntry,
 } from "./previewFilters";
 
+/** The sport is already picked, so a category chip only needs what VARIES —
+ * drop the leading sport segment and show the rest middot-joined (no em-dashes):
+ * "Table Tennis — open catagory — girls — 1v1" -> "open catagory · girls · 1v1". */
+function shortCatLabel(label: string): string {
+  const segs = label.split(" — ").map((s) => s.trim()).filter(Boolean);
+  return (segs.length > 1 ? segs.slice(1) : segs).join(" · ");
+}
+
 function Pill({
   active,
   onClick,
@@ -119,7 +127,7 @@ export function PreviewFilterBar({
               testid={`filter-cat-${c.key}`}
               active={category === c.key}
               onClick={() => onCategory(c.key)}
-              label={c.label}
+              label={shortCatLabel(c.label)}
               count={c.count}
             />
           ))}
