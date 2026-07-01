@@ -200,6 +200,15 @@ export function DryRunPreviewPage(): React.ReactElement {
     [preview.data, sportFilter, catFilter],
   );
 
+  // Knockout matches belong in the bracket, not the flat schedule (owner ask
+  // 2026-07-01: "if it's knockout always show it in the bracket format"). The
+  // By-day / By-group lists show only the group stage; the Draw tab's bracket
+  // carries every knockout match, with its kickoff time on the card.
+  const scheduleMatches = useMemo(
+    () => filteredMatches.filter((m) => m.stage !== "knockout"),
+    [filteredMatches],
+  );
+
   // One FIFA bracket per competition leaf that has placeholder knockout matches
   // (the multi-stage preview now ships a timed, placeholder Stage 2). Honours
   // the same sport/category filter as the day-grid below.
@@ -566,12 +575,31 @@ export function DryRunPreviewPage(): React.ReactElement {
               ))}
             </div>
           </div>
-          {viewMode === "day" ? (
-            <MatchesByDayGrid matches={filteredMatches} teamNames={teamNames} />
-          ) : viewMode === "group" ? (
-            <MatchesByGroupGrid matches={filteredMatches} teamNames={teamNames} />
-          ) : (
+          {viewMode === "draw" ? (
             <GroupCompositionView matches={filteredMatches} teamNames={teamNames} />
+          ) : scheduleMatches.length === 0 && filteredMatches.length > 0 ? (
+            <div
+              data-testid="preview-knockout-only"
+              className="rounded-xl border border-border bg-card px-6 py-8 text-center"
+            >
+              <p className="text-sm font-medium">
+                {t("No group-stage matches to schedule here.")}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {t("Knockout matches are shown in the bracket.")}
+              </p>
+              <button
+                type="button"
+                onClick={() => setViewMode("draw")}
+                className="mt-2 text-xs font-medium text-primary hover:underline"
+              >
+                {t("Open the bracket")}
+              </button>
+            </div>
+          ) : viewMode === "day" ? (
+            <MatchesByDayGrid matches={scheduleMatches} teamNames={teamNames} />
+          ) : (
+            <MatchesByGroupGrid matches={scheduleMatches} teamNames={teamNames} />
           )}
 
           {/* FIFA bracket tree for any competition with a (placeholder)

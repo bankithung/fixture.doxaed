@@ -200,9 +200,10 @@ describe("DryRunPreviewPage", () => {
       "This schedule works. No rules are broken.",
     );
     expect(screen.getByTestId("day-2026-06-20")).toBeInTheDocument();
-    expect(screen.getByTestId("day-2026-06-21")).toBeInTheDocument();
     expect(screen.getByTestId("chip-p1")).toHaveTextContent("Alpha FC");
-    expect(screen.getByTestId("chip-p2")).toHaveTextContent("Winner of p1");
+    // The knockout match (p2) is NOT in the schedule — it lives in the bracket.
+    expect(screen.queryByTestId("chip-p2")).toBeNull();
+    expect(screen.queryByTestId("day-2026-06-21")).toBeNull();
     // nothing persisted by the preview itself
     expect(tournamentsApi.generateFixtures).not.toHaveBeenCalled();
   });
@@ -211,15 +212,13 @@ describe("DryRunPreviewPage", () => {
     vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue(MULTISTAGE_PREVIEW);
     mount();
 
-    // Default day view: the knockout is timed with a clean placeholder label.
-    const k1 = await screen.findByTestId("chip-k1");
-    expect(k1).toHaveTextContent("Group A top 1");
-    // The competition shows as clean pills ("Football U15"), never the raw
-    // em-dash slot label.
-    expect(k1).not.toHaveTextContent("Football — U15 — Group A");
-    expect(k1).toHaveTextContent("10:00");
-    expect(screen.getByTestId("day-2026-06-21")).toBeInTheDocument();
-    // The bracket is NOT in the schedule views.
+    // Default day view: the GROUP match is scheduled; knockout slots are NOT in
+    // the schedule (they live in the bracket).
+    expect(await screen.findByTestId("chip-g1")).toBeInTheDocument();
+    expect(screen.queryByTestId("chip-k1")).toBeNull();
+    expect(screen.queryByTestId("chip-k2")).toBeNull();
+    expect(screen.getByTestId("day-2026-06-20")).toBeInTheDocument(); // the group day
+    expect(screen.queryByTestId("day-2026-06-21")).toBeNull(); // the knockout-only day is gone
     expect(screen.queryByTestId("preview-bracket")).toBeNull();
 
     // Draw tab: the full bracket tree + the numbered group composition.
@@ -233,18 +232,37 @@ describe("DryRunPreviewPage", () => {
   it("switches the schedule between By day and By group (owner ask)", async () => {
     vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue(MULTISTAGE_PREVIEW);
     mount();
-    // Default view is by day.
-    expect(await screen.findByTestId("day-2026-06-21")).toBeInTheDocument();
+    // Default view is by day — the group match's day band (06-20).
+    expect(await screen.findByTestId("day-2026-06-20")).toBeInTheDocument();
     await userEvent.click(screen.getByTestId("preview-view-group"));
-    // By group: a "Group A" bucket and a "Knockout" bucket, no day bands.
+    // By group: a "Group A" bucket, no day bands, and NO knockout bucket
+    // (knockout lives in the bracket now).
     expect(screen.getByTestId("group-football.u15::Group A")).toBeInTheDocument();
-    expect(screen.getByTestId("group-football.u15::__ko__")).toBeInTheDocument();
-    expect(screen.queryByTestId("day-2026-06-21")).toBeNull();
-    // The knockout bucket still shows the placeholder Stage 2 flow.
-    expect(screen.getAllByText("Group A top 1").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("group-football.u15::__ko__")).toBeNull();
+    expect(screen.queryByTestId("day-2026-06-20")).toBeNull();
     // Back to by day.
     await userEvent.click(screen.getByTestId("preview-view-day"));
-    expect(screen.getByTestId("day-2026-06-21")).toBeInTheDocument();
+    expect(screen.getByTestId("day-2026-06-20")).toBeInTheDocument();
+  });
+
+  it("shows a bracket hint when a competition has no group matches to schedule", async () => {
+    vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
+      ...PREVIEW,
+      matches: [
+        {
+          ref: "k1", leaf_key: "football.u15", stage: "knockout", group_label: "",
+          round_no: 1, home: { team_id: "tm1" }, away: { team_id: "tm2" },
+          scheduled_at: "2026-06-20T10:00:00", venue: "Court",
+        },
+      ],
+    });
+    mount();
+    // By day: nothing to schedule (all knockout) -> a hint, not an empty grid.
+    expect(await screen.findByTestId("preview-knockout-only")).toBeInTheDocument();
+    expect(screen.queryByTestId("chip-k1")).toBeNull();
+    // Its button opens the bracket.
+    await userEvent.click(screen.getByText("Open the bracket"));
+    expect(screen.getByTestId("preview-bracket")).toBeInTheDocument();
   });
 
   it("keeps the draw number and quality behind the closed Advanced details", async () => {
