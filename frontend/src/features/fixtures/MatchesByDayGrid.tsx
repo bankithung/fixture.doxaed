@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Coffee } from "lucide-react";
 import type { PreviewMatch } from "@/api/tournaments";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { cn } from "@/lib/tailwind";
@@ -62,12 +63,16 @@ function BreakRow({
   minutes: number;
 }): React.ReactElement {
   return (
-    <div className="flex items-center gap-1.5 py-0.5" title={`${t("Break")} ${from} to ${to}`}>
-      <span className="h-px flex-1 bg-border" />
-      <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 font-tabular text-[0.625rem] font-medium text-muted-foreground">
-        {t("Break")} {from}-{to} · {minutes} {t("min")}
+    <div className="my-1 flex items-center gap-2" title={`${t("Break")} ${from} to ${to}`}>
+      <span className="h-px flex-1 bg-warning/30" />
+      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-warning/40 bg-warning-muted px-3 py-1">
+        <Coffee aria-hidden="true" className="h-3.5 w-3.5 text-warning" />
+        <span className="text-xs font-semibold text-foreground">{t("Break")}</span>
+        <span className="font-tabular text-xs text-muted-foreground">
+          {from}-{to} · {minutes} {t("min")}
+        </span>
       </span>
-      <span className="h-px flex-1 bg-border" />
+      <span className="h-px flex-1 bg-warning/30" />
     </div>
   );
 }
