@@ -224,6 +224,27 @@ describe("DryRunPreviewPage", () => {
     expect(screen.getAllByText("Group A top 1").length).toBeGreaterThan(0);
   });
 
+  it("marks a Break where a court has a gap between matches", async () => {
+    vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
+      ...PREVIEW,
+      matches: [
+        {
+          ref: "g1", leaf_key: "football.u15", stage: "group", group_label: "A",
+          round_no: 1, home: { team_id: "tm1" }, away: { team_id: "tm2" },
+          scheduled_at: "2026-06-20T09:00:00", venue: "Court 1", duration_minutes: 30,
+        },
+        {
+          ref: "g2", leaf_key: "football.u15", stage: "group", group_label: "A",
+          round_no: 2, home: { team_id: "tm1" }, away: { team_id: "tm2" },
+          scheduled_at: "2026-06-20T10:30:00", venue: "Court 1", duration_minutes: 30,
+        },
+      ],
+    });
+    mount();
+    // g1 ends 09:30, g2 starts 10:30 -> a visible 60-min break between them.
+    expect(await screen.findByText(/09:30-10:30/)).toBeInTheDocument();
+  });
+
   it("switches the schedule between By day and By group (owner ask)", async () => {
     vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue(MULTISTAGE_PREVIEW);
     mount();

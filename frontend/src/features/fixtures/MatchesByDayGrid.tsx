@@ -41,6 +41,64 @@ function addMinutes(iso: string, mins: number): string {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
+/** Wall-clock "…T11:30" → minutes since midnight (for gap math). */
+function toMinutes(iso: string): number {
+  const [h, m] = iso.slice(11, 16).split(":").map(Number);
+  return (h ?? 0) * 60 + (m ?? 0);
+}
+
+// A gap of this many minutes or more between a court's matches reads as a break.
+const BREAK_MIN = 15;
+
+/** A visible "no play" gap between two matches on the same court, so the
+ * organiser can SEE when the break is instead of inferring it from a time jump. */
+function BreakRow({
+  from,
+  to,
+  minutes,
+}: {
+  from: string;
+  to: string;
+  minutes: number;
+}): React.ReactElement {
+  return (
+    <div className="flex items-center gap-1.5 py-0.5" title={`${t("Break")} ${from} to ${to}`}>
+      <span className="h-px flex-1 bg-border" />
+      <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 font-tabular text-[0.625rem] font-medium text-muted-foreground">
+        {t("Break")} {from}-{to} · {minutes} {t("min")}
+      </span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+/** Render a court's matches in play order, inserting a BreakRow wherever the
+ * next match starts BREAK_MIN+ minutes after the previous one ends. */
+function withBreaks(
+  ms: PreviewMatch[],
+  renderMatch: (m: PreviewMatch) => React.ReactElement,
+): React.ReactElement[] {
+  const out: React.ReactElement[] = [];
+  ms.forEach((m, i) => {
+    out.push(renderMatch(m));
+    const next = ms[i + 1];
+    if (next && m.scheduled_at && next.scheduled_at && m.duration_minutes != null) {
+      const gap = toMinutes(next.scheduled_at) - (toMinutes(m.scheduled_at) + m.duration_minutes);
+      if (gap >= BREAK_MIN) {
+        out.push(
+          <BreakRow
+            key={`brk-${m.ref}`}
+            from={addMinutes(m.scheduled_at, m.duration_minutes)}
+            to={fmtTime(next.scheduled_at)}
+            minutes={gap}
+          />,
+        );
+      }
+    }
+  });
+  return out;
+}
+
 export function MatchChip({
   match,
   accent,
@@ -188,7 +246,7 @@ export function MatchesByDayGrid({
           {isMobile ? (
             <div className="flex flex-col gap-2 px-3 py-3">
               {[...venues.entries()].flatMap(([venue, ms]) =>
-                ms.map((m) => (
+                withBreaks(ms, (m) => (
                   <div key={m.ref} className="flex flex-col gap-0.5">
                     <MatchChip match={m} accent={accentOf(m.leaf_key)} teamNames={teamNames} />
                     <span className="px-1 text-[0.6875rem] text-muted-foreground">
@@ -210,7 +268,7 @@ export function MatchesByDayGrid({
                   <h4 className="truncate text-xs font-medium text-muted-foreground">
                     {venue}
                   </h4>
-                  {ms.map((m) => (
+                  {withBreaks(ms, (m) => (
                     <MatchChip
                       key={m.ref}
                       match={m}
