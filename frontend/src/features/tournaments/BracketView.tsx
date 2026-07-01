@@ -121,7 +121,14 @@ function GroupTable({
  * round-robin group renders as a standings table (top-2 marked as advancing) —
  * the meaningful "flow" for a group, since there is no tree.
  */
-export function BracketView({ matches }: { matches: MatchRow[] }): React.ReactElement {
+export function BracketView({
+  matches,
+  timeZone,
+}: {
+  matches: MatchRow[];
+  /** IANA TZ for kickoff formatting + the bracket footnote (omit = viewer local). */
+  timeZone?: string;
+}): React.ReactElement {
   const bands = useMemo(() => {
     // Groups key on leaf_key + group_label so two DIFFERENT categories that
     // both contain a "Group A" stay separate. Knockout keys on leaf_key ALONE
@@ -188,7 +195,7 @@ export function BracketView({ matches }: { matches: MatchRow[] }): React.ReactEl
           <h3 className="mb-2">
             <LeafLabel label={band.label} size="md" />
           </h3>
-          <FifaBracket columns={band.columns} />
+          <FifaBracket columns={band.columns} timeZone={timeZone} />
         </div>
       ))}
     </div>

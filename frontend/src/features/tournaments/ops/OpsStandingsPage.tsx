@@ -280,7 +280,7 @@ export function OpsStandingsPage(): React.ReactElement {
               <h3 className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                 {t("Knockout")}
               </h3>
-              <BracketView matches={knockout} />
+              <BracketView matches={knockout} timeZone={tournamentQ.data?.time_zone} />
             </section>
           ) : null}
         </>

@@ -1,25 +1,21 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Check, ChevronLeft, ChevronRight, Shield } from "lucide-react";
 import type { MatchRow, MatchSource } from "@/api/tournaments";
 import { groupPositionLabel } from "@/features/fixtures/groupSlotLabel";
 import { t } from "@/lib/t";
 
 /* ---------------------------------------------------------------------------
- * World Cup knockout bracket — a deliberately THEMED flow-chart (owner ask,
- * 2026-06-29 / 30). Fixed purple stage / gold match cards / orange connectors /
- * gold trophy, an explicit exception to the tokens-only rule (see memory
- * world-cup-bracket-theme).
+ * World Cup knockout bracket — a horizontally-scrolling single-direction
+ * flow-chart (owner ask 2026-07-01, modelled on the FIFA World Cup "Knockout"
+ * widget): round columns laid left -> right (Round of 32 ... Final), the whole
+ * row scrolls horizontally with Prev/Next arrows, elbow connectors join each
+ * pair of feeders into their child. Deliberately THEMED purple/gold/orange
+ * (an approved exception to tokens-only, see memory world-cup-bracket-theme).
  *
- * Unlike the earlier "sketch", this draws the REAL draw: every match is a card
- * with its two sides + scores, a winner highlight, and a status strip, wired
- * left -> centre -> right into a central Final + champion + trophy, FIFA-style.
- * Unresolved slots still read cleanly ("Group A top 1" / "TBD") so it works for
- * the dry-run preview (placeholder Stage 2) AND the live/public bracket (real
- * results streaming in) from the same `columns` prop.
- *
- * Layout model: the FIRST half of each round's matches flows down the LEFT side
- * (rounds increasing rightward), the SECOND half mirrors on the RIGHT, and the
- * single last-round match sits in the centre. Generated brackets are bracket-
- * ordered (match_no) and halve cleanly each round, so a parent centres on its
- * two positional children (2i, 2i+1) by construction.
+ * Every match is a real card (both sides + scores + winner check + a status
+ * strip); unresolved slots read "Group A top 1" / "TBD". The 3rd-place playoff
+ * (loser_of-fed) is pulled out of the winner tree and shown below the Final.
+ * Same `columns` prop everywhere it's used (preview / public / admin / ops).
  * ------------------------------------------------------------------------- */
 const C = {
   box: "#3a1d63",
@@ -29,6 +25,7 @@ const C = {
   text: "#ffffff",
   dim: "rgba(255,255,255,0.62)",
   divider: "rgba(255,255,255,0.12)",
+  avatar: "rgba(201,165,88,0.16)",
 } as const;
 
 const STAGE_BG =
@@ -36,16 +33,13 @@ const STAGE_BG =
   "linear-gradient(135deg, #3a1c67 0%, #46226e 48%, #3a1c67 100%)";
 
 // Geometry (px).
-const CARD_W = 178;
-const CARD_H = 58;
-const STRIP_H = 16;
-const ROW = 78; // vertical pitch between round-1 card centres
-const COL_GAP = 38; // horizontal gap between a side's columns
-const CENTER_GAP = 52; // gap flanking the central Final
-const CHAMP_W = 178;
-const CHAMP_H = 42;
-const TROPHY_H = 92;
-const HEADER_H = 24;
+const CARD_W = 210;
+const CARD_H = 66;
+const META_H = 16;
+const ROW = 84; // vertical pitch between round-1 card centres
+const COL_GAP = 46; // horizontal gap between round columns
+const HEADER_H = 28;
+const LABEL_H = 15; // "3rd place" caption above a consolation card
 
 /** Human label for an unresolved bracket slot from its typed pointer:
  * group_position -> "Group A top 1" / "Best 3rd #1"; winner/loser pointers are
@@ -108,27 +102,57 @@ function decided(m: MatchRow): "home" | "away" | null {
   return null;
 }
 
-function fmtDate(iso: string): string {
-  // Parse the full instant: a UTC "…Z" live time renders in the viewer's TZ
-  // (invariant 14, public), while an offset-less preview wall-clock string keeps
-  // its own date (parse and format cancel out in the same local TZ).
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
+/** Two-letter monogram from a team name (schools have no country flag). */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }
 
-/** Compact status for the card's top strip: FT / LIVE / a kickoff date. */
-function statusOf(m: MatchRow): { text: string; live: boolean } {
-  if (m.status === "completed" || m.status === "walkover")
-    return { text: t("FT"), live: false };
+/** Long TZ name ("Asia/Kolkata" -> "India Standard Time") for the footnote. */
+function tzLabel(tz: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, {
+      timeZone: tz,
+      timeZoneName: "long",
+    }).formatToParts(new Date());
+    return parts.find((p) => p.type === "timeZoneName")?.value ?? tz;
+  } catch {
+    return tz;
+  }
+}
+
+/** Relative kickoff ("Today, 9:30 pm" / "Tomorrow" / "Yesterday"), else
+ * absolute ("Fri, 3 Jul, 12:30 am"). Rendered in `tz` when given, else local. */
+function fmtKickoff(iso: string, tz?: string): string {
+  const opt = (o: Intl.DateTimeFormatOptions): Intl.DateTimeFormatOptions =>
+    tz ? { ...o, timeZone: tz } : o;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const day = (x: Date): string => x.toLocaleDateString("en-CA", opt({}));
+  const time = d.toLocaleTimeString([], opt({ hour: "numeric", minute: "2-digit" }));
+  const dd = day(d);
+  if (dd === day(now)) return `${t("Today")}, ${time}`;
+  if (dd === day(new Date(now.getTime() + 86_400_000))) return `${t("Tomorrow")}, ${time}`;
+  if (dd === day(new Date(now.getTime() - 86_400_000))) return `${t("Yesterday")}, ${time}`;
+  const date = d.toLocaleDateString([], opt({ weekday: "short", day: "numeric", month: "short" }));
+  return `${date}, ${time}`;
+}
+
+/** Status pill for the card's top strip: FT / FT (P) / LIVE, or none. */
+function statusBadge(m: MatchRow): { text: string; live: boolean } | null {
+  if (m.status === "completed" || m.status === "walkover") {
+    const pens = m.home_pens != null && m.away_pens != null;
+    return { text: pens ? t("FT (P)") : t("FT"), live: false };
+  }
   if (m.current_period) return { text: t("LIVE"), live: true };
-  if (m.scheduled_at) return { text: fmtDate(m.scheduled_at), live: false };
-  return { text: "", live: false };
+  return null;
 }
 
-/** One side of a match card: name (left) + score (right), winner emphasised. */
-function CardSide({
+/** One side of a match card: crest/monogram, name, winner check, score. */
+function TeamRow({
   label,
   score,
   pens,
@@ -142,9 +166,20 @@ function CardSide({
   const tbd = !label;
   return (
     <div
-      className="flex flex-1 items-center gap-1.5 px-2"
+      className="flex flex-1 items-center gap-2 px-2.5"
       style={{ borderLeft: `2px solid ${win ? C.gold : "transparent"}` }}
     >
+      {tbd ? (
+        <Shield aria-hidden className="h-[18px] w-[18px] shrink-0" style={{ color: C.dim }} strokeWidth={1.5} />
+      ) : (
+        <span
+          aria-hidden
+          className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[0.5rem] font-semibold"
+          style={{ background: C.avatar, color: C.goldHi }}
+        >
+          {initials(label)}
+        </span>
+      )}
       <span
         className="min-w-0 flex-1 truncate text-[0.6875rem]"
         style={{
@@ -155,9 +190,10 @@ function CardSide({
       >
         {label ?? t("TBD")}
       </span>
+      {win ? <Check aria-hidden className="h-3 w-3 shrink-0" style={{ color: C.gold }} strokeWidth={3} /> : null}
       {score != null ? (
         <span
-          className="font-tabular text-[0.6875rem] tabular-nums"
+          className="ml-0.5 font-tabular text-[0.6875rem] tabular-nums"
           style={{ color: win ? C.goldHi : C.dim, fontWeight: win ? 600 : 500 }}
         >
           {score}
@@ -172,20 +208,23 @@ function CardSide({
   );
 }
 
-/** A single match drawn as a two-row FIFA card (status strip + both sides). */
-function MatchCard({ match }: { match: MatchRow }): React.ReactElement {
+/** A single match drawn as a card: kickoff/status strip + both sides. */
+function MatchCard({ match, tz }: { match: MatchRow; tz?: string }): React.ReactElement {
   const home = entrantLabel(match.home_team, match.home_source);
   const away = entrantLabel(match.away_team, match.away_source);
   const win = decided(match);
-  const st = statusOf(match);
+  const badge = statusBadge(match);
+  const kickoff = match.scheduled_at ? fmtKickoff(match.scheduled_at, tz) : "";
   const hasPens = match.home_pens != null && match.away_pens != null;
   return (
     <div
       role="group"
       aria-label={`${home ?? t("TBD")} ${match.home_score ?? ""} ${t("vs")} ${
         away ?? t("TBD")
-      } ${match.away_score ?? ""}`.replace(/\s+/g, " ").trim()}
-      className="flex w-full flex-col overflow-hidden rounded-md"
+      } ${match.away_score ?? ""}${badge ? ` ${badge.text}` : ""}`
+        .replace(/\s+/g, " ")
+        .trim()}
+      className="flex w-full flex-col overflow-hidden rounded-md transition-shadow hover:shadow-lg"
       style={{
         height: CARD_H,
         background: C.box,
@@ -193,76 +232,38 @@ function MatchCard({ match }: { match: MatchRow }): React.ReactElement {
         boxShadow: "inset 0 1px 0 rgba(255,255,255,.06)",
       }}
     >
-      {st.text ? (
-        <div
-          className="flex items-center px-2"
-          style={{ height: STRIP_H, background: "rgba(0,0,0,.2)" }}
-        >
+      <div className="flex items-center justify-between gap-1 px-2.5" style={{ height: META_H, background: "rgba(0,0,0,.2)" }}>
+        <span className="truncate text-[0.5625rem] font-medium" style={{ color: C.dim }}>
+          {kickoff}
+        </span>
+        {badge ? (
           <span
-            className="text-[0.5625rem] font-semibold uppercase tracking-wider"
-            style={{ color: st.live ? C.line : C.goldHi }}
+            className="shrink-0 text-[0.5625rem] font-semibold uppercase tracking-wider"
+            style={{ color: badge.live ? C.line : C.goldHi }}
           >
-            {st.live ? (
-              <span
-                className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle"
-                style={{ background: C.line }}
-              />
+            {badge.live ? (
+              <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: C.line }} />
             ) : null}
-            {st.text}
+            {badge.text}
           </span>
-        </div>
-      ) : (
-        <div style={{ height: STRIP_H }} />
-      )}
-      <CardSide
-        label={home}
-        score={match.home_score}
-        pens={hasPens ? match.home_pens ?? null : null}
-        win={win === "home"}
-      />
+        ) : null}
+      </div>
+      <TeamRow label={home} score={match.home_score} pens={hasPens ? match.home_pens ?? null : null} win={win === "home"} />
       <div style={{ height: 1, background: C.divider }} />
-      <CardSide
-        label={away}
-        score={match.away_score}
-        pens={hasPens ? match.away_pens ?? null : null}
-        win={win === "away"}
-      />
+      <TeamRow label={away} score={match.away_score} pens={hasPens ? match.away_pens ?? null : null} win={win === "away"} />
     </div>
   );
 }
 
-function GoldTrophy(): React.ReactElement {
-  return (
-    <svg viewBox="0 0 200 270" className="w-auto" style={{ height: TROPHY_H }} role="img" aria-label={t("Trophy")}>
-      <defs>
-        <linearGradient id="wcGold" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#f7dd92" />
-          <stop offset=".45" stopColor="#dcab47" />
-          <stop offset="1" stopColor="#b07f1d" />
-        </linearGradient>
-      </defs>
-      <path d="M54 52 C20 50 20 104 56 108" fill="none" stroke="url(#wcGold)" strokeWidth="10" strokeLinecap="round" />
-      <path d="M146 52 C180 50 180 104 144 108" fill="none" stroke="url(#wcGold)" strokeWidth="10" strokeLinecap="round" />
-      <path d="M52 38 H148 V70 C148 132 112 156 100 158 C88 156 52 132 52 70 Z" fill="url(#wcGold)" stroke="#9c6f16" strokeWidth="1.5" />
-      <path d="M66 48 H94 V70 C94 110 80 128 73 134 C70 120 66 92 66 70 Z" fill="#fbe9b4" opacity=".5" />
-      <rect x="91" y="158" width="18" height="26" fill="url(#wcGold)" />
-      <path d="M68 184 H132 L142 206 H58 Z" fill="url(#wcGold)" stroke="#9c6f16" strokeWidth="1" />
-      <rect x="54" y="206" width="92" height="15" rx="3" fill="#0f7a4f" />
-      <rect x="60" y="221" width="80" height="11" rx="3" fill="url(#wcGold)" />
-      <rect x="50" y="232" width="100" height="13" rx="4" fill="#0f7a4f" />
-    </svg>
-  );
-}
-
-/** Even, centred y-positions for one half: round 1 spread across `height`, then
- * every later match centred on its two positional children. */
-function yCenters(cols: MatchRow[][], height: number): number[][] {
+/** Even, centred y-positions per round: round 1 spread across `height`, then
+ * every later match centred on its two positional children (2i, 2i+1). */
+function yCenters(rounds: MatchRow[][], height: number): number[][] {
   const ys: number[][] = [];
-  const first = cols[0] ?? [];
+  const first = rounds[0] ?? [];
   ys[0] = first.map((_, i) => ((i + 0.5) * height) / Math.max(first.length, 1));
-  for (let c = 1; c < cols.length; c++) {
+  for (let c = 1; c < rounds.length; c++) {
     const prev = ys[c - 1]!;
-    ys[c] = (cols[c] ?? []).map((_, i) => {
+    ys[c] = (rounds[c] ?? []).map((_, i) => {
       const a = prev[2 * i] ?? prev[prev.length - 1] ?? height / 2;
       const b = prev[2 * i + 1] ?? a;
       return (a + b) / 2;
@@ -272,19 +273,53 @@ function yCenters(cols: MatchRow[][], height: number): number[][] {
 }
 
 /**
- * FIFA-style knockout bracket. `columns` are [round_no, matches] sorted low ->
- * high; the last round's single match is the Final. Renders the real draw with
- * scores + winner highlights, placeholder labels on unresolved slots.
+ * FIFA-style single-direction knockout bracket. `columns` are [round_no,
+ * matches] sorted low -> high; the last round is the Final. `timeZone` (IANA)
+ * formats kickoffs + the footnote; omit for the viewer's local time.
  */
 export function FifaBracket({
   columns,
+  timeZone,
 }: {
   columns: [number, MatchRow[]][];
+  timeZone?: string;
 }): React.ReactElement {
-  // A loser_of-fed match is a consolation (3rd-place playoff / plate), NOT part
-  // of the winner tree — the generator emits it at the SAME round_no as the
-  // Final, so it must be pulled out or it would defeat the single-final check
-  // and collapse the whole bracket. Render it separately below.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [nav, setNav] = useState({ start: true, end: true });
+
+  const sync = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setNav({
+      start: el.scrollLeft <= 1,
+      end: el.scrollLeft >= el.scrollWidth - el.clientWidth - 1,
+    });
+  }, []);
+  useEffect(() => {
+    sync();
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [sync, columns]);
+
+  const scrollByCol = useCallback((dir: 1 | -1) => {
+    scrollRef.current?.scrollBy({ left: dir * (CARD_W + COL_GAP), behavior: "smooth" });
+  }, []);
+  const onKeyDown = (e: React.KeyboardEvent): void => {
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      scrollByCol(1);
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      scrollByCol(-1);
+    }
+  };
+
+  // A loser_of-fed match is a consolation (3rd-place playoff), NOT part of the
+  // winner tree — pull it out (else the single-final check collapses) and draw
+  // it below the Final.
   const consolation = columns
     .flatMap(([, ms]) => ms)
     .filter(isConsolation)
@@ -307,237 +342,146 @@ export function FifaBracket({
     );
   }
 
-  const finalMatch = rounds[R - 1]!.length === 1 ? rounds[R - 1]![0]! : null;
-  // With a clean single-match Final we mirror the draw around a centre; without
-  // one (degenerate / partial data) we fall back to a single left->right tree.
-  const split = finalMatch != null;
-  const sideRounds = finalMatch ? rounds.slice(0, R - 1) : rounds;
-  const S = sideRounds.length;
+  const n0 = rounds[0]!.length;
+  const H = Math.max(n0, 1) * ROW;
+  const y = yCenters(rounds, H);
+  const xOf = (c: number): number => c * (CARD_W + COL_GAP);
 
-  const leftCols = sideRounds.map((r) => (split ? r.slice(0, Math.ceil(r.length / 2)) : r));
-  const rightCols = sideRounds.map((r) => (split ? r.slice(Math.ceil(r.length / 2)) : []));
+  // Consolation cards stack in the Final column, below the Final.
+  const finalX = xOf(R - 1);
+  const consTop = H / 2 + CARD_H / 2 + 24;
+  const consBlock = LABEL_H + 4 + CARD_H + 18;
+  const canvasH = Math.max(
+    H,
+    consolation.length ? consTop + consolation.length * consBlock : H,
+  );
+  const canvasW = R * CARD_W + (R - 1) * COL_GAP;
 
-  const k0 = Math.max(leftCols[0]?.length ?? 0, rightCols[0]?.length ?? 0, 1);
-  const H = k0 * ROW;
-
-  const xLeft = leftCols.map((_, c) => c * (CARD_W + COL_GAP));
-  const leftEdge = S > 0 ? xLeft[S - 1]! + CARD_W : 0;
-  const xFinal = S > 0 ? leftEdge + CENTER_GAP : 0;
-  const xRightInner = xFinal + CARD_W + CENTER_GAP;
-  const xRight = rightCols.map((_, c) => xRightInner + (S - 1 - c) * (CARD_W + COL_GAP));
-  const canvasW = finalMatch
-    ? (S > 0 ? xRight[0]! + CARD_W : xFinal + CARD_W)
-    : leftEdge;
-
-  // Top-anchor the tree; the champion + trophy hang below the central Final, so
-  // the canvas only grows to fit that reach (no dead band above the bracket).
-  const belowReach = CARD_H / 2 + 12 + CHAMP_H + 10 + TROPHY_H;
-  const offY = 0;
-  const midY = H / 2;
-  const canvasH = finalMatch ? Math.max(H, midY + belowReach) : H;
-
-  const yLeft = yCenters(leftCols, H);
-  const yRight = yCenters(rightCols, H);
-
-  // --- connectors -----------------------------------------------------------
+  // Connectors: each parent (round c>=1) joins its two children (2i, 2i+1).
   const seg: React.ReactElement[] = [];
   let segKey = 0;
-  const hline = (x1: number, x2: number, y: number): void => {
-    seg.push(
-      <span
-        key={`s${segKey++}`}
-        className="absolute"
-        style={{ left: Math.min(x1, x2), top: y - 1, width: Math.abs(x2 - x1), height: 2, background: C.line }}
-      />,
-    );
+  const hline = (x1: number, x2: number, yy: number): void => {
+    seg.push(<span key={`s${segKey++}`} className="absolute" style={{ left: Math.min(x1, x2), top: yy - 1, width: Math.abs(x2 - x1), height: 2, background: C.line }} />);
   };
   const vline = (x: number, y1: number, y2: number): void => {
-    seg.push(
-      <span
-        key={`s${segKey++}`}
-        className="absolute"
-        style={{ left: x - 1, top: Math.min(y1, y2), width: 2, height: Math.abs(y2 - y1), background: C.line }}
-      />,
-    );
+    seg.push(<span key={`s${segKey++}`} className="absolute" style={{ left: x - 1, top: Math.min(y1, y2), width: 2, height: Math.abs(y2 - y1), background: C.line }} />);
   };
-
-  // Left side: children sit to the LEFT of their parent.
-  for (let c = 1; c < S; c++) {
-    leftCols[c]!.forEach((_, i) => {
-      const c0 = yLeft[c - 1]?.[2 * i];
-      const c1 = yLeft[c - 1]?.[2 * i + 1];
+  for (let c = 1; c < R; c++) {
+    rounds[c]!.forEach((_, i) => {
+      const c0 = y[c - 1]?.[2 * i];
+      const c1 = y[c - 1]?.[2 * i + 1];
       if (c0 == null || c1 == null) return;
-      const childR = xLeft[c - 1]! + CARD_W;
-      const parentL = xLeft[c]!;
+      const childR = xOf(c - 1) + CARD_W;
+      const parentL = xOf(c);
       const bus = (childR + parentL) / 2;
-      hline(childR, bus, offY + c0);
-      hline(childR, bus, offY + c1);
-      vline(bus, offY + c0, offY + c1);
-      hline(bus, parentL, offY + yLeft[c]![i]!);
+      hline(childR, bus, c0);
+      hline(childR, bus, c1);
+      vline(bus, c0, c1);
+      hline(bus, parentL, y[c]![i]!);
     });
-  }
-  // Right side: children sit to the RIGHT of their parent.
-  for (let c = 1; c < S; c++) {
-    rightCols[c]!.forEach((_, i) => {
-      const c0 = yRight[c - 1]?.[2 * i];
-      const c1 = yRight[c - 1]?.[2 * i + 1];
-      if (c0 == null || c1 == null) return;
-      const childL = xRight[c - 1]!;
-      const parentR = xRight[c]! + CARD_W;
-      const bus = (parentR + childL) / 2;
-      hline(childL, bus, offY + c0);
-      hline(childL, bus, offY + c1);
-      vline(bus, offY + c0, offY + c1);
-      hline(bus, parentR, offY + yRight[c]![i]!);
-    });
-  }
-  // Semifinals -> Final. For a clean power-of-2 draw each SF sits at midY, so
-  // this is a straight line; route via an elbow to midY otherwise so the line
-  // always meets the Final's mid-height edge (never floats above/below it).
-  const connectFinal = (childEdge: number, childY: number, finalEdge: number): void => {
-    if (childY === midY) {
-      hline(childEdge, finalEdge, midY);
-      return;
-    }
-    const bus = (childEdge + finalEdge) / 2;
-    hline(childEdge, bus, childY);
-    vline(bus, childY, midY);
-    hline(bus, finalEdge, midY);
-  };
-  if (finalMatch && S > 0) {
-    if (leftCols[S - 1]!.length) {
-      connectFinal(xLeft[S - 1]! + CARD_W, offY + (yLeft[S - 1]?.[0] ?? H / 2), xFinal);
-    }
-    if (rightCols[S - 1]!.length) {
-      connectFinal(xRight[S - 1]!, offY + (yRight[S - 1]?.[0] ?? H / 2), xFinal + CARD_W);
-    }
   }
 
-  // --- cards ----------------------------------------------------------------
   const cards: React.ReactElement[] = [];
-  const placeCard = (m: MatchRow, x: number, cy: number, key: string): void => {
-    cards.push(
-      <div key={key} className="absolute" style={{ left: x, top: cy - CARD_H / 2, width: CARD_W }}>
-        <MatchCard match={m} />
-      </div>,
-    );
-  };
-  leftCols.forEach((col, c) =>
-    col.forEach((m, i) => placeCard(m, xLeft[c]!, offY + (yLeft[c]?.[i] ?? H / 2), `l-${c}-${i}`)),
-  );
-  rightCols.forEach((col, c) =>
-    col.forEach((m, i) => placeCard(m, xRight[c]!, offY + (yRight[c]?.[i] ?? H / 2), `r-${c}-${i}`)),
-  );
-
-  // --- champion -------------------------------------------------------------
-  const champSide = finalMatch ? decided(finalMatch) : null;
-  const champName = finalMatch
-    ? champSide === "home"
-      ? entrantLabel(finalMatch.home_team, finalMatch.home_source)
-      : champSide === "away"
-        ? entrantLabel(finalMatch.away_team, finalMatch.away_source)
-        : null
-    : null;
-
-  // --- round headers --------------------------------------------------------
-  const headers: { x: number; label: string }[] = [];
-  sideRounds.forEach((r, c) => {
-    const label = roundName(r.length * 2);
-    if (leftCols[c]!.length) headers.push({ x: xLeft[c]! + CARD_W / 2, label });
-    if (rightCols[c]!.length) headers.push({ x: xRight[c]! + CARD_W / 2, label });
-  });
-  if (finalMatch) headers.push({ x: xFinal + CARD_W / 2, label: t("Final") });
-
-  const anyPlaceholder = rounds.some((r) =>
-    r.some((m) => !m.home_team || !m.away_team),
-  );
-  const fromGroups = rounds.some((r) =>
-    r.some(
-      (m) =>
-        m.home_source?.type === "group_position" ||
-        m.away_source?.type === "group_position",
+  rounds.forEach((col, c) =>
+    col.forEach((m, i) =>
+      cards.push(
+        <div key={`m-${c}-${i}`} className="absolute" style={{ left: xOf(c), top: (y[c]?.[i] ?? H / 2) - CARD_H / 2, width: CARD_W }}>
+          <MatchCard match={m} tz={timeZone} />
+        </div>,
+      ),
     ),
+  );
+
+  const anyPlaceholder = rounds.some((r) => r.some((m) => !m.home_team || !m.away_team));
+  const fromGroups = rounds.some((r) =>
+    r.some((m) => m.home_source?.type === "group_position" || m.away_source?.type === "group_position"),
+  );
+  const hasDates = rounds.some((r) => r.some((m) => m.scheduled_at)) || consolation.some((m) => m.scheduled_at);
+  const canScroll = !(nav.start && nav.end);
+
+  const arrowBtn = (dir: 1 | -1, disabled: boolean): React.ReactElement => (
+    <button
+      type="button"
+      aria-label={dir === -1 ? t("Previous round") : t("Next round")}
+      onClick={() => scrollByCol(dir)}
+      disabled={disabled}
+      className="flex h-7 w-7 items-center justify-center rounded-full transition-opacity disabled:cursor-default disabled:opacity-30"
+      style={{ background: "rgba(0,0,0,0.25)", border: `1.5px solid ${C.gold}`, color: C.goldHi }}
+    >
+      {dir === -1 ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+    </button>
   );
 
   return (
     <div
       role="figure"
       aria-label={t("Knockout bracket")}
-      className="w-full overflow-x-auto rounded-2xl p-5 shadow-xl sm:p-7"
+      className="w-full rounded-2xl p-4 shadow-xl sm:p-5"
       style={{ background: STAGE_BG }}
     >
-      {anyPlaceholder ? (
-        <p className="mb-3 text-[0.6875rem] font-semibold uppercase tracking-wider" style={{ color: C.goldHi }}>
-          {fromGroups
-            ? t("Pairings fill in as the group stage finishes.")
-            : t("Pairings fill in as teams qualify.")}
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="min-w-0 truncate text-[0.6875rem] font-semibold uppercase tracking-wider" style={{ color: C.goldHi }}>
+          {anyPlaceholder
+            ? fromGroups
+              ? t("Pairings fill in as the group stage finishes.")
+              : t("Pairings fill in as teams qualify.")
+            : ""}
         </p>
-      ) : null}
-      <div className="mx-auto" style={{ width: canvasW }}>
-        <div className="relative" style={{ width: canvasW, height: HEADER_H }}>
-          {headers.map((h, i) => (
-            <span
-              key={`hd-${i}`}
-              className="absolute -translate-x-1/2 whitespace-nowrap text-[0.625rem] font-semibold uppercase tracking-wider"
-              style={{ left: h.x, top: 4, color: C.goldHi }}
-            >
-              {h.label}
-            </span>
-          ))}
-        </div>
-        <div className="relative" style={{ width: canvasW, height: canvasH }}>
-          {seg}
-          {cards}
-          {finalMatch ? (
-            <>
-              <div className="absolute" style={{ left: xFinal, top: midY - CARD_H / 2, width: CARD_W }}>
-                <MatchCard match={finalMatch} />
-              </div>
-              <div
-                className="absolute flex flex-col items-center justify-center rounded-lg"
-                style={{
-                  left: xFinal,
-                  top: midY + CARD_H / 2 + 12,
-                  width: CHAMP_W,
-                  height: CHAMP_H,
-                  background: C.box,
-                  border: `2px solid ${C.gold}`,
-                }}
-              >
-                <span className="text-[0.5625rem] font-semibold uppercase tracking-[0.14em]" style={{ color: C.goldHi }}>
-                  {t("Champion")}
-                </span>
-                {champName ? (
-                  <span className="max-w-full truncate px-2 text-xs font-semibold" style={{ color: C.text }}>
-                    {champName}
-                  </span>
-                ) : null}
-              </div>
-              <div
-                className="absolute flex justify-center"
-                style={{ left: xFinal, top: midY + CARD_H / 2 + 12 + CHAMP_H + 10, width: CHAMP_W }}
-              >
-                <GoldTrophy />
-              </div>
-            </>
-          ) : null}
-        </div>
-        {consolation.length ? (
-          <div className="mt-4 flex flex-wrap justify-center gap-4 border-t pt-4" style={{ borderColor: "rgba(255,255,255,0.12)" }}>
-            {consolation.map((m) => (
-              <div key={m.id} className="flex flex-col gap-1" style={{ width: CARD_W }}>
-                <span
-                  className="text-center text-[0.625rem] font-semibold uppercase tracking-wider"
-                  style={{ color: C.goldHi }}
-                >
-                  {consolationLabel(m)}
-                </span>
-                <MatchCard match={m} />
-              </div>
-            ))}
+        {canScroll ? (
+          <div className="flex shrink-0 gap-1.5">
+            {arrowBtn(-1, nav.start)}
+            {arrowBtn(1, nav.end)}
           </div>
         ) : null}
       </div>
+
+      <div
+        ref={scrollRef}
+        onScroll={sync}
+        onKeyDown={onKeyDown}
+        tabIndex={0}
+        className="overflow-x-auto focus:outline-none"
+        style={{ scrollbarWidth: "thin" }}
+      >
+        <div style={{ width: canvasW }}>
+          {/* round headers, one per column */}
+          <div className="relative" style={{ width: canvasW, height: HEADER_H }}>
+            {rounds.map((r, c) => (
+              <span
+                key={`h-${c}`}
+                className="absolute -translate-x-1/2 whitespace-nowrap text-[0.625rem] font-semibold uppercase tracking-wider"
+                style={{ left: xOf(c) + CARD_W / 2, top: 4, color: C.goldHi }}
+              >
+                {roundName(r.length * 2)}
+              </span>
+            ))}
+          </div>
+          {/* the bracket */}
+          <div className="relative" style={{ width: canvasW, height: canvasH }}>
+            {seg}
+            {cards}
+            {consolation.map((m, i) => {
+              const top = consTop + i * consBlock;
+              return (
+                <div key={`c-${m.id}`} className="absolute" style={{ left: finalX, top, width: CARD_W }}>
+                  <span className="mb-1 block text-[0.5625rem] font-semibold uppercase tracking-wider" style={{ color: C.goldHi }}>
+                    {consolationLabel(m)}
+                  </span>
+                  <MatchCard match={m} tz={timeZone} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {hasDates ? (
+        <p className="mt-3 text-[0.625rem]" style={{ color: C.dim }}>
+          {timeZone
+            ? `${t("All times are in")} ${tzLabel(timeZone)}`
+            : t("All times shown in your local time")}
+        </p>
+      ) : null}
     </div>
   );
 }

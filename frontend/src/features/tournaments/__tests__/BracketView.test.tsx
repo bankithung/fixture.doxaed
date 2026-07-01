@@ -31,7 +31,7 @@ describe("BracketView", () => {
     expect(screen.getByText(/no fixtures yet/i)).toBeInTheDocument();
   });
 
-  it("renders a knockout band as a FIFA-style bracket with a champion box", () => {
+  it("renders a knockout band as a FIFA-style bracket", () => {
     render(
       <BracketView
         matches={[
@@ -65,13 +65,10 @@ describe("BracketView", () => {
         ]}
       />,
     );
-    // FIFA-style distance-from-final column labels (no hardcoded "Round N"):
-    // four entrants draw a Semi-finals round (mirrored on each half) feeding
-    // the Final + the champion box. The sketch reads entrant count, so the
-    // label appears once per half.
+    // Single-direction FIFA columns: a Semi-finals round (2 matches) feeding
+    // the Final. Real matchups render as cards.
     expect(screen.getByText("Final")).toBeInTheDocument();
     expect(screen.getAllByText("Semi-finals").length).toBeGreaterThan(0);
-    expect(screen.getByText("Champion")).toBeInTheDocument();
     expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0);
     expect(screen.getByText("Beta")).toBeInTheDocument();
   });
