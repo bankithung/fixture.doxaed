@@ -48,8 +48,37 @@ function toMinutes(iso: string): number {
   return (h ?? 0) * 60 + (m ?? 0);
 }
 
-// A gap of this many minutes or more between a court's matches reads as a break.
-const BREAK_MIN = 15;
+// An idle stretch of this many minutes or more (nothing on the court) is a break.
+const BREAK_MIN = 30;
+
+/** minutes since midnight → "11:30". */
+function fromMinutes(min: number): string {
+  return `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(
+    min % 60,
+  ).padStart(2, "0")}`;
+}
+
+/** The idle sub-windows of [start, end) once every busy interval is removed —
+ * so a gap between two shown matches that is only PARTLY filled by other
+ * categories still surfaces its genuinely-empty stretches. */
+function idleWindows(
+  start: number,
+  end: number,
+  busy: [number, number][],
+): [number, number][] {
+  const clipped = busy
+    .map(([s, e]): [number, number] => [Math.max(s, start), Math.min(e, end)])
+    .filter(([s, e]) => e > s)
+    .sort((a, b) => a[0] - b[0]);
+  const idle: [number, number][] = [];
+  let cursor = start;
+  for (const [s, e] of clipped) {
+    if (s > cursor) idle.push([cursor, s]);
+    cursor = Math.max(cursor, e);
+  }
+  if (cursor < end) idle.push([cursor, end]);
+  return idle;
+}
 
 /** A visible "no play" gap between two matches on the same court, so the
  * organiser can SEE when the break is instead of inferring it from a time jump. */
@@ -94,18 +123,13 @@ function withBreaks(
     if (next && m.scheduled_at && next.scheduled_at && m.duration_minutes != null) {
       const gapStart = toMinutes(m.scheduled_at) + m.duration_minutes;
       const gapEnd = toMinutes(next.scheduled_at);
-      const gap = gapEnd - gapStart;
-      const idle = !busy.some(([s, e]) => s < gapEnd && e > gapStart);
-      if (gap >= BREAK_MIN && idle) {
-        out.push(
-          <BreakRow
-            key={`brk-${m.ref}`}
-            from={addMinutes(m.scheduled_at, m.duration_minutes)}
-            to={fmtTime(next.scheduled_at)}
-            minutes={gap}
-          />,
-        );
-      }
+      idleWindows(gapStart, gapEnd, busy).forEach(([s, e], j) => {
+        if (e - s >= BREAK_MIN) {
+          out.push(
+            <BreakRow key={`brk-${m.ref}-${j}`} from={fromMinutes(s)} to={fromMinutes(e)} minutes={e - s} />,
+          );
+        }
+      });
     }
   });
   return out;

@@ -245,7 +245,7 @@ describe("DryRunPreviewPage", () => {
     expect(await screen.findByText(/09:30-10:30/)).toBeInTheDocument();
   });
 
-  it("does NOT mark a Break when another match fills the court gap", async () => {
+  it("does NOT mark a Break when another match fills the whole court gap", async () => {
     vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
       ...PREVIEW,
       matches: [
@@ -259,18 +259,45 @@ describe("DryRunPreviewPage", () => {
           round_no: 2, home: { team_id: "tm1" }, away: { team_id: "tm2" },
           scheduled_at: "2026-06-20T10:30:00", venue: "Court 1", duration_minutes: 30,
         },
-        // A knockout match uses the SAME court 09:45-10:15 — hidden from the
-        // schedule list, but it means the court is NOT idle in that gap.
+        // A knockout match fills the ENTIRE 09:30-10:30 gap on the same court.
         {
           ref: "k1", leaf_key: "football.u15", stage: "knockout", group_label: "",
           round_no: 1, home: { team_id: "tm3" }, away: { team_id: "tm4" },
-          scheduled_at: "2026-06-20T09:45:00", venue: "Court 1", duration_minutes: 30,
+          scheduled_at: "2026-06-20T09:30:00", venue: "Court 1", duration_minutes: 60,
         },
       ],
     });
     mount();
     expect(await screen.findByTestId("chip-g1")).toBeInTheDocument();
-    // The court is busy (knockout) during the display gap -> no false break.
+    expect(screen.queryByText(/Break/)).toBeNull(); // court is busy, not idle
+  });
+
+  it("marks a Break only in the IDLE part of a partly-filled gap", async () => {
+    vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
+      ...PREVIEW,
+      matches: [
+        {
+          ref: "g1", leaf_key: "football.u15", stage: "group", group_label: "A",
+          round_no: 1, home: { team_id: "tm1" }, away: { team_id: "tm2" },
+          scheduled_at: "2026-06-20T09:00:00", venue: "Court 1", duration_minutes: 30,
+        },
+        {
+          ref: "g2", leaf_key: "football.u15", stage: "group", group_label: "A",
+          round_no: 2, home: { team_id: "tm1" }, away: { team_id: "tm2" },
+          scheduled_at: "2026-06-20T11:30:00", venue: "Court 1", duration_minutes: 30,
+        },
+        // A hidden match uses the court 09:30-10:30 only; 10:30-11:30 is idle.
+        {
+          ref: "k1", leaf_key: "football.u15", stage: "knockout", group_label: "",
+          round_no: 1, home: { team_id: "tm3" }, away: { team_id: "tm4" },
+          scheduled_at: "2026-06-20T09:30:00", venue: "Court 1", duration_minutes: 60,
+        },
+      ],
+    });
+    mount();
+    expect(await screen.findByTestId("chip-g1")).toBeInTheDocument();
+    // Break only for the genuinely-idle 10:30-11:30 stretch, not the busy part.
+    expect(await screen.findByText(/10:30-11:30/)).toBeInTheDocument();
     expect(screen.queryByText(/09:30-10:30/)).toBeNull();
   });
 
