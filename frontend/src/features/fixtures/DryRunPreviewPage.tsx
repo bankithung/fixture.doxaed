@@ -393,24 +393,30 @@ export function DryRunPreviewPage(): React.ReactElement {
         onStepClick={() => navigate(routes.tournamentFixtures(id))}
       />
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {t("Step 4 · Preview & publish")}
-        </h1>
-        <span className="text-sm text-muted-foreground">{label}</span>
-        {p ? (
-          <span
-            data-testid="preview-counts"
-            className="ml-auto font-tabular text-xs text-muted-foreground"
-          >
-            {p.matches.length} {t("matches")}
-            {p.fairness.days_used ? ` · ${p.fairness.days_used} ${t("days")}` : ""}
-          </span>
-        ) : null}
+      <div className="flex flex-col gap-0.5">
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          <h1 className="text-xl font-semibold tracking-tight">
+            {t("Step 4 · Preview & publish")}
+          </h1>
+          {label ? (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              {label}
+            </span>
+          ) : null}
+          {p ? (
+            <span
+              data-testid="preview-counts"
+              className="ml-auto font-tabular text-xs text-muted-foreground"
+            >
+              {p.matches.length} {t("matches")}
+              {p.fairness.days_used ? ` · ${p.fairness.days_used} ${t("days")}` : ""}
+            </span>
+          ) : null}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {t("This is a trial run. Nothing is saved until you publish.")}
+        </p>
       </div>
-      <p className="-mt-2 text-sm text-muted-foreground">
-        {t("This is a trial run. Nothing is saved until you publish.")}
-      </p>
 
       {stale ? (
         <InputsChangedBanner context="accept" onRePreview={rePreview} />
@@ -517,18 +523,22 @@ export function DryRunPreviewPage(): React.ReactElement {
             ) : null}
           </section>
 
-          <PreviewFilterBar
-            matches={p.matches}
-            sport={sportFilter}
-            category={catFilter}
-            onSport={setSportFilter}
-            onCategory={setCatFilter}
-          />
-          <div className="flex items-center justify-end">
+          {/* One toolbar: sport/category filters on the left, the day/group/
+              draw view switch on the right. */}
+          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+            <div className="min-w-0 flex-1">
+              <PreviewFilterBar
+                matches={p.matches}
+                sport={sportFilter}
+                category={catFilter}
+                onSport={setSportFilter}
+                onCategory={setCatFilter}
+              />
+            </div>
             <div
               role="radiogroup"
               aria-label={t("Preview view")}
-              className="inline-flex rounded-lg border border-border bg-muted/20 p-0.5"
+              className="inline-flex shrink-0 rounded-lg border border-border bg-muted/20 p-0.5"
             >
               {(
                 [

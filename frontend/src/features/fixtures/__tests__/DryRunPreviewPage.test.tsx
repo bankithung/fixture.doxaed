@@ -214,7 +214,9 @@ describe("DryRunPreviewPage", () => {
     // Default day view: the knockout is timed with a clean placeholder label.
     const k1 = await screen.findByTestId("chip-k1");
     expect(k1).toHaveTextContent("Group A top 1");
-    expect(k1).not.toHaveTextContent("Football"); // never the raw em-dash label
+    // The competition shows as clean pills ("Football U15"), never the raw
+    // em-dash slot label.
+    expect(k1).not.toHaveTextContent("Football — U15 — Group A");
     expect(k1).toHaveTextContent("10:00");
     expect(screen.getByTestId("day-2026-06-21")).toBeInTheDocument();
     // The bracket is NOT in the schedule views.

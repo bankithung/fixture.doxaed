@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { PreviewMatch } from "@/api/tournaments";
 import { t } from "@/lib/t";
 import { shortGroupName } from "./groupSlotLabel";
+import { competitionLabel } from "./previewFilters";
 import { LEAF_ACCENTS, MatchChip } from "./MatchesByDayGrid";
 
 /** A bucket of matches that share a group (or the knockout). */
@@ -96,9 +97,9 @@ export function MatchesByGroupGrid({
             <span className="font-tabular text-xs font-normal text-muted-foreground">
               {b.matches.length}
             </span>
-            {multiLeaf ? (
+            {multiLeaf && b.matches[0] ? (
               <span className="ml-auto truncate text-[0.6875rem] font-normal text-muted-foreground">
-                {shortGroupName(b.matches[0]?.group_label) || b.leafKey}
+                {competitionLabel(b.matches[0])}
               </span>
             ) : null}
           </h3>
@@ -109,6 +110,7 @@ export function MatchesByGroupGrid({
                 match={m}
                 accent={accentOf(m.leaf_key)}
                 teamNames={teamNames}
+                showCompetition={false}
               />
             ))}
           </div>
