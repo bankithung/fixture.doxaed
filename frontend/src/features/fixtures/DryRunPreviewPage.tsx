@@ -575,37 +575,24 @@ export function DryRunPreviewPage(): React.ReactElement {
               ))}
             </div>
           </div>
+          {/* Group stage: the day/group schedule, or (Draw view) the numbered
+              group composition. A pure-knockout competition has no group stage,
+              so nothing renders here — just the bracket below. */}
           {viewMode === "draw" ? (
             <GroupCompositionView matches={filteredMatches} teamNames={teamNames} />
-          ) : scheduleMatches.length === 0 && filteredMatches.length > 0 ? (
-            <div
-              data-testid="preview-knockout-only"
-              className="rounded-xl border border-border bg-card px-6 py-8 text-center"
-            >
-              <p className="text-sm font-medium">
-                {t("No group-stage matches to schedule here.")}
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {t("Knockout matches are shown in the bracket.")}
-              </p>
-              <button
-                type="button"
-                onClick={() => setViewMode("draw")}
-                className="mt-2 text-xs font-medium text-primary hover:underline"
-              >
-                {t("Open the bracket")}
-              </button>
-            </div>
-          ) : viewMode === "day" ? (
-            <MatchesByDayGrid matches={scheduleMatches} teamNames={teamNames} />
-          ) : (
-            <MatchesByGroupGrid matches={scheduleMatches} teamNames={teamNames} />
-          )}
+          ) : scheduleMatches.length > 0 ? (
+            viewMode === "day" ? (
+              <MatchesByDayGrid matches={scheduleMatches} teamNames={teamNames} />
+            ) : (
+              <MatchesByGroupGrid matches={scheduleMatches} teamNames={teamNames} />
+            )
+          ) : null}
 
-          {/* FIFA bracket tree for any competition with a (placeholder)
-              knockout stage — the organiser reviews Stage 2 before publishing.
-              Placeholder slots show the clean "Group A #1" labels. */}
-          {viewMode === "draw" && knockoutBrackets.length ? (
+          {/* Knockout bracket, INLINE on the same page (owner ask): a multi-
+              stage competition shows its group stage above then the bracket; a
+              pure knockout shows just the bracket. Placeholder slots read
+              "Group A #1" / "Winner of M3". */}
+          {knockoutBrackets.length ? (
             <section data-testid="preview-bracket" className="flex flex-col gap-4">
               <h2 className="text-sm font-semibold">{t("Knockout bracket")}</h2>
               {knockoutBrackets.map((b) => (
