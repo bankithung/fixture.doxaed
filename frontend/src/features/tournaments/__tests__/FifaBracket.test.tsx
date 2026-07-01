@@ -117,9 +117,14 @@ describe("FifaBracket", () => {
     expect(screen.getAllByText("Quarter-finals")).toHaveLength(1);
     expect(screen.getAllByText("Semi-finals")).toHaveLength(1);
     expect(screen.getAllByText("Final")).toHaveLength(1);
-    // The play-in teams render (fixed first-round matchup); later slots are TBD.
+    // The play-in teams render (fixed first-round matchup).
     expect(screen.getByText("Alpha")).toBeInTheDocument();
     expect(screen.getByText("Beta")).toBeInTheDocument();
+    // Cards are numbered; unresolved slots point at the feeder match, never a
+    // guessed winner. The play-in is M1 (leftmost column), so q1's open side
+    // reads "Winner of M1".
+    expect(screen.getByText("M1")).toBeInTheDocument();
+    expect(screen.getByText("Winner of M1")).toBeInTheDocument();
   });
 
   it("pulls a 3rd-place playoff out of the winner tree and labels it below", () => {

@@ -50,14 +50,33 @@ export function sourceLabel(src: MatchSource | null | undefined): string | null 
   return null;
 }
 
-/** A side's display label: a real team name, else its group_position
- * placeholder ("Group A top 1"), else null (winner_of/tbd -> "TBD"). */
+/** The match id a winner_of/loser_of pointer references (DB rows carry
+ * `match_id`, preview rows carry `ref`); "" otherwise. */
+function refId(src: MatchSource | null | undefined): string {
+  if (!src) return "";
+  const raw =
+    (src as Record<string, unknown>).match_id ?? (src as Record<string, unknown>).ref;
+  return raw != null ? String(raw) : "";
+}
+
+/** A side's display label. A real team name; else its group_position slot
+ * ("Group A top 1"); else — so we NEVER guess a winner — the match a slot flows
+ * FROM ("Winner of M3" / "Loser of M3", where M3 is that feeder's card number);
+ * else "TBD" (null). `no` maps match id -> the number shown on each card. */
 function entrantLabel(
   team: MatchRow["home_team"],
   src: MatchSource | null | undefined,
+  no: Map<string, number>,
 ): string | null {
   if (team?.name) return team.name;
-  return sourceLabel(src);
+  if (!src) return null;
+  if (src.type === "group_position") return groupPositionLabel(src);
+  if (src.type === "winner_of" || src.type === "loser_of") {
+    const n = no.get(refId(src));
+    if (n == null) return null;
+    return src.type === "loser_of" ? `${t("Loser of M")}${n}` : `${t("Winner of M")}${n}`;
+  }
+  return null;
 }
 
 /** FIFA round name from the number of teams contesting that round. */
@@ -157,40 +176,42 @@ function TeamRow({
   score,
   pens,
   win,
+  isTeam,
 }: {
   label: string | null;
   score: number | null;
   pens: number | null;
   win: boolean;
+  isTeam: boolean;
 }): React.ReactElement {
-  const tbd = !label;
+  const soft = !isTeam;
   return (
     <div
       className="flex flex-1 items-center gap-2 px-2.5"
       style={{ borderLeft: `2px solid ${win ? C.gold : "transparent"}` }}
     >
-      {tbd ? (
-        <Shield aria-hidden className="h-[18px] w-[18px] shrink-0" style={{ color: C.dim }} strokeWidth={1.5} />
-      ) : (
+      {isTeam ? (
         <span
           aria-hidden
           className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[0.5rem] font-semibold"
           style={{ background: C.avatar, color: C.goldHi }}
         >
-          {initials(label)}
+          {initials(label ?? "")}
         </span>
+      ) : (
+        <Shield aria-hidden className="h-[18px] w-[18px] shrink-0" style={{ color: C.dim }} strokeWidth={1.5} />
       )}
       <span
         className="min-w-0 flex-1 truncate text-[0.6875rem]"
         style={{
-          color: tbd ? C.dim : win ? C.text : "rgba(255,255,255,0.85)",
-          fontStyle: tbd ? "italic" : "normal",
+          color: soft ? C.dim : win ? C.text : "rgba(255,255,255,0.85)",
+          fontStyle: soft ? "italic" : "normal",
           fontWeight: win ? 600 : 500,
         }}
       >
         {label ?? t("TBD")}
       </span>
-      {win ? <Check aria-hidden className="h-3 w-3 shrink-0" style={{ color: C.gold }} strokeWidth={3} /> : null}
+      {win && isTeam ? <Check aria-hidden className="h-3 w-3 shrink-0" style={{ color: C.gold }} strokeWidth={3} /> : null}
       {score != null ? (
         <span
           className="ml-0.5 font-tabular text-[0.6875rem] tabular-nums"
@@ -209,9 +230,10 @@ function TeamRow({
 }
 
 /** A single match drawn as a card: kickoff/status strip + both sides. */
-function MatchCard({ match, tz }: { match: MatchRow; tz?: string }): React.ReactElement {
-  const home = entrantLabel(match.home_team, match.home_source);
-  const away = entrantLabel(match.away_team, match.away_source);
+function MatchCard({ match, tz, no }: { match: MatchRow; tz?: string; no: Map<string, number> }): React.ReactElement {
+  const home = entrantLabel(match.home_team, match.home_source, no);
+  const away = entrantLabel(match.away_team, match.away_source, no);
+  const num = no.get(match.id);
   const win = decided(match);
   const badge = statusBadge(match);
   const kickoff = match.scheduled_at ? fmtKickoff(match.scheduled_at, tz) : "";
@@ -232,8 +254,13 @@ function MatchCard({ match, tz }: { match: MatchRow; tz?: string }): React.React
         boxShadow: "inset 0 1px 0 rgba(255,255,255,.06)",
       }}
     >
-      <div className="flex items-center justify-between gap-1 px-2.5" style={{ height: META_H, background: "rgba(0,0,0,.2)" }}>
-        <span className="truncate text-[0.5625rem] font-medium" style={{ color: C.dim }}>
+      <div className="flex items-center gap-1.5 px-2.5" style={{ height: META_H, background: "rgba(0,0,0,.2)" }}>
+        {num != null ? (
+          <span className="shrink-0 font-tabular text-[0.5625rem] font-semibold" style={{ color: C.goldHi }}>
+            M{num}
+          </span>
+        ) : null}
+        <span className="min-w-0 flex-1 truncate text-[0.5625rem] font-medium" style={{ color: C.dim }}>
           {kickoff}
         </span>
         {badge ? (
@@ -248,20 +275,17 @@ function MatchCard({ match, tz }: { match: MatchRow; tz?: string }): React.React
           </span>
         ) : null}
       </div>
-      <TeamRow label={home} score={match.home_score} pens={hasPens ? match.home_pens ?? null : null} win={win === "home"} />
+      <TeamRow label={home} isTeam={!!match.home_team?.name} score={match.home_score} pens={hasPens ? match.home_pens ?? null : null} win={win === "home"} />
       <div style={{ height: 1, background: C.divider }} />
-      <TeamRow label={away} score={match.away_score} pens={hasPens ? match.away_pens ?? null : null} win={win === "away"} />
+      <TeamRow label={away} isTeam={!!match.away_team?.name} score={match.away_score} pens={hasPens ? match.away_pens ?? null : null} win={win === "away"} />
     </div>
   );
 }
 
-/** The match a winner_of pointer feeds from (DB uses match_id; the preview uses
- * ref). "" for non-winner_of (a real team / group_position / tbd side). */
+/** The match a winner_of pointer feeds from; "" for non-winner_of sides (a real
+ * team / group_position / loser_of / tbd side is not a winner-bracket feeder). */
 function feederId(src: MatchSource | null | undefined): string {
-  if (!src || src.type !== "winner_of") return "";
-  const raw =
-    (src as Record<string, unknown>).match_id ?? (src as Record<string, unknown>).ref;
-  return raw != null ? String(raw) : "";
+  return src?.type === "winner_of" ? refId(src) : "";
 }
 
 /** Round name by DISTANCE-TO-FINAL (byes/play-ins make match count unreliable):
@@ -458,6 +482,19 @@ export function FifaBracket({
   const { pos, feedersByParent, colLabels, H, canvasW, finalX, finalY } =
     layoutBracket(bracketMatches);
 
+  // Number every card (M1, M2 …) top-to-bottom within each column, left to
+  // right — so an unresolved slot can point at "Winner of M3" instead of a
+  // guessed name. Consolation matches number after the bracket.
+  const matchNo = new Map<string, number>();
+  [...bracketMatches]
+    .sort((a, b) => {
+      const pa = pos.get(a.id) ?? { x: 1e9, y: 1e9 };
+      const pb = pos.get(b.id) ?? { x: 1e9, y: 1e9 };
+      return pa.x - pb.x || pa.y - pb.y;
+    })
+    .forEach((m, i) => matchNo.set(m.id, i + 1));
+  consolation.forEach((m, i) => matchNo.set(m.id, bracketMatches.length + i + 1));
+
   // Consolation cards stack in the Final column, below the Final.
   const consTop = finalY + CARD_H / 2 + 24;
   const consBlock = LABEL_H + 4 + CARD_H + 18;
@@ -492,7 +529,7 @@ export function FifaBracket({
     const p = pos.get(m.id) ?? { x: 0, y: H / 2 };
     return (
       <div key={`m-${m.id}`} className="absolute" style={{ left: p.x, top: p.y - CARD_H / 2, width: CARD_W }}>
-        <MatchCard match={m} tz={timeZone} />
+        <MatchCard match={m} tz={timeZone} no={matchNo} />
       </div>
     );
   });
@@ -573,7 +610,7 @@ export function FifaBracket({
                   <span className="mb-1 block text-[0.5625rem] font-semibold uppercase tracking-wider" style={{ color: C.goldHi }}>
                     {consolationLabel(m)}
                   </span>
-                  <MatchCard match={m} tz={timeZone} />
+                  <MatchCard match={m} tz={timeZone} no={matchNo} />
                 </div>
               );
             })}
