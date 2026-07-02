@@ -258,8 +258,20 @@ export function DryRunPreviewPage(): React.ReactElement {
     mutationFn: async (p: FixturePreview) => {
       if (isAll) {
         // Publish the WHOLE tournament: every competition's draw + one
-        // coordinated schedule, committed atomically server-side.
-        return tournamentsApi.publishAllFixtures(id, { schedule: schedule! });
+        // coordinated schedule, committed atomically server-side — replaying
+        // the previewed per-leaf seeds + drift hashes so what was previewed
+        // is exactly what commits (C11), 409 on drift like the single path.
+        const all = p as FixturePreview & {
+          per_leaf_seed?: Record<string, number | null>;
+          per_leaf_inputs_hash?: Record<string, string>;
+        };
+        return tournamentsApi.publishAllFixtures(id, {
+          schedule: schedule!,
+          ...(all.per_leaf_seed ? { per_leaf_seed: all.per_leaf_seed } : {}),
+          ...(all.per_leaf_inputs_hash
+            ? { per_leaf_inputs_hash: all.per_leaf_inputs_hash }
+            : {}),
+        });
       }
       await tournamentsApi.generateFixtures(id, {
         leafKey: leaf || undefined,
@@ -380,6 +392,13 @@ export function DryRunPreviewPage(): React.ReactElement {
   const warnings = ((p?.warnings ?? []) as { code?: string }[]).filter(
     (w) => w?.code,
   );
+  // Competitions silently absent from the combined preview (too few teams)
+  // are called out loudly (C11): absence used to read as "drawn".
+  const skippedLeaves = isAll
+    ? (
+        (p?.warnings ?? []) as { code?: string; leaf_key?: string }[]
+      ).filter((w) => w?.code === "skipped_leaf" && w.leaf_key)
+    : [];
   // Problems are never hidden — flags or hard violations force the details open.
   const forceAdvanced = hardCount > 0 || flagCount > 0;
   const advancedShown = advancedOpen || forceAdvanced;
@@ -429,6 +448,24 @@ export function DryRunPreviewPage(): React.ReactElement {
 
       {stale ? (
         <InputsChangedBanner context="accept" onRePreview={rePreview} />
+      ) : null}
+
+      {skippedLeaves.length ? (
+        <div
+          data-testid="skipped-leaves-notice"
+          className="rounded-xl border border-warning/40 bg-warning-muted px-4 py-3"
+        >
+          <p className="text-sm font-medium text-warning-foreground">
+            {t(
+              `${skippedLeaves.length} ${skippedLeaves.length === 1 ? "competition is" : "competitions are"} not drawn yet (fewer than 2 teams). Publishing skips them.`,
+            )}
+          </p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {skippedLeaves.map((w) => (
+              <LeafLabel key={w.leaf_key} label={w.leaf_key ?? ""} />
+            ))}
+          </div>
+        </div>
       ) : null}
 
       {calendarMissing ? (

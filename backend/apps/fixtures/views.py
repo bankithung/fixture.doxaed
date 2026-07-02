@@ -315,11 +315,34 @@ class PublishAllFixturesView(GenericAPIView):
         ):
             raise PermissionDenied("not_tournament_manager")
 
+        # Preview fidelity (C11): the preview returns per_leaf_seed and
+        # per_leaf_inputs_hash; replaying them here makes publish-all commit
+        # EXACTLY the previewed pairings, and 409 on drift, matching the
+        # single-leaf accept contract. Both optional for legacy callers.
+        per_leaf_seed = dict(request.data.get("per_leaf_seed") or {})
+        expected_hashes = dict(request.data.get("per_leaf_inputs_hash") or {})
+        drifted = sorted(
+            lk for lk, exp in expected_hashes.items()
+            if compute_inputs_hash(t, lk or None) != str(exp)
+        )
+        if drifted:
+            return Response(
+                {
+                    "detail": "inputs_changed",
+                    "leaves": drifted,
+                    "readiness": f"/api/tournaments/{t.id}/fixture-readiness/",
+                },
+                status=409,
+            )
+
         warnings: list[dict] = []
         drawn = 0
         try:
             for lf in iter_leaves(t.sports or []):
                 cfg = effective_draw_config(t, lf["leaf_key"])
+                seed = per_leaf_seed.get(lf["leaf_key"])
+                if seed is not None:
+                    cfg = {**cfg, "seed": int(seed)}
                 try:
                     generate_for_leaf(
                         tournament=t, leaf_key=lf["leaf_key"], cfg=cfg,

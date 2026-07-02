@@ -848,16 +848,25 @@ export const tournamentsApi = {
     id: string,
     body: { schedule?: Partial<ScheduleRequest>; include_schedule?: boolean },
   ) =>
-    api.post<FixturePreview & { competitions: number }>(
-      `/api/tournaments/${id}/fixtures/preview-all/`,
-      body,
-    ),
+    api.post<
+      FixturePreview & {
+        competitions: number;
+        /** Per-leaf seeds Accept MUST replay so publish-all ≡ preview (C11). */
+        per_leaf_seed?: Record<string, number | null>;
+        /** Per-leaf drift-guard hashes for publish-all's 409. */
+        per_leaf_inputs_hash?: Record<string, string>;
+      }
+    >(`/api/tournaments/${id}/fixtures/preview-all/`, body),
 
   /** Generate every competition's draw (existing draws kept) + schedule them
    * all together, atomically — the "publish the whole tournament" action. */
   publishAllFixtures: (
     id: string,
-    body: { schedule?: Partial<ScheduleRequest> },
+    body: {
+      schedule?: Partial<ScheduleRequest>;
+      per_leaf_seed?: Record<string, number | null>;
+      per_leaf_inputs_hash?: Record<string, string>;
+    },
   ) =>
     api.post<{
       competitions: number;

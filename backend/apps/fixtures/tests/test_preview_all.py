@@ -144,3 +144,84 @@ def test_combined_endpoints_require_a_manager():
                    {"schedule": SCHEDULE}, format="json").status_code == 404
     assert sc.post(f"/api/tournaments/{t.id}/fixtures/publish-all/",
                    {"schedule": SCHEDULE}, format="json").status_code == 404
+
+
+# ----------------------------------------------------------- C11: fidelity
+def test_preview_all_surfaces_skipped_leaves_and_hashes():
+    admin = _verified("a@test.local")
+    t = _tournament(admin)
+    _venues(t)
+    _register(t, 4, "football.u15", "football", "S1")
+    _register(t, 1, "table_tennis.u15", "table_tennis", "S2")  # no draw
+    out = preview_all_fixtures(tournament=t, schedule=SCHEDULE)
+
+    skipped = [w for w in out["warnings"] if w.get("code") == "skipped_leaf"]
+    assert [w["leaf_key"] for w in skipped] == ["table_tennis.u15"]
+    assert "football.u15" in out["per_leaf_inputs_hash"]
+    assert "table_tennis.u15" not in out["per_leaf_inputs_hash"]
+
+
+def test_publish_all_replays_previewed_seeds_and_409s_on_drift():
+    """Publish-all commits EXACTLY the previewed pairings (random-seeded
+    knockouts) and refuses when inputs drifted since the preview — mirroring
+    the single-leaf accept contract. It used to draw a fresh random seed on
+    publish, committing different pairings than were previewed."""
+    from apps.tournaments.models import Tournament
+
+    admin = _verified("a@test.local")
+    t = _tournament(admin)
+    _venues(t)
+    _register(t, 8, "football.u15", "football", "S1")
+    _register(t, 8, "table_tennis.u15", "table_tennis", "S2")
+    Tournament.objects.filter(pk=t.pk).update(
+        draw_config={
+            "football.u15": {"format": "knockout", "seeding": "random"},
+            "table_tennis.u15": {"format": "knockout", "seeding": "random"},
+        }
+    )
+    t.refresh_from_db()
+    out = preview_all_fixtures(tournament=t, schedule=SCHEDULE)
+
+    def _pairs(rows):
+        got = set()
+        for m in rows:
+            home = (m["home"] or {}).get("team_id")
+            away = (m["away"] or {}).get("team_id")
+            if m["round_no"] == 1 and home and away:
+                got.add((m["leaf_key"], frozenset((home, away))))
+        return got
+
+    previewed = _pairs(out["matches"])
+    assert len(previewed) == 8, "expected 4 concrete round-1 ties per leaf"
+
+    c = _client(admin)
+    url = f"/api/tournaments/{t.id}/fixtures/publish-all/"
+
+    # Drift: a hash that no longer matches -> 409, nothing committed.
+    bad = dict(out["per_leaf_inputs_hash"])
+    bad["football.u15"] = "0" * 64
+    r = c.post(
+        url,
+        {"schedule": SCHEDULE, "per_leaf_seed": out["per_leaf_seed"],
+         "per_leaf_inputs_hash": bad},
+        format="json",
+    )
+    assert r.status_code == 409
+    assert r.json()["detail"] == "inputs_changed"
+    assert r.json()["leaves"] == ["football.u15"]
+    assert not Match.objects.filter(tournament=t).exists()
+
+    # Faithful publish: previewed seeds + fresh hashes -> identical pairings.
+    r2 = c.post(
+        url,
+        {"schedule": SCHEDULE, "per_leaf_seed": out["per_leaf_seed"],
+         "per_leaf_inputs_hash": out["per_leaf_inputs_hash"]},
+        format="json",
+    )
+    assert r2.status_code == 201, r2.content
+    committed = {
+        (m.leaf_key, frozenset((str(m.home_team_id), str(m.away_team_id))))
+        for m in Match.objects.filter(tournament=t, round_no=1)
+        if m.home_team_id and m.away_team_id
+    }
+    assert committed == previewed

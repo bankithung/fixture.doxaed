@@ -603,7 +603,9 @@ def preview_all_fixtures(
             )
         except (ValueError, TypeError):
             # e.g. fewer than 2 registered teams — nothing to draw for this
-            # competition yet; it simply doesn't appear in the combined preview.
+            # competition yet. Surface it (C11): a silently absent competition
+            # let organizers publish believing everything was drawn.
+            warnings.append({"code": "skipped_leaf", "leaf_key": lk})
             continue
         per_leaf_seed[lk] = seed
         all_plans.extend(_rebase_plans(plans, base))
@@ -615,5 +617,11 @@ def preview_all_fixtures(
         seed=None, leaf_key=None,
     )
     payload["per_leaf_seed"] = per_leaf_seed
+    # Drift guard inputs for publish-all (C11): the stored-state hash per
+    # previewed leaf, so Accept can 409 when anything changed since preview
+    # (mirroring the single-leaf expected_inputs_hash contract).
+    payload["per_leaf_inputs_hash"] = {
+        lk: compute_inputs_hash(tournament, lk or None) for lk in per_leaf_seed
+    }
     payload["competitions"] = len(leaves)
     return payload
