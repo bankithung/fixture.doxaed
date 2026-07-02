@@ -172,6 +172,25 @@ function StatusPill({ status }: { status: string }): React.ReactElement {
   );
 }
 
+function TeamName({
+  side,
+  className,
+}: {
+  side: { id: string; name: string } | null | undefined;
+  className?: string;
+}): React.ReactElement {
+  const { slug = "", id = "" } = useParams();
+  if (!side) return <span className={className}>{t("TBD")}</span>;
+  return (
+    <Link
+      to={routes.publicTeam(slug, id, side.id)}
+      className={cn(className, "hover:text-primary hover:underline")}
+    >
+      {side.name}
+    </Link>
+  );
+}
+
 function MatchCard({
   match,
   timeZone,
@@ -231,9 +250,7 @@ function MatchCard({
         </span>
       </div>
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm">
-        <span className="truncate text-right font-medium">
-          {match.home?.name ?? t("TBD")}
-        </span>
+        <TeamName side={match.home} className="truncate text-right font-medium" />
         <span
           className={cn(
             "px-1 text-center font-tabular",
@@ -245,9 +262,7 @@ function MatchCard({
             ? `${match.home_score ?? 0} - ${match.away_score ?? 0}`
             : t("vs")}
         </span>
-        <span className="truncate font-medium">
-          {match.away?.name ?? t("TBD")}
-        </span>
+        <TeamName side={match.away} className="truncate font-medium" />
       </div>
       {done && (sets.length > 0 || hasPens) ? (
         <p

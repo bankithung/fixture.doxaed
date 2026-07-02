@@ -92,6 +92,9 @@ export const routes = {
   /** Public, read-only tournament schedule (no login; slug+UUID pair). */
   publicSchedule: (slug: string, id: string) =>
     `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/schedule`,
+  /** Public team profile: record, form, results, roster, badges. */
+  publicTeam: (slug: string, id: string, teamId: string) =>
+    `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/team/${encodeURIComponent(teamId)}`,
   /** Public, read-only live scoreboard — every in-play match (no login). */
   publicLive: (slug: string, id: string) =>
     `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/live`,

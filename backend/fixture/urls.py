@@ -18,6 +18,10 @@ from django.conf import settings
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from apps.matches.public_views import (
+    PublicInstitutionRecordView,
+    PublicTeamRecordView,
+)
 from apps.badges.views import (
     BadgeCardView,
     PublicTournamentBadgesView,
@@ -100,6 +104,16 @@ api_v1 = [
         "public/badges/<uuid:award_id>/card.png",
         BadgeCardView.as_view(),
         name="public-badge-card",
+    ),
+    path(
+        "public/tournaments/<slug:slug>/<uuid:tournament_id>/teams/<uuid:team_id>/",
+        PublicTeamRecordView.as_view(),
+        name="public-team-record",
+    ),
+    path(
+        "public/tournaments/<slug:slug>/<uuid:tournament_id>/institutions/<uuid:inst_id>/record/",
+        PublicInstitutionRecordView.as_view(),
+        name="public-institution-record",
     ),
     path(
         "public/tournaments/<slug:slug>/<uuid:tournament_id>/schedule/",

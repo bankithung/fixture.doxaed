@@ -43,6 +43,7 @@ import { PublicDirectoryPage } from "@/features/forms/PublicDirectoryPage";
 import { LiveViewerPage } from "@/features/live/LiveViewerPage";
 import { PublicLiveScoreboardPage } from "@/features/live/PublicLiveScoreboardPage";
 import { PublicBracketPage } from "@/features/live/PublicBracketPage";
+import { PublicTeamPage } from "@/features/live/PublicTeamPage";
 import { OrgDashboardPage } from "@/features/layout/OrgDashboardPage";
 // Auth pages (B1).
 import { LoginPage } from "@/features/auth/LoginPage";
@@ -158,6 +159,7 @@ export default function App(): React.ReactElement {
                 element={<PublicLiveScoreboardPage />}
               />
               <Route path="/t/:slug/:id/bracket" element={<PublicBracketPage />} />
+              <Route path="/t/:slug/:id/team/:teamId" element={<PublicTeamPage />} />
 
               {/* Protected surfaces — share the AppShell chrome. */}
               <Route

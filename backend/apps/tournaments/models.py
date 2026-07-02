@@ -92,6 +92,13 @@ class Tournament(models.Model):
         db_index=True,
     )
     time_zone = models.CharField(max_length=64, default="Asia/Kolkata")
+    # Event window + season label (school-data spine, 2026-07-02 master plan):
+    # the tournament finally knows WHEN it runs, so lists, public pages, and
+    # multi-year school histories can group and sort structurally. Backfilled
+    # from match scheduled_at; kept fresh by the scheduler.
+    starts_at = models.DateField(null=True, blank=True)
+    ends_at = models.DateField(null=True, blank=True)
+    season = models.CharField(max_length=16, blank=True)  # e.g. "2026"
     # Setup-workflow stage (orthogonal to `status`). Driven by
     # services/state.py::transition_tournament. See spec 2026-06-08 §1.
     stage = models.CharField(
