@@ -463,37 +463,48 @@ class RecordShootoutView(GenericAPIView):
 
         ser = RecordShootoutSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        before = {"home_pens": match.home_pens, "away_pens": match.away_pens}
-        match.home_pens = ser.validated_data["home_pens"]
-        match.away_pens = ser.validated_data["away_pens"]
-        match.save(update_fields=["home_pens", "away_pens", "updated_at"])
-
-        from apps.audit.models import ActorRole
+        from apps.audit.models import ActorRole, AuditEvent
         from apps.audit.services import emit_audit
 
-        emit_audit(
-            actor_user=request.user,
-            actor_role=ActorRole.ADMIN,
-            event_type="match_shootout_recorded",
-            target_type="match",
-            target_id=match.id,
-            organization_id=match.organization_id,
-            payload_before=before,
-            payload_after={
-                "home_pens": match.home_pens, "away_pens": match.away_pens
-            },
-            idempotency_key=ser.validated_data.get("event_id"),
-            request=request,
-        )
-        # An already-completed drawn match was a stalled bracket — the
-        # shootout result now resolves winner_id, so ripple it (invariant 9).
-        if match.status == MatchStatus.COMPLETED:
-            mid = match.id
-            transaction.on_commit(lambda: _fire_advancement(mid))
-        from apps.live.publish import publish_tournament_tick
+        # Idempotency pre-check (invariant 3): a replayed event_id must not
+        # re-write pens or re-fire advancement — return the recorded state.
+        event_id = ser.validated_data.get("event_id")
+        if event_id is not None:
+            prior = AuditEvent.objects.filter(
+                idempotency_key=event_id, event_type="match_shootout_recorded"
+            ).first()
+            if prior is not None:
+                match.refresh_from_db()
+                return Response(MatchSerializer(match).data)
 
-        tid, mid2 = match.tournament_id, match.id
-        transaction.on_commit(lambda: publish_tournament_tick(tid, mid2, "score"))
+        with transaction.atomic():
+            before = {"home_pens": match.home_pens, "away_pens": match.away_pens}
+            match.home_pens = ser.validated_data["home_pens"]
+            match.away_pens = ser.validated_data["away_pens"]
+            match.save(update_fields=["home_pens", "away_pens", "updated_at"])
+            emit_audit(
+                actor_user=request.user,
+                actor_role=ActorRole.ADMIN,
+                event_type="match_shootout_recorded",
+                target_type="match",
+                target_id=match.id,
+                organization_id=match.organization_id,
+                payload_before=before,
+                payload_after={
+                    "home_pens": match.home_pens, "away_pens": match.away_pens
+                },
+                idempotency_key=event_id,
+                request=request,
+            )
+            # An already-completed drawn match was a stalled bracket — the
+            # shootout result now resolves winner_id, so ripple it (invariant 9).
+            if match.status == MatchStatus.COMPLETED:
+                mid = match.id
+                transaction.on_commit(lambda: _fire_advancement(mid))
+            from apps.live.publish import publish_tournament_tick
+
+            tid, mid2 = match.tournament_id, match.id
+            transaction.on_commit(lambda: publish_tournament_tick(tid, mid2, "score"))
         return Response(MatchSerializer(match).data)
 
 
