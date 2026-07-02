@@ -74,7 +74,7 @@ def test_matrix_returns_23_modules(admin_org):
     assert resp.status_code == 200, resp.content
     body = resp.json()
     assert "modules" in body
-    assert len(body["modules"]) == 23
+    assert len(body["modules"]) == 24
     # Each module row has the required keys.
     for row in body["modules"]:
         assert set(row.keys()) >= {"key", "scope", "label", "description"}

@@ -10,7 +10,7 @@ from apps.permissions.models import Module
 @pytest.mark.django_db
 def test_load_modules_creates_23_rows():
     call_command("load_modules")
-    assert Module.objects.count() == 23
+    assert Module.objects.count() == 24
 
 
 @pytest.mark.django_db
@@ -19,7 +19,7 @@ def test_load_modules_idempotent():
     first = Module.objects.count()
     call_command("load_modules")
     second = Module.objects.count()
-    assert first == second == 23
+    assert first == second == 24
 
 
 @pytest.mark.django_db
