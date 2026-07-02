@@ -19,6 +19,7 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from apps.matches.public_views import (
+    MyTodayView,
     PublicInstitutionRecordView,
     PublicTeamRecordView,
     PublicTournamentDirectoryView,
@@ -91,6 +92,7 @@ api_v1 = [
     path("disputes/", include("apps.disputes.urls")),
     # Phase 1B: public live viewer snapshot (one-way; SSE upgrade later).
     path("live/", include("apps.live.urls")),
+    path("me/today/", MyTodayView.as_view(), name="me-today"),
     path(
         "notifications/stream/",
         notification_stream,

@@ -1,11 +1,11 @@
-"""Public school-data endpoints (owner: "schools can see their data - who
+"""Public school-data endpoints + the personal cross-tournament aggregate (owner: "schools can see their data - who
 played, wins/losses any time"). AllowAny, gated by (slug, UUID) + a
 public-facing tournament status; names and numbers only, no contact PII."""
 from __future__ import annotations
 
 from rest_framework.exceptions import NotFound
 from rest_framework.generics import GenericAPIView
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from apps.badges.catalog import BADGE_TEMPLATES
@@ -148,3 +148,94 @@ class PublicInstitutionRecordView(GenericAPIView):
         )
         data["history"] = school_history(inst.name)
         return Response(data)
+
+
+class MyTodayView(GenericAPIView):
+    """`GET /api/me/today/` — the operator command center feed: everything
+    live or scheduled today across EVERY tournament the caller can access,
+    plus a "needs you" strip (open disputes, unstaffed matches today). The
+    root dashboard used to re-list tournaments instead of answering "what is
+    happening right now"."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from datetime import timedelta
+
+        from django.utils import timezone as dj_tz
+
+        from apps.disputes.models import Dispute
+        from apps.matches.models import Match, MatchStatus
+        from apps.tournaments.scope import accessible_tournaments
+
+        now = dj_tz.now()
+        window_start = now - timedelta(hours=18)
+        window_end = now + timedelta(hours=30)
+        tournaments = list(accessible_tournaments(request.user)[:50])
+        by_id = {t.id: t for t in tournaments}
+
+        matches = (
+            Match.objects.filter(
+                tournament_id__in=by_id.keys(), deleted_at__isnull=True,
+            )
+            .filter(
+                models_q_live()
+                | models_q_window(window_start, window_end)
+            )
+            .select_related("home_team", "away_team", "tournament")
+            .order_by("scheduled_at")[:80]
+        )
+        rows = []
+        needs = []
+        for m in matches:
+            t = by_id.get(m.tournament_id)
+            rows.append({
+                "match_id": str(m.id),
+                "tournament_id": str(m.tournament_id),
+                "tournament_name": t.name if t else "",
+                "home": m.home_team.name if m.home_team_id else "TBD",
+                "away": m.away_team.name if m.away_team_id else "TBD",
+                "status": m.status,
+                "home_score": m.home_score,
+                "away_score": m.away_score,
+                "scheduled_at": m.scheduled_at.isoformat() if m.scheduled_at else None,
+                "venue": m.venue,
+                "live": m.status in (MatchStatus.LIVE, MatchStatus.HALF_TIME),
+            })
+            if (
+                m.status == MatchStatus.SCHEDULED
+                and m.scorer_id is None
+                and m.scheduled_at is not None
+                and now <= m.scheduled_at <= window_end
+            ):
+                needs.append({
+                    "kind": "no_scorer",
+                    "match_id": str(m.id),
+                    "tournament_id": str(m.tournament_id),
+                    "label": f"No scorer: "
+                             f"{m.home_team.name if m.home_team_id else 'TBD'}"
+                             f" vs {m.away_team.name if m.away_team_id else 'TBD'}",
+                })
+        open_disputes = Dispute.objects.filter(
+            tournament_id__in=by_id.keys(),
+            status__in=("open", "under_review"),
+        ).select_related("tournament")[:20]
+        for d in open_disputes:
+            needs.append({
+                "kind": "open_dispute",
+                "tournament_id": str(d.tournament_id),
+                "label": f"Open dispute in {d.tournament.name}",
+            })
+        return Response({"matches": rows, "needs": needs})
+
+
+def models_q_live():
+    from django.db.models import Q
+
+    return Q(status__in=("live", "half_time"))
+
+
+def models_q_window(start, end):
+    from django.db.models import Q
+
+    return Q(status="scheduled", scheduled_at__gte=start, scheduled_at__lte=end)
