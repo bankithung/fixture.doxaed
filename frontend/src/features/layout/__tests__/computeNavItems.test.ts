@@ -280,6 +280,10 @@ describe("computeTournamentNav", () => {
       "directory",
       "public",
     ]);
+    // Public page deep-links with the TOURNAMENT slug (slug+UUID pair) —
+    // an org slug here 404s the public schedule (owner report 2026-07-02).
+    const pub = ops.items.find((i) => i.key === "public")!;
+    expect(pub.href).toBe(`/t/acme/${TID}/schedule`);
     // Only people + config remain; the setup-flow pages are gone from the nav.
     const manage = groups.find((g) => g.key === "manage")!;
     expect(manage.items.map((i) => i.key)).toEqual(["members", "settings"]);

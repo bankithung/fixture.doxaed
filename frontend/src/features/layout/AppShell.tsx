@@ -198,7 +198,7 @@ export function AppShell(): React.ReactElement {
   const navGroups: NavGroup[] = inTournamentContext
     ? computeTournamentNav(tournamentId, {
         user,
-        slug: navSlug,
+        slug: tournamentQuery.data?.slug ?? null,
         stage: stageQuery.data ?? null,
       })
     : decorateInvitesBadge(computeWorkspaceNav(user), pendingInviteCount);
