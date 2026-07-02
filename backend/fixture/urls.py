@@ -18,6 +18,11 @@ from django.conf import settings
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from apps.badges.views import (
+    BadgeCardView,
+    PublicTournamentBadgesView,
+    TournamentBadgesView,
+)
 from apps.fixtures.views import (
     PublicTournamentScheduleView,
     PublicTournamentStandingsView,
@@ -81,6 +86,21 @@ api_v1 = [
     # Phase 1B: public live viewer snapshot (one-way; SSE upgrade later).
     path("live/", include("apps.live.urls")),
     # Trust layer (increment H): public schedule + per-team iCal feed.
+    path(
+        "tournaments/<uuid:tournament_id>/badges/",
+        TournamentBadgesView.as_view(),
+        name="tournament-badges",
+    ),
+    path(
+        "public/tournaments/<slug:slug>/<uuid:tournament_id>/badges/",
+        PublicTournamentBadgesView.as_view(),
+        name="public-tournament-badges",
+    ),
+    path(
+        "public/badges/<uuid:award_id>/card.png",
+        BadgeCardView.as_view(),
+        name="public-badge-card",
+    ),
     path(
         "public/tournaments/<slug:slug>/<uuid:tournament_id>/schedule/",
         PublicTournamentScheduleView.as_view(),

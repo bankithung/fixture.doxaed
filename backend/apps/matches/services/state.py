@@ -129,6 +129,7 @@ def transition_match(
         if to_status in _TERMINAL_WITH_RESULT:
             mid = locked.id
             transaction.on_commit(lambda: _fire_advancement(mid))
+            transaction.on_commit(lambda: _fire_badges(mid))
         # Tournament lifecycle spine (PRD §5.2): first kickoff flips the
         # tournament LIVE; the last terminal result flips it COMPLETED.
         # Registered AFTER advancement so a deferred next stage materializes
@@ -223,6 +224,16 @@ def _fire_advancement(match_id) -> None:
         advance_from_match(match_id)
     except Exception:  # pragma: no cover - post-commit hook must never crash the request
         logger.exception("advancement hook failed for match=%s", match_id)
+
+
+def _fire_badges(match_id) -> None:
+    """Post-commit: reconcile the finished match's competition badges."""
+    try:
+        from apps.badges.services.engine import fire_badge_recompute
+
+        fire_badge_recompute(match_id)
+    except Exception:  # pragma: no cover - post-commit hook must never crash
+        logger.exception("badge hook failed for match=%s", match_id)
 
 
 def _fire_lifecycle(tournament_id, to_status) -> None:

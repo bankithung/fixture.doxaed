@@ -160,10 +160,15 @@ def record_score(
         )
         # Knockout advancement (invariant #9) — resolve dependents after commit.
         from apps.live.publish import publish_tournament_tick
-        from apps.matches.services.state import _fire_advancement, _fire_lifecycle
+        from apps.matches.services.state import (
+            _fire_advancement,
+            _fire_badges,
+            _fire_lifecycle,
+        )
 
         mid, tid = locked.id, locked.tournament_id
         transaction.on_commit(lambda: _fire_advancement(mid))
+        transaction.on_commit(lambda: _fire_badges(mid))
         # Lifecycle spine: the last result completing may finish the
         # tournament (after advancement, so materialized stages are seen).
         transaction.on_commit(lambda: _fire_lifecycle(tid, MatchStatus.COMPLETED))

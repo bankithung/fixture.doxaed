@@ -235,10 +235,15 @@ def record_set_result(
             request=request,
         )
         from apps.matches.services.events import publish_match_event
-        from apps.matches.services.state import _fire_advancement, _fire_lifecycle
+        from apps.matches.services.state import (
+            _fire_advancement,
+            _fire_badges,
+            _fire_lifecycle,
+        )
 
         mid, tid = locked.id, locked.tournament_id
         transaction.on_commit(lambda: _fire_advancement(mid))
+        transaction.on_commit(lambda: _fire_badges(mid))
         # Lifecycle spine: the last set result may finish the tournament
         # (after advancement, so a materialized next stage is seen).
         transaction.on_commit(lambda: _fire_lifecycle(tid, MatchStatus.COMPLETED))

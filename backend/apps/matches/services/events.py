@@ -171,10 +171,11 @@ def record_match_event(
         # still-empty slots — played-downstream conflicts stay a human call
         # until the dispute cascade lands).
         if was_completed and (locked.home_score, locked.away_score) != score_before:
-            from apps.matches.services.state import _fire_advancement
+            from apps.matches.services.state import _fire_advancement, _fire_badges
 
             corrected_mid = locked.id
             transaction.on_commit(lambda: _fire_advancement(corrected_mid))
+            transaction.on_commit(lambda: _fire_badges(corrected_mid))
         emit_audit(
             actor_user=by,
             actor_role=ActorRole.ADMIN,
