@@ -98,9 +98,10 @@ describe("OpsStandingsPage", () => {
     ]);
     mount();
 
-    // Two competitions → chips; the first is selected by default.
-    expect(await screen.findByTestId("comp-chip-football.u15")).toBeInTheDocument();
-    const ttChip = screen.getByTestId("comp-chip-table_tennis.u14");
+    // Two sports, one category each → the sport switcher scopes the view
+    // (the category row collapses when a sport has a single competition).
+    expect(await screen.findByTestId("sport-chip-Football")).toBeInTheDocument();
+    const ttChip = screen.getByTestId("sport-chip-Table Tennis");
     await userEvent.click(ttChip);
     expect(ttChip).toHaveAttribute("aria-pressed", "true");
     // TT has no standings group in the mock → the empty-for-competition note.

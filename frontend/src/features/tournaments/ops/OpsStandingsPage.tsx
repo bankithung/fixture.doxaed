@@ -12,15 +12,22 @@ import { t } from "@/lib/t";
 import { useEventStream } from "@/lib/useEventStream";
 import { BracketView } from "@/features/tournaments/BracketView";
 
-/** Humanize a competition leaf key ("sepak_takraw.u14" → "Sepak Takraw · U14"). */
-function humanizeLeaf(key: string): string {
-  if (!key) return t("Tournament");
+/** Humanized segments of a competition leaf key ("sepak_takraw.u14.boys" →
+ * ["Sepak Takraw", "U14", "Boys"]). */
+function leafSegments(key: string): string[] {
+  if (!key) return [t("Tournament")];
   return key
     .split(".")
     .map((seg) =>
       seg.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-    )
-    .join(" · ");
+    );
+}
+
+/** "Sepak Takraw — u-14 — boys — Group A" → "Group A" (legacy and current
+ * separators both). Stage labels ("3rd Place") pass through unchanged. */
+function shortGroupTitle(label: string): string {
+  const parts = label.split(/\s+[\u00b7\u2014]\s+/);
+  return parts[parts.length - 1] || label;
 }
 
 /** One group's standings table from the server (honours the tournament's
@@ -36,8 +43,11 @@ function GroupCard({ group }: { group: StandingsGroup }): React.ReactElement {
       data-testid={`ops-group-${group.group_label}`}
       className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
     >
-      <h3 className="flex h-9 items-center border-b border-border px-4 text-[13px] font-semibold tracking-tight">
-        {group.group_label}
+      <h3
+        title={group.group_label}
+        className="flex h-9 items-center border-b border-border px-4 text-[13px] font-semibold tracking-tight"
+      >
+        {shortGroupTitle(group.group_label)}
       </h3>
       <table className="w-full text-sm font-tabular">
         <thead className="border-b border-border">
@@ -121,6 +131,7 @@ export function OpsStandingsPage(): React.ReactElement {
   const { id = "" } = useParams();
   const qc = useQueryClient();
   const [leaf, setLeaf] = useState<string | null>(null);
+  const [sport, setSport] = useState<string | null>(null);
 
   const tournamentQ = useQuery({
     queryKey: ["tournament", id],
@@ -146,12 +157,22 @@ export function OpsStandingsPage(): React.ReactElement {
   const competitions = useMemo(() => {
     const seen = new Set<string>();
     for (const m of matches) seen.add(m.leaf_key);
-    return [...seen]
-      .sort()
-      .map((key) => ({ key, label: humanizeLeaf(key) }));
+    return [...seen].sort().map((key) => {
+      const segs = leafSegments(key);
+      return { key, sport: segs[0], rest: segs.slice(1).join(" ") };
+    });
   }, [matches]);
 
-  const selected = leaf ?? competitions[0]?.key ?? "";
+  const sports = useMemo(
+    () => [...new Set(competitions.map((c) => c.sport))],
+    [competitions],
+  );
+  const activeSport = sport ?? sports[0] ?? "";
+  const inSport = competitions.filter((c) => c.sport === activeSport);
+  const selected =
+    leaf && inSport.some((c) => c.key === leaf)
+      ? leaf
+      : (inSport[0]?.key ?? "");
   const scoped = useMemo(
     () => matches.filter((m) => m.leaf_key === selected),
     [matches, selected],
@@ -229,31 +250,66 @@ export function OpsStandingsPage(): React.ReactElement {
       {header}
 
       {competitions.length > 1 ? (
-        <div
-          role="group"
-          aria-label={t("Competition")}
-          className="inline-flex w-fit max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5"
-        >
-          {competitions.map((c) => {
-            const active = c.key === selected;
-            return (
-              <button
-                key={c.key || "_all"}
-                type="button"
-                data-testid={`comp-chip-${c.key || "all"}`}
-                aria-pressed={active}
-                onClick={() => setLeaf(c.key)}
-                className={cn(
-                  "inline-flex h-7 items-center rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  active
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {c.label}
-              </button>
-            );
-          })}
+        <div className="flex flex-col gap-2">
+          {sports.length > 1 ? (
+            <div
+              role="group"
+              aria-label={t("Sport")}
+              className="inline-flex w-fit max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5"
+            >
+              {sports.map((sp) => {
+                const active = sp === activeSport;
+                return (
+                  <button
+                    key={sp}
+                    type="button"
+                    data-testid={`sport-chip-${sp}`}
+                    aria-pressed={active}
+                    onClick={() => {
+                      setSport(sp);
+                      setLeaf(null);
+                    }}
+                    className={cn(
+                      "inline-flex h-7 items-center rounded-md px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      active
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {sp}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          {inSport.length > 1 ? (
+            <div
+              role="group"
+              aria-label={t("Competition")}
+              className="inline-flex w-fit max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5"
+            >
+              {inSport.map((c) => {
+                const active = c.key === selected;
+                return (
+                  <button
+                    key={c.key || "_all"}
+                    type="button"
+                    data-testid={`comp-chip-${c.key || "all"}`}
+                    aria-pressed={active}
+                    onClick={() => setLeaf(c.key)}
+                    className={cn(
+                      "inline-flex h-7 items-center rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      active
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {c.rest || c.sport}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
