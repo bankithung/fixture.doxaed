@@ -251,9 +251,11 @@ function MatchCard({
       </div>
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm">
         <TeamName side={match.home} className="truncate text-right font-medium" />
-        <span
+        <Link
+          to={routes.liveViewer(match.id)}
+          aria-label={t("Open the match centre")}
           className={cn(
-            "px-1 text-center font-tabular",
+            "rounded-md px-1 text-center font-tabular transition-colors hover:bg-accent hover:text-primary",
             done ? "font-semibold" : "text-xs text-muted-foreground",
           )}
         >
@@ -261,7 +263,7 @@ function MatchCard({
           {done
             ? `${match.home_score ?? 0} - ${match.away_score ?? 0}`
             : t("vs")}
-        </span>
+        </Link>
         <TeamName side={match.away} className="truncate font-medium" />
       </div>
       {done && (sets.length > 0 || hasPens) ? (

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import { ThemeToggle } from "@/features/theme/ThemeToggle";
+import { ShareButton } from "./ShareButton";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -91,6 +92,7 @@ export function PublicViewerHeader({
         ) : (
           <span className="ml-auto" />
         )}
+        <ShareButton title={tournamentName} />
         <ThemeToggle />
       </div>
       <PublicViewerTabs slug={slug} id={id} active={active} />
