@@ -65,7 +65,7 @@ function Row({
           done ? "font-semibold" : "text-xs text-muted-foreground",
         )}
       >
-        {done ? `${match.home_score ?? 0} – ${match.away_score ?? 0}` : t("vs")}
+        {done ? `${match.home_score ?? 0} - ${match.away_score ?? 0}` : t("vs")}
       </span>
       <span className="flex-1 truncate font-medium">
         {match.away_team?.name ?? t("TBD")}

@@ -109,7 +109,7 @@ def test_iter_leaves_walks_to_leaves_and_sport_level():
         "football.u17",
         "table_tennis",
     }
-    assert leaves["football.u15.girls.5v5"]["label"] == "U15 — Girls — 5v5"
+    assert leaves["football.u15.girls.5v5"]["label"] == "U15 · Girls · 5v5"
     assert leaves["football.u15.girls.5v5"]["path"] == ["U15", "Girls", "5v5"]
     # sport with no categories → one sport-level leaf
     assert leaves["table_tennis"]["path"] == []
@@ -129,7 +129,7 @@ def test_sport_for_leaf_and_label():
     assert sport_for_leaf(sports, "football.u15.girls.5v5") == "football"
     assert sport_for_leaf(sports, "cricket.u15") == ""
     assert sport_for_leaf(sports, "") == ""
-    assert leaf_label(sports, "football.u15.boys") == "Football — U15 — Boys"
+    assert leaf_label(sports, "football.u15.boys") == "Football · U15 · Boys"
     assert leaf_label(sports, "gone.leaf") == "gone.leaf"  # fallback
 
 

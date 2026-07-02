@@ -76,7 +76,7 @@ export function GrantCell({
         : roleDefault
           ? t("default (granted by role)")
           : t("default (not granted by role)");
-  const ariaLabel = `${userLabel} — ${moduleLabel}: ${stateForAria}`;
+  const ariaLabel = `${userLabel} · ${moduleLabel}: ${stateForAria}`;
 
   return (
     <button
@@ -110,7 +110,7 @@ export function GrantCell({
         </span>
       ) : (
         <span aria-hidden="true" className="opacity-60">
-          –
+          -
         </span>
       )}
     </button>

@@ -120,7 +120,7 @@ def _category_chain(
             "type": "multi_choice",
             "label": (
                 f"{sname} categories" if not path_names
-                else f"{sname} — {' — '.join(path_names)}"
+                else f"{sname} · {' · '.join(path_names)}"
             ),
             "required": True,
             # Presentation grouping (owner 2026-06-10: the flat run of chain
@@ -132,7 +132,7 @@ def _category_chain(
             "group_label": sname,
             "indent": len(path_keys) - 1,
             "short_label": (
-                "Categories" if not path_names else " — ".join(path_names)
+                "Categories" if not path_names else " · ".join(path_names)
             ),
             # Chain questions stay out of the public directory's filters/
             # stats — the single Competition filter covers them (W2).
@@ -170,7 +170,7 @@ def _leaf_options(tournament) -> list[tuple[str, str, dict]]:
     out: list[tuple[str, str, dict]] = []
     for leaf in iter_leaves(getattr(tournament, "sports", None) or []):
         label = (
-            f"{leaf['sport_name']} — {leaf['label']}" if leaf["path"]
+            f"{leaf['sport_name']} · {leaf['label']}" if leaf["path"]
             else leaf["sport_name"]
         )
         out.append((

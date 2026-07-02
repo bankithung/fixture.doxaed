@@ -14,7 +14,7 @@ export function isCalled(m: ControlRoomMatch): boolean {
 
 /** Kick-off in the TOURNAMENT's wall clock (invariant 14). */
 export function fmtKickoff(iso: string | null, timeZone: string): string {
-  if (!iso) return "—";
+  if (!iso) return "·";
   try {
     return new Intl.DateTimeFormat(undefined, {
       hour: "2-digit",

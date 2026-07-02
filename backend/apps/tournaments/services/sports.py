@@ -302,7 +302,7 @@ def _walk_leaves(
         out.append({
             "sport_key": skey, "sport_name": sname,
             "leaf_key": LEAF_SEP.join([skey, *kp]),
-            "path": np, "label": " — ".join(np),
+            "path": np, "label": " · ".join(np),
         })
         return
     for c in children:
@@ -314,7 +314,7 @@ def iter_leaves(sports: list[dict] | None) -> list[dict]:
 
         {sport_key, sport_name, leaf_key, path: [node names], label}
 
-    ``label`` joins the path with " — " (the sport name is NOT included — the
+    ``label`` joins the path with " · " (the sport name is NOT included — the
     consumer decides whether to prefix it). A sport with no categories yields
     one sport-level leaf (leaf_key == sport key, empty path, label == sport
     name): the sport itself is a single competition.
@@ -360,7 +360,7 @@ def find_leaf(sports: list[dict] | None, leaf_key: str) -> dict | None:
 
 
 def leaf_label(sports: list[dict] | None, leaf_key: str, *, with_sport: bool = True) -> str:
-    """Display label for a leaf key ('Football — U15 — Girls'), falling back to
+    """Display label for a leaf key ('Football · U15 · Girls'), falling back to
     the raw key when the leaf is no longer configured."""
     leaf = find_leaf(sports, leaf_key)
     if leaf is None:
@@ -368,7 +368,7 @@ def leaf_label(sports: list[dict] | None, leaf_key: str, *, with_sport: bool = T
     if not leaf["path"]:
         return leaf["sport_name"]
     body = leaf["label"]
-    return f"{leaf['sport_name']} — {body}" if with_sport else body
+    return f"{leaf['sport_name']} · {body}" if with_sport else body
 
 
 def _leaf_path_nodes(sports: list[dict] | None, leaf_key: str) -> list[dict]:

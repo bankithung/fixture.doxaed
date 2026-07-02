@@ -1,4 +1,4 @@
-"""TDD — pure pairing core (redesign spec §4.1): plan_* functions return
+"""TDD · pure pairing core (redesign spec §4.1): plan_* functions return
 MatchPlan dataclasses with ZERO DB writes; the generate_* wrappers persist
 them with match_no/inputs_hash/idempotency exactly as before (the rest of the
 fixtures suite proves zero behavior change). The preview endpoint will call
@@ -88,11 +88,11 @@ def test_plan_single_elimination_label_prefix_names_every_match():
     teams = _teams(4)
     plans = plan_single_elimination(
         teams, third_place=True,
-        label_prefix="Table Tennis — u-14 — boys — 1v1 — ",
+        label_prefix="Table Tennis · u-14 · boys · 1v1 · ",
     )
-    bracket = "Table Tennis — u-14 — boys — 1v1"
+    bracket = "Table Tennis · u-14 · boys · 1v1"
     third = next(p for p in plans if p.group_label.endswith("3rd Place"))
-    assert third.group_label == f"{bracket} — 3rd Place"
+    assert third.group_label == f"{bracket} · 3rd Place"
     assert all(
         p.group_label == bracket
         for p in plans

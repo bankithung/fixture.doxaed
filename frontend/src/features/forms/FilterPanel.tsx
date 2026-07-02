@@ -25,7 +25,7 @@ export function buildCompTree(
   const index = new Map<string, CompNode>();
   for (const c of comps) {
     const segs = c.leaf_key.split(".");
-    const labels = c.label.split(" — ");
+    const labels = c.label.split(/\s+[\u00b7\u2014]\s+/);
     let path = "";
     let siblings = roots;
     for (let i = 0; i < segs.length; i += 1) {

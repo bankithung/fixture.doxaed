@@ -15,7 +15,7 @@ const FLAG_LABELS: Record<string, string> = {
 const COLLAPSE_AT = 8;
 
 function fmtMinutes(v: number | null | undefined): string {
-  if (v == null) return "—";
+  if (v == null) return "·";
   const h = Math.floor(v / 60);
   const m = Math.round(v % 60);
   if (!h) return `${m}m`;

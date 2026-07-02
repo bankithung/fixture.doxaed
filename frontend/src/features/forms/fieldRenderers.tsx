@@ -142,7 +142,7 @@ function FileUploadField({
       onChange(multiple ? [...refs, ...added] : (added[0] ?? null));
     } catch {
       setUploadErr(
-        t("Couldn't upload that file — use a PDF, PNG or JPG under 10 MB."),
+        t("Couldn't upload that file · use a PDF, PNG or JPG under 10 MB."),
       );
     } finally {
       setBusy(false);
@@ -662,7 +662,7 @@ export function FieldRenderer({
                     : ""}{" "}
                   {rowLabel.toLowerCase()}
                   {minRows > 0 && rows.length < minRows
-                    ? ` — ${t("at least")} ${minRows} ${t("required")}`
+                    ? ` · ${t("at least")} ${minRows} ${t("required")}`
                     : ""}
                 </p>
               ) : null}

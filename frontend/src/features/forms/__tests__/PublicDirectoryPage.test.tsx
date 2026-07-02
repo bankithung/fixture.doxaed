@@ -10,7 +10,7 @@ vi.mock("@/api/forms");
 
 const DATA = {
   tournament_name: "Anpsa",
-  form_title: "School Registration — Sepak Takraw & Table Tennis 2026",
+  form_title: "School Registration · Sepak Takraw & Table Tennis 2026",
   filters: [
     {
       key: "competition",
@@ -32,12 +32,12 @@ const DATA = {
   competitions: [
     {
       leaf_key: "sepak.u14.girls",
-      label: "Sepak Takraw — U-14 — Girls",
+      label: "Sepak Takraw · U-14 · Girls",
       count: 2,
     },
     {
       leaf_key: "sepak.u14.boys",
-      label: "Sepak Takraw — U-14 — Boys",
+      label: "Sepak Takraw · U-14 · Boys",
       count: 1,
     },
   ],
@@ -47,7 +47,7 @@ const DATA = {
       region: "Kohima",
       kind: "school",
       competitions: [
-        { leaf_key: "sepak.u14.girls", label: "Sepak Takraw — U-14 — Girls" },
+        { leaf_key: "sepak.u14.girls", label: "Sepak Takraw · U-14 · Girls" },
       ],
       values: { competition: "both", sepak_categories: ["u14_girls"] },
     },
@@ -56,8 +56,8 @@ const DATA = {
       region: "",
       kind: "school",
       competitions: [
-        { leaf_key: "sepak.u14.girls", label: "Sepak Takraw — U-14 — Girls" },
-        { leaf_key: "sepak.u14.boys", label: "Sepak Takraw — U-14 — Boys" },
+        { leaf_key: "sepak.u14.girls", label: "Sepak Takraw · U-14 · Girls" },
+        { leaf_key: "sepak.u14.boys", label: "Sepak Takraw · U-14 · Boys" },
       ],
       values: { competition: "sepak", sepak_categories: ["u14_girls", "u14_boys"] },
     },
@@ -190,7 +190,7 @@ describe("PublicDirectoryPage", () => {
     expect(within(summary).queryByText("Sepak Takraw")).toBeNull();
   });
 
-  it("Competitions tab is a full report — all competitions with server counts", async () => {
+  it("Competitions tab is a full report · all competitions with server counts", async () => {
     renderPage();
     await screen.findByText("Grace High");
 
@@ -203,12 +203,12 @@ describe("PublicDirectoryPage", () => {
     expect(within(section).queryByText("Grace High")).toBeNull();
     const row = (label: string) =>
       within(section).getByText(label).closest("li") as HTMLElement;
-    expect(within(row("U-14 — Girls")).getByText("2")).toBeInTheDocument();
-    expect(within(row("U-14 — Boys")).getByText("1")).toBeInTheDocument();
+    expect(within(row("U-14 · Girls")).getByText("2")).toBeInTheDocument();
+    expect(within(row("U-14 · Boys")).getByText("1")).toBeInTheDocument();
 
     // It's a stable report — filtering the directory doesn't prune or rescale it.
     await userEvent.type(screen.getByLabelText("Search"), "zzz");
-    expect(within(row("U-14 — Girls")).getByText("2")).toBeInTheDocument();
+    expect(within(row("U-14 · Girls")).getByText("2")).toBeInTheDocument();
   });
 
   it("uses the admin's custom KPI label instead of the game name", async () => {

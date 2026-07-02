@@ -18,7 +18,7 @@ export function AboutPage(): React.ReactElement {
           >
             <span
               aria-hidden="true"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-emerald-700 text-white font-semibold"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary text-white font-semibold"
             >
               F
             </span>
@@ -27,15 +27,15 @@ export function AboutPage(): React.ReactElement {
         </div>
       </header>
       <main className="mx-auto w-full max-w-3xl px-6 py-16">
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           {t("About Fixture Platform")}
         </h1>
-        <p className="mt-4 text-base leading-relaxed text-slate-600">
+        <p className="mt-4 text-base leading-relaxed text-muted-foreground">
           {t(
             "Fixture is a multi-tenant tournament and fixture management platform built for sport in Nagaland. v1 is a vertical slice for football, with the chassis designed to extend to nine more sports.",
           )}
         </p>
-        <p className="mt-3 text-base leading-relaxed text-slate-600">
+        <p className="mt-3 text-base leading-relaxed text-muted-foreground">
           {t(
             "Detailed terms and a public roadmap are coming soon. Until then, get in touch via your organization administrator.",
           )}
@@ -43,7 +43,7 @@ export function AboutPage(): React.ReactElement {
         <div className="mt-8">
           <Link
             to={routes.landing()}
-            className="text-sm font-medium text-emerald-700 hover:underline focus-visible:underline focus-visible:outline-none"
+            className="text-sm font-medium text-primary hover:underline focus-visible:underline focus-visible:outline-none"
           >
             {t("Back home")}
           </Link>

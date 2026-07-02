@@ -93,7 +93,7 @@ function warningText(w: StageConsequences["warnings"][number]): string {
     case "team_form_will_be_created":
       return t("A team-registration form draft will be created for you to review.");
     case "no_sports_selected":
-      return t("No sports selected yet — add them on the Sports tab first.");
+      return t("No sports selected yet · add them on the Sports tab first.");
     case "downstream_artifacts_exist":
       return (
         `${String(w.count)} ` +
@@ -229,7 +229,7 @@ export function StageStepper({
               <ArrowRight aria-hidden="true" className="h-4 w-4" />
             </Button>
           ) : data.stage === "ready" ? (
-            <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-success-muted px-3 py-1.5 text-sm font-medium text-success-foreground dark:text-success-foreground">
               <Check aria-hidden="true" className="h-4 w-4" />
               {t("Setup complete")}
             </span>
@@ -305,7 +305,7 @@ export function StageStepper({
                       className={cn(
                         "grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 transition-colors",
                         s.state === "complete"
-                          ? "border-emerald-500 bg-emerald-500 text-white"
+                          ? "border-primary bg-primary text-primary-foreground"
                           : s.state === "current"
                             ? "border-primary bg-primary/10 text-primary ring-4 ring-primary/15"
                             : "border-border bg-card text-muted-foreground/40",

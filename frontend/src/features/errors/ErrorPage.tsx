@@ -41,7 +41,7 @@ export function ErrorPage({
         <CardHeader className="items-center text-center">
           <span
             aria-hidden="true"
-            className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-700"
+            className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-warning-muted text-warning-foreground"
           >
             <AlertTriangle className="h-7 w-7" />
           </span>
@@ -53,7 +53,7 @@ export function ErrorPage({
         <CardContent className="flex flex-col items-center gap-4">
           <Button
             onClick={handleRetry}
-            className="bg-emerald-700 hover:bg-emerald-800"
+            className="bg-primary hover:bg-primary"
           >
             {t("Try refreshing")}
           </Button>

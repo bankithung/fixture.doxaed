@@ -54,9 +54,9 @@ describe("LandingPage", () => {
     ).toBeGreaterThan(0);
     // Roadmap
     expect(screen.getByText(/what's coming/i)).toBeInTheDocument();
-    expect(screen.getByText(/Phase 1A — shipping/i)).toBeInTheDocument();
-    expect(screen.getByText(/Phase 1B — football/i)).toBeInTheDocument();
-    expect(screen.getByText(/v2 — beyond football/i)).toBeInTheDocument();
+    expect(screen.getByText(/Phase 1A · shipping/i)).toBeInTheDocument();
+    expect(screen.getByText(/Phase 1B · football/i)).toBeInTheDocument();
+    expect(screen.getByText(/v2 · beyond football/i)).toBeInTheDocument();
     // Footer
     expect(screen.getByRole("link", { name: /^about$/i })).toBeInTheDocument();
   });

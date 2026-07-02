@@ -17,7 +17,7 @@ export function groupSuffix(
   groupLabel: string | null | undefined,
 ): string | null {
   if (!groupLabel || groupLabel === leafLabel) return null;
-  const last = groupLabel.split(" — ").pop()?.trim();
+  const last = groupLabel.split(/\s+[\u00b7\u2014]\s+/).pop()?.trim();
   if (!last || leafLabel.endsWith(last)) return null;
   return last;
 }

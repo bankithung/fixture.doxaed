@@ -63,7 +63,7 @@ function tintFor(name: string): string {
 
 function formatCreated(iso: string): string {
   const ms = new Date(iso).getTime();
-  if (Number.isNaN(ms)) return "—";
+  if (Number.isNaN(ms)) return "·";
   return new Date(ms).toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
@@ -114,7 +114,7 @@ function Sport({ code }: { code: string | null }): React.ReactElement {
   return code ? (
     <span className="capitalize text-muted-foreground">{sportLabel(code)}</span>
   ) : (
-    <span className="text-muted-foreground/40">—</span>
+    <span className="text-muted-foreground/40">·</span>
   );
 }
 
@@ -124,7 +124,7 @@ function AccessBadge({ tn }: { tn: Tournament }): React.ReactElement {
   if (tn.origin === "owner") return <RoleBadge role="owner" />;
   const roles = tn.my_roles ?? [];
   if (tn.origin !== "invited" || roles.length === 0)
-    return <span className="text-muted-foreground/40">—</span>;
+    return <span className="text-muted-foreground/40">·</span>;
   return (
     <span className="flex flex-wrap items-center gap-1">
       {roles.map((role) => (

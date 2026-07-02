@@ -46,7 +46,7 @@ function warningText(w: StageConsequences["warnings"][number]): string {
     case "team_form_will_be_created":
       return t("A team-registration form draft will be created for you to review.");
     case "no_sports_selected":
-      return t("No sports selected yet — add them on the Sports tab first.");
+      return t("No sports selected yet · add them on the Sports tab first.");
     default:
       return w.code;
   }

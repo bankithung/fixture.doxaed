@@ -41,8 +41,8 @@ const PAYLOAD: PublicSchedulePayload = {
   },
   matches: [
     {
-      id: "m1", leaf_key: "football.u15", leaf_label: "Football — U-15 — Boys",
-      stage: "group", group_label: "Football — U-15 — Boys — Group A", round_no: 1, match_no: 1,
+      id: "m1", leaf_key: "football.u15", leaf_label: "Football · U-15 · Boys",
+      stage: "group", group_label: "Football · U-15 · Boys · Group A", round_no: 1, match_no: 1,
       status: "completed", day: "2026-06-20",
       scheduled_at: "2026-06-20T03:30:00Z", venue: "Main Ground",
       home: { id: "tm1", name: "Alpha FC", short_name: "A", school: "Alpha" },
@@ -51,8 +51,8 @@ const PAYLOAD: PublicSchedulePayload = {
       ...LIVE_FIELDS, home_pens: 4, away_pens: 3,
     },
     {
-      id: "m2", leaf_key: "football.u15", leaf_label: "Football — U-15 — Boys",
-      stage: "group", group_label: "Football — U-15 — Boys — Group A", round_no: 1, match_no: 2,
+      id: "m2", leaf_key: "football.u15", leaf_label: "Football · U-15 · Boys",
+      stage: "group", group_label: "Football · U-15 · Boys · Group A", round_no: 1, match_no: 2,
       status: "live", day: "2026-06-20",
       scheduled_at: "2026-06-20T05:30:00Z", venue: "Main Ground",
       home: { id: "tm3", name: "Carol FC", short_name: "C", school: "Carol" },
@@ -61,7 +61,7 @@ const PAYLOAD: PublicSchedulePayload = {
       ...LIVE_FIELDS, current_period: "first_half",
     },
     {
-      id: "m3", leaf_key: "football.u17", leaf_label: "Football — U-17 — Boys",
+      id: "m3", leaf_key: "football.u17", leaf_label: "Football · U-17 · Boys",
       stage: "knockout", group_label: "", round_no: 1, match_no: 3,
       status: "scheduled", day: "2026-06-21",
       scheduled_at: "2026-06-21T04:00:00Z", venue: "Side Pitch",
@@ -69,15 +69,15 @@ const PAYLOAD: PublicSchedulePayload = {
       ...LIVE_FIELDS,
     },
     {
-      id: "m4", leaf_key: "football.u17", leaf_label: "Football — U-17 — Boys",
+      id: "m4", leaf_key: "football.u17", leaf_label: "Football · U-17 · Boys",
       stage: "knockout", group_label: "", round_no: 2, match_no: 4,
       status: "scheduled", day: null, scheduled_at: null, venue: "",
       home: null, away: null, home_score: null, away_score: null,
       ...LIVE_FIELDS,
     },
     {
-      id: "m5", leaf_key: "tt.open", leaf_label: "Table Tennis — Open — Boys",
-      stage: "group", group_label: "Table Tennis — Open — Boys — Group T", round_no: 1, match_no: 5,
+      id: "m5", leaf_key: "tt.open", leaf_label: "Table Tennis · Open · Boys",
+      stage: "group", group_label: "Table Tennis · Open · Boys · Group T", round_no: 1, match_no: 5,
       status: "live", day: "2026-06-20",
       scheduled_at: "2026-06-20T06:30:00Z", venue: "Table Hall",
       home: { id: "tm5", name: "Echo TT", short_name: "E", school: "Echo" },
@@ -92,7 +92,7 @@ const PAYLOAD: PublicSchedulePayload = {
 const STANDINGS = {
   groups: [
     {
-      group_label: "Football — U-15 — Boys — Group A",
+      group_label: "Football · U-15 · Boys · Group A",
       rows: [
         { team_id: "tm1", name: "Alpha FC", school: "Alpha",
           P: 1, W: 1, D: 0, L: 0, GF: 2, GA: 1, GD: 1, Pts: 3 },
@@ -178,7 +178,7 @@ describe("PublicSchedulePage", () => {
     expect(within(m1).getByTestId("points-m1")).toHaveTextContent("(4-3 pens)");
 
     // the en/em dash is the #1 tell: it must appear NOWHERE on the page
-    expect(screen.queryByText(/Football — U-15 — Boys/)).toBeNull();
+    expect(screen.queryByText(/Football · U-15 · Boys/)).toBeNull();
     expect(container.textContent).not.toMatch(/[—–]/);
 
     // standalone page: viewer tabs, no app shell; a competition panel is NOT

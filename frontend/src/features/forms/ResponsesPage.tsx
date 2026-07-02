@@ -71,7 +71,7 @@ function StatusPill({
 
 /** Render a (possibly array / object) answer value as readable text. */
 function formatAnswer(value: unknown): string {
-  if (value == null || value === "") return "—";
+  if (value == null || value === "") return "·";
   if (Array.isArray(value)) return value.map((v) => String(v)).join(", ");
   if (typeof value === "object") return JSON.stringify(value);
   if (typeof value === "boolean") return value ? t("Yes") : t("No");
@@ -572,7 +572,7 @@ export function ResponsesPage(): React.ReactElement {
             to={routes.tournamentFormBuilder(id, formId)}
             className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
           >
-            {t("← Back to form")}
+            {t("Back to form")}
           </Link>
           <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight sm:text-3xl">
             {formQuery.data?.title || t("Responses")}
@@ -665,7 +665,7 @@ export function ResponsesPage(): React.ReactElement {
                     {row.title || t("Untitled")}
                   </p>
                   <p className="truncate text-sm text-muted-foreground">
-                    {row.respondent_email || "—"}
+                    {row.respondent_email || "·"}
                   </p>
                   {row.respondent_phone ? (
                     <p className="font-tabular text-sm text-muted-foreground">
@@ -730,10 +730,10 @@ export function ResponsesPage(): React.ReactElement {
                     </button>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {row.respondent_email || "—"}
+                    {row.respondent_email || "·"}
                   </td>
                   <td className="px-4 py-3 font-tabular text-muted-foreground">
-                    {row.respondent_phone || "—"}
+                    {row.respondent_phone || "·"}
                   </td>
                   <td className="px-4 py-3">
                     <StatusPill status={row.status} />

@@ -1,4 +1,4 @@
-"""TDD — Swiss system (deferred-formats increment P): ROUND-AT-A-TIME
+"""TDD · Swiss system (deferred-formats increment P): ROUND-AT-A-TIME
 generation. ``format="swiss"`` draws only round 1 (seed-halves: top half vs
 bottom half); ``POST /api/tournaments/{id}/fixtures/next-round/`` pairs the
 next round by standings (points then GD), avoiding rematches via greedy
@@ -241,7 +241,7 @@ def test_generate_api_swiss_round_at_a_time():
     assert r.json() == {**r.json(), "generated": 4, "format": "swiss"}
     matches = Match.objects.filter(tournament=t, deleted_at__isnull=True)
     assert matches.count() == 4  # round 1 only
-    assert all(m.group_label == "Football — U15 — Swiss" for m in matches)
+    assert all(m.group_label == "Football · U15 · Swiss" for m in matches)
 
     # readiness gate: next round refuses while round 1 is unfinished
     r = c.post(

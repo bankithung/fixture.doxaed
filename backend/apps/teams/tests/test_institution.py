@@ -342,7 +342,7 @@ def test_api_institution_list_includes_labelled_competitions():
     rows = _client(admin).get(f"/api/tournaments/{t.id}/institutions/").json()
     row = next(r for r in rows if r["name"] == "Don Bosco")
     comps = {c["leaf_key"]: c["label"] for c in row["competitions"]}
-    assert comps == {"football.u15": "Football — U15", "badminton": "Badminton"}
+    assert comps == {"football.u15": "Football · U15", "badminton": "Badminton"}
 
 
 def test_form_create_rejects_invalid_stage():
@@ -433,7 +433,7 @@ def test_public_directory_lists_institutions_with_dynamic_filters():
     )
     map_response(resp)
 
-    r = APIClient().get(f"/api/forms/{form.id}/directory/")  # no auth — public
+    r = APIClient().get(f"/api/forms/{form.id}/directory/")  # no auth · public
     assert r.status_code == 200, r.content
     body = r.json()
     assert body["count"] == 1

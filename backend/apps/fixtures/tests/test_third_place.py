@@ -1,6 +1,6 @@
-"""TDD — third-place playoff (redesign spec §4.4): the first `loser_of`
+"""TDD · third-place playoff (redesign spec §4.4): the first `loser_of`
 emitter, advanced end-to-end through advance.py (which already resolves
-loser_of pointers — invariant 9)."""
+loser_of pointers · invariant 9)."""
 from __future__ import annotations
 
 import uuid

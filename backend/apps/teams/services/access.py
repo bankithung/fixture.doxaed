@@ -79,7 +79,7 @@ def issue_team_access_codes(
         inst.team_code_sent_at = timezone.now()
         inst.save(update_fields=["team_code_hash", "team_code_sent_at", "updated_at"])
         send_mail(
-            subject=f"{tournament.name} — team registration code for {inst.name}",
+            subject=f"{tournament.name} · team registration code for {inst.name}",
             message=(
                 f"Hello {inst.contact_name or inst.name},\n\n"
                 f"Team registration for {tournament.name} is open.\n\n"

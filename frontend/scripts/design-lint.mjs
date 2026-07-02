@@ -22,6 +22,9 @@ const ROOT = new URL("../src", import.meta.url).pathname;
 
 const ALLOW = [
   /FifaBracket/,
+  // Owner-gold ring on the workspace-owner chip: a sanctioned decorative
+  // exception in the FifaBracket gold family (tests pin ring-amber-400).
+  /RoleBadge/,
   /RichTextEditor/,
   /__tests__/,
   /\.test\./,
@@ -34,17 +37,7 @@ const PALETTE =
 
 const rules = [
   { id: "R1 palette-color", test: (line) => PALETTE.test(line) },
-  {
-    id: "R2 dash-or-arrow",
-    test: (line) => {
-      // Only flag glyphs inside string/JSX content, not comments.
-      const stripped = line.trim();
-      if (stripped.startsWith("//") || stripped.startsWith("*") || stripped.startsWith("/*")) {
-        return false;
-      }
-      return /[–—→←]/.test(line);
-    },
-  },
+  { id: "R2 dash-or-arrow", test: (line) => /[–—→←]/.test(line) },
   { id: "R3 font-bold", test: (line) => /\bfont-(?:bold|extrabold|black)\b/.test(line) },
   { id: "R4 native-select", test: (line) => /<select[\s>]/.test(line) },
   {
@@ -68,7 +61,17 @@ for (const file of walk(ROOT)) {
   if (ALLOW.some((re) => re.test(rel))) continue;
   const lines = readFileSync(file, "utf8").split("\n");
   lines.forEach((raw, i) => {
-    // Strip trailing line comments so annotations never trip string rules.
+    // Skip comment lines and strip trailing line comments — annotations are
+    // not user-facing.
+    const trimmed = raw.trim();
+    if (
+      trimmed.startsWith("//") ||
+      trimmed.startsWith("*") ||
+      trimmed.startsWith("/*") ||
+      trimmed.startsWith("{/*")
+    ) {
+      return;
+    }
     const line = raw.replace(/\s\/\/.*$/, "");
     for (const rule of rules) {
       if (rule.test(line)) {

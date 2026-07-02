@@ -53,7 +53,7 @@ export function LandingPage(): React.ReactElement {
           <Link
             to={routes.landing()}
             className="inline-flex items-center gap-2.5 rounded-sm text-base font-semibold tracking-tight text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label={t("Fixture Platform — home")}
+            aria-label={t("Fixture Platform · home")}
           >
             <BrandLogo className="h-8 w-8 shadow-sm" />
             <span>{t("Fixture Platform")}</span>
@@ -89,7 +89,7 @@ export function LandingPage(): React.ReactElement {
           <div className="max-w-2xl">
             <p className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
               <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
-              {t("v1 — Football, Nagaland-first")}
+              {t("v1 · Football, Nagaland-first")}
             </p>
             <h1 className="mt-6 text-4xl font-semibold leading-tight tracking-tight text-foreground sm:text-5xl">
               {t("Sports fixtures, made in Nagaland.")}
@@ -201,7 +201,7 @@ export function LandingPage(): React.ReactElement {
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
             <RoadmapCard
               icon={<Shield aria-hidden="true" className="h-5 w-5" />}
-              phase={t("Phase 1A — shipping")}
+              phase={t("Phase 1A · shipping")}
               title={t("Accounts & organizations")}
               body={t(
                 "Sign up, multi-tenant orgs, role-based access, audit, 2FA.",
@@ -210,7 +210,7 @@ export function LandingPage(): React.ReactElement {
             />
             <RoadmapCard
               icon={<Trophy aria-hidden="true" className="h-5 w-5" />}
-              phase={t("Phase 1B — football")}
+              phase={t("Phase 1B · football")}
               title={t("Tournaments & live scoring")}
               body={t(
                 "Brackets, schedules, lineups, real-time scoring, public viewer.",
@@ -219,7 +219,7 @@ export function LandingPage(): React.ReactElement {
             />
             <RoadmapCard
               icon={<Activity aria-hidden="true" className="h-5 w-5" />}
-              phase={t("v2 — beyond football")}
+              phase={t("v2 · beyond football")}
               title={t("9 more sports")}
               body={t(
                 "The chassis extends to volleyball, basketball, archery, and more.",

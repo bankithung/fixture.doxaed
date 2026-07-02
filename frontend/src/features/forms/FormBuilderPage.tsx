@@ -196,7 +196,7 @@ function SettingsPanel({
               onChange={setInstructions}
               ariaLabel={t("Instructions")}
               placeholder={t(
-                "Shown at the top of the public form — format it, e.g. who can register, documents to keep ready, the deadline.",
+                "Shown at the top of the public form · format it, e.g. who can register, documents to keep ready, the deadline.",
               )}
             />
             <p className="text-xs text-muted-foreground">
@@ -449,7 +449,7 @@ export function FormBuilderPage(): React.ReactElement {
           {t("Could not load this form.")}
         </p>
         <Link to={routes.tournamentForms(id)} className="text-sm text-primary hover:underline">
-          {t("← Back to forms")}
+          {t("Back to forms")}
         </Link>
       </div>
     );
@@ -468,10 +468,10 @@ export function FormBuilderPage(): React.ReactElement {
         : routes.tournamentForms(id);
   const backLabel =
     form.stage === "org_registration"
-      ? t("← Back to institutions")
+      ? t("Back to institutions")
       : form.stage === "team_registration"
-        ? t("← Back to teams")
-        : t("← Back to forms");
+        ? t("Back to teams")
+        : t("Back to forms");
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
@@ -596,7 +596,7 @@ export function FormBuilderPage(): React.ReactElement {
       </div>
 
       {form.stale ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning-muted px-3 py-2">
           <p className="text-sm">
             {t("Sports or categories changed since this was generated; it may be missing competitions.")}
           </p>

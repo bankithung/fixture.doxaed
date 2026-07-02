@@ -112,8 +112,8 @@ export function ContactAdminDialog({
             {send.isError ? (
               <p role="alert" className="text-xs text-destructive">
                 {send.error instanceof ApiError
-                  ? (send.error.payload.detail ?? t("Couldn't send — please try again."))
-                  : t("Couldn't send — please try again.")}
+                  ? (send.error.payload.detail ?? t("Couldn't send · please try again."))
+                  : t("Couldn't send · please try again.")}
               </p>
             ) : null}
           </div>

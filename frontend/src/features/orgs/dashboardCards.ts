@@ -177,7 +177,7 @@ export function computeDashboardCards(opts: {
       icon: Trophy,
       title: t("Tournaments"),
       description: t(
-        "Create, run, and score tournaments — fixtures, live scoring, standings.",
+        "Create, run, and score tournaments · fixtures, live scoring, standings.",
       ),
       href: routes.tournaments(),
     });

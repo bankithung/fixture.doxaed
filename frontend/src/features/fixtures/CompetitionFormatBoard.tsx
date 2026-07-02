@@ -573,7 +573,7 @@ export function CompetitionFormatBoard({
                     variant="icon"
                     focus={{
                       label: t(`${sportName(sp)} format`),
-                      hint: `the format for the sport "${sportName(sp)}" (sport_key=${sp}) — should it be knockout, group stage -> knockout, or round-robin league`,
+                      hint: `the format for the sport "${sportName(sp)}" (sport_key=${sp}) · should it be knockout, group stage -> knockout, or round-robin league`,
                     }}
                   />
                 </div>

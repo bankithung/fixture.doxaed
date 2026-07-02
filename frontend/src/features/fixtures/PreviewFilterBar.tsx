@@ -12,7 +12,7 @@ import {
  * drop the leading sport segment and show the rest middot-joined (no em-dashes):
  * "Table Tennis — open catagory — girls — 1v1" -> "open catagory · girls · 1v1". */
 function shortCatLabel(label: string): string {
-  const segs = label.split(" — ").map((s) => s.trim()).filter(Boolean);
+  const segs = label.split(/\s+[\u00b7\u2014]\s+/).map((s) => s.trim()).filter(Boolean);
   return (segs.length > 1 ? segs.slice(1) : segs).join(" · ");
 }
 

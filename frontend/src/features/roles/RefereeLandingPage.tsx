@@ -18,7 +18,7 @@ export function RefereeLandingPage(): React.ReactElement {
       availableNow={{
         title: t("Officiate live matches"),
         description: t(
-          "Pick a fixture and open its Live console — record cards and fouls per player and run the match through its periods.",
+          "Pick a fixture and open its Live console · record cards and fouls per player and run the match through its periods.",
         ),
         href: routes.tournaments(),
         cta: t("Open your tournaments"),

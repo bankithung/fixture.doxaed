@@ -65,7 +65,7 @@ export function ViolationsPanel({
           {hard.length
             ? t(`${hard.length} problem(s) need fixing before you publish.`)
             : soft.length
-              ? /* Soft notes render below — "no rules broken" would contradict them. */
+              ? /* Soft notes render below · "no rules broken" would contradict them. */
                 t("This schedule works. Some preferences could not be met (details below).")
               : t("This schedule works. No rules are broken.")}
         </p>

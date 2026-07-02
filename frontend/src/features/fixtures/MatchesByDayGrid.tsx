@@ -168,10 +168,10 @@ export function MatchChip({
       {/* meta: kickoff (and end) time, round, length */}
       <div className="flex items-center gap-1.5">
         <span className="font-tabular text-xs font-semibold">
-          {start ? fmtTime(start) : "—"}
+          {start ? fmtTime(start) : "·"}
           {start && dur ? (
             <span className="font-normal text-muted-foreground">
-              {" – "}
+              {" - "}
               {addMinutes(start, dur)}
             </span>
           ) : null}

@@ -71,7 +71,7 @@ function LiveCard({ m }: { m: PublicScheduleMatch }): React.ReactElement {
         <div className="flex flex-wrap gap-1.5 border-t border-border pt-2 font-tabular text-xs text-muted-foreground">
           {sets.map((s, i) => (
             <span key={i} className="rounded bg-muted px-1.5 py-0.5">
-              {s[0]}–{s[1]}
+              {s[0]}-{s[1]}
             </span>
           ))}
         </div>

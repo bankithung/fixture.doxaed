@@ -61,7 +61,7 @@ function groupCompetitions(
   const out: { sport: string; items: string[][] }[] = [];
   const idx = new Map<string, number>();
   for (const c of comps) {
-    const segs = c.label.split(" — ");
+    const segs = c.label.split(/\s+[\u00b7\u2014]\s+/);
     const sport = segs[0] ?? c.label;
     const rest = segs.slice(1);
     const at = idx.get(sport);
@@ -454,7 +454,7 @@ export function InstitutionsTab(): React.ReactElement {
 
 const STATUS_CLS: Record<string, string> = {
   registered: "bg-primary/15 text-primary",
-  invited: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  invited: "bg-warning-muted text-warning-foreground",
   withdrawn: "bg-muted text-muted-foreground",
   rejected: "bg-destructive/15 text-destructive",
 };
@@ -735,7 +735,7 @@ function InstitutionTable({
                     <span className="block max-w-[14rem] truncate">{i.name}</span>
                   </td>
                   <td className={cn(TD, "capitalize text-muted-foreground")}>{t(i.kind)}</td>
-                  <td className={cn(TD, "text-muted-foreground")}>{i.region || "—"}</td>
+                  <td className={cn(TD, "text-muted-foreground")}>{i.region || "·"}</td>
                   <td className={TD}>
                     {hasContact ? (
                       <div className="flex max-w-[16rem] flex-col">
@@ -751,7 +751,7 @@ function InstitutionTable({
                         ) : null}
                       </div>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-muted-foreground">·</span>
                     )}
                   </td>
                   <td className={TD}>
@@ -773,7 +773,7 @@ function InstitutionTable({
                         />
                       </button>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-muted-foreground">·</span>
                     )}
                   </td>
                   <td className={cn(TD, "text-right font-tabular")}>{i.team_count}</td>

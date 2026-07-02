@@ -403,7 +403,7 @@ export function ModuleMatrixPage(): React.ReactElement {
                             aria-hidden="true"
                             className="block text-center text-xs text-muted-foreground/60"
                           >
-                            —
+                            ·
                           </span>
                         )}
                       </td>

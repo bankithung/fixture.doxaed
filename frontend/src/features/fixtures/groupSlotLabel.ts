@@ -8,7 +8,7 @@ import { t } from "@/lib/t";
 export function shortGroupName(groupLabel: string | null | undefined): string {
   if (!groupLabel) return "";
   // The group sits in the LAST dash-joined segment; strip a leading "Group ".
-  const segs = groupLabel.split(/\s*[—–-]\s*/);
+  const segs = groupLabel.split(/\s*[\u2014\u2013\u00b7-]\s*/);
   const last = (segs[segs.length - 1] ?? "").trim();
   return last.replace(/^Group\s+/i, "").trim();
 }

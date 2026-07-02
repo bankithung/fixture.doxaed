@@ -8,9 +8,9 @@ import { FifaBracket } from "./FifaBracket";
 /** Drop a trailing "3rd Place" playoff segment so a knockout band heading reads
  * as the competition, not its consolation match (labels are " — "-joined). */
 function stripPlayoffSuffix(label: string): string {
-  const segs = label.split(" — ");
+  const segs = label.split(/\s+[\u00b7\u2014]\s+/);
   if (segs.length > 1 && segs[segs.length - 1]?.trim() === "3rd Place") segs.pop();
-  return segs.join(" — ");
+  return segs.join(" · ");
 }
 
 interface StandRow {

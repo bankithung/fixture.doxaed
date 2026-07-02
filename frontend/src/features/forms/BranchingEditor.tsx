@@ -56,7 +56,7 @@ export function BranchingEditor({
                 {opt.label || opt.value}
               </span>
               <Select
-                aria-label={`${t("Go to")} — ${opt.label || opt.value}`}
+                aria-label={`${t("Go to")} · ${opt.label || opt.value}`}
                 className="flex-1"
                 value={opt.goto ?? ""}
                 options={sectionTargets.filter((o) => o.value !== "")}

@@ -669,7 +669,7 @@ export function FixtureSetupHub({
     // (the wizard's Next/Save, StageContinue's Continue).
     <div className={cn("flex flex-col gap-4", canManage && "pb-20")}>
       {/* The "Fixture setup" page title is hidden while the When & Where wizard
-          owns the page — the wizard's own header (eyebrow + title) replaces it,
+          owns the page · the wizard's own header (eyebrow + title) replaces it,
           matching its reference design. */}
       {!setupView ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -706,7 +706,7 @@ export function FixtureSetupHub({
       ) : null}
 
       {/* The journey stepper lives in a sticky sub-toolbar pinned under the top
-          bar (FixtureStepBar, rendered by AppShell) — same placement as the
+          bar (FixtureStepBar, rendered by AppShell) · same placement as the
           Sports setup page. The hub publishes its state to useFixtureStepStore
           (see the publishStep effect above) and stops publishing while the Step
           1 wizard owns the page. */}
@@ -788,7 +788,7 @@ export function FixtureSetupHub({
         /* Journey Step 3 — its OWN page (owner: not stacked with clashes). */
         <SetupSubPage
           onBack={() => onStepClick(1)}
-          nextLabel={t("Done — review competitions")}
+          nextLabel={t("Done · review competitions")}
           onNext={() => setView("overview")}
         >
           {canManage && competitions.some((c) => c.leafKey) ? (
@@ -920,7 +920,7 @@ export function FixtureSetupHub({
           ) : null}
 
           {/* Clashes & sessions (Step 2) and How each competition plays (Step 3)
-              are their OWN pages now — reached from the journey stepper above,
+              are their OWN pages now · reached from the journey stepper above,
               not stacked here. This overview is the Preview & publish surface. */}
 
           {competitions.length === 0 ? (

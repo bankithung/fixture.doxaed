@@ -204,7 +204,7 @@ def test_team_mapping_stamps_sport_and_leaf_then_fixtures_scope_per_leaf():
     db_team = Team.objects.get(tournament=t, name="DB Girls A")
     assert db_team.sport == "football"
     assert db_team.leaf_key == LEAF_5V5
-    assert db_team.pool == "Football — U15 — Girls — 5v5"  # display label
+    assert db_team.pool == "Football · U15 · Girls · 5v5"  # display label
     tt_team = Team.objects.get(tournament=t, name="DB TT")
     assert (tt_team.sport, tt_team.leaf_key) == ("table_tennis", LEAF_TT)
 
@@ -215,7 +215,7 @@ def test_team_mapping_stamps_sport_and_leaf_then_fixtures_scope_per_leaf():
     # B1 regression: Match.sport resolves through the registry (was always '')
     assert by_leaf[LEAF_5V5].sport == "football"
     assert by_leaf[LEAF_TT].sport == "table_tennis"
-    assert by_leaf[LEAF_5V5].group_label == "Football — U15 — Girls — 5v5"
+    assert by_leaf[LEAF_5V5].group_label == "Football · U15 · Girls · 5v5"
     pair = {by_leaf[LEAF_5V5].home_team.name, by_leaf[LEAF_5V5].away_team.name}
     assert pair == {"DB Girls A", "MH Girls A"}
 

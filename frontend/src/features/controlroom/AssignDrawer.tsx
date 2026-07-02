@@ -191,7 +191,7 @@ export function AssignDrawer({
       if (res.warning?.code === "official_double_booked") {
         toast.push({
           kind: "info",
-          title: t("Assigned — heads up, they have another match around then"),
+          title: t("Assigned · heads up, they have another match around then"),
         });
       } else {
         toast.push({ kind: "success", title: t("Official assigned") });

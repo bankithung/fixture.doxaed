@@ -208,7 +208,7 @@ def test_directory_exposes_competitions_grouping():
     }
     comps = {c["leaf_key"]: c for c in body["competitions"]}
     assert comps["football.u15"]["count"] == 1
-    assert comps["football.u15"]["label"] == "Football — U15"
+    assert comps["football.u15"]["label"] == "Football · U15"
     assert comps["badminton"]["count"] == 1
     # Default headline KPI preference: total + per-game registrations.
     assert body["kpi_mode"] == "games"
@@ -218,7 +218,7 @@ def test_team_form_scopes_competitions_to_selected_institution():
     """The public team-form payload carries (a) each institution option's
     registered competition leaves and (b) the competition-scoped field keys,
     so the renderer can show a school ONLY the sports/categories it
-    registered — pre-selected, no admin regeneration needed."""
+    registered · pre-selected, no admin regeneration needed."""
     from apps.forms.services.generation import (
         generate_institution_form,
         generate_team_form_template,

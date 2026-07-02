@@ -96,7 +96,7 @@ export function RoleBadge({
       {ownerLook ? (
         <Crown
           aria-hidden="true"
-          className="h-3 w-3 text-amber-700"
+          className="h-3 w-3 text-warning-foreground"
           strokeWidth={2.5}
         />
       ) : null}

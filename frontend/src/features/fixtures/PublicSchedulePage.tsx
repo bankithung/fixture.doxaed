@@ -27,7 +27,7 @@ const FINAL_STATUSES = new Set(["completed", "walkover"]);
  * Boys"); a raw dashed string is the #1 design tell, so we split into segments
  * and chip them. Internal hyphens with no surrounding spaces ("U-14") survive
  * the split and are tidied to "U14" at render. */
-const LABEL_SEP = /\s+[—–·|/-]+\s+/;
+const LABEL_SEP = /\s+[·-·|/-]+\s+/;
 
 function splitLabel(label: string): string[] {
   return label

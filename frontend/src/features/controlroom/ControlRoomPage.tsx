@@ -80,7 +80,7 @@ function OpsHeaderBand({
   const overline =
     "text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground";
   const chip =
-    "inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400";
+    "inline-flex items-center gap-1 rounded-full bg-warning-muted px-2 py-0.5 text-xs font-medium text-warning-foreground ";
   return (
     <div
       data-testid="ops-band"
@@ -120,7 +120,7 @@ function OpsHeaderBand({
           />
         </div>
         {delayed > 0 ? (
-          <p className="mt-1.5 font-tabular text-xs text-amber-600 dark:text-amber-400">
+          <p className="mt-1.5 font-tabular text-xs text-warning-foreground">
             {delayed} {t("running late")}
           </p>
         ) : null}

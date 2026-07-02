@@ -51,8 +51,8 @@ const prettySport = (key: string): string =>
  * boys — 1v1" → "u-14 — boys — 1v1"). Falls back to the full label when there's
  * nothing after the sport. */
 const subLabel = (label: string): string => {
-  const segs = label.split(" — ");
-  return segs.length > 1 ? segs.slice(1).join(" — ") : label;
+  const segs = label.split(/\s+[\u00b7\u2014]\s+/);
+  return segs.length > 1 ? segs.slice(1).join(" · ") : label;
 };
 
 /** A slim Supabase-style settings card: header (icon + title + description +

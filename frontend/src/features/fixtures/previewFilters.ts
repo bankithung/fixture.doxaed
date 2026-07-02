@@ -1,7 +1,7 @@
 import type { PreviewMatch } from "@/api/tournaments";
 
 /** Trailing bits the rich group_label carries on top of the competition name. */
-const STAGE_SUFFIX = / — (Group .*|3rd Place|Plate|Swiss|Grand Final)$/;
+const STAGE_SUFFIX = / [\u00b7\u2014] (Group .*|3rd Place|Plate|Swiss|Grand Final)$/;
 
 function prettify(key: string): string {
   return key
@@ -19,7 +19,7 @@ export function sportKey(m: PreviewMatch): string {
 /** Sport display name — the first segment of the rich group_label, e.g.
  * "Table Tennis"; falls back to a prettified key. */
 export function sportLabel(m: PreviewMatch): string {
-  const first = m.group_label.split(" — ")[0]?.trim();
+  const first = m.group_label.split(/\s+[\u00b7\u2014]\s+/)[0]?.trim();
   return first || prettify(sportKey(m));
 }
 

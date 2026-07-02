@@ -291,7 +291,7 @@ export function DryRunPreviewPage(): React.ReactElement {
       if (stageQ.data?.stage === "ready" && r.unscheduled.length === 0) {
         toast.push({
           kind: "success",
-          title: t("Schedule published — you're in the control room."),
+          title: t("Schedule published · you're in the control room."),
         });
         navigate(routes.tournamentControl(id));
         return;
@@ -614,7 +614,7 @@ export function DryRunPreviewPage(): React.ReactElement {
           </div>
           {/* Group stage: the day/group schedule, or (Draw view) the numbered
               group composition. A pure-knockout competition has no group stage,
-              so nothing renders here — just the bracket below. */}
+              so nothing renders here · just the bracket below. */}
           {viewMode === "draw" ? (
             <GroupCompositionView matches={filteredMatches} teamNames={teamNames} />
           ) : scheduleMatches.length > 0 ? (

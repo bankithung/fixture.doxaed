@@ -116,7 +116,7 @@ export function CompetitionCard({
       className="flex flex-col gap-1.5 border-t border-border px-4 py-2.5 transition-colors first:border-t-0 hover:bg-muted/20"
     >
       {/* Identity + meta + status + the ONE primary action, all on one line
-          (wraps on narrow widths) — the dense Supabase-style row. */}
+          (wraps on narrow widths) · the dense Supabase-style row. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         {drawn ? (
           <button
@@ -222,7 +222,7 @@ export function CompetitionCard({
                 </button>
               ))}
               {/* A ready card with a chosen format can still revisit Step 2
-                  (capability map — the wizard stays reachable). */}
+                  (capability map · the wizard stays reachable). */}
               {primary?.action === "preview" && !pres.note && canManage ? (
                 <button
                   type="button"

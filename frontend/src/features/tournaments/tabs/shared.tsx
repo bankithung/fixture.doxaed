@@ -196,7 +196,7 @@ export function ScoreRow({
       {done ? (
         <span className="shrink-0 text-center">
           <span className="block font-tabular text-base font-semibold">
-            {match.home_score} <span className="text-muted-foreground">–</span>{" "}
+            {match.home_score} <span className="text-muted-foreground">-</span>{""}
             {match.away_score}
           </span>
           {setDetail ? (
@@ -216,7 +216,7 @@ export function ScoreRow({
             onChange={(e) => setHome(e.target.value)}
             className="h-8 w-11 text-center font-tabular"
           />
-          <span className="text-muted-foreground">–</span>
+          <span className="text-muted-foreground">-</span>
           <Input
             aria-label={t("Away score")}
             inputMode="numeric"

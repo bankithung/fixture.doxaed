@@ -151,7 +151,7 @@ def _plan_groups_to_knockout_preview(
     positional cross-seed placement stands in for an overall reseed (that only
     changes matchups, not the count or the schedule)."""
     teams = _registered_teams(tournament, leaf_key)
-    label_prefix = f"{leaf_label(sports_cfg, leaf_key)} — " if leaf_key else ""
+    label_prefix = f"{leaf_label(sports_cfg, leaf_key)} · " if leaf_key else ""
     entry = plan_round_robin(
         teams, group_size=group_size, leaf_key=leaf_key or "", sport=sport,
         label_prefix=label_prefix, legs=legs, seeding=seeding, seed=seed,
@@ -224,7 +224,7 @@ def _plan_for_config(
             teams, stage="knockout", leaf_key=leaf_key or "", sport=sport,
             third_place=bool(cfg.get("third_place")),
             seeding=seeding, seed=seed,
-            label_prefix=f"{leaf_label(sports_cfg, leaf_key)} — " if leaf_key else "",
+            label_prefix=f"{leaf_label(sports_cfg, leaf_key)} · " if leaf_key else "",
             separators=_keep_apart_separators(
                 tournament, teams, leaf_key or "", sport, warnings,
             ),
@@ -242,7 +242,7 @@ def _plan_for_config(
         plans = plan_single_elimination(
             teams, stage="knockout", leaf_key=leaf_key or "", sport=sport,
             third_place=bool(cfg.get("third_place")),
-            label_prefix=f"{leaf_label(sports_cfg, leaf_key)} — " if leaf_key else "",
+            label_prefix=f"{leaf_label(sports_cfg, leaf_key)} · " if leaf_key else "",
             separators=_keep_apart_separators(
                 tournament, teams, leaf_key or "", sport, warnings,
             ),
@@ -297,7 +297,7 @@ def _plan_for_config(
         group_size=int(cfg["group_size"]),
         leaf_key=leaf_key or "",
         sport=sport,
-        label_prefix=f"{leaf_label(sports_cfg, leaf_key)} — " if leaf_key else "",
+        label_prefix=f"{leaf_label(sports_cfg, leaf_key)} · " if leaf_key else "",
         legs=int(cfg["legs"]), seeding=seeding, seed=seed,
         # Thread balance_groups so the preview's group split matches the commit
         # path (views.py) — otherwise FIFA-balanced configs previewed plain

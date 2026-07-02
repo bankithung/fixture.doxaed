@@ -46,11 +46,11 @@ export function ComingSoonPage({
         <CardHeader className="items-center">
           <span
             aria-hidden="true"
-            className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"
+            className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-success-muted text-primary"
           >
             <Sparkles className="h-7 w-7" />
           </span>
-          <CardTitle>{t(`${feature} — coming soon`)}</CardTitle>
+          <CardTitle>{t(`${feature} · coming soon`)}</CardTitle>
           <CardDescription>
             {description ??
               t(

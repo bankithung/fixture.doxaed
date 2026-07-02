@@ -155,7 +155,7 @@ export default function App(): React.ReactElement {
               <Route path="/r/:token" element={<PublicFormPage />} />
               <Route path="/m/:matchId" element={<LiveViewerPage />} />
               {/* Public read-only tournament views (trust layer): schedule,
-                  live scoreboard, knockout bracket — all SSE-live, no login. */}
+                  live scoreboard, knockout bracket · all SSE-live, no login. */}
               <Route path="/t/:slug/:id/schedule" element={<PublicSchedulePage />} />
               <Route
                 path="/t/:slug/:id/live"

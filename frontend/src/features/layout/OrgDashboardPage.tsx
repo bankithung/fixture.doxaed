@@ -145,7 +145,7 @@ export function OrgDashboardPage(): React.ReactElement {
         source_url: typeof window !== "undefined" ? window.location.pathname : undefined,
         event_id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : undefined,
       });
-      toast.push({ kind: "success", title: t("Feedback sent"), description: t("Thanks — the platform team will read this.") });
+      toast.push({ kind: "success", title: t("Feedback sent"), description: t("Thanks · the platform team will read this.") });
       closeFeedback();
     } catch (e) {
       const detail = e instanceof ApiError ? (e.payload.detail ?? t("Could not send feedback")) : e instanceof Error ? e.message : t("Could not send feedback");

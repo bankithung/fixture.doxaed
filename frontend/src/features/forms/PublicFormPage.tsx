@@ -263,8 +263,8 @@ export function PublicFormPage(): React.ReactElement {
       setCodeError(
         e instanceof ApiError && e.status === 403
           ? e.payload.detail === "locked"
-            ? t("Too many wrong attempts — try again in 15 minutes.")
-            : t("That code isn't right — check the email sent to your school.")
+            ? t("Too many wrong attempts · try again in 15 minutes.")
+            : t("That code isn't right · check the email sent to your school.")
           : t("Could not verify the code. Try again."),
       ),
   });
@@ -313,7 +313,7 @@ export function PublicFormPage(): React.ReactElement {
         if (!n) continue;
         if (seen.has(n)) {
           out[tg.group] = t(
-            "Two teams here have the same name — give each team a different name.",
+            "Two teams here have the same name · give each team a different name.",
           );
           break;
         }
@@ -522,7 +522,7 @@ export function PublicFormPage(): React.ReactElement {
               href={`/f/${data.form_id}/directory`}
               className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
             >
-              {t("View registered institutions")} →
+              {t("View registered institutions")}
             </a>
           ) : null}
         </Centered>
@@ -814,7 +814,7 @@ export function PublicFormPage(): React.ReactElement {
             </div>
 
             {/* Until the access code is verified, the ONLY things on screen
-                are the school picker and the code panel — no prefilled
+                are the school picker and the code panel · no prefilled
                 contacts, sports or categories leak to someone without the
                 code. */}
             {renderGrouped(

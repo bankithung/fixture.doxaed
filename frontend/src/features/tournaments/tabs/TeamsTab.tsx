@@ -688,7 +688,7 @@ function CompetitionLabel({ label }: { label: string }): React.ReactElement {
   }
   return (
     <span className="flex flex-wrap items-center gap-1">
-      {label.split(" — ").map((seg, i) => (
+      {label.split(/\s+[\u00b7\u2014]\s+/).map((seg, i) => (
         <span
           key={i}
           className={cn(
@@ -815,8 +815,8 @@ function SubmissionBadge({ submitted }: { submitted: boolean }): React.ReactElem
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium",
         submitted
-          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-          : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+          ? "bg-success-muted text-success-foreground"
+          : "bg-warning-muted text-warning-foreground",
       )}
     >
       {submitted ? (

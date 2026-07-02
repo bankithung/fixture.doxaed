@@ -88,7 +88,7 @@ function leafLabels(nodes: SportNode[], prefix: string[] = []): string[] {
   for (const n of nodes) {
     const path = [...prefix, n.name];
     if (n.children?.length) out.push(...leafLabels(n.children, path));
-    else out.push(path.join(" — "));
+    else out.push(path.join(" · "));
   }
   return out;
 }
@@ -152,7 +152,7 @@ function detectAge(name: string): SportNodeAge | undefined {
   if (m) return { op: "under", age: Number(m[1]) };
   m = /^\s*(?:over\s+)?(\d{1,2})\s*\+\s*$/i.exec(name);
   if (m) return { op: "over", age: Number(m[1]) };
-  m = /^\s*(\d{1,2})\s*[-–]\s*(\d{1,2})\s*$/.exec(name);
+  m = /^\s*(\d{1,2})\s*[--]\s*(\d{1,2})\s*$/.exec(name);
   if (m && Number(m[1]) <= Number(m[2])) {
     return { op: "between", min: Number(m[1]), max: Number(m[2]) };
   }
@@ -163,7 +163,7 @@ function ageLabel(age: SportNodeAge | undefined): string {
   if (!age) return "";
   if (age.op === "under" && age.age) return `${t("under")} ${age.age}`;
   if (age.op === "over" && age.age) return `${age.age}+`;
-  if (age.op === "between" && age.min && age.max) return `${age.min}–${age.max}`;
+  if (age.op === "between" && age.min && age.max) return `${age.min}-${age.max}`;
   return "";
 }
 
@@ -502,7 +502,7 @@ function NodeKindEditor({
                 defaultValue={fmt[k] ?? ""}
                 onBlur={(e) => patchFormat(k, e.target.value)}
                 className="h-9 font-tabular"
-                aria-label={`${label} — ${node.name}`}
+                aria-label={`${label} · ${node.name}`}
               />
             </div>
           ))}
@@ -667,7 +667,7 @@ export function SportsTab(): React.ReactElement {
       qc.invalidateQueries({ queryKey: ["forms", id] });
       toast.push({
         kind: "success",
-        title: t("Registration is set up — review and open it"),
+        title: t("Registration is set up · review and open it"),
       });
       navigate(routes.tournamentInstitutions(id));
     },
@@ -795,7 +795,7 @@ export function SportsTab(): React.ReactElement {
       const pps = node.format.players_per_side;
       let f = `${pps}${t("-a-side")}`;
       if (node.format.squad_max && node.format.squad_max !== pps) {
-        f += ` · ${t("squad")} ${node.format.squad_min ?? pps}–${node.format.squad_max}`;
+        f += ` · ${t("squad")} ${node.format.squad_min ?? pps}-${node.format.squad_max}`;
       }
       bits.push(f);
     }
@@ -839,7 +839,7 @@ export function SportsTab(): React.ReactElement {
             <button
               type="button"
               onClick={() => setKindTarget({ sportKey: sport.key, path })}
-              aria-label={t(`Edit ${node.name} — name, type and team size`)}
+              aria-label={t(`Edit ${node.name} · name, type and team size`)}
               aria-haspopup="dialog"
               title={t("Edit")}
               className={actionCls}
@@ -884,7 +884,7 @@ export function SportsTab(): React.ReactElement {
     const fmt = pps ? `${pps}${t("-a-side")}` : "";
     const squad =
       node.format?.squad_max && node.format.squad_max !== pps
-        ? `${t("squad")} ${node.format.squad_min ?? pps}–${node.format.squad_max}`
+        ? `${t("squad")} ${node.format.squad_min ?? pps}-${node.format.squad_max}`
         : "";
     const meta = [age, fmt, squad].filter(Boolean).join(" · ");
     return (
@@ -1037,7 +1037,7 @@ export function SportsTab(): React.ReactElement {
                         ? remove(slugKey(c.code))
                         : add({ key: slugKey(c.code), name: c.name, custom: false })
                     }
-                    title={added ? t("Added — click to remove") : t("Add sport")}
+                    title={added ? t("Added · click to remove") : t("Add sport")}
                     className={cn(
                       "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       added
@@ -1283,7 +1283,7 @@ export function SportsTab(): React.ReactElement {
           </div>
 
           {/* Per-sport progression (owner 2026-06-10): walk every sport
-              before anything generates — no skipping straight to the form
+              before anything generates · no skipping straight to the form
               while other sports sit unconfigured. */}
           {(() => {
             const idx = selected.findIndex((s) => s.key === activeSport?.key);
@@ -1426,7 +1426,7 @@ export function SportsTab(): React.ReactElement {
                           </div>
                         </div>
                       ) : (
-                        <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+                        <p className="rounded-lg border border-warning/40 bg-warning-muted px-3 py-2 text-xs">
                           {t("No categories. The whole sport runs as one competition. Add age groups or formats via Edit.")}
                         </p>
                       )}
@@ -1544,7 +1544,7 @@ export function SportsTab(): React.ReactElement {
                       />
                       <span className="flex-1">{s.name}</span>
                       {existing > 0 ? (
-                        <span className="text-xs text-amber-600 dark:text-amber-400">
+                        <span className="text-xs text-warning-foreground">
                           {existing} {t("will be replaced")}
                         </span>
                       ) : null}
@@ -1609,7 +1609,7 @@ export function SportsTab(): React.ReactElement {
           <>
             <DialogHeader>
               <DialogTitle>
-                {t("Edit category")} — {kindNode.name}
+                {t("Edit category")} · {kindNode.name}
               </DialogTitle>
               <DialogDescription>
                 {t("Rename it or change its type.")}

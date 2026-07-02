@@ -707,7 +707,7 @@ def plan_single_elimination(
         size *= 2
     entrants = [teams[s - 1] if s <= n else None for s in _bracket_order(size)]
 
-    bracket_label = label_prefix.rstrip(" —").strip()
+    bracket_label = label_prefix.rstrip(" \u00b7\u2014").strip()
     common = {
         "stage": stage, "leaf_key": leaf_key, "sport": sport,
         "group_label": bracket_label,
@@ -753,7 +753,7 @@ def plan_single_elimination(
                     away_source={"type": "loser_of", "ref": slots[1]["plan"]},
                     ref=len(plans),
                     **{**common, "group_label":
-                        f"{bracket_label} — 3rd Place" if bracket_label
+                        f"{bracket_label} · 3rd Place" if bracket_label
                         else "3rd Place"},
                 )
             )
@@ -883,7 +883,7 @@ def _plate_label(sports_cfg, leaf_key: str | None) -> str:
     """``"<leaf> — Plate"`` (increment M) — the same label grammar the grouped
     round-robin prefix uses; plain ``"Plate"`` for whole-tournament draws."""
     if leaf_key:
-        return f"{leaf_label(sports_cfg, leaf_key)} — Plate"[:80]
+        return f"{leaf_label(sports_cfg, leaf_key)} · Plate"[:80]
     return "Plate"
 
 
@@ -1043,7 +1043,7 @@ def _swiss_label(sports_cfg, leaf_key: str | None) -> str:
     """``"<leaf> — Swiss"`` — the same label grammar the plate uses; plain
     ``"Swiss"`` for whole-tournament draws."""
     if leaf_key:
-        return f"{leaf_label(sports_cfg, leaf_key)} — Swiss"[:80]
+        return f"{leaf_label(sports_cfg, leaf_key)} · Swiss"[:80]
     return "Swiss"
 
 
@@ -1413,7 +1413,7 @@ def generate_round_robin(
         group_size=group_size,
         leaf_key=leaf_key or "",
         sport=sport,
-        label_prefix=f"{leaf_label(sports_cfg, leaf_key)} — " if leaf_key else "",
+        label_prefix=f"{leaf_label(sports_cfg, leaf_key)} · " if leaf_key else "",
         legs=legs, seeding=seeding, seed=seed,
         balance_groups=balance_groups,
         min_matches_per_team=min_matches_per_team,
@@ -1605,7 +1605,7 @@ def generate_single_elimination(
         list(teams), stage=stage, leaf_key=leaf_key or "", sport=sport,
         third_place=third_place, seeding=seeding, seed=seed,
         label_prefix=(
-            f"{leaf_label(tournament.sports or [], leaf_key)} — "
+            f"{leaf_label(tournament.sports or [], leaf_key)} · "
             if leaf_key else ""
         ),
         separators=_keep_apart_separators(
@@ -1934,7 +1934,7 @@ def plan_knockout_from_positions(
         size *= 2
     entrants = [slots[s - 1] if s <= n else None for s in _bracket_order(size)]
 
-    bracket_label = label_prefix.rstrip(" —").strip()
+    bracket_label = label_prefix.rstrip(" \u00b7\u2014").strip()
     common = {
         "stage": stage, "leaf_key": leaf_key, "sport": sport,
         "group_label": bracket_label,
@@ -1967,7 +1967,7 @@ def plan_knockout_from_positions(
                 away_source={"type": "loser_of", "ref": bslots[1]["plan"]},
                 ref=len(plans),
                 **{**common, "group_label":
-                    f"{bracket_label} — 3rd Place" if bracket_label else "3rd Place"},
+                    f"{bracket_label} · 3rd Place" if bracket_label else "3rd Place"},
             ))
         for i in range(0, len(bslots), 2):
             plans.append(MatchPlan(
@@ -2018,7 +2018,7 @@ def generate_eager_knockout_from_groups(
     plans = plan_knockout_from_positions(
         slots, leaf_key=leaf_key or "", sport=sport, third_place=third_place,
         label_prefix=(
-            f"{leaf_label(tournament.sports or [], leaf_key)} — " if leaf_key else ""
+            f"{leaf_label(tournament.sports or [], leaf_key)} · " if leaf_key else ""
         ),
     )
     ih = compute_inputs_hash(tournament, leaf_key or None)

@@ -69,7 +69,7 @@ function CrewRow({
             {match.scorer.name}
           </span>
         ) : (
-          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[0.6875rem] font-medium text-amber-700 dark:text-amber-400">
+          <span className="rounded-full bg-warning-muted px-2 py-0.5 text-[0.6875rem] font-medium text-warning-foreground">
             {t("No scorer")}
           </span>
         )}
@@ -86,7 +86,7 @@ function CrewRow({
           </span>
         ))}
         {officials.length === 0 ? (
-          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[0.6875rem] font-medium text-amber-700 dark:text-amber-400">
+          <span className="rounded-full bg-warning-muted px-2 py-0.5 text-[0.6875rem] font-medium text-warning-foreground">
             {t("No official")}
           </span>
         ) : null}

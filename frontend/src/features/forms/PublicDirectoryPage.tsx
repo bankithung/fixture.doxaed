@@ -61,8 +61,8 @@ function groupBySport(
 ): SportGroup[] {
   const groups = new Map<string, SportGroup>();
   for (const c of competitions) {
-    const sport = c.label.split(" — ")[0];
-    const within = c.label.includes(" — ")
+    const sport = c.label.split(/\s+[\u00b7\u2014]\s+/)[0];
+    const within = c.label.includes(" · ")
       ? c.label.slice(sport.length + 3)
       : t("Open competition");
     const g = groups.get(sport) ?? { sport, rows: [] };
@@ -135,7 +135,7 @@ function Cell({
 }): React.ReactElement {
   const labels = valueLabels(map, val);
   if (labels.length === 0)
-    return <span className="text-muted-foreground/40">—</span>;
+    return <span className="text-muted-foreground/40">·</span>;
   if (labels.length === 1)
     return <span className="text-muted-foreground">{labels[0]}</span>;
   return (
@@ -245,7 +245,7 @@ export function PublicDirectoryPage(): React.ReactElement {
     const sports = new Map<string, string>();
     for (const c of dir.data?.competitions ?? []) {
       const key = c.leaf_key.split(".")[0];
-      if (!sports.has(key)) sports.set(key, c.label.split(" — ")[0]);
+      if (!sports.has(key)) sports.set(key, c.label.split(/\s+[\u00b7\u2014]\s+/)[0]);
     }
     const byGame = new Map<string, Set<string>>();
     for (const e of dir.data?.entries ?? []) {
@@ -694,7 +694,7 @@ export function PublicDirectoryPage(): React.ReactElement {
                     ) : null}
                     {showRegion ? (
                       <td className="border-b border-border px-3 py-2.5 align-top text-muted-foreground group-hover:bg-accent/40">
-                        {e.region || "—"}
+                        {e.region || "·"}
                       </td>
                     ) : null}
                     <td className="border-b border-border px-3 py-2.5 align-top group-hover:bg-accent/40">
@@ -719,7 +719,7 @@ export function PublicDirectoryPage(): React.ReactElement {
                           ) : null}
                         </div>
                       ) : (
-                        <span className="text-muted-foreground/40">—</span>
+                        <span className="text-muted-foreground/40">·</span>
                       )}
                     </td>
                     {columns.map((c) => (
@@ -864,9 +864,9 @@ export function PublicDirectoryPage(): React.ReactElement {
               <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto">
                 {[...new Map(
                   compModal.competitions.map((c) => [
-                    c.label.split(" — ")[0],
+                    c.label.split(/\s+[\u00b7\u2014]\s+/)[0],
                     compModal.competitions.filter(
-                      (x) => x.label.split(" — ")[0] === c.label.split(" — ")[0],
+                      (x) => x.label.split(/\s+[\u00b7\u2014]\s+/)[0] === c.label.split(/\s+[\u00b7\u2014]\s+/)[0],
                     ),
                   ]),
                 ).entries()].map(([sport, comps]) => (
@@ -877,7 +877,7 @@ export function PublicDirectoryPage(): React.ReactElement {
                     <ul className="flex flex-col divide-y divide-border/60 rounded-lg border border-border">
                       {comps.map((c) => (
                         <li key={c.leaf_key} className="px-3 py-1.5 text-sm">
-                          {c.label.includes(" — ")
+                          {c.label.includes(" · ")
                             ? c.label.slice(sport.length + 3)
                             : t("Open competition")}
                         </li>

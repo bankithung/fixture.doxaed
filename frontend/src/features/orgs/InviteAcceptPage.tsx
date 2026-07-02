@@ -193,7 +193,7 @@ export function InviteAcceptPage(): React.ReactElement {
               </p>
               <Link
                 to={signInHref}
-                className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-700 px-4 text-sm font-medium text-white hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-white hover:bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 {t("Sign in to continue")}
               </Link>
@@ -237,7 +237,7 @@ export function InviteAcceptPage(): React.ReactElement {
                 {t("Already have an account?")}{" "}
                 <Link
                   to={signInHref}
-                  className="font-medium text-emerald-700 hover:underline focus-visible:underline focus-visible:outline-none"
+                  className="font-medium text-primary hover:underline focus-visible:underline focus-visible:outline-none"
                 >
                   {t("Sign in")}
                 </Link>

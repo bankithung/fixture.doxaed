@@ -29,11 +29,11 @@ import { t } from "@/lib/t";
 
 const STATUS_CLS: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
-  published: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
-  registration_open: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  published: "bg-info-muted text-info-foreground",
+  registration_open: "bg-warning-muted text-warning-foreground",
   scheduled: "bg-primary/15 text-primary",
-  live: "bg-red-500/15 text-red-600 dark:text-red-400",
-  completed: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+  live: "bg-destructive/15 text-destructive",
+  completed: "bg-success-muted text-success-foreground",
   archived: "bg-muted text-muted-foreground",
 };
 

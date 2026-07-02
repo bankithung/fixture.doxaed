@@ -18,7 +18,7 @@ export function ScorerLandingPage(): React.ReactElement {
       availableNow={{
         title: t("Score matches now"),
         description: t(
-          "Pick a fixture and open its Live console — record events per player and export the timeline.",
+          "Pick a fixture and open its Live console · record events per player and export the timeline.",
         ),
         href: routes.tournaments(),
         cta: t("Open your tournaments"),

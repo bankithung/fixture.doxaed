@@ -35,7 +35,7 @@ function railNavLink(item: NavItem, collapsed: boolean): React.ReactElement {
         aria-disabled="true"
         title={
           collapsed
-            ? `${item.label} — ${t("Unlocks at")} ${item.lockLabel ?? ""}`
+            ? `${item.label} · ${t("Unlocks at")} ${item.lockLabel ?? ""}`
             : undefined
         }
         className={cn(

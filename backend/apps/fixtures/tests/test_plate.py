@@ -1,4 +1,4 @@
-"""TDD — consolation plate (deferred-formats increment M): a second-chance
+"""TDD · consolation plate (deferred-formats increment M): a second-chance
 single-elimination drawn over the main bracket's round-1 LOSERS via the
 ``loser_of`` pointers advance.py already resolves (invariant 9). Round-1 byes
 in the main bracket leave no loser to source, so the plate draws only over
@@ -171,7 +171,7 @@ def test_generate_api_reads_plate_from_stored_draw_config():
         tournament=t, stage="plate", deleted_at__isnull=True
     )
     assert plate.count() == 1
-    assert plate.get().group_label == "Football — U15 — Plate"  # <leaf> — Plate
+    assert plate.get().group_label == "Football · U15 · Plate"  # <leaf> · Plate
 
 
 def test_knockout_from_groups_passes_plate_through():

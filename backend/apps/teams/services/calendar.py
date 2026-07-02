@@ -104,7 +104,7 @@ def team_calendar_ics(team: Any) -> str:
             f"DTSTAMP:{stamp}",
             f"DTSTART:{_utc(start)}",
             f"DTEND:{_utc(end)}",
-            f"SUMMARY:{_esc(f'{home} vs {away} — {competition}')}",
+            f"SUMMARY:{_esc(f'{home} vs {away} · {competition}')}",
         ]
         if m.venue:
             lines.append(f"LOCATION:{_esc(m.venue)}")

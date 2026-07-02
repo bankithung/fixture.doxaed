@@ -332,7 +332,7 @@ export function FieldEditor({
                 }}
                 rows={2}
                 placeholder={t(
-                  "Type names separated by commas, then press Enter — e.g. St. Xavier's, Don Bosco, Holy Cross",
+                  "Type names separated by commas, then press Enter · e.g. St. Xavier's, Don Bosco, Holy Cross",
                 )}
                 aria-label={t("Add many options at once")}
                 className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -415,7 +415,7 @@ export function FieldEditor({
       ) : null}
 
       {/* Repeatable-group row bounds (W2-B): how many rows a respondent may
-          add — e.g. widen a 1v1 category's players group from 1/1 to 1/3 to
+          add · e.g. widen a 1v1 category's players group from 1/1 to 1/3 to
           allow substitutes. Server-enforced on submission. */}
       {field.type === "group" && field.repeatable ? (
         <div className="grid grid-cols-2 gap-2">
@@ -458,7 +458,7 @@ export function FieldEditor({
 
       {/* Public-directory exposure (W2): each included choice field becomes
           a filter + breakdown card on the public registered-institutions
-          page — too many gets noisy, so admins can opt fields out. The
+          page · too many gets noisy, so admins can opt fields out. The
           generator already opts category-chain questions out by default. */}
       {["single_choice", "multi_choice", "dropdown"].includes(field.type) ? (
         <label className="flex cursor-pointer items-start gap-2 text-sm">

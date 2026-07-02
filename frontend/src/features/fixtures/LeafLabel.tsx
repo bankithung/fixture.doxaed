@@ -24,7 +24,7 @@ export function LeafLabel({
       <span className="text-xs text-muted-foreground">{t("Uncategorized")}</span>
     );
   }
-  const segs = label.split(" — ");
+  const segs = label.split(/\s+[\u00b7\u2014]\s+/);
   const pad = size === "md" ? "px-2 py-0.5 text-sm" : "px-1.5 py-0.5 text-xs";
   return (
     <span className={cn("flex flex-wrap items-center gap-1", className)}>

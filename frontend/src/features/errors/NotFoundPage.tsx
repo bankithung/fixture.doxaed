@@ -23,7 +23,7 @@ export function NotFoundPage(): React.ReactElement {
         <CardHeader className="items-center">
           <span
             aria-hidden="true"
-            className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"
+            className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-success-muted text-primary"
           >
             <Compass className="h-7 w-7" />
           </span>
@@ -34,7 +34,7 @@ export function NotFoundPage(): React.ReactElement {
         </CardHeader>
         <CardContent className="flex flex-col items-center gap-3">
           <Link to={routes.landing()}>
-            <Button className="bg-emerald-700 hover:bg-emerald-800">
+            <Button className="bg-primary hover:bg-primary">
               {t("Back home")}
             </Button>
           </Link>

@@ -38,7 +38,7 @@ describe("CompetitionResultCard", () => {
     );
     expect(screen.getByText("Group A")).toBeInTheDocument();
     expect(screen.getByText("Bracket")).toBeInTheDocument();
-    expect(screen.getByTestId("result-row-m1")).toHaveTextContent("2 – 1");
+    expect(screen.getByTestId("result-row-m1")).toHaveTextContent("2 - 1");
     expect(screen.getByTestId("result-row-m2")).toHaveTextContent("vs");
     expect(screen.getByTestId("result-row-m3")).toHaveTextContent("TBD");
     // read-only: no inline score inputs — entry happens in the match console

@@ -164,7 +164,7 @@ export function OrgBrandingPage(): React.ReactElement {
               <div className="flex items-center gap-3">
                 <span
                   aria-hidden="true"
-                  className="inline-flex h-12 w-12 items-center justify-center rounded-md bg-emerald-100 text-emerald-700"
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-md bg-success-muted text-primary"
                 >
                   <Palette className="h-6 w-6" />
                 </span>
@@ -217,7 +217,7 @@ export function OrgBrandingPage(): React.ReactElement {
                 />
                 <span
                   aria-hidden="true"
-                  className="inline-block h-8 w-8 rounded-md border bg-emerald-500"
+                  className="inline-block h-8 w-8 rounded-md border bg-success-muted0"
                 />
               </div>
             </div>

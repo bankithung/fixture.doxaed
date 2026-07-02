@@ -83,7 +83,7 @@ export function TwoFactorEnrollPage(): React.ReactElement {
             <>
               <p role="status" className="text-sm text-grant">
                 {t(
-                  "2FA enabled. Save these recovery codes somewhere safe — each works once.",
+                  "2FA enabled. Save these recovery codes somewhere safe · each works once.",
                 )}
               </p>
               <ul className="grid grid-cols-2 gap-1 rounded border bg-muted/30 p-3 font-mono text-xs">
