@@ -47,13 +47,34 @@ def raise_dispute(
             organization_id=tournament.organization_id, idempotency_key=event_id,
             payload_after={"kind": dispute.kind}, request=request,
         )
-        if tournament.created_by_id:
-            from apps.notifications.services.dispatch import create_notification
+        # Notify the whole organizing team (delegated co-organizers used to
+        # miss disputes entirely — only created_by heard about them).
+        from apps.notifications.services.dispatch import notify_many
+        from apps.tournaments.models import (
+            TournamentMembership,
+            TournamentMembershipRole,
+            TournamentMembershipStatus,
+        )
 
-            create_notification(
-                user=tournament.created_by, kind="dispute_raised",
-                title="New dispute raised", body=description[:200], tournament=tournament,
-            )
+        managers = {
+            m.user
+            for m in TournamentMembership.objects.filter(
+                tournament=tournament,
+                status=TournamentMembershipStatus.ACTIVE,
+                role__in=(
+                    TournamentMembershipRole.ADMIN,
+                    TournamentMembershipRole.CO_ORGANIZER,
+                ),
+            ).select_related("user")
+        }
+        if tournament.created_by_id:
+            managers.add(tournament.created_by)
+        managers.discard(raised_by)
+        url = f"/tournaments/{tournament.id}/settings"
+        notify_many(
+            users=managers, kind="dispute_raised", title="New dispute raised",
+            body=description[:200], url=url, tournament=tournament,
+        )
     return dispute
 
 

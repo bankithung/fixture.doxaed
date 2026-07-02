@@ -413,6 +413,99 @@ export function IncidentDialog({
   );
 }
 
+
+const DISPUTE_KINDS = [
+  { value: "score", label: "Score" },
+  { value: "eligibility", label: "Eligibility" },
+  { value: "conduct", label: "Conduct" },
+  { value: "other", label: "Other" },
+];
+
+/** Raise a dispute ABOUT THIS MATCH (protests could not cite a match before —
+ * the backend always accepted match_id; the UI never sent it). */
+export function DisputeDialog({
+  tournamentId,
+  match,
+  onClose,
+}: {
+  tournamentId: string;
+  match: ControlRoomMatch;
+  onClose: () => void;
+}): React.ReactElement {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [kind, setKind] = useState("score");
+  const [description, setDescription] = useState("");
+
+  const raise = useMutation({
+    mutationFn: async () => {
+      const { disputesApi } = await import("@/api/disputes");
+      return disputesApi.raise(tournamentId, {
+        kind,
+        description,
+        match_id: match.id,
+        event_id: newEventId(),
+      });
+    },
+    onSuccess: () => {
+      invalidateTournament(qc, tournamentId);
+      toast.push({ kind: "success", title: t("Dispute raised") });
+      onClose();
+    },
+    onError: (e) =>
+      toast.push({
+        kind: "error",
+        title: t("Could not raise the dispute"),
+        description: errorDetail(e),
+      }),
+  });
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} ariaLabel={t("Raise dispute")}>
+      <DialogHeader>
+        <DialogTitle>{t("Raise a dispute")}</DialogTitle>
+        <DialogDescription>
+          {t("A formal protest about this match. Organizers review and resolve it with a written note.")}
+        </DialogDescription>
+      </DialogHeader>
+      <div className="flex flex-col gap-3 py-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`dispute-kind-${match.id}`}>{t("Type")}</Label>
+          <Select
+            id={`dispute-kind-${match.id}`}
+            aria-label={t("Dispute type")}
+            value={kind}
+            onChange={setKind}
+            options={DISPUTE_KINDS.map((k) => ({ value: k.value, label: t(k.label) }))}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`dispute-desc-${match.id}`}>{t("Grounds")}</Label>
+          <textarea
+            id={`dispute-desc-${match.id}`}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="ghost" disabled={raise.isPending} onClick={onClose}>
+          {t("Cancel")}
+        </Button>
+        <Button
+          data-testid={`dispute-confirm-${match.id}`}
+          disabled={raise.isPending || description.trim().length < 5}
+          onClick={() => raise.mutate()}
+        >
+          {raise.isPending ? t("Saving…") : t("Raise dispute")}
+        </Button>
+      </DialogFooter>
+    </Dialog>
+  );
+}
+
 export function QuickResultDialog({
   tournamentId,
   match,
@@ -613,6 +706,7 @@ export function MatchActionsMenu({
   const [assign, setAssign] = useState(false);
   const [stateVerb, setStateVerb] = useState<StateVerbKey | null>(null);
   const [incident, setIncident] = useState(false);
+  const [dispute, setDispute] = useState(false);
 
   const called = Boolean(match.called_at);
   const call = useMutation({
@@ -763,6 +857,18 @@ export function MatchActionsMenu({
             <TriangleAlert aria-hidden="true" className="h-4 w-4" />
           </button>
         ) : null}
+        {["completed", "walkover", "live", "half_time"].includes(match.status) ? (
+          <button
+            type="button"
+            data-testid={`dispute-${match.id}`}
+            aria-label={t("Raise dispute")}
+            title={t("Raise dispute")}
+            onClick={() => setDispute(true)}
+            className={`${iconBtn} text-muted-foreground hover:text-foreground`}
+          >
+            <Flag aria-hidden="true" className="h-4 w-4" />
+          </button>
+        ) : null}
         {perms.canSchedule ? (
           <MatchRepairMenu
             tournamentId={tournamentId}
@@ -822,6 +928,13 @@ export function MatchActionsMenu({
           onClose={() => setIncident(false)}
         />
       ) : null}
+      {dispute ? (
+        <DisputeDialog
+          tournamentId={tournamentId}
+          match={match}
+          onClose={() => setDispute(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -862,6 +975,7 @@ export function RowActions({
   const [assign, setAssign] = useState(false);
   const [stateVerb, setStateVerb] = useState<StateVerbKey | null>(null);
   const [incident, setIncident] = useState(false);
+  const [dispute, setDispute] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const called = Boolean(match.called_at);
@@ -1078,6 +1192,21 @@ export function RowActions({
               {t("File incident")}
             </button>
           ) : null}
+          {["completed", "walkover", "live", "half_time"].includes(match.status) ? (
+            <button
+              type="button"
+              role="menuitem"
+              data-testid={tid("dispute")}
+              className={item}
+              onClick={() => {
+                setDispute(true);
+                setOpen(false);
+              }}
+            >
+              <Flag aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              {t("Raise dispute")}
+            </button>
+          ) : null}
           {verbs.map((v) => (
             <button
               key={v}
@@ -1143,6 +1272,13 @@ export function RowActions({
           tournamentId={tournamentId}
           match={match}
           onClose={() => setIncident(false)}
+        />
+      ) : null}
+      {dispute ? (
+        <DisputeDialog
+          tournamentId={tournamentId}
+          match={match}
+          onClose={() => setDispute(false)}
         />
       ) : null}
     </div>

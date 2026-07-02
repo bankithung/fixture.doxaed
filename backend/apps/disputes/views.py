@@ -28,7 +28,10 @@ def _accessible_tournament_or_404(user, tournament_id) -> Tournament:
 
 def _dispute_or_404(user, dispute_id) -> Dispute:
     d = (
-        Dispute.objects.select_related("tournament", "tournament__organization")
+        Dispute.objects.select_related(
+            "tournament", "tournament__organization",
+            "match", "match__home_team", "match__away_team",
+        )
         .filter(id=dispute_id)
         .first()
     )

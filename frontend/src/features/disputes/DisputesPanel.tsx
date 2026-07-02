@@ -208,8 +208,13 @@ export function DisputesPanel({
                   className="rounded-lg border border-border bg-background p-3 transition-colors hover:bg-accent/40"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium capitalize">
-                      {t(d.kind)}
+                    <span className="inline-flex min-w-0 items-center gap-2 text-sm font-medium">
+                      <span className="capitalize">{t(d.kind)}</span>
+                      {d.match_label ? (
+                        <span className="truncate rounded-md bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">
+                          {d.match_label}
+                        </span>
+                      ) : null}
                     </span>
                     <span
                       className={cn(
