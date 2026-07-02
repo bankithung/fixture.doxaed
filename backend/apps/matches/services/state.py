@@ -110,6 +110,15 @@ def transition_match(
         if to_status in _TERMINAL_WITH_RESULT:
             mid = locked.id
             transaction.on_commit(lambda: _fire_advancement(mid))
+        # Tournament lifecycle spine (PRD §5.2): first kickoff flips the
+        # tournament LIVE; the last terminal result flips it COMPLETED.
+        # Registered AFTER advancement so a deferred next stage materializes
+        # before the completion check looks for open matches.
+        lc_tid, lc_status = locked.tournament_id, to_status
+        if to_status == S.LIVE:
+            transaction.on_commit(lambda: _fire_lifecycle(lc_tid, lc_status))
+        elif to_status in (S.COMPLETED, S.WALKOVER, S.CANCELLED):
+            transaction.on_commit(lambda: _fire_lifecycle(lc_tid, lc_status))
         # Elastic re-timing (R11): a completed match's real end time ripples to
         # the later matches on its court (opt-in per tournament). Post-commit so
         # it sees the persisted ended_at and never blocks the result.
@@ -195,6 +204,22 @@ def _fire_advancement(match_id) -> None:
         advance_from_match(match_id)
     except Exception:  # pragma: no cover - post-commit hook must never crash the request
         logger.exception("advancement hook failed for match=%s", match_id)
+
+
+def _fire_lifecycle(tournament_id, to_status) -> None:
+    """Drive the tournament lifecycle from match state (PRD §5.2 spine)."""
+    try:
+        from apps.tournaments.services.state import (
+            mark_tournament_live,
+            maybe_complete_tournament,
+        )
+
+        if to_status == S.LIVE:
+            mark_tournament_live(tournament_id)
+        else:
+            maybe_complete_tournament(tournament_id)
+    except Exception:  # pragma: no cover - post-commit hook must never crash the request
+        logger.exception("lifecycle hook failed for tournament=%s", tournament_id)
 
 
 def _fire_reflow(match_id) -> None:

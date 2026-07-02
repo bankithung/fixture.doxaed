@@ -42,6 +42,7 @@ from apps.tournaments.services.sports import sport_key as _sport_key  # noqa: F4
 from apps.tournaments.services.state import (
     StageTransitionError,
     build_stage_payload,
+    complete_tournament,
     preview_transition,
     transition_tournament,
 )
@@ -643,3 +644,35 @@ class TournamentStagePreviewView(GenericAPIView):
             return Response(preview_transition(tournament, to_stage))
         except DjangoValidationError as exc:
             return Response({"detail": exc.messages[0]}, status=400)
+
+
+class TournamentCompleteView(GenericAPIView):
+    """`POST /api/tournaments/{id}/complete/` — manual "Wrap up tournament"
+    (PRD §5.2 lifecycle spine). Blocked while a match is in play; outstanding
+    matches require `{"force": true, "reason": ...}` (409 with the count until
+    acknowledged). COMPLETED stays public read-only; archiving stays the
+    separate hide action. Manager verb; idempotent on event_id."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        if not can_manage_tournament(request.user, tournament):
+            raise PermissionDenied("not_tournament_manager")
+        try:
+            tournament = complete_tournament(
+                tournament=tournament,
+                by=request.user,
+                reason=str(request.data.get("reason") or ""),
+                force=bool(request.data.get("force", False)),
+                event_id=request.data.get("event_id"),
+                request=request,
+            )
+        except StageTransitionError as exc:
+            return Response(
+                {"detail": exc.detail, "consequences": exc.consequences},
+                status=409,
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.messages[0]}, status=400)
+        return Response(TournamentSerializer(tournament).data)

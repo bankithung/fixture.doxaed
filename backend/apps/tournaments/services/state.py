@@ -22,7 +22,7 @@ from django.utils import timezone
 
 from apps.audit.models import ActorRole, AuditEvent
 from apps.audit.services import emit_audit
-from apps.forms.constants import FormPurpose, FormStatus, STAGE_TO_PURPOSE
+from apps.forms.constants import STAGE_TO_PURPOSE, FormPurpose, FormStatus
 from apps.forms.models import Form
 from apps.forms.services.forms import close_form, is_open, publish_form
 from apps.matches.models import Match
@@ -532,3 +532,159 @@ def _stage_counts(stage: str, counts: dict) -> dict:
     if stage == G.FIXTURES:
         return {"matches": counts["matches"]}
     return {}
+
+
+# ----------------------------------------------------------------- lifecycle
+# The PRD §5.2 tail (scheduled → live → completed) used to be dead: nothing
+# ever set LIVE or COMPLETED, so the live-delete guard never fired, dashboards
+# counted zero forever, and a finished tournament could only be hidden
+# (ARCHIVED 404s the public pages). The match state machine now drives it.
+
+def mark_tournament_live(tournament_id) -> bool:
+    """First kickoff: scheduled → live (forward-only, idempotent, audited).
+    Called post-commit when a match transitions to LIVE."""
+    with transaction.atomic():
+        t = (
+            Tournament.objects.select_for_update()
+            .filter(pk=tournament_id, deleted_at__isnull=True)
+            .first()
+        )
+        if t is None or t.status != S.SCHEDULED:
+            return False
+        t.status = S.LIVE
+        t.save(update_fields=["status", "updated_at"])
+        emit_audit(
+            actor_user=None,
+            actor_role=ActorRole.SYSTEM,
+            event_type="tournament_lifecycle_changed",
+            target_type="tournament",
+            target_id=t.id,
+            organization_id=t.organization_id,
+            reason="first_kickoff",
+            payload_before={"status": S.SCHEDULED},
+            payload_after={"status": S.LIVE},
+        )
+    return True
+
+
+# Match statuses that keep a tournament open: still to play, in play, or
+# awaiting an organizer decision (postponed reslot / abandoned replay).
+_OPEN_MATCH_STATUSES = ("scheduled", "live", "half_time", "postponed", "abandoned")
+
+
+def _stages_pending(t: Tournament) -> bool:
+    """True when any leaf's multi-stage plan extends beyond its highest
+    materialized stage — the next stage's matches don't EXIST yet (deferred
+    materialization), so "every match is terminal" must not read as "the
+    tournament is over"."""
+    from apps.fixtures.services.draw_config import effective_stages
+
+    leafs = (
+        Match.objects.filter(tournament_id=t.id, deleted_at__isnull=True)
+        .values_list("leaf_key", flat=True)
+        .distinct()
+    )
+    for leaf in leafs:
+        stages = effective_stages(t, leaf or "")
+        if len(stages) <= 1:
+            continue
+        top = (
+            Match.objects.filter(
+                tournament_id=t.id, leaf_key=leaf, deleted_at__isnull=True
+            )
+            .order_by("-stage_no")
+            .values_list("stage_no", flat=True)
+            .first()
+        )
+        if top is None or top < len(stages) - 1:
+            return True
+    return False
+
+
+def maybe_complete_tournament(tournament_id) -> bool:
+    """live/scheduled → completed once every match is terminal and no
+    multi-stage remainder awaits materialization. Called post-commit after a
+    match reaches a terminal status (AFTER advancement, so a freshly
+    materialized next stage is visible). Idempotent; concurrent last-match
+    finishes serialize on the tournament row."""
+    with transaction.atomic():
+        t = (
+            Tournament.objects.select_for_update()
+            .filter(pk=tournament_id, deleted_at__isnull=True)
+            .first()
+        )
+        if t is None or t.status not in (S.SCHEDULED, S.LIVE):
+            return False
+        ms = Match.objects.filter(tournament_id=t.id, deleted_at__isnull=True)
+        if not ms.exists():
+            return False
+        if ms.filter(status__in=_OPEN_MATCH_STATUSES).exists():
+            return False
+        if _stages_pending(t):
+            return False
+        before = t.status
+        t.status = S.COMPLETED
+        t.save(update_fields=["status", "updated_at"])
+        emit_audit(
+            actor_user=None,
+            actor_role=ActorRole.SYSTEM,
+            event_type="tournament_lifecycle_changed",
+            target_type="tournament",
+            target_id=t.id,
+            organization_id=t.organization_id,
+            reason="all_matches_final",
+            payload_before={"status": before},
+            payload_after={"status": S.COMPLETED},
+        )
+    return True
+
+
+def complete_tournament(
+    *, tournament, by, reason="", force=False, event_id=None, request=None
+) -> Tournament:
+    """Manual "Wrap up tournament". Blocked while a match is in play; with
+    matches still outstanding it requires ``force`` + a reason (they stay as
+    they are — wrapping up records the event as finished, it cancels nothing).
+    COMPLETED stays public read-only; ARCHIVED remains the separate hide."""
+    if event_id is not None:
+        prior = AuditEvent.objects.filter(
+            idempotency_key=event_id, event_type="tournament_lifecycle_changed"
+        ).first()
+        if prior is not None:
+            tournament.refresh_from_db()
+            return tournament
+
+    with transaction.atomic():
+        t = Tournament.objects.select_for_update().get(pk=tournament.pk)
+        if t.status == S.COMPLETED:
+            return t
+        if _STATUS_RANK.get(t.status, 0) > _STATUS_RANK[S.COMPLETED]:
+            raise ValidationError("tournament_archived")
+        ms = Match.objects.filter(tournament_id=t.id, deleted_at__isnull=True)
+        if ms.filter(status__in=("live", "half_time")).exists():
+            raise ValidationError("matches_in_play")
+        outstanding = ms.filter(status__in=_OPEN_MATCH_STATUSES).count()
+        if outstanding and not force:
+            raise StageTransitionError(
+                "outstanding_matches",
+                {"warnings": [{"code": "outstanding_matches", "count": outstanding}]},
+            )
+        if outstanding and not (reason or "").strip():
+            raise ValidationError("reason_required")
+        before = t.status
+        t.status = S.COMPLETED
+        t.save(update_fields=["status", "updated_at"])
+        emit_audit(
+            actor_user=by,
+            actor_role=ActorRole.ADMIN,
+            event_type="tournament_lifecycle_changed",
+            target_type="tournament",
+            target_id=t.id,
+            organization_id=t.organization_id,
+            idempotency_key=event_id,
+            reason=reason or "wrap_up",
+            payload_before={"status": before},
+            payload_after={"status": S.COMPLETED, "outstanding": outstanding},
+            request=request,
+        )
+    return t

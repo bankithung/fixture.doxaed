@@ -45,6 +45,7 @@ from apps.teams.views import (
 from apps.tournaments.views import (
     ConstraintTypesView,
     TournamentAuditView,
+    TournamentCompleteView,
     TournamentDetailView,
     TournamentInvitationCreateView,
     TournamentListCreateView,
@@ -272,5 +273,10 @@ urlpatterns = [
         "<uuid:tournament_id>/stage/preview/",
         TournamentStagePreviewView.as_view(),
         name="tournament-stage-preview",
+    ),
+    path(
+        "<uuid:tournament_id>/complete/",
+        TournamentCompleteView.as_view(),
+        name="tournament-complete",
     ),
 ]
