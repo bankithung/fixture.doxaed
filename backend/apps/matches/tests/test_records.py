@@ -64,7 +64,7 @@ def _score(m, h, a_):
 
 def test_team_record_full_story():
     admin = _verified()
-    t, a, b, ms = _cup(admin, "Records Cup")
+    _t, a, _b, ms = _cup(admin, "Records Cup")
     _score(ms[0], 2, 0)   # W
     _score(ms[1], 1, 1)   # D
     _score(ms[2], 0, 3)   # L
@@ -79,7 +79,7 @@ def test_team_record_full_story():
 
 def test_institution_rollup_and_cross_year_history():
     admin = _verified()
-    t1, a1, _b1, ms1 = _cup(admin, "Cup 2026", season="2026")
+    t1, _a1, _b1, ms1 = _cup(admin, "Cup 2026", season="2026")
     _score(ms1[0], 2, 0)
     # The same school (name variant spacing) in another season's tournament.
     t2 = create_tournament(user=admin, name="Cup 2027")
