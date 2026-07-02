@@ -46,6 +46,7 @@ import { PublicBracketPage } from "@/features/live/PublicBracketPage";
 import { PublicTeamPage } from "@/features/live/PublicTeamPage";
 import { ExplorePage } from "@/features/live/ExplorePage";
 import { CertificatePage } from "@/features/live/CertificatePage";
+import { VenueDisplayPage } from "@/features/live/VenueDisplayPage";
 import { OrgDashboardPage } from "@/features/layout/OrgDashboardPage";
 // Auth pages (B1).
 import { LoginPage } from "@/features/auth/LoginPage";
@@ -164,6 +165,7 @@ export default function App(): React.ReactElement {
               <Route path="/t/:slug/:id/team/:teamId" element={<PublicTeamPage />} />
               <Route path="/explore" element={<ExplorePage />} />
               <Route path="/cert/:awardId" element={<CertificatePage />} />
+              <Route path="/t/:slug/:id/display" element={<VenueDisplayPage />} />
 
               {/* Protected surfaces — share the AppShell chrome. */}
               <Route
