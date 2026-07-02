@@ -15,6 +15,7 @@ from apps.matches.models import (
     Lineup,
     Match,
     MatchEvent,
+    MatchEventType,
     MatchIncident,
     MatchOfficial,
     MatchStatus,
@@ -373,6 +374,8 @@ class RecordMatchEventView(GenericAPIView):
             raise PermissionDenied("not_allowed_to_score")
         ser = RecordEventSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
+        if ser.validated_data["event_type"] == MatchEventType.VOID:
+            return self._void(request, match, ser.validated_data)
         side = ser.validated_data.get("side")
         team = (
             match.home_team if side == "home"
@@ -418,6 +421,43 @@ class RecordMatchEventView(GenericAPIView):
                 by=request.user,
                 event_id=ser.validated_data.get("event_id"),
                 request=request,
+            )
+        except ValidationError as e:
+            raise DRFValidationError(
+                {"detail": getattr(e, "message", "invalid_event")}
+            ) from e
+        match.refresh_from_db()
+        return Response(MatchSerializer(match).data, status=201)
+
+    def _void(self, request, match, data):
+        """Undo (P7a): append a VOID reversing the event at ``voids_seq``.
+        Append-only per invariant 4 — recompute_score derives the corrected
+        score; the original row stays in the immutable log."""
+        from apps.matches.services.events import void_match_event
+
+        # Idempotency first (invariant 3): a replayed event_id returns the
+        # recorded state before any already-voided guard can 400 it.
+        if data.get("event_id") is not None:
+            prior = MatchEvent.objects.filter(event_id=data["event_id"]).first()
+            if prior is not None:
+                match.refresh_from_db()
+                return Response(MatchSerializer(match).data, status=201)
+        seq = data.get("voids_seq")
+        if not seq:
+            raise DRFValidationError({"detail": "voids_seq_required"})
+        target = MatchEvent.objects.filter(match=match, sequence_no=seq).first()
+        if target is None:
+            raise DRFValidationError({"detail": "event_not_found"})
+        if target.event_type == MatchEventType.VOID:
+            raise DRFValidationError({"detail": "cannot_void_a_void"})
+        if MatchEvent.objects.filter(
+            match=match, event_type=MatchEventType.VOID, voids=target
+        ).exists():
+            raise DRFValidationError({"detail": "already_voided"})
+        try:
+            void_match_event(
+                match=match, target_event=target, by=request.user,
+                event_id=data.get("event_id"), request=request,
             )
         except ValidationError as e:
             raise DRFValidationError(

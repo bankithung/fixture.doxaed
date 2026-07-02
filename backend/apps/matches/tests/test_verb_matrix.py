@@ -113,8 +113,15 @@ def _event(c, m):
 def _void(c, m):
     m.status = MatchStatus.LIVE
     m.save(update_fields=["status"])
+    c.post(
+        f"/api/matches/{m.id}/events/",
+        {"event_type": "goal", "side": "home"},
+        format="json",
+    )
     return c.post(
-        f"/api/matches/{m.id}/events/", {"event_type": "void"}, format="json"
+        f"/api/matches/{m.id}/events/",
+        {"event_type": "void", "voids_seq": 1},
+        format="json",
     )
 
 

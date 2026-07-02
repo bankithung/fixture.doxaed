@@ -102,6 +102,9 @@ class RecordEventSerializer(serializers.Serializer):
     related_player_id = serializers.UUIDField(required=False)  # substitution-on / assist
     minute = serializers.IntegerField(required=False, min_value=0, max_value=200)
     event_id = serializers.UUIDField(required=False)
+    # VOID target: the sequence_no of the event being reversed (P7a undo —
+    # void_match_event was unreachable from the API before this field).
+    voids_seq = serializers.IntegerField(required=False, min_value=1)
 
 
 class RecordShootoutSerializer(serializers.Serializer):

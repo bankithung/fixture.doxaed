@@ -86,6 +86,10 @@ class LiveMatchSnapshotView(GenericAPIView):
                     "away_team": _team(m.away_team, include_players),
                     "home_score": m.home_score,
                     "away_score": m.away_score,
+                    # Kickoff stamp — drives the console's running clock.
+                    "started_at": m.started_at.isoformat() if m.started_at else None,
+                    "home_pens": m.home_pens,
+                    "away_pens": m.away_pens,
                     # Set-based sports: per-set scores + the resolved rules so
                     # public viewers render sets (home/away_score = sets won).
                     "sport": m.sport,

@@ -1,17 +1,26 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Download, Radio } from "lucide-react";
+import { ArrowLeft, Download, Minus, Plus, Radio, Undo2 } from "lucide-react";
 import { routes } from "@/lib/routes";
 import { liveApi, type LiveTeam, type MiniPlayer } from "@/api/live";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
+import { useToast } from "@/components/ui/toast";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { ApiError } from "@/types/api";
 
 const STATE_ACTIONS: Record<string, { label: string; to: string }[]> = {
   scheduled: [{ label: "Start match", to: "live" }],
@@ -43,6 +52,12 @@ const EVENT_BUTTONS: {
   { type: "red_card", label: "Red", tone: "danger" },
 ];
 
+// Set sports never see the goal palette (the server rejects goal events for
+// them); discipline events remain recordable.
+const SET_EVENT_BUTTONS = EVENT_BUTTONS.filter((b) =>
+  ["yellow_card", "red_card", "foul"].includes(b.type),
+);
+
 // Token-only tone classes for the event palette buttons.
 const TONE_CLS: Record<string, string> = {
   primary:
@@ -68,11 +83,68 @@ function statusMeta(s: string): { label: string; badge: string; dot: string; liv
   return { ...m, live };
 }
 
+/** Known server rejection codes -> scorer-readable messages. Every mutation
+ * surfaces its failure — a tap must never silently do nothing. */
+function errorMessage(e: unknown): string {
+  const detail =
+    e instanceof ApiError ? String(e.payload.detail ?? "") : "";
+  const map: Record<string, string> = {
+    not_allowed_to_score: t("You are not allowed to score this match."),
+    set_based_sport_uses_set_scores: t(
+      "This match is scored by sets. Enter the set scores below.",
+    ),
+    walkover_requires_winner: t("A walkover needs a winner recorded first."),
+    knockout_match_cannot_end_drawn: t(
+      "A knockout match cannot end level. Check the score.",
+    ),
+    event_not_found: t("That event no longer exists."),
+    already_voided: t("That event was already undone."),
+    cannot_void_a_void: t("Corrections cannot be undone."),
+    player_not_found: t("That player was not found."),
+    player_not_on_team: t("That player is not on this team."),
+  };
+  if (detail.startsWith("match_not_accepting_events")) {
+    return t("The match is not accepting events in its current state.");
+  }
+  return map[detail] || detail || t("The action failed. Try again.");
+}
+
+/** Running match clock: minute derived from kickoff, ticking while live. */
+function useAutoMinute(startedAt: string | null | undefined, active: boolean): number | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active || !startedAt) return;
+    const id = window.setInterval(() => setNow(Date.now()), 15000);
+    return () => window.clearInterval(id);
+  }, [active, startedAt]);
+  if (!active || !startedAt) return null;
+  const ms = now - new Date(startedAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  return Math.min(Math.floor(ms / 60000) + 1, 200);
+}
+
 type Side = "home" | "away";
+type SetRow = [string, string];
+
+/** Sets won per side from the entered rows (client display only — the server
+ * revalidates against the sport's deuce/cap rules). */
+function setsWon(rows: SetRow[]): [number, number] {
+  let h = 0;
+  let a = 0;
+  for (const [hs, as] of rows) {
+    const hn = Number(hs);
+    const an = Number(as);
+    if (!Number.isFinite(hn) || !Number.isFinite(an) || hs === "" || as === "") continue;
+    if (hn > an) h += 1;
+    else if (an > hn) a += 1;
+  }
+  return [h, a];
+}
 
 export function MatchConsolePage(): React.ReactElement {
   const { id = "", matchId = "" } = useParams();
   const qc = useQueryClient();
+  const toast = useToast();
   const query = useQuery({
     queryKey: ["live", matchId],
     queryFn: () => liveApi.snapshot(matchId),
@@ -87,6 +159,26 @@ export function MatchConsolePage(): React.ReactElement {
   const [minute, setMinute] = useState("");
   const [sel, setSel] = useState<{ home?: string; away?: string }>({});
   const [subOn, setSubOn] = useState<{ home?: string; away?: string }>({});
+  const [confirmTo, setConfirmTo] = useState<string | null>(null);
+  const [shootoutOpen, setShootoutOpen] = useState(false);
+  const [pens, setPens] = useState<{ home: string; away: string }>({ home: "", away: "" });
+  const [setRows, setSetRows] = useState<SetRow[]>([["", ""]]);
+  const [confirmSets, setConfirmSets] = useState(false);
+
+  const startedAt = query.data?.match.started_at;
+  const isLiveNow = query.data?.match.status === "live";
+  const autoMinute = useAutoMinute(startedAt, Boolean(isLiveNow));
+
+  const onError = (e: unknown) => {
+    const detail = e instanceof ApiError ? String(e.payload.detail ?? "") : "";
+    if (detail === "knockout_draw_needs_shootout") {
+      // The one blocked completion with a built-in way forward: record the
+      // shootout right here, then complete again.
+      setShootoutOpen(true);
+      return;
+    }
+    toast.push({ kind: "error", title: errorMessage(e) });
+  };
 
   const ev = useMutation({
     mutationFn: (p: {
@@ -94,17 +186,69 @@ export function MatchConsolePage(): React.ReactElement {
       side?: string;
       player_id?: string;
       related_player_id?: string;
+      voids_seq?: number;
     }) =>
       liveApi.recordEvent(matchId, {
         ...p,
-        minute: minute ? Number(minute) : undefined,
+        minute:
+          p.event_type === "void"
+            ? undefined
+            : minute
+              ? Number(minute)
+              : (autoMinute ?? undefined),
         event_id: newEventId(),
       }),
-    onSuccess: refresh,
+    onSuccess: () => {
+      // A recorded event consumes the transient attribution + manual minute,
+      // so the next tap starts clean (stale-minute timelines, P7a).
+      setMinute("");
+      refresh();
+    },
+    onError,
   });
   const tr = useMutation({
     mutationFn: (to: string) => liveApi.transition(matchId, to),
-    onSuccess: refresh,
+    onSuccess: () => {
+      setConfirmTo(null);
+      refresh();
+    },
+    onError: (e) => {
+      setConfirmTo(null);
+      onError(e);
+    },
+  });
+  const shootout = useMutation({
+    mutationFn: () =>
+      liveApi.scoreShootout(matchId, {
+        home_pens: Number(pens.home),
+        away_pens: Number(pens.away),
+        event_id: newEventId(),
+      }),
+    onSuccess: () => {
+      setShootoutOpen(false);
+      setPens({ home: "", away: "" });
+      // The shootout decided it — complete for real now.
+      tr.mutate("completed");
+    },
+    onError,
+  });
+  const submitSets = useMutation({
+    mutationFn: () =>
+      liveApi.recordSetScores(matchId, {
+        set_scores: setRows
+          .filter(([h, a]) => h !== "" && a !== "")
+          .map(([h, a]) => [Number(h), Number(a)]),
+        event_id: newEventId(),
+      }),
+    onSuccess: () => {
+      setConfirmSets(false);
+      toast.push({ kind: "success", title: t("Result recorded.") });
+      refresh();
+    },
+    onError: (e) => {
+      setConfirmSets(false);
+      onError(e);
+    },
   });
 
   if (query.isLoading) {
@@ -121,16 +265,24 @@ export function MatchConsolePage(): React.ReactElement {
         <p role="alert" className="text-sm text-destructive">
           {t("Could not load the match.")}
         </p>
+        <Button size="sm" variant="outline" className="w-fit" onClick={() => query.refetch()}>
+          {t("Retry")}
+        </Button>
       </div>
     );
   }
 
   const { match, events } = query.data;
   const live = match.status === "live" || match.status === "half_time";
+  const setBased = match.scoring?.type === "sets";
   const actions = STATE_ACTIONS[match.status] ?? [];
   const sm = statusMeta(match.status);
   const homeName = match.home_team?.name ?? t("TBD");
   const awayName = match.away_team?.name ?? t("TBD");
+  const lastEvent = events[0];
+  const canUndo = live && !!lastEvent;
+  const [homeSets, awaySets] = setsWon(setRows);
+  const completeSets = setRows.filter(([h, a]) => h !== "" && a !== "");
 
   // Build player options for the custom <Select> (jersey prefix preserved).
   const playerOptions = (players: MiniPlayer[]) =>
@@ -139,14 +291,24 @@ export function MatchConsolePage(): React.ReactElement {
       label: `${p.jersey_no ? `#${p.jersey_no} ` : ""}${p.name}`,
     }));
 
+  const fireTransition = (to: string) => {
+    // Terminal states lock the result and fire bracket advancement — never
+    // one accidental tap (P7a). Everything else fires immediately.
+    if (to === "completed") {
+      setConfirmTo(to);
+      return;
+    }
+    tr.mutate(to);
+  };
+
   return (
     <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
       <Link
-        to={routes.tournamentFixtures(id)}
+        to={routes.tournamentMatches(id)}
         className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
-        {t("Back to fixtures")}
+        {t("Back to matches")}
       </Link>
       {/* Page header */}
       <div className="flex flex-col gap-1">
@@ -185,6 +347,9 @@ export function MatchConsolePage(): React.ReactElement {
                 · {t(match.current_period.replace(/_/g, " "))}
               </span>
             ) : null}
+            {isLiveNow && autoMinute != null ? (
+              <span className="font-tabular text-muted-foreground">{autoMinute}'</span>
+            ) : null}
           </span>
 
           <div className="grid w-full max-w-xl grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
@@ -196,7 +361,7 @@ export function MatchConsolePage(): React.ReactElement {
             </div>
             <div className="font-tabular text-4xl font-semibold tabular-nums sm:text-6xl">
               {match.home_score ?? 0}
-              <span className="px-2 text-muted-foreground">–</span>
+              <span className="px-2 text-muted-foreground">-</span>
               {match.away_score ?? 0}
             </div>
             <div className="min-w-0 text-left">
@@ -207,6 +372,25 @@ export function MatchConsolePage(): React.ReactElement {
             </div>
           </div>
 
+          {setBased && (match.set_scores?.length ?? 0) > 0 ? (
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {(match.set_scores ?? []).map((s, i) => (
+                <span
+                  key={i}
+                  className="rounded-md bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground"
+                >
+                  {s[0]}-{s[1]}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {match.home_pens != null && match.away_pens != null ? (
+            <p className="font-tabular text-xs text-muted-foreground">
+              {t("Pens")} {match.home_pens}-{match.away_pens}
+            </p>
+          ) : null}
+
           {actions.length > 0 ? (
             <div className="flex flex-wrap justify-center gap-2">
               {actions.map((a) => (
@@ -215,7 +399,7 @@ export function MatchConsolePage(): React.ReactElement {
                   variant={a.to === "live" || a.to === "completed" ? "default" : "outline"}
                   size="sm"
                   disabled={tr.isPending}
-                  onClick={() => tr.mutate(a.to)}
+                  onClick={() => fireTransition(a.to)}
                 >
                   {t(a.label)}
                 </Button>
@@ -225,27 +409,117 @@ export function MatchConsolePage(): React.ReactElement {
         </div>
       </div>
 
+      {/* Set-sport result entry — the server rejects goal events for set
+          sports, so the console never offers them (P7b). */}
+      {setBased && (live || match.status === "scheduled") ? (
+        <div className="rounded-xl border border-border bg-card shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Radio aria-hidden="true" className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">{t("Set scores")}</h2>
+            </div>
+            <span className="font-tabular text-xs text-muted-foreground">
+              {t("Sets")} {homeSets}-{awaySets}
+              {match.scoring?.best_of ? ` · ${t("best of")} ${match.scoring.best_of}` : ""}
+            </span>
+          </div>
+          <div className="flex flex-col gap-3 p-5">
+            <div className="grid grid-cols-[2.5rem_1fr_1fr_2.25rem] items-center gap-2 text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
+              <span />
+              <span className="truncate text-center">{homeName}</span>
+              <span className="truncate text-center">{awayName}</span>
+              <span />
+            </div>
+            {setRows.map((row, i) => (
+              <div
+                key={i}
+                className="grid grid-cols-[2.5rem_1fr_1fr_2.25rem] items-center gap-2"
+              >
+                <span className="text-xs font-medium text-muted-foreground">
+                  {t("Set")} {i + 1}
+                </span>
+                {([0, 1] as const).map((sideIdx) => (
+                  <Input
+                    key={sideIdx}
+                    inputMode="numeric"
+                    aria-label={`${t("Set")} ${i + 1} ${sideIdx === 0 ? homeName : awayName}`}
+                    value={row[sideIdx]}
+                    onChange={(e) =>
+                      setSetRows((rows) =>
+                        rows.map((r, j) =>
+                          j === i
+                            ? (sideIdx === 0
+                                ? [e.target.value, r[1]]
+                                : [r[0], e.target.value])
+                            : r,
+                        ),
+                      )
+                    }
+                    className="h-10 text-center font-tabular text-base"
+                  />
+                ))}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`${t("Remove set")} ${i + 1}`}
+                  disabled={setRows.length === 1}
+                  onClick={() =>
+                    setSetRows((rows) => rows.filter((_, j) => j !== i))
+                  }
+                >
+                  <Minus aria-hidden="true" className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setSetRows((rows) => [...rows, ["", ""]])}
+              >
+                <Plus aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+                {t("Add set")}
+              </Button>
+              <Button
+                size="sm"
+                disabled={submitSets.isPending || completeSets.length === 0}
+                onClick={() => setConfirmSets(true)}
+              >
+                {t("Record result")}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t("Recording the result completes the match.")}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       {/* Record event */}
       {live ? (
         <div className="rounded-xl border border-border bg-card shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
             <div className="flex items-center gap-2">
               <Radio aria-hidden="true" className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">{t("Record event")}</h2>
+              <h2 className="text-sm font-semibold">
+                {setBased ? t("Record discipline") : t("Record event")}
+              </h2>
             </div>
-            <div className="flex items-center gap-2">
-              <Label htmlFor="minute" className="text-xs text-muted-foreground">
-                {t("Minute")}
-              </Label>
-              <Input
-                id="minute"
-                inputMode="numeric"
-                placeholder="—"
-                value={minute}
-                onChange={(e) => setMinute(e.target.value)}
-                className="h-9 w-16 text-center font-tabular"
-              />
-            </div>
+            {!setBased ? (
+              <div className="flex items-center gap-2">
+                <Label htmlFor="minute" className="text-xs text-muted-foreground">
+                  {t("Minute")}
+                </Label>
+                <Input
+                  id="minute"
+                  inputMode="numeric"
+                  placeholder={autoMinute != null ? String(autoMinute) : ""}
+                  value={minute}
+                  onChange={(e) => setMinute(e.target.value)}
+                  className="h-9 w-16 text-center font-tabular"
+                />
+              </div>
+            ) : null}
           </div>
           <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
             {(["home", "away"] as Side[]).map((side) => {
@@ -255,6 +529,7 @@ export function MatchConsolePage(): React.ReactElement {
                 ev.mutate({ event_type, side, player_id: sel[side] });
               const playerLabel = side === "home" ? t("Home player") : t("Away player");
               const subLabel = side === "home" ? t("Home sub on") : t("Away sub on");
+              const palette = setBased ? SET_EVENT_BUTTONS : EVENT_BUTTONS;
               return (
                 <div key={side} className="flex flex-col gap-3 p-5">
                   <div className="flex items-center justify-between gap-2">
@@ -277,15 +552,16 @@ export function MatchConsolePage(): React.ReactElement {
                     placeholder={t("Team (no player)")}
                   />
 
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {EVENT_BUTTONS.map((b) => (
+                  <div className={cn("grid gap-1.5", setBased ? "grid-cols-3" : "grid-cols-3")}>
+                    {palette.map((b) => (
                       <button
                         key={b.type}
                         type="button"
                         disabled={ev.isPending}
                         onClick={() => fire(b.type)}
                         className={cn(
-                          "inline-flex h-9 items-center justify-center rounded-lg px-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+                          "inline-flex items-center justify-center rounded-lg px-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+                          b.type === "goal" ? "h-12 text-base" : "h-9",
                           TONE_CLS[b.tone],
                         )}
                       >
@@ -294,38 +570,40 @@ export function MatchConsolePage(): React.ReactElement {
                     ))}
                   </div>
 
-                  <div className="flex items-end gap-2 border-t border-border pt-3">
-                    <div className="flex flex-1 flex-col gap-1">
-                      <span className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
-                        {t("Substitution")}
-                      </span>
-                      <Select
-                        aria-label={subLabel}
-                        value={subOn[side] ?? ""}
-                        onChange={(v) => setSubOn((s) => ({ ...s, [side]: v || undefined }))}
-                        options={[
-                          { value: "", label: t("Sub on…") },
-                          ...playerOptions(players),
-                        ]}
-                        placeholder={t("Sub on…")}
-                      />
+                  {!setBased ? (
+                    <div className="flex items-end gap-2 border-t border-border pt-3">
+                      <div className="flex flex-1 flex-col gap-1">
+                        <span className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
+                          {t("Substitution")}
+                        </span>
+                        <Select
+                          aria-label={subLabel}
+                          value={subOn[side] ?? ""}
+                          onChange={(v) => setSubOn((s) => ({ ...s, [side]: v || undefined }))}
+                          options={[
+                            { value: "", label: t("Sub on…") },
+                            ...playerOptions(players),
+                          ]}
+                          placeholder={t("Sub on…")}
+                        />
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={ev.isPending || !sel[side] || !subOn[side]}
+                        onClick={() =>
+                          ev.mutate({
+                            event_type: "substitution",
+                            side,
+                            player_id: sel[side],
+                            related_player_id: subOn[side],
+                          })
+                        }
+                      >
+                        {t("Sub")}
+                      </Button>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={ev.isPending || !sel[side] || !subOn[side]}
-                      onClick={() =>
-                        ev.mutate({
-                          event_type: "substitution",
-                          side,
-                          player_id: sel[side],
-                          related_player_id: subOn[side],
-                        })
-                      }
-                    >
-                      {t("Sub")}
-                    </Button>
-                  </div>
+                  ) : null}
                 </div>
               );
             })}
@@ -337,13 +615,28 @@ export function MatchConsolePage(): React.ReactElement {
       <div className="rounded-xl border border-border bg-card shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
           <h2 className="text-sm font-semibold">{t("Event log")}</h2>
-          <a
-            href={liveApi.exportUrl(matchId)}
-            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            <Download aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("Export timeline (CSV)")}
-          </a>
+          <div className="flex items-center gap-1.5">
+            {canUndo ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={ev.isPending}
+                onClick={() =>
+                  ev.mutate({ event_type: "void", voids_seq: lastEvent.sequence_no })
+                }
+              >
+                <Undo2 aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+                {t("Undo last event")}
+              </Button>
+            ) : null}
+            <a
+              href={liveApi.exportUrl(matchId)}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <Download aria-hidden="true" className="h-3.5 w-3.5" />
+              {t("Export timeline (CSV)")}
+            </a>
+          </div>
         </div>
         <div className="px-5 py-4">
           {events.length === 0 ? (
@@ -354,25 +647,148 @@ export function MatchConsolePage(): React.ReactElement {
                 <li
                   key={e.sequence_no}
                   className={cn(
-                    "flex items-baseline gap-3 py-2 text-sm",
+                    "group flex items-baseline gap-3 py-2 text-sm",
                     i > 0 && "border-t border-border",
                   )}
                 >
                   <span className="w-12 shrink-0 text-right font-tabular tabular-nums text-muted-foreground">
                     {e.minute != null ? `${e.minute}'` : `#${e.sequence_no}`}
                   </span>
-                  <span className="text-foreground">
+                  <span className="flex-1 text-foreground">
                     {t(e.type.replace(/_/g, " "))}
                     {e.player ? (
-                      <span className="text-muted-foreground"> — {e.player}</span>
+                      <span className="text-muted-foreground"> · {e.player}</span>
                     ) : null}
                   </span>
+                  {live ? (
+                    <button
+                      type="button"
+                      aria-label={`${t("Undo")} ${t(e.type.replace(/_/g, " "))} #${e.sequence_no}`}
+                      disabled={ev.isPending}
+                      onClick={() =>
+                        ev.mutate({ event_type: "void", voids_seq: e.sequence_no })
+                      }
+                      className="rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
+                    >
+                      {t("Undo")}
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ol>
           )}
         </div>
       </div>
+
+      {/* Confirm a terminal transition — completing locks the result and
+          fires bracket advancement; a mis-tap must be catchable (P7a). */}
+      <Dialog
+        open={confirmTo != null}
+        onOpenChange={(o) => !o && setConfirmTo(null)}
+        ariaLabel={t("Confirm final result")}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("Complete this match?")}</DialogTitle>
+          <DialogDescription>
+            {homeName} {match.home_score ?? 0}-{match.away_score ?? 0} {awayName}
+            {". "}
+            {t("The result locks and the next round fills from it.")}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => setConfirmTo(null)}>
+            {t("Keep scoring")}
+          </Button>
+          <Button
+            size="sm"
+            disabled={tr.isPending}
+            onClick={() => confirmTo && tr.mutate(confirmTo)}
+            data-testid="confirm-complete"
+          >
+            {t("Complete match")}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Confirm the set result (completes the match). */}
+      <Dialog
+        open={confirmSets}
+        onOpenChange={setConfirmSets}
+        ariaLabel={t("Confirm set result")}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("Record this result?")}</DialogTitle>
+          <DialogDescription>
+            {homeName} {homeSets}-{awaySets} {awayName}
+            {" ("}
+            {completeSets.map(([h, a]) => `${h}-${a}`).join(", ")}
+            {"). "}
+            {t("Recording completes the match and locks the result.")}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => setConfirmSets(false)}>
+            {t("Keep editing")}
+          </Button>
+          <Button
+            size="sm"
+            disabled={submitSets.isPending}
+            onClick={() => submitSets.mutate()}
+            data-testid="confirm-sets"
+          >
+            {t("Record result")}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Penalty shootout — surfaced when completion is blocked by
+          knockout_draw_needs_shootout, so the bracket never stalls. */}
+      <Dialog
+        open={shootoutOpen}
+        onOpenChange={setShootoutOpen}
+        ariaLabel={t("Penalty shootout")}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("Penalty shootout")}</DialogTitle>
+          <DialogDescription>
+            {t("The match is level. Enter the shootout result to decide it, then the match completes.")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-3 py-3">
+          {(["home", "away"] as const).map((side) => (
+            <div key={side} className="flex flex-col gap-1">
+              <Label htmlFor={`pens-${side}`} className="truncate text-xs">
+                {side === "home" ? homeName : awayName}
+              </Label>
+              <Input
+                id={`pens-${side}`}
+                inputMode="numeric"
+                value={pens[side]}
+                onChange={(e) => setPens((p) => ({ ...p, [side]: e.target.value }))}
+                className="h-10 text-center font-tabular text-base"
+              />
+            </div>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => setShootoutOpen(false)}>
+            {t("Cancel")}
+          </Button>
+          <Button
+            size="sm"
+            disabled={
+              shootout.isPending ||
+              pens.home === "" ||
+              pens.away === "" ||
+              Number(pens.home) === Number(pens.away)
+            }
+            onClick={() => shootout.mutate()}
+            data-testid="confirm-shootout"
+          >
+            {t("Record shootout")}
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   );
 }

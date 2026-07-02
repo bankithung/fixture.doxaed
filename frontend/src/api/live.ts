@@ -33,6 +33,22 @@ export interface LiveSnapshot {
     away_team: LiveTeam | null;
     home_score: number | null;
     away_score: number | null;
+    /** Kickoff stamp — drives the console's running clock. */
+    started_at?: string | null;
+    home_pens?: number | null;
+    away_pens?: number | null;
+    /** Set sports: raw sport key, per-set points, resolved scoring rules
+     * (home/away_score mirror sets won). */
+    sport?: string | null;
+    set_scores?: number[][];
+    scoring?: {
+      type: string;
+      best_of?: number;
+      points?: number;
+      win_by?: number;
+      cap?: number | null;
+      deciding?: Record<string, unknown> | null;
+    } | null;
   };
   events: LiveEvent[];
 }
@@ -51,8 +67,22 @@ export const liveApi = {
       related_player_id?: string;
       minute?: number;
       event_id: string;
+      /** Undo: sequence_no of the event a "void" reverses. */
+      voids_seq?: number;
     },
   ) => api.post(`/api/matches/${matchId}/events/`, payload),
+  /** Record the penalty-shootout result for a level knockout match, then
+   * complete it normally (surfaced when completion 400s with
+   * knockout_draw_needs_shootout). */
+  scoreShootout: (
+    matchId: string,
+    payload: { home_pens: number; away_pens: number; event_id: string },
+  ) => api.post(`/api/matches/${matchId}/shootout/`, payload),
+  /** Record a set-sport final result as ordered per-set scores. */
+  recordSetScores: (
+    matchId: string,
+    payload: { set_scores: number[][]; event_id: string },
+  ) => api.post(`/api/matches/${matchId}/score/`, payload),
   /** Full event timeline as a downloadable CSV (same-origin; sends the cookie). */
   exportUrl: (matchId: string) => `/api/matches/${matchId}/events/export/`,
   /** Scorer/manager: move the match through its state machine. `extra` carries

@@ -4,7 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MatchConsolePage } from "../MatchConsolePage";
+import { ToastProvider } from "@/components/ui/toast";
 import { liveApi, type LiveSnapshot } from "@/api/live";
+import { ApiError } from "@/types/api";
 
 vi.mock("@/api/live");
 
@@ -12,19 +14,21 @@ function renderConsole() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/tournaments/t1/matches/m1"]}>
-        <Routes>
-          <Route
-            path="/tournaments/:id/matches/:matchId"
-            element={<MatchConsolePage />}
-          />
-        </Routes>
-      </MemoryRouter>
+      <ToastProvider>
+        <MemoryRouter initialEntries={["/tournaments/t1/matches/m1"]}>
+          <Routes>
+            <Route
+              path="/tournaments/:id/matches/:matchId"
+              element={<MatchConsolePage />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
 
-function snap(status: string): LiveSnapshot {
+function snap(status: string, extra: Partial<LiveSnapshot["match"]> = {}): LiveSnapshot {
   return {
     match: {
       id: "m1",
@@ -39,6 +43,7 @@ function snap(status: string): LiveSnapshot {
       away_team: { id: "b", name: "Beta", short_name: "BET", players: [] },
       home_score: 0,
       away_score: 0,
+      ...extra,
     },
     events: [],
   };
@@ -90,6 +95,116 @@ describe("MatchConsolePage", () => {
     await userEvent.click(startBtn);
     await waitFor(() =>
       expect(liveApi.transition).toHaveBeenCalledWith("m1", "live"),
+    );
+  });
+
+  it("requires a confirm before completing (P7a mistake-proofing)", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(snap("live"));
+    vi.mocked(liveApi.transition).mockResolvedValue({} as never);
+    renderConsole();
+    await screen.findAllByText("Alpha");
+
+    await userEvent.click(screen.getByRole("button", { name: /^complete$/i }));
+    // No transition yet — the confirm dialog intercepts.
+    expect(liveApi.transition).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByTestId("confirm-complete"));
+    await waitFor(() =>
+      expect(liveApi.transition).toHaveBeenCalledWith("m1", "completed"),
+    );
+  });
+
+  it("surfaces a rejected event as a visible error (no silent failures)", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(snap("live"));
+    vi.mocked(liveApi.recordEvent).mockRejectedValue(
+      new ApiError(403, { detail: "not_allowed_to_score" }),
+    );
+    renderConsole();
+    await screen.findAllByText("Alpha");
+
+    await userEvent.click(screen.getAllByRole("button", { name: /^goal$/i })[0]);
+    await screen.findByText(/not allowed to score/i);
+  });
+
+  it("undoes the last event via a void referencing its sequence", async () => {
+    const s = snap("live");
+    s.events = [
+      { sequence_no: 2, type: "goal", team_id: "a", player: null, minute: 12, period: "first_half" },
+      { sequence_no: 1, type: "shot", team_id: "a", player: null, minute: 10, period: "first_half" },
+    ];
+    vi.mocked(liveApi.snapshot).mockResolvedValue(s);
+    vi.mocked(liveApi.recordEvent).mockResolvedValue({} as never);
+    renderConsole();
+    await screen.findAllByText("Alpha");
+
+    await userEvent.click(screen.getByRole("button", { name: /undo last event/i }));
+    await waitFor(() => expect(liveApi.recordEvent).toHaveBeenCalled());
+    const [, payload] = vi.mocked(liveApi.recordEvent).mock.calls[0];
+    expect(payload.event_type).toBe("void");
+    expect(payload.voids_seq).toBe(2);
+  });
+
+  it("opens the shootout entry when completion needs one, then completes", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      snap("live", { home_score: 1, away_score: 1 }),
+    );
+    vi.mocked(liveApi.transition)
+      .mockRejectedValueOnce(
+        new ApiError(400, { detail: "knockout_draw_needs_shootout" }),
+      )
+      .mockResolvedValue({} as never);
+    vi.mocked(liveApi.scoreShootout).mockResolvedValue({} as never);
+    renderConsole();
+    await screen.findAllByText("Alpha");
+
+    await userEvent.click(screen.getByRole("button", { name: /^complete$/i }));
+    await userEvent.click(screen.getByTestId("confirm-complete"));
+
+    // The rejection opens the shootout dialog instead of failing silently.
+    const homePens = await screen.findByLabelText("Alpha");
+    await userEvent.type(homePens, "4");
+    await userEvent.type(screen.getByLabelText("Beta"), "3");
+    await userEvent.click(screen.getByTestId("confirm-shootout"));
+
+    await waitFor(() =>
+      expect(liveApi.scoreShootout).toHaveBeenCalledWith("m1", {
+        home_pens: 4,
+        away_pens: 3,
+        event_id: expect.any(String),
+      }),
+    );
+    // After the shootout records, completion is retried automatically.
+    await waitFor(() =>
+      expect(liveApi.transition).toHaveBeenLastCalledWith("m1", "completed"),
+    );
+  });
+
+  it("shows set entry instead of the goal palette for set sports", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      snap("live", {
+        sport: "table_tennis",
+        scoring: { type: "sets", best_of: 5, points: 11, win_by: 2 },
+        set_scores: [],
+      }),
+    );
+    vi.mocked(liveApi.recordSetScores).mockResolvedValue({} as never);
+    renderConsole();
+    await screen.findAllByText("Alpha");
+
+    // No goal button for a set sport (the server would reject it).
+    expect(screen.queryByRole("button", { name: /^goal$/i })).toBeNull();
+    expect(screen.getByText(/set scores/i)).toBeTruthy();
+
+    await userEvent.type(screen.getByLabelText("Set 1 Alpha"), "11");
+    await userEvent.type(screen.getByLabelText("Set 1 Beta"), "7");
+    await userEvent.click(screen.getByRole("button", { name: /record result/i }));
+    await userEvent.click(screen.getByTestId("confirm-sets"));
+
+    await waitFor(() =>
+      expect(liveApi.recordSetScores).toHaveBeenCalledWith("m1", {
+        set_scores: [[11, 7]],
+        event_id: expect.any(String),
+      }),
     );
   });
 });

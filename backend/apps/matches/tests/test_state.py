@@ -142,3 +142,18 @@ def test_can_transition_table():
     assert can_transition(MatchStatus.SCHEDULED, MatchStatus.LIVE)
     assert not can_transition(MatchStatus.SCHEDULED, MatchStatus.COMPLETED)
     assert not can_transition(MatchStatus.COMPLETED, MatchStatus.LIVE)
+
+
+def test_resume_from_half_time_enters_second_half():
+    """C13: the sticky 'half_time' period used to survive the whole second
+    half (scoreboard read 'Live · half time')."""
+    admin, m = _match()
+    transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
+    m.refresh_from_db()
+    assert m.current_period == "first_half"
+    transition_match(match=m, to_status=MatchStatus.HALF_TIME, by=admin)
+    m.refresh_from_db()
+    assert m.current_period == "half_time"
+    transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
+    m.refresh_from_db()
+    assert m.current_period == "second_half"

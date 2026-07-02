@@ -68,6 +68,10 @@ def transition_match(
         if to_status == S.LIVE:
             if not locked.current_period:
                 locked.current_period = "first_half"
+            elif frm == S.HALF_TIME:
+                # Resume: the sticky "half_time" label used to survive the
+                # whole second half (the scoreboard read "Live · half time").
+                locked.current_period = "second_half"
             # Kickoff consumes the control-room "called" annotation —
             # called_at auto-clears on the transition to live (owner
             # decision 2026-06-12, spec 2026-06-12 §2.b).
