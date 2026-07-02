@@ -15,7 +15,7 @@ User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 
-def _verified(email: str = "org@test.local") -> "User":
+def _verified(email: str = "org@test.local") -> User:
     u = User.objects.create_user(email=email, password="FixtureDemo2026!", is_active=True)
     u.email_verified_at = timezone.now()
     u.save(update_fields=["email_verified_at"])
@@ -36,7 +36,7 @@ def test_single_elim_4_teams_makes_3_matches_with_winner_pointers():
     admin = _verified()
     _t, _teams, matches = _bracket(admin, 4)
     assert len(matches) == 3
-    final = [m for m in matches if m.round_no == 2][0]
+    final = next(m for m in matches if m.round_no == 2)
     assert final.home_source["type"] == "winner_of"
     assert final.away_source["type"] == "winner_of"
     assert final.home_team_id is None  # unresolved until semis finish
@@ -46,7 +46,7 @@ def test_scoring_semis_advances_winners_into_final():
     admin = _verified()
     _t, _teams, matches = _bracket(admin, 4)
     semis = sorted([m for m in matches if m.round_no == 1], key=lambda m: m.match_no)
-    final = [m for m in matches if m.round_no == 2][0]
+    final = next(m for m in matches if m.round_no == 2)
 
     record_score(match=semis[0], home_score=2, away_score=0, by=admin)
     advance_from_match(semis[0].id)  # on_commit doesn't fire inside the test txn
@@ -157,3 +157,57 @@ def test_single_elim_is_idempotent_per_scope():
     _t, teams, matches = _bracket(admin, 4)
     again = generate_single_elimination(tournament=_t, teams=teams)
     assert {m.id for m in again} == {m.id for m in matches}  # no duplicates
+
+
+@pytest.mark.django_db(transaction=True)
+def test_parallel_semifinal_finalization_fills_both_final_slots():
+    """C6 regression: two feeders finalizing concurrently must both land.
+
+    advance_from_match used to read dependents unlocked and save BOTH team
+    fields, so the slower pass clobbered the faster pass's fill back to NULL.
+    Now dependents are select_for_update-locked and only the resolved side is
+    written, so concurrent passes serialize instead of racing.
+    """
+    import threading
+
+    from django.db import connections
+
+    from apps.matches.models import Match, MatchStatus
+
+    admin = _verified()
+    _t, _teams, matches = _bracket(admin, 4)
+    semis = sorted([m for m in matches if m.round_no == 1], key=lambda m: m.match_no)
+    final = next(m for m in matches if m.round_no == 2)
+
+    # Finalize both semis with direct updates (no service-level on_commit
+    # advancement), so the two advance passes below race on a final whose
+    # slots are BOTH still empty.
+    Match.objects.filter(id=semis[0].id).update(
+        home_score=2, away_score=0, status=MatchStatus.COMPLETED
+    )
+    Match.objects.filter(id=semis[1].id).update(
+        home_score=0, away_score=3, status=MatchStatus.COMPLETED
+    )
+
+    barrier = threading.Barrier(2, timeout=10)
+    errors: list[Exception] = []
+
+    def run(match_id):
+        try:
+            barrier.wait()
+            advance_from_match(match_id)
+        except Exception as exc:  # pragma: no cover - surfaced via assert
+            errors.append(exc)
+        finally:
+            connections.close_all()
+
+    threads = [threading.Thread(target=run, args=(s.id,)) for s in semis]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join(timeout=30)
+
+    assert not errors
+    final.refresh_from_db()
+    assert final.home_team_id == semis[0].home_team_id  # semi-0 home won
+    assert final.away_team_id == semis[1].away_team_id  # semi-1 away won

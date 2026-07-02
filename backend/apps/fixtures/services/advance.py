@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import logging
 
+from django.db import transaction
+from django.db.models import Q
+
 from apps.matches.models import Match, MatchStatus
 
 logger = logging.getLogger(__name__)
@@ -27,44 +30,47 @@ def advance_from_match(match_id) -> list[Match]:
 
     if winner_id is not None:
         mid = str(m.id)
-        deps = Match.objects.filter(
-            tournament_id=m.tournament_id, deleted_at__isnull=True
-        )
-        for dep in deps:
-            if dep.id == m.id:
-                continue
-            changed = False
-            vacated = False
-            for side in ("home", "away"):
-                src = getattr(dep, f"{side}_source") or {}
-                if src.get("match_id") != mid:
-                    continue
-                if src.get("type") == "winner_of":
-                    setattr(dep, f"{side}_team_id", winner_id)
-                    changed = True
-                elif src.get("type") == "loser_of":
-                    if m.status == MatchStatus.WALKOVER:
-                        # §9 A7: a walkover loser (withdrawal / no-show) never
-                        # occupies a loser_of slot — stamp the side vacated;
-                        # _settle_unopposed resolves the match for the other
-                        # side once it holds a real team.
-                        if not src.get("walkover_vacated"):
-                            setattr(
-                                dep, f"{side}_source",
-                                {**src, "walkover_vacated": True},
-                            )
-                            vacated = True
-                    else:
-                        setattr(dep, f"{side}_team_id", loser_id)
-                        changed = True
-            if changed or vacated:
-                fields = ["updated_at"]
-                if changed:
-                    fields += ["home_team", "away_team"]
-                if vacated:
-                    fields += ["home_source", "away_source"]
-                dep.save(update_fields=fields)
-                resolved.append(dep)
+        # Two feeder matches can finalize concurrently (separate on_commit
+        # hooks) and share a dependent. Lock exactly the referencing
+        # dependents (deterministic order, so concurrent passes can't
+        # deadlock) and write ONLY the side each pointer resolves — writing
+        # both team fields from an unlocked read clobbers the other feeder's
+        # fill back to NULL.
+        with transaction.atomic():
+            deps = (
+                Match.objects.select_for_update()
+                .filter(tournament_id=m.tournament_id, deleted_at__isnull=True)
+                .filter(Q(home_source__match_id=mid) | Q(away_source__match_id=mid))
+                .exclude(id=m.id)
+                .order_by("id")
+            )
+            for dep in deps:
+                fields: list[str] = []
+                for side in ("home", "away"):
+                    src = getattr(dep, f"{side}_source") or {}
+                    if src.get("match_id") != mid:
+                        continue
+                    if src.get("type") == "winner_of":
+                        setattr(dep, f"{side}_team_id", winner_id)
+                        fields.append(f"{side}_team")
+                    elif src.get("type") == "loser_of":
+                        if m.status == MatchStatus.WALKOVER:
+                            # §9 A7: a walkover loser (withdrawal / no-show)
+                            # never occupies a loser_of slot — stamp the side
+                            # vacated; _settle_unopposed resolves the match
+                            # for the other side once it holds a real team.
+                            if not src.get("walkover_vacated"):
+                                setattr(
+                                    dep, f"{side}_source",
+                                    {**src, "walkover_vacated": True},
+                                )
+                                fields.append(f"{side}_source")
+                        else:
+                            setattr(dep, f"{side}_team_id", loser_id)
+                            fields.append(f"{side}_team")
+                if fields:
+                    dep.save(update_fields=[*fields, "updated_at"])
+                    resolved.append(dep)
 
     # group_position pointers (invariant #9 — previously silently ignored):
     # once this match's GROUP is fully final, standings positions resolve any
@@ -127,21 +133,31 @@ def _resolve_group_positions(m: Match) -> list[Match]:
 
     rows = compute_standings(m.tournament, group_label=m.group_label)
     resolved: list[Match] = []
-    deps = Match.objects.filter(tournament_id=m.tournament_id, deleted_at__isnull=True)
-    for dep in deps:
-        changed = False
-        for side in ("home", "away"):
-            src = getattr(dep, f"{side}_source") or {}
-            if (
-                src.get("type") == "group_position"
-                and src.get("group_label") == m.group_label
-                and getattr(dep, f"{side}_team_id") is None
-            ):
-                pos = int(src.get("position") or 0)
-                if 1 <= pos <= len(rows):
-                    setattr(dep, f"{side}_team_id", rows[pos - 1]["team_id"])
-                    changed = True
-        if changed:
-            dep.save(update_fields=["home_team", "away_team", "updated_at"])
-            resolved.append(dep)
+    # Same locking discipline as winner_of/loser_of filling: two groups can
+    # finalize concurrently and feed different sides of one dependent, so
+    # lock the referencing rows and write only the sides this group resolves.
+    pos_q = Q(home_source__type="group_position") | Q(away_source__type="group_position")
+    with transaction.atomic():
+        deps = (
+            Match.objects.select_for_update()
+            .filter(tournament_id=m.tournament_id, deleted_at__isnull=True)
+            .filter(pos_q)
+            .order_by("id")
+        )
+        for dep in deps:
+            fields: list[str] = []
+            for side in ("home", "away"):
+                src = getattr(dep, f"{side}_source") or {}
+                if (
+                    src.get("type") == "group_position"
+                    and src.get("group_label") == m.group_label
+                    and getattr(dep, f"{side}_team_id") is None
+                ):
+                    pos = int(src.get("position") or 0)
+                    if 1 <= pos <= len(rows):
+                        setattr(dep, f"{side}_team_id", rows[pos - 1]["team_id"])
+                        fields.append(f"{side}_team")
+            if fields:
+                dep.save(update_fields=[*fields, "updated_at"])
+                resolved.append(dep)
     return resolved
