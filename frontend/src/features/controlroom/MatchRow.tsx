@@ -42,7 +42,7 @@ export function MatchRow({
       role="row"
       data-testid={`tile-${match.id}`}
       className={cn(
-        "group flex items-center gap-3 border-b border-border px-3 py-1.5 text-xs transition-colors hover:bg-secondary/40",
+        "group flex items-center gap-3 border-b border-border px-4 py-2.5 text-xs transition-colors last:border-b-0 hover:bg-secondary/40",
         live && "border-l-2 border-l-primary",
       )}
     >
@@ -85,7 +85,7 @@ export function MatchRow({
         ) : null}
       </div>
 
-      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+      <div className="flex min-w-0 flex-1 items-center gap-2 text-[13px]">
         <span className="truncate font-medium">
           {match.home_team?.name ?? t("TBD")}
         </span>

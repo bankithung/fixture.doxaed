@@ -2,9 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowLeftRight,
+  CalendarClock,
   CalendarOff,
   CircleStop,
   Flag,
+  Lock,
+  LockOpen,
   Megaphone,
   Minus,
   MoreVertical,
@@ -13,6 +17,7 @@ import {
   Radio,
   RotateCcw,
   SquarePen,
+  TimerReset,
   TriangleAlert,
   UserCog,
 } from "lucide-react";
@@ -34,8 +39,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
-import { MatchRepairMenu } from "@/features/fixtures/MatchRepairControls";
-import { errorDetail } from "@/features/fixtures/repair";
+import {
+  DelayMatchDialog,
+  MatchRepairMenu,
+  MoveMatchDialog,
+  SwapMatchDialog,
+} from "@/features/fixtures/MatchRepairControls";
+import { MOVABLE_STATUSES, errorDetail } from "@/features/fixtures/repair";
 import { AssignDrawer } from "./AssignDrawer";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
@@ -1032,7 +1042,27 @@ export function RowActions({
   const [stateVerb, setStateVerb] = useState<StateVerbKey | null>(null);
   const [incident, setIncident] = useState(false);
   const [dispute, setDispute] = useState(false);
+  const [repair, setRepair] = useState<"move" | "delay" | "swap" | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+
+  const locked = Boolean(match.locked_at);
+  const lockToggle = useMutation({
+    mutationFn: () =>
+      locked
+        ? tournamentsApi.unlockMatch(match.id)
+        : tournamentsApi.lockMatch(match.id),
+    onSuccess: () => {
+      invalidateTournament(qc, tournamentId);
+      toast.push({
+        kind: "success",
+        title: locked
+          ? t("Slot unlocked")
+          : t("Slot locked. Re-runs and delays will not move it."),
+      });
+    },
+    onError: () =>
+      toast.push({ kind: "error", title: t("Could not update the lock") }),
+  });
 
   const called = Boolean(match.called_at);
   const call = useMutation({
@@ -1079,9 +1109,11 @@ export function RowActions({
   const showIncident =
     (showConsole || perms.canManage) &&
     ["live", "half_time", "completed", "abandoned"].includes(match.status);
+  const showRepairItems =
+    showRepair && perms.canSchedule && MOVABLE_STATUSES.has(match.status);
   const anyItem =
     showQuick || showCall || showConsole || showAssign || showWalkover ||
-    verbs.length > 0 || showIncident;
+    verbs.length > 0 || showIncident || showRepairItems;
 
   if (!anyItem && !perms.canSchedule) return null; // read-only member
 
@@ -1287,11 +1319,94 @@ export function RowActions({
               {t(STATE_VERBS[v].label)}
             </button>
           ))}
+          {showRepairItems ? (
+            <>
+              <div className="my-1 h-px bg-border" role="separator" />
+              <button
+                type="button"
+                role="menuitem"
+                data-testid={`repair-move-${match.id}`}
+                className={item}
+                onClick={() => {
+                  setRepair("move");
+                  setOpen(false);
+                }}
+              >
+                <CalendarClock aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                {t("Move…")}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid={`repair-delay-${match.id}`}
+                className={item}
+                disabled={match.scheduled_at === null || locked}
+                onClick={() => {
+                  setRepair("delay");
+                  setOpen(false);
+                }}
+              >
+                <TimerReset aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                {t("Delay…")}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid={`repair-swap-${match.id}`}
+                className={item}
+                disabled={match.scheduled_at === null}
+                onClick={() => {
+                  setRepair("swap");
+                  setOpen(false);
+                }}
+              >
+                <ArrowLeftRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                {t("Swap…")}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid={`repair-lock-${match.id}`}
+                className={item}
+                disabled={lockToggle.isPending}
+                onClick={() => {
+                  lockToggle.mutate();
+                  setOpen(false);
+                }}
+              >
+                {locked ? (
+                  <LockOpen aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                ) : (
+                  <Lock aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                )}
+                {locked ? t("Unlock slot") : t("Lock slot")}
+              </button>
+            </>
+          ) : null}
         </div>
       ) : null}
 
-      {showRepair && perms.canSchedule ? (
-        <MatchRepairMenu tournamentId={tournamentId} match={match} siblings={siblings} />
+      {repair === "move" ? (
+        <MoveMatchDialog
+          tournamentId={tournamentId}
+          match={match}
+          onClose={() => setRepair(null)}
+        />
+      ) : null}
+      {repair === "delay" ? (
+        <DelayMatchDialog
+          tournamentId={tournamentId}
+          match={match}
+          onClose={() => setRepair(null)}
+        />
+      ) : null}
+      {repair === "swap" ? (
+        <SwapMatchDialog
+          tournamentId={tournamentId}
+          match={match}
+          siblings={siblings}
+          onClose={() => setRepair(null)}
+        />
       ) : null}
 
       {walkover ? (

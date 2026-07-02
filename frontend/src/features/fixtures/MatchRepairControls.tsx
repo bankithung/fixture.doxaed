@@ -166,7 +166,7 @@ function toLocalInput(iso: string | null): string {
   return iso ? iso.slice(0, 16) : "";
 }
 
-function MoveMatchDialog({
+export function MoveMatchDialog({
   tournamentId,
   match,
   onClose,
@@ -282,7 +282,7 @@ function MoveMatchDialog({
 
 const QUICK_DELAYS = [15, 30, 60] as const;
 
-function DelayMatchDialog({
+export function DelayMatchDialog({
   tournamentId,
   match,
   onClose,
@@ -403,7 +403,7 @@ function swapLabel(m: MatchRow): string {
   return `${sides} - ${when}${m.venue ? ` · ${m.venue}` : ""}`;
 }
 
-function SwapMatchDialog({
+export function SwapMatchDialog({
   tournamentId,
   match,
   siblings,
