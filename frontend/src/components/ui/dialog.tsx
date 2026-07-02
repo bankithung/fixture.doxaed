@@ -1,4 +1,5 @@
 import * as React from "react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
@@ -124,7 +125,7 @@ export function DialogCloseButton({
       aria-label={t("Close dialog")}
       className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100"
     >
-      x
+      <X aria-hidden="true" className="h-4 w-4" />
     </button>
   );
 }

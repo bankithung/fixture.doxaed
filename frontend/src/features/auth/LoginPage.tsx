@@ -243,7 +243,7 @@ export function LoginPage(): React.ReactElement {
               <Label htmlFor="password">{t("Password")}</Label>
               <Link
                 to={routes.passwordResetRequest()}
-                className="text-xs text-emerald-700 hover:underline focus-visible:underline focus-visible:outline-none"
+                className="text-xs text-primary hover:underline focus-visible:underline focus-visible:outline-none"
               >
                 {t("Forgot password?")}
               </Link>
@@ -267,7 +267,7 @@ export function LoginPage(): React.ReactElement {
             {t("New here?")}{" "}
             <Link
               to={routes.signup()}
-              className="font-medium text-emerald-700 hover:underline focus-visible:underline focus-visible:outline-none"
+              className="font-medium text-primary hover:underline focus-visible:underline focus-visible:outline-none"
             >
               {t("Create an account")}
             </Link>

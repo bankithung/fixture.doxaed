@@ -86,7 +86,7 @@ function ToastViewport({
             className={cn(
               "pointer-events-auto rounded-lg border bg-popover p-3 text-popover-foreground shadow-lg",
               tm.kind === "error" && "border-destructive/50",
-              tm.kind === "success" && "border-emerald-500/50",
+              tm.kind === "success" && "border-success/50",
               tm.kind === "info" && "border-border",
             )}
           >
@@ -97,7 +97,7 @@ function ToastViewport({
                   "mt-0.5 h-4 w-4 shrink-0",
                   tm.kind === "error" && "text-destructive",
                   tm.kind === "success" &&
-                    "text-emerald-600 dark:text-emerald-400",
+                    "text-success",
                   tm.kind === "info" && "text-primary",
                 )}
               />

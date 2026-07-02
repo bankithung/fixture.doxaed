@@ -40,7 +40,7 @@ export function PasswordResetRequestPage(): React.ReactElement {
       >
         <div
           role="status"
-          className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900"
+          className="rounded-md border border-success/30 bg-success-muted p-4 text-sm text-success-foreground"
         >
           {t(
             "Reset links expire in 30 minutes. Didn't get one? Check spam or try again.",
@@ -49,7 +49,7 @@ export function PasswordResetRequestPage(): React.ReactElement {
         <div className="mt-6">
           <Link
             to={routes.login()}
-            className="text-sm font-medium text-emerald-700 hover:underline focus-visible:underline focus-visible:outline-none"
+            className="text-sm font-medium text-primary hover:underline focus-visible:underline focus-visible:outline-none"
           >
             {t("Back to sign in")}
           </Link>
@@ -90,7 +90,7 @@ export function PasswordResetRequestPage(): React.ReactElement {
         </Button>
         <Link
           to={routes.login()}
-          className="text-center text-xs text-emerald-700 hover:underline focus-visible:underline focus-visible:outline-none"
+          className="text-center text-xs text-primary hover:underline focus-visible:underline focus-visible:outline-none"
         >
           {t("Back to sign in")}
         </Link>

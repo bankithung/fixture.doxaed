@@ -74,23 +74,23 @@ const STATUS_STYLES: Record<
 > = {
   pending: {
     label: "Pending",
-    cls: "bg-amber-500/15 text-amber-600 dark:text-amber-500",
+    cls: "bg-warning-muted text-warning-foreground",
   },
   accepted: {
     label: "Accepted",
-    cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+    cls: "bg-success-muted text-success-foreground",
   },
   declined: {
     label: "Declined",
-    cls: "bg-rose-500/15 text-rose-600 dark:text-rose-400",
+    cls: "bg-destructive/15 text-destructive",
   },
   expired: {
     label: "Expired",
-    cls: "bg-slate-400/15 text-slate-500 dark:text-slate-400",
+    cls: "bg-muted text-muted-foreground",
   },
   revoked: {
     label: "Revoked",
-    cls: "bg-slate-400/15 text-slate-500 dark:text-slate-400",
+    cls: "bg-muted text-muted-foreground",
   },
 };
 

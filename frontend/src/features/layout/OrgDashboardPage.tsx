@@ -295,7 +295,7 @@ export function OrgDashboardPage(): React.ReactElement {
                 </p>
                 {all.length === 0 ? (
                   <Link to="/tournaments/new" className="text-sm font-medium text-primary hover:underline">
-                    {t("Start a tournament →")}
+                    {t("Start a tournament")}
                   </Link>
                 ) : null}
               </div>
@@ -398,7 +398,7 @@ export function OrgDashboardPage(): React.ReactElement {
                   <div className="mt-3 flex items-center justify-center gap-3 font-tabular text-2xl font-semibold">
                     <span className="flex-1 truncate text-right">{featuredMatch.home_team?.short_name ?? featuredMatch.home_team?.name ?? t("TBD")}</span>
                     <span className="shrink-0 tabular-nums">
-                      {featuredMatch.home_score ?? 0}–{featuredMatch.away_score ?? 0}
+                      {featuredMatch.home_score ?? 0}-{featuredMatch.away_score ?? 0}
                     </span>
                     <span className="flex-1 truncate text-left">{featuredMatch.away_team?.short_name ?? featuredMatch.away_team?.name ?? t("TBD")}</span>
                   </div>

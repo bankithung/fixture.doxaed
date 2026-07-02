@@ -41,7 +41,8 @@ describe("RoleBadge", () => {
     rerender(<RoleBadge role="referee" />);
     const refereeClasses = screen.getByTestId("role-badge-referee").className;
     expect(adminClasses).not.toBe(refereeClasses);
-    expect(adminClasses).toMatch(/indigo/);
-    expect(refereeClasses).toMatch(/rose/);
+    // Tokens only (owner rule): semantic ramps, no Tailwind palette.
+    expect(adminClasses).toMatch(/primary/);
+    expect(refereeClasses).toMatch(/destructive/);
   });
 });

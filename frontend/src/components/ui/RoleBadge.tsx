@@ -34,33 +34,33 @@ const PALETTE: Record<RoleKey, PaletteEntry> = {
   },
   admin: {
     label: "Admin",
-    className: "bg-indigo-100 text-indigo-900 ring-1 ring-indigo-200",
+    className: "bg-primary/15 text-primary ring-1 ring-primary/25",
   },
   co_organizer: {
     label: "Co-organizer",
-    className: "bg-teal-100 text-teal-900 ring-1 ring-teal-200",
+    className: "bg-success-muted text-success-foreground ring-1 ring-success/25",
   },
   game_coordinator: {
     label: "Game coordinator",
-    className: "bg-cyan-100 text-cyan-900 ring-1 ring-cyan-200",
+    className: "bg-info-muted text-info-foreground ring-1 ring-info/25",
   },
   match_scorer: {
     label: "Match scorer",
-    className: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+    className: "bg-warning-muted text-warning-foreground ring-1 ring-warning/25",
   },
   referee: {
     label: "Referee",
-    className: "bg-rose-100 text-rose-900 ring-1 ring-rose-200",
+    className: "bg-destructive/15 text-destructive ring-1 ring-destructive/25",
   },
   team_manager: {
     label: "Team manager",
-    className: "bg-violet-100 text-violet-900 ring-1 ring-violet-200",
+    className: "bg-secondary text-secondary-foreground ring-1 ring-border",
   },
 };
 
 const NEUTRAL: PaletteEntry = {
   label: "Role",
-  className: "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
+  className: "bg-muted text-muted-foreground ring-1 ring-border",
 };
 
 function paletteFor(role: string): PaletteEntry {

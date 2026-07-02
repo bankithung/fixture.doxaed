@@ -74,7 +74,7 @@ const FORMATS: {
   },
   {
     key: "groups_knockout",
-    label: "Groups → Knockout",
+    label: "Groups then Knockout",
     hint: "Groups first, then the top teams from each group go into a knockout bracket.",
     icon: Wand2,
   },

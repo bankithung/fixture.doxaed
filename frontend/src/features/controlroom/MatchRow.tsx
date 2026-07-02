@@ -98,10 +98,10 @@ export function MatchRow({
       <div className="w-16 shrink-0 text-right font-tabular">
         {showScore ? (
           <span className="font-semibold">
-            {match.home_score ?? 0} – {match.away_score ?? 0}
+            {match.home_score ?? 0} - {match.away_score ?? 0}
           </span>
         ) : (
-          <span className="text-muted-foreground">–</span>
+          <span className="text-muted-foreground">-</span>
         )}
       </div>
 

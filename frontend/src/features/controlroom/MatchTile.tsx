@@ -181,7 +181,7 @@ export function MatchTile({
           )}
         >
           {showScore
-            ? `${match.home_score ?? 0} – ${match.away_score ?? 0}`
+            ? `${match.home_score ?? 0} - ${match.away_score ?? 0}`
             : t("vs")}
         </span>
         <span className="truncate font-medium">
@@ -197,7 +197,7 @@ export function MatchTile({
           {sets.map(([h, a]) => `${h}-${a}`).join(" · ")}
           {sets.length > 0 && hasPens ? " · " : ""}
           {hasPens
-            ? `(${match.home_pens}–${match.away_pens} ${t("pens")})`
+            ? `(${match.home_pens}-${match.away_pens} ${t("pens")})`
             : ""}
         </p>
       ) : null}

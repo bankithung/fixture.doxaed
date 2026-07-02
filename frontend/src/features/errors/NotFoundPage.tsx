@@ -27,7 +27,7 @@ export function NotFoundPage(): React.ReactElement {
           >
             <Compass className="h-7 w-7" />
           </span>
-          <CardTitle>{t("404 — page not found")}</CardTitle>
+          <CardTitle>{t("404. Page not found")}</CardTitle>
           <CardDescription>
             {t("This page doesn't exist or has moved.")}
           </CardDescription>

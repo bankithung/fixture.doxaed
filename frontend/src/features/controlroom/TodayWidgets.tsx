@@ -90,7 +90,7 @@ export function LiveNowPanel({
                   {teamName(m.home_team)}
                 </span>
                 <span className="px-2 font-tabular text-lg font-semibold">
-                  {m.home_score ?? 0} – {m.away_score ?? 0}
+                  {m.home_score ?? 0} - {m.away_score ?? 0}
                 </span>
                 <span className="truncate text-sm font-medium">
                   {teamName(m.away_team)}
@@ -263,7 +263,7 @@ export function RecentResultsPanel({
                 {teamName(m.away_team)}
               </span>
               <span className="shrink-0 font-tabular font-semibold">
-                {m.home_score ?? 0} – {m.away_score ?? 0}
+                {m.home_score ?? 0} - {m.away_score ?? 0}
               </span>
             </div>
           ))}

@@ -94,21 +94,21 @@ export function SignupPage(): React.ReactElement {
       >
         <div
           role="status"
-          className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900"
+          className="rounded-md border border-success/30 bg-success-muted p-4 text-sm text-success-foreground"
         >
           <p className="font-medium">{t("Almost there.")}</p>
-          <p className="mt-1 text-emerald-900/80">
+          <p className="mt-1 text-success-foreground/80">
             {t("We sent a verification link to")}{" "}
             <span className="font-semibold">{submittedEmail}</span>.
           </p>
-          <p className="mt-3 text-xs text-emerald-900/70">
+          <p className="mt-3 text-xs text-success-foreground/70">
             {t("In development, the link also prints to the Django console.")}
           </p>
         </div>
         <div className="mt-6 flex flex-col gap-2 text-sm">
           <Link
             to={routes.login()}
-            className="font-medium text-emerald-700 hover:underline focus-visible:underline focus-visible:outline-none"
+            className="font-medium text-primary hover:underline focus-visible:underline focus-visible:outline-none"
           >
             {t("Back to sign in")}
           </Link>
@@ -124,10 +124,10 @@ export function SignupPage(): React.ReactElement {
     t("Strong"),
   ][strength];
   const strengthColor = [
-    "bg-slate-200",
-    "bg-red-500",
-    "bg-amber-500",
-    "bg-emerald-600",
+    "bg-muted",
+    "bg-destructive",
+    "bg-warning",
+    "bg-success",
   ][strength];
 
   return (
@@ -187,7 +187,7 @@ export function SignupPage(): React.ReactElement {
             {...form.register("password")}
           />
           <div id="password-hint" className="flex items-center gap-2">
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
               <div
                 role="progressbar"
                 aria-valuemin={0}
@@ -216,7 +216,7 @@ export function SignupPage(): React.ReactElement {
           <label className="flex items-start gap-2 text-sm text-foreground">
             <input
               type="checkbox"
-              className="mt-0.5 h-4 w-4 rounded border-input text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="mt-0.5 h-4 w-4 rounded border-input accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-invalid={!!form.formState.errors.accept_terms}
               {...form.register("accept_terms")}
             />
@@ -224,7 +224,7 @@ export function SignupPage(): React.ReactElement {
               {t("I agree to the")}{" "}
               <Link
                 to={routes.about()}
-                className="font-medium text-emerald-700 hover:underline focus-visible:underline focus-visible:outline-none"
+                className="font-medium text-primary hover:underline focus-visible:underline focus-visible:outline-none"
               >
                 {t("terms of service")}
               </Link>
@@ -244,7 +244,7 @@ export function SignupPage(): React.ReactElement {
           {t("Already have an account?")}{" "}
           <Link
             to={routes.login()}
-            className="font-medium text-emerald-700 hover:underline focus-visible:underline focus-visible:outline-none"
+            className="font-medium text-primary hover:underline focus-visible:underline focus-visible:outline-none"
           >
             {t("Sign in")}
           </Link>

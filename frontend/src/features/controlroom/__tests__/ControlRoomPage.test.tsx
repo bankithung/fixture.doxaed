@@ -240,7 +240,7 @@ describe("ControlRoomPage", () => {
 
     // The completed match's score shows in recent results.
     const recent = screen.getByText("Recent results").closest("section")!;
-    expect(within(recent).getByText("2 – 1")).toBeInTheDocument();
+    expect(within(recent).getByText("2 - 1")).toBeInTheDocument();
 
     // And a jump to the full matches board (where every action lives).
     expect(

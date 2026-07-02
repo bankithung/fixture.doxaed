@@ -20,39 +20,39 @@ const SEARCH_THRESHOLD = 4;
  * Mirrors the named-palette pill convention already used for institution
  * statuses — a richer signal than the flat brand tokens.
  */
+// Tokens only (owner rule): semantic status colors, no Tailwind palette.
 const STATUS_STYLES: Record<string, { label: string; cls: string }> = {
-  draft: { label: "Draft", cls: "bg-slate-400/15 text-slate-600 dark:text-slate-300" },
-  published: { label: "Published", cls: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },
+  draft: { label: "Draft", cls: "bg-muted text-muted-foreground" },
+  published: { label: "Published", cls: "bg-info-muted text-info-foreground" },
   registration_open: {
     label: "Registration open",
-    cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+    cls: "bg-success-muted text-success-foreground",
   },
-  scheduled: { label: "Scheduled", cls: "bg-violet-500/15 text-violet-600 dark:text-violet-400" },
-  completed: { label: "Completed", cls: "bg-teal-500/15 text-teal-600 dark:text-teal-400" },
-  archived: { label: "Archived", cls: "bg-slate-400/15 text-slate-500 dark:text-slate-400" },
+  scheduled: { label: "Scheduled", cls: "bg-secondary text-secondary-foreground" },
+  completed: { label: "Completed", cls: "bg-accent text-accent-foreground" },
+  archived: { label: "Archived", cls: "bg-muted text-muted-foreground" },
 };
 
 function statusStyle(status: string): { label: string; cls: string; pulse: boolean } {
   if (status.startsWith("live"))
-    return { label: "Live", cls: "bg-rose-500/15 text-rose-600 dark:text-rose-400", pulse: true };
+    return { label: "Live", cls: "bg-primary/15 text-primary", pulse: true };
   const s = STATUS_STYLES[status];
   return {
     label: s?.label ?? status.replace(/_/g, " "),
-    cls: s?.cls ?? "bg-slate-400/15 text-slate-600 dark:text-slate-300",
+    cls: s?.cls ?? "bg-muted text-muted-foreground",
     pulse: false,
   };
 }
 
-/** Soft, distinct monogram tint per tournament (deterministic by name). */
+/** Soft, distinct monogram tint per tournament (deterministic by name) —
+ * token opacity steps, not palette colors. */
 const TINTS = [
-  "bg-blue-500/15 text-blue-600 dark:text-blue-400",
-  "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-  "bg-violet-500/15 text-violet-600 dark:text-violet-400",
-  "bg-amber-500/15 text-amber-600 dark:text-amber-500",
-  "bg-rose-500/15 text-rose-600 dark:text-rose-400",
-  "bg-teal-500/15 text-teal-600 dark:text-teal-400",
-  "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400",
-  "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400",
+  "bg-primary/15 text-primary",
+  "bg-success-muted text-success-foreground",
+  "bg-info-muted text-info-foreground",
+  "bg-warning-muted text-warning-foreground",
+  "bg-secondary text-secondary-foreground",
+  "bg-accent text-accent-foreground",
 ];
 
 function tintFor(name: string): string {

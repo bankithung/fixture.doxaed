@@ -11,7 +11,7 @@ describe("NotFoundPage", () => {
       </MemoryRouter>,
     );
     expect(
-      screen.getByRole("heading", { name: /404 — page not found/i }),
+      screen.getByRole("heading", { name: /404. Page not found/i }),
     ).toBeInTheDocument();
     const backLink = screen.getByRole("link", { name: /back home/i });
     expect(backLink).toBeInTheDocument();
