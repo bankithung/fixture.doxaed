@@ -1,6 +1,9 @@
-"""Public school-data endpoints + the personal cross-tournament aggregate (owner: "schools can see their data - who
-played, wins/losses any time"). AllowAny, gated by (slug, UUID) + a
-public-facing tournament status; names and numbers only, no contact PII."""
+"""Public school-data endpoints + the personal cross-tournament aggregate.
+
+School data (owner: "schools can see their data - who played, wins/losses
+any time") is AllowAny, gated by (slug, UUID) + a public-facing tournament
+status; names and numbers only, no contact PII. MyTodayView is the
+authenticated dashboard feed."""
 from __future__ import annotations
 
 from rest_framework.exceptions import NotFound
