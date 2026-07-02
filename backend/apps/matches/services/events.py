@@ -20,9 +20,14 @@ from apps.matches.models import (
     Match,
     MatchEvent,
     MatchEventType,
+    MatchStatus,
 )
 
 logger = logging.getLogger(__name__)
+
+# Statuses in which the event log is open for normal recording. Terminal and
+# suspended matches reject events (see the correction carve-out below).
+_EVENT_OK_STATUSES = (MatchStatus.SCHEDULED, MatchStatus.LIVE, MatchStatus.HALF_TIME)
 
 
 def publish_match_event(match_id, event_id, tournament_id=None, kind="event") -> None:
@@ -112,6 +117,31 @@ def record_match_event(
             or event_type == MatchEventType.OWN_GOAL
         ):
             raise DjangoValidationError("set_based_sport_uses_set_scores")
+        # Status guard (mirrors record_score): events land on an open match.
+        # The one exception is a correction on a COMPLETED match whose score
+        # is event-derived — walkover/aggregate-scored matches carry a STAMPED
+        # score that recompute_score would clobber, so those stay closed.
+        if locked.status not in _EVENT_OK_STATUSES:
+            score_relevant = (
+                event_type == MatchEventType.VOID
+                or event_type in SCORING_EVENT_TYPES
+                or event_type == MatchEventType.OWN_GOAL
+            )
+            correction_ok = (
+                locked.status == MatchStatus.COMPLETED
+                and not set_based
+                and score_relevant
+                and MatchEvent.objects.filter(
+                    match=locked,
+                    event_type__in=[*SCORING_EVENT_TYPES, MatchEventType.OWN_GOAL],
+                ).exists()
+            )
+            if not correction_ok:
+                raise DjangoValidationError(
+                    f"match_not_accepting_events:{locked.status}"
+                )
+        was_completed = locked.status == MatchStatus.COMPLETED
+        score_before = (locked.home_score, locked.away_score)
         next_seq = (
             MatchEvent.objects.filter(match=locked).aggregate(m=Max("sequence_no"))["m"]
             or 0
@@ -134,6 +164,17 @@ def record_match_event(
         )
         if not set_based:
             recompute_score(locked)
+        # A correction that changes a COMPLETED match's score can flip the
+        # winner; the terminal-transition hook already ran, so re-fire
+        # advancement here or downstream slots keep the wrong team
+        # (winner_of/loser_of pointers overwrite; group_position fills only
+        # still-empty slots — played-downstream conflicts stay a human call
+        # until the dispute cascade lands).
+        if was_completed and (locked.home_score, locked.away_score) != score_before:
+            from apps.matches.services.state import _fire_advancement
+
+            corrected_mid = locked.id
+            transaction.on_commit(lambda: _fire_advancement(corrected_mid))
         emit_audit(
             actor_user=by,
             actor_role=ActorRole.ADMIN,

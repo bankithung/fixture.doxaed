@@ -1,4 +1,4 @@
-"""TDD — MatchEvent log (invariant #4): scores derived from events, gapless, idempotent, voidable."""
+"""TDD — MatchEvent log (invariant #4): derived scores, gapless, idempotent, voidable."""
 from __future__ import annotations
 
 import uuid
@@ -16,7 +16,7 @@ User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 
-def _verified(email: str = "org@test.local") -> "User":
+def _verified(email: str = "org@test.local") -> User:
     u = User.objects.create_user(email=email, password="FixtureDemo2026!", is_active=True)
     u.email_verified_at = timezone.now()
     u.save(update_fields=["email_verified_at"])
@@ -38,7 +38,7 @@ def _setup():
 
 
 def test_goal_events_derive_score_and_are_gapless():
-    admin, a, b, m = _setup()
+    admin, a, _b, m = _setup()
     e1 = record_match_event(match=m, event_type=MatchEventType.GOAL, team=a, by=admin)
     e2 = record_match_event(match=m, event_type=MatchEventType.GOAL, team=a, by=admin)
     e3 = record_match_event(match=m, event_type=MatchEventType.OWN_GOAL, team=a, by=admin)
@@ -49,7 +49,7 @@ def test_goal_events_derive_score_and_are_gapless():
 
 
 def test_void_reverses_score():
-    admin, a, b, m = _setup()
+    admin, a, _b, m = _setup()
     g = record_match_event(match=m, event_type=MatchEventType.GOAL, team=a, by=admin)
     m.refresh_from_db()
     assert m.home_score == 1
@@ -60,7 +60,7 @@ def test_void_reverses_score():
 
 
 def test_event_idempotent_on_event_id():
-    admin, a, b, m = _setup()
+    admin, a, _b, m = _setup()
     eid = uuid.uuid4()
     record_match_event(match=m, event_type=MatchEventType.GOAL, team=a, by=admin, event_id=eid)
     record_match_event(match=m, event_type=MatchEventType.GOAL, team=a, by=admin, event_id=eid)
@@ -68,3 +68,71 @@ def test_event_idempotent_on_event_id():
     assert MatchEvent.objects.filter(match=m, event_type=MatchEventType.GOAL).count() == 1
     m.refresh_from_db()
     assert m.home_score == 1
+
+
+def test_events_rejected_on_walkover_and_cancelled():
+    """C7 guard: a stamped result (walkover/aggregate) must never be clobbered
+    by recompute_score from a stray event."""
+    from django.core.exceptions import ValidationError
+
+    admin, a, _b, m = _setup()
+    Match.objects.filter(pk=m.pk).update(
+        status=MatchStatus.WALKOVER, home_score=3, away_score=0
+    )
+    m.refresh_from_db()
+    with pytest.raises(ValidationError):
+        record_match_event(match=m, event_type=MatchEventType.GOAL, team=a, by=admin)
+    m.refresh_from_db()
+    assert (m.home_score, m.away_score) == (3, 0)
+
+    Match.objects.filter(pk=m.pk).update(status=MatchStatus.CANCELLED)
+    m.refresh_from_db()
+    with pytest.raises(ValidationError):
+        record_match_event(
+            match=m, event_type=MatchEventType.YELLOW_CARD, team=a, by=admin
+        )
+
+
+def test_completed_match_with_stamped_score_rejects_events():
+    """A match completed via record_score (no event log) keeps its stamped
+    score: no goal-derived correction is possible, so events are rejected."""
+    from django.core.exceptions import ValidationError
+
+    admin, _a, b, m = _setup()
+    Match.objects.filter(pk=m.pk).update(
+        status=MatchStatus.COMPLETED, home_score=2, away_score=1
+    )
+    m.refresh_from_db()
+    with pytest.raises(ValidationError):
+        record_match_event(match=m, event_type=MatchEventType.GOAL, team=b, by=admin)
+    m.refresh_from_db()
+    assert (m.home_score, m.away_score) == (2, 1)
+
+
+def test_completed_correction_ripples_to_dependent_slots():
+    """C7 ripple: voiding the decisive goal after completion flips the winner
+    and re-fires advancement so the dependent's slot is corrected."""
+    admin, a, b, m = _setup()
+    g = record_match_event(match=m, event_type=MatchEventType.GOAL, team=a, by=admin)
+    Match.objects.filter(pk=m.pk).update(status=MatchStatus.COMPLETED)
+    m.refresh_from_db()
+    assert m.winner_id == a.id
+
+    final = Match.objects.create(
+        organization=m.organization, tournament=m.tournament,
+        home_source={"type": "winner_of", "match_id": str(m.id)},
+    )
+    from apps.fixtures.services.advance import advance_from_match
+
+    advance_from_match(m.id)  # on_commit doesn't fire inside the test txn
+    final.refresh_from_db()
+    assert final.home_team_id == a.id
+
+    # Correction: void A's goal, add B's goal — B is now the winner.
+    void_match_event(match=m, target_event=g, by=admin)
+    record_match_event(match=m, event_type=MatchEventType.GOAL, team=b, by=admin)
+    m.refresh_from_db()
+    assert m.winner_id == b.id
+    advance_from_match(m.id)
+    final.refresh_from_db()
+    assert final.home_team_id == b.id
