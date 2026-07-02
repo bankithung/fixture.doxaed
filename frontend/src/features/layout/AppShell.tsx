@@ -305,7 +305,7 @@ export function AppShell(): React.ReactElement {
       <div className="flex min-w-0 flex-1 flex-col">
         <header
           role="banner"
-          className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur sm:px-6 lg:px-8"
+          className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur print:hidden sm:px-6 lg:px-8"
         >
           {!setupMode ? (
             <button

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Download, Minus, Plus, Radio, Undo2 } from "lucide-react";
+import { ArrowLeft, Download, Minus, Plus, Printer, Radio, Undo2 } from "lucide-react";
 import { routes } from "@/lib/routes";
 import { liveApi, type LiveTeam, type MiniPlayer } from "@/api/live";
 import { Button } from "@/components/ui/button";
@@ -282,6 +282,7 @@ export function MatchConsolePage(): React.ReactElement {
   const awayName = match.away_team?.name ?? t("TBD");
   const lastEvent = events[0];
   const canUndo = live && !!lastEvent;
+  const isFinal = match.status === "completed" || match.status === "walkover";
   const [homeSets, awaySets] = setsWon(setRows);
   const completeSets = setRows.filter(([h, a]) => h !== "" && a !== "");
 
@@ -306,23 +307,82 @@ export function MatchConsolePage(): React.ReactElement {
     <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
       <Link
         to={routes.tournamentMatches(id)}
-        className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground print:hidden"
       >
         <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
         {t("Back to matches")}
       </Link>
       {/* Page header */}
-      <div className="flex flex-col gap-1">
-        <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-          {t("Scoring console")}
+      <div className="flex flex-wrap items-end justify-between gap-2 print:hidden">
+        <div className="flex flex-col gap-1">
+          <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            {t("Scoring console")}
+          </p>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+            {homeName} <span className="text-muted-foreground">{t("vs")}</span> {awayName}
+          </h1>
+        </div>
+        {isFinal ? (
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="print-match-report"
+            onClick={() => window.print()}
+          >
+            <Printer aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+            {t("Print match report")}
+          </Button>
+        ) : null}
+      </div>
+
+      {/* Print-only official match report. */}
+      <div data-testid="match-report" className="hidden print:block">
+        <h1 className="text-xl font-semibold">{t("Official match report")}</h1>
+        <p className="mt-1 text-2xl font-semibold">
+          {homeName} {match.home_score ?? 0}-{match.away_score ?? 0} {awayName}
         </p>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-          {homeName} <span className="text-muted-foreground">{t("vs")}</span> {awayName}
-        </h1>
+        {match.home_pens != null && match.away_pens != null ? (
+          <p className="font-tabular text-sm">
+            {t("Penalties")} {match.home_pens}-{match.away_pens}
+          </p>
+        ) : null}
+        {(match.set_scores?.length ?? 0) > 0 ? (
+          <p className="font-tabular text-sm">
+            {t("Sets")}: {(match.set_scores ?? []).map((x) => `${x[0]}-${x[1]}`).join(", ")}
+          </p>
+        ) : null}
+        <p className="mt-1 text-sm capitalize">{t("Status")}: {t(match.status)}</p>
+        <table className="mt-4 w-full border-collapse text-sm">
+          <caption className="pb-1 text-left text-base font-semibold">
+            {t("Timeline")}
+          </caption>
+          <thead>
+            <tr className="border-b border-border text-left text-xs uppercase">
+              <th className="w-16 py-1 pr-2">{t("Minute")}</th>
+              <th className="py-1 pr-2">{t("Event")}</th>
+              <th className="py-1">{t("Player")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...events].reverse().map((e) => (
+              <tr key={e.sequence_no} className="border-b border-border">
+                <td className="py-1 pr-2 font-tabular">
+                  {e.minute != null ? `${e.minute}'` : `#${e.sequence_no}`}
+                </td>
+                <td className="py-1 pr-2 capitalize">{t(e.type.replace(/_/g, " "))}</td>
+                <td className="py-1">{e.player ?? ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="mt-6 text-xs">
+          {t("Signatures")}: ____________________ ({t("Referee")}) ·
+          ____________________ ({t("Scorer")})
+        </p>
       </div>
 
       {/* Scoreboard */}
-      <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm print:hidden">
         <span
           aria-hidden="true"
           className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-primary/10 blur-3xl"
@@ -622,7 +682,7 @@ export function MatchConsolePage(): React.ReactElement {
       ) : null}
 
       {/* Event log / timeline */}
-      <div className="rounded-xl border border-border bg-card shadow-sm">
+      <div className="rounded-xl border border-border bg-card shadow-sm print:hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
           <h2 className="text-sm font-semibold">{t("Event log")}</h2>
           <div className="flex items-center gap-1.5">

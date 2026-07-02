@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, CloudRainWind, History, ListChecks, Radio } from "lucide-react";
+import { ChevronDown, CloudRainWind, History, ListChecks, Printer, Radio } from "lucide-react";
 import { ShiftDayDialog } from "@/features/fixtures/ShiftDayDialog";
 import { tournamentsApi, type ControlRoomPayload } from "@/api/tournaments";
 import { Select } from "@/components/ui/Select";
@@ -268,7 +268,7 @@ export function ControlRoomPage(): React.ReactElement {
   return (
     <div className="flex w-full flex-col gap-5">
       {/* Header: identity + stream health + a jump to the full matches board. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 print:hidden">
         <div className="min-w-0">
           <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
             {t("Live operations")}
@@ -285,6 +285,17 @@ export function ControlRoomPage(): React.ReactElement {
             >
               <CloudRainWind aria-hidden="true" className="h-3.5 w-3.5" />
               {t("Shift a day")}
+            </button>
+          ) : null}
+          {!showMine ? (
+            <button
+              type="button"
+              data-testid="print-day-sheet"
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+            >
+              <Printer aria-hidden="true" className="h-3.5 w-3.5" />
+              {t("Print day sheet")}
             </button>
           ) : null}
           <Link
@@ -332,7 +343,7 @@ export function ControlRoomPage(): React.ReactElement {
           ) : null}
         </section>
       ) : (
-        <>
+        <div className="contents print:hidden">
           {/* Day selector — chips on desktop, the custom Select on mobile. */}
           {isMobile ? (
             <Select
@@ -476,8 +487,69 @@ export function ControlRoomPage(): React.ReactElement {
               ) : null}
             </section>
           ) : null}
-        </>
+        </div>
       )}
+      {/* Print-only operations day sheet: order of play by court with crew
+          and a blank result column, for venue managers and referees. */}
+      <div data-testid="day-sheet" className="hidden print:block">
+        <h1 className="text-xl font-semibold">
+          {t("Day sheet")} · {selectedDay ? fmtDayLabel(selectedDay) : ""}
+        </h1>
+        {Object.entries(
+          allMatches.reduce<Record<string, typeof allMatches>>((acc, m) => {
+            const v = m.venue || t("Unassigned court");
+            (acc[v] = acc[v] ?? []).push(m);
+            return acc;
+          }, {}),
+        ).map(([venue, ms]) => (
+          <table key={venue} className="mt-4 w-full border-collapse text-sm">
+            <caption className="pb-1 text-left text-base font-semibold">
+              {venue}
+            </caption>
+            <thead>
+              <tr className="border-b border-border text-left text-xs uppercase">
+                <th className="py-1 pr-2">{t("Time")}</th>
+                <th className="py-1 pr-2">{t("Match")}</th>
+                <th className="py-1 pr-2">{t("Competition")}</th>
+                <th className="py-1 pr-2">{t("Crew")}</th>
+                <th className="py-1">{t("Result")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...ms]
+                .sort((a, b) => (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? ""))
+                .map((m) => (
+                  <tr key={m.id} className="border-b border-border align-top">
+                    <td className="py-1.5 pr-2 font-tabular">
+                      {m.scheduled_at
+                        ? new Date(m.scheduled_at).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            timeZone: tz,
+                          })
+                        : ""}
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {m.home_team?.name ?? "TBD"} {t("vs")} {m.away_team?.name ?? "TBD"}
+                    </td>
+                    <td className="py-1.5 pr-2">{m.leaf_label}</td>
+                    <td className="py-1.5 pr-2">
+                      {[m.scorer?.name, ...(m.officials ?? []).map((o) => o.name)]
+                        .filter(Boolean)
+                        .join(", ")}
+                    </td>
+                    <td className="w-24 py-1.5">
+                      <span className="inline-block w-20 border-b border-border">
+                        &nbsp;
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        ))}
+      </div>
+
       {shiftOpen ? (
         <ShiftDayDialog
           tournamentId={id}
