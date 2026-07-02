@@ -511,6 +511,21 @@ export const tournamentsApi = {
   matchesEnriched: (id: string) =>
     api.get<ControlRoomMatch[]>(`/api/tournaments/${id}/matches/`),
   /** Standings grouped by pool. */
+  /** Card-derived suspensions (PRD 5.8) — who is banned, why, remaining. */
+  suspensions: (id: string) =>
+    api.get<{
+      suspensions: {
+        player_id: string;
+        player_name: string;
+        team_id: string;
+        team_name: string;
+        reason: string;
+        triggered_match_id: string;
+        banned_matches: number;
+        served: number;
+        active: boolean;
+      }[];
+    }>(`/api/tournaments/${id}/suspensions/`),
   standings: (id: string) =>
     api.get<{ groups: StandingsGroup[] }>(`/api/tournaments/${id}/standings/`),
   /** Generate a draw (bracket-editor module or manager). `leafKey` scopes the

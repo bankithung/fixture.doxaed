@@ -73,6 +73,16 @@ def set_lineup(
             raise ValidationError(f"Invalid lineup role: {role}")
         resolved.append((player, role, entry.get("shirt_no")))
 
+    # PRD §5.4 hard check: a player serving a card ban cannot be named.
+    if resolved:
+        from apps.matches.services.discipline import suspended_player_ids
+
+        banned = suspended_player_ids(match.tournament)
+        for player, _role, _shirt in resolved:
+            if str(player.id) in banned:
+                name = player.person.full_name if player.person_id else str(player.id)
+                raise ValidationError(f"player_suspended:{name}")
+
     with transaction.atomic():
         locked = Match.objects.select_for_update().get(pk=match.pk)
         if locked.status != MatchStatus.SCHEDULED:

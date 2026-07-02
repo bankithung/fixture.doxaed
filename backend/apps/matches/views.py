@@ -197,6 +197,20 @@ class TournamentMatchListView(GenericAPIView):
         return Response([row(m) for m in qs])
 
 
+class TournamentSuspensionsView(GenericAPIView):
+    """`GET /api/tournaments/{id}/suspensions/` — card-derived bans (PRD 5.8):
+    who is serving, why, and how much remains. Derived from the event log on
+    demand, like standings."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id):
+        from apps.matches.services.discipline import compute_suspensions
+
+        t = _accessible_tournament_or_404(request.user, tournament_id)
+        return Response({"suspensions": compute_suspensions(t)})
+
+
 class TournamentStandingsView(GenericAPIView):
     permission_classes = [IsAuthenticated]
 

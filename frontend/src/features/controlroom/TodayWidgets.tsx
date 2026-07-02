@@ -1,6 +1,11 @@
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, ChevronRight, MapPin, Radio, Trophy } from "lucide-react";
-import type { ControlRoomMatch, ControlRoomVenue } from "@/api/tournaments";
+import {
+  tournamentsApi,
+  type ControlRoomMatch,
+  type ControlRoomVenue,
+} from "@/api/tournaments";
 import { LeafLabel } from "@/features/fixtures/LeafLabel";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
@@ -343,5 +348,60 @@ export function NeedsAttentionPanel({
         </div>
       )}
     </Panel>
+  );
+}
+
+/** Card-derived suspensions (PRD 5.8) — who cannot be named today. Hidden
+ * when nobody is serving a ban. */
+export function SuspensionsPanel({
+  tournamentId,
+}: {
+  tournamentId: string;
+}): React.ReactElement | null {
+  const q = useQuery({
+    queryKey: ["t-suspensions", tournamentId],
+    queryFn: () => tournamentsApi.suspensions(tournamentId),
+    staleTime: 60_000,
+  });
+  const active = (q.data?.suspensions ?? []).filter((s) => s.active);
+  if (active.length === 0) return null;
+  const reasonLabel: Record<string, string> = {
+    red_card: "Red card",
+    second_yellow: "Second yellow",
+    yellow_accumulation: "Yellow cards",
+  };
+  return (
+    <section
+      data-testid="suspensions-panel"
+      className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+    >
+      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+        <h3 className="text-sm font-semibold">{t("Suspended players")}</h3>
+        <span className="rounded-full bg-destructive/10 px-2 py-0.5 font-tabular text-xs text-destructive">
+          {active.length}
+        </span>
+      </div>
+      <ul className="divide-y divide-border">
+        {active.map((s) => (
+          <li
+            key={`${s.player_id}-${s.triggered_match_id}`}
+            className="flex items-center gap-3 px-4 py-2 text-sm"
+          >
+            <span className="min-w-0 flex-1 truncate font-medium">
+              {s.player_name}
+            </span>
+            <span className="truncate text-xs text-muted-foreground">
+              {s.team_name}
+            </span>
+            <span className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+              {t(reasonLabel[s.reason] ?? s.reason)}
+            </span>
+            <span className="font-tabular text-xs text-muted-foreground">
+              {s.served}/{s.banned_matches} {t("served")}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

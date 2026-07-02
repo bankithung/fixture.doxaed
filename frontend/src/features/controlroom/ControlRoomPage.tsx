@@ -29,6 +29,7 @@ import {
   LiveNowPanel,
   NeedsAttentionPanel,
   RecentResultsPanel,
+  SuspensionsPanel,
 } from "./TodayWidgets";
 import { useControlRoom } from "./useControlRoom";
 
@@ -437,6 +438,8 @@ export function ControlRoomPage(): React.ReactElement {
                 />
                 <RecentResultsPanel matches={allMatches} timeZone={tz} />
               </div>
+
+              <SuspensionsPanel tournamentId={id} />
             </>
           )}
 
