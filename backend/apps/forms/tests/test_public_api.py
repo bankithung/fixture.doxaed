@@ -310,14 +310,18 @@ def test_team_submit_same_name_across_categories_ok_duplicates_rejected():
         "categories_football": ["football.u15"],
         "teams_football_u15": [{
             "team_name_football_u15": "Don Bosco A",
-            "players_football_u15": [{"player_name_football_u15": "P One"}],
+            "players_football_u15": [{"player_name_football_u15": "P One",
+                                      "player_dob_football_u15": "2012-04-01"}],
         }],
         "teams_badminton": [{
             "team_name_badminton": "Don Bosco A",
-            "players_badminton": [{"player_name_badminton": "P Two"}],
+            "players_badminton": [{"player_name_badminton": "P Two",
+              "player_dob_badminton": "2012-05-01"}],
         }],
     }
-    r = APIClient().post(
+    c = APIClient()
+    c.force_authenticate(user=admin)  # default-closed (C10): writes need auth
+    r = c.post(
         f"/api/forms/{team_form.id}/public/",
         {"answers": answers, "event_id": str(uuid.uuid4())},
         format="json",
@@ -330,11 +334,13 @@ def test_team_submit_same_name_across_categories_ok_duplicates_rejected():
     # Duplicate names INSIDE one competition → 400 keyed by the group field.
     dup = {**answers, "teams_football_u15": [
         {"team_name_football_u15": "Twins",
-         "players_football_u15": [{"player_name_football_u15": "A"}]},
+         "players_football_u15": [{"player_name_football_u15": "A",
+           "player_dob_football_u15": "2012-04-01"}]},
         {"team_name_football_u15": "Twins",
-         "players_football_u15": [{"player_name_football_u15": "B"}]},
+         "players_football_u15": [{"player_name_football_u15": "B",
+           "player_dob_football_u15": "2012-04-02"}]},
     ]}
-    r2 = APIClient().post(
+    r2 = c.post(
         f"/api/forms/{team_form.id}/public/",
         {"answers": dup, "event_id": str(uuid.uuid4())},
         format="json",
@@ -342,10 +348,31 @@ def test_team_submit_same_name_across_categories_ok_duplicates_rejected():
     assert r2.status_code == 400
     assert "teams_football_u15" in r2.json()["errors"]
 
-    # A name already registered in that competition → 400 too.
-    r3 = APIClient().post(
+    # ANOTHER school claiming a name already registered in that competition
+    # → 400 too (an authorized own-school resubmit legitimately supersedes,
+    # so the taken-name conflict is cross-school by design).
+    resp2 = FormResponse.objects.create(
+        form=org, organization=t.organization, tournament=t, title="St Paul",
+        answers={"school_name": "St Paul", "contact_name": "Br. J",
+                 "contact_phone": "9876500000",
+                 "sports": ["football"],
+                 "categories_football": ["football.u15"]},
+    )
+    map_response(resp2)
+    inst2 = Institution.objects.get(tournament=t, name="St Paul")
+    poach = {
+        "institution_id": str(inst2.id),
+        "sports": ["football"],
+        "categories_football": ["football.u15"],
+        "teams_football_u15": [{
+            "team_name_football_u15": "Don Bosco A",
+            "players_football_u15": [{"player_name_football_u15": "P Three",
+              "player_dob_football_u15": "2012-06-01"}],
+        }],
+    }
+    r3 = c.post(
         f"/api/forms/{team_form.id}/public/",
-        {"answers": answers, "event_id": str(uuid.uuid4())},
+        {"answers": poach, "event_id": str(uuid.uuid4())},
         format="json",
     )
     assert r3.status_code == 400
@@ -396,7 +423,8 @@ def _team_answers(inst, name="Don Bosco A", player="P One"):
         "categories_football": ["football.u15"],
         "teams_football_u15": [{
             "team_name_football_u15": name,
-            "players_football_u15": [{"player_name_football_u15": player}],
+            "players_football_u15": [{"player_name_football_u15": player,
+              "player_dob_football_u15": "2012-04-01"}],
         }],
     }
 
@@ -641,3 +669,62 @@ def test_per_option_logo_flows_to_directory_and_institution_dropdown():
         for f in sec["fields"]
     }
     assert any(o.get("image") == img for o in fields["institution_id"]["options"])
+
+
+def test_team_submit_default_closed_without_issued_code():
+    """C10: an institution with NO issued code is still protected. Anyone
+    picking it in the public dropdown used to be able to register teams in
+    its name; now public writes need a code token, bound link, or manager."""
+    _a, _t, inst, team_form = _team_reg_fixture("closed")
+    assert not inst.team_code_hash  # no code ever issued
+
+    r = APIClient().post(
+        f"/api/forms/{team_form.id}/public/",
+        {"answers": _team_answers(inst), "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "team_access_required"
+
+
+def test_public_schema_marks_every_institution_protected():
+    """C10 payload: requires_code is always true; has_code says whether a
+    code exists yet (drives the 'ask the organizer' message)."""
+    _a, _t2, inst, team_form = _team_reg_fixture("payload")
+    r = APIClient().get(f"/api/forms/{team_form.id}/public/")
+    assert r.status_code == 200
+
+    def _inst_options(fields):
+        for f in fields:
+            if (f.get("data_source") or {}).get("type") == "institution_list":
+                return f.get("options") or []
+            for o in f.get("options") or []:
+                got = _inst_options(o.get("fields") or [])
+                if got:
+                    return got
+            got = _inst_options(f.get("fields") or [])
+            if got:
+                return got
+        return []
+
+    opts = []
+    for sec in r.json()["form"]["schema"]["sections"]:
+        opts = _inst_options(sec.get("fields") or [])
+        if opts:
+            break
+    assert opts, "institution options not found in public schema"
+    mine = next(o for o in opts if o["value"] == str(inst.id))
+    assert mine["requires_code"] is True
+    assert mine["has_code"] is False
+
+
+def test_manager_submit_bypasses_default_closed():
+    admin, _t, inst, team_form = _team_reg_fixture("mgrclosed")
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    r = c.post(
+        f"/api/forms/{team_form.id}/public/",
+        {"answers": _team_answers(inst), "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code in (200, 201)

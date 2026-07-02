@@ -300,14 +300,19 @@ def _resolve_data_sources(schema: dict, tournament) -> dict:
     # `leaves` = the competitions the institution registered at Stage 1; the
     # team form scopes its sport/category questions to them client-side
     # (competition keys are already public via the directory — no PII here).
-    # `requires_code` tells the renderer to demand the emailed access code
-    # before accepting/editing this institution's team registration.
+    # Protection is DEFAULT-CLOSED (C10): every institution requires
+    # authorization (code token, bound link, or manager) before its teams can
+    # be submitted or edited — a school without an issued code used to be
+    # writable by anyone picking it in the dropdown. `has_code` lets the
+    # renderer distinguish "enter your code" from "no code issued yet, ask
+    # the organizer".
     options = [
         {
             "value": str(i.id),
             "label": name_label_map.get(i.name, i.name),
             "leaves": (i.attributes or {}).get("leaves") or [],
-            "requires_code": bool(i.team_code_hash),
+            "requires_code": True,
+            "has_code": bool(i.team_code_hash),
             **({"image": logos[i.id]} if i.id in logos else {}),
         }
         for i in insts
@@ -602,11 +607,12 @@ class PublicFormView(GenericAPIView):
                 request.user.is_authenticated
                 and can_access_module(request.user, form.tournament, "forms")
             )
-            if inst is not None and inst.team_code_hash and not manager:
-                # An institution holding an access code is PROTECTED: only a
-                # valid signed token (from /team-access/) — or a per-
-                # institution bound link, which is its own secret — may
-                # submit or update its teams.
+            if inst is not None and not manager:
+                # DEFAULT-CLOSED (C10): every institution is protected — only
+                # a valid signed token (from /team-access/), a per-institution
+                # bound link (its own secret), or a manager may submit or
+                # update its teams. An institution with no issued code simply
+                # cannot be written publicly until the organizer sends one.
                 bound_ok = (
                     link is not None
                     and (link.bound_entity or {}).get("institution_id") == str(inst.id)

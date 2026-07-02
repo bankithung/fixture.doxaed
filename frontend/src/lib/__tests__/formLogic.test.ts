@@ -293,3 +293,80 @@ describe("nested options (option-revealed follow-up fields)", () => {
     expect(validateRequired(nested, { sport: "tt" })).toEqual({});
   });
 });
+
+// ------------------------------------------------------------ C9: group rows
+const groupSchema: FormSchema = {
+  version: 1,
+  sections: [
+    {
+      key: "teams",
+      title: "Teams",
+      fields: [
+        {
+          key: "teams",
+          type: "group",
+          label: "Teams",
+          repeatable: true,
+          min_items: 1,
+          fields: [
+            {
+              key: "team_name",
+              type: "short_text",
+              label: "Team name",
+              required: true,
+            },
+            {
+              key: "players",
+              type: "group",
+              label: "Players",
+              repeatable: true,
+              min_items: 1,
+              fields: [
+                {
+                  key: "player_name",
+                  type: "short_text",
+                  label: "Player name",
+                  required: true,
+                },
+                { key: "note", type: "short_text", label: "Note" },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+describe("validateRequired inside group rows (C9)", () => {
+  it("flags a blank required child in any row on the top-level group key", () => {
+    const errs = validateRequired(groupSchema, {
+      teams: [
+        {
+          team_name: "A",
+          players: [{ player_name: "P One" }, { player_name: "" }],
+        },
+      ],
+    });
+    expect(errs.teams).toBe("required_in_rows");
+  });
+
+  it("passes when every row's required children are filled", () => {
+    const errs = validateRequired(groupSchema, {
+      teams: [
+        {
+          team_name: "A",
+          players: [{ player_name: "P One", note: "" }],
+        },
+      ],
+    });
+    expect(errs).toEqual({});
+  });
+
+  it("flags a blank required child in a nested group row", () => {
+    const errs = validateRequired(groupSchema, {
+      teams: [{ team_name: "", players: [{ player_name: "P" }] }],
+    });
+    expect(errs.teams).toBe("required_in_rows");
+  });
+});

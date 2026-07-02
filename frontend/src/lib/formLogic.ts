@@ -199,8 +199,44 @@ export function reachableFieldKeys(
 }
 
 /**
+ * Required check INSIDE group rows (mirrors backend `_validate_group_rows`,
+ * C9): a required child (player name, DOB) left empty in ANY row fails. Child
+ * visibility is evaluated row-locally, nested groups recurse. Returns true
+ * when every row is complete.
+ */
+function groupRowsComplete(f: Field, raw: unknown): boolean {
+  const rows: unknown[] = f.repeatable
+    ? Array.isArray(raw)
+      ? raw
+      : isEmpty(raw)
+        ? []
+        : [raw]
+    : [typeof raw === "object" && raw !== null ? raw : {}];
+  for (const row of rows) {
+    if (typeof row !== "object" || row === null || Array.isArray(row)) {
+      return false;
+    }
+    const r = row as Record<string, unknown>;
+    for (const child of f.fields ?? []) {
+      if (DISPLAY_TYPES.has(child.type)) continue;
+      if (!isVisible(child.visibility, r)) continue;
+      const craw = r[child.key];
+      if (child.type === "group") {
+        if (!groupRowsComplete(child, craw)) return false;
+        continue;
+      }
+      if (child.required && isEmpty(craw)) return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Client-side required check (the server re-validates). Returns a map of
  * fieldKey -> error code for every reachable+visible required field left empty.
+ * Group fields also fail (`required_in_rows`) when any row's required child is
+ * blank — keyed by the TOP-LEVEL group key, matching how server dotted paths
+ * are mapped for display.
  */
 export function validateRequired(
   schema: FormSchema,
@@ -210,7 +246,15 @@ export function validateRequired(
   for (const sec of reachableSections(schema, answers)) {
     for (const f of activeFieldsIn(sec.fields, answers)) {
       if (DISPLAY_TYPES.has(f.type)) continue;
-      if (f.required && isEmpty(answers[f.key])) errs[f.key] = "required";
+      if (f.required && isEmpty(answers[f.key])) {
+        errs[f.key] = "required";
+      } else if (
+        f.type === "group" &&
+        !isEmpty(answers[f.key]) && // parity: the server skips EMPTY groups
+        !groupRowsComplete(f, answers[f.key])
+      ) {
+        errs[f.key] = "required_in_rows";
+      }
     }
   }
   return errs;

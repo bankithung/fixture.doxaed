@@ -114,6 +114,47 @@ def _check_group_bounds(fld: dict, raw: Any, path: str, errors: dict) -> None:
                 )
 
 
+def _validate_group_rows(fld: dict, raw: Any, path: str, errors: dict) -> None:
+    """Required/type validation INSIDE group rows (C9). The red asterisk on a
+    player's name/DOB used to be decoration: ``_validate_fields`` short-circuited
+    groups to bounds only, so blank required children sailed through. Walks each
+    row's child fields (visibility evaluated row-locally), recursing into nested
+    groups; errors carry the same dotted paths (``group.<row>.child``) the
+    public renderer already maps back onto the top-level group field."""
+    if fld.get("repeatable"):
+        rows = raw if isinstance(raw, list) else (
+            [] if raw in (None, "", {}) else [raw]
+        )
+        row_paths = [f"{path}.{i}" for i in range(len(rows))]
+    else:
+        rows = [raw if isinstance(raw, dict) else {}]
+        row_paths = [path]
+    for row, rpath in zip(rows, row_paths, strict=True):
+        if not isinstance(row, dict):
+            errors[rpath] = "invalid_row"
+            continue
+        for child in fld.get("fields") or []:
+            ctype = child.get("type")
+            if ctype in DISPLAY_TYPES:
+                continue
+            if not _visible(child.get("visibility"), row):
+                continue
+            ckey = child["key"]
+            craw = row.get(ckey)
+            cpath = f"{rpath}.{ckey}"
+            if ctype == "group":
+                _validate_group_rows(child, craw, cpath, errors)
+                continue
+            if craw in (None, "", [], {}):
+                if child.get("required"):
+                    errors[cpath] = "required"
+                continue
+            try:
+                validate_value(child, craw)
+            except FieldError as e:
+                errors[cpath] = str(e)
+
+
 def _validate_fields(
     fields: list[dict], answers: dict, clean: dict, errors: dict
 ) -> None:
@@ -140,7 +181,8 @@ def _validate_fields(
             continue
         if ftype == "group":
             _check_group_bounds(fld, raw, key, errors)
-            clean[key] = raw  # group deep-validation beyond bounds: follow-up
+            _validate_group_rows(fld, raw, key, errors)
+            clean[key] = raw
             continue
         try:
             clean[key] = validate_value(fld, raw)

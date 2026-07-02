@@ -234,7 +234,8 @@ def test_generated_team_form_pins_roster_bounds_and_validator_enforces():
     ok = validate_answers(form.schema, {
         **base,
         g["group"]: [{g["team_name"]: "TT A",
-                      g["players_group"]: [{g["player_name"]: "Asen"}]}],
+                      g["players_group"]: [{g["player_name"]: "Asen",
+                                            g["player_dob"]: "2012-04-01"}]}],
     })
     assert ok[g["group"]][0][g["team_name"]] == "TT A"
 
@@ -244,8 +245,10 @@ def test_generated_team_form_pins_roster_bounds_and_validator_enforces():
             **base,
             g["group"]: [{g["team_name"]: "TT A",
                           g["players_group"]: [
-                              {g["player_name"]: "Asen"},
-                              {g["player_name"]: "Ben"},
+                              {g["player_name"]: "Asen",
+                               g["player_dob"]: "2012-04-01"},
+                              {g["player_name"]: "Ben",
+                               g["player_dob"]: "2012-05-01"},
                           ]}],
         })
     assert "too_many_items" in str(exc.value)

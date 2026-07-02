@@ -741,5 +741,6 @@ export function FieldRenderer({
 /** Server validation codes → human messages (default: required). */
 const ERROR_MESSAGES: Record<string, string> = {
   too_few_items: "Add the minimum number of entries (check the squad size).",
-  too_many_items: "Too many entries — remove some (check the squad size).",
+  too_many_items: "Too many entries. Remove some (check the squad size).",
+  required_in_rows: "Complete the required details in every entry.",
 };

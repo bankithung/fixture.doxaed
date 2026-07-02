@@ -56,6 +56,9 @@ export interface Option {
   /** institution_list options: true when this school must enter its emailed
    * access code before registering/editing teams. */
   requires_code?: boolean;
+  /** institution_list options: false when no code has been issued yet — the
+   * school cannot submit publicly until the organizer sends one. */
+  has_code?: boolean;
   /**
    * Nested follow-up questions revealed when this option is chosen (recursive —
    * a nested choice field's options can themselves carry `fields`). Answers stay

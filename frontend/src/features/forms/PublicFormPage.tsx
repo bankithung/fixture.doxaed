@@ -842,6 +842,18 @@ export function PublicFormPage(): React.ReactElement {
                         : t("Code verified. You can register your teams.")}
                     </span>
                   </div>
+                ) : selectedInstOption?.has_code === false ? (
+                  <>
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <KeyRound aria-hidden="true" className="h-4 w-4 text-primary" />
+                      {t("School access code")}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        "This school has no access code yet. Ask the organizer to send one to your school's contact email before registering teams.",
+                      )}
+                    </p>
+                  </>
                 ) : (
                   <>
                     <div className="flex items-center gap-2 text-sm font-medium">

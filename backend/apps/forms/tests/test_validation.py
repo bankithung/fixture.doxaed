@@ -134,3 +134,57 @@ def test_multi_sport_template_reveals_categories_by_competition():
     })
     assert clean2.get("sepak_categories") == ["u14_girls"]
     assert clean2.get("tt_categories") == ["a14_girls_doubles"]
+
+
+# --------------------------------------------------------- C9: group rows
+GROUP_SCHEMA = {"version": 1, "sections": [
+    {"key": "teams", "title": "Teams", "fields": [
+        {"key": "teams", "type": "group", "label": "Teams", "repeatable": True,
+         "min_items": 1, "fields": [
+             {"key": "team_name", "type": "short_text", "label": "Team name",
+              "required": True},
+             {"key": "players", "type": "group", "label": "Players",
+              "repeatable": True, "min_items": 1, "fields": [
+                  {"key": "player_name", "type": "short_text",
+                   "label": "Player name", "required": True},
+                  {"key": "dob", "type": "date", "label": "Date of birth",
+                   "required": True},
+                  {"key": "note", "type": "short_text", "label": "Note"},
+              ]},
+         ]},
+    ]},
+]}
+
+
+def test_group_row_required_children_enforced():
+    """A blank required child inside a repeatable row fails with a dotted path
+    (the asterisk used to be decoration: rows only had bounds checked)."""
+    with pytest.raises(AnswerError) as exc:
+        validate_answers(GROUP_SCHEMA, {"teams": [
+            {"team_name": "A", "players": [
+                {"player_name": "P One", "dob": "2012-04-01"},
+                {"player_name": "", "dob": ""},  # blank row 1
+            ]},
+        ]})
+    errs = exc.value.errors
+    assert errs["teams.0.players.1.player_name"] == "required"
+    assert errs["teams.0.players.1.dob"] == "required"
+
+
+def test_group_row_type_validation_enforced():
+    with pytest.raises(AnswerError) as exc:
+        validate_answers(GROUP_SCHEMA, {"teams": [
+            {"team_name": "A", "players": [
+                {"player_name": "P One", "dob": "not-a-date"},
+            ]},
+        ]})
+    assert "teams.0.players.0.dob" in exc.value.errors
+
+
+def test_group_rows_complete_pass_and_optional_child_may_be_blank():
+    clean = validate_answers(GROUP_SCHEMA, {"teams": [
+        {"team_name": "A", "players": [
+            {"player_name": "P One", "dob": "2012-04-01", "note": ""},
+        ]},
+    ]})
+    assert clean["teams"][0]["team_name"] == "A"
