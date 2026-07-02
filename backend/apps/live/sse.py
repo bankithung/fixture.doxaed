@@ -112,3 +112,54 @@ async def _frames(tournament_id: str) -> AsyncIterator[str]:
                 yield f"event: tick\ndata: {data}\n\n"
     finally:
         await layer.group_discard(group, channel)
+
+
+# ------------------------------------------------------------- user stream
+@transaction.non_atomic_requests
+async def notification_stream(request):
+    """``GET /api/notifications/stream/`` — the per-user SSE notification
+    push invariant 11 promised (dispatch._publish was a log stub; the bell
+    polled every 30s). Session-authenticated; frames carry only the
+    notification id — the client refetches the list on tick. Same
+    connection-release + Redis-timeout discipline as the tournament stream."""
+    user = await request.auser() if hasattr(request, "auser") else request.user
+    await sync_to_async(_close_db_connection)()
+    if not getattr(user, "is_authenticated", False):
+        return HttpResponseNotFound("not_found")
+
+    response = StreamingHttpResponse(
+        _user_frames(str(user.id)), content_type="text/event-stream"
+    )
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
+
+
+def user_notification_group(user_id: str) -> str:
+    return f"user_{user_id}_notifications".replace("-", "")
+
+
+async def _user_frames(user_id: str) -> AsyncIterator[str]:
+    from channels.layers import get_channel_layer
+
+    layer = get_channel_layer()
+    if layer is None:  # pragma: no cover - layer is always configured
+        return
+    group = user_notification_group(user_id)
+    channel = await layer.new_channel()
+    await layer.group_add(group, channel)
+    try:
+        yield ": connected\n\n"
+        while True:
+            try:
+                message = await asyncio.wait_for(
+                    layer.receive(channel), timeout=KEEPALIVE_SECONDS
+                )
+            except (TimeoutError, redis.exceptions.TimeoutError):
+                yield ": keep-alive\n\n"
+                continue
+            if message.get("type") == "notification.tick":
+                data = json.dumps(message.get("data") or {})
+                yield f"event: tick\ndata: {data}\n\n"
+    finally:
+        await layer.group_discard(group, channel)

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell } from "lucide-react";
 import { notificationsApi } from "@/api/notifications";
+import { useEventStream } from "@/lib/useEventStream";
 import { t } from "@/lib/t";
 
 /** Notification bell: unread badge + dropdown panel with mark-read actions. */
@@ -10,12 +11,18 @@ export function NotificationBell(): React.ReactElement {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  // Real-time push (invariant 11): a tick on the per-user stream refreshes
+  // the list immediately; the relaxed poll above covers SSE-less sessions.
+  useEventStream("/api/notifications/stream/", () => {
+    qc.invalidateQueries({ queryKey: ["notifications"] });
+  });
   const ref = useRef<HTMLDivElement>(null);
 
   const query = useQuery({
     queryKey: ["notifications"],
     queryFn: notificationsApi.list,
-    refetchInterval: 30_000,
+    // SSE push is primary (below); this poll is the degraded-mode fallback.
+    refetchInterval: 120_000,
   });
   const unread = query.data?.unread_count ?? 0;
   const items = query.data?.results ?? [];

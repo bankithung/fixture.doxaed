@@ -33,7 +33,7 @@ from apps.fixtures.views import (
     PublicTournamentScheduleView,
     PublicTournamentStandingsView,
 )
-from apps.live.sse import tournament_stream
+from apps.live.sse import notification_stream, tournament_stream
 from apps.organizations.views import (  # noqa: E402
     InvitationAcceptByIdView,
     InvitationAcceptView,
@@ -91,6 +91,11 @@ api_v1 = [
     path("disputes/", include("apps.disputes.urls")),
     # Phase 1B: public live viewer snapshot (one-way; SSE upgrade later).
     path("live/", include("apps.live.urls")),
+    path(
+        "notifications/stream/",
+        notification_stream,
+        name="notification-stream",
+    ),
     # Trust layer (increment H): public schedule + per-team iCal feed.
     path(
         "tournaments/<uuid:tournament_id>/badges/",

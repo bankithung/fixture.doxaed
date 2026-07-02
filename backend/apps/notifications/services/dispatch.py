@@ -14,8 +14,27 @@ logger = logging.getLogger(__name__)
 
 
 def _publish(user_id, notification_id) -> None:
-    """Post-commit hook — SSE fan-out on user:<uuid>:notifications (apps.live)."""
+    """Post-commit hook — SSE fan-out to the user's notification stream
+    (apps.live.sse.notification_stream). Best-effort: delivery failure never
+    affects the committed row (the bell's poll remains the fallback)."""
     logger.info("notification committed user=%s id=%s", user_id, notification_id)
+    try:
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
+        from apps.live.sse import user_notification_group
+
+        layer = get_channel_layer()
+        if layer is not None:
+            async_to_sync(layer.group_send)(
+                user_notification_group(str(user_id)),
+                {
+                    "type": "notification.tick",
+                    "data": {"id": str(notification_id)},
+                },
+            )
+    except Exception:  # pragma: no cover - push is best-effort
+        logger.exception("notification SSE fan-out failed")
 
 
 def create_notification(
