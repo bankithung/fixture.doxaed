@@ -52,22 +52,33 @@ export function PublicLeaders({
       </div>
 
       {empty ? (
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 px-4 py-3 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <Target aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("Top scorers")}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Shield aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("Best defence")}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Award aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("Badges")}
-          </span>
-          <span className="w-full sm:w-auto">
-            {t("They fill in live once play starts.")}
-          </span>
+        <div>
+          <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            {[
+              { label: t("Top scorers"), Icon: Target },
+              { label: t("Best defence"), Icon: Shield },
+              { label: t("Latest badges"), Icon: Award },
+            ].map(({ label, Icon }) => (
+              <div key={label} className="flex flex-col gap-1.5 p-3">
+                <p className="flex items-center gap-1.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  <Icon aria-hidden="true" className="h-3 w-3" />
+                  {label}
+                </p>
+                {[1, 2, 3].map((rank) => (
+                  <div key={rank} className="flex items-center gap-2">
+                    <span className="w-4 shrink-0 font-tabular text-xs text-muted-foreground/60">
+                      {rank}
+                    </span>
+                    <span className="h-2 flex-1 rounded-full bg-muted" />
+                    <span className="h-2 w-6 rounded-full bg-muted" />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+            {t("Fills automatically and updates live once play starts.")}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">

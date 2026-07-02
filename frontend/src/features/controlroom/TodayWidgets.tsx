@@ -437,11 +437,33 @@ export function LeadersPanel({
       </div>
 
       {empty ? (
-        <p className="px-4 py-3 text-sm text-muted-foreground">
-          {t(
-            "Top scorers, best defence and badges build here automatically as results come in.",
-          )}
-        </p>
+        // Day-zero: render the BOARD, not a sentence — ranked slots waiting
+        // to fill, so the feature is unmistakable before results land.
+        <div>
+          <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            {[t("Top scorers"), t("Best defence"), t("Latest badges")].map(
+              (col) => (
+                <div key={col} className="flex flex-col gap-1.5 p-3">
+                  <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                    {col}
+                  </p>
+                  {[1, 2, 3].map((rank) => (
+                    <div key={rank} className="flex items-center gap-2">
+                      <span className="w-4 shrink-0 font-tabular text-xs text-muted-foreground/60">
+                        {rank}
+                      </span>
+                      <span className="h-2 flex-1 rounded-full bg-muted" />
+                      <span className="h-2 w-6 rounded-full bg-muted" />
+                    </div>
+                  ))}
+                </div>
+              ),
+            )}
+          </div>
+          <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+            {t("Fills automatically and updates live as results come in.")}
+          </p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
           <div className="flex flex-col gap-1 p-3">
