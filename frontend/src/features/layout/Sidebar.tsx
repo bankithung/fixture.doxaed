@@ -143,7 +143,7 @@ export function Sidebar({
           title={collapsed ? t("Fixture") : undefined}
           className="flex items-center gap-2 rounded-md font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <BrandLogo className="h-7 w-7 rounded-lg shadow-sm" alt={t("Fixture")} />
+          <BrandLogo className="h-7 w-7 rounded-lg shadow-sm" alt="" />
           {collapsed ? null : t("Fixture")}
         </Link>
       </div>

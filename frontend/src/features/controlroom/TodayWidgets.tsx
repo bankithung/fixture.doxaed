@@ -20,7 +20,7 @@ import {
 } from "./format";
 import { StatusPill } from "./MatchTile";
 
-const teamName = (tm: { name: string } | null): string => tm?.name ?? t("TBD");
+const teamName = (tm: { name: string } | null): string => tm?.name || t("TBD");
 
 /** Section shell — a titled card so every panel reads consistently. */
 function Panel({
@@ -63,15 +63,14 @@ export function LiveNowPanel({
 }: {
   matches: ControlRoomMatch[];
   tournamentId: string;
-}): React.ReactElement {
+}): React.ReactElement | null {
   const live = matches.filter((m) => IN_PLAY.has(m.status));
+  // Nothing live: render nothing — the On-now KPI already says 0, and an
+  // empty card was pure noise (owner: "it still looks the same").
+  if (live.length === 0) return null;
   return (
     <Panel title={t("Live now")} icon={Radio} count={live.length}>
-      {live.length === 0 ? (
-        <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-          {t("No matches are live right now.")}
-        </p>
-      ) : (
+      {(
         <div className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2 xl:grid-cols-3">
           {live.map((m) => (
             <div key={m.id} className="flex flex-col gap-2 bg-card p-3">
@@ -239,18 +238,15 @@ export function RecentResultsPanel({
 }: {
   matches: ControlRoomMatch[];
   timeZone: string;
-}): React.ReactElement {
+}): React.ReactElement | null {
   const done = matches
     .filter((m) => FINAL.has(m.status) || m.status === "completed")
     .sort((a, b) => (b.scheduled_at ?? "").localeCompare(a.scheduled_at ?? ""))
     .slice(0, 7);
+  if (done.length === 0) return null;
   return (
     <Panel title={t("Recent results")} icon={CheckCircle2} count={done.length}>
-      {done.length === 0 ? (
-        <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-          {t("No results in yet.")}
-        </p>
-      ) : (
+      {(
         <div className="flex flex-col divide-y divide-border">
           {done.map((m) => (
             <div key={m.id} className="flex items-center gap-3 px-4 py-2 text-sm">
@@ -316,7 +312,7 @@ export function NeedsAttentionPanel({
       }
     >
       {items.length === 0 ? (
-        <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+        <p className="px-4 py-2.5 text-sm text-muted-foreground">
           {t("All caught up. Nothing needs you.")}
         </p>
       ) : (

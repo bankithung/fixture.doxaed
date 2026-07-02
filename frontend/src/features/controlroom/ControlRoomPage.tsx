@@ -74,8 +74,10 @@ function OpsHeaderBand({
   ).length;
   const noVenue = all.filter((m) => !m.venue).length;
   const next = data.queue.find((m) => m.status === "scheduled") ?? null;
+  // `||` not `??`: an empty short_name string must fall through to the
+  // name, and a fully unresolved slot reads "TBD" (it rendered a bare "v").
   const teamName = (tm: { name: string; short_name?: string } | null): string =>
-    tm?.short_name ?? tm?.name ?? t("TBD");
+    tm?.short_name || tm?.name || t("TBD");
 
   const overline =
     "text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground";
@@ -86,10 +88,10 @@ function OpsHeaderBand({
       data-testid="ops-band"
       className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border lg:grid-cols-4"
     >
-      <div className="flex flex-col bg-card p-4">
+      <div className="flex flex-col bg-card p-3">
         <p className={overline}>{t("On now")}</p>
         <p className="mt-1 flex items-baseline gap-1.5">
-          <span className="font-tabular text-2xl font-semibold leading-none">
+          <span className="font-tabular text-xl font-semibold leading-none">
             {liveCount}
           </span>
           <span className="text-xs text-muted-foreground">
@@ -104,10 +106,10 @@ function OpsHeaderBand({
         </p>
       </div>
 
-      <div className="flex flex-col bg-card p-4">
+      <div className="flex flex-col bg-card p-3">
         <p className={overline}>{t("Today")}</p>
         <p className="mt-1 flex items-baseline gap-1.5">
-          <span className="font-tabular text-2xl font-semibold leading-none">
+          <span className="font-tabular text-xl font-semibold leading-none">
             {completed}
             <span className="text-muted-foreground">/{total}</span>
           </span>
@@ -126,7 +128,7 @@ function OpsHeaderBand({
         ) : null}
       </div>
 
-      <div className="flex flex-col bg-card p-4">
+      <div className="flex flex-col bg-card p-3">
         <p className={overline}>{t("Needs you")}</p>
         {awaiting > 0 || noVenue > 0 ? (
           <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -149,7 +151,7 @@ function OpsHeaderBand({
         )}
       </div>
 
-      <div className="flex flex-col bg-card p-4">
+      <div className="flex flex-col bg-card p-3">
         <p className={overline}>{t("Up next")}</p>
         {next ? (
           <div className="mt-1 min-w-0">
@@ -439,18 +441,14 @@ export function ControlRoomPage(): React.ReactElement {
               <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
                 <CourtsPanel venues={data.venues} timeZone={tz} />
                 <CompetitionProgressPanel matches={allMatches} />
-              </div>
-
-              <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
                 <NeedsAttentionPanel
                   matches={allMatches}
                   timeZone={tz}
                   tournamentId={id}
                 />
                 <RecentResultsPanel matches={allMatches} timeZone={tz} />
+                <SuspensionsPanel tournamentId={id} />
               </div>
-
-              <SuspensionsPanel tournamentId={id} />
             </>
           )}
 

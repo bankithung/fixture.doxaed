@@ -85,8 +85,13 @@ afterEach(() => {
 describe("AppShell", () => {
   it("renders the brand wordmark linking to the landing page", () => {
     renderShellAt();
-    const brand = screen.getByRole("link", { name: /^fixture$/i });
-    expect(brand.getAttribute("href")).toBe("/");
+    // Desktop rail + mobile drawer both render the wordmark now that the
+    // logo img is decorative (alt="") — both must point home.
+    const brands = screen.getAllByRole("link", { name: /^fixture$/i });
+    expect(brands.length).toBeGreaterThan(0);
+    for (const brand of brands) {
+      expect(brand.getAttribute("href")).toBe("/");
+    }
   });
 
   it("workspace nav is just the Workspace group (Dashboard + Tournaments); no Admin group", () => {
