@@ -428,55 +428,57 @@ export function ControlRoomPage(): React.ReactElement {
 
               <LiveNowPanel matches={allMatches} tournamentId={id} />
 
-              <LeadersPanel tournamentId={id} />
-
-              <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-                <CourtsPanel venues={data.venues} timeZone={tz} />
-                <CompetitionProgressPanel matches={allMatches} />
-                <NeedsAttentionPanel
-                  matches={allMatches}
-                  timeZone={tz}
-                  tournamentId={id}
-                />
-                <RecentResultsPanel matches={allMatches} timeZone={tz} />
-                <SuspensionsPanel tournamentId={id} />
+              {/* Two-zone cockpit: the working column (what runs the day)
+                  and an awareness rail (what might need a decision). */}
+              <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,23rem)]">
+                <div className="flex min-w-0 flex-col gap-4">
+                  <CourtsPanel venues={data.venues} timeZone={tz} />
+                  <LeadersPanel tournamentId={id} />
+                  <CompetitionProgressPanel matches={allMatches} />
+                </div>
+                <div className="flex min-w-0 flex-col gap-4">
+                  <NeedsAttentionPanel
+                    matches={allMatches}
+                    timeZone={tz}
+                    tournamentId={id}
+                  />
+                  <RecentResultsPanel matches={allMatches} timeZone={tz} />
+                  <SuspensionsPanel tournamentId={id} />
+                  {allMatches.length > 0 ? (
+                    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+                      <button
+                        type="button"
+                        data-testid="changes-drawer-toggle"
+                        aria-expanded={changesOpen}
+                        className="flex h-9 w-full items-center gap-2 px-4 text-left"
+                        onClick={() => setChangesOpen((o) => !o)}
+                      >
+                        <History aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+                        <h3 className="text-[13px] font-semibold tracking-tight">
+                          {t("Change history")}
+                        </h3>
+                        <ChevronDown
+                          aria-hidden="true"
+                          className={cn(
+                            "ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                            changesOpen && "rotate-180",
+                          )}
+                        />
+                      </button>
+                      {changesOpen ? (
+                        <div className="border-t border-border p-3">
+                          <ScheduleChangesPanel
+                            tournamentId={id}
+                            competitions={competitions}
+                          />
+                        </div>
+                      ) : null}
+                    </section>
+                  ) : null}
+                </div>
               </div>
             </>
           )}
-
-          {/* Changes drawer — the audit-backed slot-change feed (§1.1). */}
-          {!showMine && allMatches.length > 0 ? (
-            <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-              <button
-                type="button"
-                data-testid="changes-drawer-toggle"
-                aria-expanded={changesOpen}
-                className="flex w-full items-center gap-2 px-4 py-3 text-left"
-                onClick={() => setChangesOpen((o) => !o)}
-              >
-                <History aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <h3 className="text-sm font-semibold">{t("Change history")}</h3>
-                <span className="hidden text-xs text-muted-foreground sm:block">
-                  {t("Time and venue changes, with who and why.")}
-                </span>
-                <ChevronDown
-                  aria-hidden="true"
-                  className={cn(
-                    "ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-                    changesOpen && "rotate-180",
-                  )}
-                />
-              </button>
-              {changesOpen ? (
-                <div className="border-t border-border p-3">
-                  <ScheduleChangesPanel
-                    tournamentId={id}
-                    competitions={competitions}
-                  />
-                </div>
-              ) : null}
-            </section>
-          ) : null}
         </div>
       )}
       {/* Print-only operations day sheet: order of play by court with crew

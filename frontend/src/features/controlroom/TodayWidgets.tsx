@@ -202,35 +202,84 @@ export function CompetitionProgressPanel({
     if (IN_PLAY.has(m.status)) g.live += 1;
     byLeaf.set(key, g);
   }
-  const rows = [...byLeaf.values()].sort(
-    (a, b) => b.done / b.total - a.done / a.total || a.label.localeCompare(b.label),
-  );
+  // Group by sport (first label segment) so "Table Tennis" prints once as a
+  // section header instead of on every row.
+  const groups = new Map<
+    string,
+    { rest: string[]; total: number; done: number; live: number }[]
+  >();
+  for (const r of byLeaf.values()) {
+    const segs = r.label.split(/\s+[\u00b7\u2014]\s+/);
+    const sport = segs[0] || t("Uncategorized");
+    const rows = groups.get(sport) ?? [];
+    rows.push({ ...r, rest: segs.slice(1) });
+    groups.set(sport, rows);
+  }
+  const sports = [...groups.keys()].sort((a, b) => a.localeCompare(b));
+  const leafCount = byLeaf.size;
   return (
-    <Panel title={t("Competition progress")} icon={Trophy} count={rows.length}>
-      <div className="flex flex-col divide-y divide-border">
-        {rows.map((r) => {
-          const pct = r.total > 0 ? Math.round((r.done / r.total) * 100) : 0;
+    <Panel title={t("Competition progress")} icon={Trophy} count={leafCount}>
+      <div className="flex flex-col">
+        {sports.map((sport) => {
+          const rows = groups
+            .get(sport)!
+            .sort((a, b) => a.rest.join(" ").localeCompare(b.rest.join(" ")));
+          const agg = rows.reduce(
+            (acc, r) => ({ done: acc.done + r.done, total: acc.total + r.total }),
+            { done: 0, total: 0 },
+          );
           return (
-            <div
-              key={r.label}
-              className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-2"
-            >
-              <LeafLabel label={r.label} className="min-w-0" />
-              <div className="flex w-32 shrink-0 items-center gap-2">
-                {r.live > 0 ? (
-                  <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[0.625rem] font-medium leading-4 text-primary">
-                    {r.live}
-                  </span>
-                ) : null}
-                <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-[width]"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <span className="w-9 text-right font-tabular text-[0.6875rem] text-muted-foreground">
-                  {r.done}/{r.total}
+            <div key={sport} className="border-b border-border last:border-b-0">
+              <div className="flex items-baseline gap-2 bg-muted/40 px-4 py-1.5">
+                <p className="text-xs font-semibold text-foreground">{sport}</p>
+                <span className="font-tabular text-[0.6875rem] text-muted-foreground">
+                  {agg.done}/{agg.total}
                 </span>
+              </div>
+              <div className="flex flex-col divide-y divide-border/60">
+                {rows.map((r) => {
+                  const pct =
+                    r.total > 0 ? Math.round((r.done / r.total) * 100) : 0;
+                  return (
+                    <div
+                      key={`${sport}-${r.rest.join("-")}`}
+                      className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-1.5"
+                    >
+                      <span className="flex min-w-0 flex-wrap items-center gap-1">
+                        {r.rest.length === 0 ? (
+                          <span className="text-xs text-muted-foreground">
+                            {t("All matches")}
+                          </span>
+                        ) : (
+                          r.rest.map((seg, i) => (
+                            <span
+                              key={`${i}-${seg}`}
+                              className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-foreground"
+                            >
+                              {seg}
+                            </span>
+                          ))
+                        )}
+                      </span>
+                      <div className="flex w-32 shrink-0 items-center gap-2">
+                        {r.live > 0 ? (
+                          <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[0.625rem] font-medium leading-4 text-primary">
+                            {r.live}
+                          </span>
+                        ) : null}
+                        <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-primary transition-[width]"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="w-9 text-right font-tabular text-[0.6875rem] text-muted-foreground">
+                          {r.done}/{r.total}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );

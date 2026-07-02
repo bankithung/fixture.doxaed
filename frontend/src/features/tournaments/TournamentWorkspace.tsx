@@ -148,37 +148,27 @@ export function TournamentWorkspace(): React.ReactElement {
         // Operations ribbon — replaces the setup stepper once fixtures exist.
         <div
           data-testid="ops-ribbon"
-          className="flex flex-wrap items-center gap-3"
+          className="flex flex-wrap items-center gap-2 border-b border-border pb-3"
         >
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10">
-            <Trophy aria-hidden="true" className="h-5 w-5 text-primary" />
+          <h1 className="truncate text-base font-semibold tracking-tight">
+            {name}
+          </h1>
+          <span
+            className={cn(
+              "inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize",
+              STATUS_CLS[status] ?? "bg-muted text-muted-foreground",
+            )}
+          >
+            {t(status.replace(/_/g, " "))}
           </span>
-          <div className="min-w-0">
-            <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              {t("Live operations")}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-xl font-semibold tracking-tight">
-                {name}
-              </h1>
-              <span
-                className={cn(
-                  "inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize",
-                  STATUS_CLS[status] ?? "bg-muted text-muted-foreground",
-                )}
-              >
-                {t(status.replace(/_/g, " "))}
-              </span>
-            </div>
-          </div>
           {slug ? (
             <a
               href={routes.publicSchedule(slug, id)}
               target="_blank"
               rel="noreferrer"
-              className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <ExternalLink aria-hidden="true" className="h-4 w-4" />
+              <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">{t("Public page")}</span>
             </a>
           ) : null}
