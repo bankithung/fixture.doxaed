@@ -48,6 +48,10 @@ export function OverviewTab(): React.ReactElement {
     queryFn: () => institutionsApi.list(id),
   });
   const stage = useQuery({ queryKey: ["tournament-stage", id], queryFn: () => tournamentsApi.stage(id) });
+  const tournament = useQuery({
+    queryKey: ["tournament", id],
+    queryFn: () => tournamentsApi.get(id),
+  });
 
   const teamCount = teams.data?.length ?? 0;
   const matchCount = matches.data?.length ?? 0;
@@ -68,9 +72,34 @@ export function OverviewTab(): React.ReactElement {
     { key: "fixtures", icon: CalendarClock, label: t("Fixtures"), value: matchCount, sub: t("generated"), color: "emerald", to: routes.tournamentFixtures(id), stageKey: "fixtures" },
   ];
 
+  const fmtDate = (d: string): string =>
+    new Date(d).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
+  const tdata = tournament.data;
+
   return (
     <div className="flex flex-col gap-6">
       <StageStepper tournamentId={id} />
+
+      {tdata?.starts_at ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-card px-4 py-2.5 text-sm shadow-sm">
+          <span className="font-medium">
+            {fmtDate(tdata.starts_at)}
+            {tdata.ends_at && tdata.ends_at !== tdata.starts_at
+              ? ` to ${fmtDate(tdata.ends_at)}`
+              : ""}
+          </span>
+          {tdata.season ? (
+            <span className="text-muted-foreground">{t("Season")} {tdata.season}</span>
+          ) : null}
+          <span className="text-muted-foreground">{tdata.time_zone}</span>
+          <Link
+            to={routes.publicSchedule(tdata.slug, id)}
+            className="ml-auto text-xs font-medium text-primary hover:underline"
+          >
+            {t("Public schedule")}
+          </Link>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {metrics.map((m) => (

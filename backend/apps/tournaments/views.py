@@ -182,7 +182,9 @@ class TournamentDetailView(GenericAPIView):
         tournament = _get_tournament_or_404(request.user, tournament_id)
         name = request.data.get("name")
         active = request.data.get("active")
-        if name is None and active is None:
+        basics_keys = ("starts_at", "ends_at", "season", "time_zone")
+        basics = {k: request.data[k] for k in basics_keys if k in request.data}
+        if name is None and active is None and not basics:
             raise DRFValidationError({"detail": "nothing_to_update"})
 
         from apps.audit.models import ActorRole
@@ -211,6 +213,70 @@ class TournamentDetailView(GenericAPIView):
                     organization_id=tournament.organization_id,
                     payload_before={"name": old_name},
                     payload_after={"name": new_name},
+                    request=request,
+                )
+
+        # Basics (dates, season, timezone) — manager verb. Timezone honors
+        # invariant 14: editable until the schedule is live (stage=ready),
+        # then locked so published kickoff times never silently shift.
+        if basics:
+            if not can_manage_tournament(request.user, tournament):
+                raise PermissionDenied("not_tournament_manager")
+            from datetime import date
+
+            fields: list[str] = []
+            before_basics: dict = {}
+            for key in ("starts_at", "ends_at"):
+                if key in basics:
+                    raw = basics[key]
+                    val = None
+                    if raw not in (None, ""):
+                        try:
+                            val = date.fromisoformat(str(raw))
+                        except ValueError:
+                            raise DRFValidationError({"detail": f"invalid_{key}"})
+                    before_basics[key] = (
+                        getattr(tournament, key).isoformat()
+                        if getattr(tournament, key)
+                        else None
+                    )
+                    setattr(tournament, key, val)
+                    fields.append(key)
+            if (
+                tournament.starts_at and tournament.ends_at
+                and tournament.ends_at < tournament.starts_at
+            ):
+                raise DRFValidationError({"detail": "ends_before_starts"})
+            if "season" in basics:
+                before_basics["season"] = tournament.season
+                tournament.season = str(basics["season"] or "")[:16]
+                fields.append("season")
+            if "time_zone" in basics:
+                from zoneinfo import ZoneInfo
+
+                from apps.tournaments.models import TournamentStage
+
+                if tournament.stage == TournamentStage.READY:
+                    return Response({"detail": "tz_locked"}, status=409)
+                tz = str(basics["time_zone"] or "").strip()
+                try:
+                    ZoneInfo(tz)
+                except (KeyError, ValueError):
+                    raise DRFValidationError({"detail": "invalid_time_zone"})
+                before_basics["time_zone"] = tournament.time_zone
+                tournament.time_zone = tz
+                fields.append("time_zone")
+            if fields:
+                tournament.save(update_fields=[*fields, "updated_at"])
+                emit_audit(
+                    actor_user=request.user,
+                    actor_role=ActorRole.ADMIN,
+                    event_type="tournament_basics_changed",
+                    target_type="tournament",
+                    target_id=tournament.id,
+                    organization_id=tournament.organization_id,
+                    payload_before=before_basics,
+                    payload_after={k: str(getattr(tournament, k)) for k in fields},
                     request=request,
                 )
 

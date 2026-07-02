@@ -94,6 +94,9 @@ export interface Tournament {
   sport_code: string | null;
   sports: TournamentSport[];
   time_zone: string;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  season?: string;
   created_at: string;
   /** How the current user relates to this tournament. Only the list endpoint
    * fills these in; other endpoints return null/[]. */
@@ -684,6 +687,17 @@ export const tournamentsApi = {
   /** Deactivate (archive) or reactivate a tournament. */
   setActive: (id: string, active: boolean) =>
     api.patch<Tournament>(`/api/tournaments/${id}/`, { active }),
+  /** Event basics: dates, season, timezone (tz locks at stage=ready). */
+  patch: (
+    id: string,
+    body: {
+      starts_at?: string | null;
+      ends_at?: string | null;
+      season?: string;
+      time_zone?: string;
+      name?: string;
+    },
+  ) => api.patch<Tournament>(`/api/tournaments/${id}/`, body),
   /** Rename a tournament (display name only — the slug/public URL stays
    * stable). Manager-allowed; the server enforces the permission. */
   rename: (id: string, name: string) =>

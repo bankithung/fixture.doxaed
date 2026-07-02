@@ -6,6 +6,7 @@ import { tournamentsApi, type TournamentRules } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
@@ -38,6 +39,129 @@ function NumberField({
         className="font-tabular"
       />
     </label>
+  );
+}
+
+
+const TIMEZONES = [
+  "Asia/Kolkata",
+  "Asia/Dhaka",
+  "Asia/Kathmandu",
+  "Asia/Yangon",
+  "Asia/Bangkok",
+  "UTC",
+];
+
+/** Event basics: when the tournament runs + its clock. The timezone locks
+ * once the schedule is live (invariant 14) — the server answers tz_locked. */
+function BasicsCard({ tournamentId }: { tournamentId: string }): React.ReactElement {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const q = useQuery({
+    queryKey: ["tournament", tournamentId],
+    queryFn: () => tournamentsApi.get(tournamentId),
+  });
+  const [draft, setDraft] = useState<{
+    starts_at: string;
+    ends_at: string;
+    season: string;
+    time_zone: string;
+  } | null>(null);
+  useEffect(() => {
+    if (q.data && draft === null) {
+      setDraft({
+        starts_at: q.data.starts_at ?? "",
+        ends_at: q.data.ends_at ?? "",
+        season: q.data.season ?? "",
+        time_zone: q.data.time_zone ?? "Asia/Kolkata",
+      });
+    }
+  }, [q.data, draft]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      tournamentsApi.patch(tournamentId, {
+        starts_at: draft!.starts_at || null,
+        ends_at: draft!.ends_at || null,
+        season: draft!.season,
+        time_zone: draft!.time_zone,
+      }),
+    onSuccess: () => {
+      invalidateTournament(qc, tournamentId);
+      toast.push({ kind: "success", title: t("Basics saved") });
+    },
+    onError: (e) => {
+      const detail = e instanceof ApiError ? String(e.payload.detail ?? "") : "";
+      toast.push({
+        kind: "error",
+        title:
+          detail === "tz_locked"
+            ? t("The timezone is locked while the schedule is live.")
+            : detail === "ends_before_starts"
+              ? t("The end date is before the start date.")
+              : t("Could not save the basics"),
+      });
+    },
+  });
+
+  if (!draft) {
+    return <div className="h-24 animate-pulse rounded-xl border border-border bg-card" />;
+  }
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">{t("Event basics")}</h3>
+        <Button
+          size="sm"
+          disabled={save.isPending}
+          onClick={() => save.mutate()}
+          data-testid="save-basics"
+        >
+          {t("Save basics")}
+        </Button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-4">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground">{t("Starts")}</span>
+          <Input
+            type="date"
+            value={draft.starts_at}
+            onChange={(e) => setDraft({ ...draft, starts_at: e.target.value })}
+            className="h-9 font-tabular"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground">{t("Ends")}</span>
+          <Input
+            type="date"
+            value={draft.ends_at}
+            onChange={(e) => setDraft({ ...draft, ends_at: e.target.value })}
+            className="h-9 font-tabular"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground">{t("Season")}</span>
+          <Input
+            value={draft.season}
+            placeholder="2026"
+            onChange={(e) => setDraft({ ...draft, season: e.target.value })}
+            className="h-9 font-tabular"
+          />
+        </label>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground">{t("Timezone")}</span>
+          <Select
+            aria-label={t("Timezone")}
+            value={draft.time_zone}
+            onChange={(v) => setDraft({ ...draft, time_zone: v })}
+            options={TIMEZONES.map((z) => ({ value: z, label: z }))}
+          />
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t("Dates show on lists and public pages. The timezone locks once the schedule is live.")}
+      </p>
+    </div>
   );
 }
 
@@ -126,11 +250,13 @@ export function SettingsTab(): React.ReactElement {
       </div>
 
       {frozen ? (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
-          <Lock aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-muted px-3 py-2 text-sm">
+          <Lock aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-warning-foreground" />
           <span>{t("Frozen while registration is open, to keep the competition fair.")}</span>
         </div>
       ) : null}
+
+      <BasicsCard tournamentId={id} />
 
       {/* Rules editor */}
       {settings.isLoading || !draft ? (

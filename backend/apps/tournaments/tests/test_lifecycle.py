@@ -216,3 +216,41 @@ def test_end_to_end_hooks_drive_lifecycle():
     record_score(match=m2, home_score=0, away_score=1, by=admin)
     t.refresh_from_db()
     assert t.status == TournamentStatus.COMPLETED
+
+
+def test_basics_patch_and_tz_lock():
+    """Phase 4: dates/season/timezone are editable (manager verb); the
+    timezone locks once the schedule is live (stage=ready, invariant 14)."""
+    from apps.tournaments.models import TournamentStage
+
+    admin, t, _ms = _setup(status=TournamentStatus.SCHEDULED)
+    c = APIClient()
+    c.force_authenticate(user=admin)
+
+    r = c.patch(
+        f"/api/tournaments/{t.id}/",
+        {"starts_at": "2026-08-01", "ends_at": "2026-08-07",
+         "season": "2026", "time_zone": "Asia/Kolkata"},
+        format="json",
+    )
+    assert r.status_code == 200, r.content
+    assert r.data["starts_at"] == "2026-08-01"
+    assert r.data["season"] == "2026"
+
+    r = c.patch(
+        f"/api/tournaments/{t.id}/",
+        {"ends_at": "2026-07-01"},  # before starts_at
+        format="json",
+    )
+    assert r.status_code == 400
+
+    Tournament.objects.filter(pk=t.pk).update(stage=TournamentStage.READY)
+    r = c.patch(
+        f"/api/tournaments/{t.id}/", {"time_zone": "UTC"}, format="json"
+    )
+    assert r.status_code == 409 and r.data["detail"] == "tz_locked"
+    # Dates stay editable after the lock (only the clock is frozen).
+    r = c.patch(
+        f"/api/tournaments/{t.id}/", {"ends_at": "2026-08-09"}, format="json"
+    )
+    assert r.status_code == 200
