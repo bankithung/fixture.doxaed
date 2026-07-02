@@ -105,7 +105,8 @@ class PublicTournamentLeadersView(GenericAPIView):
         from apps.matches.services.leaders import compute_leaders
 
         t = _public_tournament_or_404(slug, tournament_id)
-        return Response(compute_leaders(t))
+        full = request.query_params.get("full") in ("1", "true")
+        return Response(compute_leaders(t, full=full))
 
 
 class PublicTeamRecordView(GenericAPIView):

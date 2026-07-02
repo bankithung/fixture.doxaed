@@ -210,6 +210,13 @@ export function computeTournamentNav(
         href: routes.tournamentStandings(tournamentId),
         icon: BarChart3,
       },
+      // Full leader board: every scorer, team stats, badges (read).
+      {
+        key: "leaders",
+        label: t("Leaders"),
+        href: routes.tournamentLeaders(tournamentId),
+        icon: Trophy,
+      },
       // Assignment cockpit — schedule editors (admin/co-org/coordinator).
       allowed("tournament.schedule_editor")
         ? {

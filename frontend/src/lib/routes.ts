@@ -87,6 +87,12 @@ export const routes = {
     `/tournaments/${encodeURIComponent(id)}/standings`,
   /** Operations: officials, scorer & task assignment cockpit. */
   tournamentCrew: (id: string) => `/tournaments/${encodeURIComponent(id)}/crew`,
+  /** Operations: full leader board (all scorers, team stats, badges). */
+  tournamentLeaders: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/leaders`,
+  /** Operations: full schedule change history (audit feed). */
+  tournamentChanges: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/changes`,
   /** Public, read-only live match viewer (no login). */
   liveViewer: (matchId: string) => `/m/${encodeURIComponent(matchId)}`,
   /** Public, read-only tournament schedule (no login; slug+UUID pair). */

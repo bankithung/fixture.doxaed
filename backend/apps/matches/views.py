@@ -208,7 +208,8 @@ class TournamentLeadersView(GenericAPIView):
         from apps.matches.services.leaders import compute_leaders
 
         t = _accessible_tournament_or_404(request.user, tournament_id)
-        return Response(compute_leaders(t))
+        full = request.query_params.get("full") in ("1", "true")
+        return Response(compute_leaders(t, full=full))
 
 
 class TournamentSuspensionsView(GenericAPIView):

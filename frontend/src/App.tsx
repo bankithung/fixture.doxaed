@@ -30,6 +30,8 @@ import { MatchConsolePage } from "@/features/matches/MatchConsolePage";
 import { ControlRoomPage } from "@/features/controlroom/ControlRoomPage";
 import { MatchesBoardPage } from "@/features/tournaments/ops/MatchBoardPage";
 import { OpsStandingsPage } from "@/features/tournaments/ops/OpsStandingsPage";
+import { LeadersPage } from "@/features/tournaments/ops/LeadersPage";
+import { ChangeHistoryPage } from "@/features/tournaments/ops/ChangeHistoryPage";
 import { CrewPage } from "@/features/tournaments/ops/CrewPage";
 import { BracketPage } from "@/features/tournaments/BracketPage";
 import { DryRunPreviewPage } from "@/features/fixtures/DryRunPreviewPage";
@@ -197,6 +199,8 @@ export default function App(): React.ReactElement {
                   <Route path="matches" element={<MatchesBoardPage />} />
                   <Route path="standings" element={<OpsStandingsPage />} />
                   <Route path="crew" element={<CrewPage />} />
+                  <Route path="leaders" element={<LeadersPage />} />
+                  <Route path="changes" element={<ChangeHistoryPage />} />
                   <Route path="settings" element={<SettingsRoute />} />
                 </Route>
                 <Route

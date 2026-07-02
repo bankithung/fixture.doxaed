@@ -515,14 +515,14 @@ export const tournamentsApi = {
     api.get<ControlRoomMatch[]>(`/api/tournaments/${id}/matches/`),
   /** Standings grouped by pool. */
   /** Live leaderboards: top scorers, best defence/attack, latest badges. */
-  leaders: (id: string) =>
+  leaders: (id: string, opts?: { full?: boolean }) =>
     api.get<{
       played: number;
       top_scorers: { player_id: string; name: string; team_name: string; goals: number }[];
       best_defence: { team_id: string; team_name: string; played: number; scored: number; conceded: number }[];
       best_attack: { team_id: string; team_name: string; played: number; scored: number; conceded: number }[];
       latest_badges: { id: string; name: string; subject: string; evidence: Record<string, unknown> }[];
-    }>(`/api/tournaments/${id}/leaders/`),
+    }>(`/api/tournaments/${id}/leaders/${opts?.full ? "?full=1" : ""}`),
   /** Card-derived suspensions (PRD 5.8) — who is banned, why, remaining. */
   suspensions: (id: string) =>
     api.get<{

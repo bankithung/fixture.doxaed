@@ -471,6 +471,7 @@ export function ControlRoomPage(): React.ReactElement {
                             tournamentId={id}
                             competitions={competitions}
                             embedded
+                            viewAllTo={routes.tournamentChanges(id)}
                           />
                         </div>
                       ) : null}

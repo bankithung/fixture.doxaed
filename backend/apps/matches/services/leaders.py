@@ -12,7 +12,7 @@ from collections import defaultdict
 from apps.matches.models import Match, MatchEvent, MatchEventType, MatchStatus
 
 
-def compute_leaders(tournament) -> dict:
+def compute_leaders(tournament, full: bool = False) -> dict:
     from apps.badges.catalog import BADGE_TEMPLATES
     from apps.badges.models import BadgeAward
 
@@ -49,7 +49,9 @@ def compute_leaders(tournament) -> dict:
             "team_name": meta[pid].team.name if meta[pid].team_id else "",
             "goals": n,
         }
-        for pid, n in sorted(tally.items(), key=lambda kv: -kv[1])[:5]
+        for pid, n in sorted(tally.items(), key=lambda kv: -kv[1])[
+            : (None if full else 5)
+        ]
     ]
 
     stats: dict = {}
@@ -74,8 +76,9 @@ def compute_leaders(tournament) -> dict:
             row["scored"] += pf
             row["conceded"] += pa
     rows = list(stats.values())
-    best_defence = sorted(rows, key=lambda r: (r["conceded"], -r["played"]))[:3]
-    best_attack = sorted(rows, key=lambda r: -r["scored"])[:3]
+    top = None if full else 3
+    best_defence = sorted(rows, key=lambda r: (r["conceded"], -r["played"]))[:top]
+    best_attack = sorted(rows, key=lambda r: -r["scored"])[:top]
 
     badges = [
         {
@@ -92,7 +95,7 @@ def compute_leaders(tournament) -> dict:
             tournament=tournament, revoked_at__isnull=True
         )
         .select_related("team", "player", "player__person")
-        .order_by("-awarded_at")[:6]
+        .order_by("-awarded_at")[: (None if full else 6)]
     ]
     return {
         "played": len(played),

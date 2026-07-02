@@ -492,6 +492,12 @@ export function LeadersPanel({
             {d.played} {t("played")}
           </span>
         ) : null}
+        <Link
+          to={routes.tournamentLeaders(tournamentId)}
+          className="ml-auto text-xs font-medium text-primary hover:underline"
+        >
+          {t("View all")}
+        </Link>
       </div>
 
       {empty ? (

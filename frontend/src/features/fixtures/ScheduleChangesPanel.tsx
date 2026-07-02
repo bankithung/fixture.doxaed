@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { History } from "lucide-react";
 import {
@@ -228,13 +229,16 @@ export function ScheduleChangesPanel({
   tournamentId,
   competitions,
   embedded = false,
+  viewAllTo,
 }: {
   tournamentId: string;
   competitions: { leafKey: string; label: string }[];
   embedded?: boolean;
+  /** When set: fetch a short tail and link out instead of paging inline. */
+  viewAllTo?: string;
 }): React.ReactElement {
   const [leaf, setLeaf] = useState("");
-  const [limit, setLimit] = useState(PAGE);
+  const [limit, setLimit] = useState(viewAllTo ? 15 : PAGE);
 
   const feed = useQuery({
     queryKey: [...qk.scheduleChanges(tournamentId), leaf, limit],
@@ -307,7 +311,17 @@ export function ScheduleChangesPanel({
               ),
             )}
           </ul>
-          {entries.length >= limit ? (
+          {viewAllTo ? (
+            <div className="border-t border-border px-4 py-2">
+              <Link
+                to={viewAllTo}
+                data-testid="changes-view-all"
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                {t("View all changes")}
+              </Link>
+            </div>
+          ) : entries.length >= limit ? (
             <div className="border-t border-border px-4 py-2.5">
               <Button
                 size="sm"
