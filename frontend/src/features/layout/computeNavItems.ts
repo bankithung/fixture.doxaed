@@ -1,4 +1,5 @@
 import {
+  ExternalLink,
   BarChart3,
   Building2,
   CalendarClock,
@@ -233,6 +234,15 @@ export function computeTournamentNav(
         href: routes.tournamentTeams(tournamentId),
         icon: Building2,
       },
+      // The fan-facing site, one hop away (replaces the workspace ribbon).
+      opts.slug
+        ? {
+            key: "public",
+            label: t("Public page"),
+            href: routes.publicSchedule(opts.slug, tournamentId),
+            icon: ExternalLink,
+          }
+        : null,
     ];
 
     // People + config — the only setup-era surfaces that stay relevant once the

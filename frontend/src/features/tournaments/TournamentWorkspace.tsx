@@ -6,14 +6,7 @@ import {
   useParams,
 } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ArrowLeft,
-  Check,
-  ChevronRight,
-  ExternalLink,
-  Lock,
-  Trophy,
-} from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, Lock, Trophy } from "lucide-react";
 import { tournamentsApi } from "@/api/tournaments";
 import { StageContinue } from "./StageContinue";
 import { pathStageKey } from "@/features/layout/computeNavItems";
@@ -29,16 +22,6 @@ const STAGE_ROUTE: Record<string, (id: string) => string> = {
   members: routes.tournamentMembers,
   fixtures: routes.tournamentFixtures,
   ready: routes.tournamentOverview,
-};
-
-const STATUS_CLS: Record<string, string> = {
-  draft: "bg-muted text-muted-foreground",
-  published: "bg-info-muted text-info-foreground",
-  registration_open: "bg-warning-muted text-warning-foreground",
-  scheduled: "bg-primary/15 text-primary",
-  live: "bg-destructive/15 text-destructive",
-  completed: "bg-success-muted text-success-foreground",
-  archived: "bg-muted text-muted-foreground",
 };
 
 // `stageKey` = the stage a tab belongs to (null = always available). A tab
@@ -75,7 +58,6 @@ export function TournamentWorkspace(): React.ReactElement {
 
   const name = tournament.data?.name ?? t("Tournament");
   const status = tournament.data?.status ?? "draft";
-  const slug = tournament.data?.slug ?? "";
   const stage = stageQ.data;
   const curIdx = stage ? stage.order.indexOf(stage.stage) : -1;
   // Highlight the stage whose PAGE we're on, not the tournament's server stage
@@ -144,36 +126,7 @@ export function TournamentWorkspace(): React.ReactElement {
         </NavLink>
       </div>
 
-      {opsMode ? (
-        // Operations ribbon — replaces the setup stepper once fixtures exist.
-        <div
-          data-testid="ops-ribbon"
-          className="flex flex-wrap items-center gap-2 border-b border-border pb-3"
-        >
-          <h1 className="truncate text-base font-semibold tracking-tight">
-            {name}
-          </h1>
-          <span
-            className={cn(
-              "inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize",
-              STATUS_CLS[status] ?? "bg-muted text-muted-foreground",
-            )}
-          >
-            {t(status.replace(/_/g, " "))}
-          </span>
-          {slug ? (
-            <a
-              href={routes.publicSchedule(slug, id)}
-              target="_blank"
-              rel="noreferrer"
-              className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{t("Public page")}</span>
-            </a>
-          ) : null}
-        </div>
-      ) : (
+      {opsMode ? null : (
         /* The full Setup -> Ready journey now lives in the left stepper sidebar
            (desktop) and the mobile strip below, so this header just carries the
            tournament's identity. */
@@ -280,7 +233,7 @@ export function TournamentWorkspace(): React.ReactElement {
       )}
 
       {/* Navigation lives in the contextual left sidebar now (no horizontal tabs). */}
-      <div className="mt-6">
+      <div className={opsMode ? "" : "mt-6"}>
         {activeLocked ? (
           <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card py-16 text-center">
             <Lock aria-hidden="true" className="h-8 w-8 text-muted-foreground/40" />

@@ -278,6 +278,7 @@ describe("computeTournamentNav", () => {
       "leaders",
       "crew",
       "directory",
+      "public",
     ]);
     // Only people + config remain; the setup-flow pages are gone from the nav.
     const manage = groups.find((g) => g.key === "manage")!;

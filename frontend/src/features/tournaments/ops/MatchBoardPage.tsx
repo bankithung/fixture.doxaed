@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CloudRainWind, Search } from "lucide-react";
@@ -52,6 +52,8 @@ function humanizeLeaf(key: string): string {
 function leafLabelOf(m: ControlRoomMatch): string {
   return m.leaf_label || humanizeLeaf(m.leaf_key);
 }
+
+const PAGE_SIZE = 20;
 
 type StatusFilter = "all" | "upcoming" | "live" | "done";
 type GroupBy = "day" | "competition" | "venue" | "status";
@@ -127,6 +129,7 @@ export function MatchesBoardPage(): React.ReactElement {
   const [mine, setMine] = useState(false);
   const [search, setSearch] = useState("");
   const [shiftOpen, setShiftOpen] = useState(false);
+  const [page, setPage] = useState(0);
 
   const tournamentQ = useQuery({
     queryKey: qk.tournament(id),
@@ -189,6 +192,10 @@ export function MatchesBoardPage(): React.ReactElement {
     return { total: matches.length, live, done, noScorer };
   }, [matches]);
 
+  useEffect(() => {
+    setPage(0);
+  }, [comp, venue, status, needsScorer, needsOfficial, mine, search, groupBy]);
+
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return matches.filter((m) => {
@@ -206,10 +213,10 @@ export function MatchesBoardPage(): React.ReactElement {
     });
   }, [matches, comp, venue, status, needsScorer, needsOfficial, mine, search, perms.userId]);
 
-  // Group + sort. Time-ascending within a group; unscheduled last.
-  const groups = useMemo(() => {
-    const buckets = new Map<string, { label: string; sort: string; matches: ControlRoomMatch[] }>();
-    for (const m of filtered) {
+  // Order the flat list (group key first, then kickoff), slice a 20-row page,
+  // then group the slice in encounter order — long fixtures stay readable.
+  const ordered = useMemo(() => {
+    const keyed = filtered.map((m) => {
       let key: string;
       let label: string;
       let sort: string;
@@ -231,24 +238,30 @@ export function MatchesBoardPage(): React.ReactElement {
         label = t(STATUS_GROUP_LABEL[b] ?? b);
         sort = String(STATUS_GROUP_ORDER.indexOf(b));
       }
-      let g = buckets.get(key);
-      if (!g) {
-        g = { label, sort, matches: [] };
-        buckets.set(key, g);
-      }
-      g.matches.push(m);
-    }
-    const ordered = [...buckets.values()].sort((a, b) => a.sort.localeCompare(b.sort));
-    for (const g of ordered) {
-      g.matches.sort((a, b) => {
-        const at = a.scheduled_at ?? "~";
-        const bt = b.scheduled_at ?? "~";
-        if (at !== bt) return at.localeCompare(bt);
-        return a.match_no - b.match_no;
-      });
-    }
-    return ordered;
+      return { m, key, label, sort };
+    });
+    keyed.sort((a, b) => {
+      if (a.sort !== b.sort) return a.sort.localeCompare(b.sort);
+      const at = a.m.scheduled_at ?? "~";
+      const bt = b.m.scheduled_at ?? "~";
+      if (at !== bt) return at.localeCompare(bt);
+      return a.m.match_no - b.m.match_no;
+    });
+    return keyed;
   }, [filtered, groupBy, tz]);
+
+  const pageCount = Math.max(1, Math.ceil(ordered.length / PAGE_SIZE));
+  const curPage = Math.min(page, pageCount - 1);
+  const groups = useMemo(() => {
+    const slice = ordered.slice(curPage * PAGE_SIZE, (curPage + 1) * PAGE_SIZE);
+    const out: { key: string; label: string; matches: ControlRoomMatch[] }[] = [];
+    for (const { m, key, label } of slice) {
+      const last = out[out.length - 1];
+      if (last && last.key === key) last.matches.push(m);
+      else out.push({ key, label, matches: [m] });
+    }
+    return out;
+  }, [ordered, curPage]);
 
   const header = (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -434,7 +447,7 @@ export function MatchesBoardPage(): React.ReactElement {
       ) : (
         <div className="flex flex-col gap-5">
           {groups.map((g) => (
-            <section key={g.label} className="flex flex-col gap-2">
+            <section key={g.key} className="flex flex-col gap-2">
               <div className="flex items-baseline gap-2">
                 <h3 className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                   {g.label}
@@ -460,6 +473,39 @@ export function MatchesBoardPage(): React.ReactElement {
           ))}
         </div>
       )}
+      {ordered.length > PAGE_SIZE ? (
+        <div className="flex items-center gap-2">
+          <p className="font-tabular text-xs text-muted-foreground">
+            {curPage * PAGE_SIZE + 1}
+            {" to "}
+            {Math.min((curPage + 1) * PAGE_SIZE, ordered.length)} {t("of")}{" "}
+            {ordered.length}
+          </p>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              data-testid="board-prev"
+              disabled={curPage === 0}
+              onClick={() => setPage(curPage - 1)}
+              className="inline-flex h-8 items-center rounded-md border border-border bg-card px-3 text-xs font-medium transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+            >
+              {t("Previous")}
+            </button>
+            <span className="px-1 font-tabular text-xs text-muted-foreground">
+              {curPage + 1}/{pageCount}
+            </span>
+            <button
+              type="button"
+              data-testid="board-next"
+              disabled={curPage >= pageCount - 1}
+              onClick={() => setPage(curPage + 1)}
+              className="inline-flex h-8 items-center rounded-md border border-border bg-card px-3 text-xs font-medium transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+            >
+              {t("Next")}
+            </button>
+          </div>
+        </div>
+      ) : null}
       {shiftOpen ? (
         <ShiftDayDialog
           tournamentId={id}

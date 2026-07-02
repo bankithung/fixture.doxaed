@@ -179,3 +179,35 @@ describe("MatchesBoardPage", () => {
     expect(screen.getByTestId("tile-m3")).toBeInTheDocument();
   });
 });
+
+describe("MatchesBoardPage pagination", () => {
+  it("slices long fixtures into 20-row pages with prev and next", async () => {
+    vi.mocked(tournamentsApi.matchesEnriched).mockResolvedValue(
+      Array.from({ length: 45 }, (_, i) =>
+        row({
+          id: `pm${i}`,
+          match_no: i + 1,
+          scheduled_at: `2026-06-20T0${(i % 9) + 1}:30:00Z`,
+        }),
+      ),
+    );
+    mount();
+    await screen.findByTestId("board-next");
+    // Page 1: exactly 20 rows.
+    expect(screen.getAllByTestId(/^tile-pm/)).toHaveLength(20);
+    expect(screen.getByText("1 to 20 of 45")).toBeInTheDocument();
+    expect(screen.getByTestId("board-prev")).toBeDisabled();
+
+    await userEvent.click(screen.getByTestId("board-next"));
+    expect(screen.getAllByTestId(/^tile-pm/)).toHaveLength(20);
+    expect(screen.getByText("21 to 40 of 45")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("board-next"));
+    expect(screen.getAllByTestId(/^tile-pm/)).toHaveLength(5);
+    expect(screen.getByTestId("board-next")).toBeDisabled();
+
+    // Changing a filter snaps back to page one.
+    await userEvent.click(screen.getByTestId("board-status-upcoming"));
+    expect(screen.getByText("1 to 20 of 45")).toBeInTheDocument();
+  });
+});
