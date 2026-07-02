@@ -111,3 +111,36 @@ npm --prefix frontend run test
 5. **2FA** for the super-admin (currently not enrolled on the seed account).
 6. **Firewall** — restrict Postgres/Redis to localhost (already bound local),
    open only 80/443 publicly. Consider `SADMIN_IP_ALLOWLIST` in `.env`.
+
+## Backups (installed 2026-07-02)
+
+Nightly at 21:00 UTC (02:30 IST): `fixture-backup.timer` runs `deploy/backup.sh`
+as `ubuntu`, writing to `/home/ubuntu/backups/fixture/`:
+
+- `fixturedb_<stamp>.dump` — `pg_dump -Fc` as `fixture_owner` (creds in `~ubuntu/.pgpass`,
+  mode 600, NOT in the repo). Each dump is verified with `pg_restore --list`.
+- `media_<stamp>.tar.gz` — the `backend/media` upload tree.
+- 14-day rotation. Logs: `journalctl -u fixture-backup.service`.
+
+**Offsite copy (still needed):** create an executable
+`/home/ubuntu/backups/offsite-sync.sh` (e.g. `rclone sync "$1" remote:fixture-backups`)
+and it runs after every successful backup. Requires owner-provided credentials
+(S3 bucket / rclone remote). Until this exists, backups die with the disk.
+
+**Restore runbook** (practice on a scratch DB first):
+
+```bash
+# 1. Stop the app so nothing writes:
+sudo systemctl stop fixture
+# 2. Restore into a fresh DB, then swap (safer than in-place):
+sudo -u postgres createdb fixturedb_restore -O fixture_owner
+pg_restore -h 127.0.0.1 -U fixture_owner -d fixturedb_restore --no-owner \
+  /home/ubuntu/backups/fixture/fixturedb_<stamp>.dump
+sudo -u postgres psql -c "ALTER DATABASE fixturedb RENAME TO fixturedb_broken;"
+sudo -u postgres psql -c "ALTER DATABASE fixturedb_restore RENAME TO fixturedb;"
+# 3. Media:
+tar -xzf /home/ubuntu/backups/fixture/media_<stamp>.tar.gz -C /home/ubuntu/Fixture/backend/
+# 4. Restart + smoke-check:
+sudo systemctl start fixture
+curl -sk https://127.0.0.1/api/accounts/me/ -H "Host: fixture.doxaed.com"   # 403/401 JSON = app is up
+```
