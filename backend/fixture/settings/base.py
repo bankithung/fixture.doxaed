@@ -235,3 +235,18 @@ PASSWORD_RESET_RATE_PER_IP_HOUR = 10
 EMAIL_VERIFICATION_TTL_HOURS = 48
 TWOFA_ISSUER_NAME = "Fixture Platform"
 SENSITIVE_REAUTH_WINDOW_MINUTES = 5  # B.18 password re-prompt window
+
+# --- Error monitoring (inert unless SENTRY_DSN is set in .env) --------------
+SENTRY_DSN = env("SENTRY_DSN", default="")
+if SENTRY_DSN:
+    try:
+        import sentry_sdk
+
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            environment=env("SENTRY_ENVIRONMENT", default="production"),
+            traces_sample_rate=env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.0),
+            send_default_pii=False,
+        )
+    except ImportError:  # sdk not installed: monitoring off, app unaffected
+        pass
