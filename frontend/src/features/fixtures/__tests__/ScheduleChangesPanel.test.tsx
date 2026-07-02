@@ -72,7 +72,7 @@ describe("ScheduleChangesPanel", () => {
     const first = await screen.findByTestId("change-b1-m1");
     expect(first).toHaveTextContent("Moved");
     expect(first).toHaveTextContent("Alpha vs Bravo");
-    expect(first).toHaveTextContent("admin@example.com");
+    expect(first).toHaveTextContent("admin");
     expect(first).toHaveTextContent("2h ago");
     expect(first).toHaveTextContent("Main");
     expect(first).toHaveTextContent("Side");
@@ -87,6 +87,34 @@ describe("ScheduleChangesPanel", () => {
     expect(tournamentsApi.scheduleChanges).toHaveBeenCalledWith("t1", {
       limit: 50,
     });
+  });
+
+  it("collapses a publish flood into one Scheduled burst with an expander", async () => {
+    // 5 first-time placements (old = unscheduled) by one actor in one spree.
+    vi.mocked(tournamentsApi.scheduleChanges).mockResolvedValue({
+      results: Array.from({ length: 5 }, (_, i) =>
+        entry({
+          match_id: `m${i}`,
+          batch_id: `b${i}`,
+          match_label: `Match ${i}`,
+          kind: "engine_rerun",
+          old: null,
+        }),
+      ),
+    });
+    mount();
+    const burst = await screen.findByText("5");
+    expect(burst).toBeInTheDocument();
+    // First placements read as "Scheduled", not "Re-scheduled".
+    expect(screen.getByText("Scheduled")).toBeInTheDocument();
+    expect(screen.queryByText("Re-scheduled")).not.toBeInTheDocument();
+    // Preview shows 3; the expander reveals the rest.
+    expect(screen.getByTestId("change-b0-m0")).toBeInTheDocument();
+    expect(screen.queryByTestId("change-b4-m4")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Show all 5" }));
+    expect(screen.getByTestId("change-b4-m4")).toBeInTheDocument();
+    // No user-facing arrows anywhere in the feed.
+    expect(document.body.textContent).not.toMatch(/[\u2192]/);
   });
 
   it("filters by competition leaf", async () => {

@@ -466,10 +466,11 @@ export function ControlRoomPage(): React.ReactElement {
                         />
                       </button>
                       {changesOpen ? (
-                        <div className="border-t border-border p-3">
+                        <div className="border-t border-border pb-1">
                           <ScheduleChangesPanel
                             tournamentId={id}
                             competitions={competitions}
+                            embedded
                           />
                         </div>
                       ) : null}

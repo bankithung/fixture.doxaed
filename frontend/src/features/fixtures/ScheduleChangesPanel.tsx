@@ -16,6 +16,7 @@ const PAGE = 50;
 
 /** Localized chip per feed kind (stable codes from the backend map). */
 const KIND_LABELS: Record<string, string> = {
+  scheduled: "Scheduled",
   rescheduled: "Moved",
   delayed: "Delayed",
   retimed: "Re-timed",
@@ -28,6 +29,7 @@ const KIND_LABELS: Record<string, string> = {
 
 /** Token-only chip palette per kind (no hardcoded hex). */
 const KIND_CLASSES: Record<string, string> = {
+  scheduled: "bg-success-muted text-success-foreground",
   rescheduled: "bg-primary/15 text-primary",
   delayed: "bg-warning-muted text-warning-foreground",
   retimed: "bg-primary/15 text-primary",
@@ -38,6 +40,16 @@ const KIND_CLASSES: Record<string, string> = {
   unlocked: "bg-muted text-muted-foreground",
 };
 
+/** A move whose "before" was empty is a first placement, not a re-schedule.
+ * Fixture publish floods the feed with these; call them what they are. */
+function effectiveKind(e: ScheduleChangeEntry): string {
+  const placing = ["rescheduled", "retimed", "engine_rerun", "day_shifted"];
+  if (placing.includes(e.kind) && !e.old?.scheduled_at && e.new?.scheduled_at) {
+    return "scheduled";
+  }
+  return e.kind;
+}
+
 function relTime(iso: string): string {
   const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
   if (seconds < 60) return t("just now");
@@ -46,6 +58,12 @@ function relTime(iso: string): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}${t("h ago")}`;
   return `${Math.floor(hours / 24)}${t("d ago")}`;
+}
+
+/** Short actor handle: display the mailbox name, keep the address on hover. */
+function actorName(actor: { email: string } | null): string | null {
+  if (!actor) return null;
+  return actor.email.split("@")[0] || actor.email;
 }
 
 function fmtSlot(slot: ScheduleChangeSlot | null): string {
@@ -59,35 +77,54 @@ function fmtSlot(slot: ScheduleChangeSlot | null): string {
   return slot.venue ? `${when} · ${slot.venue}` : when;
 }
 
+function KindChip({ kind }: { kind: string }): React.ReactElement {
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium",
+        KIND_CLASSES[kind] ?? "bg-muted text-muted-foreground",
+      )}
+    >
+      {t(KIND_LABELS[kind] ?? kind)}
+    </span>
+  );
+}
+
+/** The new slot leads; the old one trails as a muted "was". No arrows. */
+function SlotLine({ e }: { e: ScheduleChangeEntry }): React.ReactElement | null {
+  if (e.old === null && e.new === null) return null;
+  const moved = Boolean(e.old?.scheduled_at);
+  return (
+    <p className="min-w-0 font-tabular text-xs text-muted-foreground">
+      <span className="text-foreground">{fmtSlot(e.new)}</span>
+      {moved ? (
+        <span className="ml-2">
+          {t("was")} {fmtSlot(e.old)}
+        </span>
+      ) : null}
+    </p>
+  );
+}
+
+/** One standalone change: chip, match, who and when, then the slot line. */
 function Entry({ e }: { e: ScheduleChangeEntry }): React.ReactElement {
+  const who = actorName(e.actor);
   return (
     <li
       data-testid={`change-${e.batch_id}-${e.match_id}`}
-      className="flex flex-col gap-1 border-t border-border px-4 py-2.5 first:border-t-0"
+      className="flex flex-col gap-1 px-4 py-2.5"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={cn(
-            "rounded-full px-2 py-0.5 text-[0.6875rem] font-medium",
-            KIND_CLASSES[e.kind] ?? "bg-muted text-muted-foreground",
-          )}
-        >
-          {t(KIND_LABELS[e.kind] ?? e.kind)}
-        </span>
-        <span className="text-sm font-medium">{e.match_label}</span>
-        <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-          {e.actor ? <span>{e.actor.email}</span> : null}
+        <KindChip kind={effectiveKind(e)} />
+        <span className="min-w-0 truncate text-sm font-medium">{e.match_label}</span>
+        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+          {who ? <span title={e.actor?.email}>{who}</span> : null}
           <span className="font-tabular" title={e.changed_at}>
             {relTime(e.changed_at)}
           </span>
         </span>
       </div>
-      {e.old !== null || e.new !== null ? (
-        <p className="font-tabular text-xs text-muted-foreground">
-          {fmtSlot(e.old)} <span aria-hidden="true">&rarr;</span>{" "}
-          <span className="text-foreground">{fmtSlot(e.new)}</span>
-        </p>
-      ) : null}
+      <SlotLine e={e} />
       {e.reason ? (
         <p className="text-xs italic text-muted-foreground">{e.reason}</p>
       ) : null}
@@ -95,17 +132,106 @@ function Entry({ e }: { e: ScheduleChangeEntry }): React.ReactElement {
   );
 }
 
+interface Burst {
+  key: string;
+  entries: ScheduleChangeEntry[];
+}
+
+/** Collapse bulk operations into one feed item: consecutive entries from the
+ * same batch, or from the same person doing the same thing within half an
+ * hour, read as ONE action ("Scheduled 102 matches"), not 102 rows. */
+function groupBursts(entries: ScheduleChangeEntry[]): Burst[] {
+  const bursts: Burst[] = [];
+  for (const e of entries) {
+    const prev = bursts[bursts.length - 1];
+    const last = prev?.entries[prev.entries.length - 1];
+    const sameBatch = last && e.batch_id && e.batch_id === last.batch_id;
+    const sameSpree =
+      last &&
+      (last.actor?.email ?? "") === (e.actor?.email ?? "") &&
+      effectiveKind(last) === effectiveKind(e) &&
+      Math.abs(
+        new Date(last.changed_at).getTime() - new Date(e.changed_at).getTime(),
+      ) <
+        30 * 60_000;
+    if (prev && (sameBatch || sameSpree)) {
+      prev.entries.push(e);
+    } else {
+      bursts.push({ key: `${e.batch_id}-${e.match_id}`, entries: [e] });
+    }
+  }
+  return bursts;
+}
+
+const PREVIEW = 3;
+
+/** A bulk action: one header (what, how many, who, when), a short preview of
+ * the affected matches, and an expander for the rest. */
+function BurstItem({ burst }: { burst: Burst }): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  const head = burst.entries[0];
+  const kind = effectiveKind(head);
+  const who = actorName(head.actor);
+  const shown = open ? burst.entries : burst.entries.slice(0, PREVIEW);
+  const hidden = burst.entries.length - shown.length;
+  return (
+    <li className="flex flex-col px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <KindChip kind={kind} />
+        <span className="text-sm font-medium">
+          <span className="font-tabular">{burst.entries.length}</span>{" "}
+          {t("matches")}
+        </span>
+        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+          {who ? <span title={head.actor?.email}>{who}</span> : null}
+          <span className="font-tabular" title={head.changed_at}>
+            {relTime(head.changed_at)}
+          </span>
+        </span>
+      </div>
+      <ul className="mt-1.5 flex flex-col gap-1 border-l-2 border-border pl-3">
+        {shown.map((e, i) => (
+          <li
+            key={`${e.batch_id}-${e.match_id}-${i}`}
+            data-testid={`change-${e.batch_id}-${e.match_id}`}
+            className="flex flex-col gap-x-3 gap-y-0.5 sm:flex-row sm:items-baseline"
+          >
+            <span className="min-w-0 flex-1 truncate text-xs font-medium">
+              {e.match_label}
+            </span>
+            <SlotLine e={e} />
+          </li>
+        ))}
+      </ul>
+      {hidden > 0 || open ? (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="mt-1.5 w-fit pl-3 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {open
+            ? t("Show fewer")
+            : `${t("Show all")} ${burst.entries.length}`}
+        </button>
+      ) : null}
+    </li>
+  );
+}
+
 /**
- * The Advanced-tools change-history feed (trust layer, increment F):
- * reverse-chrono per-match slot changes flattened from the audit log — who
- * moved what, from where to where, when and why. Leaf filter + "load more".
+ * The change-history feed (trust layer, increment F): reverse-chrono slot
+ * changes flattened from the audit log — who moved what, from where to
+ * where, when and why. Bulk actions collapse into one expandable item.
+ * `embedded` drops the card chrome + title for use inside a host drawer.
  */
 export function ScheduleChangesPanel({
   tournamentId,
   competitions,
+  embedded = false,
 }: {
   tournamentId: string;
   competitions: { leafKey: string; label: string }[];
+  embedded?: boolean;
 }): React.ReactElement {
   const [leaf, setLeaf] = useState("");
   const [limit, setLimit] = useState(PAGE);
@@ -119,49 +245,67 @@ export function ScheduleChangesPanel({
       }),
   });
   const entries = feed.data?.results ?? [];
+  const bursts = groupBursts(entries);
+
+  const filter =
+    competitions.length > 0 ? (
+      <Select
+        className={embedded ? "w-full" : "ml-auto w-56"}
+        size="sm"
+        aria-label={t("Filter by competition")}
+        value={leaf}
+        onChange={(v) => {
+          setLeaf(v);
+          setLimit(PAGE);
+        }}
+        options={[
+          { value: "", label: t("All competitions") },
+          ...competitions.map((c) => ({ value: c.leafKey, label: c.label })),
+        ]}
+      />
+    ) : null;
 
   return (
     <section
       data-testid="schedule-changes-panel"
-      className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+      className={
+        embedded
+          ? undefined
+          : "overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+      }
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <History aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
-        <h3 className="text-sm font-semibold">{t("Change history")}</h3>
-        <p className="hidden text-xs text-muted-foreground sm:block">
-          {t("Who changed each time or venue, and why.")}
-        </p>
-        {competitions.length > 0 ? (
-          <Select
-            className="ml-auto w-56"
-            size="sm"
-            aria-label={t("Filter by competition")}
-            value={leaf}
-            onChange={(v) => {
-              setLeaf(v);
-              setLimit(PAGE);
-            }}
-            options={[
-              { value: "", label: t("All competitions") },
-              ...competitions.map((c) => ({ value: c.leafKey, label: c.label })),
-            ]}
+      {embedded ? (
+        filter ? <div className="px-4 pt-2.5">{filter}</div> : null
+      ) : (
+        <div className="flex h-9 flex-wrap items-center gap-2 border-b border-border px-4">
+          <History
+            aria-hidden="true"
+            className="h-3.5 w-3.5 text-muted-foreground/70"
           />
-        ) : null}
-      </div>
+          <h3 className="text-[13px] font-semibold tracking-tight">
+            {t("Change history")}
+          </h3>
+          {filter}
+        </div>
+      )}
       {feed.isLoading ? (
         <div className="px-4 py-3" aria-busy="true">
           <div className="h-16 animate-pulse rounded-lg bg-muted/40" />
         </div>
       ) : entries.length === 0 ? (
-        <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+        <p className="px-4 py-3 text-sm text-muted-foreground">
           {t("No changes yet. Any match you move or delay will show up here.")}
         </p>
       ) : (
         <>
-          <ul>
-            {entries.map((e, i) => (
-              <Entry key={`${e.batch_id}-${e.match_id}-${i}`} e={e} />
-            ))}
+          <ul className="divide-y divide-border">
+            {bursts.map((b) =>
+              b.entries.length === 1 ? (
+                <Entry key={b.key} e={b.entries[0]} />
+              ) : (
+                <BurstItem key={b.key} burst={b} />
+              ),
+            )}
           </ul>
           {entries.length >= limit ? (
             <div className="border-t border-border px-4 py-2.5">
