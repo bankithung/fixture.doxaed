@@ -522,6 +522,13 @@ export function QuickResultDialog({
 
   const [home, setHome] = useState(match.home_score ?? 0);
   const [away, setAway] = useState(match.away_score ?? 0);
+  // Level knockout: the engine refuses completion until a shootout decides
+  // it — reveal pens inputs instead of dead-ending on the error.
+  const [needsShootout, setNeedsShootout] = useState(false);
+  const [pens, setPens] = useState<{ home: string; away: string }>({
+    home: "",
+    away: "",
+  });
   const [sets, setSets] = useState<[string, string][]>(() =>
     match.set_scores && match.set_scores.length > 0
       ? match.set_scores.map(
@@ -540,12 +547,19 @@ export function QuickResultDialog({
   const filled = sets.filter(([h, a]) => h !== "" && a !== "");
 
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const event_id = newEventId();
       if (isSets) {
         return tournamentsApi.scoreSets(match.id, {
           set_scores: filled.map(([h, a]) => [Number(h), Number(a)]),
           event_id,
+        });
+      }
+      if (needsShootout) {
+        await liveApi.scoreShootout(match.id, {
+          home_pens: Number(pens.home),
+          away_pens: Number(pens.away),
+          event_id: newEventId(),
         });
       }
       return tournamentsApi.score(match.id, {
@@ -559,17 +573,29 @@ export function QuickResultDialog({
       toast.push({ kind: "success", title: t("Result saved") });
       onClose();
     },
-    onError: (e) =>
+    onError: (e) => {
+      if (errorDetail(e) === "knockout_draw_needs_shootout") {
+        setNeedsShootout(true);
+        toast.push({
+          kind: "info",
+          title: t("Level knockout. Enter the shootout result to decide it."),
+        });
+        return;
+      }
       toast.push({
         kind: "error",
         title: t("Could not save the result"),
         description: errorDetail(e),
-      }),
+      });
+    },
   });
 
   const homeName = match.home_team?.name ?? t("Home");
   const awayName = match.away_team?.name ?? t("Away");
-  const canSave = !save.isPending && (isSets ? filled.length > 0 : true);
+  const pensOk =
+    !needsShootout ||
+    (pens.home !== "" && pens.away !== "" && Number(pens.home) !== Number(pens.away));
+  const canSave = !save.isPending && pensOk && (isSets ? filled.length > 0 : true);
 
   return (
     <Dialog
@@ -664,6 +690,36 @@ export function QuickResultDialog({
           />
         </div>
       )}
+
+      {needsShootout ? (
+        <div className="flex flex-col gap-2 rounded-lg border border-primary/25 bg-primary/5 p-3">
+          <p className="text-xs font-medium">
+            {t("Penalty shootout (decides the level knockout)")}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {(["home", "away"] as const).map((side) => (
+              <div key={side} className="flex flex-col gap-1">
+                <Label htmlFor={`qr-pens-${side}-${match.id}`} className="truncate text-xs">
+                  {side === "home" ? homeName : awayName}
+                </Label>
+                <Input
+                  id={`qr-pens-${side}-${match.id}`}
+                  inputMode="numeric"
+                  data-testid={`qr-pens-${side}-${match.id}`}
+                  value={pens[side]}
+                  onChange={(e) =>
+                    setPens((prev) => ({
+                      ...prev,
+                      [side]: e.target.value.replace(/[^0-9]/g, "").slice(0, 2),
+                    }))
+                  }
+                  className="h-9 text-center font-tabular"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <DialogFooter>
         <Button variant="ghost" disabled={save.isPending} onClick={onClose}>

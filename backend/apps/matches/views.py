@@ -508,8 +508,11 @@ class RecordShootoutView(GenericAPIView):
         if not match_rules.get("penalties"):
             raise DRFValidationError({"detail": "penalties_disabled_by_rules"})
         if match.status not in (
-            MatchStatus.LIVE, MatchStatus.HALF_TIME, MatchStatus.COMPLETED
+            MatchStatus.SCHEDULED, MatchStatus.LIVE, MatchStatus.HALF_TIME,
+            MatchStatus.COMPLETED,
         ):
+            # SCHEDULED is allowed for the paper-score path: the board's
+            # quick result records pens first, then the level score completes.
             raise DRFValidationError({"detail": "shootout_wrong_state"})
         if (
             match.home_score is not None
