@@ -5,6 +5,13 @@ import { ChevronRight, Lock, Power, ScrollText } from "lucide-react";
 import { tournamentsApi, type TournamentRules } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
@@ -183,22 +190,42 @@ export function SettingsTab(): React.ReactElement {
     }
   }, [settings.data]);
 
-  const canEdit = settings.data?.can_edit ?? false;
   const frozen = !!settings.data?.rules_frozen_at;
+  // Pre-freeze: plain editing. Post-freeze: fields stay editable and saving
+  // routes through the audited amend-with-reason flow (the backend supports
+  // it; the UI used to hard-disable everything forever).
+  const canEdit = (settings.data?.can_edit ?? false) || frozen;
+
+  const [amendOpen, setAmendOpen] = useState(false);
+  const [amendReason, setAmendReason] = useState("");
 
   const save = useMutation({
-    mutationFn: () =>
-      tournamentsApi.updateSettings(id, { rules: draft!, event_id: newEventId() }),
+    mutationFn: (amend: { reason: string } | undefined) =>
+      tournamentsApi.updateSettings(id, {
+        rules: draft!,
+        event_id: newEventId(),
+        ...(amend ? { amend: true, reason: amend.reason } : {}),
+      }),
     onSuccess: () => {
       invalidateTournament(qc, id); // covers t-settings + all tournament data
+      setAmendOpen(false);
+      setAmendReason("");
       toast.push({ kind: "success", title: t("Settings saved") });
     },
-    onError: (e) =>
+    onError: (e) => {
+      const detail = e instanceof ApiError ? String(e.payload.detail ?? "") : "";
+      if (detail === "rules_frozen") {
+        // Frozen is correctable, not terminal: the audited amend flow asks
+        // for a reason (participants are notified of rule amendments).
+        setAmendOpen(true);
+        return;
+      }
       toast.push({
         kind: "error",
         title: t("Could not save settings"),
-        description: e instanceof ApiError ? (e.payload.detail ?? "") : "",
-      }),
+        description: detail,
+      });
+    },
   });
 
   // Tournament identity (cached by the workspace) — drives status + the
@@ -252,7 +279,9 @@ export function SettingsTab(): React.ReactElement {
       {frozen ? (
         <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-muted px-3 py-2 text-sm">
           <Lock aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-warning-foreground" />
-          <span>{t("Frozen while registration is open, to keep the competition fair.")}</span>
+          <span>
+            {t("Rules are frozen while registration is open. Changes need a written reason and are audited.")}
+          </span>
         </div>
       ) : null}
 
@@ -324,7 +353,7 @@ export function SettingsTab(): React.ReactElement {
 
           {canEdit ? (
             <div className="flex justify-end">
-              <Button disabled={save.isPending} onClick={() => save.mutate()}>
+              <Button disabled={save.isPending} onClick={() => save.mutate(undefined)}>
                 {save.isPending ? t("Saving…") : t("Save settings")}
               </Button>
             </div>
@@ -348,6 +377,42 @@ export function SettingsTab(): React.ReactElement {
         </div>
         <ChevronRight aria-hidden="true" className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
       </Link>
+
+      <Dialog
+        open={amendOpen}
+        onOpenChange={setAmendOpen}
+        ariaLabel={t("Amend frozen rules")}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("Amend frozen rules?")}</DialogTitle>
+          <DialogDescription>
+            {t("Registration is open, so this change is recorded as an amendment with your reason.")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-1.5 py-2">
+          <span className="text-xs font-medium text-muted-foreground">{t("Reason")}</span>
+          <textarea
+            value={amendReason}
+            onChange={(e) => setAmendReason(e.target.value)}
+            rows={2}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            placeholder={t("E.g. squad size corrected after the referees' meeting")}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" size="sm" onClick={() => setAmendOpen(false)}>
+            {t("Cancel")}
+          </Button>
+          <Button
+            size="sm"
+            data-testid="amend-confirm"
+            disabled={save.isPending || amendReason.trim().length < 5}
+            onClick={() => save.mutate({ reason: amendReason })}
+          >
+            {t("Amend rules")}
+          </Button>
+        </DialogFooter>
+      </Dialog>
 
       <DisputesPanel tournamentId={id} />
 
