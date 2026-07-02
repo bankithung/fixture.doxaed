@@ -25,6 +25,7 @@ from apps.matches.public_views import (
 )
 from apps.badges.views import (
     BadgeCardView,
+    PublicBadgeAwardView,
     PublicTournamentBadgesView,
     TournamentBadgesView,
 )
@@ -105,6 +106,11 @@ api_v1 = [
         "public/badges/<uuid:award_id>/card.png",
         BadgeCardView.as_view(),
         name="public-badge-card",
+    ),
+    path(
+        "public/badges/<uuid:award_id>/",
+        PublicBadgeAwardView.as_view(),
+        name="public-badge-award",
     ),
     path(
         "public/tournaments/",

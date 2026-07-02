@@ -89,6 +89,43 @@ class BadgeCardView(GenericAPIView):
         return FileResponse(open(path, "rb"), content_type="image/png")
 
 
+class PublicBadgeAwardView(GenericAPIView):
+    """`GET /api/public/badges/{award_id}/` — one award (certificate page)."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, award_id):
+        award = (
+            BadgeAward.objects.filter(id=award_id, revoked_at__isnull=True)
+            .select_related(
+                "tournament", "team", "player", "player__person", "match"
+            )
+            .first()
+        )
+        if award is None or award.tournament.status not in _PUBLIC_STATUSES:
+            raise NotFound("badge_not_found")
+        template = BADGE_TEMPLATES.get(award.badge_key, {})
+        t = award.tournament
+        return Response({
+            "id": str(award.id),
+            "badge_key": award.badge_key,
+            "name": template.get("name", award.badge_key),
+            "description": template.get("description", ""),
+            "subject": (
+                award.player.person.full_name
+                if award.player_id and award.player.person_id
+                else (award.team.name if award.team_id else "")
+            ),
+            "team_name": award.team.name if award.team_id else None,
+            "evidence": award.evidence,
+            "tournament_name": t.name,
+            "tournament_slug": t.slug,
+            "tournament_id": str(t.id),
+            "season": t.season,
+            "awarded_at": award.awarded_at.isoformat(),
+        })
+
+
 class PublicTournamentBadgesView(GenericAPIView):
     """`GET /api/public/tournaments/{slug}/{id}/badges/` — public gallery."""
 

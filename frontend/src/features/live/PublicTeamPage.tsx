@@ -122,16 +122,23 @@ export function PublicTeamPage(): React.ReactElement {
             </div>
             <ul className="flex flex-wrap gap-2 p-4">
               {team.badges.map((b) => (
-                <li key={b.id}>
+                <li key={b.id} className="flex items-center gap-1">
+                  <Link
+                    to={`/cert/${b.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/10"
+                    title={t("Open the certificate")}
+                  >
+                    <Award aria-hidden="true" className="h-3.5 w-3.5" />
+                    {b.name}
+                  </Link>
                   <a
                     href={`/api/public/badges/${b.id}/card.png`}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/10"
-                    title={t("Open the share card")}
+                    className="rounded-full border border-border px-2 py-1 text-[0.6875rem] font-medium text-muted-foreground hover:bg-accent"
+                    title={t("Share card image")}
                   >
-                    <Award aria-hidden="true" className="h-3.5 w-3.5" />
-                    {b.name}
+                    {t("Card")}
                   </a>
                 </li>
               ))}
