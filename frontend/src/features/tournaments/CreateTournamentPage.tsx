@@ -37,13 +37,16 @@ export function CreateTournamentPage(): React.ReactElement {
     setError(null);
     setSubmitting(true);
     try {
-      await tournamentsApi.create({
+      const created = await tournamentsApi.create({
         name: values.name,
         event_id: newEventId(),
       });
       // Refresh the list so the new tournament shows without a manual reload.
       await qc.invalidateQueries({ queryKey: ["tournaments"] });
-      navigate(routes.tournaments());
+      // Land INSIDE the new workspace (FlowLanding routes to the first setup
+      // step) — creation used to dump the admin back on the list to go find
+      // their own tournament.
+      navigate(routes.tournamentDetail(created.id));
     } catch (e) {
       setError(
         e instanceof ApiError

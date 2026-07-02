@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell } from "lucide-react";
 import { notificationsApi } from "@/api/notifications";
@@ -8,6 +9,7 @@ import { t } from "@/lib/t";
 export function NotificationBell(): React.ReactElement {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
   const ref = useRef<HTMLDivElement>(null);
 
   const query = useQuery({
@@ -92,7 +94,15 @@ export function NotificationBell(): React.ReactElement {
                   key={n.id}
                   type="button"
                   role="menuitem"
-                  onClick={() => markOne.mutate(n.id)}
+                  onClick={() => {
+                    markOne.mutate(n.id);
+                    // Notifications carry a deep link; clicking used to only
+                    // mark-read, making every alert a dead end.
+                    if (n.url) {
+                      setOpen(false);
+                      navigate(n.url);
+                    }
+                  }}
                   className={`block w-full px-3 py-2 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none ${
                     n.read_at ? "opacity-60" : ""
                   }`}
