@@ -100,15 +100,15 @@ export function LandingPage(): React.ReactElement {
               )}
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link to={routes.signup()}>
+              <Link to="/explore">
                 <Button size="lg" className="gap-2">
-                  {t("Create an account")}
+                  {t("Follow live tournaments")}
                   <ArrowRight aria-hidden="true" className="h-4 w-4" />
                 </Button>
               </Link>
-              <Link to={routes.login()}>
+              <Link to={routes.signup()}>
                 <Button size="lg" variant="outline">
-                  {t("Sign in")}
+                  {t("Organize one")}
                 </Button>
               </Link>
             </div>

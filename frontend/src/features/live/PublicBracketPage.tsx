@@ -126,7 +126,7 @@ export function PublicBracketPage(): React.ReactElement {
             >
               <h2 className="text-base font-semibold">{b.label}</h2>
               <div className="overflow-x-auto rounded-xl border border-border bg-card p-4">
-                <BracketView matches={b.matches} />
+                <BracketView matches={b.matches} timeZone={query.data?.tournament.time_zone} />
               </div>
             </section>
           ))

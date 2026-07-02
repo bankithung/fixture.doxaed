@@ -21,6 +21,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.matches.public_views import (
     PublicInstitutionRecordView,
     PublicTeamRecordView,
+    PublicTournamentDirectoryView,
 )
 from apps.badges.views import (
     BadgeCardView,
@@ -104,6 +105,11 @@ api_v1 = [
         "public/badges/<uuid:award_id>/card.png",
         BadgeCardView.as_view(),
         name="public-badge-card",
+    ),
+    path(
+        "public/tournaments/",
+        PublicTournamentDirectoryView.as_view(),
+        name="public-tournament-directory",
     ),
     path(
         "public/tournaments/<slug:slug>/<uuid:tournament_id>/teams/<uuid:team_id>/",

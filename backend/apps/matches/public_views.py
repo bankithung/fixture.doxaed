@@ -51,6 +51,46 @@ def _badges_for(subject_filter) -> list[dict]:
     return out
 
 
+class PublicTournamentDirectoryView(GenericAPIView):
+    """`GET /api/public/tournaments/` — the explore directory: every
+    public-facing tournament with dates, season, sports, and a live flag.
+    Cold visitors used to dead-end on the landing page with no way to find
+    any tournament without an out-of-band link."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from apps.matches.models import Match, MatchStatus
+
+        rows = []
+        qs = (
+            Tournament.objects.filter(
+                deleted_at__isnull=True, status__in=_PUBLIC
+            )
+            .exclude(slug="")
+            .order_by("-starts_at", "-created_at")
+        )
+        live_ids = set(
+            Match.objects.filter(
+                tournament__in=qs,
+                status__in=(MatchStatus.LIVE, MatchStatus.HALF_TIME),
+            ).values_list("tournament_id", flat=True)
+        )
+        for t in qs:
+            rows.append({
+                "id": str(t.id),
+                "slug": t.slug,
+                "name": t.name,
+                "status": t.status,
+                "season": t.season,
+                "starts_at": t.starts_at.isoformat() if t.starts_at else None,
+                "ends_at": t.ends_at.isoformat() if t.ends_at else None,
+                "sports": [s.get("name", "") for s in (t.sports or [])],
+                "live_now": t.id in live_ids,
+            })
+        return Response({"tournaments": rows})
+
+
 class PublicTeamRecordView(GenericAPIView):
     """`GET /api/public/tournaments/{slug}/{id}/teams/{team_id}/` — one
     team's record, form, results, roster, and badges."""
