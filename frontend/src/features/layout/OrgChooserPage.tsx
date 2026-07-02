@@ -25,6 +25,7 @@ import { useBreakpoint } from "@/lib/useBreakpoint";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { TodayRail } from "./TodayRail";
 
 /**
  * The personal Dashboard — the individual WORKSPACE view, identical for every
@@ -63,22 +64,6 @@ export function OrgChooserPage(): React.ReactElement {
     return { total: all.length, live, completed, draft };
   }, [all]);
 
-  // Featured match (one lazy matches() call on a live-or-first tournament).
-  const featured = all.find((x) => x.status.startsWith("live")) ?? all[0];
-  const matchesQuery = useQuery({
-    queryKey: ["t-matches", featured?.id],
-    queryFn: () => tournamentsApi.matches(featured!.id),
-    enabled: !!featured,
-  });
-  const featuredMatch = useMemo(() => {
-    const ms = matchesQuery.data ?? [];
-    return (
-      ms.find((m) => m.status.startsWith("live")) ??
-      ms.find((m) => m.status === "scheduled") ??
-      ms[0] ??
-      null
-    );
-  }, [matchesQuery.data]);
 
   // Table filter + sort (client-side over list()).
   const [search, setSearch] = useState("");
@@ -327,38 +312,7 @@ export function OrgChooserPage(): React.ReactElement {
 
         {/* Right rail */}
         <aside className="flex flex-col gap-6" aria-label={t("At a glance")}>
-          {/* Featured / live match */}
-          <div className="relative overflow-hidden rounded-xl border border-border bg-card p-5 shadow-sm">
-            <span aria-hidden="true" className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
-            <div className="relative">
-              <p className="text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-muted-foreground">
-                {featuredMatch && featuredMatch.status.startsWith("live") ? t("Live match") : t("Next match")}
-              </p>
-              {featured && featuredMatch ? (
-                <>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{featured.name}</p>
-                  <div className="mt-3 flex items-center justify-center gap-3 font-tabular text-2xl font-semibold">
-                    <span className="flex-1 truncate text-right">{featuredMatch.home_team?.short_name ?? featuredMatch.home_team?.name ?? t("TBD")}</span>
-                    <span className="shrink-0 tabular-nums">
-                      {featuredMatch.home_score ?? 0}-{featuredMatch.away_score ?? 0}
-                    </span>
-                    <span className="flex-1 truncate text-left">{featuredMatch.away_team?.short_name ?? featuredMatch.away_team?.name ?? t("TBD")}</span>
-                  </div>
-                  <Link
-                    to={routes.matchConsole(featured.id, featuredMatch.id)}
-                    className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-lg border border-input px-3 py-2 text-sm font-medium transition-colors hover:bg-accent"
-                  >
-                    {t("Open scorer")}
-                    <ChevronRight aria-hidden="true" className="h-4 w-4" />
-                  </Link>
-                </>
-              ) : (
-                <p className="mt-3 text-sm text-muted-foreground">
-                  {t("No live or upcoming match.")}
-                </p>
-              )}
-            </div>
-          </div>
+          <TodayRail />
 
           {/* Quick actions */}
           <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
