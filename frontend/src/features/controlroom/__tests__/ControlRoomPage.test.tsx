@@ -310,7 +310,7 @@ describe("ControlRoomPage", () => {
     es.open();
     await waitFor(() =>
       expect(screen.getByTestId("stream-status")).toHaveTextContent(
-        "Live updates on",
+        "Live",
       ),
     );
 
@@ -337,14 +337,14 @@ describe("ControlRoomPage", () => {
     es.open();
     await waitFor(() =>
       expect(screen.getByTestId("stream-status")).toHaveTextContent(
-        "Live updates on",
+        "Live",
       ),
     );
 
     es.onerror?.();
     await waitFor(() =>
       expect(screen.getByTestId("stream-status")).toHaveTextContent(
-        "Updating every minute",
+        "Polling",
       ),
     );
   });

@@ -37,14 +37,12 @@ function Panel({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <section className="flex flex-col rounded-xl border border-border bg-card shadow-sm">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <h3 className="text-sm font-semibold">{title}</h3>
+    <section className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div className="flex h-9 items-center gap-2 border-b border-border px-4">
+        <Icon aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+        <h3 className="text-[13px] font-semibold tracking-tight">{title}</h3>
         {count != null ? (
-          <span className="rounded-full bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground">
-            {count}
-          </span>
+          <span className="font-tabular text-xs text-muted-foreground">{count}</span>
         ) : null}
         {action ? <span className="ml-auto">{action}</span> : null}
       </div>
@@ -138,37 +136,45 @@ export function CourtsPanel({
           const total = v.matches.length;
           const pct = total > 0 ? Math.round((done / total) * 100) : 0;
           return (
-            <div key={v.venue || "unassigned"} className="flex items-center gap-3 px-4 py-2.5">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="truncate text-sm font-medium">
-                    {v.venue || t("No court")}
+            <div
+              key={v.venue || "unassigned"}
+              className="grid grid-cols-[8.5rem_1fr_auto] items-center gap-3 px-4 py-2 sm:grid-cols-[10rem_1fr_auto]"
+            >
+              <div className="flex min-w-0 items-center gap-1.5">
+                {now && IN_PLAY.has(now.status) ? (
+                  <span className="relative flex h-1.5 w-1.5 shrink-0" aria-label={t("Live now")}>
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
                   </span>
-                  {now && IN_PLAY.has(now.status) ? (
-                    <span className="relative flex h-2 w-2" aria-label={t("Live now")}>
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-                    </span>
-                  ) : null}
-                </div>
-                <p className="truncate text-xs text-muted-foreground">
-                  {now
-                    ? `${teamName(now.home_team)} v ${teamName(now.away_team)}`
-                    : next
-                      ? `${t("Next")} ${fmtKickoff(next.scheduled_at, timeZone)} · ${teamName(next.home_team)} v ${teamName(next.away_team)}`
-                      : t("Idle")}
-                </p>
+                ) : null}
+                <span className="truncate text-sm font-medium">
+                  {v.venue || t("No court")}
+                </span>
               </div>
-              <div className="w-24 shrink-0">
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <p className="truncate text-xs text-muted-foreground">
+                {now ? (
+                  `${teamName(now.home_team)} v ${teamName(now.away_team)}`
+                ) : next ? (
+                  <>
+                    <span className="font-tabular text-foreground">
+                      {fmtKickoff(next.scheduled_at, timeZone)}
+                    </span>
+                    {` ${teamName(next.home_team)} v ${teamName(next.away_team)}`}
+                  </>
+                ) : (
+                  t("Idle")
+                )}
+              </p>
+              <div className="flex w-20 shrink-0 items-center gap-2">
+                <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
                   <div
                     className="h-full rounded-full bg-primary transition-[width]"
                     style={{ width: `${pct}%` }}
                   />
                 </div>
-                <p className="mt-1 text-right font-tabular text-[0.6875rem] text-muted-foreground">
+                <span className="w-8 text-right font-tabular text-[0.6875rem] text-muted-foreground">
                   {done}/{total}
-                </p>
+                </span>
               </div>
             </div>
           );
@@ -205,23 +211,26 @@ export function CompetitionProgressPanel({
         {rows.map((r) => {
           const pct = r.total > 0 ? Math.round((r.done / r.total) * 100) : 0;
           return (
-            <div key={r.label} className="flex flex-col gap-1.5 px-4 py-2.5">
-              <div className="flex items-center gap-2">
-                <LeafLabel label={r.label} className="min-w-0 flex-1" />
+            <div
+              key={r.label}
+              className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-2"
+            >
+              <LeafLabel label={r.label} className="min-w-0" />
+              <div className="flex w-32 shrink-0 items-center gap-2">
                 {r.live > 0 ? (
-                  <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-primary">
-                    {r.live} {t("live")}
+                  <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[0.625rem] font-medium leading-4 text-primary">
+                    {r.live}
                   </span>
                 ) : null}
-                <span className="shrink-0 font-tabular text-xs text-muted-foreground">
+                <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-[width]"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <span className="w-9 text-right font-tabular text-[0.6875rem] text-muted-foreground">
                   {r.done}/{r.total}
                 </span>
-              </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-primary transition-[width]"
-                  style={{ width: `${pct}%` }}
-                />
               </div>
             </div>
           );
@@ -426,11 +435,11 @@ export function LeadersPanel({
       data-testid="leaders-panel"
       className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
     >
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <Trophy aria-hidden="true" className="h-4 w-4 text-primary" />
-        <h3 className="text-sm font-semibold">{t("Leaders")}</h3>
+      <div className="flex h-9 items-center gap-2 border-b border-border px-4">
+        <Trophy aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-primary" />
+        <h3 className="text-[13px] font-semibold tracking-tight">{t("Leaders")}</h3>
         {!empty ? (
-          <span className="rounded-full bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground">
+          <span className="font-tabular text-xs text-muted-foreground">
             {d.played} {t("played")}
           </span>
         ) : null}

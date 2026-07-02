@@ -82,22 +82,18 @@ function OpsHeaderBand({
 
   const overline =
     "text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground";
-  const chip =
-    "inline-flex items-center gap-1 rounded-full bg-warning-muted px-2 py-0.5 text-xs font-medium text-warning-foreground ";
   return (
     <div
       data-testid="ops-band"
-      className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border lg:grid-cols-4"
+      className="grid grid-cols-2 divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm max-lg:divide-y lg:grid-cols-4 lg:divide-x"
     >
-      <div className="flex flex-col bg-card p-3">
+      <div className="flex min-w-0 flex-col justify-center gap-1 px-4 py-3">
         <p className={overline}>{t("On now")}</p>
-        <p className="mt-1 flex items-baseline gap-1.5">
-          <span className="font-tabular text-xl font-semibold leading-none">
+        <p className="flex items-baseline gap-1.5">
+          <span className="font-tabular text-2xl font-semibold leading-none">
             {liveCount}
           </span>
-          <span className="text-xs text-muted-foreground">
-            {liveCount === 1 ? t("match live") : t("matches live")}
-          </span>
+          <span className="text-xs text-muted-foreground">{t("live")}</span>
           {liveCount > 0 ? (
             <span className="relative ml-0.5 flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
@@ -107,66 +103,65 @@ function OpsHeaderBand({
         </p>
       </div>
 
-      <div className="flex flex-col bg-card p-3">
-        <p className={overline}>{t("Today")}</p>
-        <p className="mt-1 flex items-baseline gap-1.5">
-          <span className="font-tabular text-xl font-semibold leading-none">
+      <div className="flex min-w-0 flex-col justify-center gap-1 px-4 py-3">
+        <p className={overline}>{t("Played")}</p>
+        <div className="flex items-center gap-2.5">
+          <p className="font-tabular text-2xl font-semibold leading-none">
             {completed}
-            <span className="text-muted-foreground">/{total}</span>
-          </span>
-          <span className="text-xs text-muted-foreground">{t("done")}</span>
-        </p>
-        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-primary transition-[width]"
-            style={{ width: `${pct}%` }}
-          />
+            <span className="text-base text-muted-foreground">/{total}</span>
+          </p>
+          <div className="h-1 w-14 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-[width]"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
         </div>
         {delayed > 0 ? (
-          <p className="mt-1.5 font-tabular text-xs text-warning-foreground">
+          <p className="font-tabular text-xs text-warning-foreground">
             {delayed} {t("running late")}
           </p>
         ) : null}
       </div>
 
-      <div className="flex flex-col bg-card p-3">
+      <div className="flex min-w-0 flex-col justify-center gap-1 px-4 py-3">
         <p className={overline}>{t("Needs you")}</p>
         {awaiting > 0 || noVenue > 0 ? (
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {awaiting > 0 ? (
-              <span className={chip}>
-                <span className="font-tabular">{awaiting}</span>{" "}
-                {t("awaiting result")}
-              </span>
-            ) : null}
-            {noVenue > 0 ? (
-              <span className={chip}>
-                <span className="font-tabular">{noVenue}</span> {t("no venue")}
-              </span>
-            ) : null}
-          </div>
+          <p className="flex items-baseline gap-1.5">
+            <span className="font-tabular text-2xl font-semibold leading-none text-warning-foreground">
+              {awaiting + noVenue}
+            </span>
+            <span className="truncate text-xs text-muted-foreground">
+              {awaiting > 0 ? t("awaiting result") : t("no venue")}
+            </span>
+          </p>
         ) : (
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t("All caught up")}
+          <p className="flex items-baseline gap-1.5">
+            <span className="font-tabular text-2xl font-semibold leading-none">
+              0
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {t("all caught up")}
+            </span>
           </p>
         )}
       </div>
 
-      <div className="flex flex-col bg-card p-3">
+      <div className="flex min-w-0 flex-col justify-center gap-1 px-4 py-3">
         <p className={overline}>{t("Up next")}</p>
         {next ? (
-          <div className="mt-1 min-w-0">
-            <p className="font-tabular text-sm font-semibold">
-              {next.scheduled_at ? fmtKickoff(next.scheduled_at, tz) : t("TBD")}
+          <div className="min-w-0">
+            <p className="flex items-baseline gap-2">
+              <span className="font-tabular text-2xl font-semibold leading-none">
+                {next.scheduled_at ? fmtKickoff(next.scheduled_at, tz) : t("TBD")}
+              </span>
             </p>
             <p className="truncate text-xs text-muted-foreground">
               {teamName(next.home_team)} v {teamName(next.away_team)}
             </p>
           </div>
         ) : (
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t("Nothing queued")}
-          </p>
+          <p className="text-sm text-muted-foreground">{t("Nothing queued")}</p>
         )}
       </div>
     </div>
@@ -270,21 +265,31 @@ export function ControlRoomPage(): React.ReactElement {
 
   return (
     <div className="flex w-full flex-col gap-5">
-      {/* Header: identity + stream health + a jump to the full matches board. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 print:hidden">
-        <div className="min-w-0">
-          <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            {t("Live operations")}
-          </p>
-          <h2 className="text-lg font-semibold tracking-tight">{t("Today")}</h2>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
+      {/* Header: one row — title, live status, quiet actions. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 print:hidden">
+        <h2 className="text-xl font-semibold tracking-tight">{t("Today")}</h2>
+        <span
+          data-testid="stream-status"
+          title={live ? t("Live updates on") : t("Updating every minute")}
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+        >
+          {live ? (
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+            </span>
+          ) : (
+            <Radio aria-hidden="true" className="h-3 w-3" />
+          )}
+          {live ? t("Live") : t("Polling")}
+        </span>
+        <div className="ml-auto flex items-center gap-1">
           {perms.canSchedule ? (
             <button
               type="button"
               data-testid="shift-day"
               onClick={() => setShiftOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <CloudRainWind aria-hidden="true" className="h-3.5 w-3.5" />
               {t("Shift a day")}
@@ -295,36 +300,19 @@ export function ControlRoomPage(): React.ReactElement {
               type="button"
               data-testid="print-day-sheet"
               onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Printer aria-hidden="true" className="h-3.5 w-3.5" />
-              {t("Print day sheet")}
+              {t("Print")}
             </button>
           ) : null}
           <Link
             to={routes.tournamentMatches(id)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs font-medium transition-colors hover:bg-accent"
           >
             <ListChecks aria-hidden="true" className="h-3.5 w-3.5" />
             {t("Matches board")}
           </Link>
-          <span
-            data-testid="stream-status"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
-              live ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
-            )}
-          >
-            {live ? (
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-              </span>
-            ) : (
-              <Radio aria-hidden="true" className="h-3 w-3" />
-            )}
-            {live ? t("Live updates on") : t("Updating every minute")}
-          </span>
         </div>
       </div>
 
@@ -360,7 +348,11 @@ export function ControlRoomPage(): React.ReactElement {
               }))}
             />
           ) : (
-            <div role="group" aria-label={t("Match day")} className="flex flex-wrap items-center gap-1.5">
+            <div
+              role="group"
+              aria-label={t("Match day")}
+              className="inline-flex w-fit max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5"
+            >
               {data.days.map((d) => {
                 const active = d.date === selectedDay;
                 return (
@@ -371,17 +363,17 @@ export function ControlRoomPage(): React.ReactElement {
                     aria-pressed={active}
                     onClick={() => setDay(d.date)}
                     className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       active
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-card text-foreground hover:bg-accent",
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
                     )}
                   >
                     {fmtDayLabel(d.date)}
                     <span
                       className={cn(
                         "font-tabular",
-                        active ? "text-primary-foreground/80" : "text-muted-foreground",
+                        active ? "text-muted-foreground" : "text-muted-foreground/70",
                       )}
                     >
                       {d.counts.completed}/{d.counts.total}
@@ -389,10 +381,7 @@ export function ControlRoomPage(): React.ReactElement {
                     {d.counts.live > 0 ? (
                       <span
                         aria-label={t("Live now")}
-                        className={cn(
-                          "h-1.5 w-1.5 rounded-full",
-                          active ? "bg-primary-foreground" : "bg-primary",
-                        )}
+                        className="h-1.5 w-1.5 rounded-full bg-primary"
                       />
                     ) : null}
                   </button>
