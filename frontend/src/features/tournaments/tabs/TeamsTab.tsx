@@ -24,6 +24,7 @@ import {
 } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
+import { ActionMenu, ActionMenuItem } from "@/components/ui/menu";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
 import {
@@ -234,41 +235,39 @@ export function TeamsTab(): React.ReactElement {
         </div>
         {canManage ? (
           <div className="flex flex-wrap items-center gap-2">
-            {teamForm?.status === "open" ? (
-              <Button variant="outline" onClick={() => setCodesOpen(true)}>
-                <KeyRound aria-hidden="true" className="h-4 w-4" />
-                {t("Access codes")}
-              </Button>
-            ) : null}
-            {teamForm ? (
-              <Button
-                variant="outline"
-                onClick={() => navigate(routes.tournamentFormBuilder(id, teamForm.id))}
-              >
-                <Pencil aria-hidden="true" className="h-4 w-4" />
-                {t("Edit team form")}
-              </Button>
-            ) : (
-              <>
-                <Button
-                  variant="outline"
-                  disabled={(institutions.data?.length ?? 0) === 0 || generateForm.isPending}
-                  onClick={() => generateForm.mutate()}
-                  title={
-                    (institutions.data?.length ?? 0) === 0
-                      ? t("Register institutions first")
-                      : undefined
-                  }
+            <ActionMenu label={t("Form tools")} icon={FilePlus2} data-testid="form-tools-menu">
+              {teamForm?.status === "open" ? (
+                <ActionMenuItem icon={KeyRound} onSelect={() => setCodesOpen(true)}>
+                  {t("Access codes")}
+                </ActionMenuItem>
+              ) : null}
+              {teamForm ? (
+                <ActionMenuItem
+                  icon={Pencil}
+                  onSelect={() => navigate(routes.tournamentFormBuilder(id, teamForm.id))}
                 >
-                  <Sparkles aria-hidden="true" className="h-4 w-4" />
-                  {generateForm.isPending ? t("Generating…") : t("Auto-generate team form")}
-                </Button>
-                <Button variant="outline" onClick={() => setCreateOpen(true)}>
-                  <FilePlus2 aria-hidden="true" className="h-4 w-4" />
-                  {t("Create form")}
-                </Button>
-              </>
-            )}
+                  {t("Edit team form")}
+                </ActionMenuItem>
+              ) : (
+                <>
+                  <ActionMenuItem
+                    icon={Sparkles}
+                    disabled={(institutions.data?.length ?? 0) === 0 || generateForm.isPending}
+                    onSelect={() => generateForm.mutate()}
+                    title={
+                      (institutions.data?.length ?? 0) === 0
+                        ? t("Register institutions first")
+                        : undefined
+                    }
+                  >
+                    {generateForm.isPending ? t("Generating…") : t("Auto-generate team form")}
+                  </ActionMenuItem>
+                  <ActionMenuItem icon={FilePlus2} onSelect={() => setCreateOpen(true)}>
+                    {t("Create form")}
+                  </ActionMenuItem>
+                </>
+              )}
+            </ActionMenu>
             <Button
               disabled={(institutions.data?.length ?? 0) === 0}
               title={

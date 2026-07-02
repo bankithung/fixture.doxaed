@@ -269,11 +269,11 @@ export function SettingsTab(): React.ReactElement {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h2 className="text-lg font-semibold">{t("Settings")}</h2>
-        <p className="text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h2 className="text-xl font-semibold tracking-tight">{t("Settings")}</h2>
+        <span className="text-xs text-muted-foreground">
           {t("Scoring rules, match format and squad limits. Stage changes happen on Overview.")}
-        </p>
+        </span>
       </div>
 
       {frozen ? (
@@ -291,9 +291,9 @@ export function SettingsTab(): React.ReactElement {
       {settings.isLoading || !draft ? (
         <div className="h-48 animate-pulse rounded-xl border border-border bg-card" />
       ) : (
-        <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
-          <section className="flex flex-col gap-2">
-            <h3 className="text-sm font-semibold">{t("Points")}</h3>
+        <div className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          <section className="flex flex-col gap-2 p-4">
+            <h3 className="text-[13px] font-semibold tracking-tight">{t("Points")}</h3>
             <div className="grid gap-3 sm:grid-cols-3">
               <NumberField label={t("Win")} value={draft.points.win} disabled={!canEdit}
                 onChange={(n) => set("points", "win", n)} />
@@ -304,8 +304,8 @@ export function SettingsTab(): React.ReactElement {
             </div>
           </section>
 
-          <section className="flex flex-col gap-2">
-            <h3 className="text-sm font-semibold">{t("Match format")}</h3>
+          <section className="flex flex-col gap-2 p-4">
+            <h3 className="text-[13px] font-semibold tracking-tight">{t("Match format")}</h3>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <NumberField label={t("Halves")} value={draft.match.halves} disabled={!canEdit}
                 onChange={(n) => set("match", "halves", n)} />
@@ -326,8 +326,8 @@ export function SettingsTab(): React.ReactElement {
             </div>
           </section>
 
-          <section className="flex flex-col gap-2">
-            <h3 className="text-sm font-semibold">{t("Squad limits")}</h3>
+          <section className="flex flex-col gap-2 p-4">
+            <h3 className="text-[13px] font-semibold tracking-tight">{t("Squad limits")}</h3>
             <div className="grid gap-3 sm:grid-cols-3">
               <NumberField label={t("Min players")} value={draft.squad.min_players} disabled={!canEdit}
                 onChange={(n) => set("squad", "min_players", n)} />
@@ -339,8 +339,8 @@ export function SettingsTab(): React.ReactElement {
           </section>
 
           {settings.data?.rules.tiebreakers?.length ? (
-            <section className="flex flex-col gap-1.5">
-              <h3 className="text-sm font-semibold">{t("Tiebreakers")}</h3>
+            <section className="flex flex-col gap-1.5 p-4">
+              <h3 className="text-[13px] font-semibold tracking-tight">{t("Tiebreakers")}</h3>
               <div className="flex flex-wrap gap-1.5">
                 {settings.data.rules.tiebreakers.map((tb, i) => (
                   <span key={tb} className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
@@ -352,8 +352,12 @@ export function SettingsTab(): React.ReactElement {
           ) : null}
 
           {canEdit ? (
-            <div className="flex justify-end">
-              <Button disabled={save.isPending} onClick={() => save.mutate(undefined)}>
+            <div className="flex justify-end bg-muted/40 px-4 py-2.5">
+              <Button
+                size="sm"
+                disabled={save.isPending}
+                onClick={() => save.mutate(undefined)}
+              >
                 {save.isPending ? t("Saving…") : t("Save settings")}
               </Button>
             </div>

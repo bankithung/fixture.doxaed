@@ -38,7 +38,7 @@ function CrewRow({
   return (
     <div
       data-testid={`crew-row-${match.id}`}
-      className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3 shadow-sm sm:flex-row sm:items-center"
+      className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center"
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <span className="font-tabular text-sm font-semibold tabular-nums">
@@ -147,18 +147,10 @@ export function CrewPage(): React.ReactElement {
   });
 
   const header = (
-    <div className="flex items-center gap-2.5">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10">
-        <UserCog aria-hidden="true" className="h-5 w-5 text-primary" />
-      </span>
-      <div>
-        <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-          {t("Operations")}
-        </p>
-        <h2 className="text-lg font-semibold tracking-tight">
-          {t("Officials & assignments")}
-        </h2>
-      </div>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <h2 className="text-xl font-semibold tracking-tight">
+        {t("Officials & assignments")}
+      </h2>
     </div>
   );
 
@@ -192,23 +184,23 @@ export function CrewPage(): React.ReactElement {
       {header}
 
       {/* Coverage */}
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border">
-        <div className="flex flex-col bg-card p-4">
+      <div className="grid grid-cols-2 divide-x divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div className="flex min-w-0 flex-col justify-center gap-1 px-4 py-3">
           <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
             {t("Scorer coverage")}
           </p>
-          <p className="mt-1 font-tabular text-2xl font-semibold leading-none">
+          <p className="font-tabular text-2xl font-semibold leading-none">
             {withScorer}
-            <span className="text-muted-foreground">/{all.length}</span>
+            <span className="text-base text-muted-foreground">/{all.length}</span>
           </p>
         </div>
-        <div className="flex flex-col bg-card p-4">
+        <div className="flex min-w-0 flex-col justify-center gap-1 px-4 py-3">
           <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
             {t("Official coverage")}
           </p>
-          <p className="mt-1 font-tabular text-2xl font-semibold leading-none">
+          <p className="font-tabular text-2xl font-semibold leading-none">
             {withOfficial}
-            <span className="text-muted-foreground">/{all.length}</span>
+            <span className="text-base text-muted-foreground">/{all.length}</span>
           </p>
         </div>
       </div>
@@ -227,7 +219,11 @@ export function CrewPage(): React.ReactElement {
             }))}
           />
         ) : (
-          <div role="group" aria-label={t("Match day")} className="flex flex-wrap gap-1.5">
+          <div
+            role="group"
+            aria-label={t("Match day")}
+            className="inline-flex w-fit flex-wrap items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5"
+          >
             {data.days.map((d) => {
               const active = d.date === selectedDay;
               return (
@@ -238,10 +234,10 @@ export function CrewPage(): React.ReactElement {
                   aria-pressed={active}
                   onClick={() => setDay(d.date)}
                   className={cn(
-                    "rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "inline-flex h-7 items-center rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     active
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border bg-card text-foreground hover:bg-accent",
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   {fmtDayLabel(d.date)}
@@ -250,7 +246,7 @@ export function CrewPage(): React.ReactElement {
             })}
           </div>
         )}
-        <div className="ml-auto flex flex-wrap gap-1.5">
+        <div className="ml-auto inline-flex w-fit flex-wrap items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5">
           {FILTERS.map((f) => (
             <button
               key={f.key}
@@ -259,10 +255,10 @@ export function CrewPage(): React.ReactElement {
               aria-pressed={filter === f.key}
               onClick={() => setFilter(f.key)}
               className={cn(
-                "rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "inline-flex h-7 items-center rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 filter === f.key
-                  ? "border-foreground/30 bg-secondary text-secondary-foreground"
-                  : "border-border bg-card text-muted-foreground hover:bg-accent",
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               {f.label}
@@ -277,7 +273,7 @@ export function CrewPage(): React.ReactElement {
           {t("Nothing matches this filter.")}
         </p>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm">
           {filtered.map((m) => (
             <CrewRow
               key={m.id}

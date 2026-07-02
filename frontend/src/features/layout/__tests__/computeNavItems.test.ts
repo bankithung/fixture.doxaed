@@ -275,6 +275,7 @@ describe("computeTournamentNav", () => {
       "control",
       "matches",
       "standings",
+      "leaders",
       "crew",
       "directory",
     ]);
@@ -309,6 +310,7 @@ describe("computeTournamentNav", () => {
     expect(keys).toContain("control");
     expect(keys).toContain("matches");
     expect(keys).toContain("standings");
+    expect(keys).toContain("leaders");
     expect(keys).toContain("directory");
     // No schedule_editor → no assignment cockpit; no manage → no admin tabs.
     expect(keys).not.toContain("crew");

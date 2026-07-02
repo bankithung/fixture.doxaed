@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CloudRainWind, ListChecks, Search } from "lucide-react";
+import { CloudRainWind, Search } from "lucide-react";
 import { liveApi } from "@/api/live";
 import { tournamentsApi, type ControlRoomMatch } from "@/api/tournaments";
 import { useAuthStore } from "@/features/auth/authStore";
@@ -89,13 +89,13 @@ function StatCell({
   muted?: boolean;
 }): React.ReactElement {
   return (
-    <div className="flex flex-col bg-card p-4">
+    <div className="flex min-w-0 flex-col justify-center gap-1 px-4 py-3">
       <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </p>
       <p
         className={cn(
-          "mt-1 font-tabular text-2xl font-semibold leading-none",
+          "font-tabular text-2xl font-semibold leading-none",
           muted && value > 0 && "text-warning-foreground",
         )}
       >
@@ -251,22 +251,19 @@ export function MatchesBoardPage(): React.ReactElement {
   }, [filtered, groupBy, tz]);
 
   const header = (
-    <div className="flex items-center gap-2.5">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10">
-        <ListChecks aria-hidden="true" className="h-5 w-5 text-primary" />
-      </span>
-      <div>
-        <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-          {t("Operations")}
-        </p>
-        <h2 className="text-lg font-semibold tracking-tight">{t("Matches")}</h2>
-      </div>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <h2 className="text-xl font-semibold tracking-tight">{t("Matches")}</h2>
+      {matches.length > 0 ? (
+        <span className="font-tabular text-xs text-muted-foreground">
+          {counts.done}/{counts.total} {t("played")}
+        </span>
+      ) : null}
       {perms.canSchedule ? (
         <button
           type="button"
           data-testid="board-shift-day"
           onClick={() => setShiftOpen(true)}
-          className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+          className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <CloudRainWind aria-hidden="true" className="h-3.5 w-3.5" />
           {t("Shift a day")}
@@ -332,7 +329,7 @@ export function MatchesBoardPage(): React.ReactElement {
       {header}
 
       {/* Headline counts over the whole fixture. */}
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
+      <div className="grid grid-cols-2 divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm max-sm:divide-y sm:grid-cols-4 sm:divide-x">
         <StatCell label={t("Matches")} value={counts.total} />
         <StatCell label={t("Live now")} value={counts.live} />
         <StatCell label={t("Completed")} value={counts.done} />
@@ -389,12 +386,28 @@ export function MatchesBoardPage(): React.ReactElement {
           />
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <div role="group" aria-label={t("Status")} className="flex flex-wrap gap-1.5">
-            {STATUS_FILTERS.map((s) =>
-              toggle(status === s.key, `board-status-${s.key}`, t(s.label), () =>
-                setStatus(s.key),
-              ),
-            )}
+          <div
+            role="group"
+            aria-label={t("Status")}
+            className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5"
+          >
+            {STATUS_FILTERS.map((s) => (
+              <button
+                key={s.key}
+                type="button"
+                data-testid={`board-status-${s.key}`}
+                aria-pressed={status === s.key}
+                onClick={() => setStatus(s.key)}
+                className={cn(
+                  "inline-flex h-7 items-center rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  status === s.key
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {t(s.label)}
+              </button>
+            ))}
           </div>
           <span className="mx-1 hidden h-4 w-px bg-border sm:block" />
           {perms.canSchedule

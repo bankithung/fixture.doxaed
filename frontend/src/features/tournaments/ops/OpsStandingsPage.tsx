@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3 } from "lucide-react";
 import { liveApi } from "@/api/live";
 import {
   tournamentsApi,
@@ -37,13 +36,13 @@ function GroupCard({ group }: { group: StandingsGroup }): React.ReactElement {
       data-testid={`ops-group-${group.group_label}`}
       className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
     >
-      <h3 className="border-b border-border px-4 py-2.5 text-sm font-semibold">
+      <h3 className="flex h-9 items-center border-b border-border px-4 text-[13px] font-semibold tracking-tight">
         {group.group_label}
       </h3>
       <table className="w-full text-sm font-tabular">
-        <thead>
-          <tr className="text-xs text-muted-foreground">
-            <th className="py-1.5 pl-4 pr-2 text-left font-medium">
+        <thead className="border-b border-border">
+          <tr className="text-[0.625rem] uppercase tracking-[0.14em] text-muted-foreground">
+            <th className="py-2 pl-4 pr-2 text-left font-medium">
               {t("Team")}
             </th>
             {["P", "W", "D", "L"].map((h) => (
@@ -178,18 +177,15 @@ export function OpsStandingsPage(): React.ReactElement {
   }, [scoped, standMap]);
 
   const header = (
-    <div className="flex items-center gap-2.5">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10">
-        <BarChart3 aria-hidden="true" className="h-5 w-5 text-primary" />
-      </span>
-      <div>
-        <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-          {t("Operations")}
-        </p>
-        <h2 className="text-lg font-semibold tracking-tight">
-          {t("Standings & bracket")}
-        </h2>
-      </div>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <h2 className="text-xl font-semibold tracking-tight">
+        {t("Standings & bracket")}
+      </h2>
+      {competitions.length > 0 ? (
+        <span className="font-tabular text-xs text-muted-foreground">
+          {competitions.length} {t("competitions")}
+        </span>
+      ) : null}
     </div>
   );
 
@@ -236,7 +232,7 @@ export function OpsStandingsPage(): React.ReactElement {
         <div
           role="group"
           aria-label={t("Competition")}
-          className="flex flex-wrap items-center gap-1.5"
+          className="inline-flex w-fit max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5"
         >
           {competitions.map((c) => {
             const active = c.key === selected;
@@ -248,10 +244,10 @@ export function OpsStandingsPage(): React.ReactElement {
                 aria-pressed={active}
                 onClick={() => setLeaf(c.key)}
                 className={cn(
-                  "rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "inline-flex h-7 items-center rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   active
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-card text-foreground hover:bg-accent",
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 {c.label}

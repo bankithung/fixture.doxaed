@@ -560,14 +560,16 @@ export function TournamentMembersPage(): React.ReactElement {
   const removesPerson = activeRoleCount <= 1;
 
   return (
-    <div className="flex w-full flex-col gap-6">
-      <div className="min-w-0">
-        <h2 className="text-lg font-semibold">{t("Members & roles")}</h2>
-        <p className="mt-0.5 font-tabular text-sm text-muted-foreground">
+    <div className="flex w-full flex-col gap-4">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+        <h2 className="text-xl font-semibold tracking-tight">
+          {t("Members & roles")}
+        </h2>
+        <span className="font-tabular text-xs text-muted-foreground">
           {membersQuery.isLoading
             ? t("Loading members...")
             : t(`${total} ${total === 1 ? "member" : "members"}`)}
-        </p>
+        </span>
       </div>
 
       <InvitePanel tournamentId={id} />
@@ -576,11 +578,11 @@ export function TournamentMembersPage(): React.ReactElement {
         className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
         aria-label={t("Roster")}
       >
-        <div className="border-b border-border p-4">
-          <h2 className="text-sm font-semibold">{t("Roster")}</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+        <div className="flex h-9 items-center gap-2 border-b border-border px-4">
+          <h2 className="text-[13px] font-semibold tracking-tight">{t("Roster")}</h2>
+          <span className="text-xs text-muted-foreground">
             {t("People with a role in this tournament.")}
-          </p>
+          </span>
         </div>
 
         <div className="p-4">
