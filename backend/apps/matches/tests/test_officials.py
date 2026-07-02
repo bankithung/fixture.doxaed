@@ -168,3 +168,27 @@ def test_invalid_role_rejected():
         _url(m), {"user_id": str(ref.id), "role": "captain"}, format="json"
     )
     assert r.status_code == 400
+
+
+@pytest.mark.django_db(transaction=True)
+def test_assignment_notifies_the_assignee():
+    """Phase 2: crew used to be assigned silently. Both seats notify with a
+    console deep link (in-app row; email is best-effort). transaction=True so
+    the post-commit notification hook actually fires."""
+    from apps.matches.services.scoring import assign_scorer
+    from apps.notifications.models import Notification
+    from apps.tournaments.models import TournamentMembershipRole
+
+    admin = _verified("notify-admin@test.local")
+    t, m = _tournament_with_match(admin)
+    member = _member(t, "notify-scorer@test.local", TournamentMembershipRole.MATCH_SCORER)
+
+    assign_scorer(match=m, user=member, by=admin)
+    n = Notification.objects.filter(user=member, kind="match_assignment").first()
+    assert n is not None
+    assert str(m.id) in n.url
+
+    # Clearing the seat is now possible (no notification for a clear).
+    assign_scorer(match=m, user=None, by=admin)
+    m.refresh_from_db()
+    assert m.scorer_id is None

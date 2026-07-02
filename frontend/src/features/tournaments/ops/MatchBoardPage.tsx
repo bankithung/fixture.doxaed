@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ListChecks, Search } from "lucide-react";
+import { CloudRainWind, ListChecks, Search } from "lucide-react";
 import { liveApi } from "@/api/live";
 import { tournamentsApi, type ControlRoomMatch } from "@/api/tournaments";
 import { useAuthStore } from "@/features/auth/authStore";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
 import type { ControlRoomPerms } from "@/features/controlroom/MatchActionsMenu";
 import { MatchRow } from "@/features/controlroom/MatchRow";
+import { ShiftDayDialog } from "@/features/fixtures/ShiftDayDialog";
 import { FINAL, IN_PLAY, fmtDayLabel } from "@/features/controlroom/format";
 import { qk } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
@@ -125,6 +126,7 @@ export function MatchesBoardPage(): React.ReactElement {
   const [needsOfficial, setNeedsOfficial] = useState(false);
   const [mine, setMine] = useState(false);
   const [search, setSearch] = useState("");
+  const [shiftOpen, setShiftOpen] = useState(false);
 
   const tournamentQ = useQuery({
     queryKey: qk.tournament(id),
@@ -259,6 +261,17 @@ export function MatchesBoardPage(): React.ReactElement {
         </p>
         <h2 className="text-lg font-semibold tracking-tight">{t("Matches")}</h2>
       </div>
+      {perms.canSchedule ? (
+        <button
+          type="button"
+          data-testid="board-shift-day"
+          onClick={() => setShiftOpen(true)}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+        >
+          <CloudRainWind aria-hidden="true" className="h-3.5 w-3.5" />
+          {t("Shift a day")}
+        </button>
+      ) : null}
     </div>
   );
 
@@ -434,6 +447,14 @@ export function MatchesBoardPage(): React.ReactElement {
           ))}
         </div>
       )}
+      {shiftOpen ? (
+        <ShiftDayDialog
+          tournamentId={id}
+          matches={matches}
+          competitions={competitions.map(([leafKey, label]) => ({ leafKey, label }))}
+          onClose={() => setShiftOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

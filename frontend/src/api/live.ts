@@ -92,6 +92,30 @@ export const liveApi = {
     to_status: string,
     extra?: { winner_team_id?: string; reason?: string },
   ) => api.post(`/api/matches/${matchId}/transition/`, { to_status, ...extra }),
+  /** Referee/scorer/manager: file an append-only incident report. */
+  fileIncident: (
+    matchId: string,
+    payload: {
+      kind: string;
+      description: string;
+      minute?: number | null;
+      player_id?: string | null;
+      event_id: string;
+    },
+  ) => api.post(`/api/matches/${matchId}/incidents/`, payload),
+  /** Incident reports for a match (any match viewer). */
+  listIncidents: (matchId: string) =>
+    api.get<
+      {
+        id: string;
+        kind: string;
+        description: string;
+        minute: number | null;
+        player_id: string | null;
+        created_at: string;
+        reported_by: string | null;
+      }[]
+    >(`/api/matches/${matchId}/incidents/`),
   /** Schedule editor: mark a `scheduled` match as called to its venue
    * (control room §2.b — an annotation, not a state; idempotent). */
   callMatch: (matchId: string) =>

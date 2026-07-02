@@ -157,3 +157,49 @@ def test_resume_from_half_time_enters_second_half():
     transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
     m.refresh_from_db()
     assert m.current_period == "second_half"
+
+
+def test_in_play_interruptions_reachable_and_need_reasons():
+    """PRD 5.5: a live match can be walked over, postponed, or cancelled —
+    these used to be reachable only from SCHEDULED. Interrupting play always
+    carries a reason (audit defensibility)."""
+    import pytest as _pytest
+    from django.core.exceptions import ValidationError as VE
+
+    admin, m = _match()
+    transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
+
+    with _pytest.raises(VE):
+        transition_match(match=m, to_status=MatchStatus.POSTPONED, by=admin)
+    transition_match(
+        match=m, to_status=MatchStatus.POSTPONED, by=admin, reason="waterlogged"
+    )
+    m.refresh_from_db()
+    assert m.status == MatchStatus.POSTPONED
+
+    # Resume the postponed match and walk it over mid-play (team walked off).
+    transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
+    transition_match(
+        match=m, to_status=MatchStatus.WALKOVER, by=admin,
+        winner_team_id=m.home_team_id, reason="opponents walked off",
+    )
+    m.refresh_from_db()
+    assert m.status == MatchStatus.WALKOVER
+    assert m.winner_id == m.home_team_id
+
+
+def test_quick_result_level_knockout_is_refused():
+    """The quick-result path used to complete a level knockout silently,
+    stalling the bracket (the guard lived only on transition_match)."""
+    import pytest as _pytest
+    from django.core.exceptions import ValidationError as VE
+
+    from apps.matches.services.scoring import record_score
+
+    admin, m = _match()
+    m.stage = "knockout"
+    m.save(update_fields=["stage"])
+    with _pytest.raises(VE):
+        record_score(match=m, home_score=1, away_score=1, by=admin)
+    m.refresh_from_db()
+    assert m.status == MatchStatus.SCHEDULED  # nothing committed

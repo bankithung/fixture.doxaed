@@ -627,7 +627,7 @@ export const tournamentsApi = {
       { body: { official_id: officialId } },
     ),
   /** Assign (or change) the scorer seat on a match (manager only). */
-  assignScorer: (matchId: string, userId: string) =>
+  assignScorer: (matchId: string, userId: string | null) =>
     api.post<MatchRow>(`/api/matches/${matchId}/scorer/`, { user_id: userId }),
 
   // --- Setup-stage workflow (WS4) ---

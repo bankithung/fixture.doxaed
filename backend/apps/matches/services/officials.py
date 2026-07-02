@@ -66,6 +66,15 @@ def assign_official(
             payload_after={"user_id": str(user.id), "role": role},
             request=request,
         )
+        # Tell the official (in-app + email) — assignment used to be silent.
+        if by is None or user.id != by.id:
+            from apps.matches.services.scoring import _notify_assignment
+
+            uid, mid, tid = user.id, match.id, match.tournament_id
+            role_verb = f"officiate ({role})"
+            transaction.on_commit(
+                lambda: _notify_assignment(uid, mid, tid, role_verb)
+            )
     return obj
 
 

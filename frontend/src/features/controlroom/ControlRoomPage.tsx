@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, History, ListChecks, Radio } from "lucide-react";
+import { ChevronDown, CloudRainWind, History, ListChecks, Radio } from "lucide-react";
+import { ShiftDayDialog } from "@/features/fixtures/ShiftDayDialog";
 import { tournamentsApi, type ControlRoomPayload } from "@/api/tournaments";
 import { Select } from "@/components/ui/Select";
 import { useAuthStore } from "@/features/auth/authStore";
@@ -182,6 +183,7 @@ export function ControlRoomPage(): React.ReactElement {
   const { isMobile } = useBreakpoint();
   const user = useAuthStore((s) => s.user);
   const [day, setDay] = useState<string | null>(null);
+  const [shiftOpen, setShiftOpen] = useState(false);
   const [changesOpen, setChangesOpen] = useState(false);
 
   const stageQ = useQuery({
@@ -273,6 +275,17 @@ export function ControlRoomPage(): React.ReactElement {
           <h2 className="text-lg font-semibold tracking-tight">{t("Today")}</h2>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          {perms.canSchedule ? (
+            <button
+              type="button"
+              data-testid="shift-day"
+              onClick={() => setShiftOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+            >
+              <CloudRainWind aria-hidden="true" className="h-3.5 w-3.5" />
+              {t("Shift a day")}
+            </button>
+          ) : null}
           <Link
             to={routes.tournamentMatches(id)}
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
@@ -462,6 +475,14 @@ export function ControlRoomPage(): React.ReactElement {
           ) : null}
         </>
       )}
+      {shiftOpen ? (
+        <ShiftDayDialog
+          tournamentId={id}
+          matches={allMatches}
+          competitions={competitions}
+          onClose={() => setShiftOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

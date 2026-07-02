@@ -161,10 +161,14 @@ export function AssignDrawer({
   };
 
   const setScorer = useMutation({
-    mutationFn: (userId: string) => tournamentsApi.assignScorer(match.id, userId),
-    onSuccess: () => {
+    mutationFn: (userId: string) =>
+      tournamentsApi.assignScorer(match.id, userId || null),
+    onSuccess: (_res, userId) => {
       refresh();
-      toast.push({ kind: "success", title: t("Scorer assigned") });
+      toast.push({
+        kind: "success",
+        title: userId ? t("Scorer assigned") : t("Scorer cleared"),
+      });
     },
     onError: (e) =>
       toast.push({
@@ -282,8 +286,12 @@ export function AssignDrawer({
             id={`scorer-${match.id}`}
             aria-label={t("Scorer")}
             value={match.scorer?.id ?? ""}
-            onChange={(v) => v && setScorer.mutate(v)}
-            options={memberOptions}
+            onChange={(v) => setScorer.mutate(v)}
+            options={
+              match.scorer
+                ? [{ value: "", label: t("No scorer (clear the seat)") }, ...memberOptions]
+                : memberOptions
+            }
             placeholder={match.scorer?.name ?? t("Pick a scorer…")}
           />
         </section>

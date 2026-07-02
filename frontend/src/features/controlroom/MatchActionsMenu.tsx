@@ -2,13 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  CalendarOff,
+  CircleStop,
   Flag,
   Megaphone,
   Minus,
   MoreVertical,
+  OctagonX,
   Plus,
   Radio,
+  RotateCcw,
   SquarePen,
+  TriangleAlert,
   UserCog,
 } from "lucide-react";
 import { liveApi } from "@/api/live";
@@ -182,6 +187,232 @@ function ScoreStepper({
  * fires advancement + the live tick on commit. Goal sports get +/- steppers;
  * set sports get a per-set points grid driven by the match's resolved rules.
  */
+
+/** Match state verbs beyond start/complete (PRD 5.5): every one carries a
+ * required reason (mid-play interruptions must be defensible in a dispute). */
+type StateVerbKey = "postpone" | "cancel" | "abandon" | "replay";
+
+const STATE_VERBS: Record<
+  StateVerbKey,
+  { label: string; to: string; title: string; hint: string; danger: boolean }
+> = {
+  postpone: {
+    label: "Postpone",
+    to: "postponed",
+    title: "Postpone this match?",
+    hint: "The match pauses until it is reslotted or resumed. The score so far is kept.",
+    danger: false,
+  },
+  cancel: {
+    label: "Cancel match",
+    to: "cancelled",
+    title: "Cancel this match?",
+    hint: "The match will not be played. This cannot be undone.",
+    danger: true,
+  },
+  abandon: {
+    label: "Abandon",
+    to: "abandoned",
+    title: "Abandon this match?",
+    hint: "Play stops (weather, injury, crowd). A manager can order a replay later.",
+    danger: true,
+  },
+  replay: {
+    label: "Order replay",
+    to: "scheduled",
+    title: "Replay this match?",
+    hint: "The abandoned result is voided and the match returns to the schedule.",
+    danger: false,
+  },
+};
+
+/** Which state verbs this viewer can fire for this match right now. */
+export function stateVerbsFor(
+  match: ControlRoomMatch,
+  perms: ControlRoomPerms,
+): StateVerbKey[] {
+  const inPlay = match.status === "live" || match.status === "half_time";
+  const out: StateVerbKey[] = [];
+  if (perms.canManage) {
+    if (match.status === "scheduled" || inPlay) out.push("postpone", "cancel");
+    if (match.status === "postponed") out.push("cancel");
+    if (match.status === "abandoned") out.push("replay");
+  }
+  // Abandoning is a pitch-side call — referees/scorers hold it too.
+  if (inPlay && (perms.canManage || perms.canScore)) out.push("abandon");
+  return out;
+}
+
+/** Reason-required confirm dialog for postpone/cancel/abandon/replay. */
+export function MatchStateDialog({
+  tournamentId,
+  match,
+  verb,
+  onClose,
+}: {
+  tournamentId: string;
+  match: ControlRoomMatch;
+  verb: StateVerbKey;
+  onClose: () => void;
+}): React.ReactElement {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [reason, setReason] = useState("");
+  const cfg = STATE_VERBS[verb];
+
+  const fire = useMutation({
+    mutationFn: () => liveApi.transition(match.id, cfg.to, { reason }),
+    onSuccess: () => {
+      invalidateTournament(qc, tournamentId);
+      qc.invalidateQueries({ queryKey: qk.controlRoom(tournamentId) });
+      qc.invalidateQueries({ queryKey: qk.matches(tournamentId) });
+      toast.push({ kind: "success", title: t(cfg.label) });
+      onClose();
+    },
+    onError: (e) =>
+      toast.push({
+        kind: "error",
+        title: t("Could not update the match"),
+        description: errorDetail(e),
+      }),
+  });
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} ariaLabel={t(cfg.title)}>
+      <DialogHeader>
+        <DialogTitle>{t(cfg.title)}</DialogTitle>
+        <DialogDescription>{t(cfg.hint)}</DialogDescription>
+      </DialogHeader>
+      <div className="flex flex-col gap-1.5 py-2">
+        <Label htmlFor={`state-reason-${match.id}`}>{t("Reason")}</Label>
+        <textarea
+          id={`state-reason-${match.id}`}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          rows={2}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          placeholder={t("E.g. waterlogged pitch, floodlight failure")}
+        />
+      </div>
+      <DialogFooter>
+        <Button variant="ghost" disabled={fire.isPending} onClick={onClose}>
+          {t("Cancel")}
+        </Button>
+        <Button
+          variant={cfg.danger ? "destructive" : "default"}
+          data-testid={`state-${verb}-confirm-${match.id}`}
+          disabled={fire.isPending || reason.trim().length < 3}
+          onClick={() => fire.mutate()}
+        >
+          {fire.isPending ? t("Saving…") : t(cfg.label)}
+        </Button>
+      </DialogFooter>
+    </Dialog>
+  );
+}
+
+const INCIDENT_KINDS = [
+  { value: "foul_play", label: "Foul play" },
+  { value: "misconduct", label: "Misconduct" },
+  { value: "injury", label: "Injury" },
+  { value: "abandonment", label: "Abandonment" },
+  { value: "other", label: "Other" },
+];
+
+/** Referee incident quick-file — the backend was complete with zero UI. */
+export function IncidentDialog({
+  tournamentId,
+  match,
+  onClose,
+}: {
+  tournamentId: string;
+  match: ControlRoomMatch;
+  onClose: () => void;
+}): React.ReactElement {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [kind, setKind] = useState("");
+  const [description, setDescription] = useState("");
+  const [minute, setMinute] = useState("");
+
+  const file = useMutation({
+    mutationFn: () =>
+      liveApi.fileIncident(match.id, {
+        kind,
+        description,
+        minute: minute ? Number(minute) : null,
+        event_id: newEventId(),
+      }),
+    onSuccess: () => {
+      invalidateTournament(qc, tournamentId);
+      toast.push({ kind: "success", title: t("Incident filed") });
+      onClose();
+    },
+    onError: (e) =>
+      toast.push({
+        kind: "error",
+        title: t("Could not file the incident"),
+        description: errorDetail(e),
+      }),
+  });
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} ariaLabel={t("File incident")}>
+      <DialogHeader>
+        <DialogTitle>{t("File incident")}</DialogTitle>
+        <DialogDescription>
+          {t("A permanent report on this match (foul play, injury, protest grounds). Organizers are notified.")}
+        </DialogDescription>
+      </DialogHeader>
+      <div className="flex flex-col gap-3 py-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`incident-kind-${match.id}`}>{t("Type")}</Label>
+          <Select
+            id={`incident-kind-${match.id}`}
+            aria-label={t("Incident type")}
+            value={kind}
+            onChange={setKind}
+            options={INCIDENT_KINDS.map((k) => ({ value: k.value, label: t(k.label) }))}
+            placeholder={t("Pick a type…")}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`incident-desc-${match.id}`}>{t("What happened")}</Label>
+          <textarea
+            id={`incident-desc-${match.id}`}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`incident-minute-${match.id}`}>{t("Minute (optional)")}</Label>
+          <Input
+            id={`incident-minute-${match.id}`}
+            inputMode="numeric"
+            value={minute}
+            onChange={(e) => setMinute(e.target.value)}
+            className="h-9 w-24 font-tabular"
+          />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="ghost" disabled={file.isPending} onClick={onClose}>
+          {t("Cancel")}
+        </Button>
+        <Button
+          data-testid={`incident-confirm-${match.id}`}
+          disabled={file.isPending || !kind || description.trim().length < 5}
+          onClick={() => file.mutate()}
+        >
+          {file.isPending ? t("Saving…") : t("File incident")}
+        </Button>
+      </DialogFooter>
+    </Dialog>
+  );
+}
+
 export function QuickResultDialog({
   tournamentId,
   match,
@@ -380,6 +611,8 @@ export function MatchActionsMenu({
   const [walkover, setWalkover] = useState(false);
   const [quick, setQuick] = useState(false);
   const [assign, setAssign] = useState(false);
+  const [stateVerb, setStateVerb] = useState<StateVerbKey | null>(null);
+  const [incident, setIncident] = useState(false);
 
   const called = Boolean(match.called_at);
   const call = useMutation({
@@ -411,15 +644,29 @@ export function MatchActionsMenu({
     showConsole && (match.status === "scheduled" || match.status === "live");
   const showWalkover =
     perms.canManage &&
-    match.status === "scheduled" &&
+    ["scheduled", "live", "half_time"].includes(match.status) &&
     match.home_team !== null &&
     match.away_team !== null;
   // Assigning officials / scorer / court is a schedule-editor (or manager) verb.
   const showAssign = perms.canSchedule;
+  const verbs = stateVerbsFor(match, perms);
+  const showIncident =
+    (showConsole || perms.canManage) &&
+    ["live", "half_time", "completed", "abandoned"].includes(match.status);
 
-  if (!showCall && !showConsole && !showWalkover && !perms.canSchedule) {
+  if (
+    !showCall && !showConsole && !showWalkover && !perms.canSchedule &&
+    verbs.length === 0 && !showIncident
+  ) {
     return null; // read-only member — the tile stays a pure status card
   }
+
+  const VERB_ICONS: Record<StateVerbKey, typeof CalendarOff> = {
+    postpone: CalendarOff,
+    cancel: OctagonX,
+    abandon: CircleStop,
+    replay: RotateCcw,
+  };
 
   const iconBtn =
     "inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
@@ -488,6 +735,34 @@ export function MatchActionsMenu({
             <Flag aria-hidden="true" className="h-4 w-4" />
           </button>
         ) : null}
+        {verbs.map((v) => {
+          const Icon = VERB_ICONS[v];
+          return (
+            <button
+              key={v}
+              type="button"
+              data-testid={`state-${v}-${match.id}`}
+              aria-label={t(STATE_VERBS[v].label)}
+              title={t(STATE_VERBS[v].label)}
+              onClick={() => setStateVerb(v)}
+              className={`${iconBtn} ${STATE_VERBS[v].danger ? "text-destructive/80 hover:text-destructive" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <Icon aria-hidden="true" className="h-4 w-4" />
+            </button>
+          );
+        })}
+        {showIncident ? (
+          <button
+            type="button"
+            data-testid={`incident-${match.id}`}
+            aria-label={t("File incident")}
+            title={t("File incident")}
+            onClick={() => setIncident(true)}
+            className={`${iconBtn} text-muted-foreground hover:text-foreground`}
+          >
+            <TriangleAlert aria-hidden="true" className="h-4 w-4" />
+          </button>
+        ) : null}
         {perms.canSchedule ? (
           <MatchRepairMenu
             tournamentId={tournamentId}
@@ -496,6 +771,21 @@ export function MatchActionsMenu({
           />
         ) : null}
       </span>
+      {stateVerb ? (
+        <MatchStateDialog
+          tournamentId={tournamentId}
+          match={match}
+          verb={stateVerb}
+          onClose={() => setStateVerb(null)}
+        />
+      ) : null}
+      {incident ? (
+        <IncidentDialog
+          tournamentId={tournamentId}
+          match={match}
+          onClose={() => setIncident(false)}
+        />
+      ) : null}
       {walkover ? (
         <WalkoverDialog
           tournamentId={tournamentId}
@@ -515,6 +805,21 @@ export function MatchActionsMenu({
           tournamentId={tournamentId}
           match={match}
           onClose={() => setAssign(false)}
+        />
+      ) : null}
+      {stateVerb ? (
+        <MatchStateDialog
+          tournamentId={tournamentId}
+          match={match}
+          verb={stateVerb}
+          onClose={() => setStateVerb(null)}
+        />
+      ) : null}
+      {incident ? (
+        <IncidentDialog
+          tournamentId={tournamentId}
+          match={match}
+          onClose={() => setIncident(false)}
         />
       ) : null}
     </div>
@@ -555,6 +860,8 @@ export function RowActions({
   const [walkover, setWalkover] = useState(false);
   const [quick, setQuick] = useState(false);
   const [assign, setAssign] = useState(false);
+  const [stateVerb, setStateVerb] = useState<StateVerbKey | null>(null);
+  const [incident, setIncident] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const called = Boolean(match.called_at);
@@ -594,11 +901,17 @@ export function RowActions({
     showConsole && (match.status === "scheduled" || match.status === "live");
   const showWalkover =
     perms.canManage &&
-    match.status === "scheduled" &&
+    ["scheduled", "live", "half_time"].includes(match.status) &&
     match.home_team !== null &&
     match.away_team !== null;
   const showAssign = perms.canSchedule;
-  const anyItem = showQuick || showCall || showConsole || showAssign || showWalkover;
+  const verbs = stateVerbsFor(match, perms);
+  const showIncident =
+    (showConsole || perms.canManage) &&
+    ["live", "half_time", "completed", "abandoned"].includes(match.status);
+  const anyItem =
+    showQuick || showCall || showConsole || showAssign || showWalkover ||
+    verbs.length > 0 || showIncident;
 
   if (!anyItem && !perms.canSchedule) return null; // read-only member
 
@@ -750,6 +1063,45 @@ export function RowActions({
               {t("Award walkover")}
             </button>
           ) : null}
+          {showIncident ? (
+            <button
+              type="button"
+              role="menuitem"
+              data-testid={tid("incident")}
+              className={item}
+              onClick={() => {
+                setIncident(true);
+                setOpen(false);
+              }}
+            >
+              <TriangleAlert aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              {t("File incident")}
+            </button>
+          ) : null}
+          {verbs.map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="menuitem"
+              data-testid={tid(`state-${v}`)}
+              className={cn(item, STATE_VERBS[v].danger && "text-destructive")}
+              onClick={() => {
+                setStateVerb(v);
+                setOpen(false);
+              }}
+            >
+              {v === "postpone" ? (
+                <CalendarOff aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+              ) : v === "cancel" ? (
+                <OctagonX aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+              ) : v === "abandon" ? (
+                <CircleStop aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+              ) : (
+                <RotateCcw aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+              )}
+              {t(STATE_VERBS[v].label)}
+            </button>
+          ))}
         </div>
       ) : null}
 
@@ -776,6 +1128,21 @@ export function RowActions({
           tournamentId={tournamentId}
           match={match}
           onClose={() => setAssign(false)}
+        />
+      ) : null}
+      {stateVerb ? (
+        <MatchStateDialog
+          tournamentId={tournamentId}
+          match={match}
+          verb={stateVerb}
+          onClose={() => setStateVerb(null)}
+        />
+      ) : null}
+      {incident ? (
+        <IncidentDialog
+          tournamentId={tournamentId}
+          match={match}
+          onClose={() => setIncident(false)}
         />
       ) : null}
     </div>

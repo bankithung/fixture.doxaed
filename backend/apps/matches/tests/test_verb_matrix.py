@@ -248,3 +248,35 @@ def test_referee_with_explicit_console_grant_may_record():
         reason="venue scorer is unavailable for this fixture",
     )
     assert _event(_client(ref), m).status_code == 201
+
+
+def test_postpone_and_cancel_are_manager_verbs():
+    """Phase 2: pausing or killing a fixture is a scheduling decision — the
+    scorer seat cannot fire it; the manager can (reason required from play)."""
+    admin, _t, m, scorer = _setup(role=TournamentMembershipRole.MATCH_SCORER)
+    sc = _client(scorer)
+    r = sc.post(
+        f"/api/matches/{m.id}/transition/",
+        {"to_status": "postponed", "reason": "rain"},
+        format="json",
+    )
+    assert r.status_code == 403
+
+    mc = _client(admin)
+    r = mc.post(
+        f"/api/matches/{m.id}/transition/",
+        {"to_status": "postponed", "reason": "rain"},
+        format="json",
+    )
+    assert r.status_code == 200
+    m.refresh_from_db()
+    assert m.status == MatchStatus.POSTPONED
+
+    r = mc.post(
+        f"/api/matches/{m.id}/transition/",
+        {"to_status": "cancelled", "reason": "court unusable"},
+        format="json",
+    )
+    assert r.status_code == 200
+    m.refresh_from_db()
+    assert m.status == MatchStatus.CANCELLED

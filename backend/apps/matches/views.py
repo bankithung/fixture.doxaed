@@ -225,9 +225,12 @@ class AssignScorerView(GenericAPIView):
         match = _match_or_404(request.user, match_id)
         if not can_manage_tournament(request.user, match.tournament):
             raise PermissionDenied("not_tournament_manager")
-        target = User.objects.filter(id=request.data.get("user_id")).first()
-        if target is None:
-            raise DRFValidationError({"detail": "user_not_found"})
+        raw = request.data.get("user_id")
+        target = None
+        if raw:  # null/empty clears the seat (a seat could not be vacated before)
+            target = User.objects.filter(id=raw).first()
+            if target is None:
+                raise DRFValidationError({"detail": "user_not_found"})
         try:
             assign_scorer(match=match, user=target, by=request.user, request=request)
         except ValidationError as e:
@@ -830,13 +833,18 @@ class TransitionMatchView(GenericAPIView):
         to_status = ser.validated_data["to_status"]
         # Owner decision 2026-06-12 (spec §2.e): awarding a walkover and
         # replaying an abandoned match are MANAGER verbs, not scorer verbs.
+        # Postpone/cancel are scheduling decisions — same manager gate.
+        # Abandoning stays a referee/scorer verb (they are on the pitch).
         replay = (
             match.status == MatchStatus.ABANDONED
             and to_status == MatchStatus.SCHEDULED
         )
-        if (
-            to_status == MatchStatus.WALKOVER or replay
-        ) and not can_manage_tournament(request.user, match.tournament):
+        manager_only = to_status in (
+            MatchStatus.WALKOVER, MatchStatus.POSTPONED, MatchStatus.CANCELLED
+        )
+        if (manager_only or replay) and not can_manage_tournament(
+            request.user, match.tournament
+        ):
             raise PermissionDenied("manager_only_transition")
         try:
             transition_match(

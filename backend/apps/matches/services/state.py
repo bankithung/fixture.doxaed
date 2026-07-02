@@ -21,10 +21,14 @@ logger = logging.getLogger(__name__)
 S = MatchStatus
 
 # from -> allowed to-states. Empty set = terminal.
+# PRD §5.5: an in-play match can also be walked over (team leaves the pitch),
+# postponed (weather hold that won't resume today), or cancelled — these used
+# to be reachable only from SCHEDULED, so a mid-match interruption's only
+# legal exit was ABANDONED.
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     S.SCHEDULED: {S.LIVE, S.CANCELLED, S.POSTPONED, S.WALKOVER},
-    S.LIVE: {S.HALF_TIME, S.COMPLETED, S.ABANDONED},
-    S.HALF_TIME: {S.LIVE, S.COMPLETED, S.ABANDONED},
+    S.LIVE: {S.HALF_TIME, S.COMPLETED, S.ABANDONED, S.WALKOVER, S.POSTPONED, S.CANCELLED},
+    S.HALF_TIME: {S.LIVE, S.COMPLETED, S.ABANDONED, S.WALKOVER, S.POSTPONED, S.CANCELLED},
     S.POSTPONED: {S.SCHEDULED, S.LIVE, S.CANCELLED},
     S.COMPLETED: set(),
     S.CANCELLED: set(),
@@ -33,6 +37,11 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     S.ABANDONED: {S.SCHEDULED},
     S.WALKOVER: set(),
 }
+
+# Interrupting a match IN PLAY is always explained (audit defensibility);
+# pre-match postpone/cancel stays reason-optional (routine rescheduling).
+_IN_PLAY = (S.LIVE, S.HALF_TIME)
+_REASON_REQUIRED_FROM_PLAY = (S.ABANDONED, S.POSTPONED, S.CANCELLED)
 
 _TERMINAL_WITH_RESULT = (S.COMPLETED, S.WALKOVER)
 
@@ -56,6 +65,12 @@ def transition_match(
             raise ValidationError(f"Illegal match transition: {frm} -> {to_status}")
 
         replay = frm == S.ABANDONED and to_status == S.SCHEDULED
+        if (
+            frm in _IN_PLAY
+            and to_status in _REASON_REQUIRED_FROM_PLAY
+            and not (reason or "").strip()
+        ):
+            raise ValidationError("reason_required")
         if to_status == S.WALKOVER:
             _stamp_walkover(locked, winner_team_id)
         elif to_status == S.COMPLETED:

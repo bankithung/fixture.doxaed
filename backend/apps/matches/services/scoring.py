@@ -32,7 +32,10 @@ def _is_tournament_member(user, match: Match) -> bool:
 
 
 def assign_scorer(*, match: Match, user, by=None, request=None) -> Match:
-    if not _is_tournament_member(user, match):
+    """Assign (or, with ``user=None``, clear) the scorer seat. The assignee is
+    notified with a console deep link — assignment used to be silent, so crew
+    had to hunt for their matches."""
+    if user is not None and not _is_tournament_member(user, match):
         raise ValidationError("Scorer must be an active member of this tournament.")
     with transaction.atomic():
         match.scorer = user
@@ -44,10 +47,63 @@ def assign_scorer(*, match: Match, user, by=None, request=None) -> Match:
             target_type="match",
             target_id=match.id,
             organization_id=match.organization_id,
-            payload_after={"scorer_id": str(user.id)},
+            payload_after={"scorer_id": str(user.id) if user else None},
             request=request,
         )
+        if user is not None and (by is None or user.id != by.id):
+            mid, tid = match.id, match.tournament_id
+            uid = user.id
+            transaction.on_commit(
+                lambda: _notify_assignment(uid, mid, tid, "score")
+            )
     return match
+
+
+def _notify_assignment(user_id, match_id, tournament_id, verb: str) -> None:
+    """Post-commit, best-effort: in-app notification + email to the assignee
+    (crew are often not online when the roster is drawn up)."""
+    try:
+        from django.contrib.auth import get_user_model
+
+        from apps.notifications.services.dispatch import create_notification
+
+        user = get_user_model().objects.filter(id=user_id).first()
+        match = Match.objects.filter(id=match_id).select_related(
+            "home_team", "away_team", "tournament"
+        ).first()
+        if user is None or match is None:
+            return
+        home = match.home_team.name if match.home_team else "TBD"
+        away = match.away_team.name if match.away_team else "TBD"
+        when = ""
+        if match.scheduled_at:
+            when = f" on {match.scheduled_at.strftime('%d %b %H:%M')} UTC"
+        title = f"You are assigned to {verb}: {home} vs {away}"
+        url = f"/tournaments/{tournament_id}/matches/{match_id}"
+        create_notification(
+            user=user, kind="match_assignment", title=title,
+            body=f"{match.tournament.name}{when}. Open your console from this link.",
+            url=url, tournament=match.tournament,
+        )
+        if user.email:
+            from django.conf import settings
+            from django.core.mail import send_mail
+
+            send_mail(
+                subject=title,
+                message=(
+                    f"{match.tournament.name}\n\n"
+                    f"{home} vs {away}{when}.\n"
+                    f"Open your match console: https://fixture.doxaed.com{url}\n"
+                ),
+                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+                recipient_list=[user.email],
+                fail_silently=True,  # in-app row is the durable record
+            )
+    except Exception:  # pragma: no cover - notification must never block ops
+        import logging
+
+        logging.getLogger(__name__).exception("assignment notification failed")
 
 
 def record_score(
@@ -81,6 +137,13 @@ def record_score(
         }
         locked.home_score = int(home_score)
         locked.away_score = int(away_score)
+        # Same knockout-draw guard as transition_match: a level knockout
+        # recorded through the quick-result path used to complete silently
+        # and stall the bracket (winner_id stays None, dependents wait
+        # forever). The caller resolves it via the shootout endpoint.
+        from apps.matches.services.state import _guard_knockout_draw
+
+        _guard_knockout_draw(locked)
         locked.status = MatchStatus.COMPLETED
         locked.save(update_fields=["home_score", "away_score", "status", "updated_at"])
         emit_audit(
