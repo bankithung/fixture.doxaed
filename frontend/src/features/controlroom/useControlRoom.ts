@@ -51,6 +51,10 @@ export function useControlRoom(
       qc.invalidateQueries({ queryKey: qk.controlRoom(tournamentId) });
       qc.invalidateQueries({ queryKey: qk.matches(tournamentId) });
       qc.invalidateQueries({ queryKey: qk.standings(tournamentId) });
+      // Leaderboards + suspensions ride the same tick (owner: a live
+      // leader board that changes in real time).
+      qc.invalidateQueries({ queryKey: ["t-leaders", tournamentId] });
+      qc.invalidateQueries({ queryKey: ["t-suspensions", tournamentId] });
     }, TICK_DEBOUNCE_MS);
   }, [qc, tournamentId]);
   useEffect(

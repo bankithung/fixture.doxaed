@@ -94,6 +94,20 @@ class PublicTournamentDirectoryView(GenericAPIView):
         return Response({"tournaments": rows})
 
 
+class PublicTournamentLeadersView(GenericAPIView):
+    """`GET /api/public/tournaments/{slug}/{id}/leaders/` — the FIFA-style
+    public leaderboard: present from day zero (empty arrays), refreshed by
+    viewers on every SSE tick."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, slug, tournament_id):
+        from apps.matches.services.leaders import compute_leaders
+
+        t = _public_tournament_or_404(slug, tournament_id)
+        return Response(compute_leaders(t))
+
+
 class PublicTeamRecordView(GenericAPIView):
     """`GET /api/public/tournaments/{slug}/{id}/teams/{team_id}/` — one
     team's record, form, results, roster, and badges."""

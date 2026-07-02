@@ -197,6 +197,20 @@ class TournamentMatchListView(GenericAPIView):
         return Response([row(m) for m in qs])
 
 
+class TournamentLeadersView(GenericAPIView):
+    """`GET /api/tournaments/{id}/leaders/` — the ops leaderboards (owner
+    ask: best players, teams, scorers visible in the app). Same payload as
+    the public endpoint; see services/leaders.py."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id):
+        from apps.matches.services.leaders import compute_leaders
+
+        t = _accessible_tournament_or_404(request.user, tournament_id)
+        return Response(compute_leaders(t))
+
+
 class TournamentSuspensionsView(GenericAPIView):
     """`GET /api/tournaments/{id}/suspensions/` — card-derived bans (PRD 5.8):
     who is serving, why, and how much remains. Derived from the event log on

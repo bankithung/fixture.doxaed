@@ -23,6 +23,7 @@ from apps.matches.public_views import (
     PublicInstitutionRecordView,
     PublicTeamRecordView,
     PublicTournamentDirectoryView,
+    PublicTournamentLeadersView,
 )
 from apps.badges.views import (
     BadgeCardView,
@@ -123,6 +124,11 @@ api_v1 = [
         "public/tournaments/",
         PublicTournamentDirectoryView.as_view(),
         name="public-tournament-directory",
+    ),
+    path(
+        "public/tournaments/<slug:slug>/<uuid:tournament_id>/leaders/",
+        PublicTournamentLeadersView.as_view(),
+        name="public-tournament-leaders",
     ),
     path(
         "public/tournaments/<slug:slug>/<uuid:tournament_id>/teams/<uuid:team_id>/",

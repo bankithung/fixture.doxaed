@@ -401,3 +401,134 @@ export function SuspensionsPanel({
     </section>
   );
 }
+
+/**
+ * LEADERS — the owner's "best players, teams, scorers" surface, right on the
+ * cockpit: top scorers, tightest defence, sharpest attack, latest badges.
+ * Everything builds automatically as results land; before that it says so
+ * instead of hiding (the feature must be discoverable on day zero).
+ */
+export function LeadersPanel({
+  tournamentId,
+}: {
+  tournamentId: string;
+}): React.ReactElement {
+  const q = useQuery({
+    queryKey: ["t-leaders", tournamentId],
+    queryFn: () => tournamentsApi.leaders(tournamentId),
+    staleTime: 60_000,
+  });
+  const d = q.data;
+  const empty = !d || d.played === 0;
+
+  return (
+    <section
+      data-testid="leaders-panel"
+      className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+    >
+      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+        <Trophy aria-hidden="true" className="h-4 w-4 text-primary" />
+        <h3 className="text-sm font-semibold">{t("Leaders")}</h3>
+        {!empty ? (
+          <span className="rounded-full bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground">
+            {d.played} {t("played")}
+          </span>
+        ) : null}
+      </div>
+
+      {empty ? (
+        <p className="px-4 py-3 text-sm text-muted-foreground">
+          {t(
+            "Top scorers, best defence and badges build here automatically as results come in.",
+          )}
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+          <div className="flex flex-col gap-1 p-3">
+            <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              {t("Top scorers")}
+            </p>
+            {d.top_scorers.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {t("No goal scorers yet (set sports rank by points below).")}
+              </p>
+            ) : (
+              <ol className="flex flex-col gap-1">
+                {d.top_scorers.map((s, i) => (
+                  <li key={s.player_id} className="flex items-center gap-2 text-sm">
+                    <span className="w-4 shrink-0 font-tabular text-xs text-muted-foreground">
+                      {i + 1}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {s.name}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {s.team_name}
+                    </span>
+                    <span className="font-tabular text-sm font-semibold">
+                      {s.goals}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+          <div className="flex flex-col gap-2 p-3">
+            <div>
+              <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                {t("Best defence")}
+              </p>
+              {d.best_defence.slice(0, 2).map((r) => (
+                <p key={r.team_id} className="flex items-baseline gap-2 text-sm">
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {r.team_name}
+                  </span>
+                  <span className="font-tabular text-xs text-muted-foreground">
+                    {r.conceded} {t("conceded in")} {r.played}
+                  </span>
+                </p>
+              ))}
+            </div>
+            <div>
+              <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                {t("Best attack")}
+              </p>
+              {d.best_attack.slice(0, 2).map((r) => (
+                <p key={r.team_id} className="flex items-baseline gap-2 text-sm">
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {r.team_name}
+                  </span>
+                  <span className="font-tabular text-xs text-muted-foreground">
+                    {r.scored} {t("scored in")} {r.played}
+                  </span>
+                </p>
+              ))}
+            </div>
+            {d.latest_badges.length > 0 ? (
+              <div>
+                <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  {t("Latest badges")}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {d.latest_badges.slice(0, 4).map((b) => (
+                    <Link
+                      key={b.id}
+                      to={`/cert/${b.id}`}
+                      className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[0.6875rem] font-medium text-primary hover:bg-primary/10"
+                      title={b.subject}
+                    >
+                      <Trophy aria-hidden="true" className="h-3 w-3 shrink-0" />
+                      <span className="truncate">
+                        {b.name} · {b.subject}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}

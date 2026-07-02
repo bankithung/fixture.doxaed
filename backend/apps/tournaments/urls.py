@@ -26,6 +26,7 @@ from apps.forms.views import (
     TournamentFormsView,
 )
 from apps.matches.views import (
+    TournamentLeadersView,
     TournamentMatchListView,
     TournamentStandingsView,
     TournamentSuspensionsView,
@@ -172,6 +173,11 @@ urlpatterns = [
         "<uuid:tournament_id>/suspensions/",
         TournamentSuspensionsView.as_view(),
         name="tournament-suspensions",
+    ),
+    path(
+        "<uuid:tournament_id>/leaders/",
+        TournamentLeadersView.as_view(),
+        name="tournament-leaders",
     ),
     path(
         "<uuid:tournament_id>/generate-fixtures/",

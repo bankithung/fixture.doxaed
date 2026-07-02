@@ -11,6 +11,7 @@ import {
 } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/Select";
+import { PublicLeaders } from "@/features/live/PublicLeaders";
 import { ThemeToggle } from "@/features/theme/ThemeToggle";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
@@ -931,6 +932,7 @@ export function PublicSchedulePage(): React.ReactElement {
       tickTimer.current = null;
       qc.invalidateQueries({ queryKey: ["public-schedule", slug, id] });
       qc.invalidateQueries({ queryKey: ["public-standings", slug, id] });
+      qc.invalidateQueries({ queryKey: ["public-leaders", id] });
     }, 500);
   }, [qc, slug, id]);
   useEffect(
@@ -1227,6 +1229,7 @@ export function PublicSchedulePage(): React.ReactElement {
 
                   {/* The one earned card: live, pinned across any selection */}
                   <LiveBand matches={liveMatches} timeZone={tz} />
+                  <PublicLeaders slug={slug} id={id} />
 
                   {/* Body */}
                   {selected === "today" ? (

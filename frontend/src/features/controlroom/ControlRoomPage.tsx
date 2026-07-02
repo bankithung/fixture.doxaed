@@ -27,6 +27,7 @@ import {
   CompetitionProgressPanel,
   CourtsPanel,
   LiveNowPanel,
+  LeadersPanel,
   NeedsAttentionPanel,
   RecentResultsPanel,
   SuspensionsPanel,
@@ -437,6 +438,8 @@ export function ControlRoomPage(): React.ReactElement {
               />
 
               <LiveNowPanel matches={allMatches} tournamentId={id} />
+
+              <LeadersPanel tournamentId={id} />
 
               <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
                 <CourtsPanel venues={data.venues} timeZone={tz} />

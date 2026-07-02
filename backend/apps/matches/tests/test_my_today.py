@@ -48,3 +48,48 @@ def test_my_today_aggregates_across_tournaments():
     assert any(m["live"] for m in r.data["matches"])
     # The scheduled match has no scorer: it surfaces in the needs strip.
     assert any(n["kind"] == "no_scorer" for n in r.data["needs"])
+
+
+def test_leaders_endpoint_scorers_defence_badges():
+    """The ops leaderboards: scorers from events, defence/attack from played
+    matches, latest badges; empty arrays (not errors) before results."""
+    from apps.badges.services.engine import recompute_badges
+    from apps.matches.models import MatchEventType
+    from apps.matches.services.events import record_match_event
+
+    admin = User.objects.create_user(
+        email=f"ld-{uuid.uuid4().hex[:8]}@test.local",
+        password="FixtureDemo2026!", is_active=True,
+    )
+    admin.email_verified_at = timezone.now()
+    admin.save(update_fields=["email_verified_at"])
+    t = create_tournament(user=admin, name="Leaders Cup")
+    a, b = register_school(
+        tournament=t, school_name="S",
+        teams=[{"name": "A", "players": [{"full_name": "Asen"}]},
+               {"name": "B", "players": []}],
+    )
+    m = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=a, away_team=b,
+        match_no=1, status=MatchStatus.LIVE,
+        scheduled_at=timezone.now(),
+    )
+    c = APIClient()
+    c.force_authenticate(user=admin)
+
+    r = c.get(f"/api/tournaments/{t.id}/leaders/")
+    assert r.status_code == 200
+    assert r.data["played"] == 0 and r.data["top_scorers"] == []
+
+    pa = a.players.first()
+    record_match_event(match=m, event_type=MatchEventType.GOAL, team=a, player=pa, by=admin)
+    record_match_event(match=m, event_type=MatchEventType.GOAL, team=a, player=pa, by=admin)
+    Match.objects.filter(pk=m.pk).update(status=MatchStatus.COMPLETED)
+    recompute_badges(t)
+
+    r = c.get(f"/api/tournaments/{t.id}/leaders/")
+    assert r.data["played"] == 1
+    assert r.data["top_scorers"][0]["name"] == "Asen"
+    assert r.data["top_scorers"][0]["goals"] == 2
+    assert r.data["best_defence"][0]["team_name"] == "A"  # conceded 0
+    assert isinstance(r.data["latest_badges"], list)
