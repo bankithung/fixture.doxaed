@@ -21,6 +21,7 @@ import { invalidateTournament } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { ApiError } from "@/types/api";
+import { LineupPanel } from "./LineupPanel";
 
 const STATE_ACTIONS: Record<string, { label: string; to: string }[]> = {
   scheduled: [{ label: "Start match", to: "live" }],
@@ -408,6 +409,15 @@ export function MatchConsolePage(): React.ReactElement {
           ) : null}
         </div>
       </div>
+
+      {/* Pre-kickoff team sheets (lineups freeze at kickoff). */}
+      {match.status === "scheduled" ? (
+        <LineupPanel
+          matchId={matchId}
+          homeTeam={match.home_team}
+          awayTeam={match.away_team}
+        />
+      ) : null}
 
       {/* Set-sport result entry — the server rejects goal events for set
           sports, so the console never offers them (P7b). */}

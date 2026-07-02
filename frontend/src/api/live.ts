@@ -92,6 +92,34 @@ export const liveApi = {
     to_status: string,
     extra?: { winner_team_id?: string; reason?: string },
   ) => api.post(`/api/matches/${matchId}/transition/`, { to_status, ...extra }),
+  /** Both teams' declared lineups (starters/bench, confirmation state). */
+  getLineups: (matchId: string) =>
+    api.get<{
+      lineups: {
+        id: string;
+        team: { id: string; name: string } | null;
+        entries: {
+          player_id: string;
+          player_name: string;
+          role: string;
+          shirt_no: number | null;
+        }[];
+        confirmed_at: string | null;
+        confirmed_by: string | null;
+      }[];
+    }>(`/api/matches/${matchId}/lineups/`),
+  /** Replace one team's lineup (frozen once the match starts). */
+  setLineup: (
+    matchId: string,
+    payload: {
+      team_id: string;
+      entries: { player_id: string; role: string; shirt_no?: number | null }[];
+      event_id: string;
+    },
+  ) => api.post(`/api/matches/${matchId}/lineups/`, payload),
+  /** Confirm a declared lineup (locks it as the official team sheet). */
+  confirmLineup: (matchId: string, payload: { team_id: string; event_id: string }) =>
+    api.post(`/api/matches/${matchId}/lineups/confirm/`, payload),
   /** Referee/scorer/manager: file an append-only incident report. */
   fileIncident: (
     matchId: string,
