@@ -46,9 +46,9 @@ function isOverdue(scheduledAt: string | null): boolean {
  * Operations band atop the control room (ops 2026-06-26): what is live now, how
  * far through the day, what still needs attention, and what is up next. Every
  * value is derived from the day aggregate already in scope (zero backend) and
- * rides the same SSE tick, so it stays live without a second connection. Cells
- * are hairline-separated (gap-px over a border fill), font-tabular, one accent
- * reserved for "live"; wraps 2-up then 4-up.
+ * rides the same SSE tick, so it stays live without a second connection. Rendered
+ * as one slim hairline-divided strip (compact pass 2026-07-03), font-tabular,
+ * one accent reserved for "live"; wraps 2-up on small screens.
  */
 function OpsHeaderBand({
   data,
@@ -81,21 +81,23 @@ function OpsHeaderBand({
     tm?.short_name || tm?.name || t("TBD");
 
   const overline =
-    "text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground";
+    "shrink-0 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground";
   return (
     <div
       data-testid="ops-band"
-      className="grid grid-cols-2 divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm max-lg:divide-y lg:grid-cols-4 lg:divide-x"
+      className="panel grid grid-cols-2 divide-border max-lg:divide-y lg:grid-cols-[auto_auto_auto_minmax(0,1fr)] lg:divide-x"
     >
-      <div className="flex min-w-0 flex-col justify-center gap-1 px-4 py-3">
+      <div className="flex min-w-0 items-center gap-2 px-3 py-1.5">
         <p className={overline}>{t("On now")}</p>
-        <p className="flex items-baseline gap-1.5">
-          <span className="font-tabular text-2xl font-semibold leading-none">
+        <p className="flex min-w-0 items-baseline gap-1.5">
+          <span className="font-tabular text-base font-semibold leading-none">
             {liveCount}
           </span>
-          <span className="text-xs text-muted-foreground">{t("live")}</span>
+          <span className="text-[0.6875rem] text-muted-foreground">
+            {t("live")}
+          </span>
           {liveCount > 0 ? (
-            <span className="relative ml-0.5 flex h-2 w-2">
+            <span className="relative ml-0.5 flex h-2 w-2 self-center">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
             </span>
@@ -103,65 +105,61 @@ function OpsHeaderBand({
         </p>
       </div>
 
-      <div className="flex min-w-0 flex-col justify-center gap-1 px-4 py-3">
+      <div className="flex min-w-0 items-center gap-2 px-3 py-1.5">
         <p className={overline}>{t("Played")}</p>
-        <div className="flex items-center gap-2.5">
-          <p className="font-tabular text-2xl font-semibold leading-none">
-            {completed}
-            <span className="text-base text-muted-foreground">/{total}</span>
-          </p>
-          <div className="h-1 w-14 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-primary transition-[width]"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
+        <p className="font-tabular text-base font-semibold leading-none">
+          {completed}
+          <span className="text-xs font-normal text-muted-foreground">
+            /{total}
+          </span>
+        </p>
+        <div className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-primary transition-[width]"
+            style={{ width: `${pct}%` }}
+          />
         </div>
         {delayed > 0 ? (
-          <p className="font-tabular text-xs text-warning-foreground">
+          <p className="truncate font-tabular text-[0.6875rem] text-warning-foreground">
             {delayed} {t("running late")}
           </p>
         ) : null}
       </div>
 
-      <div className="flex min-w-0 flex-col justify-center gap-1 px-4 py-3">
+      <div className="flex min-w-0 items-center gap-2 px-3 py-1.5">
         <p className={overline}>{t("Needs you")}</p>
-        {awaiting > 0 || noVenue > 0 ? (
-          <p className="flex items-baseline gap-1.5">
-            <span className="font-tabular text-2xl font-semibold leading-none text-warning-foreground">
-              {awaiting + noVenue}
-            </span>
-            <span className="truncate text-xs text-muted-foreground">
-              {awaiting > 0 ? t("awaiting result") : t("no venue")}
-            </span>
-          </p>
-        ) : (
-          <p className="flex items-baseline gap-1.5">
-            <span className="font-tabular text-2xl font-semibold leading-none">
-              0
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {t("all caught up")}
-            </span>
-          </p>
-        )}
+        <p className="flex min-w-0 items-baseline gap-1.5">
+          <span
+            className={cn(
+              "font-tabular text-base font-semibold leading-none",
+              awaiting > 0 || noVenue > 0 ? "text-warning-foreground" : null,
+            )}
+          >
+            {awaiting + noVenue}
+          </span>
+          <span className="truncate text-[0.6875rem] text-muted-foreground">
+            {awaiting > 0
+              ? t("awaiting result")
+              : noVenue > 0
+                ? t("no venue")
+                : t("all caught up")}
+          </span>
+        </p>
       </div>
 
-      <div className="flex min-w-0 flex-col justify-center gap-1 px-4 py-3">
+      <div className="flex min-w-0 items-center gap-2 px-3 py-1.5">
         <p className={overline}>{t("Up next")}</p>
         {next ? (
-          <div className="min-w-0">
-            <p className="flex items-baseline gap-2">
-              <span className="font-tabular text-2xl font-semibold leading-none">
-                {next.scheduled_at ? fmtKickoff(next.scheduled_at, tz) : t("TBD")}
-              </span>
-            </p>
-            <p className="truncate text-xs text-muted-foreground">
+          <p className="flex min-w-0 items-baseline gap-1.5">
+            <span className="font-tabular text-base font-semibold leading-none">
+              {next.scheduled_at ? fmtKickoff(next.scheduled_at, tz) : t("TBD")}
+            </span>
+            <span className="truncate text-[0.6875rem] text-muted-foreground">
               {teamName(next.home_team)} v {teamName(next.away_team)}
-            </p>
-          </div>
+            </span>
+          </p>
         ) : (
-          <p className="text-sm text-muted-foreground">{t("Nothing queued")}</p>
+          <p className="text-xs text-muted-foreground">{t("Nothing queued")}</p>
         )}
       </div>
     </div>
@@ -245,7 +243,7 @@ export function ControlRoomPage(): React.ReactElement {
 
   if (query.isLoading) {
     return (
-      <div className="flex w-full flex-col gap-4" aria-busy="true">
+      <div className="flex w-full flex-col gap-3" aria-busy="true">
         {[0, 1, 2].map((i) => (
           <div
             key={i}
@@ -264,10 +262,10 @@ export function ControlRoomPage(): React.ReactElement {
   }
 
   return (
-    <div className="flex w-full flex-col gap-5">
-      {/* Header: one row — title, live status, quiet actions. */}
+    <div className="flex w-full flex-col gap-3">
+      {/* Header: one row — title, live status, day chips, quiet actions. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 print:hidden">
-        <h2 className="text-xl font-semibold tracking-tight">{t("Today")}</h2>
+        <h2 className="page-title">{t("Today")}</h2>
         <span
           data-testid="stream-status"
           title={live ? t("Live updates on") : t("Updating every minute")}
@@ -283,6 +281,52 @@ export function ControlRoomPage(): React.ReactElement {
           )}
           {live ? t("Live") : t("Polling")}
         </span>
+        {/* Day chips share the title row (compact pass 2026-07-03); the
+            mobile Select stays below where there is no horizontal room. */}
+        {data.days.length > 0 && !isMobile ? (
+          <div
+            role="group"
+            aria-label={t("Match day")}
+            className="inline-flex w-fit max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5"
+          >
+            {data.days.map((d) => {
+              const active = d.date === selectedDay;
+              return (
+                <button
+                  key={d.date}
+                  type="button"
+                  data-testid={`day-chip-${d.date}`}
+                  aria-pressed={active}
+                  onClick={() => setDay(d.date)}
+                  className={cn(
+                    "inline-flex h-6 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    active
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {fmtDayLabel(d.date)}
+                  <span
+                    className={cn(
+                      "font-tabular",
+                      active
+                        ? "text-muted-foreground"
+                        : "text-muted-foreground/70",
+                    )}
+                  >
+                    {d.counts.completed}/{d.counts.total}
+                  </span>
+                  {d.counts.live > 0 ? (
+                    <span
+                      aria-label={t("Live now")}
+                      className="h-1.5 w-1.5 rounded-full bg-primary"
+                    />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
         <div className="ml-auto flex items-center gap-1">
           {perms.canSchedule ? (
             <button
@@ -335,7 +379,7 @@ export function ControlRoomPage(): React.ReactElement {
         </section>
       ) : (
         <div className="contents print:hidden">
-          {/* Day selector — chips on desktop, the custom Select on mobile. */}
+          {/* Day selector on mobile — desktop chips live in the title row. */}
           {isMobile ? (
             <Select
               aria-label={t("Match day")}
@@ -347,48 +391,7 @@ export function ControlRoomPage(): React.ReactElement {
                 label: `${fmtDayLabel(d.date)} · ${d.counts.completed}/${d.counts.total}`,
               }))}
             />
-          ) : (
-            <div
-              role="group"
-              aria-label={t("Match day")}
-              className="inline-flex w-fit max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5"
-            >
-              {data.days.map((d) => {
-                const active = d.date === selectedDay;
-                return (
-                  <button
-                    key={d.date}
-                    type="button"
-                    data-testid={`day-chip-${d.date}`}
-                    aria-pressed={active}
-                    onClick={() => setDay(d.date)}
-                    className={cn(
-                      "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      active
-                        ? "bg-card text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {fmtDayLabel(d.date)}
-                    <span
-                      className={cn(
-                        "font-tabular",
-                        active ? "text-muted-foreground" : "text-muted-foreground/70",
-                      )}
-                    >
-                      {d.counts.completed}/{d.counts.total}
-                    </span>
-                    {d.counts.live > 0 ? (
-                      <span
-                        aria-label={t("Live now")}
-                        className="h-1.5 w-1.5 rounded-full bg-primary"
-                      />
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          ) : null}
 
           {showMine ? (
             // Focused member lane: just the matches this user is scoring today.
@@ -428,33 +431,31 @@ export function ControlRoomPage(): React.ReactElement {
 
               <LiveNowPanel matches={allMatches} tournamentId={id} />
 
-              {/* Two-zone cockpit: the working column (what runs the day)
-                  and an awareness rail (what might need a decision). */}
-              <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,23rem)]">
-                <div className="flex min-w-0 flex-col gap-4">
-                  <CourtsPanel venues={data.venues} timeZone={tz} />
+              {/* Full-width stack (compact pass 2026-07-03): the old fixed
+                  awareness rail sat mostly empty, so exception panels render
+                  only when they have rows and everything fills the width. */}
+              <NeedsAttentionPanel
+                matches={allMatches}
+                timeZone={tz}
+                tournamentId={id}
+              />
+              <CourtsPanel venues={data.venues} timeZone={tz} />
+              <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+                <div className="flex min-w-0 flex-col gap-3">
                   <LeadersPanel tournamentId={id} />
-                  <CompetitionProgressPanel matches={allMatches} />
-                </div>
-                <div className="flex min-w-0 flex-col gap-4">
-                  <NeedsAttentionPanel
-                    matches={allMatches}
-                    timeZone={tz}
-                    tournamentId={id}
-                  />
                   <RecentResultsPanel matches={allMatches} timeZone={tz} />
                   <SuspensionsPanel tournamentId={id} />
                   {allMatches.length > 0 ? (
-                    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+                    <section className="panel">
                       <button
                         type="button"
                         data-testid="changes-drawer-toggle"
                         aria-expanded={changesOpen}
-                        className="flex h-9 w-full items-center gap-2 px-4 text-left"
+                        className="flex h-8 w-full items-center gap-2 px-3 text-left"
                         onClick={() => setChangesOpen((o) => !o)}
                       >
                         <History aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
-                        <h3 className="text-[13px] font-semibold tracking-tight">
+                        <h3 className="panel-title">
                           {t("Change history")}
                         </h3>
                         <ChevronDown
@@ -477,6 +478,9 @@ export function ControlRoomPage(): React.ReactElement {
                       ) : null}
                     </section>
                   ) : null}
+                </div>
+                <div className="min-w-0">
+                  <CompetitionProgressPanel matches={allMatches} />
                 </div>
               </div>
             </>

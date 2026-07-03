@@ -37,10 +37,10 @@ function Panel({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <section className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-      <div className="flex h-9 items-center gap-2 border-b border-border px-4">
+    <section className="panel flex flex-col">
+      <div className="panel-header">
         <Icon aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
-        <h3 className="text-[13px] font-semibold tracking-tight">{title}</h3>
+        <h3 className="panel-title">{title}</h3>
         {count != null ? (
           <span className="font-tabular text-xs text-muted-foreground">{count}</span>
         ) : null}
@@ -71,7 +71,7 @@ export function LiveNowPanel({
       {(
         <div className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2 xl:grid-cols-3">
           {live.map((m) => (
-            <div key={m.id} className="flex flex-col gap-2 bg-card p-3">
+            <div key={m.id} className="flex flex-col gap-1.5 bg-card p-2.5">
               <div className="flex items-center gap-2">
                 <StatusPill match={m} idScope="live-" />
                 {m.venue ? (
@@ -83,13 +83,13 @@ export function LiveNowPanel({
               </div>
               <LeafLabel label={m.leaf_label} />
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                <span className="truncate text-right text-sm font-medium">
+                <span className="truncate text-right text-[13px] font-medium">
                   {teamName(m.home_team)}
                 </span>
-                <span className="px-2 font-tabular text-lg font-semibold">
+                <span className="px-2 font-tabular text-base font-semibold">
                   {m.home_score ?? 0} - {m.away_score ?? 0}
                 </span>
-                <span className="truncate text-sm font-medium">
+                <span className="truncate text-[13px] font-medium">
                   {teamName(m.away_team)}
                 </span>
               </div>
@@ -138,7 +138,7 @@ export function CourtsPanel({
           return (
             <div
               key={v.venue || "unassigned"}
-              className="grid grid-cols-[8.5rem_1fr_auto] items-center gap-3 px-4 py-2 sm:grid-cols-[10rem_1fr_auto]"
+              className="grid grid-cols-[8.5rem_1fr_auto] items-center gap-3 px-3 py-1.5 sm:grid-cols-[10rem_1fr_auto]"
             >
               <div className="flex min-w-0 items-center gap-1.5">
                 {now && IN_PLAY.has(now.status) ? (
@@ -147,7 +147,7 @@ export function CourtsPanel({
                     <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
                   </span>
                 ) : null}
-                <span className="truncate text-sm font-medium">
+                <span className="truncate text-[13px] font-medium">
                   {v.venue || t("No court")}
                 </span>
               </div>
@@ -230,7 +230,7 @@ export function CompetitionProgressPanel({
           );
           return (
             <div key={sport} className="border-b border-border last:border-b-0">
-              <div className="flex items-baseline gap-2 bg-muted/40 px-4 py-1.5">
+              <div className="flex items-baseline gap-2 bg-muted/40 px-3 py-1">
                 <p className="text-xs font-semibold text-foreground">{sport}</p>
                 <span className="font-tabular text-[0.6875rem] text-muted-foreground">
                   {agg.done}/{agg.total}
@@ -243,7 +243,7 @@ export function CompetitionProgressPanel({
                   return (
                     <div
                       key={`${sport}-${r.rest.join("-")}`}
-                      className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-1.5"
+                      className="grid grid-cols-[1fr_auto] items-center gap-3 px-3 py-1"
                     >
                       <span className="flex min-w-0 flex-wrap items-center gap-1">
                         {r.rest.length === 0 ? (
@@ -254,7 +254,7 @@ export function CompetitionProgressPanel({
                           r.rest.map((seg, i) => (
                             <span
                               key={`${i}-${seg}`}
-                              className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-foreground"
+                              className="rounded bg-muted px-1.5 py-px text-[0.6875rem] font-medium text-foreground"
                             >
                               {seg}
                             </span>
@@ -307,8 +307,8 @@ export function RecentResultsPanel({
       {(
         <div className="flex flex-col divide-y divide-border">
           {done.map((m) => (
-            <div key={m.id} className="flex items-center gap-3 px-4 py-2 text-sm">
-              <span className="w-12 shrink-0 font-tabular text-xs text-muted-foreground">
+            <div key={m.id} className="flex items-center gap-3 px-3 py-1.5 text-[13px]">
+              <span className="w-11 shrink-0 font-tabular text-xs text-muted-foreground">
                 {fmtKickoff(m.scheduled_at, timeZone)}
               </span>
               <span className="min-w-0 flex-1 truncate">
@@ -337,7 +337,9 @@ function reason(m: ControlRoomMatch): string {
 
 /**
  * NEEDS ATTENTION — the exceptions, ranked; each links straight into the Matches
- * board (where every action lives) so tracking flows into acting.
+ * board (where every action lives) so tracking flows into acting. Renders
+ * nothing when caught up — the ops strip's "Needs you" cell already says so,
+ * and an empty card was dead space (compact pass 2026-07-03).
  */
 export function NeedsAttentionPanel({
   matches,
@@ -347,7 +349,7 @@ export function NeedsAttentionPanel({
   matches: ControlRoomMatch[];
   timeZone: string;
   tournamentId: string;
-}): React.ReactElement {
+}): React.ReactElement | null {
   const items = matches
     .filter((m) => urgencyWeight(m) > 0 && !IN_PLAY.has(m.status))
     .sort(
@@ -355,6 +357,7 @@ export function NeedsAttentionPanel({
         urgencyWeight(b) - urgencyWeight(a) ||
         (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? ""),
     );
+  if (items.length === 0) return null;
   return (
     <Panel
       title={t("Needs attention")}
@@ -369,18 +372,14 @@ export function NeedsAttentionPanel({
         </Link>
       }
     >
-      {items.length === 0 ? (
-        <p className="px-4 py-2.5 text-sm text-muted-foreground">
-          {t("All caught up. Nothing needs you.")}
-        </p>
-      ) : (
+      {(
         <div className="flex flex-col divide-y divide-border">
           {items.slice(0, 7).map((m) => (
             <Link
               key={m.id}
               to={routes.tournamentMatches(tournamentId)}
               className={cn(
-                "flex items-center gap-3 border-l-2 px-4 py-2 transition-colors hover:bg-secondary/40",
+                "flex items-center gap-3 border-l-2 px-3 py-1.5 transition-colors hover:bg-secondary/40",
                 isOverdue(m) ? "border-l-destructive" : "border-l-warning-foreground",
               )}
             >
@@ -425,12 +424,9 @@ export function SuspensionsPanel({
     yellow_accumulation: "Yellow cards",
   };
   return (
-    <section
-      data-testid="suspensions-panel"
-      className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
-    >
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <h3 className="text-sm font-semibold">{t("Suspended players")}</h3>
+    <section data-testid="suspensions-panel" className="panel">
+      <div className="panel-header">
+        <h3 className="panel-title">{t("Suspended players")}</h3>
         <span className="rounded-full bg-destructive/10 px-2 py-0.5 font-tabular text-xs text-destructive">
           {active.length}
         </span>
@@ -439,7 +435,7 @@ export function SuspensionsPanel({
         {active.map((s) => (
           <li
             key={`${s.player_id}-${s.triggered_match_id}`}
-            className="flex items-center gap-3 px-4 py-2 text-sm"
+            className="flex items-center gap-3 px-3 py-1.5 text-[13px]"
           >
             <span className="min-w-0 flex-1 truncate font-medium">
               {s.player_name}
@@ -480,13 +476,10 @@ export function LeadersPanel({
   const empty = !d || d.played === 0;
 
   return (
-    <section
-      data-testid="leaders-panel"
-      className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
-    >
-      <div className="flex h-9 items-center gap-2 border-b border-border px-4">
+    <section data-testid="leaders-panel" className="panel">
+      <div className="panel-header">
         <Trophy aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-primary" />
-        <h3 className="text-[13px] font-semibold tracking-tight">{t("Leaders")}</h3>
+        <h3 className="panel-title">{t("Leaders")}</h3>
         {!empty ? (
           <span className="font-tabular text-xs text-muted-foreground">
             {d.played} {t("played")}
@@ -507,7 +500,7 @@ export function LeadersPanel({
           <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
             {[t("Top scorers"), t("Best defence"), t("Latest badges")].map(
               (col) => (
-                <div key={col} className="flex flex-col gap-1.5 p-3">
+                <div key={col} className="flex flex-col gap-1.5 p-2.5">
                   <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                     {col}
                   </p>
@@ -524,13 +517,13 @@ export function LeadersPanel({
               ),
             )}
           </div>
-          <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+          <p className="border-t border-border px-3 py-1.5 text-xs text-muted-foreground">
             {t("Fills automatically and updates live as results come in.")}
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-          <div className="flex flex-col gap-1 p-3">
+          <div className="flex flex-col gap-1 p-2.5">
             <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               {t("Top scorers")}
             </p>
@@ -559,7 +552,7 @@ export function LeadersPanel({
               </ol>
             )}
           </div>
-          <div className="flex flex-col gap-2 p-3">
+          <div className="flex flex-col gap-2 p-2.5">
             <div>
               <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                 {t("Best defence")}

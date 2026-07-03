@@ -92,17 +92,19 @@ export default {
           ink: "hsl(var(--brand-ink))",
         },
       },
+      // Compact scale (owner 2026-07-03): sections cap at 7px corners.
       borderRadius: {
-        xl: "calc(var(--radius) + 4px)",
+        xl: "calc(var(--radius) + 1px)",
         lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        md: "calc(var(--radius) - 1px)",
+        sm: "calc(var(--radius) - 2px)",
       },
+      // 18px is the app-wide heading cap (owner 2026-07-03); body text below.
       fontSize: {
-        display: ["2.5rem", { lineHeight: "1.1", letterSpacing: "-0.02em", fontWeight: "600" }],
-        h1: ["1.875rem", { lineHeight: "1.2", letterSpacing: "-0.015em", fontWeight: "600" }],
-        h2: ["1.5rem", { lineHeight: "1.25", letterSpacing: "-0.01em" }],
-        h3: ["1.25rem", { lineHeight: "1.3" }],
+        display: ["1.125rem", { lineHeight: "1.4", letterSpacing: "-0.01em", fontWeight: "600" }],
+        h1: ["1.125rem", { lineHeight: "1.4", letterSpacing: "-0.01em", fontWeight: "600" }],
+        h2: ["0.9375rem", { lineHeight: "1.4", letterSpacing: "-0.005em", fontWeight: "600" }],
+        h3: ["0.8125rem", { lineHeight: "1.4", fontWeight: "600" }],
         body: ["0.875rem", { lineHeight: "1.5" }],
         "body-lg": ["1rem", { lineHeight: "1.55" }],
         caption: ["0.75rem", { lineHeight: "1.4" }],
