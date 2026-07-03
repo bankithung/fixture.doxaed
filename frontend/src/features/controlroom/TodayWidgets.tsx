@@ -89,11 +89,11 @@ export function CourtsPanel({
                     <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
                   </span>
                 ) : null}
-                <span className="truncate text-[13px] font-medium">
+                <span className="truncate text-sm font-medium">
                   {v.venue || t("No court")}
                 </span>
               </div>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="truncate text-[13px] text-muted-foreground">
                 {now ? (
                   `${teamName(now.home_team)} v ${teamName(now.away_team)}`
                 ) : next ? (
@@ -114,7 +114,7 @@ export function CourtsPanel({
                     style={{ width: `${pct}%` }}
                   />
                 </div>
-                <span className="w-8 text-right font-tabular text-[0.6875rem] text-muted-foreground">
+                <span className="w-8 text-right font-tabular text-xs text-muted-foreground">
                   {done}/{total}
                 </span>
               </div>
@@ -173,8 +173,8 @@ export function CompetitionProgressPanel({
           return (
             <div key={sport} className="border-b border-border last:border-b-0">
               <div className="flex items-baseline gap-2 bg-muted/40 px-3 py-1">
-                <p className="text-xs font-semibold text-foreground">{sport}</p>
-                <span className="font-tabular text-[0.6875rem] text-muted-foreground">
+                <p className="text-[13px] font-semibold text-foreground">{sport}</p>
+                <span className="font-tabular text-xs text-muted-foreground">
                   {agg.done}/{agg.total}
                 </span>
               </div>
@@ -189,14 +189,14 @@ export function CompetitionProgressPanel({
                     >
                       <span className="flex min-w-0 flex-wrap items-center gap-1">
                         {r.rest.length === 0 ? (
-                          <span className="text-xs text-muted-foreground">
+                          <span className="text-[13px] text-muted-foreground">
                             {t("All matches")}
                           </span>
                         ) : (
                           r.rest.map((seg, i) => (
                             <span
                               key={`${i}-${seg}`}
-                              className="rounded bg-muted px-1.5 py-px text-[0.6875rem] font-medium text-foreground"
+                              className="rounded bg-muted px-1.5 py-px text-xs font-medium text-foreground"
                             >
                               {seg}
                             </span>
@@ -205,7 +205,7 @@ export function CompetitionProgressPanel({
                       </span>
                       <div className="flex w-32 shrink-0 items-center gap-2">
                         {r.live > 0 ? (
-                          <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[0.625rem] font-medium leading-4 text-primary">
+                          <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[0.6875rem] font-medium leading-4 text-primary">
                             {r.live}
                           </span>
                         ) : null}
@@ -215,7 +215,7 @@ export function CompetitionProgressPanel({
                             style={{ width: `${pct}%` }}
                           />
                         </div>
-                        <span className="w-9 text-right font-tabular text-[0.6875rem] text-muted-foreground">
+                        <span className="w-9 text-right font-tabular text-xs text-muted-foreground">
                           {r.done}/{r.total}
                         </span>
                       </div>
@@ -249,8 +249,8 @@ export function RecentResultsPanel({
       {(
         <div className="flex flex-col divide-y divide-border">
           {done.map((m) => (
-            <div key={m.id} className="flex items-center gap-3 px-3 py-1.5 text-[13px]">
-              <span className="w-11 shrink-0 font-tabular text-xs text-muted-foreground">
+            <div key={m.id} className="flex items-center gap-3 px-3 py-1.5 text-sm">
+              <span className="w-11 shrink-0 font-tabular text-[13px] text-muted-foreground">
                 {fmtKickoff(m.scheduled_at, timeZone)}
               </span>
               <span className="min-w-0 flex-1 truncate">
@@ -326,14 +326,14 @@ export function NeedsAttentionPanel({
               )}
             >
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 text-[0.6875rem] text-muted-foreground">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <StatusPill match={m} idScope="attn-" />
                   <span className="font-tabular">
                     {fmtKickoff(m.scheduled_at, timeZone)}
                   </span>
                   <span className="truncate">{reason(m)}</span>
                 </div>
-                <p className="truncate text-xs font-medium">
+                <p className="truncate text-[13px] font-medium">
                   {teamName(m.home_team)} {t("v")} {teamName(m.away_team)}
                 </p>
               </div>
@@ -443,7 +443,7 @@ export function LeadersPanel({
             {[t("Top scorers"), t("Best defence"), t("Latest badges")].map(
               (col) => (
                 <div key={col} className="flex flex-col gap-1.5 p-2.5">
-                  <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  <p className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                     {col}
                   </p>
                   {[1, 2, 3].map((rank) => (
@@ -459,14 +459,14 @@ export function LeadersPanel({
               ),
             )}
           </div>
-          <p className="border-t border-border px-3 py-1.5 text-xs text-muted-foreground">
+          <p className="border-t border-border px-3 py-1.5 text-[13px] text-muted-foreground">
             {t("Fills automatically and updates live as results come in.")}
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
           <div className="flex flex-col gap-1 p-2.5">
-            <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               {t("Top scorers")}
             </p>
             {d.top_scorers.length === 0 ? (
@@ -496,7 +496,7 @@ export function LeadersPanel({
           </div>
           <div className="flex flex-col gap-2 p-2.5">
             <div>
-              <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              <p className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                 {t("Best defence")}
               </p>
               {d.best_defence.slice(0, 2).map((r) => (
@@ -511,7 +511,7 @@ export function LeadersPanel({
               ))}
             </div>
             <div>
-              <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              <p className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                 {t("Best attack")}
               </p>
               {d.best_attack.slice(0, 2).map((r) => (
@@ -527,7 +527,7 @@ export function LeadersPanel({
             </div>
             {d.latest_badges.length > 0 ? (
               <div>
-                <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                <p className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                   {t("Latest badges")}
                 </p>
                 <div className="mt-1 flex flex-wrap gap-1">

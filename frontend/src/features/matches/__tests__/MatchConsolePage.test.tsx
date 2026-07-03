@@ -220,9 +220,12 @@ describe("MatchConsolePage", () => {
     renderConsole();
     await screen.findAllByText("Alpha");
 
-    // One tap adds 1 by default.
+    // One tap adds 1 by default, and the BIG scoreboard tracks the current
+    // set's points instantly (sets-won stays 0-0 mid-set).
     await userEvent.click(screen.getByTestId("set-0-home-plus"));
     expect(screen.getByLabelText("Set 1 Alpha")).toHaveValue("1");
+    expect(screen.getByTestId("set-scoreboard")).toHaveTextContent("1-0");
+    expect(screen.getByText(/set 1 · sets 0-0/i)).toBeInTheDocument();
 
     // Choose +5: the next tap adds 5; minus steps the same amount back.
     await userEvent.click(screen.getByTestId("tap-step-5"));

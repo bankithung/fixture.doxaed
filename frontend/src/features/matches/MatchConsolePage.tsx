@@ -149,18 +149,45 @@ function fmtClock(totalSeconds: number): string {
 
 type Side = "home" | "away";
 type SetRow = [string, string];
+type SetScoring = {
+  best_of?: number;
+  points?: number;
+  win_by?: number;
+  cap?: number | null;
+  deciding?: Record<string, unknown> | null;
+} | null;
 
 /** Sets won per side from the entered rows (client display only — the server
- * revalidates against the sport's deuce/cap rules). */
-function setsWon(rows: SetRow[]): [number, number] {
+ * revalidates on completion). Mirrors the backend's lenient live counter: a
+ * set counts only once it is legally WON (target reached with the margin, or
+ * the cap hit); the running set counts for nobody, so 4-1 mid-set reads
+ * "Sets 0-0", not 1-0. Without known rules any decided pair counts. */
+function setsWon(rows: SetRow[], scoring: SetScoring): [number, number] {
+  const needMinusOne = Math.floor((scoring?.best_of ?? 3) / 2);
   let h = 0;
   let a = 0;
   for (const [hs, as] of rows) {
+    if (hs === "" || as === "") continue;
     const hn = Number(hs);
     const an = Number(as);
-    if (!Number.isFinite(hn) || !Number.isFinite(an) || hs === "" || as === "") continue;
+    if (!Number.isFinite(hn) || !Number.isFinite(an) || hn === an) continue;
+    const deciding = h === a && h === needMinusOne;
+    const d = (deciding ? scoring?.deciding : null) as {
+      points?: number;
+      win_by?: number;
+      cap?: number | null;
+    } | null;
+    const target = d?.points ?? scoring?.points ?? 0;
+    const winBy = d?.win_by ?? scoring?.win_by ?? 2;
+    const cap = d?.cap ?? scoring?.cap ?? null;
+    const hi = Math.max(hn, an);
+    const lo = Math.min(hn, an);
+    const won =
+      target <= 0 ||
+      (hi >= target && (hi - lo >= winBy || (cap != null && hi >= cap)));
+    if (!won) continue;
     if (hn > an) h += 1;
-    else if (an > hn) a += 1;
+    else a += 1;
   }
   return [h, a];
 }
@@ -347,8 +374,18 @@ export function MatchConsolePage(): React.ReactElement {
   const lastEvent = events[0];
   const canUndo = live && !!lastEvent;
   const isFinal = match.status === "completed" || match.status === "walkover";
-  const [homeSets, awaySets] = setsWon(setRows);
+  const [homeSets, awaySets] = setsWon(setRows, match.scoring ?? null);
   const completeSets = setRows.filter(([h, a]) => h !== "" && a !== "");
+  // The set in play = the last editor row; its points are the BIG score for
+  // set sports while the match runs (taps show up instantly, owner 2026-07-03).
+  const currentSetRow = setRows[setRows.length - 1] ?? ["", ""];
+  const currentSetPoints: [number, number] = [
+    Number(currentSetRow[0] || 0),
+    Number(currentSetRow[1] || 0),
+  ];
+  const finishedSetChips = setRows
+    .slice(0, -1)
+    .filter(([h, a]) => h !== "" && a !== "");
 
   // Tap scoring: every edit while LIVE auto-saves (debounced) — no Save
   // button. When the match has not started, edits stay local until the
@@ -406,7 +443,7 @@ export function MatchConsolePage(): React.ReactElement {
           <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
             {t("Scoring console")}
           </p>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
             {homeName} <span className="text-muted-foreground">{t("vs")}</span> {awayName}
           </h1>
         </div>
@@ -522,11 +559,29 @@ export function MatchConsolePage(): React.ReactElement {
                 {t("Home")}
               </div>
             </div>
-            <div className="font-tabular text-4xl font-semibold tabular-nums sm:text-6xl">
-              {match.home_score ?? 0}
-              <span className="px-2 text-muted-foreground">-</span>
-              {match.away_score ?? 0}
-            </div>
+            {setBased && !isFinal ? (
+              // Set sport in play: the BIG number is the CURRENT SET's points,
+              // straight from the editor rows so a tap shows up instantly.
+              <div className="text-center">
+                <div
+                  data-testid="set-scoreboard"
+                  className="font-tabular text-4xl font-semibold tabular-nums sm:text-6xl"
+                >
+                  {currentSetPoints[0]}
+                  <span className="px-2 text-muted-foreground">-</span>
+                  {currentSetPoints[1]}
+                </div>
+                <p className="mt-1 font-tabular text-sm text-muted-foreground">
+                  {t("Set")} {setRows.length} · {t("Sets")} {homeSets}-{awaySets}
+                </p>
+              </div>
+            ) : (
+              <div className="font-tabular text-4xl font-semibold tabular-nums sm:text-6xl">
+                {match.home_score ?? 0}
+                <span className="px-2 text-muted-foreground">-</span>
+                {match.away_score ?? 0}
+              </div>
+            )}
             <div className="min-w-0 text-left">
               <div className="truncate text-sm font-medium sm:text-base">{awayName}</div>
               <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
@@ -535,17 +590,24 @@ export function MatchConsolePage(): React.ReactElement {
             </div>
           </div>
 
-          {setBased && (match.set_scores?.length ?? 0) > 0 ? (
-            <div className="flex flex-wrap justify-center gap-1.5">
-              {(match.set_scores ?? []).map((s, i) => (
-                <span
-                  key={i}
-                  className="rounded-md bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground"
-                >
-                  {s[0]}-{s[1]}
-                </span>
-              ))}
-            </div>
+          {setBased ? (
+            (() => {
+              // In play: finished sets from the local editor (instant); once
+              // final, the server's recorded sets.
+              const chips = isFinal ? (match.set_scores ?? []) : finishedSetChips;
+              return chips.length > 0 ? (
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {chips.map((s, i) => (
+                    <span
+                      key={i}
+                      className="rounded-md bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground"
+                    >
+                      {s[0]}-{s[1]}
+                    </span>
+                  ))}
+                </div>
+              ) : null;
+            })()
           ) : null}
 
           {match.home_pens != null && match.away_pens != null ? (
@@ -637,7 +699,9 @@ export function MatchConsolePage(): React.ReactElement {
             </div>
           </div>
           <div className="flex flex-col gap-3 p-4">
-            <div className="grid grid-cols-[2.25rem_1fr_1fr_2rem] items-center gap-2 text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
+            {/* Desktop column headers; mobile shows the name inside each
+                stepper instead (the sides stack there). */}
+            <div className="hidden grid-cols-[2.25rem_1fr_1fr_2rem] items-center gap-2 text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground sm:grid">
               <span />
               <span className="truncate text-center">{homeName}</span>
               <span className="truncate text-center">{awayName}</span>
@@ -646,7 +710,7 @@ export function MatchConsolePage(): React.ReactElement {
             {setRows.map((row, i) => (
               <div
                 key={i}
-                className="grid grid-cols-[2.25rem_1fr_1fr_2rem] items-center gap-2"
+                className="grid grid-cols-[2.25rem_minmax(0,1fr)_2rem] items-center gap-x-2 gap-y-1.5 sm:grid-cols-[2.25rem_1fr_1fr_2rem]"
               >
                 <span className="text-xs font-medium text-muted-foreground">
                   {t("Set")} {i + 1}
@@ -655,7 +719,14 @@ export function MatchConsolePage(): React.ReactElement {
                   const teamLabel = sideIdx === 0 ? homeName : awayName;
                   const sideKey = sideIdx === 0 ? "home" : "away";
                   return (
-                    <div key={sideIdx} className="flex min-w-0 items-center gap-1">
+                    <div
+                      key={sideIdx}
+                      className={cn(
+                        "flex min-w-0 items-center gap-1",
+                        sideIdx === 1 &&
+                          "col-start-2 row-start-2 sm:col-auto sm:row-auto",
+                      )}
+                    >
                       <Button
                         type="button"
                         size="sm"
@@ -667,13 +738,18 @@ export function MatchConsolePage(): React.ReactElement {
                       >
                         <Minus aria-hidden="true" className="h-4 w-4" />
                       </Button>
-                      <Input
-                        inputMode="numeric"
-                        aria-label={`${t("Set")} ${i + 1} ${teamLabel}`}
-                        value={row[sideIdx]}
-                        onChange={(e) => setSide(i, sideIdx, e.target.value)}
-                        className="h-11 min-w-0 text-center font-tabular text-lg font-semibold"
-                      />
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="truncate text-center text-[0.6875rem] text-muted-foreground sm:hidden">
+                          {teamLabel}
+                        </span>
+                        <Input
+                          inputMode="numeric"
+                          aria-label={`${t("Set")} ${i + 1} ${teamLabel}`}
+                          value={row[sideIdx]}
+                          onChange={(e) => setSide(i, sideIdx, e.target.value)}
+                          className="h-11 w-full text-center font-tabular text-lg font-semibold"
+                        />
+                      </div>
                       <Button
                         type="button"
                         size="sm"
@@ -692,7 +768,7 @@ export function MatchConsolePage(): React.ReactElement {
                   variant="ghost"
                   aria-label={`${t("Remove set")} ${i + 1}`}
                   disabled={setRows.length === 1}
-                  className="h-8 w-8 p-0"
+                  className="col-start-3 row-start-1 h-8 w-8 p-0 sm:col-auto sm:row-auto"
                   onClick={() => {
                     const next = setRows.filter((_, j) => j !== i);
                     setSetRows(next);
@@ -703,7 +779,7 @@ export function MatchConsolePage(): React.ReactElement {
                 </Button>
               </div>
             ))}
-            <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
               <Button
                 size="sm"
                 variant="outline"

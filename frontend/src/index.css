@@ -143,7 +143,7 @@
     @apply flex h-8 shrink-0 items-center gap-2 border-b border-border px-3;
   }
   .panel-title {
-    @apply text-[0.8125rem] font-semibold tracking-tight;
+    @apply text-sm font-semibold tracking-tight;
   }
 }
 

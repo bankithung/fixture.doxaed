@@ -82,7 +82,7 @@ function KindChip({ kind }: { kind: string }): React.ReactElement {
   return (
     <span
       className={cn(
-        "shrink-0 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium",
+        "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
         KIND_CLASSES[kind] ?? "bg-muted text-muted-foreground",
       )}
     >
@@ -96,7 +96,7 @@ function SlotLine({ e }: { e: ScheduleChangeEntry }): React.ReactElement | null 
   if (e.old === null && e.new === null) return null;
   const moved = Boolean(e.old?.scheduled_at);
   return (
-    <p className="min-w-0 font-tabular text-[13px] text-muted-foreground">
+    <p className="min-w-0 font-tabular text-sm text-muted-foreground">
       <span className="text-foreground">{fmtSlot(e.new)}</span>
       {moved ? (
         <span className="ml-2">
@@ -118,7 +118,7 @@ function Entry({ e }: { e: ScheduleChangeEntry }): React.ReactElement {
       <div className="flex flex-wrap items-center gap-2">
         <KindChip kind={effectiveKind(e)} />
         <span className="min-w-0 truncate text-sm font-medium">{e.match_label}</span>
-        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[13px] text-muted-foreground">
           {who ? <span title={e.actor?.email}>{who}</span> : null}
           <span className="font-tabular" title={e.changed_at}>
             {relTime(e.changed_at)}
@@ -127,7 +127,7 @@ function Entry({ e }: { e: ScheduleChangeEntry }): React.ReactElement {
       </div>
       <SlotLine e={e} />
       {e.reason ? (
-        <p className="text-[13px] italic text-muted-foreground">{e.reason}</p>
+        <p className="text-sm italic text-muted-foreground">{e.reason}</p>
       ) : null}
     </li>
   );
@@ -191,7 +191,7 @@ function BurstItem({
           <span className="font-tabular">{burst.entries.length}</span>{" "}
           {t("matches")}
         </span>
-        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[13px] text-muted-foreground">
           {who ? <span title={head.actor?.email}>{who}</span> : null}
           <span className="font-tabular" title={head.changed_at}>
             {relTime(head.changed_at)}
@@ -324,7 +324,7 @@ export function ScheduleChangesPanel({
               <Link
                 to={viewAllTo}
                 data-testid="changes-view-all"
-                className="text-xs font-medium text-primary hover:underline"
+                className="text-[13px] font-medium text-primary hover:underline"
               >
                 {t("View all changes")}
               </Link>
