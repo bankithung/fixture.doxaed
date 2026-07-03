@@ -367,7 +367,11 @@ export function MatchConsolePage(): React.ReactElement {
   const { match, events } = query.data;
   const live = match.status === "live" || match.status === "half_time";
   const setBased = match.scoring?.type === "sets";
-  const actions = STATE_ACTIONS[match.status] ?? [];
+  // Half time is a football notion; a set sport pauses between sets on its
+  // own, so its live console offers Complete only.
+  const actions = (STATE_ACTIONS[match.status] ?? []).filter(
+    (a) => !(setBased && a.to === "half_time"),
+  );
   const sm = statusMeta(match.status);
   const homeName = match.home_team?.name ?? t("TBD");
   const awayName = match.away_team?.name ?? t("TBD");
@@ -542,12 +546,14 @@ export function MatchConsolePage(): React.ReactElement {
               <span className={cn("h-1.5 w-1.5 rounded-full", sm.dot)} />
             )}
             {t(sm.label)}
-            {match.current_period ? (
+            {/* Football periods and the running minute mean nothing to a set
+                sport; its pill relies on the Set N line under the score. */}
+            {!setBased && match.current_period ? (
               <span className="text-muted-foreground">
                 · {t(match.current_period.replace(/_/g, " "))}
               </span>
             ) : null}
-            {isLiveNow && autoMinute != null ? (
+            {!setBased && isLiveNow && autoMinute != null ? (
               <span className="font-tabular text-muted-foreground">{autoMinute}'</span>
             ) : null}
           </span>

@@ -1,6 +1,7 @@
 import { Lock, Radio } from "lucide-react";
 import type { ControlRoomMatch, MatchRow as MatchRowT } from "@/api/tournaments";
 import { LeafLabel } from "@/features/fixtures/LeafLabel";
+import { liveSetView } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { FINAL, IN_PLAY, fmtKickoff, isOverdue } from "./format";
@@ -97,9 +98,23 @@ export function MatchRow({
 
       <div className="w-16 shrink-0 text-right font-tabular">
         {showScore ? (
-          <span className="font-semibold">
-            {match.home_score ?? 0} - {match.away_score ?? 0}
-          </span>
+          (() => {
+            // Live set sport: the current set's points are the score that
+            // moves; sets won ride the hover title.
+            const sv = liveSetView(match);
+            return (
+              <span
+                className="font-semibold"
+                title={
+                  sv ? `${t("Sets")} ${sv.sets[0]}-${sv.sets[1]}` : undefined
+                }
+              >
+                {sv
+                  ? `${sv.points[0]} - ${sv.points[1]}`
+                  : `${match.home_score ?? 0} - ${match.away_score ?? 0}`}
+              </span>
+            );
+          })()
         ) : (
           <span className="text-muted-foreground">-</span>
         )}

@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveApi } from "@/api/live";
 import { tournamentsApi, type PublicScheduleMatch } from "@/api/tournaments";
+import { liveSetView } from "@/lib/setDisplay";
 import { t } from "@/lib/t";
 import { cn } from "@/lib/tailwind";
 import { useEventStream } from "@/lib/useEventStream";
@@ -11,6 +12,8 @@ import { PublicViewerHeader } from "./PublicViewerHeader";
 const LIVE_STATUSES = new Set(["live", "half_time", "extra_time", "penalties"]);
 
 function periodLabel(m: PublicScheduleMatch): string {
+  const sv = liveSetView(m);
+  if (sv) return `${t("Set")} ${sv.setNo}`;
   if (m.status === "half_time") return t("Half time");
   if (m.status === "extra_time") return t("Extra time");
   if (m.status === "penalties") return t("Penalties");
@@ -19,7 +22,8 @@ function periodLabel(m: PublicScheduleMatch): string {
   return p ? t(p).replace(/\b\w/g, (c) => c.toUpperCase()) : t("Live");
 }
 
-/** One big, glanceable live score card. */
+/** One big, glanceable live score card. Set sports headline the current
+ * set's points; sets won ride the chip row. */
 function LiveCard({ m }: { m: PublicScheduleMatch }): React.ReactElement {
   const side = (
     name: string | undefined,
@@ -48,9 +52,10 @@ function LiveCard({ m }: { m: PublicScheduleMatch }): React.ReactElement {
       </span>
     </div>
   );
-  const hs = m.home_score ?? 0;
-  const as = m.away_score ?? 0;
-  const sets = m.sport && m.set_scores?.length ? m.set_scores : null;
+  const sv = liveSetView(m);
+  const homeShown = sv ? sv.points[0] : (m.home_score ?? 0);
+  const awayShown = sv ? sv.points[1] : (m.away_score ?? 0);
+  const sets = sv ? sv.finished : m.sport && m.set_scores?.length ? m.set_scores : null;
   return (
     <div
       data-testid={`live-card-${m.id}`}
@@ -64,12 +69,17 @@ function LiveCard({ m }: { m: PublicScheduleMatch }): React.ReactElement {
         </span>
       </div>
       <div className="flex flex-col gap-1.5">
-        {side(m.home?.name, m.home_score, m.home_pens, hs >= as)}
-        {side(m.away?.name, m.away_score, m.away_pens, as >= hs)}
+        {side(m.home?.name, homeShown, m.home_pens, homeShown >= awayShown)}
+        {side(m.away?.name, awayShown, m.away_pens, awayShown >= homeShown)}
       </div>
-      {sets ? (
+      {sv || (sets && sets.length > 0) ? (
         <div className="flex flex-wrap gap-1.5 border-t border-border pt-2 font-tabular text-xs text-muted-foreground">
-          {sets.map((s, i) => (
+          {sv ? (
+            <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
+              {t("Sets")} {sv.sets[0]}-{sv.sets[1]}
+            </span>
+          ) : null}
+          {(sets ?? []).map((s, i) => (
             <span key={i} className="rounded bg-muted px-1.5 py-0.5">
               {s[0]}-{s[1]}
             </span>

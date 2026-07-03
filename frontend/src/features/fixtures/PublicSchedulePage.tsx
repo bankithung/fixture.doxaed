@@ -14,6 +14,7 @@ import { Select } from "@/components/ui/Select";
 import { PublicLeaders } from "@/features/live/PublicLeaders";
 import { ThemeToggle } from "@/features/theme/ThemeToggle";
 import { routes } from "@/lib/routes";
+import { liveSetView } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { BrandLogo } from "@/components/ui/BrandLogo";
@@ -28,7 +29,7 @@ const FINAL_STATUSES = new Set(["completed", "walkover"]);
  * Boys"); a raw dashed string is the #1 design tell, so we split into segments
  * and chip them. Internal hyphens with no surrounding spaces ("U-14") survive
  * the split and are tidied to "U14" at render. */
-const LABEL_SEP = /\s+[·-·|/-]+\s+/;
+const LABEL_SEP = /\s+[·–—|/-]+\s+/;
 
 function splitLabel(label: string): string[] {
   return label
@@ -48,14 +49,14 @@ function sportOf(m: Pick<PublicScheduleMatch, "leaf_label" | "sport">): string {
 }
 
 /** "Sepak Takraw — U-14 — Boys — Group A" minus the competition prefix →
- * "Group A" (falls back to the raw group label when it isn't a prefix). */
+ * "Group A". The leaf chips already carry the competition, so when the group
+ * label adds nothing beyond the leaf we render NOTHING — never the raw
+ * dashed chain (it duplicated every chip row). */
 function shortGroup(groupLabel: string, leafLabel: string): string {
-  if (!groupLabel) return "";
-  if (leafLabel && groupLabel.startsWith(leafLabel)) {
-    const rest = groupLabel.slice(leafLabel.length).replace(LABEL_SEP, "").trim();
-    return rest || groupLabel;
-  }
-  return groupLabel;
+  if (!groupLabel || groupLabel === leafLabel) return "";
+  const last = splitLabel(groupLabel).pop()?.trim() ?? "";
+  if (!last || (leafLabel && leafLabel.endsWith(last))) return "";
+  return last;
 }
 
 function statusMeta(status: string): { label: string; cls: string; live: boolean } {
@@ -206,7 +207,9 @@ function MatchCard({
 }): React.ReactElement {
   const live = LIVE_STATUSES.has(match.status);
   const done = FINAL_STATUSES.has(match.status) || live;
-  const sets = match.set_scores ?? [];
+  const setView = liveSetView(match);
+  // Chips show completed sets; the running set IS the headline while live.
+  const sets = setView ? setView.finished : (match.set_scores ?? []);
   const hasPens = match.home_pens != null && match.away_pens != null;
   const showTime = labels !== "slot";
   const showLeaf = labels === "full" || labels === "slot";
@@ -239,12 +242,14 @@ function MatchCard({
           </span>
         ) : null}
         <span className="ml-auto flex items-center gap-1.5">
-          {live && match.current_period ? (
+          {live && (setView || match.current_period) ? (
             <span
               data-testid={`period-${match.id}`}
               className="rounded-md bg-primary/10 px-2 py-0.5 text-[0.6875rem] font-medium capitalize text-primary"
             >
-              {t(match.current_period.replace(/_/g, " "))}
+              {setView
+                ? `${t("Set")} ${setView.setNo}`
+                : t(match.current_period.replace(/_/g, " "))}
             </span>
           ) : null}
           <StatusPill status={match.status} />
@@ -260,20 +265,25 @@ function MatchCard({
             done ? "font-semibold" : "text-xs text-muted-foreground",
           )}
         >
-          {/* ASCII hyphen, not en/em dash: a scoreboard separator, not a label. */}
+          {/* ASCII hyphen, not en/em dash: a scoreboard separator, not a label.
+              Live set sport: the CURRENT SET's points headline the row. */}
           {done
-            ? `${match.home_score ?? 0} - ${match.away_score ?? 0}`
+            ? setView
+              ? `${setView.points[0]} - ${setView.points[1]}`
+              : `${match.home_score ?? 0} - ${match.away_score ?? 0}`
             : t("vs")}
         </Link>
         <TeamName side={match.away} className="truncate font-medium" />
       </div>
-      {done && (sets.length > 0 || hasPens) ? (
+      {done && (sets.length > 0 || hasPens || setView) ? (
         <p
           data-testid={`points-${match.id}`}
           className="text-center font-tabular text-xs text-muted-foreground"
         >
+          {setView ? `${t("Sets")} ${setView.sets[0]}-${setView.sets[1]}` : ""}
+          {setView && sets.length > 0 ? " · " : ""}
           {sets.map(([h, a]) => `${h}-${a}`).join(" · ")}
-          {sets.length > 0 && hasPens ? " · " : ""}
+          {(setView || sets.length > 0) && hasPens ? " · " : ""}
           {hasPens
             ? `(${match.home_pens}-${match.away_pens} ${t("pens")})`
             : ""}
@@ -440,44 +450,51 @@ function LiveBand({
         </span>
       </div>
       <div className="flex gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:overflow-visible sm:pb-0 xl:grid-cols-3">
-        {matches.map((m) => (
-          <div
-            key={m.id}
-            data-testid={`live-tile-${m.id}`}
-            className="min-w-[15rem] shrink-0 border-l-2 border-primary pl-3 sm:min-w-0"
-          >
-            <LabelChips label={m.leaf_label} className="text-[0.625rem]" />
-            <div className="mt-1.5 flex flex-col gap-0.5">
-              {[
-                [m.home?.name, m.home_score],
-                [m.away?.name, m.away_score],
-              ].map(([name, score], i) => (
-                <div
-                  key={i}
-                  className="grid grid-cols-[1fr_auto] items-center gap-2 text-sm"
-                >
-                  <span className="truncate font-medium">
-                    {(name as string) ?? t("TBD")}
-                  </span>
-                  <span className="font-tabular font-semibold">
-                    {(score as number) ?? 0}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-1 flex items-center gap-2 text-[0.6875rem] text-muted-foreground">
-              <span className="font-tabular">
-                {fmtKickoff(m.scheduled_at, timeZone)}
-              </span>
-              {m.venue ? <span>· {m.venue}</span> : null}
-              {m.current_period ? (
-                <span className="ml-auto capitalize text-primary">
-                  {t(m.current_period.replace(/_/g, " "))}
+        {matches.map((m) => {
+          const sv = liveSetView(m);
+          return (
+            <div
+              key={m.id}
+              data-testid={`live-tile-${m.id}`}
+              className="min-w-[15rem] shrink-0 border-l-2 border-primary pl-3 sm:min-w-0"
+            >
+              <LabelChips label={m.leaf_label} className="text-[0.625rem]" />
+              <div className="mt-1.5 flex flex-col gap-0.5">
+                {[
+                  [m.home?.name, sv ? sv.points[0] : m.home_score],
+                  [m.away?.name, sv ? sv.points[1] : m.away_score],
+                ].map(([name, score], i) => (
+                  <div
+                    key={i}
+                    className="grid grid-cols-[1fr_auto] items-center gap-2 text-sm"
+                  >
+                    <span className="truncate font-medium">
+                      {(name as string) ?? t("TBD")}
+                    </span>
+                    <span className="font-tabular font-semibold">
+                      {(score as number) ?? 0}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-1 flex items-center gap-2 text-[0.6875rem] text-muted-foreground">
+                <span className="font-tabular">
+                  {fmtKickoff(m.scheduled_at, timeZone)}
                 </span>
-              ) : null}
+                {m.venue ? <span>· {m.venue}</span> : null}
+                {sv ? (
+                  <span className="ml-auto font-tabular text-primary">
+                    {t("Set")} {sv.setNo} · {sv.sets[0]}-{sv.sets[1]}
+                  </span>
+                ) : m.current_period ? (
+                  <span className="ml-auto capitalize text-primary">
+                    {t(m.current_period.replace(/_/g, " "))}
+                  </span>
+                ) : null}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

@@ -203,10 +203,13 @@ describe("PublicSchedulePage", () => {
     mount();
     const m2 = await screen.findByTestId("public-match-m2");
     expect(within(m2).getByTestId("period-m2")).toHaveTextContent("first half");
+    // Live set sport (tap scoring): the HEADLINE is the running set's points;
+    // sets won + finished sets ride the sub-line; the chip derives "Set N"
+    // from the set list (football current_period never labels a set sport).
     const m5 = screen.getByTestId("public-match-m5");
-    expect(m5).toHaveTextContent("1 - 1");
-    expect(within(m5).getByTestId("points-m5")).toHaveTextContent("11-7 · 8-11");
-    expect(within(m5).getByTestId("period-m5")).toHaveTextContent("set 3");
+    expect(m5).toHaveTextContent("8 - 11");
+    expect(within(m5).getByTestId("points-m5")).toHaveTextContent("Sets 1-1 · 11-7");
+    expect(within(m5).getByTestId("period-m5")).toHaveTextContent("Set 2");
   });
 
   it("rail → competition reveals the standings hero + fixtures in one click", async () => {

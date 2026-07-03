@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveApi } from "@/api/live";
 import { tournamentsApi } from "@/api/tournaments";
 import { useEventStream } from "@/lib/useEventStream";
+import { liveSetView } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
@@ -93,26 +94,39 @@ export function VenueDisplayPage(): React.ReactElement {
               ) : null}
             </div>
             {slot.on ? (
-              <div className="flex flex-col items-center gap-3 px-6 py-8">
-                <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-4">
-                  <p className="truncate text-right text-3xl font-semibold">
-                    {slot.on.home?.name ?? t("TBD")}
-                  </p>
-                  <p className="font-tabular text-6xl font-semibold">
-                    {slot.on.home_score ?? 0}-{slot.on.away_score ?? 0}
-                  </p>
-                  <p className="truncate text-3xl font-semibold">
-                    {slot.on.away?.name ?? t("TBD")}
-                  </p>
-                </div>
-                {(slot.on.set_scores?.length ?? 0) > 0 ? (
-                  <p className="font-tabular text-2xl text-muted-foreground">
-                    {(slot.on.set_scores ?? [])
-                      .map(([h, a]) => `${h}-${a}`)
-                      .join("  ·  ")}
-                  </p>
-                ) : null}
-              </div>
+              (() => {
+                const sv = liveSetView(slot.on);
+                const chips = sv ? sv.finished : (slot.on.set_scores ?? []);
+                return (
+                  <div className="flex flex-col items-center gap-3 px-6 py-8">
+                    <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-4">
+                      <p className="truncate text-right text-3xl font-semibold">
+                        {slot.on.home?.name ?? t("TBD")}
+                      </p>
+                      <p className="font-tabular text-6xl font-semibold">
+                        {sv
+                          ? `${sv.points[0]}-${sv.points[1]}`
+                          : `${slot.on.home_score ?? 0}-${slot.on.away_score ?? 0}`}
+                      </p>
+                      <p className="truncate text-3xl font-semibold">
+                        {slot.on.away?.name ?? t("TBD")}
+                      </p>
+                    </div>
+                    {sv ? (
+                      <p className="font-tabular text-2xl text-muted-foreground">
+                        {t("Set")} {sv.setNo} · {t("Sets")} {sv.sets[0]}-{sv.sets[1]}
+                        {chips.length > 0
+                          ? `  ·  ${chips.map(([h, a]) => `${h}-${a}`).join("  ·  ")}`
+                          : ""}
+                      </p>
+                    ) : chips.length > 0 ? (
+                      <p className="font-tabular text-2xl text-muted-foreground">
+                        {chips.map(([h, a]) => `${h}-${a}`).join("  ·  ")}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })()
             ) : (
               <p className="px-6 py-10 text-center text-2xl text-muted-foreground">
                 {t("Court free")}
@@ -158,6 +172,7 @@ interface MatchLike {
   away: { name: string } | null;
   home_score: number | null;
   away_score: number | null;
+  sport?: string;
   set_scores?: number[][];
 }
 

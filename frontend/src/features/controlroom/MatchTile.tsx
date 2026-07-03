@@ -1,6 +1,7 @@
 import { Lock, Radio, UserCog } from "lucide-react";
 import type { ControlRoomMatch, MatchRow } from "@/api/tournaments";
 import { LeafLabel } from "@/features/fixtures/LeafLabel";
+import { liveSetView } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { FINAL, IN_PLAY, fmtKickoff, isCalled } from "./format";
@@ -123,7 +124,8 @@ export function MatchTile({
   delayMinutes?: number | null;
 }): React.ReactElement {
   const showScore = IN_PLAY.has(match.status) || FINAL.has(match.status);
-  const sets = match.set_scores ?? [];
+  const setView = liveSetView(match);
+  const sets = setView ? setView.finished : (match.set_scores ?? []);
   const hasPens = match.home_pens != null && match.away_pens != null;
   const grp = groupSuffix(match.leaf_label, match.group_label);
 
@@ -181,7 +183,9 @@ export function MatchTile({
           )}
         >
           {showScore
-            ? `${match.home_score ?? 0} - ${match.away_score ?? 0}`
+            ? setView
+              ? `${setView.points[0]} - ${setView.points[1]}`
+              : `${match.home_score ?? 0} - ${match.away_score ?? 0}`
             : t("vs")}
         </span>
         <span className="truncate font-medium">
@@ -189,13 +193,17 @@ export function MatchTile({
         </span>
       </div>
 
-      {showScore && (sets.length > 0 || hasPens) ? (
+      {showScore && (sets.length > 0 || hasPens || setView) ? (
         <p
           data-testid={`points-${match.id}`}
           className="text-center font-tabular text-xs text-muted-foreground"
         >
+          {setView
+            ? `${t("Set")} ${setView.setNo} · ${t("Sets")} ${setView.sets[0]}-${setView.sets[1]}`
+            : ""}
+          {setView && sets.length > 0 ? " · " : ""}
           {sets.map(([h, a]) => `${h}-${a}`).join(" · ")}
-          {sets.length > 0 && hasPens ? " · " : ""}
+          {(setView || sets.length > 0) && hasPens ? " · " : ""}
           {hasPens
             ? `(${match.home_pens}-${match.away_pens} ${t("pens")})`
             : ""}

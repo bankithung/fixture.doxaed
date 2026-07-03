@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { liveApi } from "@/api/live";
 import { ThemeToggle } from "@/features/theme/ThemeToggle";
 import { routes } from "@/lib/routes";
+import { liveSetView } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { BrandLogo } from "@/components/ui/BrandLogo";
@@ -80,6 +81,7 @@ export function LiveViewerPage(): React.ReactElement {
           (() => {
             const { match, events } = query.data;
             const sm = statusMeta(match.status);
+            const setView = liveSetView(match);
             const home = match.home_team?.name ?? t("TBD");
             const away = match.away_team?.name ?? t("TBD");
             return (
@@ -99,9 +101,11 @@ export function LiveViewerPage(): React.ReactElement {
                         </span>
                       ) : null}
                       {t(sm.label)}
-                      {match.current_period
-                        ? ` · ${t(match.current_period.replace(/_/g, " "))}`
-                        : ""}
+                      {setView
+                        ? ` · ${t("Set")} ${setView.setNo}`
+                        : match.current_period
+                          ? ` · ${t(match.current_period.replace(/_/g, " "))}`
+                          : ""}
                     </span>
                   </div>
                   <div
@@ -110,24 +114,34 @@ export function LiveViewerPage(): React.ReactElement {
                   >
                     <div className="text-right text-lg font-semibold sm:text-xl">{home}</div>
                     <div className="font-tabular text-5xl font-semibold tabular-nums sm:text-6xl">
-                      {match.home_score ?? 0}
+                      {setView ? setView.points[0] : (match.home_score ?? 0)}
                       <span className="mx-2 text-muted-foreground">-</span>
-                      {match.away_score ?? 0}
+                      {setView ? setView.points[1] : (match.away_score ?? 0)}
                     </div>
                     <div className="text-left text-lg font-semibold sm:text-xl">{away}</div>
                   </div>
-                  {(match.set_scores?.length ?? 0) > 0 ? (
-                    <div className="relative mt-3 flex flex-wrap justify-center gap-1.5">
-                      {(match.set_scores ?? []).map((sset, i) => (
-                        <span
-                          key={i}
-                          className="rounded-md bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground"
-                        >
-                          {sset[0]}-{sset[1]}
-                        </span>
-                      ))}
-                    </div>
+                  {setView ? (
+                    <p className="relative mt-2 text-center font-tabular text-sm text-muted-foreground">
+                      {t("Sets")} {setView.sets[0]}-{setView.sets[1]}
+                    </p>
                   ) : null}
+                  {(() => {
+                    const chips = setView
+                      ? setView.finished
+                      : (match.set_scores ?? []);
+                    return chips.length > 0 ? (
+                      <div className="relative mt-3 flex flex-wrap justify-center gap-1.5">
+                        {chips.map((sset, i) => (
+                          <span
+                            key={i}
+                            className="rounded-md bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground"
+                          >
+                            {sset[0]}-{sset[1]}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null;
+                  })()}
                   {match.home_pens != null && match.away_pens != null ? (
                     <p className="relative mt-2 text-center font-tabular text-xs text-muted-foreground">
                       {t("Pens")} {match.home_pens}-{match.away_pens}
