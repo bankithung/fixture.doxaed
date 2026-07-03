@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, CloudRainWind, History, ListChecks, Printer, Radio } from "lucide-react";
+import { CloudRainWind, History, ListChecks, Printer, Radio } from "lucide-react";
 import { ShiftDayDialog } from "@/features/fixtures/ShiftDayDialog";
 import { tournamentsApi, type ControlRoomPayload } from "@/api/tournaments";
 import { Select } from "@/components/ui/Select";
@@ -22,11 +22,11 @@ import {
   type SlotDelay,
 } from "./format";
 import type { ControlRoomPerms } from "./MatchActionsMenu";
+import { MatchRow } from "./MatchRow";
 import { MatchTile } from "./MatchTile";
 import {
   CompetitionProgressPanel,
   CourtsPanel,
-  LiveNowPanel,
   LeadersPanel,
   NeedsAttentionPanel,
   RecentResultsPanel,
@@ -47,8 +47,9 @@ function isOverdue(scheduledAt: string | null): boolean {
  * far through the day, what still needs attention, and what is up next. Every
  * value is derived from the day aggregate already in scope (zero backend) and
  * rides the same SSE tick, so it stays live without a second connection. Rendered
- * as one slim hairline-divided strip (compact pass 2026-07-03), font-tabular,
- * one accent reserved for "live"; wraps 2-up on small screens.
+ * as a prominent hairline-divided stat band (owner 2026-07-03: the day's
+ * numbers lead the page), font-tabular, one accent reserved for "live";
+ * wraps 2-up on small screens.
  */
 function OpsHeaderBand({
   data,
@@ -81,63 +82,63 @@ function OpsHeaderBand({
     tm?.short_name || tm?.name || t("TBD");
 
   const overline =
-    "shrink-0 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground";
+    "text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground";
   return (
     <div
       data-testid="ops-band"
-      className="panel grid grid-cols-2 divide-border max-lg:divide-y lg:grid-cols-[auto_auto_auto_minmax(0,1fr)] lg:divide-x"
+      className="panel grid grid-cols-2 divide-border max-lg:divide-y lg:grid-cols-4 lg:divide-x"
     >
-      <div className="flex min-w-0 items-center gap-2 px-3 py-1.5">
+      <div className="flex min-w-0 flex-col justify-center gap-1.5 px-5 py-4">
         <p className={overline}>{t("On now")}</p>
-        <p className="flex min-w-0 items-baseline gap-1.5">
-          <span className="font-tabular text-base font-semibold leading-none">
+        <p className="flex items-baseline gap-2">
+          <span className="font-tabular text-3xl font-semibold leading-none">
             {liveCount}
           </span>
-          <span className="text-[0.6875rem] text-muted-foreground">
-            {t("live")}
-          </span>
+          <span className="text-sm text-muted-foreground">{t("live")}</span>
           {liveCount > 0 ? (
-            <span className="relative ml-0.5 flex h-2 w-2 self-center">
+            <span className="relative ml-0.5 flex h-2.5 w-2.5 self-center">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary" />
             </span>
           ) : null}
         </p>
       </div>
 
-      <div className="flex min-w-0 items-center gap-2 px-3 py-1.5">
+      <div className="flex min-w-0 flex-col justify-center gap-1.5 px-5 py-4">
         <p className={overline}>{t("Played")}</p>
-        <p className="font-tabular text-base font-semibold leading-none">
-          {completed}
-          <span className="text-xs font-normal text-muted-foreground">
-            /{total}
-          </span>
-        </p>
-        <div className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-primary transition-[width]"
-            style={{ width: `${pct}%` }}
-          />
+        <div className="flex items-center gap-3">
+          <p className="font-tabular text-3xl font-semibold leading-none">
+            {completed}
+            <span className="text-lg font-normal text-muted-foreground">
+              /{total}
+            </span>
+          </p>
+          <div className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-[width]"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
         </div>
         {delayed > 0 ? (
-          <p className="truncate font-tabular text-[0.6875rem] text-warning-foreground">
+          <p className="truncate font-tabular text-xs text-warning-foreground">
             {delayed} {t("running late")}
           </p>
         ) : null}
       </div>
 
-      <div className="flex min-w-0 items-center gap-2 px-3 py-1.5">
+      <div className="flex min-w-0 flex-col justify-center gap-1.5 px-5 py-4">
         <p className={overline}>{t("Needs you")}</p>
-        <p className="flex min-w-0 items-baseline gap-1.5">
+        <p className="flex min-w-0 items-baseline gap-2">
           <span
             className={cn(
-              "font-tabular text-base font-semibold leading-none",
+              "font-tabular text-3xl font-semibold leading-none",
               awaiting > 0 || noVenue > 0 ? "text-warning-foreground" : null,
             )}
           >
             {awaiting + noVenue}
           </span>
-          <span className="truncate text-[0.6875rem] text-muted-foreground">
+          <span className="truncate text-sm text-muted-foreground">
             {awaiting > 0
               ? t("awaiting result")
               : noVenue > 0
@@ -147,19 +148,19 @@ function OpsHeaderBand({
         </p>
       </div>
 
-      <div className="flex min-w-0 items-center gap-2 px-3 py-1.5">
+      <div className="flex min-w-0 flex-col justify-center gap-1.5 px-5 py-4">
         <p className={overline}>{t("Up next")}</p>
         {next ? (
-          <p className="flex min-w-0 items-baseline gap-1.5">
-            <span className="font-tabular text-base font-semibold leading-none">
+          <div className="min-w-0">
+            <p className="font-tabular text-3xl font-semibold leading-none">
               {next.scheduled_at ? fmtKickoff(next.scheduled_at, tz) : t("TBD")}
-            </span>
-            <span className="truncate text-[0.6875rem] text-muted-foreground">
+            </p>
+            <p className="mt-1 truncate text-xs text-muted-foreground">
               {teamName(next.home_team)} v {teamName(next.away_team)}
-            </span>
-          </p>
+            </p>
+          </div>
         ) : (
-          <p className="text-xs text-muted-foreground">{t("Nothing queued")}</p>
+          <p className="text-sm text-muted-foreground">{t("Nothing queued")}</p>
         )}
       </div>
     </div>
@@ -181,7 +182,6 @@ export function ControlRoomPage(): React.ReactElement {
   const user = useAuthStore((s) => s.user);
   const [day, setDay] = useState<string | null>(null);
   const [shiftOpen, setShiftOpen] = useState(false);
-  const [changesOpen, setChangesOpen] = useState(false);
 
   const stageQ = useQuery({
     queryKey: qk.stage(id),
@@ -213,6 +213,17 @@ export function ControlRoomPage(): React.ReactElement {
 
   const allMatches = useMemo(
     () => (data?.venues ?? []).flatMap((v) => v.matches),
+    [data],
+  );
+  // The combined "Now & next" feed: everything in play, then the head of the
+  // cross-venue queue (owner 2026-07-03: one section, not two).
+  const liveMatches = useMemo(
+    () => allMatches.filter((m) => IN_PLAY.has(m.status)),
+    [allMatches],
+  );
+  const upNext = useMemo(
+    () =>
+      (data?.queue ?? []).filter((m) => m.status === "scheduled").slice(0, 5),
     [data],
   );
   const siblingsOf = (m: { leaf_key: string }) =>
@@ -378,7 +389,14 @@ export function ControlRoomPage(): React.ReactElement {
           ) : null}
         </section>
       ) : (
-        <div className="contents print:hidden">
+        <div
+          className={cn(
+            "flex min-w-0 flex-col gap-3 transition-opacity print:hidden",
+            // Day switch in flight: dim the old day's board instead of
+            // blanking the page; content swaps in place when it arrives.
+            query.isPlaceholderData && "pointer-events-none opacity-60",
+          )}
+        >
           {/* Day selector on mobile — desktop chips live in the title row. */}
           {isMobile ? (
             <Select
@@ -429,7 +447,56 @@ export function ControlRoomPage(): React.ReactElement {
                 tz={tz}
               />
 
-              <LiveNowPanel matches={allMatches} tournamentId={id} />
+              {/* Now & next — ONE full-width feed (owner 2026-07-03): what is
+                  in play (score live) followed by the head of the queue, as
+                  the same dense rows the Matches board uses. Every row keeps
+                  its actions: open the console, enter a result, call to
+                  court. Mobile falls back to the stacked tiles. */}
+              {liveMatches.length > 0 || upNext.length > 0 ? (
+                <section data-testid="now-next-panel" className="panel">
+                  <div className="panel-header">
+                    <Radio aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    <h3 className="panel-title">{t("Now & next")}</h3>
+                    {liveMatches.length > 0 ? (
+                      <span className="rounded-full bg-primary/15 px-2 py-0.5 font-tabular text-[0.6875rem] font-medium text-primary">
+                        {liveMatches.length} {t("live")}
+                      </span>
+                    ) : null}
+                    <span className="font-tabular text-xs text-muted-foreground">
+                      {upNext.length} {t("queued")}
+                    </span>
+                  </div>
+                  {isMobile ? (
+                    <div className="flex flex-col gap-2 p-2">
+                      {[...liveMatches, ...upNext].map((m) => (
+                        <MatchTile
+                          key={m.id}
+                          match={m}
+                          timeZone={tz}
+                          tournamentId={id}
+                          siblings={siblingsOf(m)}
+                          perms={perms}
+                          delayMinutes={delayFor(delays, m)}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div role="table" aria-label={t("Now & next")}>
+                      {[...liveMatches, ...upNext].map((m) => (
+                        <MatchRow
+                          key={m.id}
+                          match={m}
+                          timeZone={tz}
+                          tournamentId={id}
+                          siblings={siblingsOf(m)}
+                          perms={perms}
+                          delayMinutes={delayFor(delays, m)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              ) : null}
 
               {/* Full-width stack (compact pass 2026-07-03): the old fixed
                   awareness rail sat mostly empty, so exception panels render
@@ -446,36 +513,22 @@ export function ControlRoomPage(): React.ReactElement {
                   <RecentResultsPanel matches={allMatches} timeZone={tz} />
                   <SuspensionsPanel tournamentId={id} />
                   {allMatches.length > 0 ? (
+                    // Always open, no filter here (owner 2026-07-03): the
+                    // dashboard shows the tail; filtering lives on the full
+                    // Change history page.
                     <section className="panel">
-                      <button
-                        type="button"
-                        data-testid="changes-drawer-toggle"
-                        aria-expanded={changesOpen}
-                        className="flex h-8 w-full items-center gap-2 px-3 text-left"
-                        onClick={() => setChangesOpen((o) => !o)}
-                      >
+                      <div className="panel-header">
                         <History aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
                         <h3 className="panel-title">
                           {t("Change history")}
                         </h3>
-                        <ChevronDown
-                          aria-hidden="true"
-                          className={cn(
-                            "ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-                            changesOpen && "rotate-180",
-                          )}
-                        />
-                      </button>
-                      {changesOpen ? (
-                        <div className="border-t border-border pb-1">
-                          <ScheduleChangesPanel
-                            tournamentId={id}
-                            competitions={competitions}
-                            embedded
-                            viewAllTo={routes.tournamentChanges(id)}
-                          />
-                        </div>
-                      ) : null}
+                      </div>
+                      <ScheduleChangesPanel
+                        tournamentId={id}
+                        competitions={competitions}
+                        embedded
+                        viewAllTo={routes.tournamentChanges(id)}
+                      />
                     </section>
                   ) : null}
                 </div>

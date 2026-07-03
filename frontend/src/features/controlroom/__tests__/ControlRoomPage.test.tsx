@@ -225,15 +225,17 @@ describe("ControlRoomPage", () => {
     expect(screen.getByTestId("day-chip-2026-06-21")).toBeInTheDocument();
 
     // The dashboard panels are present.
-    expect(screen.getByText("Live now")).toBeInTheDocument();
+    expect(screen.getByText("Now & next")).toBeInTheDocument();
     expect(screen.getByText("Courts today")).toBeInTheDocument();
     expect(screen.getByText("Competition progress")).toBeInTheDocument();
     expect(screen.getByText("Recent results")).toBeInTheDocument();
     expect(screen.getByText("Needs attention")).toBeInTheDocument();
 
-    // Live-now surfaces the in-play match; courts list both venues.
-    const live = screen.getByText("Live now").closest("section")!;
-    expect(within(live).getByText("Alpha FC")).toBeInTheDocument();
+    // The combined Now & next feed carries the in-play match's row (live
+    // first) plus the queue; courts list both venues.
+    const nowNext = screen.getByTestId("now-next-panel");
+    expect(within(nowNext).getByTestId("tile-m1")).toBeInTheDocument();
+    expect(within(nowNext).getAllByText("Alpha FC").length).toBeGreaterThan(0);
     const courts = screen.getByText("Courts today").closest("section")!;
     expect(within(courts).getByText("Main Ground")).toBeInTheDocument();
     expect(within(courts).getByText("Side Pitch")).toBeInTheDocument();
@@ -299,7 +301,7 @@ describe("ControlRoomPage", () => {
 
   it("subscribes to the public SSE stream and refetches on a tick", async () => {
     mount();
-    await screen.findByText("Live now");
+    await screen.findByText("Now & next");
 
     await waitFor(() =>
       expect(MockEventSource.instances.length).toBeGreaterThan(0),
@@ -328,7 +330,7 @@ describe("ControlRoomPage", () => {
 
   it("degrades to the polling indicator when the stream errors", async () => {
     mount();
-    await screen.findByText("Live now");
+    await screen.findByText("Now & next");
     await waitFor(() =>
       expect(MockEventSource.instances.length).toBeGreaterThan(0),
     );

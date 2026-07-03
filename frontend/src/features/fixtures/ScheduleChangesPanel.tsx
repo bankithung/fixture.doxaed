@@ -96,7 +96,7 @@ function SlotLine({ e }: { e: ScheduleChangeEntry }): React.ReactElement | null 
   if (e.old === null && e.new === null) return null;
   const moved = Boolean(e.old?.scheduled_at);
   return (
-    <p className="min-w-0 font-tabular text-xs text-muted-foreground">
+    <p className="min-w-0 font-tabular text-[13px] text-muted-foreground">
       <span className="text-foreground">{fmtSlot(e.new)}</span>
       {moved ? (
         <span className="ml-2">
@@ -127,7 +127,7 @@ function Entry({ e }: { e: ScheduleChangeEntry }): React.ReactElement {
       </div>
       <SlotLine e={e} />
       {e.reason ? (
-        <p className="text-xs italic text-muted-foreground">{e.reason}</p>
+        <p className="text-[13px] italic text-muted-foreground">{e.reason}</p>
       ) : null}
     </li>
   );
@@ -167,8 +167,16 @@ function groupBursts(entries: ScheduleChangeEntry[]): Burst[] {
 const PREVIEW = 3;
 
 /** A bulk action: one header (what, how many, who, when), a short preview of
- * the affected matches, and an expander for the rest. */
-function BurstItem({ burst }: { burst: Burst }): React.ReactElement {
+ * the affected matches, and an expander for the rest. The embedded dashboard
+ * tail shows the preview only (owner 2026-07-03: no Show-all there; the full
+ * page has everything). */
+function BurstItem({
+  burst,
+  expandable = true,
+}: {
+  burst: Burst;
+  expandable?: boolean;
+}): React.ReactElement {
   const [open, setOpen] = useState(false);
   const head = burst.entries[0];
   const kind = effectiveKind(head);
@@ -197,14 +205,14 @@ function BurstItem({ burst }: { burst: Burst }): React.ReactElement {
             data-testid={`change-${e.batch_id}-${e.match_id}`}
             className="flex flex-col gap-x-3 gap-y-0.5 sm:flex-row sm:items-baseline"
           >
-            <span className="min-w-0 flex-1 truncate text-xs font-medium">
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">
               {e.match_label}
             </span>
             <SlotLine e={e} />
           </li>
         ))}
       </ul>
-      {hidden > 0 || open ? (
+      {expandable && (hidden > 0 || open) ? (
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
@@ -278,15 +286,15 @@ export function ScheduleChangesPanel({
           : "overflow-hidden rounded-xl border border-border bg-card shadow-sm"
       }
     >
-      {embedded ? (
-        filter ? <div className="px-4 pt-2.5">{filter}</div> : null
-      ) : (
-        <div className="flex h-9 flex-wrap items-center gap-2 border-b border-border px-4">
+      {/* Embedded (dashboard) shows the plain tail — the competition filter
+          belongs to the full Change history page only (owner 2026-07-03). */}
+      {embedded ? null : (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-1.5">
           <History
             aria-hidden="true"
             className="h-3.5 w-3.5 text-muted-foreground/70"
           />
-          <h3 className="text-[13px] font-semibold tracking-tight">
+          <h3 className="panel-title">
             {t("Change history")}
           </h3>
           {filter}
@@ -307,7 +315,7 @@ export function ScheduleChangesPanel({
               b.entries.length === 1 ? (
                 <Entry key={b.key} e={b.entries[0]} />
               ) : (
-                <BurstItem key={b.key} burst={b} />
+                <BurstItem key={b.key} burst={b} expandable={!embedded} />
               ),
             )}
           </ul>

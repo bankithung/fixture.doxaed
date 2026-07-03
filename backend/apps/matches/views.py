@@ -348,6 +348,7 @@ class RecordScoreView(GenericAPIView):
         from apps.matches.services.set_scoring import (
             record_set_result,
             rules_for_match,
+            update_set_progress,
         )
 
         rules = rules_for_match(match)
@@ -359,8 +360,15 @@ class RecordScoreView(GenericAPIView):
                 raise DRFValidationError({"detail": "not_a_set_based_sport"})
             ser = RecordSetScoreSerializer(data=request.data)
             ser.is_valid(raise_exception=True)
+            # `progress: true` = live tap scoring: persist the running points
+            # (in-progress sets legal) without completing the match.
+            record = (
+                update_set_progress
+                if bool(request.data.get("progress"))
+                else record_set_result
+            )
             try:
-                record_set_result(
+                record(
                     match=match,
                     set_scores=ser.validated_data["set_scores"],
                     rules=rules,

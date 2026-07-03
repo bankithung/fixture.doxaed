@@ -207,4 +207,56 @@ describe("MatchConsolePage", () => {
       }),
     );
   });
+
+  it("tap scoring: +/- moves points by the chosen step and auto-saves live", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      snap("live", {
+        sport: "table_tennis",
+        scoring: { type: "sets", best_of: 3, points: 11, win_by: 2 },
+        set_scores: [],
+      }),
+    );
+    vi.mocked(liveApi.recordSetProgress).mockResolvedValue({} as never);
+    renderConsole();
+    await screen.findAllByText("Alpha");
+
+    // One tap adds 1 by default.
+    await userEvent.click(screen.getByTestId("set-0-home-plus"));
+    expect(screen.getByLabelText("Set 1 Alpha")).toHaveValue("1");
+
+    // Choose +5: the next tap adds 5; minus steps the same amount back.
+    await userEvent.click(screen.getByTestId("tap-step-5"));
+    await userEvent.click(screen.getByTestId("set-0-home-plus"));
+    expect(screen.getByLabelText("Set 1 Alpha")).toHaveValue("6");
+    await userEvent.click(screen.getByTestId("set-0-home-minus"));
+    expect(screen.getByLabelText("Set 1 Alpha")).toHaveValue("1");
+
+    // The debounced auto-save pushes the running points as progress (no
+    // completion): away side untouched counts as 0.
+    await waitFor(() =>
+      expect(liveApi.recordSetProgress).toHaveBeenLastCalledWith("m1", {
+        set_scores: [[1, 0]],
+        event_id: expect.any(String),
+      }),
+    );
+    expect(liveApi.recordSetScores).not.toHaveBeenCalled();
+  });
+
+  it("tap scoring stays local while the match has not started", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      snap("scheduled", {
+        sport: "table_tennis",
+        scoring: { type: "sets", best_of: 3, points: 11, win_by: 2 },
+        set_scores: [],
+      }),
+    );
+    renderConsole();
+    await screen.findAllByText("Alpha");
+
+    await userEvent.click(screen.getByTestId("set-0-home-plus"));
+    expect(screen.getByLabelText("Set 1 Alpha")).toHaveValue("1");
+    // No live push before kickoff: the result is recorded at the end.
+    await new Promise((r) => setTimeout(r, 700));
+    expect(liveApi.recordSetProgress).not.toHaveBeenCalled();
+  });
 });

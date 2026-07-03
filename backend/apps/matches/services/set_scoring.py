@@ -186,6 +186,112 @@ def compute_sets(set_scores: list, rules: dict) -> tuple[int, int]:
     return home_sets, away_sets
 
 
+def sets_won_lenient(set_scores: list, rules: dict) -> tuple[int, int]:
+    """Sets won so far from a possibly in-progress list (live tap scoring):
+    a set counts only once it is legally won (target reached with the margin,
+    or the cap hit); the running set and tied sets count for nobody. Deciding
+    set overrides apply the same way as `compute_sets`."""
+    need_minus_one = int(rules.get("best_of", 3)) // 2
+    home_sets = away_sets = 0
+    for s in set_scores:
+        if not (isinstance(s, (list, tuple)) and len(s) == 2):
+            continue
+        try:
+            h, a = int(s[0]), int(s[1])
+        except (TypeError, ValueError):
+            continue
+        if h == a:
+            continue
+        deciding = home_sets == away_sets == need_minus_one
+        points, win_by, cap = _set_params(rules, deciding)
+        hi, lo = max(h, a), min(h, a)
+        won = hi >= points and ((hi - lo) >= win_by or (cap and hi >= int(cap)))
+        if not won:
+            continue
+        if h > a:
+            home_sets += 1
+        else:
+            away_sets += 1
+    return home_sets, away_sets
+
+
+def update_set_progress(
+    *, match: Match, set_scores: list, rules: dict, by=None,
+    event_id: _uuid.UUID | None = None, request=None,
+) -> Match:
+    """Live tap scoring (owner 2026-07-03): store the running per-set points
+    while the match is LIVE without completing it. In-progress and tied sets
+    are legal here; sets won so far mirror into home/away score, the write is
+    idempotent on event_id, and the score tick fans out on commit so viewers
+    track every point. `record_set_result` stays the only completion path."""
+    if event_id is not None:
+        prior = AuditEvent.objects.filter(
+            idempotency_key=event_id, event_type="match_score_progress"
+        ).first()
+        if prior is not None:
+            return Match.objects.get(pk=match.pk)
+
+    if not isinstance(set_scores, list) or not set_scores:
+        raise ValidationError("no_sets")
+    best_of = int(rules.get("best_of", 3))
+    if len(set_scores) > best_of:
+        raise ValidationError("too_many_sets")
+    norm_scores: list[list[int]] = []
+    for s in set_scores:
+        if not (isinstance(s, (list, tuple)) and len(s) == 2):
+            raise ValidationError("bad_set")
+        try:
+            h, a = int(s[0]), int(s[1])
+        except (TypeError, ValueError):
+            raise ValidationError("bad_set") from None
+        if h < 0 or a < 0:
+            raise ValidationError("bad_set_score")
+        norm_scores.append([h, a])
+
+    home_sets, away_sets = sets_won_lenient(norm_scores, rules)
+
+    with transaction.atomic():
+        locked = Match.objects.select_for_update().get(pk=match.pk)
+        if locked.status != MatchStatus.LIVE:
+            raise ValidationError(
+                f"Cannot update points for a match in status '{locked.status}'."
+            )
+        before = {
+            "home": locked.home_score,
+            "away": locked.away_score,
+            "set_scores": locked.set_scores,
+        }
+        locked.home_score = home_sets
+        locked.away_score = away_sets
+        locked.set_scores = norm_scores
+        locked.save(
+            update_fields=["home_score", "away_score", "set_scores", "updated_at"]
+        )
+        emit_audit(
+            actor_user=by,
+            actor_role=ActorRole.ADMIN,
+            event_type="match_score_progress",
+            target_type="match",
+            target_id=locked.id,
+            organization_id=locked.organization_id,
+            idempotency_key=event_id,
+            payload_before=before,
+            payload_after={
+                "home": home_sets,
+                "away": away_sets,
+                "set_scores": norm_scores,
+            },
+            request=request,
+        )
+        from apps.matches.services.events import publish_match_event
+
+        mid, tid = locked.id, locked.tournament_id
+        transaction.on_commit(
+            lambda: publish_match_event(mid, None, tid, kind="score")
+        )
+    return locked
+
+
 def record_set_result(
     *, match: Match, set_scores: list, rules: dict, by=None,
     event_id: _uuid.UUID | None = None, request=None,

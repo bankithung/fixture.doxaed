@@ -282,3 +282,114 @@ def test_goal_sport_rejects_sets_but_goals_still_work():
     m.refresh_from_db()
     assert (m.home_score, m.away_score) == (3, 1)
     assert m.status == MatchStatus.COMPLETED
+
+
+# ---- Live tap scoring (progress mode, owner 2026-07-03) --------------------
+
+
+def _live_tt_match(admin):
+    t = create_tournament(user=admin, name="TT Live Cup")
+    m = _match(t, sport="table_tennis")
+    m.status = MatchStatus.LIVE
+    m.save(update_fields=["status"])
+    return m
+
+
+def test_progress_updates_points_without_completing():
+    admin = _admin()
+    m = _live_tt_match(admin)
+    c = APIClient()
+    c.force_authenticate(user=admin)
+
+    # Mid-set points: tied/in-progress sets are legal in progress mode.
+    r = c.post(
+        f"/api/matches/{m.id}/score/",
+        {"set_scores": [[5, 3]], "progress": True, "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 200, r.content
+    m.refresh_from_db()
+    assert m.status == MatchStatus.LIVE  # NOT completed
+    assert m.set_scores == [[5, 3]]
+    assert (m.home_score, m.away_score) == (0, 0)  # no set decided yet
+
+    # First set decided, second under way -> sets-won mirrors 1-0 live.
+    r = c.post(
+        f"/api/matches/{m.id}/score/",
+        {"set_scores": [[11, 7], [2, 2]], "progress": True,
+         "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 200, r.content
+    m.refresh_from_db()
+    assert m.status == MatchStatus.LIVE
+    assert m.set_scores == [[11, 7], [2, 2]]
+    assert (m.home_score, m.away_score) == (1, 0)
+
+
+def test_progress_rejected_unless_live():
+    admin = _admin()
+    t = create_tournament(user=admin, name="TT Sched")
+    m = _match(t, sport="table_tennis")  # scheduled
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    r = c.post(
+        f"/api/matches/{m.id}/score/",
+        {"set_scores": [[1, 0]], "progress": True, "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 400
+
+
+def test_progress_idempotent_on_event_id():
+    admin = _admin()
+    m = _live_tt_match(admin)
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    eid = str(uuid.uuid4())
+    payload = {"set_scores": [[7, 5]], "progress": True, "event_id": eid}
+    assert c.post(f"/api/matches/{m.id}/score/", payload, format="json").status_code == 200
+    # Replay with the SAME event_id but different points: no change applied.
+    replay = {"set_scores": [[9, 9]], "progress": True, "event_id": eid}
+    assert c.post(f"/api/matches/{m.id}/score/", replay, format="json").status_code == 200
+    m.refresh_from_db()
+    assert m.set_scores == [[7, 5]]
+
+
+def test_progress_publishes_score_tick(django_capture_on_commit_callbacks):
+    from unittest.mock import patch
+
+    admin = _admin()
+    m = _live_tt_match(admin)
+    from apps.matches.services.set_scoring import update_set_progress
+
+    with patch("apps.matches.services.events.publish_match_event") as pub:
+        with django_capture_on_commit_callbacks(execute=True):
+            update_set_progress(
+                match=m, set_scores=[[3, 1]], rules=TT, by=admin,
+            )
+    pub.assert_called_once_with(m.id, None, m.tournament_id, kind="score")
+
+
+def test_progress_still_leaves_completion_to_record_result():
+    """The finish flow is unchanged: after live progress, recording the full
+    result completes the match with validated sets."""
+    admin = _admin()
+    m = _live_tt_match(admin)
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    c.post(
+        f"/api/matches/{m.id}/score/",
+        {"set_scores": [[11, 7], [10, 8]], "progress": True,
+         "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    r = c.post(
+        f"/api/matches/{m.id}/score/",
+        {"set_scores": [[11, 7], [11, 8]], "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 200, r.content
+    m.refresh_from_db()
+    assert m.status == MatchStatus.COMPLETED
+    assert (m.home_score, m.away_score) == (2, 0)

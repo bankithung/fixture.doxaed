@@ -1,12 +1,11 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, ChevronRight, MapPin, Radio, Trophy } from "lucide-react";
+import { CheckCircle2, ChevronRight, MapPin, Trophy } from "lucide-react";
 import {
   tournamentsApi,
   type ControlRoomMatch,
   type ControlRoomVenue,
 } from "@/api/tournaments";
-import { LeafLabel } from "@/features/fixtures/LeafLabel";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -48,63 +47,6 @@ function Panel({
       </div>
       {children}
     </section>
-  );
-}
-
-/**
- * LIVE NOW — the matches in play, big and glanceable: competition, teams,
- * running score, court, and a one-tap console link for the scorer.
- */
-export function LiveNowPanel({
-  matches,
-  tournamentId,
-}: {
-  matches: ControlRoomMatch[];
-  tournamentId: string;
-}): React.ReactElement | null {
-  const live = matches.filter((m) => IN_PLAY.has(m.status));
-  // Nothing live: render nothing — the On-now KPI already says 0, and an
-  // empty card was pure noise (owner: "it still looks the same").
-  if (live.length === 0) return null;
-  return (
-    <Panel title={t("Live now")} icon={Radio} count={live.length}>
-      {(
-        <div className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2 xl:grid-cols-3">
-          {live.map((m) => (
-            <div key={m.id} className="flex flex-col gap-1.5 bg-card p-2.5">
-              <div className="flex items-center gap-2">
-                <StatusPill match={m} idScope="live-" />
-                {m.venue ? (
-                  <span className="inline-flex items-center gap-0.5 text-[0.6875rem] text-muted-foreground">
-                    <MapPin aria-hidden="true" className="h-3 w-3" />
-                    {m.venue}
-                  </span>
-                ) : null}
-              </div>
-              <LeafLabel label={m.leaf_label} />
-              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                <span className="truncate text-right text-[13px] font-medium">
-                  {teamName(m.home_team)}
-                </span>
-                <span className="px-2 font-tabular text-base font-semibold">
-                  {m.home_score ?? 0} - {m.away_score ?? 0}
-                </span>
-                <span className="truncate text-[13px] font-medium">
-                  {teamName(m.away_team)}
-                </span>
-              </div>
-              <Link
-                to={routes.matchConsole(tournamentId, m.id)}
-                className="inline-flex items-center gap-1 self-start text-xs font-medium text-primary hover:underline"
-              >
-                {t("Open console")}
-                <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
-              </Link>
-            </div>
-          ))}
-        </div>
-      )}
-    </Panel>
   );
 }
 

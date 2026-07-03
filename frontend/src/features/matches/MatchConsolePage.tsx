@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Download, Minus, Plus, Printer, Radio, Undo2 } from "lucide-react";
+import { ArrowLeft, Download, Minus, Plus, Printer, Radio, Undo2, X } from "lucide-react";
 import { routes } from "@/lib/routes";
 import { liveApi, type LiveTeam, type MiniPlayer } from "@/api/live";
 import { Button } from "@/components/ui/button";
@@ -124,6 +124,29 @@ function useAutoMinute(startedAt: string | null | undefined, active: boolean): n
   return Math.min(Math.floor(ms / 60000) + 1, 200);
 }
 
+/** Header stopwatch: whole seconds elapsed since the scorer started the
+ * match, ticking every second while in play (owner 2026-07-03). */
+function useElapsedSeconds(
+  startedAt: string | null | undefined,
+  active: boolean,
+): number | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active || !startedAt) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [active, startedAt]);
+  if (!active || !startedAt) return null;
+  const s = Math.floor((now - new Date(startedAt).getTime()) / 1000);
+  return Number.isFinite(s) && s >= 0 ? s : null;
+}
+
+function fmtClock(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 type Side = "home" | "away";
 type SetRow = [string, string];
 
@@ -165,10 +188,20 @@ export function MatchConsolePage(): React.ReactElement {
   const [pens, setPens] = useState<{ home: string; away: string }>({ home: "", away: "" });
   const [setRows, setSetRows] = useState<SetRow[]>([["", ""]]);
   const [confirmSets, setConfirmSets] = useState(false);
+  // Tap scoring: how many points one +/- tap moves (owner 2026-07-03), and
+  // the debounce plumbing that auto-saves the running points while live.
+  const [step, setStep] = useState(1);
+  const [stepText, setStepText] = useState("1");
+  const seeded = useRef(false);
+  const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRows = useRef<SetRow[] | null>(null);
 
   const startedAt = query.data?.match.started_at;
   const isLiveNow = query.data?.match.status === "live";
+  const inPlay =
+    isLiveNow || query.data?.match.status === "half_time";
   const autoMinute = useAutoMinute(startedAt, Boolean(isLiveNow));
+  const elapsedSec = useElapsedSeconds(startedAt, Boolean(inPlay));
 
   const onError = (e: unknown) => {
     const detail = e instanceof ApiError ? String(e.payload.detail ?? "") : "";
@@ -233,6 +266,37 @@ export function MatchConsolePage(): React.ReactElement {
     },
     onError,
   });
+  // Seed the set editor from the server ONCE per mount so a live match
+  // reopened mid-game shows its current points; afterwards local taps are
+  // the source of truth (the 5 s poll must not clobber typing).
+  const serverSetScores = query.data?.match.set_scores;
+  useEffect(() => {
+    if (seeded.current || !query.data) return;
+    seeded.current = true;
+    if (serverSetScores && serverSetScores.length > 0) {
+      setSetRows(
+        serverSetScores.map(([h, a]) => [String(h), String(a)] as SetRow),
+      );
+    }
+  }, [query.data, serverSetScores]);
+  useEffect(
+    () => () => {
+      if (pushTimer.current) clearTimeout(pushTimer.current);
+    },
+    [],
+  );
+
+  // Live tap scoring: the running points save themselves (no Save button).
+  const progress = useMutation({
+    mutationFn: (rows: SetRow[]) =>
+      liveApi.recordSetProgress(matchId, {
+        set_scores: rows.map(([h, a]) => [Number(h || 0), Number(a || 0)]),
+        event_id: newEventId(),
+      }),
+    onSuccess: refresh,
+    onError,
+  });
+
   const submitSets = useMutation({
     mutationFn: () =>
       liveApi.recordSetScores(matchId, {
@@ -286,6 +350,30 @@ export function MatchConsolePage(): React.ReactElement {
   const [homeSets, awaySets] = setsWon(setRows);
   const completeSets = setRows.filter(([h, a]) => h !== "" && a !== "");
 
+  // Tap scoring: every edit while LIVE auto-saves (debounced) — no Save
+  // button. When the match has not started, edits stay local until the
+  // result is recorded, exactly as before.
+  const schedulePush = (rows: SetRow[]) => {
+    if (!setBased || match.status !== "live") return;
+    pendingRows.current = rows;
+    if (pushTimer.current) clearTimeout(pushTimer.current);
+    pushTimer.current = setTimeout(() => {
+      pushTimer.current = null;
+      if (pendingRows.current) progress.mutate(pendingRows.current);
+    }, 500);
+  };
+  const setSide = (i: number, sideIdx: 0 | 1, value: string) => {
+    const next = setRows.map((r, j) =>
+      j === i ? ((sideIdx === 0 ? [value, r[1]] : [r[0], value]) as SetRow) : r,
+    );
+    setSetRows(next);
+    schedulePush(next);
+  };
+  const bump = (i: number, sideIdx: 0 | 1, delta: number) => {
+    const cur = Number(setRows[i]?.[sideIdx] || 0);
+    setSide(i, sideIdx, String(Math.max(0, cur + delta)));
+  };
+
   // Build player options for the custom <Select> (jersey prefix preserved).
   const playerOptions = (players: MiniPlayer[]) =>
     players.map((p) => ({
@@ -322,7 +410,21 @@ export function MatchConsolePage(): React.ReactElement {
             {homeName} <span className="text-muted-foreground">{t("vs")}</span> {awayName}
           </h1>
         </div>
-        {isFinal ? (
+        {live && elapsedSec != null ? (
+          // Stopwatch: runs from the moment the scorer started the match.
+          <div
+            data-testid="match-clock"
+            className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 shadow-sm"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+            </span>
+            <span className="font-tabular text-2xl font-semibold leading-none tabular-nums">
+              {fmtClock(elapsedSec)}
+            </span>
+          </div>
+        ) : isFinal ? (
           <Button
             size="sm"
             variant="outline"
@@ -483,7 +585,7 @@ export function MatchConsolePage(): React.ReactElement {
           sports, so the console never offers them (P7b). */}
       {setBased && (live || match.status === "scheduled") ? (
         <div className="rounded-xl border border-border bg-card shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-2">
             <div className="flex items-center gap-2">
               <Radio aria-hidden="true" className="h-4 w-4 text-primary" />
               <h2 className="text-sm font-semibold">{t("Set scores")}</h2>
@@ -492,9 +594,50 @@ export function MatchConsolePage(): React.ReactElement {
               {t("Sets")} {homeSets}-{awaySets}
               {match.scoring?.best_of ? ` · ${t("best of")} ${match.scoring.best_of}` : ""}
             </span>
+            {/* Points per tap: what one +/- press adds (any number works). */}
+            <div
+              role="group"
+              aria-label={t("Points per tap")}
+              className="ml-auto flex items-center gap-1"
+            >
+              <span className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
+                {t("Per tap")}
+              </span>
+              {[1, 2, 3, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  aria-pressed={step === n}
+                  data-testid={`tap-step-${n}`}
+                  onClick={() => {
+                    setStep(n);
+                    setStepText(String(n));
+                  }}
+                  className={cn(
+                    "inline-flex h-7 min-w-8 items-center justify-center rounded-md border px-1.5 font-tabular text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    step === n
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                >
+                  +{n}
+                </button>
+              ))}
+              <Input
+                inputMode="numeric"
+                aria-label={t("Custom points per tap")}
+                value={stepText}
+                onChange={(e) => {
+                  setStepText(e.target.value);
+                  const n = Math.floor(Number(e.target.value));
+                  if (Number.isFinite(n) && n >= 1) setStep(n);
+                }}
+                className="h-7 w-12 px-1 text-center font-tabular text-xs"
+              />
+            </div>
           </div>
-          <div className="flex flex-col gap-3 p-5">
-            <div className="grid grid-cols-[2.5rem_1fr_1fr_2.25rem] items-center gap-2 text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
+          <div className="flex flex-col gap-3 p-4">
+            <div className="grid grid-cols-[2.25rem_1fr_1fr_2rem] items-center gap-2 text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
               <span />
               <span className="truncate text-center">{homeName}</span>
               <span className="truncate text-center">{awayName}</span>
@@ -503,41 +646,60 @@ export function MatchConsolePage(): React.ReactElement {
             {setRows.map((row, i) => (
               <div
                 key={i}
-                className="grid grid-cols-[2.5rem_1fr_1fr_2.25rem] items-center gap-2"
+                className="grid grid-cols-[2.25rem_1fr_1fr_2rem] items-center gap-2"
               >
                 <span className="text-xs font-medium text-muted-foreground">
                   {t("Set")} {i + 1}
                 </span>
-                {([0, 1] as const).map((sideIdx) => (
-                  <Input
-                    key={sideIdx}
-                    inputMode="numeric"
-                    aria-label={`${t("Set")} ${i + 1} ${sideIdx === 0 ? homeName : awayName}`}
-                    value={row[sideIdx]}
-                    onChange={(e) =>
-                      setSetRows((rows) =>
-                        rows.map((r, j) =>
-                          j === i
-                            ? (sideIdx === 0
-                                ? [e.target.value, r[1]]
-                                : [r[0], e.target.value])
-                            : r,
-                        ),
-                      )
-                    }
-                    className="h-10 text-center font-tabular text-base"
-                  />
-                ))}
+                {([0, 1] as const).map((sideIdx) => {
+                  const teamLabel = sideIdx === 0 ? homeName : awayName;
+                  const sideKey = sideIdx === 0 ? "home" : "away";
+                  return (
+                    <div key={sideIdx} className="flex min-w-0 items-center gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        aria-label={`${t("Set")} ${i + 1} ${teamLabel} ${t("minus")} ${step}`}
+                        data-testid={`set-${i}-${sideKey}-minus`}
+                        className="h-11 w-10 shrink-0 p-0"
+                        onClick={() => bump(i, sideIdx, -step)}
+                      >
+                        <Minus aria-hidden="true" className="h-4 w-4" />
+                      </Button>
+                      <Input
+                        inputMode="numeric"
+                        aria-label={`${t("Set")} ${i + 1} ${teamLabel}`}
+                        value={row[sideIdx]}
+                        onChange={(e) => setSide(i, sideIdx, e.target.value)}
+                        className="h-11 min-w-0 text-center font-tabular text-lg font-semibold"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        aria-label={`${t("Set")} ${i + 1} ${teamLabel} ${t("plus")} ${step}`}
+                        data-testid={`set-${i}-${sideKey}-plus`}
+                        className="h-11 w-14 shrink-0 p-0"
+                        onClick={() => bump(i, sideIdx, step)}
+                      >
+                        <Plus aria-hidden="true" className="h-5 w-5" />
+                      </Button>
+                    </div>
+                  );
+                })}
                 <Button
                   size="sm"
                   variant="ghost"
                   aria-label={`${t("Remove set")} ${i + 1}`}
                   disabled={setRows.length === 1}
-                  onClick={() =>
-                    setSetRows((rows) => rows.filter((_, j) => j !== i))
-                  }
+                  className="h-8 w-8 p-0"
+                  onClick={() => {
+                    const next = setRows.filter((_, j) => j !== i);
+                    setSetRows(next);
+                    schedulePush(next);
+                  }}
                 >
-                  <Minus aria-hidden="true" className="h-4 w-4" />
+                  <X aria-hidden="true" className="h-4 w-4" />
                 </Button>
               </div>
             ))}
@@ -550,16 +712,29 @@ export function MatchConsolePage(): React.ReactElement {
                 <Plus aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
                 {t("Add set")}
               </Button>
-              <Button
-                size="sm"
-                disabled={submitSets.isPending || completeSets.length === 0}
-                onClick={() => setConfirmSets(true)}
-              >
-                {t("Record result")}
-              </Button>
+              <div className="flex items-center gap-3">
+                {match.status === "live" ? (
+                  <span
+                    data-testid="tap-sync-state"
+                    className="text-xs text-muted-foreground"
+                    aria-live="polite"
+                  >
+                    {progress.isPending ? t("Saving") : t("Saves as you tap")}
+                  </span>
+                ) : null}
+                <Button
+                  size="sm"
+                  disabled={submitSets.isPending || completeSets.length === 0}
+                  onClick={() => setConfirmSets(true)}
+                >
+                  {t("Record result")}
+                </Button>
+              </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              {t("Recording the result completes the match.")}
+              {match.status === "live"
+                ? t("Points update live for viewers. Record result finishes the match.")
+                : t("Recording the result completes the match.")}
             </p>
           </div>
         </div>

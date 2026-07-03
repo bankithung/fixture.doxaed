@@ -92,7 +92,7 @@ export default {
           ink: "hsl(var(--brand-ink))",
         },
       },
-      // Compact scale (owner 2026-07-03): sections cap at 7px corners.
+      // Compact scale (owner 2026-07-03): sections cap at 5px corners.
       borderRadius: {
         xl: "calc(var(--radius) + 1px)",
         lg: "var(--radius)",

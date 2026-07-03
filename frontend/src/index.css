@@ -46,8 +46,8 @@
     --ring: 160 84% 30%;
 
     /* Global corner scale (owner 2026-07-03): compact. Sections/cards render
-       at 7px (rounded-xl = radius + 1px), controls at 4-6px. */
-    --radius: 0.375rem;
+       at 5px (rounded-xl = radius + 1px), controls at 2-4px. */
+    --radius: 0.25rem;
 
     /* Brand tokens (kept for AuthLayout / LandingPage back-compat). */
     --brand: 160 84% 30%;

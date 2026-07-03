@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { liveApi } from "@/api/live";
 import { tournamentsApi, type ControlRoomPayload } from "@/api/tournaments";
@@ -40,6 +40,10 @@ export function useControlRoom(
   const query = useQuery({
     queryKey: [...qk.controlRoom(tournamentId), day ?? ""],
     queryFn: () => tournamentsApi.controlRoom(tournamentId, day ?? undefined),
+    // Switching days keeps the current board on screen (dimmed via
+    // isPlaceholderData) instead of collapsing to a skeleton; the new
+    // day's content swaps in when it lands.
+    placeholderData: keepPreviousData,
     refetchInterval: live ? false : FALLBACK_POLL_MS,
   });
 

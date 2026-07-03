@@ -83,6 +83,12 @@ export const liveApi = {
     matchId: string,
     payload: { set_scores: number[][]; event_id: string },
   ) => api.post(`/api/matches/${matchId}/score/`, payload),
+  /** Live tap scoring: push the running per-set points of a LIVE set-sport
+   * match (ties and in-progress sets legal) without completing it. */
+  recordSetProgress: (
+    matchId: string,
+    payload: { set_scores: number[][]; event_id: string },
+  ) => api.post(`/api/matches/${matchId}/score/`, { ...payload, progress: true }),
   /** Full event timeline as a downloadable CSV (same-origin; sends the cookie). */
   exportUrl: (matchId: string) => `/api/matches/${matchId}/events/export/`,
   /** Scorer/manager: move the match through its state machine. `extra` carries
