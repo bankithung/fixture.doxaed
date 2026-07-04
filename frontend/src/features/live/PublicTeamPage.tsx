@@ -1,6 +1,7 @@
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Award, Shield, Users } from "lucide-react";
+import { ArrowLeft, Award, Shield, Star, Users } from "lucide-react";
+import { toggleFollow, useFollows } from "@/lib/follows";
 import { publicRecordsApi } from "@/api/publicRecords";
 import { LeafLabel } from "@/features/fixtures/LeafLabel";
 import { routes } from "@/lib/routes";
@@ -21,6 +22,31 @@ function Stat({ label, value }: { label: string; value: number }): React.ReactEl
         {label}
       </span>
     </div>
+  );
+}
+
+function FollowButton({ teamId }: { teamId: string }): React.ReactElement {
+  const follows = useFollows();
+  const on = follows.includes(teamId);
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      data-testid="follow-toggle"
+      onClick={() => toggleFollow(teamId)}
+      className={cn(
+        "order-last ml-auto inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
+        on
+          ? "border-primary/40 bg-primary/10 text-primary"
+          : "border-border text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <Star
+        aria-hidden="true"
+        className={cn("h-3.5 w-3.5", on && "fill-current")}
+      />
+      {on ? t("Following") : t("Follow")}
+    </button>
   );
 }
 
@@ -75,6 +101,7 @@ export function PublicTeamPage(): React.ReactElement {
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary/10">
               <Shield aria-hidden="true" className="h-6 w-6 text-primary" />
             </span>
+            <FollowButton teamId={team.team_id} />
             <div className="min-w-0">
               <h1 className="truncate text-xl font-semibold tracking-tight">
                 {team.team_name}

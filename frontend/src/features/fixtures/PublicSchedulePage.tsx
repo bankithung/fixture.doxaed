@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { CalendarDays, Printer, Search, Trophy, X } from "lucide-react";
+import { CalendarDays, Printer, Search, Star, Trophy, X } from "lucide-react";
+import { useFollows } from "@/lib/follows";
 import { type PublicScheduleMatch } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/Select";
@@ -237,6 +238,46 @@ function LivePulse(): React.ReactElement {
  * match renders as the scorer console's scoreboard (big centered tabular
  * score, status pill, Set N · Sets line, finished-set chips) so the public
  * band and the console read as the same product surface. */
+/** Follow v1 (P6): the viewer's starred teams pin their next and live
+ * matches above the day lists. Follows are device-local (no login). */
+function FollowedBand({
+  matches,
+  timeZone,
+}: {
+  matches: PublicScheduleMatch[];
+  timeZone: string;
+}): React.ReactElement | null {
+  const follows = useFollows();
+  if (follows.length === 0) return null;
+  const followed = new Set(follows);
+  const mine = matches
+    .filter(
+      (m) =>
+        (m.home && followed.has(m.home.id)) ||
+        (m.away && followed.has(m.away.id)),
+    )
+    .filter((m) => !FINAL_STATUSES.has(m.status))
+    .slice(0, 6);
+  if (mine.length === 0) return null;
+  return (
+    <section
+      data-testid="followed-band"
+      className="overflow-hidden rounded-xl border border-primary/30 bg-card shadow-sm"
+    >
+      <p className="flex items-center gap-1.5 border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+        <Star aria-hidden="true" className="h-3.5 w-3.5 fill-current" />
+        {t("Following")}
+      </p>
+      <ul className="divide-y divide-border">
+        {mine.map((m) => (
+          <MatchCard key={m.id} match={m} timeZone={timeZone} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+
 function LiveBand({
   matches,
   timeZone,
@@ -1094,6 +1135,7 @@ export function PublicSchedulePage(): React.ReactElement {
 
                   {/* The one earned card: live, pinned across any selection */}
                   <LiveBand matches={liveMatches} timeZone={tz} />
+                  <FollowedBand matches={allMatches} timeZone={tz} />
                   <PublicLeaders slug={slug} id={id} />
 
                   {/* Body */}
