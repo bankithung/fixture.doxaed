@@ -253,6 +253,18 @@ def _validate_tiebreakers(tbs) -> None:
         raise ValueError(f"unknown tiebreakers: {unknown}")
 
 
+def _validate_points(p) -> None:
+    """A per-leaf points ladder: same keys as the top-level block."""
+    if not isinstance(p, dict):
+        raise ValueError("points must be an object")
+    unknown = set(p) - set(DEFAULT_RULES["points"])
+    if unknown:
+        raise ValueError(f"unknown points keys: {sorted(unknown)}")
+    for k, v in p.items():
+        if v is not None and not isinstance(v, int):
+            raise ValueError(f"points.{k} must be an integer")
+
+
 def _merge_by_leaf(out: dict, partial) -> None:
     """Merge per-game overrides into `out` in place. A leaf set to None clears
     it; a leaf's `scoring`/`tiebreakers` set to None clears just that override.
@@ -265,7 +277,9 @@ def _merge_by_leaf(out: dict, partial) -> None:
             continue
         if not isinstance(entry, dict):
             raise ValueError(f"by_leaf[{leaf}] must be an object")
-        unknown = set(entry) - {"scoring", "tiebreakers", "format", "discipline"}
+        unknown = set(entry) - {
+            "scoring", "tiebreakers", "format", "discipline", "points",
+        }
         if unknown:
             raise ValueError(f"unknown by_leaf keys: {sorted(unknown)}")
         cur = dict(out.get(leaf) or {})
@@ -281,6 +295,14 @@ def _merge_by_leaf(out: dict, partial) -> None:
             else:
                 _validate_tiebreakers(entry["tiebreakers"])
                 cur["tiebreakers"] = entry["tiebreakers"]
+        if "points" in entry:
+            # Per-GAME points ladder (ITTF 2/1/0 on the TT leaves of a mixed
+            # tournament while football keeps 3/1/0).
+            if entry["points"] is None:
+                cur.pop("points", None)
+            else:
+                _validate_points(entry["points"])
+                cur["points"] = entry["points"]
         for key, validate in (
             ("format", _validate_format),
             ("discipline", _validate_leaf_discipline),

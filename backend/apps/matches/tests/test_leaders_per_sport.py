@@ -150,3 +150,50 @@ def test_ittf_group_scoring_and_ratio_tiebreakers():
     assert table["B"]["Pts"] == 3
     assert table["C"]["Pts"] == 1
     assert [r["name"] for r in rows] == ["A", "B", "C"]
+
+
+def test_per_leaf_points_ladder_and_day_zero_rows():
+    """Audit fixes: (a) rules.by_leaf[leaf].points scopes the ITTF 2/1/0
+    ladder to that competition only; (b) a group lists every team at 0
+    before any result exists."""
+    from apps.matches.services.standings import compute_standings
+
+    admin, t, a, b, c, d = _setup()
+    t.rules = {"by_leaf": {"tt.u14": {"points": {"win": 2, "draw": 1, "loss": 1}}}}
+    t.save(update_fields=["rules"])
+
+    # Day zero: scheduled-only group still lists its teams at 0.
+    label = "TT U14 Group A"
+    m1 = Match.objects.create(
+        organization=t.organization, tournament=t, sport="table_tennis",
+        stage="group", group_label=label, leaf_key="tt.u14",
+        home_team=a, away_team=b,
+    )
+    rows = compute_standings(t, group_label=label)
+    assert {r["name"] for r in rows} == {"A", "B"}
+    assert all(r["P"] == 0 and r["Pts"] == 0 for r in rows)
+
+    # A result lands: the LEAF ladder applies (win 2), not the default 3.
+    record_set_result(
+        match=m1, set_scores=[[11, 5], [11, 7]],
+        rules={"type": "sets", "points": 11, "win_by": 2, "cap": None,
+               "best_of": 3},
+        by=admin, event_id=uuid.uuid4(),
+    )
+    rows = compute_standings(t, group_label=label)
+    table = {r["name"]: r for r in rows}
+    assert table["A"]["Pts"] == 2  # ITTF ladder, per leaf
+    assert table["B"]["Pts"] == 1  # played loss earns 1
+
+    # A football group in the SAME tournament keeps 3/1/0.
+    fb_label = "FB Group A"
+    fb = Match.objects.create(
+        organization=t.organization, tournament=t, sport="",
+        stage="group", group_label=fb_label, leaf_key="football.open",
+        home_team=c, away_team=d,
+    )
+    record_score(match=fb, home_score=1, away_score=0, by=admin,
+                 event_id=uuid.uuid4())
+    rows = compute_standings(t, group_label=fb_label)
+    table = {r["name"]: r for r in rows}
+    assert table["C"]["Pts"] == 3

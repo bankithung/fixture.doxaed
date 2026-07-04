@@ -179,13 +179,6 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
 
     rules = merge_rules(getattr(tournament, "rules", None))
     pts = rules["points"]
-    win_pts, draw_pts, loss_pts = pts["win"], pts["draw"], pts["loss"]
-    # ITTF-style: a walkover loss may score fewer points than a played loss
-    # (rules.points.walkover_loss; None = same as loss).
-    wo_loss_pts = pts.get("walkover_loss")
-    if wo_loss_pts is None:
-        wo_loss_pts = loss_pts
-
     # Walkovers enter the table only when they carry a scoreline (the
     # withdrawal executor awards 3-0); legacy score-less walkovers keep
     # falling through the None-score guard below — zero behavior change.
@@ -201,6 +194,17 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
         qs = qs.filter(group_label=group_label)
 
     matches = list(qs)
+    # Per-GAME points ladder (rules.by_leaf[leaf].points): a TT group can
+    # score ITTF 2/1/0 while the football groups keep 3/1/0 in the same
+    # tournament. The group's matches carry the leaf.
+    leaf = next((m.leaf_key for m in matches if m.leaf_key), "")
+    leaf_pts = ((rules.get("by_leaf") or {}).get(leaf) or {}).get("points")
+    if leaf_pts:
+        pts = {**pts, **{k: v for k, v in leaf_pts.items()}}
+    win_pts, draw_pts, loss_pts = pts["win"], pts["draw"], pts["loss"]
+    wo_loss_pts = pts.get("walkover_loss")
+    if wo_loss_pts is None:
+        wo_loss_pts = loss_pts
     voided = _voided_team_ids(tournament, matches, rules, group_label)
 
     table: dict = {}
@@ -220,6 +224,18 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
             }
             table[team.id] = r
         return r
+
+    # Day zero: every team of the group appears at 0 before a ball is kicked
+    # (verified gap: empty tables read as "nothing generated"). Seed from
+    # group membership; SCHEDULED matches carry the same group_label.
+    if group_label is not None:
+        pending = Match.objects.filter(
+            tournament=tournament, group_label=group_label,
+            deleted_at__isnull=True,
+        ).select_related("home_team", "away_team")
+        for m in pending:
+            row(m.home_team)
+            row(m.away_team)
 
     results: list[tuple] = []  # (home_id, away_id, hs, as) — feeds head-to-head
     for m in matches:

@@ -51,7 +51,7 @@ TOURNAMENT_PRESETS: dict[str, dict] = {
                     {"name": "Boys", "children": [{"name": "1v1"}, {"name": "2v2"}]},
                     {"name": "Girls", "children": [{"name": "1v1"}, {"name": "2v2"}]},
                 ]},
-                {"name": "Open catagory", "children": [
+                {"name": "Open category", "children": [
                     {"name": "Boys", "children": [{"name": "1v1"}, {"name": "2v2"}]},
                     {"name": "Girls", "children": [{"name": "1v1"}, {"name": "2v2"}]},
                 ]},
