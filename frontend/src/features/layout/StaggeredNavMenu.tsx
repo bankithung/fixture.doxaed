@@ -11,7 +11,7 @@ import { t } from "@/lib/t";
 import "./staggered-nav.css";
 
 /** StaggeredMenu (React Bits), re-cut as the left nav overlay below md:
- * emerald prelayers sweep in ahead of the card panel, then the nav items
+ * brand prelayers sweep in ahead of the card panel, then the nav items
  * stagger up with the source's clip + rotate reveal. Token colors, the same
  * contextual NavGroups as the desktop rail, and the drawer's a11y contract
  * (dialog role, Escape, scrim click, focus to close). Animations need

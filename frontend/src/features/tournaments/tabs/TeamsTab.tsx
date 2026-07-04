@@ -814,7 +814,7 @@ function SubmissionBadge({ submitted }: { submitted: boolean }): React.ReactElem
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium",
         submitted
-          ? "bg-success-muted text-success-foreground"
+          ? "bg-success-muted text-success"
           : "bg-warning-muted text-warning-foreground",
       )}
     >

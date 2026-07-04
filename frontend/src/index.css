@@ -16,12 +16,13 @@
     --muted: 210 40% 96%;
     --muted-foreground: 215 16% 42%;
 
-    /* Brand = primary (Nagaland emerald) */
-    --primary: 160 84% 30%;
+    /* Brand = primary (electric violet, owner 2026-07-04: the emerald read
+       badly; white-on-primary clears 6.2:1). */
+    --primary: 255 70% 56%;
     --primary-foreground: 0 0% 100%;
-    --primary-hover: 160 84% 26%;
-    --accent: 160 60% 94%;
-    --accent-foreground: 160 84% 22%;
+    --primary-hover: 255 70% 50%;
+    --accent: 255 60% 95%;
+    --accent-foreground: 255 65% 38%;
 
     /* Secondary (neutral chrome) */
     --secondary: 210 40% 96%;
@@ -44,22 +45,23 @@
     /* Lines + focus */
     --border: 214 30% 89%;
     --input: 214 32% 91%;
-    --ring: 160 84% 30%;
+    --ring: 255 70% 56%;
 
     /* Global corner scale (owner 2026-07-03): compact. Sections/cards render
        at 5px (rounded-xl = radius + 1px), controls at 2-4px. */
     --radius: 0.25rem;
 
     /* Brand tokens (kept for AuthLayout / LandingPage back-compat). */
-    --brand: 160 84% 30%;
+    --brand: 255 70% 56%;
     --brand-fg: 0 0% 100%;
-    --brand-muted: 160 50% 96%;
+    --brand-muted: 255 60% 96%;
     --brand-ink: 222 47% 11%;
 
     /* Chart series (dashboard dataviz). Validated categorical trio per mode
-       (CVD ΔE >= 12, >= 3:1 on the card surface): 1 = played (emerald,
-       matches primary), 2 = upcoming (blue), 3 = live (amber). */
-    --chart-1: 160 84% 30%;
+       (CVD ΔE >= 12, >= 3:1 on the card surface) in true stack order
+       violet | amber | blue: 1 = played (violet, matches primary),
+       2 = upcoming (blue), 3 = live (amber). */
+    --chart-1: 255 70% 56%;
     --chart-2: 214 70% 45%;
     --chart-3: 38 92% 42%;
     --chart-grid: 214 30% 92%;
@@ -81,11 +83,11 @@
     --muted: 217 33% 17%;
     --muted-foreground: 215 20% 68%;
 
-    --primary: 158 64% 52%;
+    --primary: 255 90% 74%;
     --primary-foreground: 222 47% 9%;
-    --primary-hover: 158 64% 58%;
-    --accent: 158 40% 18%;
-    --accent-foreground: 158 64% 70%;
+    --primary-hover: 255 90% 78%;
+    --accent: 255 35% 22%;
+    --accent-foreground: 255 85% 82%;
 
     --secondary: 217 33% 17%;
     --secondary-foreground: 210 40% 96%;
@@ -105,15 +107,15 @@
 
     --border: 217 33% 20%;
     --input: 217 33% 22%;
-    --ring: 158 64% 52%;
+    --ring: 255 90% 74%;
 
-    --brand: 158 64% 52%;
+    --brand: 255 90% 74%;
     --brand-fg: 222 47% 9%;
-    --brand-muted: 158 40% 18%;
+    --brand-muted: 255 35% 22%;
     --brand-ink: 210 40% 96%;
 
     /* Chart series, re-stepped for the dark card surface (validated). */
-    --chart-1: 159 73% 36%;
+    --chart-1: 256 86% 67%;
     --chart-2: 213 77% 56%;
     --chart-3: 40 100% 39%;
     --chart-grid: 217 33% 16%;

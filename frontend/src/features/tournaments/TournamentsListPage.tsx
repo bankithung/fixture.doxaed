@@ -24,10 +24,13 @@ import { canManageTournament } from "./tournamentPermissions";
 // Tokens only (owner rule): semantic status colors, no Tailwind palette.
 const STATUS_STYLES: Record<string, { label: string; cls: string }> = {
   draft: { label: "Draft", cls: "bg-muted text-muted-foreground" },
-  published: { label: "Published", cls: "bg-info-muted text-info-foreground" },
+  // On *-muted tints the text must be the STRONG semantic color: the
+  // *-foreground tokens are white (made for solid fills) and vanish on the
+  // pale light-mode tints.
+  published: { label: "Published", cls: "bg-info-muted text-info" },
   registration_open: {
     label: "Registration open",
-    cls: "bg-success-muted text-success-foreground",
+    cls: "bg-success-muted text-success",
   },
   scheduled: { label: "Scheduled", cls: "bg-secondary text-secondary-foreground" },
   completed: { label: "Completed", cls: "bg-accent text-accent-foreground" },
@@ -49,8 +52,8 @@ function statusStyle(status: string): { label: string; cls: string; pulse: boole
  * token opacity steps, not palette colors. */
 const TINTS = [
   "bg-primary/15 text-primary",
-  "bg-success-muted text-success-foreground",
-  "bg-info-muted text-info-foreground",
+  "bg-success-muted text-success",
+  "bg-info-muted text-info",
   "bg-warning-muted text-warning-foreground",
   "bg-secondary text-secondary-foreground",
   "bg-accent text-accent-foreground",
@@ -313,7 +316,7 @@ export function TournamentsListPage(): React.ReactElement {
           {/* One panel: full-width toolbar + the tournament grid. */}
           <BentoCard className="flex flex-col" testId="tournaments-panel">
             <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
-              <label className="relative w-full sm:w-64">
+              <label className="relative w-full sm:w-80">
                 <Search
                   aria-hidden="true"
                   className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"

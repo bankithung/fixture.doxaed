@@ -17,10 +17,10 @@ import { StageStepper } from "../StageStepper";
 
 /** Soft, dark-mode-aware tint per metric (icon tile color). */
 const TINT: Record<string, string> = {
-  blue: "bg-info-muted text-info-foreground",
+  blue: "bg-info-muted text-info",
   violet: "bg-secondary text-secondary-foreground",
   amber: "bg-warning-muted text-warning-foreground",
-  emerald: "bg-success-muted text-success-foreground",
+  emerald: "bg-success-muted text-success",
 };
 
 interface MetricDef {

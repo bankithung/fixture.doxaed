@@ -38,11 +38,11 @@ const PALETTE: Record<RoleKey, PaletteEntry> = {
   },
   co_organizer: {
     label: "Co-organizer",
-    className: "bg-success-muted text-success-foreground ring-1 ring-success/25",
+    className: "bg-success-muted text-success ring-1 ring-success/25",
   },
   game_coordinator: {
     label: "Game coordinator",
-    className: "bg-info-muted text-info-foreground ring-1 ring-info/25",
+    className: "bg-info-muted text-info ring-1 ring-info/25",
   },
   match_scorer: {
     label: "Match scorer",

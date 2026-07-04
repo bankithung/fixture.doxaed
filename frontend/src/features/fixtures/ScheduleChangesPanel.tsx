@@ -30,7 +30,7 @@ const KIND_LABELS: Record<string, string> = {
 
 /** Token-only chip palette per kind (no hardcoded hex). */
 const KIND_CLASSES: Record<string, string> = {
-  scheduled: "bg-success-muted text-success-foreground",
+  scheduled: "bg-success-muted text-success",
   rescheduled: "bg-primary/15 text-primary",
   delayed: "bg-warning-muted text-warning-foreground",
   retimed: "bg-primary/15 text-primary",

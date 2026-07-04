@@ -1,5 +1,5 @@
 /* StaggeredMenu (React Bits) re-cut as the app's left nav overlay: token
-   colors (emerald prelayers sweeping ahead of a bg-card panel), app hairlines
+   colors (brand prelayers sweeping ahead of a bg-card panel), app hairlines
    and radii. Driven by StaggeredNavMenu.tsx via gsap; with animations off the
    elements render in their resting (open) state, so no keyframes live here. */
 

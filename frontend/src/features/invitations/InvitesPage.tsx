@@ -78,7 +78,7 @@ const STATUS_STYLES: Record<
   },
   accepted: {
     label: "Accepted",
-    cls: "bg-success-muted text-success-foreground",
+    cls: "bg-success-muted text-success",
   },
   declined: {
     label: "Declined",

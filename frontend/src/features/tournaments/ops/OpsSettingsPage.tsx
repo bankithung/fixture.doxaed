@@ -30,11 +30,11 @@ import { t } from "@/lib/t";
 
 const STATUS_CLS: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
-  published: "bg-info-muted text-info-foreground",
+  published: "bg-info-muted text-info",
   registration_open: "bg-warning-muted text-warning-foreground",
   scheduled: "bg-primary/15 text-primary",
   live: "bg-destructive/15 text-destructive",
-  completed: "bg-success-muted text-success-foreground",
+  completed: "bg-success-muted text-success",
   archived: "bg-muted text-muted-foreground",
 };
 
