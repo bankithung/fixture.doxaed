@@ -111,11 +111,35 @@ class OrganizationMembershipManager(models.Manager):
 # ---------------------------------------------------------------------------
 
 
+class OrgKind(models.TextChoices):
+    """P2 (institutions-as-users): a tenant is either the historic hidden
+    personal workspace or a real, claimable school/college."""
+
+    PERSONAL = "personal", _("Personal workspace")
+    INSTITUTION = "institution", _("Institution")
+
+
 class Organization(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
 
     slug = models.CharField(max_length=63, unique=True)
     name = models.CharField(max_length=200)
+
+    # P2 additive tenant fields. EVERY pre-existing org stays a hidden
+    # personal workspace (kind=personal, is_listed=False) — zero behavior
+    # change until the claim flow (P4) mints institution orgs (decision D6
+    # amends invariant 2's "orgs are hidden" for kind=institution only).
+    kind = models.CharField(
+        max_length=16, choices=OrgKind.choices, default=OrgKind.PERSONAL,
+        db_index=True,
+    )
+    is_listed = models.BooleanField(default=False)
+    branding = models.JSONField(default=dict, blank=True)  # crest, accent
+    profile = models.JSONField(default=dict, blank=True)   # region, kind detail
+    school_profile = models.ForeignKey(
+        "teams.SchoolProfile", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="operator_orgs",
+    )
 
     status = models.CharField(
         max_length=24,

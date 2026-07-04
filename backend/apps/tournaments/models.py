@@ -98,7 +98,14 @@ class Tournament(models.Model):
     # from match scheduled_at; kept fresh by the scheduler.
     starts_at = models.DateField(null=True, blank=True)
     ends_at = models.DateField(null=True, blank=True)
-    season = models.CharField(max_length=16, blank=True)  # e.g. "2026"
+    season = models.CharField(max_length=16, blank=True)  # e.g. "2026" (legacy label)
+    # P2: the org-scoped Season container (academic year) this event belongs
+    # to — house points and records roll up per season. The bare `season`
+    # string stays for backfill; new events set both.
+    season_ref = models.ForeignKey(
+        "teams.Season", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="tournaments",
+    )
     # Setup-workflow stage (orthogonal to `status`). Driven by
     # services/state.py::transition_tournament. See spec 2026-06-08 §1.
     stage = models.CharField(

@@ -225,6 +225,10 @@ class LineupEntry(models.Model):
         max_length=16, choices=LineupRole.choices, default=LineupRole.STARTER
     )
     shirt_no = models.PositiveSmallIntegerField(null=True, blank=True)
+    # P2: the sport-specific position slot — sepak takraw's tekong /
+    # left_inside / right_inside now; football formation slots later (P5).
+    # Free string validated per sport at the service layer (sport registry).
+    positional_role = models.CharField(max_length=24, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

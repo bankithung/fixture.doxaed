@@ -63,6 +63,162 @@ class InstitutionStatus(models.TextChoices):
     REJECTED = "rejected", _("Rejected")
 
 
+class SchoolProfile(models.Model):
+    """Canonical PLATFORM-level school/college identity (P2, master plan S5).
+
+    The spine that lets one school's appearances across organizers'
+    tournaments and across years roll up to a single durable record.
+    Tournament-scoped Institution rows FK here (backfilled by normalized
+    name + region), and a claimed operator Organization points here too.
+    Deliberately NOT org-scoped: identity crosses tenants; an admin merge
+    console (P4) resolves near-duplicates via ``merged_into``.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    name = models.CharField(max_length=200)
+    normalized_name = models.CharField(max_length=200, db_index=True)
+    region = models.CharField(max_length=120, blank=True)
+    kind = models.CharField(
+        max_length=16, choices=InstitutionKind.choices,
+        default=InstitutionKind.SCHOOL,
+    )
+    merged_into = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="merged_from",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "teams_school_profile"
+        indexes = [
+            models.Index(
+                fields=["normalized_name", "region"],
+                name="school_profile_ident_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - repr sugar
+        return self.name
+
+
+class Season(models.Model):
+    """Org-scoped academic-year container (P2): one school year's annual
+    meet, inter-house leagues and inter-class knockouts roll up here (house
+    points, season records)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="seasons",
+    )
+    label = models.CharField(max_length=32)  # e.g. "2026-27"
+    starts_on = models.DateField(null=True, blank=True)
+    ends_on = models.DateField(null=True, blank=True)
+    is_current = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "teams_season"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "label"],
+                name="unique_season_label_per_org",
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - repr sugar
+        return self.label
+
+
+class TeamGroupKind(models.TextChoices):
+    HOUSE = "house", _("House")
+    CLASS = "class", _("Class")
+    FORM = "form", _("Form")
+    DEPARTMENT = "department", _("Department")
+
+
+class TeamGroup(models.Model):
+    """A house / class / form — the INTRA-institution participant grouping
+    (P2). In an inter-school tournament the school is the participant; on a
+    sports day the HOUSE is — participant grouping is generic (owner: intra-
+    and inter-school competition are both first-class)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="team_groups",
+    )
+    season = models.ForeignKey(
+        Season, on_delete=models.CASCADE, related_name="groups",
+    )
+    kind = models.CharField(
+        max_length=16, choices=TeamGroupKind.choices,
+        default=TeamGroupKind.HOUSE,
+    )
+    name = models.CharField(max_length=120)
+    colour = models.CharField(max_length=16, blank=True)  # house colour token
+    attributes = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "teams_team_group"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["season", "name"], name="unique_group_name_per_season",
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - repr sugar
+        return self.name
+
+
+class HousePointSource(models.TextChoices):
+    RESULT = "result", _("Result")
+    JUDGED = "judged", _("Judged")
+
+
+class HousePointEntry(models.Model):
+    """APPEND-ONLY house-points ledger (P2): result-derived rows AND judged
+    injections (march past, drill, discipline shields) sum into the season
+    house table. Rows are never updated — a correction appends a
+    compensating row, mirroring the event-sourced scoring discipline."""
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="house_point_entries",
+    )
+    season = models.ForeignKey(
+        Season, on_delete=models.CASCADE, related_name="point_entries",
+    )
+    group = models.ForeignKey(
+        TeamGroup, on_delete=models.CASCADE, related_name="point_entries",
+    )
+    tournament = models.ForeignKey(
+        "tournaments.Tournament", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="house_point_entries",
+    )
+    points = models.IntegerField()
+    reason = models.CharField(max_length=200)
+    source = models.CharField(
+        max_length=16, choices=HousePointSource.choices,
+        default=HousePointSource.JUDGED,
+    )
+    awarded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="house_points_awarded",
+    )
+    # Invariant 3: idempotent writes (unique client event id when present).
+    event_id = models.UUIDField(null=True, blank=True, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "teams_house_point_entry"
+        indexes = [
+            models.Index(fields=["season", "group"], name="house_points_season_idx"),
+        ]
+
+
 class Institution(models.Model):
     """A participant entity (school / college / club) that owns many Teams —
     the new level in Organization → Tournament → Institution → Team → Player
@@ -100,6 +256,13 @@ class Institution(models.Model):
     # Optional pointer to the Stage-1 form response that created this row (bare
     # UUID, no FK — avoids a teams→forms cycle; mirrors audit scope columns).
     source_response_id = models.UUIDField(null=True, blank=True)
+    # P2: pointer into the canonical platform identity (SchoolProfile) —
+    # the spine for cross-tournament, cross-year school records. Nullable;
+    # backfilled by normalized name + region, resolved via the merge console.
+    school_profile = models.ForeignKey(
+        SchoolProfile, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="institutions",
+    )
     # Team-registration access code (emailed to the contact when Stage 2
     # opens). Only the Django password hash is stored — never the plaintext —
     # so a DB leak exposes nothing usable (PBKDF2-SHA256, salted).
@@ -142,6 +305,12 @@ class Team(models.Model):
     )
     institution = models.ForeignKey(
         Institution, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="teams",
+    )
+    # P2: the intra-institution grouping (house/class) this team plays FOR
+    # in an operator org's own events; None in inter-school tournaments.
+    group = models.ForeignKey(
+        TeamGroup, null=True, blank=True, on_delete=models.SET_NULL,
         related_name="teams",
     )
     tournament = models.ForeignKey(
