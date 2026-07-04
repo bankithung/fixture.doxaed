@@ -24,6 +24,7 @@ import {
   useOfflineQueue,
 } from "@/lib/offlineQueue";
 import { invalidateTournament } from "@/lib/queryKeys";
+import { useMatchSocket } from "@/lib/useMatchSocket";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { ApiError } from "@/types/api";
@@ -164,10 +165,16 @@ export function MatchConsolePage(): React.ReactElement {
   const { id = "", matchId = "" } = useParams();
   const qc = useQueryClient();
   const toast = useToast();
+  // P3: the scorer-room WebSocket delivers every committed event instantly
+  // (co-scorers see a tap sub-second); the poll stays as the fallback and
+  // relaxes while the socket is healthy.
+  const { connected: socketLive } = useMatchSocket(matchId || null, () => {
+    qc.invalidateQueries({ queryKey: ["live", matchId] });
+  });
   const query = useQuery({
     queryKey: ["live", matchId],
     queryFn: () => liveApi.snapshot(matchId),
-    refetchInterval: 5000,
+    refetchInterval: socketLive ? 30000 : 5000,
   });
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["live", matchId] });
