@@ -64,7 +64,10 @@ TABLE_TENNIS = SportDefinition(
     period_model=TARGET, score_reducer="sets",
     # ITTF Law 2.11.1: 11 points, win by 2, deuce UNCAPPED (cap must be None).
     scoring={"type": "sets", "best_of": 3, "points": 11, "win_by": 2,
-             "cap": None},
+             "cap": None,
+             # ITTF Law 2.13.3: service alternates every 2 points, then every
+             # point from 10-10 (alternate_every_point = the deuce switch).
+             "serve": {"serves_per_turn": 2, "alternate_every_point": True}},
     duration_minutes=30, venue_type="indoor_court",
     has_half_time=False, opening_period="game_1",
     terms={"score_unit": "Points", "period": "Game"},
@@ -79,7 +82,12 @@ SEPAK_TAKRAW = SportDefinition(
     # 15 cap 17. The ISTAF-2024 regime (all sets 15/17, single service) ships
     # as a named preset in P2 — the tournament picks (owner decision D1).
     scoring={"type": "sets", "best_of": 3, "points": 21, "win_by": 2,
-             "cap": 25, "deciding": {"points": 15, "win_by": 2, "cap": 17}},
+             "cap": 25, "deciding": {"points": 15, "win_by": 2, "cap": 17},
+             # Legacy service mechanics (ISTAF pre-2024): 3-serve blocks,
+             # ends change at 11 (regular) / 8 (deciding). The ISTAF-2024
+             # preset overrides all of this per tournament (D1).
+             "serve": {"serves_per_turn": 3, "alternate_every_point": False,
+                       "change_ends_at": {"regular": 11, "deciding": 8}}},
     duration_minutes=45, venue_type="indoor_court",
     has_half_time=False, opening_period="set_1",
     terms={"score_unit": "Points", "period": "Set"},
