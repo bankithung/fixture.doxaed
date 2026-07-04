@@ -836,6 +836,56 @@ def _stalled(t) -> list[dict]:
         return []
 
 
+class AdvancementRefireView(GenericAPIView):
+    """`POST /api/tournaments/{id}/advancement:refire/` — manager-only: re-run
+    advancement for every stalled slot's feeder (P3). Advancement is
+    idempotent (typed pointers fill deterministically), so re-firing is
+    always safe; this is the one-click repair the health banner offers."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        from apps.fixtures.services.advance import advance_from_match, stalled_slots
+
+        if not accessible_tournaments(request.user).filter(
+            id=tournament_id
+        ).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.get(id=tournament_id)
+        from apps.tournaments.permissions import can_manage_tournament
+
+        if not can_manage_tournament(request.user, t):
+            raise PermissionDenied("not_tournament_manager")
+        stalled = stalled_slots(t)
+        feeders = {r["feeder_match_id"] for r in stalled}
+        updated = 0
+        for fid in feeders:
+            updated += len(advance_from_match(fid))
+        remaining = stalled_slots(t)
+        from apps.audit.models import ActorRole
+        from apps.audit.services import emit_audit
+
+        emit_audit(
+            actor_user=request.user,
+            actor_role=ActorRole.ADMIN,
+            event_type="advancement_refired",
+            target_type="tournament",
+            target_id=t.id,
+            organization_id=t.organization_id,
+            tournament_id=t.id,
+            payload_after={
+                "stalled_before": len(stalled), "filled": updated,
+                "stalled_after": len(remaining),
+            },
+            request=request,
+        )
+        return Response({
+            "filled": updated,
+            "stalled_before": len(stalled),
+            "stalled_after": len(remaining),
+        })
+
+
 class TournamentDrawConfigView(GenericAPIView):
     """`GET/PATCH /api/tournaments/{id}/draw-config/` — per-competition draw
     configuration (redesign spec §2.1). GET: any tournament member. PATCH:

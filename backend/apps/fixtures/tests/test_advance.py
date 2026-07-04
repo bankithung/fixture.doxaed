@@ -255,3 +255,37 @@ def test_stalled_slots_detects_silent_advancement_failures():
         home_source={"type": "loser_of", "match_id": str(wo.id)},
     )
     assert len(stalled_slots(t)) == 1  # unchanged
+
+
+@pytest.mark.django_db
+def test_advancement_refire_endpoint_repairs_stalled_slots():
+    from rest_framework.test import APIClient
+
+    from apps.fixtures.services.advance import stalled_slots
+    from apps.matches.models import Match, MatchStatus as MS
+
+    admin = _verified("refire@test.local")
+    t = create_tournament(user=admin, name="Refire Cup")
+    teams = register_school(
+        tournament=t, school_name="S",
+        teams=[{"name": "R1", "players": []}, {"name": "R2", "players": []}],
+    )
+    a, b = teams
+    feeder = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=a, away_team=b,
+        status=MS.COMPLETED, home_score=2, away_score=0,
+    )
+    dep = Match.objects.create(
+        organization=t.organization, tournament=t, stage="knockout",
+        home_source={"type": "winner_of", "match_id": str(feeder.id)},
+    )
+    assert len(stalled_slots(t)) == 1
+
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    r = c.post(f"/api/tournaments/{t.id}/advancement:refire/")
+    assert r.status_code == 200
+    assert r.data["stalled_before"] == 1
+    assert r.data["stalled_after"] == 0
+    dep.refresh_from_db()
+    assert dep.home_team_id == a.id  # the winner arrived

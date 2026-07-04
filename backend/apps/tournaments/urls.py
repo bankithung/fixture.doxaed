@@ -4,6 +4,7 @@ from django.urls import path
 
 from apps.disputes.views import TournamentDisputeView
 from apps.fixtures.views import (
+    AdvancementRefireView,
     ControlRoomDayView,
     GenerateFixturesView,
     PreviewAllFixturesView,
@@ -249,6 +250,11 @@ urlpatterns = [
         "<uuid:tournament_id>/control-room/",
         ControlRoomDayView.as_view(),
         name="tournament-control-room",
+    ),
+    path(
+        "<uuid:tournament_id>/advancement:refire/",
+        AdvancementRefireView.as_view(),
+        name="tournament-advancement-refire",
     ),
     path(
         "<uuid:tournament_id>/permissions/",
