@@ -55,6 +55,10 @@ class MatchEventType(models.TextChoices):
     # Football: a dedicated assist event (cleaner than GOAL.related_player
     # for secondary assists; the Golden Boot tiebreak needs assists).
     ASSIST = "assist", _("Assist")
+    # P5: one kick of a penalty shootout (KFPM) — an ORDERED annotation
+    # stream (detail: {round, outcome: scored|missed|saved}). The aggregate
+    # home_pens/away_pens stays the result of record; kicks are the story.
+    SHOOTOUT_KICK = "shootout_kick", _("Shootout kick")
     VOID = "void", _("Void (reversal)")
 
 

@@ -115,8 +115,18 @@ def record_match_event(
         if set_based and (
             event_type in SCORING_EVENT_TYPES
             or event_type == MatchEventType.OWN_GOAL
+            or event_type == MatchEventType.SHOOTOUT_KICK
         ):
             raise DjangoValidationError("set_based_sport_uses_set_scores")
+        # P5: a shootout kick must say what happened (the KFPM stream is the
+        # official story of the shootout; the pens aggregate stays the
+        # result of record).
+        if event_type == MatchEventType.SHOOTOUT_KICK:
+            outcome = (detail or {}).get("outcome")
+            if outcome not in ("scored", "missed", "saved"):
+                raise DjangoValidationError("shootout_kick_needs_outcome")
+            if locked.stage == "group" or not locked.stage:
+                raise DjangoValidationError("shootout_knockout_only")
         # Pillar E: a player serving a card ban cannot be credited with play.
         # Lineups already hard-block (PRD 5.4); this closes the event layer
         # (a lineup is optional, an event attribution is not). VOIDs stay

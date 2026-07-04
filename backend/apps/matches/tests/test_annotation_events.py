@@ -145,3 +145,78 @@ def test_event_detail_persists_through_the_api():
         "sequence_no"
     )
     assert ev.detail == {"reason": "three_touch", "scoring_side": "home"}
+
+
+def test_shootout_kick_stream():
+    """P5: KFPM kicks are an ordered annotation stream (detail: round +
+    outcome); the pens aggregate stays the result of record. Knockout-only,
+    outcome mandatory, rejected for set sports."""
+    admin, m, a = _live_sepak()
+    # Set sport: rejected.
+    with pytest.raises(DjangoValidationError):
+        record_match_event(
+            match=m, event_type=MatchEventType.SHOOTOUT_KICK, team=a,
+            detail={"round": 1, "outcome": "scored"}, by=admin,
+        )
+
+    # Football knockout: legal with an outcome, ordered by sequence.
+    from apps.matches.services.state import transition_match
+    from apps.teams.models import Team
+    from apps.tournaments.services.create import create_tournament
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    u2 = User.objects.create_user(
+        email="kfpm@test.local", password="FixtureDemo2026!", is_active=True
+    )
+    from django.utils import timezone as _tz
+
+    u2.email_verified_at = _tz.now()
+    u2.save(update_fields=["email_verified_at"])
+    t2 = create_tournament(user=u2, name="KFPM Cup")
+    register_school(
+        tournament=t2, school_name="S",
+        teams=[{"name": "A", "players": []}, {"name": "B", "players": []}],
+    )
+    x, y = list(Team.objects.filter(tournament=t2).order_by("name"))
+    fb = Match.objects.create(
+        organization=t2.organization, tournament=t2, stage="knockout",
+        home_team=x, away_team=y,
+    )
+    transition_match(match=fb, to_status=MatchStatus.LIVE, by=u2)
+
+    with pytest.raises(DjangoValidationError, match="needs_outcome"):
+        record_match_event(
+            match=fb, event_type=MatchEventType.SHOOTOUT_KICK, team=x,
+            detail={"round": 1}, by=u2,
+        )
+    for rnd, (team, outcome) in enumerate(
+        [(x, "scored"), (y, "missed"), (x, "scored"), (y, "saved")], start=1
+    ):
+        record_match_event(
+            match=fb, event_type=MatchEventType.SHOOTOUT_KICK, team=team,
+            detail={"round": (rnd + 1) // 2, "outcome": outcome}, by=u2,
+            event_id=uuid.uuid4(),
+        )
+    kicks = list(
+        MatchEvent.objects.filter(
+            match=fb, event_type=MatchEventType.SHOOTOUT_KICK
+        ).order_by("sequence_no")
+    )
+    assert [k.detail["outcome"] for k in kicks] == [
+        "scored", "missed", "scored", "saved",
+    ]
+    # Kicks never count as goals (recompute runs and finds none: 0-0).
+    fb.refresh_from_db()
+    assert (fb.home_score, fb.away_score) == (0, 0)
+
+    # Group-stage kicks: rejected (KFPM only decides knockouts).
+    grp = Match.objects.create(
+        organization=t2.organization, tournament=t2, stage="group",
+        home_team=x, away_team=y, status=MatchStatus.LIVE,
+    )
+    with pytest.raises(DjangoValidationError, match="knockout_only"):
+        record_match_event(
+            match=grp, event_type=MatchEventType.SHOOTOUT_KICK, team=x,
+            detail={"round": 1, "outcome": "scored"}, by=u2,
+        )
