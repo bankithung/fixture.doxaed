@@ -268,11 +268,12 @@ export function TournamentsListPage(): React.ReactElement {
           {startCta}
         </div>
       ) : (
-        <BentoGrid className="flex flex-col gap-5">
-          {/* Pulse band */}
+        <BentoGrid className="flex flex-col gap-4">
+          {/* Pulse band — compact tiles (owner: the md tiles read big here). */}
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <BentoCard>
               <StatTile
+                size="sm"
                 label={t("Tournaments")}
                 value={counts.total}
                 sub={
@@ -284,6 +285,7 @@ export function TournamentsListPage(): React.ReactElement {
             </BentoCard>
             <BentoCard particles>
               <StatTile
+                size="sm"
                 label={t("Live now")}
                 value={counts.live}
                 live={counts.live > 0}
@@ -292,6 +294,7 @@ export function TournamentsListPage(): React.ReactElement {
             </BentoCard>
             <BentoCard>
               <StatTile
+                size="sm"
                 label={t("Open registrations")}
                 value={counts.open}
                 sub={t("accepting teams")}
@@ -299,6 +302,7 @@ export function TournamentsListPage(): React.ReactElement {
             </BentoCard>
             <BentoCard>
               <StatTile
+                size="sm"
                 label={t("Completed")}
                 value={counts.completed}
                 sub={t("finished seasons")}
@@ -306,53 +310,55 @@ export function TournamentsListPage(): React.ReactElement {
             </BentoCard>
           </div>
 
-          {/* Filter row */}
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="relative w-full max-w-xs sm:w-auto sm:flex-1">
-              <Search
-                aria-hidden="true"
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={t("Search tournaments…")}
-                className="h-9 pl-9"
-                aria-label={t("Search tournaments")}
-              />
-            </label>
-            <RangePills
-              label={t("Filter by status")}
-              value={statusFilter}
-              onChange={setStatusFilter}
-              options={STATUS_FILTERS.map((f) => ({
-                value: f.value,
-                label: t(f.label),
-              }))}
-            />
-            <span className="ml-auto font-tabular text-xs text-muted-foreground">
-              {tournaments.length === all.length
-                ? all.length
-                : `${tournaments.length}/${all.length}`}
-            </span>
-          </div>
-
-          {tournaments.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">
-              {t("No tournaments match your filters.")}
-            </p>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {tournaments.map((tn, i) => (
-                <TournamentCard
-                  key={tn.id}
-                  tn={tn}
-                  stats={statsById.get(tn.id)}
-                  delayMs={Math.min(i, 11) * 45}
+          {/* One panel: full-width toolbar + the tournament grid. */}
+          <BentoCard className="flex flex-col" testId="tournaments-panel">
+            <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
+              <label className="relative min-w-[14rem] flex-1">
+                <Search
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
                 />
-              ))}
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={t("Search tournaments…")}
+                  className="h-9 w-full pl-9"
+                  aria-label={t("Search tournaments")}
+                />
+              </label>
+              <RangePills
+                label={t("Filter by status")}
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={STATUS_FILTERS.map((f) => ({
+                  value: f.value,
+                  label: t(f.label),
+                }))}
+              />
+              <span className="shrink-0 font-tabular text-xs text-muted-foreground">
+                {tournaments.length === all.length
+                  ? all.length
+                  : `${tournaments.length}/${all.length}`}
+              </span>
             </div>
-          )}
+
+            {tournaments.length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                {t("No tournaments match your filters.")}
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 p-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                {tournaments.map((tn, i) => (
+                  <TournamentCard
+                    key={tn.id}
+                    tn={tn}
+                    stats={statsById.get(tn.id)}
+                    delayMs={Math.min(i, 11) * 45}
+                  />
+                ))}
+              </div>
+            )}
+          </BentoCard>
         </BentoGrid>
       )}
     </div>
