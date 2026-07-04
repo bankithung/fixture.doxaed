@@ -253,3 +253,41 @@ class SeasonMeetResultView(GenericAPIView):
             status=201,
         )
 
+class ClaimSchoolSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=32)
+
+
+class InstitutionClaimView(GenericAPIView):
+    """`POST /api/institutions/{institution_id}:claim/` — the graduation from
+    account-less registrant to institution OPERATOR (P4). The logged-in,
+    verified claimant proves control with the school's team access code;
+    success mints their Organization(kind=institution) tenant."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, institution_id):
+        from apps.teams.models import Institution
+        from apps.teams.services.claim import claim_school
+
+        inst = Institution.objects.filter(
+            pk=institution_id, deleted_at__isnull=True
+        ).first()
+        if inst is None:
+            raise NotFound("institution_not_found")
+        ser = ClaimSchoolSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            org = claim_school(
+                institution=inst, code=ser.validated_data["code"],
+                user=request.user, request=request,
+            )
+        except DjangoValidationError as e:
+            raise DRFValidationError(
+                {"detail": getattr(e, "message", "claim_failed")}
+            )
+        return Response(
+            {"organization_id": str(org.id), "slug": org.slug,
+             "name": org.name, "kind": org.kind},
+            status=201,
+        )
+

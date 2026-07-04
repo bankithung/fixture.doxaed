@@ -25,6 +25,7 @@ from apps.matches.public_views import (
     PublicTournamentDirectoryView,
     PublicTournamentLeadersView,
 )
+from apps.teams.views_houses import InstitutionClaimView  # noqa: E402
 from apps.badges.views import (
     BadgeCardView,
     PublicBadgeAwardView,
@@ -48,6 +49,12 @@ from apps.teams.views import PublicTeamCalendarView
 api_v1 = [
     path("accounts/", include("apps.accounts.urls")),
     path("orgs/", include("apps.organizations.urls")),
+    # P4: claim-your-school — registrant contact graduates to operator tenant.
+    path(
+        "institutions/<uuid:institution_id>:claim/",
+        InstitutionClaimView.as_view(),
+        name="institution-claim",
+    ),
     # Top-level invitation accept endpoint (AIP-136 colon verb at root).
     path(
         "invitations:accept/",
