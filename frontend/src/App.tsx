@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import {
   BrowserRouter,
   Route,
@@ -13,43 +13,9 @@ import { ThemeProvider } from "@/features/theme/ThemeProvider";
 import { ProtectedRoute } from "@/features/layout/ProtectedRoute";
 import { AppShell } from "@/features/layout/AppShell";
 import { OrgChooserPage } from "@/features/layout/OrgChooserPage";
-import { CreateTournamentPage } from "@/features/tournaments/CreateTournamentPage";
 import { TournamentsListPage } from "@/features/tournaments/TournamentsListPage";
-import { TournamentWorkspace } from "@/features/tournaments/TournamentWorkspace";
-import { OverviewTab } from "@/features/tournaments/tabs/OverviewTab";
-import { FlowLanding } from "@/features/tournaments/FlowLanding";
-import { SportsTab } from "@/features/tournaments/tabs/SportsTab";
-import { InstitutionsTab } from "@/features/tournaments/tabs/InstitutionsTab";
-import { TeamsTab } from "@/features/tournaments/tabs/TeamsTab";
-import { FixturesTab } from "@/features/tournaments/tabs/FixturesTab";
-import { SettingsRoute } from "@/features/tournaments/ops/SettingsRoute";
-import { TournamentMembersPage } from "@/features/tournaments/TournamentMembersPage";
 import { InvitesPage } from "@/features/invitations/InvitesPage";
-import { TournamentAuditPage } from "@/features/tournaments/TournamentAuditPage";
-import { MatchConsolePage } from "@/features/matches/MatchConsolePage";
-import { ControlRoomPage } from "@/features/controlroom/ControlRoomPage";
-import { MatchesBoardPage } from "@/features/tournaments/ops/MatchBoardPage";
-import { OpsStandingsPage } from "@/features/tournaments/ops/OpsStandingsPage";
-import { LeadersPage } from "@/features/tournaments/ops/LeadersPage";
-import { ChangeHistoryPage } from "@/features/tournaments/ops/ChangeHistoryPage";
-import { CrewPage } from "@/features/tournaments/ops/CrewPage";
-import { BracketPage } from "@/features/tournaments/BracketPage";
-import { DryRunPreviewPage } from "@/features/fixtures/DryRunPreviewPage";
-import { PublicSchedulePage } from "@/features/fixtures/PublicSchedulePage";
-import { RegistrationFormPage } from "@/features/registration/RegistrationFormPage";
-import { FormsListPage } from "@/features/forms/FormsListPage";
-import { FormBuilderPage } from "@/features/forms/FormBuilderPage";
-import { ResponsesPage } from "@/features/forms/ResponsesPage";
-import { PublicFormPage } from "@/features/forms/PublicFormPage";
-import { PublicDirectoryPage } from "@/features/forms/PublicDirectoryPage";
-import { LiveViewerPage } from "@/features/live/LiveViewerPage";
 import { PublicLiveRedirect } from "@/features/live/PublicLiveRedirect";
-import { PublicStandingsPage } from "@/features/live/PublicStandingsPage";
-import { PublicBracketPage } from "@/features/live/PublicBracketPage";
-import { PublicTeamPage } from "@/features/live/PublicTeamPage";
-import { ExplorePage } from "@/features/live/ExplorePage";
-import { CertificatePage } from "@/features/live/CertificatePage";
-import { VenueDisplayPage } from "@/features/live/VenueDisplayPage";
 import { OrgDashboardPage } from "@/features/layout/OrgDashboardPage";
 // Auth pages (B1).
 import { LoginPage } from "@/features/auth/LoginPage";
@@ -68,13 +34,7 @@ import { ErrorBoundary } from "@/features/errors/ErrorBoundary";
 import { ComingSoonPage } from "@/features/errors/ComingSoonPage";
 // Orgs (B2/B3).
 import { InviteAcceptPage } from "@/features/orgs/InviteAcceptPage";
-import { MemberDirectoryPage } from "@/features/orgs/MemberDirectoryPage";
-import { OrgSettingsPage } from "@/features/orgs/OrgSettingsPage";
-import { HousePointsPage } from "@/features/orgs/HousePointsPage";
-import { OrgBrandingPage } from "@/features/orgs/OrgBrandingPage";
-import { OrgAuditLogPage } from "@/features/orgs/OrgAuditLogPage";
 // Permissions (B4).
-import { ModuleMatrixPage } from "@/features/permissions/ModuleMatrixPage";
 // Roles (B5).
 import { ScorerLandingPage } from "@/features/roles/ScorerLandingPage";
 import { RefereeLandingPage } from "@/features/roles/RefereeLandingPage";
@@ -83,6 +43,49 @@ import { MyProfilePage } from "@/features/roles/MyProfilePage";
 import { NotificationPrefsPage } from "@/features/roles/NotificationPrefsPage";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
+
+// Route-level code splitting (P6): each surface loads on demand —
+// public viewers on school phones no longer download the ops cockpit.
+const CreateTournamentPage = lazy(() => import("@/features/tournaments/CreateTournamentPage").then((m) => ({ default: m.CreateTournamentPage })));
+const TournamentWorkspace = lazy(() => import("@/features/tournaments/TournamentWorkspace").then((m) => ({ default: m.TournamentWorkspace })));
+const OverviewTab = lazy(() => import("@/features/tournaments/tabs/OverviewTab").then((m) => ({ default: m.OverviewTab })));
+const FlowLanding = lazy(() => import("@/features/tournaments/FlowLanding").then((m) => ({ default: m.FlowLanding })));
+const SportsTab = lazy(() => import("@/features/tournaments/tabs/SportsTab").then((m) => ({ default: m.SportsTab })));
+const InstitutionsTab = lazy(() => import("@/features/tournaments/tabs/InstitutionsTab").then((m) => ({ default: m.InstitutionsTab })));
+const TeamsTab = lazy(() => import("@/features/tournaments/tabs/TeamsTab").then((m) => ({ default: m.TeamsTab })));
+const FixturesTab = lazy(() => import("@/features/tournaments/tabs/FixturesTab").then((m) => ({ default: m.FixturesTab })));
+const SettingsRoute = lazy(() => import("@/features/tournaments/ops/SettingsRoute").then((m) => ({ default: m.SettingsRoute })));
+const TournamentMembersPage = lazy(() => import("@/features/tournaments/TournamentMembersPage").then((m) => ({ default: m.TournamentMembersPage })));
+const TournamentAuditPage = lazy(() => import("@/features/tournaments/TournamentAuditPage").then((m) => ({ default: m.TournamentAuditPage })));
+const MatchConsolePage = lazy(() => import("@/features/matches/MatchConsolePage").then((m) => ({ default: m.MatchConsolePage })));
+const ControlRoomPage = lazy(() => import("@/features/controlroom/ControlRoomPage").then((m) => ({ default: m.ControlRoomPage })));
+const MatchesBoardPage = lazy(() => import("@/features/tournaments/ops/MatchBoardPage").then((m) => ({ default: m.MatchesBoardPage })));
+const OpsStandingsPage = lazy(() => import("@/features/tournaments/ops/OpsStandingsPage").then((m) => ({ default: m.OpsStandingsPage })));
+const LeadersPage = lazy(() => import("@/features/tournaments/ops/LeadersPage").then((m) => ({ default: m.LeadersPage })));
+const ChangeHistoryPage = lazy(() => import("@/features/tournaments/ops/ChangeHistoryPage").then((m) => ({ default: m.ChangeHistoryPage })));
+const CrewPage = lazy(() => import("@/features/tournaments/ops/CrewPage").then((m) => ({ default: m.CrewPage })));
+const BracketPage = lazy(() => import("@/features/tournaments/BracketPage").then((m) => ({ default: m.BracketPage })));
+const DryRunPreviewPage = lazy(() => import("@/features/fixtures/DryRunPreviewPage").then((m) => ({ default: m.DryRunPreviewPage })));
+const PublicSchedulePage = lazy(() => import("@/features/fixtures/PublicSchedulePage").then((m) => ({ default: m.PublicSchedulePage })));
+const RegistrationFormPage = lazy(() => import("@/features/registration/RegistrationFormPage").then((m) => ({ default: m.RegistrationFormPage })));
+const FormsListPage = lazy(() => import("@/features/forms/FormsListPage").then((m) => ({ default: m.FormsListPage })));
+const FormBuilderPage = lazy(() => import("@/features/forms/FormBuilderPage").then((m) => ({ default: m.FormBuilderPage })));
+const ResponsesPage = lazy(() => import("@/features/forms/ResponsesPage").then((m) => ({ default: m.ResponsesPage })));
+const PublicFormPage = lazy(() => import("@/features/forms/PublicFormPage").then((m) => ({ default: m.PublicFormPage })));
+const PublicDirectoryPage = lazy(() => import("@/features/forms/PublicDirectoryPage").then((m) => ({ default: m.PublicDirectoryPage })));
+const LiveViewerPage = lazy(() => import("@/features/live/LiveViewerPage").then((m) => ({ default: m.LiveViewerPage })));
+const PublicStandingsPage = lazy(() => import("@/features/live/PublicStandingsPage").then((m) => ({ default: m.PublicStandingsPage })));
+const PublicBracketPage = lazy(() => import("@/features/live/PublicBracketPage").then((m) => ({ default: m.PublicBracketPage })));
+const PublicTeamPage = lazy(() => import("@/features/live/PublicTeamPage").then((m) => ({ default: m.PublicTeamPage })));
+const ExplorePage = lazy(() => import("@/features/live/ExplorePage").then((m) => ({ default: m.ExplorePage })));
+const CertificatePage = lazy(() => import("@/features/live/CertificatePage").then((m) => ({ default: m.CertificatePage })));
+const VenueDisplayPage = lazy(() => import("@/features/live/VenueDisplayPage").then((m) => ({ default: m.VenueDisplayPage })));
+const MemberDirectoryPage = lazy(() => import("@/features/orgs/MemberDirectoryPage").then((m) => ({ default: m.MemberDirectoryPage })));
+const OrgSettingsPage = lazy(() => import("@/features/orgs/OrgSettingsPage").then((m) => ({ default: m.OrgSettingsPage })));
+const HousePointsPage = lazy(() => import("@/features/orgs/HousePointsPage").then((m) => ({ default: m.HousePointsPage })));
+const OrgBrandingPage = lazy(() => import("@/features/orgs/OrgBrandingPage").then((m) => ({ default: m.OrgBrandingPage })));
+const OrgAuditLogPage = lazy(() => import("@/features/orgs/OrgAuditLogPage").then((m) => ({ default: m.OrgAuditLogPage })));
+const ModuleMatrixPage = lazy(() => import("@/features/permissions/ModuleMatrixPage").then((m) => ({ default: m.ModuleMatrixPage })));
 
 /** Listen for global auth events fired by the query client. */
 function AuthBusBridge(): null {
@@ -126,6 +129,16 @@ export default function App(): React.ReactElement {
           <BrowserRouter>
             <AuthBusBridge />
             <PasswordReauthModal />
+            <Suspense
+              fallback={
+                <div className="grid min-h-[40vh] w-full place-items-center">
+                  <div
+                    aria-label="Loading"
+                    className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary"
+                  />
+                </div>
+              }
+            >
             <Routes>
               {/* Public surfaces. */}
               <Route path="/" element={<LandingPage />} />
@@ -296,6 +309,7 @@ export default function App(): React.ReactElement {
               {/* Friendly catch-all. */}
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
+            </Suspense>
           </BrowserRouter>
         </ErrorBoundary>
       </ToastProvider>
