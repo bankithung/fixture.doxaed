@@ -140,11 +140,13 @@ export function BentoCard({
   className,
   particles = false,
   testId,
+  style,
 }: {
   children: React.ReactNode;
   className?: string;
   particles?: boolean;
   testId?: string;
+  style?: React.CSSProperties;
 }): React.ReactElement {
   const cardRef = useRef<HTMLDivElement>(null);
   const { isMobile } = useBreakpoint();
@@ -229,6 +231,7 @@ export function BentoCard({
       ref={cardRef}
       className={cn("bento-card panel", className)}
       data-testid={testId}
+      style={style}
     >
       {children}
     </div>

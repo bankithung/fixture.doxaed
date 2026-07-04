@@ -1,19 +1,20 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
-import { ChevronRight, Plus, Search, Trophy } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ChevronRight, Plus, Search, Trophy, Users } from "lucide-react";
 import { tournamentsApi, type Tournament } from "@/api/tournaments";
+import { overviewApi, type OverviewProgressRow } from "@/api/overview";
 import { Input } from "@/components/ui/input";
 import { RoleBadge } from "@/components/ui/RoleBadge";
+import { BentoCard, BentoGrid } from "@/features/dashboard/BentoCard";
+import { StatTile } from "@/features/dashboard/StatTile";
+import { RangePills } from "@/features/dashboard/RangePills";
+import { Meter } from "@/features/dashboard/charts";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { useBreakpoint } from "@/lib/useBreakpoint";
 import { RenameTournamentButton } from "./RenameTournamentButton";
 import { canManageTournament } from "./tournamentPermissions";
-
-/** Show the search/filter row only once the list is long enough to need it. */
-const SEARCH_THRESHOLD = 4;
 
 /**
  * Color-coded tournament status (soft tint + accessible text, dark-mode aware).
@@ -75,7 +76,7 @@ function sportLabel(code: string | null): string {
   return code ? code.replace(/_/g, " ") : "";
 }
 
-/** Square monogram tile anchoring each row/card, softly tinted per tournament. */
+/** Square monogram tile anchoring each card, softly tinted per tournament. */
 export function Monogram({ name }: { name: string }): React.ReactElement {
   const initial = name.trim().charAt(0).toUpperCase() || "?";
   return (
@@ -110,21 +111,12 @@ export function StatusPill({ status }: { status: string }): React.ReactElement {
   );
 }
 
-function Sport({ code }: { code: string | null }): React.ReactElement {
-  return code ? (
-    <span className="capitalize text-muted-foreground">{sportLabel(code)}</span>
-  ) : (
-    <span className="text-muted-foreground/40">·</span>
-  );
-}
-
 /** How the user got this tournament: gold Owner chip (created it / owns the
  * workspace) vs the tournament-scoped role(s) they were invited with. */
-function AccessBadge({ tn }: { tn: Tournament }): React.ReactElement {
+function AccessBadge({ tn }: { tn: Tournament }): React.ReactElement | null {
   if (tn.origin === "owner") return <RoleBadge role="owner" />;
   const roles = tn.my_roles ?? [];
-  if (tn.origin !== "invited" || roles.length === 0)
-    return <span className="text-muted-foreground/40">·</span>;
+  if (tn.origin !== "invited" || roles.length === 0) return null;
   return (
     <span className="flex flex-wrap items-center gap-1">
       {roles.map((role) => (
@@ -134,33 +126,110 @@ function AccessBadge({ tn }: { tn: Tournament }): React.ReactElement {
   );
 }
 
+/** The sports a tournament runs, as quiet chips (falls back to the legacy
+ * single sport code). */
+function SportChips({ tn }: { tn: Tournament }): React.ReactElement | null {
+  const names =
+    tn.sports.length > 0
+      ? tn.sports.map((s) => s.name || s.key)
+      : tn.sport_code
+        ? [sportLabel(tn.sport_code)]
+        : [];
+  if (names.length === 0) return null;
+  const shown = names.slice(0, 3);
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-1">
+      {shown.map((name) => (
+        <span
+          key={name}
+          className="rounded bg-secondary px-1.5 py-0.5 text-[11px] font-medium capitalize text-secondary-foreground"
+        >
+          {name}
+        </span>
+      ))}
+      {names.length > shown.length ? (
+        <span className="text-[11px] font-medium text-muted-foreground">
+          +{names.length - shown.length}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+const STATUS_FILTERS = [
+  { value: "all", label: "All" },
+  { value: "live", label: "Live" },
+  { value: "registration_open", label: "Open" },
+  { value: "scheduled", label: "Scheduled" },
+  { value: "draft", label: "Draft" },
+  { value: "completed", label: "Completed" },
+];
+
+/** Live first, then the busiest; ties break on newest. */
+function rank(tn: Tournament, stats?: OverviewProgressRow): number {
+  const live = tn.status.startsWith("live") ? 1 : 0;
+  return live * 1_000_000 + (stats?.total ?? 0);
+}
+
 /**
  * The primary post-login surface: tournaments the user runs OR was invited
- * into (server isolation-scoped), shown as a clean table — click a row to open
- * the tournament workspace. (Member invites live inside each tournament's
- * Members area, not here.)
+ * into (server isolation-scoped), as full-width MagicBento cards carrying
+ * each tournament's volume (teams, played/total meter, live count) from
+ * /api/me/overview/. (Member invites live inside each tournament's Members
+ * area, not here.)
  */
 export function TournamentsListPage(): React.ReactElement {
-  const { up } = useBreakpoint();
-  const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const query = useQuery({
     queryKey: ["tournaments"],
     queryFn: () => tournamentsApi.list(),
   });
+  const overviewQuery = useQuery({
+    queryKey: ["me-overview"],
+    queryFn: overviewApi.get,
+    staleTime: 30_000,
+  });
   const all = useMemo(() => query.data ?? [], [query.data]);
+  const statsById = useMemo(() => {
+    const map = new Map<string, OverviewProgressRow>();
+    for (const row of overviewQuery.data?.progress ?? []) map.set(row.id, row);
+    return map;
+  }, [overviewQuery.data]);
+
+  const counts = useMemo(
+    () => ({
+      total: all.length,
+      live: all.filter((tn) => tn.status.startsWith("live")).length,
+      open: all.filter((tn) => tn.status === "registration_open").length,
+      completed: all.filter((tn) => tn.status === "completed").length,
+    }),
+    [all],
+  );
 
   const q = search.trim().toLowerCase();
-  const tournaments = useMemo(
-    () =>
-      q
-        ? all.filter(
-            (tn) => tn.name.toLowerCase().includes(q) || tn.slug.toLowerCase().includes(q),
-          )
-        : all,
-    [all, q],
-  );
+  const tournaments = useMemo(() => {
+    let r = all;
+    if (statusFilter !== "all") {
+      r = r.filter((tn) =>
+        statusFilter === "live"
+          ? tn.status.startsWith("live")
+          : tn.status === statusFilter,
+      );
+    }
+    if (q) {
+      r = r.filter(
+        (tn) =>
+          tn.name.toLowerCase().includes(q) || tn.slug.toLowerCase().includes(q),
+      );
+    }
+    return [...r].sort((a, b) => {
+      const d = rank(b, statsById.get(b.id)) - rank(a, statsById.get(a.id));
+      if (d !== 0) return d;
+      return b.created_at.localeCompare(a.created_at);
+    });
+  }, [all, statusFilter, q, statsById]);
 
   const startCta = (
     <Link
@@ -173,10 +242,10 @@ export function TournamentsListPage(): React.ReactElement {
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="flex w-full flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">{t("Your tournaments")}</h1>
+          <h1 className="page-title">{t("Your tournaments")}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {t("Tournaments you run or were invited into.")}
           </p>
@@ -199,163 +268,181 @@ export function TournamentsListPage(): React.ReactElement {
           {startCta}
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {all.length > SEARCH_THRESHOLD ? (
-            <div className="flex items-center gap-3">
-              <label className="relative max-w-xs flex-1">
-                <Search
-                  aria-hidden="true"
-                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={t("Search tournaments…")}
-                  className="h-9 pl-9"
-                  aria-label={t("Search tournaments")}
-                />
-              </label>
-              <span className="font-tabular text-xs text-muted-foreground">
-                {tournaments.length === all.length
-                  ? all.length
-                  : `${tournaments.length}/${all.length}`}
-              </span>
-            </div>
-          ) : null}
+        <BentoGrid className="flex flex-col gap-5">
+          {/* Pulse band */}
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <BentoCard>
+              <StatTile
+                label={t("Tournaments")}
+                value={counts.total}
+                sub={
+                  overviewQuery.data
+                    ? `${overviewQuery.data.totals.matches.toLocaleString()} ${t("matches")}`
+                    : undefined
+                }
+              />
+            </BentoCard>
+            <BentoCard particles>
+              <StatTile
+                label={t("Live now")}
+                value={counts.live}
+                live={counts.live > 0}
+                sub={t("tournaments underway")}
+              />
+            </BentoCard>
+            <BentoCard>
+              <StatTile
+                label={t("Open registrations")}
+                value={counts.open}
+                sub={t("accepting teams")}
+              />
+            </BentoCard>
+            <BentoCard>
+              <StatTile
+                label={t("Completed")}
+                value={counts.completed}
+                sub={t("finished seasons")}
+              />
+            </BentoCard>
+          </div>
+
+          {/* Filter row */}
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="relative w-full max-w-xs sm:w-auto sm:flex-1">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t("Search tournaments…")}
+                className="h-9 pl-9"
+                aria-label={t("Search tournaments")}
+              />
+            </label>
+            <RangePills
+              label={t("Filter by status")}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={STATUS_FILTERS.map((f) => ({
+                value: f.value,
+                label: t(f.label),
+              }))}
+            />
+            <span className="ml-auto font-tabular text-xs text-muted-foreground">
+              {tournaments.length === all.length
+                ? all.length
+                : `${tournaments.length}/${all.length}`}
+            </span>
+          </div>
 
           {tournaments.length === 0 ? (
             <p className="rounded-xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">
-              {t("No tournaments match your search.")}
+              {t("No tournaments match your filters.")}
             </p>
-          ) : up("lg") ? (
-            <TournamentTable
-              items={tournaments}
-              onOpen={(id) => navigate(routes.tournamentDetail(id))}
-            />
           ) : (
-            <TournamentCards items={tournaments} />
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {tournaments.map((tn, i) => (
+                <TournamentCard
+                  key={tn.id}
+                  tn={tn}
+                  stats={statsById.get(tn.id)}
+                  delayMs={Math.min(i, 11) * 45}
+                />
+              ))}
+            </div>
           )}
-        </div>
+        </BentoGrid>
       )}
     </div>
   );
 }
 
-function TournamentTable({
-  items,
-  onOpen,
+function TournamentCard({
+  tn,
+  stats,
+  delayMs,
 }: {
-  items: Tournament[];
-  onOpen: (id: string) => void;
+  tn: Tournament;
+  stats?: OverviewProgressRow;
+  delayMs: number;
 }): React.ReactElement {
+  const canManage = canManageTournament(tn.origin, tn.my_roles);
+  const played = stats?.completed ?? 0;
+  const total = stats?.total ?? 0;
   return (
-    // table-fixed + w-full → the table always fits its container (never forces a
-    // horizontal scrollbar); the name/slug truncate and the less-important
-    // columns drop on narrower widths.
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-      <table className="w-full table-fixed text-sm">
-        <thead>
-          <tr className="border-b border-border bg-muted/30 text-left text-[0.6875rem] uppercase tracking-wider text-muted-foreground">
-            <th className="px-4 py-2.5 font-medium">{t("Tournament")}</th>
-            <th className="hidden w-24 px-3 py-2.5 font-medium 2xl:table-cell">{t("Sport")}</th>
-            <th className="w-40 px-3 py-2.5 font-medium">{t("Status")}</th>
-            <th className="w-28 px-3 py-2.5 font-medium">{t("Your role")}</th>
-            <th className="hidden w-28 px-3 py-2.5 font-medium xl:table-cell">{t("Created")}</th>
-            <th className="w-24 px-4 py-2.5">
-              <span className="sr-only">{t("Open")}</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((tn) => (
-            <tr
-              key={tn.id}
-              onClick={() => onOpen(tn.id)}
-              className="group cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-accent/40"
-            >
-              <td className="px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <Monogram name={tn.name} />
-                  <div className="min-w-0">
-                    <Link
-                      to={routes.tournamentDetail(tn.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="block truncate font-medium tracking-tight hover:text-primary focus-visible:text-primary focus-visible:underline focus-visible:outline-none"
-                    >
-                      {tn.name}
-                    </Link>
-                    <div className="truncate font-tabular text-xs text-muted-foreground">
-                      {tn.slug}
-                    </div>
-                  </div>
-                </div>
-              </td>
-              <td className="hidden px-3 py-3 2xl:table-cell">
-                <Sport code={tn.sport_code} />
-              </td>
-              <td className="px-3 py-3">
-                <StatusPill status={tn.status} />
-              </td>
-              <td className="px-3 py-3">
-                <AccessBadge tn={tn} />
-              </td>
-              <td className="hidden whitespace-nowrap px-3 py-3 font-tabular text-muted-foreground xl:table-cell">
-                {formatCreated(tn.created_at)}
-              </td>
-              <td className="px-4 py-3">
-                <div className="flex items-center justify-end gap-1">
-                  {canManageTournament(tn.origin, tn.my_roles) ? (
-                    <RenameTournamentButton
-                      tournamentId={tn.id}
-                      currentName={tn.name}
-                    />
-                  ) : null}
-                  <ChevronRight
-                    aria-hidden="true"
-                    className="h-4 w-4 text-muted-foreground/50 transition-all group-hover:translate-x-0.5 group-hover:text-foreground"
-                  />
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function TournamentCards({ items }: { items: Tournament[] }): React.ReactElement {
-  return (
-    <div className="flex flex-col gap-2">
-      {items.map((tn) => (
-        <div
-          key={tn.id}
-          className="flex items-center gap-1 rounded-xl border border-border bg-card pr-2 shadow-sm transition-colors hover:bg-accent/40"
-        >
+    <BentoCard
+      className="group flex animate-fade-up flex-col"
+      style={{ animationDelay: `${delayMs}ms` }}
+      testId={`tournament-card-${tn.id}`}
+    >
+      <div className="flex items-start gap-3 p-4 pb-3">
+        <Monogram name={tn.name} />
+        <div className="min-w-0 flex-1">
           <Link
             to={routes.tournamentDetail(tn.id)}
-            className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-3.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="block truncate font-medium tracking-tight hover:text-primary focus-visible:text-primary focus-visible:underline focus-visible:outline-none"
           >
-            <Monogram name={tn.name} />
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="truncate font-medium">{tn.name}</span>
-                <StatusPill status={tn.status} />
-                <AccessBadge tn={tn} />
-              </div>
-              <div className="mt-0.5 truncate font-tabular text-xs text-muted-foreground">
-                <span>{tn.slug}</span>
-                {tn.sport_code ? <span className="capitalize"> · {sportLabel(tn.sport_code)}</span> : null}
-                <span> · {formatCreated(tn.created_at)}</span>
-              </div>
-            </div>
+            {tn.name}
           </Link>
-          {canManageTournament(tn.origin, tn.my_roles) ? (
+          <div className="truncate font-tabular text-xs text-muted-foreground">
+            {tn.slug}
+          </div>
+        </div>
+        <StatusPill status={tn.status} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 px-4 pb-3">
+        <SportChips tn={tn} />
+        <AccessBadge tn={tn} />
+      </div>
+
+      {total > 0 ? (
+        <div className="px-4 pb-3">
+          <div className="flex items-baseline justify-between gap-2 text-xs">
+            <span className="text-muted-foreground">
+              {stats && stats.live > 0 ? (
+                <span className="mr-1.5 font-semibold text-primary">
+                  {stats.live} {t("live")}
+                </span>
+              ) : null}
+              {t("Matches played")}
+            </span>
+            <span className="font-tabular font-semibold">
+              {played}/{total}
+            </span>
+          </div>
+          <div className="mt-1.5">
+            <Meter completed={played} total={total} delayMs={delayMs} />
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-auto flex items-center gap-2 border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+        {stats && stats.teams > 0 ? (
+          <span className="flex items-center gap-1">
+            <Users aria-hidden="true" className="h-3.5 w-3.5" />
+            <span className="font-tabular">{stats.teams}</span> {t("teams")}
+          </span>
+        ) : null}
+        <span className="font-tabular">{formatCreated(tn.created_at)}</span>
+        <span className="ml-auto flex items-center gap-1">
+          {canManage ? (
             <RenameTournamentButton tournamentId={tn.id} currentName={tn.name} />
           ) : null}
-          <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground/50" />
-        </div>
-      ))}
-    </div>
+          <Link
+            to={routes.tournamentDetail(tn.id)}
+            aria-label={t("Open")}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ChevronRight
+              aria-hidden="true"
+              className="h-4 w-4 text-muted-foreground/50 transition-all group-hover:translate-x-0.5 group-hover:text-foreground"
+            />
+          </Link>
+        </span>
+      </div>
+    </BentoCard>
   );
 }

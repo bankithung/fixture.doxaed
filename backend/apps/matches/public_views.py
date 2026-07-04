@@ -478,7 +478,9 @@ class MyOverviewView(GenericAPIView):
             ],
             "sports": sports,
             "matches_per_day": matches_per_day,
-            "progress": progress[:12],
+            # Uncapped: the tournaments page decorates EVERY card from this
+            # (the dashboard rail slices its own top 6 client-side).
+            "progress": progress,
             "recent_results": recent_results,
         })
 
