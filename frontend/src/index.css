@@ -5,8 +5,9 @@
 @layer base {
   :root {
     /* Surfaces — offwhite page, white cards float above (W2-E: light mode
-       was "all white" with zero background/card contrast) */
-    --background: 210 25% 97.5%;
+       was "all white" with zero background/card contrast; owner 2026-07-04:
+       deepened 97.5% -> 94.5% so panels read clearly against the page). */
+    --background: 210 25% 94.5%;
     --foreground: 222 47% 11%;
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;

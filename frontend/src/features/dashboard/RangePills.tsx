@@ -88,7 +88,7 @@ export function RangePills({
       ref={rootRef}
       role="group"
       aria-label={label}
-      className="flex items-center gap-0.5 rounded-full bg-secondary p-0.5"
+      className="flex items-center gap-0.5 rounded-lg bg-secondary p-0.5"
     >
       {options.map((opt) => {
         const selected = opt.value === value;
@@ -100,7 +100,7 @@ export function RangePills({
             aria-pressed={selected}
             onClick={() => onChange(opt.value)}
             className={cn(
-              "relative h-6 overflow-hidden rounded-full px-2.5 text-[11px] font-medium transition-colors",
+              "relative h-8 overflow-hidden rounded-md px-3 text-xs font-medium transition-colors",
               selected
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground",

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -36,7 +37,12 @@ export function Dialog({
   }, [open, onOpenChange]);
 
   if (!open) return null;
-  return (
+  // Portaled to <body>: `fixed` positions against the viewport only while no
+  // ancestor has a transform/filter. Rendered inline, a dialog opened from a
+  // card that animates (e.g. the bento hover lift) gets trapped + clipped
+  // inside that card. React portals keep synthetic-event bubbling, so
+  // triggers that stopPropagation still contain clicks.
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -61,7 +67,8 @@ export function Dialog({
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

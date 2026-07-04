@@ -313,7 +313,7 @@ export function TournamentsListPage(): React.ReactElement {
           {/* One panel: full-width toolbar + the tournament grid. */}
           <BentoCard className="flex flex-col" testId="tournaments-panel">
             <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
-              <label className="relative min-w-[14rem] flex-1">
+              <label className="relative w-full sm:w-64">
                 <Search
                   aria-hidden="true"
                   className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
@@ -335,7 +335,7 @@ export function TournamentsListPage(): React.ReactElement {
                   label: t(f.label),
                 }))}
               />
-              <span className="shrink-0 font-tabular text-xs text-muted-foreground">
+              <span className="ml-auto shrink-0 font-tabular text-xs text-muted-foreground">
                 {tournaments.length === all.length
                   ? all.length
                   : `${tournaments.length}/${all.length}`}
