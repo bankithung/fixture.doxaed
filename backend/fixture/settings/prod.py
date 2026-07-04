@@ -78,14 +78,40 @@ EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
 
+# --- Error monitoring (H7) --------------------------------------------------
+# Unhandled 500s and ERROR-level logs email the operators (real SMTP is
+# configured in prod). Rate concerns are handled by Django's built-in
+# duplicate suppression being absent — keep an eye on volume; a Sentry DSN
+# can replace this handler later without touching call sites.
+ADMINS = [("Fixture Ops", env("OPS_ALERT_EMAIL", default="graceschooledu@gmail.com"))]
+SERVER_EMAIL = env("SERVER_EMAIL", default="alerts@fixture.doxaed.com")
+
 # --- Logging --------------------------------------------------------------
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
+        "mail_admins": {
+            "class": "django.utils.log.AdminEmailHandler",
+            "level": "ERROR",
+            # Tracebacks by email only — never leak request bodies to logs.
+            "include_html": False,
+        },
+    },
     "root": {"handlers": ["console"], "level": "INFO"},
     "loggers": {
-        "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "django": {
+            "handlers": ["console", "mail_admins"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        # Application errors (services log via module loggers).
+        "apps": {
+            "handlers": ["console", "mail_admins"],
+            "level": "INFO",
+            "propagate": False,
+        },
     },
 }
 

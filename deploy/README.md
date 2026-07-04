@@ -144,3 +144,32 @@ tar -xzf /home/ubuntu/backups/fixture/media_<stamp>.tar.gz -C /home/ubuntu/Fixtu
 sudo systemctl start fixture
 curl -sk https://127.0.0.1/api/accounts/me/ -H "Host: fixture.doxaed.com"   # 403/401 JSON = app is up
 ```
+
+## Disaster recovery (H7, verified 2026-07-04)
+
+The safety-net chain, each link VERIFIED on 2026-07-04:
+
+1. **Nightly local backup** — `fixture-backup.timer` (21:00 UTC) runs
+   `deploy/backup.sh`: `pg_dump -Fc` (integrity-checked with
+   `pg_restore --list`) + media tarball, 14-day rotation in
+   `/home/ubuntu/backups/fixture/`.
+2. **Offsite copy** — `backup.sh` then calls
+   `/home/ubuntu/backups/offsite-sync.sh` (source: `deploy/offsite-sync.sh`):
+   both artifacts gpg-encrypted (AES256, passphrase in
+   `~/backups/.offsite-passphrase` and `deploy/CREDENTIALS-PROD.md` — keep a
+   copy OFF this box) and pushed as `backup-*` release assets to the private
+   GitHub repo. Offsite rotation keeps the newest 14 and only ever deletes
+   `backup-*` tags.
+3. **Restore drill** — `sudo -u postgres BACKUP_DIR=/home/ubuntu/backups/fixture deploy/restore-drill.sh`
+   restores the newest dump into a scratch DB, asserts row counts
+   (users/tournaments/teams/matches/audit), and drops it. Run it after any
+   backup-related change and at least monthly. A backup that has never been
+   restored is a hope, not a backup.
+4. **Error monitoring** — prod `LOGGING` mails unhandled 500s / ERROR logs to
+   `OPS_ALERT_EMAIL` (default graceschooledu@gmail.com) via the configured
+   SMTP (deliverability verified 2026-07-04).
+
+**Full restore (disaster):** provision box → clone repo → restore venv/env →
+download newest `backup-*` release assets → `gpg -d` both →
+`pg_restore -d fixturedb` as `fixture_owner` → untar media into
+`backend/media/` → deploy per this README.
