@@ -484,7 +484,9 @@ export function LiveViewerPage(): React.ReactElement {
       : null,
     onTick,
   );
-  connectedRef.current = connected;
+  useEffect(() => {
+    connectedRef.current = connected;
+  }, [connected]);
 
   useEffect(() => {
     if (!snap) return;
@@ -615,7 +617,7 @@ export function LiveViewerPage(): React.ReactElement {
 
   const sportKey = match.sport_meta?.key ?? (match.sport || "football");
   const family = match.sport_meta?.family ?? "timed";
-  const LineupView = resolveLineupView(sportKey, family);
+  const lineupModule = resolveLineupView(sportKey, family);
   const homeSide = sideView(match.home_team, match.lineups?.home);
   const awaySide = sideView(match.away_team, match.lineups?.away);
   const hasSheets =
@@ -722,7 +724,7 @@ export function LiveViewerPage(): React.ReactElement {
     ),
     lineups: hasSheets ? (
       <section className="rounded-xl border border-border bg-card shadow-sm">
-        <LineupView home={homeSide} away={awaySide} />
+        <lineupModule.Lineups home={homeSide} away={awaySide} />
       </section>
     ) : (
       <EmptyCard>{t("Team sheets are not yet announced.")}</EmptyCard>

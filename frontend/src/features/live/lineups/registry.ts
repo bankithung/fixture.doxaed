@@ -5,22 +5,29 @@ import { SepakLineups } from "./SepakLineups";
 import { TTLineups } from "./TTLineups";
 import type { LineupViewProps } from "./types";
 
-/** View-only mirror of the console registry
- * (features/matches/console/registry.ts): a sport-keyed module always beats
- * the family fallback; anything else gets the flat list. */
-const BY_SPORT: Record<string, ComponentType<LineupViewProps>> = {
-  football: FootballLineups,
-  sepak_takraw: SepakLineups,
-  table_tennis: TTLineups,
+/** A pluggable, view-only per-sport lineup surface for the public hub.
+ * Mirrors the console registry (features/matches/console/registry.ts):
+ * a sport-keyed module always beats the family fallback; anything else
+ * gets the flat list. */
+export interface LineupViewModule {
+  Lineups: ComponentType<LineupViewProps>;
+}
+
+const BY_SPORT: Record<string, LineupViewModule> = {
+  football: { Lineups: FootballLineups },
+  sepak_takraw: { Lineups: SepakLineups },
+  table_tennis: { Lineups: TTLineups },
 };
 
-const BY_FAMILY: Record<string, ComponentType<LineupViewProps>> = {
-  timed: FootballLineups,
+const BY_FAMILY: Record<string, LineupViewModule> = {
+  timed: { Lineups: FootballLineups },
 };
+
+const FALLBACK: LineupViewModule = { Lineups: FlatLineups };
 
 export function resolveLineupView(
   sportKey: string,
   family: string,
-): ComponentType<LineupViewProps> {
-  return BY_SPORT[sportKey] ?? BY_FAMILY[family] ?? FlatLineups;
+): LineupViewModule {
+  return BY_SPORT[sportKey] ?? BY_FAMILY[family] ?? FALLBACK;
 }
