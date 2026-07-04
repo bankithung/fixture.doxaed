@@ -138,13 +138,27 @@ def school_history(name: str) -> list[dict]:
     )
     wanted = _norm_name(name)
     out = []
+    # S5 spine first: institutions linked to a canonical SchoolProfile with
+    # this name (survives renames + merges); the normalized-name scan stays
+    # as the fallback for unlinked rows.
+    from apps.teams.models import SchoolProfile
+
+    profile_ids = list(
+        SchoolProfile.objects.filter(
+            normalized_name=wanted, merged_into__isnull=True
+        ).values_list("id", flat=True)
+    )
     insts = (
         Institution.objects.filter(deleted_at__isnull=True)
         .select_related("tournament")
         .order_by("-created_at")
     )
     for inst in insts:
-        if _norm_name(inst.name) != wanted:
+        via_profile = (
+            inst.school_profile_id is not None
+            and inst.school_profile_id in profile_ids
+        )
+        if not via_profile and _norm_name(inst.name) != wanted:
             continue
         t = inst.tournament
         if t.deleted_at is not None or t.status not in public:
