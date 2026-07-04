@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Download, Minus, Plus, Printer, Radio, Undo2, X } from "lucide-react";
+import { ArrowLeft, Download, Printer, Radio, Undo2 } from "lucide-react";
 import { routes } from "@/lib/routes";
 import { liveApi, type LiveTeam, type MiniPlayer } from "@/api/live";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,8 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { ApiError } from "@/types/api";
 import { LineupPanel } from "./LineupPanel";
+import { resolveConsole } from "./console/registry";
+import { statusMeta } from "./console/shared";
 
 const STATE_ACTIONS: Record<string, { label: string; to: string }[]> = {
   scheduled: [{ label: "Start match", to: "live" }],
@@ -76,19 +78,6 @@ const TONE_CLS: Record<string, string> = {
   danger:
     "bg-destructive text-destructive-foreground hover:bg-destructive/90",
 };
-
-// Status -> badge presentation (tokens only).
-function statusMeta(s: string): { label: string; badge: string; dot: string; live: boolean } {
-  const live = s === "live" || s === "half_time";
-  const map: Record<string, { label: string; badge: string; dot: string }> = {
-    scheduled: { label: "Scheduled", badge: "bg-secondary text-secondary-foreground", dot: "bg-primary" },
-    live: { label: "Live", badge: "bg-primary/15 text-primary", dot: "bg-primary" },
-    half_time: { label: "Half time", badge: "bg-primary/15 text-primary", dot: "bg-primary" },
-    completed: { label: "Completed", badge: "bg-accent text-accent-foreground", dot: "bg-muted-foreground" },
-  };
-  const m = map[s] ?? { label: s.replace(/_/g, " "), badge: "bg-muted text-muted-foreground", dot: "bg-muted-foreground/40" };
-  return { ...m, live };
-}
 
 /** Known server rejection codes -> scorer-readable messages. Every mutation
  * surfaces its failure — a tap must never silently do nothing. */
@@ -158,7 +147,6 @@ function fmtClock(totalSeconds: number): string {
 }
 
 type Side = "home" | "away";
-type SetRow = [string, string];
 /** The frozen wire payload of one tap. Built (minute included) and given its
  * event_id at TAP time, so a retry or offline replay re-sends the SAME id
  * and the server dedupes instead of double-counting (H2, invariant 3). */
@@ -171,48 +159,6 @@ type RecordEventPayload = {
   minute?: number;
   event_id: string;
 };
-type SetScoring = {
-  best_of?: number;
-  points?: number;
-  win_by?: number;
-  cap?: number | null;
-  deciding?: Record<string, unknown> | null;
-} | null;
-
-/** Sets won per side from the entered rows (client display only — the server
- * revalidates on completion). Mirrors the backend's lenient live counter: a
- * set counts only once it is legally WON (target reached with the margin, or
- * the cap hit); the running set counts for nobody, so 4-1 mid-set reads
- * "Sets 0-0", not 1-0. Without known rules any decided pair counts. */
-function setsWon(rows: SetRow[], scoring: SetScoring): [number, number] {
-  const needMinusOne = Math.floor((scoring?.best_of ?? 3) / 2);
-  let h = 0;
-  let a = 0;
-  for (const [hs, as] of rows) {
-    if (hs === "" || as === "") continue;
-    const hn = Number(hs);
-    const an = Number(as);
-    if (!Number.isFinite(hn) || !Number.isFinite(an) || hn === an) continue;
-    const deciding = h === a && h === needMinusOne;
-    const d = (deciding ? scoring?.deciding : null) as {
-      points?: number;
-      win_by?: number;
-      cap?: number | null;
-    } | null;
-    const target = d?.points ?? scoring?.points ?? 0;
-    const winBy = d?.win_by ?? scoring?.win_by ?? 2;
-    const cap = d?.cap ?? scoring?.cap ?? null;
-    const hi = Math.max(hn, an);
-    const lo = Math.min(hn, an);
-    const won =
-      target <= 0 ||
-      (hi >= target && (hi - lo >= winBy || (cap != null && hi >= cap)));
-    if (!won) continue;
-    if (hn > an) h += 1;
-    else a += 1;
-  }
-  return [h, a];
-}
 
 export function MatchConsolePage(): React.ReactElement {
   const { id = "", matchId = "" } = useParams();
@@ -235,15 +181,6 @@ export function MatchConsolePage(): React.ReactElement {
   const [confirmTo, setConfirmTo] = useState<string | null>(null);
   const [shootoutOpen, setShootoutOpen] = useState(false);
   const [pens, setPens] = useState<{ home: string; away: string }>({ home: "", away: "" });
-  const [setRows, setSetRows] = useState<SetRow[]>([["", ""]]);
-  const [confirmSets, setConfirmSets] = useState(false);
-  // Tap scoring: how many points one +/- tap moves (owner 2026-07-03), and
-  // the debounce plumbing that auto-saves the running points while live.
-  const [step, setStep] = useState(1);
-  const [stepText, setStepText] = useState("1");
-  const seeded = useRef(false);
-  const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingRows = useRef<SetRow[] | null>(null);
 
   const startedAt = query.data?.match.started_at;
   const isLiveNow = query.data?.match.status === "live";
@@ -333,108 +270,11 @@ export function MatchConsolePage(): React.ReactElement {
     },
     onError,
   });
-  // Seed the set editor from the server ONCE per mount so a live match
-  // reopened mid-game shows its current points; afterwards local taps are
-  // the source of truth (the 5 s poll must not clobber typing).
-  const serverSetScores = query.data?.match.set_scores;
-  useEffect(() => {
-    if (seeded.current || !query.data) return;
-    seeded.current = true;
-    if (serverSetScores && serverSetScores.length > 0) {
-      setSetRows(
-        serverSetScores.map(([h, a]) => [String(h), String(a)] as SetRow),
-      );
-    }
-  }, [query.data, serverSetScores]);
-  useEffect(
-    () => () => {
-      if (pushTimer.current) clearTimeout(pushTimer.current);
-    },
-    [],
-  );
-
-  // Live tap scoring: the running points save themselves (no Save button).
-  // The steppers hold the truth locally, so a push lost to a dead connection
-  // is never lost data: syncFailed flips on and the retry loop below re-sends
-  // the LATEST rows until the network returns.
-  const [syncFailed, setSyncFailed] = useState(false);
-  const progress = useMutation({
-    mutationFn: (p: { rows: SetRow[]; event_id: string }) =>
-      liveApi.recordSetProgress(matchId, {
-        set_scores: p.rows.map(([h, a]) => [Number(h || 0), Number(a || 0)]),
-        event_id: p.event_id,
-      }),
-    onSuccess: () => {
-      setSyncFailed(false);
-      refresh();
-    },
-    onError: (e, vars) => {
-      if (isNetworkError(e)) {
-        pendingRows.current = vars.rows;
-        setSyncFailed(true);
-        return;
-      }
-      setSyncFailed(false);
-      onError(e);
-    },
-  });
-  const progressMutate = progress.mutate;
-  useEffect(() => {
-    if (!syncFailed) return;
-    const id = window.setInterval(() => {
-      if (pendingRows.current) {
-        progressMutate({ rows: pendingRows.current, event_id: newEventId() });
-      }
-    }, 4000);
-    return () => window.clearInterval(id);
-  }, [syncFailed, progressMutate]);
   // Replay any taps parked by a previous (offline) session.
   const queued = useOfflineQueue();
   useEffect(() => {
     initOfflineQueue();
   }, []);
-
-  const submitSets = useMutation({
-    mutationFn: (v: { event_id: string }) =>
-      liveApi.recordSetScores(matchId, {
-        set_scores: setRows
-          .filter(([h, a]) => h !== "" && a !== "")
-          .map(([h, a]) => [Number(h), Number(a)]),
-        event_id: v.event_id,
-      }),
-    onSuccess: () => {
-      setConfirmSets(false);
-      toast.push({ kind: "success", title: t("Result recorded.") });
-      refresh();
-    },
-    onError: (e) => {
-      setConfirmSets(false);
-      onError(e);
-    },
-  });
-
-  // H3: audited manager correction of a COMPLETED set result. The bracket
-  // re-fills from the corrected winner server-side.
-  const [amendOpen, setAmendOpen] = useState(false);
-  const [amendRows, setAmendRows] = useState<SetRow[]>([["", ""]]);
-  const [amendReason, setAmendReason] = useState("");
-  const amend = useMutation({
-    mutationFn: (v: { event_id: string }) =>
-      liveApi.amendSetResult(matchId, {
-        set_scores: amendRows
-          .filter(([h, a]) => h !== "" && a !== "")
-          .map(([h, a]) => [Number(h), Number(a)]),
-        reason: amendReason.trim(),
-        event_id: v.event_id,
-      }),
-    onSuccess: () => {
-      setAmendOpen(false);
-      setAmendReason("");
-      toast.push({ kind: "success", title: t("Result amended.") });
-      refresh();
-    },
-    onError,
-  });
 
   if (query.isLoading) {
     return (
@@ -459,11 +299,18 @@ export function MatchConsolePage(): React.ReactElement {
 
   const { match, events } = query.data;
   const live = match.status === "live" || match.status === "half_time";
-  const setBased = match.scoring?.type === "sets";
+  // Sport-module resolution: the server's sport_meta names the console
+  // family; legacy snapshots without it infer set sports from the scoring
+  // shape. A null module = the chassis's own football (timed) surface.
+  const family =
+    match.sport_meta?.family ??
+    (match.scoring?.type === "sets" ? "target" : "timed");
+  const module = resolveConsole(match.sport ?? "", family);
+  const timed = family === "timed";
   // Half time is a football notion; a set sport pauses between sets on its
   // own, so its live console offers Complete only.
   const actions = (STATE_ACTIONS[match.status] ?? []).filter(
-    (a) => !(setBased && a.to === "half_time"),
+    (a) => !(family === "target" && a.to === "half_time"),
   );
   const sm = statusMeta(match.status);
   const homeName = match.home_team?.name ?? t("TBD");
@@ -471,45 +318,6 @@ export function MatchConsolePage(): React.ReactElement {
   const lastEvent = events[0];
   const canUndo = live && !!lastEvent;
   const isFinal = match.status === "completed" || match.status === "walkover";
-  const [homeSets, awaySets] = setsWon(setRows, match.scoring ?? null);
-  const completeSets = setRows.filter(([h, a]) => h !== "" && a !== "");
-  // The set in play = the last editor row; its points are the BIG score for
-  // set sports while the match runs (taps show up instantly, owner 2026-07-03).
-  const currentSetRow = setRows[setRows.length - 1] ?? ["", ""];
-  const currentSetPoints: [number, number] = [
-    Number(currentSetRow[0] || 0),
-    Number(currentSetRow[1] || 0),
-  ];
-  const finishedSetChips = setRows
-    .slice(0, -1)
-    .filter(([h, a]) => h !== "" && a !== "");
-
-  // Tap scoring: every edit while LIVE auto-saves (debounced) — no Save
-  // button. When the match has not started, edits stay local until the
-  // result is recorded, exactly as before.
-  const schedulePush = (rows: SetRow[]) => {
-    if (!setBased || match.status !== "live") return;
-    pendingRows.current = rows;
-    if (pushTimer.current) clearTimeout(pushTimer.current);
-    pushTimer.current = setTimeout(() => {
-      pushTimer.current = null;
-      if (pendingRows.current) {
-        // One debounced push = one logical write = one event_id.
-        progress.mutate({ rows: pendingRows.current, event_id: newEventId() });
-      }
-    }, 500);
-  };
-  const setSide = (i: number, sideIdx: 0 | 1, value: string) => {
-    const next = setRows.map((r, j) =>
-      j === i ? ((sideIdx === 0 ? [value, r[1]] : [r[0], value]) as SetRow) : r,
-    );
-    setSetRows(next);
-    schedulePush(next);
-  };
-  const bump = (i: number, sideIdx: 0 | 1, delta: number) => {
-    const cur = Number(setRows[i]?.[sideIdx] || 0);
-    setSide(i, sideIdx, String(Math.max(0, cur + delta)));
-  };
 
   // Build player options for the custom <Select> (jersey prefix preserved).
   const playerOptions = (players: MiniPlayer[]) =>
@@ -527,6 +335,25 @@ export function MatchConsolePage(): React.ReactElement {
     }
     tr.mutate(to);
   };
+
+  // The state-transition buttons render inside whichever scoreboard owns the
+  // surface: the chassis's football card below, or the sport module's card.
+  const actionButtons =
+    actions.length > 0 ? (
+      <div className="flex flex-wrap justify-center gap-2">
+        {actions.map((a) => (
+          <Button
+            key={a.to}
+            variant={a.to === "live" || a.to === "completed" ? "default" : "outline"}
+            size="sm"
+            disabled={tr.isPending}
+            onClick={() => fireTransition(a.to)}
+          >
+            {t(a.label)}
+          </Button>
+        ))}
+      </div>
+    ) : null;
 
   return (
     <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
@@ -628,138 +455,83 @@ export function MatchConsolePage(): React.ReactElement {
         </p>
       </div>
 
-      {/* Scoreboard */}
-      <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm print:hidden">
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-primary/10 blur-3xl"
+      {/* Scoreboard: a registered sport module owns the whole scoring
+          surface (scoreboard + score entry); otherwise the chassis renders
+          its own football surface. */}
+      {module ? (
+        <module.Console
+          matchId={matchId}
+          match={match}
+          homeName={homeName}
+          awayName={awayName}
+          live={live}
+          isFinal={isFinal}
+          refresh={refresh}
+          onError={onError}
+          actions={actionButtons}
         />
-        <div className="relative flex flex-col items-center gap-4 px-6 py-8">
+      ) : (
+        <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm print:hidden">
           <span
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
-              sm.badge,
-            )}
-          >
-            {sm.live ? (
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-              </span>
-            ) : (
-              <span className={cn("h-1.5 w-1.5 rounded-full", sm.dot)} />
-            )}
-            {t(sm.label)}
-            {/* Football periods and the running minute mean nothing to a set
-                sport; its pill relies on the Set N line under the score. */}
-            {!setBased && match.current_period ? (
-              <span className="text-muted-foreground">
-                · {t(match.current_period.replace(/_/g, " "))}
-              </span>
-            ) : null}
-            {!setBased && isLiveNow && autoMinute != null ? (
-              <span className="font-tabular text-muted-foreground">{autoMinute}'</span>
-            ) : null}
-          </span>
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-primary/10 blur-3xl"
+          />
+          <div className="relative flex flex-col items-center gap-4 px-6 py-8">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                sm.badge,
+              )}
+            >
+              {sm.live ? (
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                </span>
+              ) : (
+                <span className={cn("h-1.5 w-1.5 rounded-full", sm.dot)} />
+              )}
+              {t(sm.label)}
+              {match.current_period ? (
+                <span className="text-muted-foreground">
+                  · {t(match.current_period.replace(/_/g, " "))}
+                </span>
+              ) : null}
+              {isLiveNow && autoMinute != null ? (
+                <span className="font-tabular text-muted-foreground">{autoMinute}'</span>
+              ) : null}
+            </span>
 
-          <div className="grid w-full max-w-xl grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
-            <div className="min-w-0 text-right">
-              <div className="truncate text-sm font-medium sm:text-base">{homeName}</div>
-              <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
-                {t("Home")}
-              </div>
-            </div>
-            {setBased && !isFinal ? (
-              // Set sport in play: the BIG number is the CURRENT SET's points,
-              // straight from the editor rows so a tap shows up instantly.
-              <div className="text-center">
-                <div
-                  data-testid="set-scoreboard"
-                  className="font-tabular text-4xl font-semibold tabular-nums sm:text-6xl"
-                >
-                  {currentSetPoints[0]}
-                  <span className="px-2 text-muted-foreground">-</span>
-                  {currentSetPoints[1]}
+            <div className="grid w-full max-w-xl grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
+              <div className="min-w-0 text-right">
+                <div className="truncate text-sm font-medium sm:text-base">{homeName}</div>
+                <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
+                  {t("Home")}
                 </div>
-                <p className="mt-1 font-tabular text-sm text-muted-foreground">
-                  {t("Set")} {setRows.length} · {t("Sets")} {homeSets}-{awaySets}
-                </p>
               </div>
-            ) : (
               <div className="font-tabular text-4xl font-semibold tabular-nums sm:text-6xl">
                 {match.home_score ?? 0}
                 <span className="px-2 text-muted-foreground">-</span>
                 {match.away_score ?? 0}
               </div>
-            )}
-            <div className="min-w-0 text-left">
-              <div className="truncate text-sm font-medium sm:text-base">{awayName}</div>
-              <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
-                {t("Away")}
+              <div className="min-w-0 text-left">
+                <div className="truncate text-sm font-medium sm:text-base">{awayName}</div>
+                <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
+                  {t("Away")}
+                </div>
               </div>
             </div>
+
+            {match.home_pens != null && match.away_pens != null ? (
+              <p className="font-tabular text-xs text-muted-foreground">
+                {t("Pens")} {match.home_pens}-{match.away_pens}
+              </p>
+            ) : null}
+
+            {actionButtons}
           </div>
-
-          {setBased ? (
-            (() => {
-              // In play: finished sets from the local editor (instant); once
-              // final, the server's recorded sets.
-              const chips = isFinal ? (match.set_scores ?? []) : finishedSetChips;
-              return chips.length > 0 ? (
-                <div className="flex flex-wrap justify-center gap-1.5">
-                  {chips.map((s, i) => (
-                    <span
-                      key={i}
-                      className="rounded-md bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground"
-                    >
-                      {s[0]}-{s[1]}
-                    </span>
-                  ))}
-                </div>
-              ) : null;
-            })()
-          ) : null}
-
-          {match.home_pens != null && match.away_pens != null ? (
-            <p className="font-tabular text-xs text-muted-foreground">
-              {t("Pens")} {match.home_pens}-{match.away_pens}
-            </p>
-          ) : null}
-
-          {actions.length > 0 ? (
-            <div className="flex flex-wrap justify-center gap-2">
-              {actions.map((a) => (
-                <Button
-                  key={a.to}
-                  variant={a.to === "live" || a.to === "completed" ? "default" : "outline"}
-                  size="sm"
-                  disabled={tr.isPending}
-                  onClick={() => fireTransition(a.to)}
-                >
-                  {t(a.label)}
-                </Button>
-              ))}
-            </div>
-          ) : null}
-          {isFinal && setBased ? (
-            <Button
-              variant="outline"
-              size="sm"
-              data-testid="amend-result"
-              onClick={() => {
-                setAmendRows(
-                  (match.set_scores ?? []).map(
-                    (sc) => [String(sc[0]), String(sc[1])] as SetRow,
-                  ),
-                );
-                setAmendOpen(true);
-              }}
-            >
-              {t("Amend result")}
-            </Button>
-          ) : null}
         </div>
-      </div>
+      )}
 
       {/* Pre-kickoff team sheets (lineups freeze at kickoff). */}
       {match.status === "scheduled" ? (
@@ -770,183 +542,6 @@ export function MatchConsolePage(): React.ReactElement {
         />
       ) : null}
 
-      {/* Set-sport result entry — the server rejects goal events for set
-          sports, so the console never offers them (P7b). */}
-      {setBased && (live || match.status === "scheduled") ? (
-        <div className="rounded-xl border border-border bg-card shadow-sm">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-2">
-            <div className="flex items-center gap-2">
-              <Radio aria-hidden="true" className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">{t("Set scores")}</h2>
-            </div>
-            <span className="font-tabular text-xs text-muted-foreground">
-              {t("Sets")} {homeSets}-{awaySets}
-              {match.scoring?.best_of ? ` · ${t("best of")} ${match.scoring.best_of}` : ""}
-            </span>
-            {/* Points per tap: what one +/- press adds (any number works). */}
-            <div
-              role="group"
-              aria-label={t("Points per tap")}
-              className="ml-auto flex items-center gap-1"
-            >
-              <span className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
-                {t("Per tap")}
-              </span>
-              {[1, 2, 3, 5].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  aria-pressed={step === n}
-                  data-testid={`tap-step-${n}`}
-                  onClick={() => {
-                    setStep(n);
-                    setStepText(String(n));
-                  }}
-                  className={cn(
-                    "inline-flex h-7 min-w-8 items-center justify-center rounded-md border px-1.5 font-tabular text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    step === n
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
-                  )}
-                >
-                  +{n}
-                </button>
-              ))}
-              <Input
-                inputMode="numeric"
-                aria-label={t("Custom points per tap")}
-                value={stepText}
-                onChange={(e) => {
-                  setStepText(e.target.value);
-                  const n = Math.floor(Number(e.target.value));
-                  if (Number.isFinite(n) && n >= 1) setStep(n);
-                }}
-                className="h-7 w-12 px-1 text-center font-tabular text-xs"
-              />
-            </div>
-          </div>
-          <div className="flex flex-col gap-3 p-4">
-            {/* Desktop column headers; mobile shows the name inside each
-                stepper instead (the sides stack there). */}
-            <div className="hidden grid-cols-[2.25rem_1fr_1fr_2rem] items-center gap-2 text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground sm:grid">
-              <span />
-              <span className="truncate text-center">{homeName}</span>
-              <span className="truncate text-center">{awayName}</span>
-              <span />
-            </div>
-            {setRows.map((row, i) => (
-              <div
-                key={i}
-                className="grid grid-cols-[2.25rem_minmax(0,1fr)_2rem] items-center gap-x-2 gap-y-1.5 sm:grid-cols-[2.25rem_1fr_1fr_2rem]"
-              >
-                <span className="text-xs font-medium text-muted-foreground">
-                  {t("Set")} {i + 1}
-                </span>
-                {([0, 1] as const).map((sideIdx) => {
-                  const teamLabel = sideIdx === 0 ? homeName : awayName;
-                  const sideKey = sideIdx === 0 ? "home" : "away";
-                  return (
-                    <div
-                      key={sideIdx}
-                      className={cn(
-                        "flex min-w-0 items-center gap-1",
-                        sideIdx === 1 &&
-                          "col-start-2 row-start-2 sm:col-auto sm:row-auto",
-                      )}
-                    >
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        aria-label={`${t("Set")} ${i + 1} ${teamLabel} ${t("minus")} ${step}`}
-                        data-testid={`set-${i}-${sideKey}-minus`}
-                        className="h-11 w-10 shrink-0 p-0"
-                        onClick={() => bump(i, sideIdx, -step)}
-                      >
-                        <Minus aria-hidden="true" className="h-4 w-4" />
-                      </Button>
-                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <span className="truncate text-center text-[0.6875rem] text-muted-foreground sm:hidden">
-                          {teamLabel}
-                        </span>
-                        <Input
-                          inputMode="numeric"
-                          aria-label={`${t("Set")} ${i + 1} ${teamLabel}`}
-                          value={row[sideIdx]}
-                          onChange={(e) => setSide(i, sideIdx, e.target.value)}
-                          className="h-11 w-full text-center font-tabular text-lg font-semibold"
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        aria-label={`${t("Set")} ${i + 1} ${teamLabel} ${t("plus")} ${step}`}
-                        data-testid={`set-${i}-${sideKey}-plus`}
-                        className="h-11 w-14 shrink-0 p-0"
-                        onClick={() => bump(i, sideIdx, step)}
-                      >
-                        <Plus aria-hidden="true" className="h-5 w-5" />
-                      </Button>
-                    </div>
-                  );
-                })}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  aria-label={`${t("Remove set")} ${i + 1}`}
-                  disabled={setRows.length === 1}
-                  className="col-start-3 row-start-1 h-8 w-8 p-0 sm:col-auto sm:row-auto"
-                  onClick={() => {
-                    const next = setRows.filter((_, j) => j !== i);
-                    setSetRows(next);
-                    schedulePush(next);
-                  }}
-                >
-                  <X aria-hidden="true" className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setSetRows((rows) => [...rows, ["", ""]])}
-              >
-                <Plus aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
-                {t("Add set")}
-              </Button>
-              <div className="flex items-center gap-3">
-                {match.status === "live" ? (
-                  <span
-                    data-testid="tap-sync-state"
-                    className="text-xs text-muted-foreground"
-                    aria-live="polite"
-                  >
-                    {progress.isPending
-                      ? t("Saving")
-                      : syncFailed
-                        ? t("Offline. Points are safe on this phone.")
-                        : t("Saves as you tap")}
-                  </span>
-                ) : null}
-                <Button
-                  size="sm"
-                  disabled={submitSets.isPending || completeSets.length === 0}
-                  onClick={() => setConfirmSets(true)}
-                >
-                  {t("Record result")}
-                </Button>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {match.status === "live"
-                ? t("Points update live for viewers. Record result finishes the match.")
-                : t("Recording the result completes the match.")}
-            </p>
-          </div>
-        </div>
-      ) : null}
-
       {/* Record event */}
       {live ? (
         <div className="rounded-xl border border-border bg-card shadow-sm">
@@ -954,10 +549,10 @@ export function MatchConsolePage(): React.ReactElement {
             <div className="flex items-center gap-2">
               <Radio aria-hidden="true" className="h-4 w-4 text-primary" />
               <h2 className="text-sm font-semibold">
-                {setBased ? t("Record discipline") : t("Record event")}
+                {timed ? t("Record event") : t("Record discipline")}
               </h2>
             </div>
-            {!setBased ? (
+            {timed ? (
               <div className="flex items-center gap-2">
                 <Label htmlFor="minute" className="text-xs text-muted-foreground">
                   {t("Minute")}
@@ -981,7 +576,7 @@ export function MatchConsolePage(): React.ReactElement {
                 fireEvent({ event_type, side, player_id: sel[side] });
               const playerLabel = side === "home" ? t("Home player") : t("Away player");
               const subLabel = side === "home" ? t("Home sub on") : t("Away sub on");
-              const palette = setBased ? SET_EVENT_BUTTONS : EVENT_BUTTONS;
+              const palette = timed ? EVENT_BUTTONS : SET_EVENT_BUTTONS;
               return (
                 <div key={side} className="flex flex-col gap-3 p-5">
                   <div className="flex items-center justify-between gap-2">
@@ -1004,7 +599,7 @@ export function MatchConsolePage(): React.ReactElement {
                     placeholder={t("Team (no player)")}
                   />
 
-                  <div className={cn("grid gap-1.5", setBased ? "grid-cols-3" : "grid-cols-3")}>
+                  <div className="grid grid-cols-3 gap-1.5">
                     {palette.map((b) => (
                       <button
                         key={b.type}
@@ -1022,7 +617,7 @@ export function MatchConsolePage(): React.ReactElement {
                     ))}
                   </div>
 
-                  {!setBased ? (
+                  {timed ? (
                     <div className="flex items-end gap-2 border-t border-border pt-3">
                       <div className="flex flex-1 flex-col gap-1">
                         <span className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
@@ -1158,132 +753,6 @@ export function MatchConsolePage(): React.ReactElement {
             data-testid="confirm-complete"
           >
             {t("Complete match")}
-          </Button>
-        </DialogFooter>
-      </Dialog>
-
-      {/* Confirm the set result (completes the match). */}
-      <Dialog
-        open={confirmSets}
-        onOpenChange={setConfirmSets}
-        ariaLabel={t("Confirm set result")}
-      >
-        <DialogHeader>
-          <DialogTitle>{t("Record this result?")}</DialogTitle>
-          <DialogDescription>
-            {homeName} {homeSets}-{awaySets} {awayName}
-            {" ("}
-            {completeSets.map(([h, a]) => `${h}-${a}`).join(", ")}
-            {"). "}
-            {t("Recording completes the match and locks the result.")}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => setConfirmSets(false)}>
-            {t("Keep editing")}
-          </Button>
-          <Button
-            size="sm"
-            disabled={submitSets.isPending}
-            onClick={() => submitSets.mutate({ event_id: newEventId() })}
-            data-testid="confirm-sets"
-          >
-            {t("Record result")}
-          </Button>
-        </DialogFooter>
-      </Dialog>
-
-      {/* H3: manager amend of a completed set result — audited, reasoned. */}
-      <Dialog
-        open={amendOpen}
-        onOpenChange={setAmendOpen}
-        ariaLabel={t("Amend result")}
-      >
-        <DialogHeader>
-          <DialogTitle>{t("Amend the final result?")}</DialogTitle>
-          <DialogDescription>
-            {t("Corrections are audited and refill the bracket from the corrected winner. Enter the correct set scores and the reason.")}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-2 py-3">
-          {amendRows.map((row, i) => (
-            <div
-              key={i}
-              className="grid grid-cols-[2.5rem_1fr_1fr_2rem] items-center gap-2"
-            >
-              <span className="text-xs font-medium text-muted-foreground">
-                {t("Set")} {i + 1}
-              </span>
-              {([0, 1] as const).map((si) => (
-                <Input
-                  key={si}
-                  inputMode="numeric"
-                  aria-label={`${t("Amend set")} ${i + 1} ${si === 0 ? homeName : awayName}`}
-                  value={row[si]}
-                  onChange={(e) =>
-                    setAmendRows((rows) =>
-                      rows.map((r, j) =>
-                        j === i
-                          ? ((si === 0
-                              ? [e.target.value, r[1]]
-                              : [r[0], e.target.value]) as SetRow)
-                          : r,
-                      ),
-                    )
-                  }
-                  className="h-9 text-center font-tabular"
-                />
-              ))}
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label={`${t("Remove amended set")} ${i + 1}`}
-                disabled={amendRows.length === 1}
-                className="h-8 w-8 p-0"
-                onClick={() =>
-                  setAmendRows((rows) => rows.filter((_, j) => j !== i))
-                }
-              >
-                <X aria-hidden="true" className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-fit"
-            onClick={() => setAmendRows((rows) => [...rows, ["", ""]])}
-          >
-            <Plus aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
-            {t("Add set")}
-          </Button>
-          <div className="flex flex-col gap-1 pt-1">
-            <Label htmlFor="amend-reason" className="text-xs">
-              {t("Reason")}
-            </Label>
-            <Input
-              id="amend-reason"
-              value={amendReason}
-              onChange={(e) => setAmendReason(e.target.value)}
-              placeholder={t("Why is the result changing?")}
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => setAmendOpen(false)}>
-            {t("Cancel")}
-          </Button>
-          <Button
-            size="sm"
-            data-testid="confirm-amend"
-            disabled={
-              amend.isPending ||
-              amendReason.trim() === "" ||
-              amendRows.every(([h, a]) => h === "" || a === "")
-            }
-            onClick={() => amend.mutate({ event_id: newEventId() })}
-          >
-            {t("Amend result")}
           </Button>
         </DialogFooter>
       </Dialog>

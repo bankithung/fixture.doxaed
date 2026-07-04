@@ -40,6 +40,15 @@ export interface LiveSnapshot {
     /** Set sports: raw sport key, per-set points, resolved scoring rules
      * (home/away_score mirror sets won). */
     sport?: string | null;
+    /** The SportDefinition slice a console needs to render sport-natively:
+     * family picks the console module, terms carry per-sport vocabulary. */
+    sport_meta?: {
+      key: string;
+      name: string;
+      family: "timed" | "target";
+      terms: Record<string, string>;
+      version: number;
+    };
     set_scores?: number[][];
     scoring?: {
       type: string;
