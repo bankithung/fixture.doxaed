@@ -50,6 +50,13 @@ export interface SportScoringConfig {
   win_by?: number;
   cap?: number | null;
   deciding?: { points?: number; win_by?: number; cap?: number | null };
+  /** Service mechanics (P2): sepak 3-serve blocks vs single service, ends
+   * changes; TT 2-per-turn with the deuce switch. */
+  serve?: {
+    serves_per_turn?: number;
+    alternate_every_point?: boolean;
+    change_ends_at?: { regular?: number; deciding?: number };
+  };
 }
 
 /** Per-sport scheduling hints the fixture engine reads. */
@@ -449,6 +456,14 @@ export interface SportDescriptor {
   has_draw: boolean;
   terms: Record<string, string>;
   boards: { key: string; label: string; subject: string; fmt: string }[];
+  /** Named, sourced scoring presets — pick one, then edit freely. */
+  presets?: {
+    key: string;
+    label: string;
+    note: string;
+    scoring: SportScoringConfig;
+  }[];
+  officials_roles?: string[];
 }
 
 export interface SportsMeta {
@@ -726,10 +741,12 @@ export const tournamentsApi = {
   /** This tournament's selected sports. */
   sports: (id: string) =>
     api.get<{ sports: TournamentSport[] }>(`/api/tournaments/${id}/sports/`),
-  /** Replace this tournament's selected sports (manager-only). */
-  setSports: (id: string, sports: TournamentSport[]) =>
+  /** Replace this tournament's selected sports (manager-only; idempotent
+   * replay when event_id is passed). */
+  setSports: (id: string, sports: TournamentSport[], eventId?: string) =>
     api.put<{ sports: TournamentSport[] }>(`/api/tournaments/${id}/sports/`, {
       sports,
+      ...(eventId ? { event_id: eventId } : {}),
     }),
   /** Soft-delete a tournament (manager-only; blocked while live). */
   remove: (id: string) => api.delete<void>(`/api/tournaments/${id}/`),

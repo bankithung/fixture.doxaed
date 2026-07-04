@@ -24,6 +24,7 @@ import { RenameTournamentButton } from "@/features/tournaments/RenameTournamentB
 import { DisputesPanel } from "@/features/disputes/DisputesPanel";
 import { qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
+import { ScoringPresetsPanel } from "@/features/tournaments/ops/ScoringPresetsPanel";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
@@ -225,6 +226,9 @@ export function OpsSettingsPage(): React.ReactElement {
           </span>
         </div>
       </section>
+
+      {/* Scoring regimes (P2): one-click official presets per sport. */}
+      {canManage ? <ScoringPresetsPanel tournamentId={id} /> : null}
 
       {/* Public pages */}
       {slug ? (
