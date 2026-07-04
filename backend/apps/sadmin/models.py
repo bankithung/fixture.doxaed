@@ -18,7 +18,6 @@ from django.utils.translation import gettext_lazy as _
 
 from apps.accounts.models import uuid7
 
-
 # ---------------------------------------------------------------------------
 # Feedback (v1Users.md §1.7)
 # ---------------------------------------------------------------------------

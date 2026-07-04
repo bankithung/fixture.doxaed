@@ -62,7 +62,7 @@ def _tournament(enforce=True):
 
 
 def test_register_school_blocks_overage_player():
-    u, t, leaf = _tournament()
+    _u, t, leaf = _tournament()
     year = age_cutoff(t).year
     with pytest.raises(DjangoValidationError, match="player_age_ineligible"):
         register_school(
@@ -75,7 +75,7 @@ def test_register_school_blocks_overage_player():
 
 
 def test_register_school_accepts_eligible_and_unknown_dob():
-    u, t, leaf = _tournament()
+    _u, t, leaf = _tournament()
     year = age_cutoff(t).year
     teams = register_school(
         tournament=t, school_name="S",
@@ -91,7 +91,7 @@ def test_register_school_accepts_eligible_and_unknown_dob():
 
 
 def test_enforcement_opt_out():
-    u, t, leaf = _tournament(enforce=False)
+    _u, t, leaf = _tournament(enforce=False)
     year = age_cutoff(t).year
     teams = register_school(
         tournament=t, school_name="S",
@@ -104,7 +104,7 @@ def test_enforcement_opt_out():
 
 
 def test_form_boundary_check_emits_dotted_row_paths():
-    u, t, leaf = _tournament()
+    _u, t, leaf = _tournament()
     year = age_cutoff(t).year
     form = SimpleNamespace(
         tournament=t,

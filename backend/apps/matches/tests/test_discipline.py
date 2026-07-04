@@ -142,7 +142,7 @@ def test_yellow_wipe_entering_final_rounds():
     """P5: with yellow_wipe_final_rounds=2 (semis + final), a group-stage
     yellow plus a SEMI yellow does NOT suspend (the wipe consumed the first);
     without the wipe the same two yellows do."""
-    admin, t, a, rocky, (m1, m2, m3) = _setup()
+    admin, t, _a, rocky, (m1, m2, m3) = _setup()
     t.rules = {"discipline": {
         "yellow_suspension_threshold": 2,
         "red_matches_banned": 1,

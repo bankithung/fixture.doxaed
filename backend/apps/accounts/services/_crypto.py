@@ -29,7 +29,7 @@ except Exception:  # pragma: no cover - dependency is committed
 _PREFIX = "fernet$"
 
 
-def _fernet() -> "Fernet | None":
+def _fernet() -> Fernet | None:
     if not _HAS_FERNET:
         return None
     raw = settings.SECRET_KEY.encode("utf-8")

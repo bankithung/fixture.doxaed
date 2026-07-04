@@ -44,7 +44,7 @@ def _setup():
 
 
 def test_claim_mints_operator_org_and_is_idempotent():
-    t, inst, profile, claimant = _setup()
+    _t, inst, profile, claimant = _setup()
     c = APIClient()
     c.force_authenticate(user=claimant)
 
@@ -66,7 +66,7 @@ def test_claim_mints_operator_org_and_is_idempotent():
 
 
 def test_claim_guards():
-    t, inst, profile, claimant = _setup()
+    _t, inst, _profile, claimant = _setup()
     c = APIClient()
     c.force_authenticate(user=claimant)
 

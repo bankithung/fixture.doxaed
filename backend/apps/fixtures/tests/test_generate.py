@@ -14,7 +14,7 @@ User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 
-def _verified(email: str = "org@test.local") -> "User":
+def _verified(email: str = "org@test.local") -> User:
     user = User.objects.create_user(email=email, password="FixtureDemo2026!", is_active=True)
     user.email_verified_at = timezone.now()
     user.save(update_fields=["email_verified_at"])
@@ -77,7 +77,7 @@ def test_round_robin_by_category_buckets_by_pool_and_skips_singletons():
     _register_n_teams(t, 5)
     teams = list(Team.objects.filter(tournament=t).order_by("name"))
     pools = ["U-14", "U-14", "U-16", "U-16", "U-19"]  # U-19 is a lone team
-    for tm, p in zip(teams, pools):
+    for tm, p in zip(teams, pools, strict=False):
         tm.pool = p
         tm.save(update_fields=["pool"])
 

@@ -26,8 +26,8 @@ from django.core.cache import cache
 from django.core.mail import send_mail
 from django.utils import timezone
 
-from apps.audit.services import emit_audit
 from apps.audit.models import ActorRole
+from apps.audit.services import emit_audit
 from apps.teams.models import Institution
 
 # No 0/O/1/I — codes get typed from an email on a phone.
@@ -99,7 +99,7 @@ def issue_team_access_codes(
                 fail_silently=False,
             )
             delivered = True
-        except Exception:  # noqa: BLE001 — one bounce must not stop the batch
+        except Exception:
             delivered = False
         if delivered:
             inst.team_code_sent_at = timezone.now()

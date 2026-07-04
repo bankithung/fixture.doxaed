@@ -56,7 +56,7 @@ def _completed_match():
 
 
 def test_amend_flips_result_and_audits_with_reason():
-    admin, t, m = _completed_match()
+    admin, _t, m = _completed_match()
     amend_set_result(
         match=m, set_scores=[[8, 11], [9, 11]], rules=TT, by=admin,
         reason="Scores were entered for the wrong side.",
@@ -124,7 +124,7 @@ def test_amend_guards():
 
 
 def test_amend_is_idempotent_on_event_id():
-    admin, t, m = _completed_match()
+    admin, _t, m = _completed_match()
     eid = uuid.uuid4()
     for _ in range(2):
         amend_set_result(
@@ -137,7 +137,7 @@ def test_amend_is_idempotent_on_event_id():
 
 
 def test_amend_api_is_manager_only():
-    admin, t, m = _completed_match()
+    admin, _t, m = _completed_match()
     outsider = _admin("outsider@test.local")
 
     c = APIClient()

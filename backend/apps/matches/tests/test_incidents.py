@@ -21,7 +21,7 @@ User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 
-def _verified(email: str = "admin@test.local") -> "User":
+def _verified(email: str = "admin@test.local") -> User:
     u = User.objects.create_user(email=email, password="FixtureDemo2026!", is_active=True)
     u.email_verified_at = timezone.now()
     u.save(update_fields=["email_verified_at"])
@@ -52,7 +52,7 @@ def _client(user):
 
 
 def test_file_incident_happy_path():
-    admin, t, a, b, m = _setup()
+    admin, _t, _a, _b, m = _setup()
     r = _client(admin).post(
         f"/api/matches/{m.id}/incidents/",
         {
@@ -72,7 +72,7 @@ def test_file_incident_happy_path():
 
 
 def test_file_incident_attributes_player():
-    admin, t, a, b, m = _setup()
+    admin, _t, a, _b, m = _setup()
     player = a.players.first()
     r = _client(admin).post(
         f"/api/matches/{m.id}/incidents/",
@@ -89,7 +89,7 @@ def test_file_incident_attributes_player():
 
 
 def test_list_incidents():
-    admin, t, a, b, m = _setup()
+    admin, _t, _a, _b, m = _setup()
     _client(admin).post(
         f"/api/matches/{m.id}/incidents/",
         {"kind": "injury", "description": "Knock to the head, taken off."},
@@ -102,7 +102,7 @@ def test_list_incidents():
 
 
 def test_incident_idempotent_replay():
-    admin, t, a, b, m = _setup()
+    admin, _t, _a, _b, m = _setup()
     eid = str(uuid.uuid4())
     payload = {"kind": "other", "description": "Crowd entered the pitch.", "event_id": eid}
     r1 = _client(admin).post(f"/api/matches/{m.id}/incidents/", payload, format="json")
@@ -114,7 +114,7 @@ def test_incident_idempotent_replay():
 
 
 def test_player_not_on_team_rejected():
-    admin, t, a, b, m = _setup()
+    admin, _t, _a, _b, m = _setup()
     # Make a player on a DIFFERENT tournament/match.
     other_admin = _verified("other@test.local")
     t2 = create_tournament(user=other_admin, name="Other")
@@ -137,7 +137,7 @@ def test_player_not_on_team_rejected():
 
 
 def test_outsider_cannot_file_incident():
-    admin, t, a, b, m = _setup()
+    _admin, _t, _a, _b, m = _setup()
     outsider = _verified("out@test.local")
     r = _client(outsider).post(
         f"/api/matches/{m.id}/incidents/",
@@ -148,6 +148,6 @@ def test_outsider_cannot_file_incident():
 
 
 def test_cross_org_isolation_on_list():
-    admin, t, a, b, m = _setup()
+    _admin, _t, _a, _b, m = _setup()
     outsider = _verified("out@test.local")
     assert _client(outsider).get(f"/api/matches/{m.id}/incidents/").status_code == 404

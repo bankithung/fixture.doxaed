@@ -278,7 +278,7 @@ def set_tournament_grant(
     reason: str,
     request: HttpRequest | None = None,
     actor_role: str = ActorRole.ADMIN,
-) -> "TournamentModuleGrant | None":
+) -> TournamentModuleGrant | None:
     """Upsert a single (user, tournament, module) grant — the tournament-
     scoped twin of ``set_grant`` (spec 2026-06-10 P5). Same contract: state in
     GrantState, reason >= 20 chars, `default` collapses to row deletion, one

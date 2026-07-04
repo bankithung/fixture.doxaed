@@ -4,7 +4,6 @@ from django.urls import path
 
 from apps.matches.views import (
     AmendResultView,
-    MatchPeriodView,
     AssignOfficialsView,
     AssignScorerView,
     ConfirmLineupView,
@@ -14,6 +13,7 @@ from apps.matches.views import (
     MatchIncidentView,
     MatchLineupView,
     MatchLockView,
+    MatchPeriodView,
     MatchScheduleView,
     RecordMatchEventView,
     RecordScoreView,

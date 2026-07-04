@@ -7,8 +7,6 @@ where it matters (the append-only ledger).
 """
 from __future__ import annotations
 
-import uuid as _uuid
-
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.shortcuts import get_object_or_404
 from rest_framework import serializers

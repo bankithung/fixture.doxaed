@@ -8,7 +8,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
-from apps.matches.models import Match, MatchStatus, MatchTie
+from apps.matches.models import Match, MatchStatus
 from apps.matches.services.set_scoring import record_set_result
 from apps.matches.services.ties import create_tie
 from apps.teams.models import Team

@@ -17,7 +17,7 @@ User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 
-def _verified(email: str = "org@test.local") -> "User":
+def _verified(email: str = "org@test.local") -> User:
     user = User.objects.create_user(email=email, password="FixtureDemo2026!", is_active=True)
     user.email_verified_at = timezone.now()
     user.save(update_fields=["email_verified_at"])

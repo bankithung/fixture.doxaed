@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
 
 from django.conf import settings
 from django.http import Http404, HttpRequest, HttpResponse

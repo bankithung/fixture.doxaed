@@ -7,22 +7,25 @@ import pytest
 
 from apps.accounts.tests.factories import UserFactory
 from apps.audit.models import AuditEvent
-
 from apps.organizations.models import (
-    InviteStatus,
     MembershipRole,
 )
 from apps.organizations.services import (
     invitation as invitation_svc,
+)
+from apps.organizations.services import (
     lifecycle as lifecycle_svc,
+)
+from apps.organizations.services import (
     ownership as ownership_svc,
+)
+from apps.organizations.services import (
     slug as slug_svc,
 )
 from apps.organizations.tests.factories import (
     OrganizationFactory,
     OrganizationMembershipFactory,
 )
-
 
 pytestmark = pytest.mark.django_db
 
@@ -96,7 +99,7 @@ def test_invitation_create_revoke_accept_emit_audit(rf):
     request.session = SessionStore()
     request.session.create()
 
-    inv, plaintext = invitation_svc.create_invitation(
+    _inv, plaintext = invitation_svc.create_invitation(
         org=org, email="a@example.test", invited_by=inviter, request=request
     )
     assert _audit_count(event_type="member_invite_sent", organization_id=org.id) == 1

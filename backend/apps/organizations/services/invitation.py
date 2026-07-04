@@ -18,7 +18,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import uuid as _uuid
-from typing import Optional, Sequence, Union
+from collections.abc import Sequence
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -29,7 +29,6 @@ from django.utils import timezone
 
 from apps.audit.models import ActorRole
 from apps.audit.services import emit_audit
-
 from apps.organizations.models import (
     AdminInvitation,
     InviteStatus,
@@ -38,7 +37,6 @@ from apps.organizations.models import (
     OrganizationMembership,
     OrgStatus,
 )
-
 
 # Role tier order for picking highest-tier role when a list of roles is
 # given. Frontend sends an array; v1 backend stores one role per
@@ -58,7 +56,7 @@ _ROLE_RANK: dict[str, int] = {
 # ---------------------------------------------------------------------------
 
 
-def _cycle_session(request: Optional[HttpRequest]) -> None:
+def _cycle_session(request: HttpRequest | None) -> None:
     """Call the accounts agent's session-cycle helper if present;
     otherwise fall back to Django's `request.session.cycle_key()`.
 
@@ -71,13 +69,13 @@ def _cycle_session(request: Optional[HttpRequest]) -> None:
 
         cycle_session_on_role_change(request)
         return
-    except Exception:  # noqa: BLE001 — fallback path; helper not yet shipped
+    except Exception:
         pass
 
     if request is not None and hasattr(request, "session"):
         try:
             request.session.cycle_key()
-        except Exception:  # noqa: BLE001 — anonymous / no session
+        except Exception:
             pass
 
 
@@ -109,11 +107,11 @@ def create_invitation(
     *,
     org: Organization,
     email: str,
-    role: Optional[str] = None,
-    roles: Optional[Sequence[str]] = None,
+    role: str | None = None,
+    roles: Sequence[str] | None = None,
     invited_by,
-    request: Optional[HttpRequest] = None,
-    event_id: Optional[Union[str, _uuid.UUID]] = None,
+    request: HttpRequest | None = None,
+    event_id: str | _uuid.UUID | None = None,
     tournament=None,
 ) -> tuple[AdminInvitation, str]:
     """Create an invitation row + return (invitation, plaintext_token).
@@ -157,7 +155,7 @@ def create_invitation(
             raise ValidationError(f"Invalid role '{effective_role}'.")
 
     # Coerce event_id to UUID if given.
-    idempotency_key: Optional[_uuid.UUID] = None
+    idempotency_key: _uuid.UUID | None = None
     if event_id is not None:
         try:
             idempotency_key = (
@@ -238,7 +236,7 @@ def create_invitation(
                 recipient_list=[email],
                 fail_silently=True,
             )
-        except Exception:  # noqa: BLE001 — never break the verb on email
+        except Exception:
             pass
 
     return inv, plaintext
@@ -351,7 +349,7 @@ def accept_invitation(
     *,
     token_plaintext: str,
     accepting_user,
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ) -> OrganizationMembership:
     """Accept an invitation. Atomic across:
       - hash lookup + status / expiry check
@@ -411,7 +409,7 @@ def accept_invitation_by_id(
     *,
     invitation_id,
     accepting_user,
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ):
     """Accept an invitation addressed to the logged-in user by its id.
 
@@ -478,7 +476,7 @@ def decline_invitation(
     *,
     invitation_id,
     declining_user,
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ) -> AdminInvitation:
     """Decline an invitation addressed to the logged-in user.
 
@@ -524,7 +522,7 @@ def revoke_invitation(
     invitation: AdminInvitation,
     revoked_by,
     reason: str = "",
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ) -> AdminInvitation:
     if invitation.status != InviteStatus.PENDING:
         raise ValidationError(
@@ -552,7 +550,7 @@ def revoke_invitation(
     return invitation
 
 
-def get_invitation_by_token(token_plaintext: str) -> Optional[AdminInvitation]:
+def get_invitation_by_token(token_plaintext: str) -> AdminInvitation | None:
     """Look up an invitation by plaintext token (no mutation). Returns None if
     not found. Used by the AllowAny accept view to read the invite's email +
     tournament before establishing/creating the accepting user's session.

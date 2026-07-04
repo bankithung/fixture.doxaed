@@ -106,7 +106,7 @@ def test_eight_team_structure_wb_lb_grand_final():
 
 def test_eight_team_e2e_every_loser_ripples_into_the_right_lb_slot():
     admin = _verified()
-    t, _teams, matches = _bracket(admin, 8)
+    _t, _teams, matches = _bracket(admin, 8)
     sr = _by_stage_round(matches)
     qf, sf = sr[("knockout", 1)], sr[("knockout", 2)]
     final = sr[("knockout", 3)][0]

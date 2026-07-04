@@ -21,7 +21,6 @@ import json
 from collections.abc import AsyncIterator
 
 import redis.exceptions
-
 from asgiref.sync import sync_to_async
 from django.db import connection, transaction
 from django.http import HttpResponseNotFound, StreamingHttpResponse

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import re
 import uuid as _uuid
-from typing import Optional
 
 from django.http import HttpRequest
 from django.utils import timezone
@@ -59,8 +58,8 @@ def submit_feedback(
     category: str,
     subject: str,
     body: str,
-    request: Optional[HttpRequest] = None,
-    event_id: Optional[_uuid.UUID] = None,
+    request: HttpRequest | None = None,
+    event_id: _uuid.UUID | None = None,
 ) -> Feedback:
     """Insert a Feedback row.
 
@@ -106,7 +105,7 @@ def triage_feedback(
     triaged_by,
     status: str,
     internal_notes: str = "",
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ) -> Feedback:
     """Triage / set status on a Feedback row. Audit-logged."""
     if status not in FeedbackStatus.values:
@@ -151,7 +150,7 @@ def archive_feedback(
     *,
     feedback: Feedback,
     archived_by,
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ) -> Feedback:
     """Archive a feedback row (sets status=resolved, audited)."""
     before = {"status": feedback.status}

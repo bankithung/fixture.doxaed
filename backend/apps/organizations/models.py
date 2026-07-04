@@ -17,16 +17,15 @@ Locked invariants implemented here:
 from __future__ import annotations
 
 import datetime as _dt
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from django.conf import settings
 from django.db import models
-from django.db.models import Deferrable, Q, UniqueConstraint, CheckConstraint
+from django.db.models import CheckConstraint, Q, UniqueConstraint
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from apps.accounts.models import uuid7
-
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -345,7 +344,7 @@ class AdminInvitation(models.Model):
             self.email = self.email.lower()
         super().save(*args, **kwargs)
 
-    def is_expired(self, now: Optional[_dt.datetime] = None) -> bool:
+    def is_expired(self, now: _dt.datetime | None = None) -> bool:
         return (now or timezone.now()) > self.expires_at
 
     @property

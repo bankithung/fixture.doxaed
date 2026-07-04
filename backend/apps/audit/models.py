@@ -9,7 +9,6 @@ prevents UPDATE/DELETE on this table at the database role level
 """
 from __future__ import annotations
 
-import uuid
 from typing import Any
 
 from django.conf import settings

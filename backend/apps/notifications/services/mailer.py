@@ -53,6 +53,6 @@ def send_school_email(
             tournament_id=tournament_id,
             payload_after={"kind": kind, "to": to, "subject": subject},
         )
-    except Exception:  # noqa: BLE001 — the ledger must not break the send
+    except Exception:
         logger.exception("email ledger write failed (%s to %s)", kind, to)
     return ok

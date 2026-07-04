@@ -49,8 +49,6 @@ from apps.teams.views import (
     TournamentTeamsListView,
 )
 from apps.tournaments.views import (
-    TournamentPresetsView,
-    TournamentSportsMetaView,
     ConstraintTypesView,
     TournamentAuditView,
     TournamentCompleteView,
@@ -59,7 +57,9 @@ from apps.tournaments.views import (
     TournamentListCreateView,
     TournamentMemberDetailView,
     TournamentMembersView,
+    TournamentPresetsView,
     TournamentSettingsView,
+    TournamentSportsMetaView,
     TournamentSportsView,
     TournamentStagePreviewView,
     TournamentStageView,

@@ -17,10 +17,10 @@ from apps.matches.models import (
     MatchEvent,
     MatchEventType,
     MatchIncident,
-    MatchOfficial,
     MatchStatus,
 )
 from apps.matches.serializers import (
+    AmendSetResultSerializer,
     AssignOfficialSerializer,
     ConfirmLineupSerializer,
     DelayMatchSerializer,
@@ -31,7 +31,6 @@ from apps.matches.serializers import (
     MatchSerializer,
     RecordEventSerializer,
     RecordScoreSerializer,
-    AmendSetResultSerializer,
     RecordSetScoreSerializer,
     RecordShootoutSerializer,
     RescheduleMatchSerializer,

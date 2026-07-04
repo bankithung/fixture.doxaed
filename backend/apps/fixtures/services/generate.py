@@ -68,7 +68,7 @@ def _round_robin(teams: list, *, legs: int = 1) -> list[tuple]:
             # alternate home/away by round for fairness
             pairings.append((r + 1, home, away) if r % 2 == 0 else (r + 1, away, home))
         # rotate, keeping the first element fixed
-        arr = [arr[0]] + [arr[-1]] + arr[1:-1]
+        arr = [arr[0], arr[-1], *arr[1:-1]]
     if legs == 2:
         rounds = n - 1
         pairings += [(r + rounds, away, home) for r, home, away in list(pairings)]
@@ -854,7 +854,7 @@ def plan_double_elimination(
         lb_round += 1
         survivors = [
             emit(lb_round, s, w) if s is not None else w
-            for s, w in zip(survivors, wb_losers)
+            for s, w in zip(survivors, wb_losers, strict=False)
         ]
         if r < k and len(survivors) > 1:
             # Minor round between fold-ins: survivors halve. Every lane holds

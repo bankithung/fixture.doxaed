@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from apps.sadmin.models import UsageEvent
 
@@ -20,7 +20,7 @@ def emit_usage(
     event_type: str,
     user=None,
     organization_id: uuid.UUID | str | None = None,
-    payload: Optional[dict[str, Any]] = None,
+    payload: dict[str, Any] | None = None,
 ) -> UsageEvent | None:
     """Record one telemetry event. Returns the row, or ``None`` on failure."""
     try:

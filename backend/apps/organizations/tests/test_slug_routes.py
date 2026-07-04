@@ -11,7 +11,6 @@ import uuid as _uuid
 
 import pytest
 from django.core.management import call_command
-from django.urls import reverse
 from rest_framework.test import APIClient
 
 from apps.accounts.tests.factories import UserFactory
@@ -27,7 +26,6 @@ from apps.organizations.tests.factories import (
     OrganizationFactory,
     OrganizationMembershipFactory,
 )
-
 
 pytestmark = pytest.mark.django_db
 

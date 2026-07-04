@@ -14,7 +14,6 @@ Each class derives the active Org from one of:
 from __future__ import annotations
 
 import uuid as _uuid
-from typing import Optional
 
 from rest_framework.permissions import BasePermission
 
@@ -25,7 +24,7 @@ from apps.organizations.models import (
 )
 
 
-def _resolve_org_from_view(view) -> Optional[Organization]:
+def _resolve_org_from_view(view) -> Organization | None:
     """Resolve the active Organization from common URL kwargs.
 
     Detects whether the kwarg value is a UUID (filter on `pk`) or a slug

@@ -23,7 +23,7 @@ User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 
-def _verified(email: str = "org@test.local") -> "User":
+def _verified(email: str = "org@test.local") -> User:
     u = User.objects.create_user(email=email, password="FixtureDemo2026!", is_active=True)
     u.email_verified_at = timezone.now()
     u.save(update_fields=["email_verified_at"])
@@ -122,7 +122,7 @@ def test_snake_seeding_distributes_serpentine():
 
 def test_seeded_requires_every_team_to_have_a_seed():
     admin = _verified()
-    t, teams = _fresh(admin, 4)
+    t, _teams = _fresh(admin, 4)
     with pytest.raises(ValueError):  # §9 A8 — no seeds set yet
         generate_round_robin(tournament=t, group_size=4, seeding="seeded")
     assert Match.objects.filter(tournament=t).count() == 0
@@ -210,7 +210,7 @@ def test_seeds_api_validates_and_scopes():
     admin = _verified()
     outsider = _verified("out@test.local")
     t, teams = _fresh(admin, 2)
-    other_t, other_teams = _fresh(admin, 2)
+    _other_t, other_teams = _fresh(admin, 2)
     c = APIClient()
     c.force_authenticate(user=admin)
     # a team from another tournament is rejected (no cross-scope writes)

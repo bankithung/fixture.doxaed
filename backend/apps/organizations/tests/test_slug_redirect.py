@@ -11,7 +11,6 @@ from apps.organizations.models import SlugRedirect
 from apps.organizations.services import slug as slug_svc
 from apps.organizations.tests.factories import OrganizationFactory
 
-
 pytestmark = pytest.mark.django_db
 
 

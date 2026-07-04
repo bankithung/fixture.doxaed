@@ -21,7 +21,7 @@ User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 
-def _verified(email: str = "admin@test.local") -> "User":
+def _verified(email: str = "admin@test.local") -> User:
     u = User.objects.create_user(email=email, password="FixtureDemo2026!", is_active=True)
     u.email_verified_at = timezone.now()
     u.save(update_fields=["email_verified_at"])
@@ -67,7 +67,7 @@ def _entries(team):
 
 
 def test_set_lineup_happy_path():
-    admin, t, a, b, m = _setup()
+    admin, _t, a, _b, m = _setup()
     client = _client(admin)
     r = client.post(
         f"/api/matches/{m.id}/lineups/",
@@ -84,7 +84,7 @@ def test_set_lineup_happy_path():
 
 
 def test_get_lineups_returns_both_teams():
-    admin, t, a, b, m = _setup()
+    admin, _t, a, _b, m = _setup()
     client = _client(admin)
     client.post(
         f"/api/matches/{m.id}/lineups/",
@@ -99,7 +99,7 @@ def test_get_lineups_returns_both_teams():
 
 
 def test_player_not_on_team_rejected():
-    admin, t, a, b, m = _setup()
+    admin, _t, a, b, m = _setup()
     client = _client(admin)
     bad = b.players.first()  # belongs to the AWAY team
     r = client.post(
@@ -115,7 +115,7 @@ def test_player_not_on_team_rejected():
 
 
 def test_set_lineup_idempotent_replay_returns_same():
-    admin, t, a, b, m = _setup()
+    admin, _t, a, _b, m = _setup()
     client = _client(admin)
     eid = str(uuid.uuid4())
     payload = {"team_id": str(a.id), "entries": _entries(a), "event_id": eid}
@@ -128,7 +128,7 @@ def test_set_lineup_idempotent_replay_returns_same():
 
 
 def test_lineup_blocked_once_match_live():
-    admin, t, a, b, m = _setup(status=MatchStatus.LIVE)
+    admin, _t, a, _b, m = _setup(status=MatchStatus.LIVE)
     client = _client(admin)
     r = client.post(
         f"/api/matches/{m.id}/lineups/",
@@ -139,7 +139,7 @@ def test_lineup_blocked_once_match_live():
 
 
 def test_confirm_lineup_sets_confirmed_at():
-    admin, t, a, b, m = _setup()
+    admin, _t, a, _b, m = _setup()
     client = _client(admin)
     client.post(
         f"/api/matches/{m.id}/lineups/",
@@ -157,7 +157,7 @@ def test_confirm_lineup_sets_confirmed_at():
 
 
 def test_outsider_cannot_set_lineup():
-    admin, t, a, b, m = _setup()
+    _admin, _t, a, _b, m = _setup()
     outsider = _verified("out@test.local")
     r = _client(outsider).post(
         f"/api/matches/{m.id}/lineups/",
@@ -169,6 +169,6 @@ def test_outsider_cannot_set_lineup():
 
 
 def test_cross_org_isolation_on_get():
-    admin, t, a, b, m = _setup()
+    _admin, _t, _a, _b, m = _setup()
     outsider = _verified("out@test.local")
     assert _client(outsider).get(f"/api/matches/{m.id}/lineups/").status_code == 404

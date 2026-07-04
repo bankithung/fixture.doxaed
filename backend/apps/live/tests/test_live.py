@@ -19,7 +19,7 @@ from apps.tournaments.services.create import create_tournament
 User = get_user_model()
 
 
-def _verified(email: str = "org@test.local") -> "User":
+def _verified(email: str = "org@test.local") -> User:
     u = User.objects.create_user(email=email, password="FixtureDemo2026!", is_active=True)
     u.email_verified_at = timezone.now()
     u.save(update_fields=["email_verified_at"])

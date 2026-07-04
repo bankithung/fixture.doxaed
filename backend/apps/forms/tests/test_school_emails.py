@@ -46,7 +46,7 @@ def _form():
 
 
 def test_submit_sends_receipt_to_respondent(django_capture_on_commit_callbacks):
-    admin, t, f = _form()
+    _admin, _t, f = _form()
     with django_capture_on_commit_callbacks(execute=True):
         resp = submit_response(
             form=f, answers={"school": "MH", "email": "school@x.test"},
@@ -63,7 +63,7 @@ def test_submit_sends_receipt_to_respondent(django_capture_on_commit_callbacks):
 
 
 def test_replay_does_not_resend_receipt(django_capture_on_commit_callbacks):
-    admin, t, f = _form()
+    _admin, _t, f = _form()
     eid = uuid.uuid4()
     with django_capture_on_commit_callbacks(execute=True):
         submit_response(form=f, answers={"school": "MH", "email": "a@x.test"}, event_id=eid)
@@ -74,7 +74,7 @@ def test_replay_does_not_resend_receipt(django_capture_on_commit_callbacks):
 
 
 def test_review_decision_emails_the_school(django_capture_on_commit_callbacks):
-    admin, t, f = _form()
+    admin, _t, f = _form()
     with django_capture_on_commit_callbacks(execute=True):
         resp = submit_response(
             form=f, answers={"school": "MH", "email": "school@x.test"},
@@ -106,7 +106,7 @@ def test_review_decision_emails_the_school(django_capture_on_commit_callbacks):
 
 
 def test_send_failure_is_recorded_not_hidden(django_capture_on_commit_callbacks):
-    admin, t, f = _form()
+    _admin, _t, f = _form()
     with mock.patch(
         "apps.accounts.services.mailer.EmailMultiAlternatives.send",
         side_effect=OSError("smtp down"),

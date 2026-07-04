@@ -102,7 +102,7 @@ def test_reassign_role_updates_in_place():
 
 def test_non_member_cannot_be_assigned():
     admin = _verified("admin@test.local")
-    t, m = _tournament_with_match(admin)
+    _t, m = _tournament_with_match(admin)
     outsider = _verified("out@test.local")  # not a tournament member
     client = APIClient()
     client.force_authenticate(user=admin)

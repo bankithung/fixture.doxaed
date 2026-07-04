@@ -6,8 +6,6 @@ agent's concern; we do not couple to it here.
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpRequest
@@ -15,14 +13,12 @@ from django.utils import timezone
 
 from apps.audit.models import ActorRole
 from apps.audit.services import emit_audit
-
 from apps.organizations.models import (
     MembershipRole,
     Organization,
     OrganizationMembership,
     OrgStatus,
 )
-
 
 # ---------------------------------------------------------------------------
 # Org create
@@ -36,7 +32,7 @@ def create_organization(
     created_by,
     time_zone: str = "Asia/Kolkata",
     status: str = OrgStatus.PENDING_REVIEW,
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ) -> Organization:
     """Create an Organization with status defaulting to pending_review.
 
@@ -85,7 +81,7 @@ def approve_org(
     *,
     org: Organization,
     approved_by,
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ) -> Organization:
     """Flip org pending_review → active. Audit. Validates precondition."""
     if org.status != OrgStatus.PENDING_REVIEW:
@@ -114,7 +110,7 @@ def reject_org(
     org: Organization,
     rejected_by,
     reason: str,
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ) -> Organization:
     """Flip org pending_review → archived (rejection). Reason required. Audit."""
     if org.status != OrgStatus.PENDING_REVIEW:
@@ -154,7 +150,7 @@ def suspend_org(
     org: Organization,
     suspended_by,
     reason: str,
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ) -> Organization:
     if org.status == OrgStatus.SUSPENDED:
         return org
@@ -191,7 +187,7 @@ def unsuspend_org(
     *,
     org: Organization,
     unsuspended_by,
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ) -> Organization:
     if org.status != OrgStatus.SUSPENDED:
         raise ValidationError(
@@ -229,7 +225,7 @@ def archive_org(
     org: Organization,
     archived_by,
     reason: str,
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ) -> Organization:
     if org.status == OrgStatus.ARCHIVED:
         return org

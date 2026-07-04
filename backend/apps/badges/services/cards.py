@@ -73,8 +73,8 @@ def render_share_card(award) -> Path:
         return out
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    from PIL import Image, ImageDraw
     import qrcode
+    from PIL import Image, ImageDraw
 
     f = _fonts()
     img = Image.new("RGB", (_W, _H), _BG)

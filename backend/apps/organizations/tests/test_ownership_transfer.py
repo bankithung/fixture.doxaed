@@ -19,7 +19,6 @@ from apps.organizations.tests.factories import (
     OrganizationMembershipFactory,
 )
 
-
 pytestmark = pytest.mark.django_db
 
 

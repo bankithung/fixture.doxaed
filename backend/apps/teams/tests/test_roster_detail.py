@@ -102,7 +102,7 @@ def _seed_submission(admin):
 
 @override_settings(MEDIA_ROOT="/tmp/fixture-test-media")
 def test_team_submission_detail_surfaces_logo_coach_dob_docs():
-    t, form, team = _seed_submission(_admin())
+    _t, _form, team = _seed_submission(_admin())
     detail = team_submission_detail(team)
 
     assert detail["logo"]["name"] == "crest.png"
@@ -125,7 +125,7 @@ def test_team_submission_detail_surfaces_logo_coach_dob_docs():
 @override_settings(MEDIA_ROOT="/tmp/fixture-test-media")
 def test_registration_detail_endpoint_manager_only():
     admin = _admin("rd-mgr@forms.test")
-    t, form, team = _seed_submission(admin)
+    t, _form, team = _seed_submission(admin)
     url = f"/api/tournaments/{t.id}/teams/{team.id}/registration/"
 
     c = APIClient()
@@ -145,7 +145,7 @@ def test_registration_detail_endpoint_manager_only():
 @override_settings(MEDIA_ROOT="/tmp/fixture-test-media")
 def test_serve_upload_requires_signed_token_or_manager():
     admin = _admin("rd-srv@forms.test")
-    t, form, team = _seed_submission(admin)
+    _t, form, _team = _seed_submission(admin)
     up = FormFileUpload.objects.filter(form=form, original_name="crest.png").first()
     base = f"/api/forms/uploads/{up.upload_ref}/"
 

@@ -40,7 +40,7 @@ def age_cutoff(tournament) -> date:
     tournament's creation year). Malformed config falls back to 31 Dec."""
     raw = str(_eligibility_cfg(tournament).get("age_cutoff") or "12-31")
     starts = getattr(tournament, "starts_at", None)
-    year = (starts or getattr(tournament, "created_at").date()).year
+    year = (starts or tournament.created_at.date()).year
     try:
         month, day = (int(x) for x in raw.split("-", 1))
         return date(year, month, day)

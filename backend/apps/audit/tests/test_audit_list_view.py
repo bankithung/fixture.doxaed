@@ -24,7 +24,6 @@ from apps.organizations.tests.factories import (
 )
 from apps.permissions.tests.factories import UserFactory
 
-
 # Default-on roles for org.audit_log per v1Users.md A.2:
 #   admin, co_organizer, game_coordinator, referee
 _DEFAULT_AUDIT_ROLES = (

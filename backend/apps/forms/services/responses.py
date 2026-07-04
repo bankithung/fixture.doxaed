@@ -122,7 +122,7 @@ def _send_receipt_safe(form, response_id) -> None:
         from apps.forms.services.notify import send_submission_receipt
 
         send_submission_receipt(form, resp)
-    except Exception:  # noqa: BLE001 — receipts must never break a submit
+    except Exception:
         import logging
 
         logging.getLogger(__name__).exception(

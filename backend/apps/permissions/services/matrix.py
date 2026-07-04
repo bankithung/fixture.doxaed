@@ -24,7 +24,6 @@ from typing import Any
 from apps.organizations.models import OrganizationMembership
 from apps.permissions.models import GrantState, MembershipModuleGrant, Module
 
-
 # Mapping from module-code prefix to scope label exposed in the API.
 # "personal.*" maps to "platform" per the existing fixture taxonomy used
 # by the frontend (Appendix B.16); other prefixes pass through verbatim.

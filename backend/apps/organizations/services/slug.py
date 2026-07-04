@@ -6,15 +6,12 @@ through `validate_slug()` before the value lands in the DB.
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpRequest
 
 from apps.audit.models import ActorRole
 from apps.audit.services import emit_audit
-
 from apps.organizations.constants import RESERVED_SLUGS, SLUG_REGEX
 from apps.organizations.models import (
     Organization,
@@ -22,7 +19,7 @@ from apps.organizations.models import (
 )
 
 
-def validate_slug(value: str, *, exclude_org: Optional[Organization] = None) -> str:
+def validate_slug(value: str, *, exclude_org: Organization | None = None) -> str:
     """Validate a slug at the service layer.
 
     Rules (locked):
@@ -66,7 +63,7 @@ def change_slug(
     org: Organization,
     new_slug: str,
     changed_by,
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ) -> Organization:
     """Atomically:
       - Validate new_slug (reserved, regex, unique across slug+redirect).
@@ -103,7 +100,7 @@ def change_slug(
     return org
 
 
-def resolve_slug(value: str) -> tuple[Optional[Organization], Optional[Organization]]:
+def resolve_slug(value: str) -> tuple[Organization | None, Organization | None]:
     """Resolve a slug to (canonical_org, redirect_target).
 
     Returns:

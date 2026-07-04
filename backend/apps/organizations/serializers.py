@@ -8,13 +8,11 @@ from rest_framework import serializers
 
 from apps.organizations.models import (
     AdminInvitation,
-    InviteStatus,
     MembershipRole,
     Organization,
     OrganizationMembership,
 )
 from apps.organizations.services.slug import validate_slug as svc_validate_slug
-
 
 _TZ_NAMES = available_timezones()
 

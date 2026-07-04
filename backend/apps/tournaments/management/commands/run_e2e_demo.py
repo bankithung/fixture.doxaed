@@ -43,7 +43,7 @@ LAST = ["Kikon", "Jamir", "Ao", "Angami", "Lotha", "Sema", "Kire", "Chang",
         "Murry", "Longkumer", "Sangtam", "Phom", "Odyuo"]
 
 
-def _verified(email: str, name: str) -> "User":
+def _verified(email: str, name: str) -> User:
     user = User.objects.filter(email=email).first()
     if user is None:
         user = User.objects.create_user(email=email, password="FixtureDemo2026!", name=name, is_active=True)

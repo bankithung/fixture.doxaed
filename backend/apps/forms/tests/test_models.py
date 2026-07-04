@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import pytest
-from django.db import IntegrityError
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError
 from django.utils import timezone
 
 from apps.forms.constants import FormStatus
@@ -14,7 +14,7 @@ User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 
-def _verified(email: str) -> "User":
+def _verified(email: str) -> User:
     u = User.objects.create_user(email=email, password="FixtureDemo2026!", is_active=True)
     u.email_verified_at = timezone.now()
     u.save(update_fields=["email_verified_at"])

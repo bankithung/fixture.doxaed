@@ -21,15 +21,12 @@ Implementation note on the partial unique-constraint behaviour:
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpRequest
 
 from apps.audit.models import ActorRole
 from apps.audit.services import emit_audit
-
 from apps.organizations.models import (
     MembershipRole,
     Organization,
@@ -43,7 +40,7 @@ def transfer_ownership(
     current_owner_user,
     new_owner_user,
     requested_by,
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ) -> tuple[OrganizationMembership, OrganizationMembership]:
     """Atomically swap is_org_owner between two admin memberships.
 

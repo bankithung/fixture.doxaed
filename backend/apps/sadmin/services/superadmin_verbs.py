@@ -19,8 +19,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import timedelta
-from typing import Optional
 
 from django.contrib.sessions.models import Session
 from django.core.cache import cache
@@ -134,7 +132,9 @@ def unsuspend_org(*, org, unsuspended_by, request: HttpRequest | None = None):
     from apps.organizations.models import OrgStatus
 
     try:
-        from apps.organizations.services.lifecycle import unsuspend_org as svc_unsuspend  # type: ignore
+        from apps.organizations.services.lifecycle import (
+            unsuspend_org as svc_unsuspend,  # type: ignore
+        )
 
         return svc_unsuspend(org=org, unsuspended_by=unsuspended_by, request=request)
     except (ImportError, AttributeError):

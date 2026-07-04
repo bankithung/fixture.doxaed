@@ -24,7 +24,7 @@ User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 
-def _verified(email: str) -> "User":
+def _verified(email: str) -> User:
     user = User.objects.create_user(email=email, password="FixtureDemo2026!", is_active=True)
     user.email_verified_at = timezone.now()
     user.save(update_fields=["email_verified_at"])
@@ -66,7 +66,7 @@ def test_invited_match_scorer_can_score():
 
 def test_non_member_cannot_score():
     admin = _verified("admin@test.local")
-    t, m = _tournament_with_match(admin)
+    _t, m = _tournament_with_match(admin)
     outsider = _verified("outsider@test.local")
     client = APIClient()
     client.force_authenticate(user=outsider)

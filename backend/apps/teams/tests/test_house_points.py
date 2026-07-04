@@ -4,8 +4,8 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 
 from apps.audit.models import AuditEvent
@@ -61,7 +61,7 @@ def test_award_and_table_ranking():
 
 
 def test_corrections_append_compensating_rows():
-    u, t, season, red, blue = _season()
+    u, _t, season, red, blue = _season()
     award_house_points(
         season=season, group=red, points=7, reason="Relay, 1st",
         by=u, event_id=uuid.uuid4(),
@@ -83,7 +83,7 @@ def test_corrections_append_compensating_rows():
 
 
 def test_idempotent_and_guarded():
-    u, t, season, red, blue = _season()
+    u, _t, season, red, _blue = _season()
     eid = uuid.uuid4()
     for _ in range(2):
         award_house_points(
@@ -112,7 +112,7 @@ def test_idempotent_and_guarded():
 
 
 def test_day_zero_table_shows_all_houses_at_zero():
-    u, t, season, red, blue = _season()
+    _u, _t, season, _red, _blue = _season()
     table = season_house_table(season)
     assert [(r["name"], r["points"], r["entries"]) for r in table] == [
         ("Blue House", 0, 0), ("Red House", 0, 0),
@@ -124,7 +124,7 @@ def test_house_api_end_to_end():
     no existence leak for outsiders."""
     from rest_framework.test import APIClient
 
-    u, t, season, red, blue = _season()
+    u, t, season, _red, _blue = _season()
     org = t.organization
     c = APIClient()
     c.force_authenticate(user=u)
@@ -167,7 +167,7 @@ def test_meet_event_result_scores_the_ladder():
     (7-5-4-3-2-1, x2 relays), idempotently."""
     from apps.teams.services.house_points import record_meet_event_result
 
-    u, t, season, red, blue = _season()
+    u, _t, season, red, blue = _season()
     eid = uuid.uuid4()
     for _ in range(2):  # replayed sheet never double-scores
         record_meet_event_result(

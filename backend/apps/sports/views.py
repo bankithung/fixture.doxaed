@@ -6,7 +6,7 @@ the platform plans to support.
 """
 from __future__ import annotations
 
-from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics
 from rest_framework.permissions import AllowAny
 

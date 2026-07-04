@@ -15,7 +15,7 @@ User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 
-def _user(email: str = "u@test.local") -> "User":
+def _user(email: str = "u@test.local") -> User:
     return User.objects.create_user(email=email, password="FixtureDemo2026!", is_active=True)
 
 

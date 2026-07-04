@@ -5,7 +5,6 @@ import factory
 from factory.django import DjangoModelFactory
 
 from apps.accounts.tests.factories import UserFactory
-
 from apps.organizations.models import (
     AdminInvitation,
     InviteStatus,

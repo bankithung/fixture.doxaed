@@ -11,9 +11,9 @@ from apps.matches.services.sport_defs.registry import (
 
 __all__ = [
     "SPORT_DEFINITIONS",
-    "SportDefinition",
-    "LeaderboardSpec",
     "TARGET",
     "TIMED",
+    "LeaderboardSpec",
+    "SportDefinition",
     "get_definition",
 ]

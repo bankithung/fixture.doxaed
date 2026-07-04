@@ -81,7 +81,7 @@ class RegistrationLinkCreateView(GenericAPIView):
             raise NotFound("tournament_not_found")
         if not _can_register(request.user, tournament):
             raise PermissionDenied("not_tournament_manager")
-        link, token = create_registration_link(
+        _link, token = create_registration_link(
             tournament=tournament, created_by=request.user,
             label=request.data.get("label", ""),
         )

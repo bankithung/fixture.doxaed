@@ -58,7 +58,7 @@ def _tree_without(t, leaf_key: str) -> list[dict]:
 
 
 def test_removing_a_leaf_with_teams_is_blocked():
-    u, t, leaves, c = _setup()
+    _u, t, leaves, c = _setup()
     used = leaves[0]["leaf_key"]
     register_school(
         tournament=t, school_name="S",
@@ -78,7 +78,7 @@ def test_removing_a_leaf_with_teams_is_blocked():
 
 
 def test_rename_and_additions_stay_legal_while_leaf_in_use():
-    u, t, leaves, c = _setup()
+    _u, t, leaves, c = _setup()
     used = leaves[0]["leaf_key"]
     register_school(
         tournament=t, school_name="S",
@@ -101,7 +101,7 @@ def test_rename_and_additions_stay_legal_while_leaf_in_use():
 
 
 def test_removing_an_unused_leaf_is_fine():
-    u, t, leaves, c = _setup()
+    _u, t, leaves, c = _setup()
     unused = leaves[1]["leaf_key"]
     resp = c.put(
         f"/api/tournaments/{t.id}/sports/",
@@ -113,7 +113,7 @@ def test_removing_an_unused_leaf_is_fine():
 
 
 def test_event_id_replay_is_idempotent():
-    u, t, leaves, c = _setup()
+    _u, t, _leaves, c = _setup()
     eid = str(uuid.uuid4())
     body = {"sports": t.sports, "event_id": eid}
     first = c.put(f"/api/tournaments/{t.id}/sports/", body, format="json")
@@ -128,7 +128,7 @@ def test_event_id_replay_is_idempotent():
 def test_sports_meta_serves_descriptors_per_sport():
     """P1.c — sports-meta returns each sport's family/boards so surfaces
     render sport-native without hardcoding."""
-    u, t, leaves, c = _setup()
+    _u, t, _leaves, c = _setup()
     r = c.get(f"/api/tournaments/{t.id}/sports-meta/")
     assert r.status_code == 200
     assert [s["key"] for s in r.data["sports"]] == ["table_tennis"]
@@ -147,7 +147,7 @@ def test_sports_meta_ships_scoring_presets():
     one-click regime pick (owner decision D1) that stays fully editable."""
     from apps.tournaments.services.rules import merge_rules
 
-    u, t, leaves, c = _setup()
+    _u, t, _leaves, c = _setup()
     d = c.get(f"/api/tournaments/{t.id}/sports-meta/").data["descriptors"]
     keys = [p["key"] for p in d["table_tennis"]["presets"]]
     assert keys == ["ittf_bo3", "ittf_bo5", "ittf_bo7"]
@@ -163,7 +163,7 @@ def test_sports_meta_ships_scoring_presets():
 def test_event_presets_apply_through_the_guarded_path():
     """P4: presets one-click a full setup tree, replayed idempotently, and
     the H4 guard still protects in-use leaves on re-apply."""
-    u, t, leaves, c = _setup()
+    _u, t, _leaves, c = _setup()
     r = c.get(f"/api/tournaments/{t.id}/presets/")
     assert r.status_code == 200
     keys = [p["key"] for p in r.data["presets"]]
@@ -202,7 +202,7 @@ def test_tiebreaker_presets_ship_and_validate():
     a preset that fails validation is a landmine in Settings."""
     from apps.tournaments.services.rules import TIEBREAKER_PRESETS, merge_rules
 
-    u, t, leaves, c = _setup()
+    _u, t, _leaves, c = _setup()
     r = c.get(f"/api/tournaments/{t.id}/sports-meta/")
     keys = [p["key"] for p in r.data["tiebreaker_presets"]]
     assert keys == ["fifa_group", "premier_league", "ittf_group", "sets_group"]

@@ -14,9 +14,8 @@ import pytest
 from django.urls import reverse
 
 from apps.audit.models import AuditEvent
-from apps.sadmin.models import Feedback, FeedbackStatus
+from apps.sadmin.models import FeedbackStatus
 from apps.sadmin.tests.factories import FeedbackFactory
-
 
 # ---------------------------------------------------------------------------
 # bulk_email

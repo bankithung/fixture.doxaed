@@ -6,8 +6,6 @@ super-admin approval. Idempotent on a client ``event_id`` (invariant 3).
 """
 from __future__ import annotations
 
-import uuid
-
 from django.db import transaction
 
 from apps.audit.models import ActorRole, AuditEvent

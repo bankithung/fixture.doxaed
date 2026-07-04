@@ -15,7 +15,6 @@ class.
 from __future__ import annotations
 
 from django.db import models
-from django.db.models import Q
 
 
 class ScopedQuerySetMixin:

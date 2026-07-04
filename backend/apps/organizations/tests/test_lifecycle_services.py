@@ -14,7 +14,6 @@ from apps.organizations.models import OrgStatus
 from apps.organizations.services import lifecycle as lifecycle_svc
 from apps.organizations.tests.factories import OrganizationFactory
 
-
 pytestmark = pytest.mark.django_db
 
 

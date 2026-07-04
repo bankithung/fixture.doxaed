@@ -130,7 +130,7 @@ def test_event_detail_persists_through_the_api():
     dropping the field before the serializer accepted it."""
     from rest_framework.test import APIClient
 
-    admin, m, a = _live_sepak()
+    admin, m, _a = _live_sepak()
     c = APIClient()
     c.force_authenticate(user=admin)
     r = c.post(
@@ -160,10 +160,11 @@ def test_shootout_kick_stream():
         )
 
     # Football knockout: legal with an outcome, ordered by sequence.
+    from django.contrib.auth import get_user_model
+
     from apps.matches.services.state import transition_match
     from apps.teams.models import Team
     from apps.tournaments.services.create import create_tournament
-    from django.contrib.auth import get_user_model
 
     User = get_user_model()
     u2 = User.objects.create_user(
@@ -225,11 +226,12 @@ def test_shootout_kick_stream():
 def test_substitution_budget_enforced_and_void_refunds():
     """P5: rules.squad.max_subs refuses the over-budget sub at the event
     layer; a VOIDed sub refunds the budget."""
+    from django.contrib.auth import get_user_model
+    from django.utils import timezone as _tz
+
     from apps.matches.services.state import transition_match
     from apps.teams.models import Team
     from apps.tournaments.services.create import create_tournament
-    from django.contrib.auth import get_user_model
-    from django.utils import timezone as _tz
 
     User = get_user_model()
     u = User.objects.create_user(

@@ -8,9 +8,9 @@ session.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from functools import wraps
-from typing import Callable
 
 from django.conf import settings
 from django.utils import timezone

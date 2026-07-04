@@ -16,7 +16,6 @@ from __future__ import annotations
 import base64
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from django.http import Http404
 from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema
@@ -60,11 +59,11 @@ def _resolve_org_by_slug_or_uuid(value: str):
 
 
 def _encode_cursor(created_at: datetime, row_id: uuid.UUID) -> str:
-    payload = f"{created_at.isoformat()}|{row_id}".encode("utf-8")
+    payload = f"{created_at.isoformat()}|{row_id}".encode()
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
 
-def _decode_cursor(cursor: str) -> Optional[tuple[datetime, uuid.UUID]]:
+def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID] | None:
     try:
         # Restore base64 padding.
         pad = "=" * (-len(cursor) % 4)
@@ -75,7 +74,7 @@ def _decode_cursor(cursor: str) -> Optional[tuple[datetime, uuid.UUID]]:
         return None
 
 
-def _parse_iso8601(value: str) -> Optional[datetime]:
+def _parse_iso8601(value: str) -> datetime | None:
     """Parse an ISO8601 timestamp; tolerant of missing timezone."""
     if not value:
         return None

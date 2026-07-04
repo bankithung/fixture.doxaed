@@ -15,8 +15,8 @@ from django.utils import timezone
 
 from apps.matches.models import Match, MatchStatus
 from apps.matches.services.leaders import compute_leaders
-from apps.matches.services.set_scoring import record_set_result
 from apps.matches.services.scoring import record_score
+from apps.matches.services.set_scoring import record_set_result
 from apps.teams.models import Team
 from apps.teams.services.registration import register_school
 from apps.tournaments.services.create import create_tournament
@@ -95,7 +95,7 @@ def test_sports_never_pool_and_set_boards_rank_by_sets():
 
 
 def test_day_zero_shows_each_sports_empty_boards():
-    admin, t, a, b, c, d = _setup()
+    _admin, t, a, b, _c, _d = _setup()
     Match.objects.create(
         organization=t.organization, tournament=t, sport="table_tennis",
         home_team=a, away_team=b,
@@ -112,11 +112,11 @@ def test_day_zero_shows_each_sports_empty_boards():
 def test_ittf_group_scoring_and_ratio_tiebreakers():
     """P2 (TT vertical): win 2 / played loss 1 / walkover loss 0 (Reg 3.7.5)
     and ratio_games ranks by won:lost quotient, not subtraction."""
+    from apps.matches.models import MatchStatus as MS
     from apps.matches.services.standings import compute_standings
     from apps.matches.services.state import transition_match
-    from apps.matches.models import MatchStatus as MS
 
-    admin, t, a, b, c, d = _setup()
+    admin, t, a, b, c, _d = _setup()
     t.rules = {
         "points": {"win": 2, "draw": 1, "loss": 1, "walkover_loss": 0},
         "tiebreakers": ["points", "ratio_games", "ratio_points", "name"],

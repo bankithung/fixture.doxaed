@@ -39,7 +39,7 @@ def send_branded_email(
         msg.attach_alternative(html_body, "text/html")
         msg.send(fail_silently=False)
         return True
-    except Exception:  # noqa: BLE001 — auth flows stay best-effort
+    except Exception:
         logger.exception("Failed to send branded email %r to %s", template, to)
         if not fail_silently:
             raise

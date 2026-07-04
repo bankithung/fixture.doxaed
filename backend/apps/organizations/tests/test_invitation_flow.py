@@ -11,11 +11,9 @@ from apps.accounts.tests.factories import UserFactory
 from apps.organizations.models import (
     InviteStatus,
     MembershipRole,
-    OrganizationMembership,
 )
 from apps.organizations.services import invitation as invitation_svc
 from apps.organizations.tests.factories import OrganizationFactory
-
 
 pytestmark = pytest.mark.django_db
 
@@ -66,7 +64,7 @@ def test_invitation_token_replay_rejected(rf):
     accepting = UserFactory()
     request = _make_request_with_session(rf)
 
-    inv, plaintext = invitation_svc.create_invitation(
+    _inv, plaintext = invitation_svc.create_invitation(
         org=org, email="x@example.test", invited_by=inviter, request=request
     )
     invitation_svc.accept_invitation(
@@ -144,7 +142,7 @@ def test_invitation_session_cycled_on_accept(rf):
     inviter = UserFactory()
     accepting = UserFactory()
     request = _make_request_with_session(rf)
-    inv, plaintext = invitation_svc.create_invitation(
+    _inv, plaintext = invitation_svc.create_invitation(
         org=org, email="sess@example.test", invited_by=inviter, request=request
     )
     pre_key = request.session.session_key

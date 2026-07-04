@@ -58,7 +58,7 @@ def test_module_gated_filters_to_orgs_with_module(loaded_modules):
 def test_module_gated_grant_unlocks_org(loaded_modules):
     """A `state=grant` row in Org Y unlocks the module there."""
     user = UserFactory()
-    admin = UserFactory()
+    UserFactory()
     org_y = OrganizationFactory(slug="org-y-grant")
 
     OrganizationMembershipFactory(

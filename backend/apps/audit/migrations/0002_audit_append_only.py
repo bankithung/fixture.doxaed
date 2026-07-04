@@ -13,7 +13,6 @@ role for defense in depth — handled in deploy provisioning, not here.
 """
 from django.db import migrations
 
-
 FORWARD_SQL = """
 CREATE OR REPLACE FUNCTION audit_event_append_only()
 RETURNS trigger AS $$

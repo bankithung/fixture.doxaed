@@ -75,7 +75,7 @@ def _hour(m: Match, tz) -> tuple[int, int]:
 
 # ----------------------------------------------------- actual-time stamping
 def test_transition_stamps_started_and_ended():
-    _admin_u, t, _tz, matches = _setup(auto_reflow=False)
+    _admin_u, _t, _tz, matches = _setup(auto_reflow=False)
     m = matches[0]
     transition_match(match=m, to_status=MatchStatus.LIVE)
     m.refresh_from_db()
@@ -89,7 +89,7 @@ def test_transition_stamps_started_and_ended():
 
 # ------------------------------------------------------------ reflow effect
 def test_late_finish_pushes_later_court_matches_back():
-    _a, t, tz, matches = _setup(auto_reflow=True)
+    _a, _t, tz, matches = _setup(auto_reflow=True)
     m1, m2, m3 = matches
     # m1 was 09:00–10:00; it actually ended at 10:30 (30' over).
     m1.ended_at = datetime(2026, 8, 1, 10, 30, tzinfo=tz)
@@ -103,7 +103,7 @@ def test_late_finish_pushes_later_court_matches_back():
 def test_early_finish_recovers_a_late_queue_toward_plan():
     """A late-running queue recovers when an earlier match finishes early — but
     no match starts before its slot's planned end (no surprise early kickoffs)."""
-    _a, t, tz, matches = _setup(auto_reflow=True)
+    _a, _t, tz, matches = _setup(auto_reflow=True)
     m1, m2, m3 = matches
     # The queue is running 45' late (e.g. earlier overruns), then m1 finishes 20' early.
     m2.scheduled_at = datetime(2026, 8, 1, 10, 45, tzinfo=tz)
@@ -117,7 +117,7 @@ def test_early_finish_recovers_a_late_queue_toward_plan():
 
 
 def test_early_finish_on_time_queue_does_not_start_matches_early():
-    _a, t, tz, matches = _setup(auto_reflow=True)
+    _a, _t, tz, matches = _setup(auto_reflow=True)
     m1, m2, _m3 = matches
     m1.ended_at = datetime(2026, 8, 1, 9, 40, tzinfo=tz)  # 20' early, queue on time
     m1.save(update_fields=["ended_at"])
@@ -126,7 +126,7 @@ def test_early_finish_on_time_queue_does_not_start_matches_early():
 
 
 def test_reflow_is_opt_in_per_tournament():
-    _a, t, tz, matches = _setup(auto_reflow=False)
+    _a, _t, tz, matches = _setup(auto_reflow=False)
     m1, m2, _m3 = matches
     m1.ended_at = datetime(2026, 8, 1, 10, 30, tzinfo=tz)
     m1.save(update_fields=["ended_at"])
@@ -135,7 +135,7 @@ def test_reflow_is_opt_in_per_tournament():
 
 
 def test_tiny_drift_under_threshold_is_ignored():
-    _a, t, tz, matches = _setup(auto_reflow=True)
+    _a, _t, tz, matches = _setup(auto_reflow=True)
     m1, m2, _m3 = matches
     m1.ended_at = datetime(2026, 8, 1, 10, 3, tzinfo=tz)  # 3' over < 5' gate
     m1.save(update_fields=["ended_at"])
@@ -146,7 +146,7 @@ def test_tiny_drift_under_threshold_is_ignored():
 def test_reflow_does_not_move_other_days():
     # Regression (review 2026-06-25): a late finish on day 1 must NOT shift a
     # match the next day on the same court.
-    _a, t, tz, matches = _setup(auto_reflow=True)
+    _a, _t, tz, matches = _setup(auto_reflow=True)
     m1, m2, m3 = matches
     m2.scheduled_at = datetime(2026, 8, 2, 10, 0, tzinfo=tz)  # move m2 to day 2
     m2.save(update_fields=["scheduled_at"])
@@ -162,7 +162,7 @@ def test_reflow_does_not_move_other_days():
 def test_reflow_ignores_implausibly_large_drift():
     # A stale "complete" click hours after play ended must not reschedule the
     # whole queue; drift over the cap is left for manual repair.
-    _a, t, tz, matches = _setup(auto_reflow=True)
+    _a, _t, tz, matches = _setup(auto_reflow=True)
     m1, m2, _m3 = matches
     m1.ended_at = datetime(2026, 8, 1, 19, 0, tzinfo=tz)  # planned 10:00 → +9h
     m1.save(update_fields=["ended_at"])
@@ -171,7 +171,7 @@ def test_reflow_ignores_implausibly_large_drift():
 
 
 def test_completed_match_is_not_moved_by_its_own_reflow():
-    _a, t, tz, matches = _setup(auto_reflow=True)
+    _a, _t, tz, matches = _setup(auto_reflow=True)
     m1, _m2, _m3 = matches
     m1.ended_at = datetime(2026, 8, 1, 10, 30, tzinfo=tz)
     m1.save(update_fields=["ended_at"])

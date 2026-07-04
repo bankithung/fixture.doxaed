@@ -26,7 +26,7 @@ User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 
-def _verified(email: str) -> "User":
+def _verified(email: str) -> User:
     user = User.objects.create_user(email=email, password="FixtureDemo2026!", is_active=True)
     user.email_verified_at = timezone.now()
     user.save(update_fields=["email_verified_at"])
@@ -61,7 +61,7 @@ def test_accept_admin_tournament_invite_for_user_with_own_workspace_no_error():
     owner_b = _verified("b@test.local")
     create_tournament(user=owner_b, name="B Cup")  # b already owns a workspace
 
-    inv, token = create_invitation(
+    _inv, token = create_invitation(
         org=ta.organization, email="b@test.local", role="admin", invited_by=owner_a, tournament=ta
     )
     membership = accept_invitation(token_plaintext=token, accepting_user=owner_b)

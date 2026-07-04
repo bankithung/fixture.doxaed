@@ -218,7 +218,8 @@ def test_stalled_slots_detects_silent_advancement_failures():
     """P3: a dependent whose feeder is final but whose slot stayed empty is
     reported; pending feeders and walkover loser_of slots are not."""
     from apps.fixtures.services.advance import stalled_slots
-    from apps.matches.models import Match, MatchStatus as MS
+    from apps.matches.models import Match
+    from apps.matches.models import MatchStatus as MS
 
     admin = _verified("stalled@test.local")
     t = create_tournament(user=admin, name="Stalled Cup")
@@ -262,7 +263,8 @@ def test_advancement_refire_endpoint_repairs_stalled_slots():
     from rest_framework.test import APIClient
 
     from apps.fixtures.services.advance import stalled_slots
-    from apps.matches.models import Match, MatchStatus as MS
+    from apps.matches.models import Match
+    from apps.matches.models import MatchStatus as MS
 
     admin = _verified("refire@test.local")
     t = create_tournament(user=admin, name="Refire Cup")

@@ -5,7 +5,6 @@ import pytest
 from django.urls import reverse
 
 from apps.audit.models import AuditEvent
-from apps.sadmin.services import superadmin_verbs
 
 
 @pytest.mark.django_db
