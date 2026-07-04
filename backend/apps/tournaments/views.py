@@ -636,7 +636,14 @@ class TournamentSportsMetaView(GenericAPIView):
             sports.append({
                 "key": code, "name": names[code], "leaf_count": counts[code],
             })
-        return Response({"sports": sports, "descriptors": descriptors})
+        from apps.tournaments.services.rules import TIEBREAKER_PRESETS
+
+        return Response({
+            "sports": sports,
+            "descriptors": descriptors,
+            # P5: named tiebreaker orders for the Settings picker.
+            "tiebreaker_presets": TIEBREAKER_PRESETS,
+        })
 
 
 class ConstraintTypesView(GenericAPIView):

@@ -195,3 +195,16 @@ def test_event_presets_apply_through_the_guarded_path():
                 {"key": "inter_class_knockout"}, format="json")
     assert r3.status_code == 400
     assert "leaf_in_use" in str(r3.data["detail"])
+
+
+def test_tiebreaker_presets_ship_and_validate():
+    """P5: every named tiebreaker order must be legal under merge_rules —
+    a preset that fails validation is a landmine in Settings."""
+    from apps.tournaments.services.rules import TIEBREAKER_PRESETS, merge_rules
+
+    u, t, leaves, c = _setup()
+    r = c.get(f"/api/tournaments/{t.id}/sports-meta/")
+    keys = [p["key"] for p in r.data["tiebreaker_presets"]]
+    assert keys == ["fifa_group", "premier_league", "ittf_group", "sets_group"]
+    for preset in TIEBREAKER_PRESETS:
+        merge_rules({"tiebreakers": preset["tiebreakers"]})

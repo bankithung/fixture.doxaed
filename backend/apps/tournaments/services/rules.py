@@ -71,6 +71,46 @@ _NESTED = {
 # Goal-sport tokens + set/point tokens for racket/net sports + the terminal
 # coin_toss. set_difference/sets_for are aliases of goal_difference/goals_for
 # for set sports (set wins mirror into the score).
+# P5: named, SOURCED tiebreaker orders — one click in Settings, editable
+# after (presets, never prisons). Keys are _TIEBREAKERS members only.
+TIEBREAKER_PRESETS: list[dict] = [
+    {
+        "key": "fifa_group",
+        "label": "FIFA group stage",
+        "note": "Points, goal difference, goals scored, head to head, "
+                "drawing of lots (World Cup Art. 13).",
+        "tiebreakers": [
+            "points", "goal_difference", "goals_for", "head_to_head",
+            "coin_toss",
+        ],
+    },
+    {
+        "key": "premier_league",
+        "label": "League season",
+        "note": "Points, goal difference, goals scored, head to head, "
+                "then alphabetical.",
+        "tiebreakers": [
+            "points", "goal_difference", "goals_for", "head_to_head", "name",
+        ],
+    },
+    {
+        "key": "ittf_group",
+        "label": "ITTF group (ratio based)",
+        "note": "Match points, then games won:lost ratio, then points "
+                "won:lost ratio among the tied (Reg 3.7.6).",
+        "tiebreakers": ["points", "ratio_games", "ratio_points", "name"],
+    },
+    {
+        "key": "sets_group",
+        "label": "Set sports (difference based)",
+        "note": "Points, set difference, point difference, head to head.",
+        "tiebreakers": [
+            "points", "set_difference", "point_difference", "head_to_head",
+            "name",
+        ],
+    },
+]
+
 _TIEBREAKERS = {
     "points", "goal_difference", "goals_for", "goals_against", "wins",
     "head_to_head", "name", "set_difference", "sets_for",
