@@ -554,6 +554,7 @@ class TournamentSportsMetaView(GenericAPIView):
                 # Named, sourced scoring presets (P2) the organizer can pick
                 # then freely edit — presets, never prisons.
                 "presets": SCORING_PRESETS.get(code, []),
+                "officials_roles": list(d.officials_roles),
             }
             sports.append({
                 "key": code, "name": names[code], "leaf_count": counts[code],

@@ -33,6 +33,7 @@ def _sport_meta(m) -> dict:
         "family": d.period_model,
         "terms": d.terms,
         "version": d.version,
+        "officials_roles": list(d.officials_roles),
     }
 
 

@@ -53,3 +53,7 @@ class SportDefinition:
     terms: dict = field(default_factory=dict)
     leaderboards: tuple[LeaderboardSpec, ...] = ()
     console_blueprint: dict = field(default_factory=dict)
+    # Crew template: the officials a match of this sport typically fields
+    # (MatchOfficialRole values; sepak fields two linesmen). Pre-fills the
+    # assignment UI — an organizer can always deviate.
+    officials_roles: tuple[str, ...] = ()

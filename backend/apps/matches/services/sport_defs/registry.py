@@ -45,6 +45,7 @@ FOOTBALL = SportDefinition(
     terms={"score_unit": "Goals", "period": "Half"},
     leaderboards=_GOAL_BOARDS,
     console_blueprint={"family": TIMED},
+    officials_roles=("referee", "assistant", "assistant", "fourth"),
 )
 
 VOLLEYBALL = SportDefinition(
@@ -57,6 +58,7 @@ VOLLEYBALL = SportDefinition(
     terms={"score_unit": "Points", "period": "Set"},
     leaderboards=_SET_BOARDS,
     console_blueprint={"family": TARGET},
+    officials_roles=("umpire", "assistant"),
 )
 
 TABLE_TENNIS = SportDefinition(
@@ -73,6 +75,7 @@ TABLE_TENNIS = SportDefinition(
     terms={"score_unit": "Points", "period": "Game"},
     leaderboards=_SET_BOARDS,
     console_blueprint={"family": TARGET},
+    officials_roles=("umpire", "assistant"),
 )
 
 SEPAK_TAKRAW = SportDefinition(
@@ -93,6 +96,7 @@ SEPAK_TAKRAW = SportDefinition(
     terms={"score_unit": "Points", "period": "Set"},
     leaderboards=_SET_BOARDS,
     console_blueprint={"family": TARGET},
+    officials_roles=("referee", "assistant", "linesman", "linesman"),
 )
 
 BADMINTON = SportDefinition(
@@ -106,6 +110,7 @@ BADMINTON = SportDefinition(
     terms={"score_unit": "Points", "period": "Game"},
     leaderboards=_SET_BOARDS,
     console_blueprint={"family": TARGET},
+    officials_roles=("umpire", "assistant"),
 )
 
 SPORT_DEFINITIONS: dict[str, SportDefinition] = {
