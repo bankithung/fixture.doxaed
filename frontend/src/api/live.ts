@@ -78,6 +78,12 @@ export const liveApi = {
     matchId: string,
     payload: { home_pens: number; away_pens: number; event_id: string },
   ) => api.post(`/api/matches/${matchId}/shootout/`, payload),
+  /** Manager-only, audited correction of a COMPLETED set-sport result;
+   * requires a reason and re-fires bracket advancement (H3). */
+  amendSetResult: (
+    matchId: string,
+    payload: { set_scores: number[][]; reason: string; event_id: string },
+  ) => api.post(`/api/matches/${matchId}/amend/`, payload),
   /** Record a set-sport final result as ordered per-set scores. */
   recordSetScores: (
     matchId: string,

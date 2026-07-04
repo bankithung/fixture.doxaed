@@ -95,6 +95,12 @@ class RecordSetScoreSerializer(serializers.Serializer):
     event_id = serializers.UUIDField(required=False)
 
 
+class AmendSetResultSerializer(RecordSetScoreSerializer):
+    """Manager correction of a COMPLETED set result — a reason is mandatory
+    (the amend is audited; corrections must be justifiable)."""
+    reason = serializers.CharField(max_length=500)
+
+
 class RecordEventSerializer(serializers.Serializer):
     event_type = serializers.ChoiceField(choices=MatchEventType.values)
     side = serializers.ChoiceField(choices=["home", "away"], required=False, allow_blank=True)

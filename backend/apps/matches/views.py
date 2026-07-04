@@ -31,6 +31,7 @@ from apps.matches.serializers import (
     MatchSerializer,
     RecordEventSerializer,
     RecordScoreSerializer,
+    AmendSetResultSerializer,
     RecordSetScoreSerializer,
     RecordShootoutSerializer,
     RescheduleMatchSerializer,
@@ -398,6 +399,46 @@ class RecordScoreView(GenericAPIView):
             )
         except ValidationError as e:
             raise DRFValidationError({"detail": getattr(e, "message", "invalid_score")})
+        match.refresh_from_db()
+        return Response(MatchSerializer(match).data)
+
+
+class AmendResultView(GenericAPIView):
+    """`POST /api/matches/{id}/amend/` — manager-only, audited correction of a
+    COMPLETED set-sport result (H3). Requires a reason; re-fires advancement
+    so a flipped winner corrects the dependent bracket slots. Goal-based
+    matches correct through VOID events instead (which already ripple)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, match_id):
+        from apps.matches.services.set_scoring import (
+            amend_set_result,
+            rules_for_match,
+        )
+
+        match = _match_or_404(request.user, match_id)
+        if not can_manage_tournament(request.user, match.tournament):
+            raise PermissionDenied("not_tournament_manager")
+        rules = rules_for_match(match)
+        if rules is None:
+            raise DRFValidationError({"detail": "amend_is_for_set_sports"})
+        ser = AmendSetResultSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            amend_set_result(
+                match=match,
+                set_scores=ser.validated_data["set_scores"],
+                rules=rules,
+                by=request.user,
+                reason=ser.validated_data["reason"],
+                event_id=ser.validated_data.get("event_id"),
+                request=request,
+            )
+        except ValidationError as e:
+            raise DRFValidationError(
+                {"detail": getattr(e, "message", "invalid_amend")}
+            )
         match.refresh_from_db()
         return Response(MatchSerializer(match).data)
 

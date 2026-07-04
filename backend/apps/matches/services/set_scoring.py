@@ -359,3 +359,76 @@ def record_set_result(
             lambda: publish_match_event(mid, None, tid, kind="score")
         )
     return locked
+
+
+def amend_set_result(
+    *, match, set_scores: list, rules: dict, by, reason: str,
+    event_id: _uuid.UUID | None = None, request=None,
+) -> Match:
+    """Audited correction of a COMPLETED set-sport result (H3).
+
+    Before this, a wrong sepak/TT result was permanent the moment the match
+    completed — and a wrong knockout winner propagated through the bracket
+    forever. An amend requires a REASON, is manager-gated at the view, is
+    idempotent on event_id, and re-fires advancement + badge recompute so a
+    flipped winner corrects the dependent bracket slots (invariant #9).
+    """
+    if not (reason or "").strip():
+        raise ValidationError("amend_reason_required")
+
+    # compute_sets validates legality AND decidedness (an undecided array
+    # raises), so an amended result always has a winner.
+    home_sets, away_sets = compute_sets(set_scores, rules)
+    norm_scores = [[int(s[0]), int(s[1])] for s in set_scores]
+
+    with transaction.atomic():
+        locked = Match.objects.select_for_update().get(pk=match.pk)
+        # Idempotency check INSIDE the lock: a concurrent replay serializes
+        # here and sees the winner's audit row.
+        if event_id is not None:
+            prior = AuditEvent.objects.filter(
+                idempotency_key=event_id, event_type="match_result_amended"
+            ).first()
+            if prior is not None:
+                return locked
+        if locked.status != MatchStatus.COMPLETED:
+            raise ValidationError("only_completed_results_can_be_amended")
+
+        before = {
+            "home": locked.home_score,
+            "away": locked.away_score,
+            "set_scores": locked.set_scores,
+        }
+        locked.home_score = home_sets
+        locked.away_score = away_sets
+        locked.set_scores = norm_scores
+        locked.save(
+            update_fields=["home_score", "away_score", "set_scores", "updated_at"]
+        )
+        emit_audit(
+            actor_user=by,
+            actor_role=ActorRole.ADMIN,
+            event_type="match_result_amended",
+            target_type="match",
+            target_id=locked.id,
+            organization_id=locked.organization_id,
+            tournament_id=locked.tournament_id,
+            match_id=locked.id,
+            idempotency_key=event_id,
+            reason=reason.strip(),
+            payload_before=before,
+            payload_after={
+                "home": home_sets, "away": away_sets, "set_scores": norm_scores,
+            },
+            request=request,
+        )
+        from apps.matches.services.events import publish_match_event
+        from apps.matches.services.state import _fire_advancement, _fire_badges
+
+        mid, tid = locked.id, locked.tournament_id
+        transaction.on_commit(lambda: _fire_advancement(mid))
+        transaction.on_commit(lambda: _fire_badges(mid))
+        transaction.on_commit(
+            lambda: publish_match_event(mid, None, tid, kind="score")
+        )
+    return locked

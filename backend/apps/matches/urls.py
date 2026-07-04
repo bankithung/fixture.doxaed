@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.urls import path
 
 from apps.matches.views import (
+    AmendResultView,
     AssignOfficialsView,
     AssignScorerView,
     ConfirmLineupView,
@@ -22,6 +23,7 @@ from apps.matches.views import (
 # Mounted at /api/matches/
 urlpatterns = [
     path("<uuid:match_id>/score/", RecordScoreView.as_view(), name="match-score"),
+    path("<uuid:match_id>/amend/", AmendResultView.as_view(), name="match-amend"),
     path(
         "<uuid:match_id>/shootout/",
         RecordShootoutView.as_view(),

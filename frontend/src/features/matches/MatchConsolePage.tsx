@@ -109,6 +109,10 @@ function errorMessage(e: unknown): string {
     cannot_void_a_void: t("Corrections cannot be undone."),
     player_not_found: t("That player was not found."),
     player_not_on_team: t("That player is not on this team."),
+    not_tournament_manager: t("Only a tournament manager can amend a final result."),
+    amend_reason_required: t("Enter the reason for the correction."),
+    only_completed_results_can_be_amended: t("Only a completed result can be amended."),
+    amend_is_for_set_sports: t("Goal-based matches are corrected by undoing events."),
   };
   if (detail.startsWith("match_not_accepting_events")) {
     return t("The match is not accepting events in its current state.");
@@ -407,6 +411,29 @@ export function MatchConsolePage(): React.ReactElement {
       setConfirmSets(false);
       onError(e);
     },
+  });
+
+  // H3: audited manager correction of a COMPLETED set result. The bracket
+  // re-fills from the corrected winner server-side.
+  const [amendOpen, setAmendOpen] = useState(false);
+  const [amendRows, setAmendRows] = useState<SetRow[]>([["", ""]]);
+  const [amendReason, setAmendReason] = useState("");
+  const amend = useMutation({
+    mutationFn: (v: { event_id: string }) =>
+      liveApi.amendSetResult(matchId, {
+        set_scores: amendRows
+          .filter(([h, a]) => h !== "" && a !== "")
+          .map(([h, a]) => [Number(h), Number(a)]),
+        reason: amendReason.trim(),
+        event_id: v.event_id,
+      }),
+    onSuccess: () => {
+      setAmendOpen(false);
+      setAmendReason("");
+      toast.push({ kind: "success", title: t("Result amended.") });
+      refresh();
+    },
+    onError,
   });
 
   if (query.isLoading) {
@@ -713,6 +740,23 @@ export function MatchConsolePage(): React.ReactElement {
                 </Button>
               ))}
             </div>
+          ) : null}
+          {isFinal && setBased ? (
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="amend-result"
+              onClick={() => {
+                setAmendRows(
+                  (match.set_scores ?? []).map(
+                    (sc) => [String(sc[0]), String(sc[1])] as SetRow,
+                  ),
+                );
+                setAmendOpen(true);
+              }}
+            >
+              {t("Amend result")}
+            </Button>
           ) : null}
         </div>
       </div>
@@ -1145,6 +1189,101 @@ export function MatchConsolePage(): React.ReactElement {
             data-testid="confirm-sets"
           >
             {t("Record result")}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* H3: manager amend of a completed set result — audited, reasoned. */}
+      <Dialog
+        open={amendOpen}
+        onOpenChange={setAmendOpen}
+        ariaLabel={t("Amend result")}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("Amend the final result?")}</DialogTitle>
+          <DialogDescription>
+            {t("Corrections are audited and refill the bracket from the corrected winner. Enter the correct set scores and the reason.")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-2 py-3">
+          {amendRows.map((row, i) => (
+            <div
+              key={i}
+              className="grid grid-cols-[2.5rem_1fr_1fr_2rem] items-center gap-2"
+            >
+              <span className="text-xs font-medium text-muted-foreground">
+                {t("Set")} {i + 1}
+              </span>
+              {([0, 1] as const).map((si) => (
+                <Input
+                  key={si}
+                  inputMode="numeric"
+                  aria-label={`${t("Amend set")} ${i + 1} ${si === 0 ? homeName : awayName}`}
+                  value={row[si]}
+                  onChange={(e) =>
+                    setAmendRows((rows) =>
+                      rows.map((r, j) =>
+                        j === i
+                          ? ((si === 0
+                              ? [e.target.value, r[1]]
+                              : [r[0], e.target.value]) as SetRow)
+                          : r,
+                      ),
+                    )
+                  }
+                  className="h-9 text-center font-tabular"
+                />
+              ))}
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={`${t("Remove amended set")} ${i + 1}`}
+                disabled={amendRows.length === 1}
+                className="h-8 w-8 p-0"
+                onClick={() =>
+                  setAmendRows((rows) => rows.filter((_, j) => j !== i))
+                }
+              >
+                <X aria-hidden="true" className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-fit"
+            onClick={() => setAmendRows((rows) => [...rows, ["", ""]])}
+          >
+            <Plus aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+            {t("Add set")}
+          </Button>
+          <div className="flex flex-col gap-1 pt-1">
+            <Label htmlFor="amend-reason" className="text-xs">
+              {t("Reason")}
+            </Label>
+            <Input
+              id="amend-reason"
+              value={amendReason}
+              onChange={(e) => setAmendReason(e.target.value)}
+              placeholder={t("Why is the result changing?")}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => setAmendOpen(false)}>
+            {t("Cancel")}
+          </Button>
+          <Button
+            size="sm"
+            data-testid="confirm-amend"
+            disabled={
+              amend.isPending ||
+              amendReason.trim() === "" ||
+              amendRows.every(([h, a]) => h === "" || a === "")
+            }
+            onClick={() => amend.mutate({ event_id: newEventId() })}
+          >
+            {t("Amend result")}
           </Button>
         </DialogFooter>
       </Dialog>

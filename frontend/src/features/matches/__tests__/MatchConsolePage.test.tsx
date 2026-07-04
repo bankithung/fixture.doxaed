@@ -56,6 +56,48 @@ describe("MatchConsolePage", () => {
     clearWrites();
   });
 
+  it("amends a completed set result with a mandatory reason (H3)", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      snap("completed", {
+        sport: "table_tennis",
+        scoring: { type: "sets", best_of: 3, points: 11, win_by: 2 },
+        set_scores: [
+          [11, 8],
+          [11, 9],
+        ],
+        home_score: 2,
+        away_score: 0,
+      } as never),
+    );
+    vi.mocked(liveApi.amendSetResult).mockResolvedValue({} as never);
+    renderConsole();
+    await screen.findAllByText("Alpha");
+
+    await userEvent.click(screen.getByTestId("amend-result"));
+    // Seeded from the recorded result; swap set 1 to flip the winner.
+    const set1Home = screen.getByRole("textbox", { name: /amend set 1 alpha/i });
+    const set1Away = screen.getByRole("textbox", { name: /amend set 1 beta/i });
+    await userEvent.clear(set1Home);
+    await userEvent.type(set1Home, "8");
+    await userEvent.clear(set1Away);
+    await userEvent.type(set1Away, "11");
+
+    // The confirm stays disabled until a reason is entered.
+    expect(screen.getByTestId("confirm-amend")).toBeDisabled();
+    await userEvent.type(
+      screen.getByLabelText(/reason/i),
+      "Sides were swapped",
+    );
+    await userEvent.click(screen.getByTestId("confirm-amend"));
+
+    await waitFor(() => expect(liveApi.amendSetResult).toHaveBeenCalled());
+    const [mid, payload] = vi.mocked(liveApi.amendSetResult).mock.calls[0];
+    expect(mid).toBe("m1");
+    expect(payload.set_scores[0]).toEqual([8, 11]);
+    expect(payload.reason).toBe("Sides were swapped");
+    expect(payload.event_id).toBeTruthy();
+  });
+
   it("parks a tap offline (queued, not lost, no error toast) when the server is unreachable", async () => {
     vi.mocked(liveApi.snapshot).mockResolvedValue(snap("live"));
     vi.mocked(liveApi.recordEvent).mockRejectedValue(
