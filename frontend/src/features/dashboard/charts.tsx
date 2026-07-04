@@ -349,9 +349,9 @@ export function BarList({
               ) : null}
             </span>
           </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded-full">
+          <div className="mt-1 h-2.5 overflow-hidden rounded-sm">
             <div
-              className="chart-bar h-full rounded-full bg-chart-1"
+              className="chart-bar h-full rounded-sm bg-chart-1"
               style={{
                 width: `${Math.max(2, (item.value / max) * 100)}%`,
                 transitionDelay: `${i * 50}ms`,
@@ -382,14 +382,14 @@ export function Meter({
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
   return (
     <div
-      className={cn("h-1.5 w-full rounded-full bg-chart-1/15", drawn && "chart-drawn")}
+      className={cn("h-2.5 w-full rounded-sm bg-chart-1/15", drawn && "chart-drawn")}
       role="progressbar"
       aria-valuenow={pct}
       aria-valuemin={0}
       aria-valuemax={100}
     >
       <div
-        className="chart-bar h-full rounded-full bg-chart-1"
+        className="chart-bar h-full rounded-sm bg-chart-1"
         style={{ width: `${pct}%`, transitionDelay: `${delayMs}ms` }}
       />
     </div>

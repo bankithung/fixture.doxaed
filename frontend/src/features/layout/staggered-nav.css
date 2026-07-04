@@ -1,0 +1,60 @@
+/* StaggeredMenu (React Bits) re-cut as the app's left nav overlay: token
+   colors (emerald prelayers sweeping ahead of a bg-card panel), app hairlines
+   and radii. Driven by StaggeredNavMenu.tsx via gsap; with animations off the
+   elements render in their resting (open) state, so no keyframes live here. */
+
+.snav-root {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.snav-scrim {
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--foreground) / 0.4);
+}
+
+.snav-layers {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: min(20rem, 85vw);
+  pointer-events: none;
+}
+
+.snav-layer {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+.snav-layer--1 {
+  background: hsl(var(--primary));
+}
+
+.snav-layer--2 {
+  background: hsl(var(--accent));
+}
+
+.snav-panel {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: min(20rem, 85vw);
+  display: flex;
+  flex-direction: column;
+  background: hsl(var(--card));
+  border-right: 1px solid hsl(var(--border));
+  box-shadow: 0 12px 28px -6px hsl(222 47% 11% / 0.14);
+  overflow-y: auto;
+  will-change: transform;
+}
+
+/* Each nav label sits in an overflow-hidden wrap so the yPercent+rotate
+   reveal clips at the row edge (the source component's signature move). */
+.snav-itemwrap {
+  overflow: hidden;
+}
+
+.snav-item-inner {
+  will-change: transform;
+}

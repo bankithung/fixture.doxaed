@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Link,
-  NavLink,
   Outlet,
   useLocation,
   useMatch,
@@ -9,17 +8,12 @@ import {
 } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   Bell,
   ChevronDown,
   ChevronRight,
-  Lock,
   Menu,
   PanelLeft,
-  Plus,
-  Trophy,
   UserRound,
-  X,
 } from "lucide-react";
 import { useAuthStore } from "@/features/auth/authStore";
 import { useOrgSwitcher } from "@/features/orgs/OrgSwitcherStore";
@@ -27,25 +21,22 @@ import { OrgSwitcher } from "@/features/orgs/OrgSwitcher";
 import { ThemeToggle } from "@/features/theme/ThemeToggle";
 import { NotificationBell } from "@/features/notifications/NotificationBell";
 import { Avatar } from "@/components/ui/Avatar";
-import { Button } from "@/components/ui/button";
 import { Sidebar } from "./Sidebar";
 import { SetupStepperSidebar } from "./SetupStepperSidebar";
 import { SportsStepBar } from "./SportsStepBar";
 import { FixtureStepBar } from "./FixtureStepBar";
+import { StaggeredNavMenu } from "./StaggeredNavMenu";
 import {
   computeTournamentNav,
   computeWorkspaceNav,
   pathStageKey,
   type NavGroup,
-  type NavItem,
 } from "./computeNavItems";
 import { tournamentsApi } from "@/api/tournaments";
 import { invitationsApi } from "@/api/invitations";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { routes } from "@/lib/routes";
-import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { BrandLogo } from "@/components/ui/BrandLogo";
 
 /**
  * Attach the pending-invite count as a `badge` on the Workspace "invites" nav
@@ -236,53 +227,6 @@ export function AppShell(): React.ReactElement {
     navigate(routes.login());
   };
 
-  const drawerNavLink = (item: NavItem): React.ReactElement => {
-    const Icon = item.icon;
-    // Stage-gated section not yet reached — disabled, not a link (mirrors the rail).
-    if (item.locked) {
-      return (
-        <div
-          key={item.key}
-          aria-disabled="true"
-          className="flex cursor-not-allowed items-start gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground/40"
-        >
-          <Lock aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate">{item.label}</span>
-            {item.lockLabel ? (
-              <span className="truncate text-[0.6875rem]">
-                {t("Unlocks at")} {item.lockLabel}
-              </span>
-            ) : null}
-          </span>
-        </div>
-      );
-    }
-    return (
-      <NavLink
-        key={item.key}
-        to={item.href}
-        end
-        className={({ isActive }) =>
-          cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-            isActive
-              ? "bg-accent font-medium text-accent-foreground"
-              : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-          )
-        }
-      >
-        <Icon aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
-        <span className="flex-1 truncate">{item.label}</span>
-        {item.badge ? (
-          <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
-            {item.badge}
-          </span>
-        ) : null}
-      </NavLink>
-    );
-  };
-
   return (
     <div className="flex min-h-screen bg-background">
       {setupMode ? (
@@ -447,105 +391,15 @@ export function AppShell(): React.ReactElement {
           </div>
         </header>
 
-        {drawerOpen ? (
-          <div
-            id="mobile-nav-drawer"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("Navigation menu")}
-            className="fixed inset-0 z-40 md:hidden"
-          >
-            <div
-              aria-hidden="true"
-              className="absolute inset-0 bg-foreground/40"
-              onClick={() => setDrawerOpen(false)}
-            />
-            <div className="absolute inset-y-0 left-0 flex w-72 max-w-[80vw] flex-col gap-2 border-r bg-card p-4 shadow-xl animate-fade-in">
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 font-semibold">
-                  <BrandLogo className="h-7 w-7 rounded-lg" />
-                  {t("Fixture")}
-                </span>
-                <button
-                  type="button"
-                  aria-label={t("Close navigation menu")}
-                  onClick={() => setDrawerOpen(false)}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <X aria-hidden="true" className="h-5 w-5" />
-                </button>
-              </div>
-              {inTournamentContext ? (
-                <div className="flex flex-col gap-2 border-b pb-3">
-                  <Link
-                    to={routes.tournaments()}
-                    onClick={() => setDrawerOpen(false)}
-                    className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    <ArrowLeft
-                      aria-hidden="true"
-                      className="h-3.5 w-3.5 shrink-0"
-                    />
-                    {t("All tournaments")}
-                  </Link>
-                  <div className="flex items-center gap-2 px-2">
-                    <Trophy
-                      aria-hidden="true"
-                      className="h-[18px] w-[18px] shrink-0 text-primary"
-                    />
-                    <span className="truncate text-sm font-semibold tracking-tight">
-                      {tournamentName ?? t("Tournament")}
-                    </span>
-                  </div>
-                </div>
-              ) : null}
-              <nav
-                aria-label={t("Primary")}
-                className="flex flex-col gap-1 overflow-y-auto"
-                onClick={() => setDrawerOpen(false)}
-              >
-                {navGroups.length === 0 ? (
-                  <p className="px-2 py-2 text-xs text-muted-foreground">
-                    {t("Pick an organization to see navigation.")}
-                  </p>
-                ) : (
-                  navGroups.map((group) => (
-                    <div key={group.key} className="flex flex-col gap-1 pb-2">
-                      <p className="px-2 pb-0.5 pt-1 text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                        {group.label}
-                      </p>
-                      {group.items.map(drawerNavLink)}
-                    </div>
-                  ))
-                )}
-              </nav>
-              <div className="mt-auto flex flex-col gap-1 border-t pt-3">
-                <Link
-                  to={routes.tournamentNew()}
-                  onClick={() => setDrawerOpen(false)}
-                  className="mb-1 flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                  <Plus aria-hidden="true" className="h-4 w-4" />
-                  {t("New tournament")}
-                </Link>
-                <Link
-                  to={routes.myProfile()}
-                  className="rounded-md px-3 py-1.5 text-sm hover:bg-accent"
-                >
-                  {t("My profile")}
-                </Link>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void handleSignOut()}
-                >
-                  {t("Sign out")}
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <StaggeredNavMenu
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          groups={navGroups}
+          tournamentName={tournamentName}
+          inTournamentContext={inTournamentContext}
+          onSignOut={() => void handleSignOut()}
+        />
+
 
         {/* Sticky sub-toolbar — the Sports page's own sub-steps, only there. */}
         {setupMode &&
