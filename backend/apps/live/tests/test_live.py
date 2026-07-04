@@ -159,3 +159,23 @@ def test_match_card_png_renders_and_caches():
     etag = r["ETag"]
     assert c.get(f"/api/live/match-card/{m.id}.png",
                  HTTP_IF_NONE_MATCH=etag).status_code == 304
+
+
+@pytest.mark.django_db
+def test_match_meta_serves_og_tags_with_score():
+    admin = _verified("meta-og@test.local")
+    t = create_tournament(user=admin, name="Meta OG Cup")
+    a, b = register_school(
+        tournament=t, school_name="S",
+        teams=[{"name": "A", "players": []}, {"name": "B", "players": []}],
+    )
+    m = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=a, away_team=b,
+        status=MatchStatus.LIVE, sport="sepak_takraw", set_scores=[[8, 7]],
+        home_score=0, away_score=0,
+    )
+    r = APIClient().get(f"/api/live/match-meta/{m.id}/")
+    assert r.status_code == 200
+    html = r.content.decode()
+    assert 'property="og:title" content="A 8 - 7 B (LIVE)"' in html
+    assert f"match-card/{m.id}.png" in html
