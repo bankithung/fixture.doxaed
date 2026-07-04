@@ -110,7 +110,7 @@ describe("SportsTab", () => {
     );
   });
 
-  it("removes a selected sport", async () => {
+  it("removes a selected sport after the confirm dialog", async () => {
     vi.mocked(tournamentsApi.sports).mockResolvedValue({
       sports: [{ key: "football", name: "Football", custom: false }],
     });
@@ -118,6 +118,9 @@ describe("SportsTab", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /remove football/i }),
     );
+    // Nothing saves until the warning is confirmed.
+    expect(tournamentsApi.setSports).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByTestId("confirm-remove-sport"));
     await waitFor(() =>
       expect(tournamentsApi.setSports).toHaveBeenCalledWith("t1", []),
     );

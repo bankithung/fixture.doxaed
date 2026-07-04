@@ -637,7 +637,11 @@ export function SportsTab(): React.ReactElement {
         title:
           e instanceof ApiError && e.payload.detail === "not_tournament_manager"
             ? t("Only managers can change sports")
-            : t("Could not save sports"),
+            : t("Your change did not save"),
+        description:
+          e instanceof ApiError && e.payload.detail === "not_tournament_manager"
+            ? undefined
+            : t("Please check your internet and try again. Nothing was lost."),
       });
     },
   });
@@ -685,8 +689,20 @@ export function SportsTab(): React.ReactElement {
     if (selectedKeys.has(sport.key)) return;
     save.mutate([...selected, sport]);
   };
-  const remove = (key: string): void =>
-    save.mutate(selected.filter((s) => s.key !== key));
+  // Removing a sport drops its categories and competitions with it, so the
+  // X / Remove actions stage the sport here and a confirm dialog commits.
+  const [pendingRemove, setPendingRemove] = useState<TournamentSport | null>(
+    null,
+  );
+  const remove = (key: string): void => {
+    const sport = selected.find((s) => s.key === key);
+    if (sport) setPendingRemove(sport);
+  };
+  const confirmRemove = (): void => {
+    if (!pendingRemove) return;
+    save.mutate(selected.filter((s) => s.key !== pendingRemove.key));
+    setPendingRemove(null);
+  };
   const updateSport = (key: string, patch: Partial<TournamentSport>): void =>
     save.mutate(selected.map((s) => (s.key === key ? { ...s, ...patch } : s)));
 
@@ -1086,8 +1102,6 @@ export function SportsTab(): React.ReactElement {
       ) : effectiveStep === "configure" ? (
         <>
           {/* Editor with folder-style sport tabs (left) + live preview (right). */}
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-            <div className="flex min-w-0 flex-1 flex-col">
               {/* Sport tabs — bookmarked onto the editor card below: the active
                   tab is the same surface as the panel, with no line between. */}
               <div
@@ -1121,6 +1135,9 @@ export function SportsTab(): React.ReactElement {
                   );
                 })}
               </div>
+
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+            <div className="flex min-w-0 flex-1 flex-col">
               {/* Active sport's category tree — the panel the tabs attach to. */}
               {activeSport ? (
                 <section
@@ -1656,6 +1673,37 @@ export function SportsTab(): React.ReactElement {
             </div>
           </>
         ) : null}
+      </Dialog>
+      <Dialog
+        open={pendingRemove !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingRemove(null);
+        }}
+        ariaLabel={t("Remove sport")}
+      >
+        <DialogHeader>
+          <DialogTitle>
+            {t(`Remove ${pendingRemove?.name ?? ""}?`)}
+          </DialogTitle>
+          <DialogDescription>
+            {t(
+              "Its categories and competitions are removed with it. Teams already registered under them lose their competition.",
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setPendingRemove(null)}>
+            {t("Keep it")}
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={confirmRemove}
+            data-testid="confirm-remove-sport"
+          >
+            <Trash2 aria-hidden="true" className="h-4 w-4" />
+            {t("Remove sport")}
+          </Button>
+        </div>
       </Dialog>
     </div>
   );
