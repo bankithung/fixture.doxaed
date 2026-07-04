@@ -26,48 +26,20 @@ from apps.audit.models import ActorRole, AuditEvent
 from apps.audit.services import emit_audit
 from apps.matches.models import Match, MatchStatus
 
-# Per-sport competition profiles. `scoring.cap` = hard ceiling where a 1-point
-# lead wins (deuce ends); `deciding` overrides the final set's numbers.
-# `duration_minutes` is the slot estimate the scheduler uses; `venue_type`
-# feeds venue-compatibility constraints (P3).
+# DERIVED from the SportDefinition registry (P1): one source of truth for
+# scoring defaults + scheduling hints. The dict shape is unchanged, so every
+# consumer (rules resolution, scheduler durations, venue compatibility)
+# keeps working verbatim. `scoring.cap` = hard ceiling where a 1-point lead
+# wins (deuce ends); `deciding` overrides the final set's numbers.
+from apps.matches.services.sport_defs import SPORT_DEFINITIONS
+
 SPORT_PROFILES: dict[str, dict] = {
-    "football": {
-        "scoring": {"type": "goals"},
-        "duration_minutes": 100,  # 2x45 + interval/turnaround (youth: override)
-        "venue_type": "ground",
-    },
-    "volleyball": {
-        "scoring": {
-            "type": "sets", "best_of": 5, "points": 25, "win_by": 2,
-            "cap": None, "deciding": {"points": 15, "win_by": 2, "cap": None},
-        },
-        "duration_minutes": 90,
-        "venue_type": "indoor_court",
-    },
-    "table_tennis": {
-        "scoring": {"type": "sets", "best_of": 3, "points": 11, "win_by": 2,
-                    "cap": None},
-        "duration_minutes": 30,
-        "venue_type": "indoor_court",
-    },
-    "sepak_takraw": {
-        "scoring": {
-            "type": "sets", "best_of": 3, "points": 21, "win_by": 2,
-            "cap": 25, "deciding": {"points": 15, "win_by": 2, "cap": 17},
-        },
-        "duration_minutes": 45,
-        "venue_type": "indoor_court",
-    },
-    # BWF: every game to 21, win by 2, hard cap at 30 (29-all → next point
-    # wins). The deciding game scores identically (ends change at 11).
-    "badminton": {
-        "scoring": {
-            "type": "sets", "best_of": 3, "points": 21, "win_by": 2,
-            "cap": 30, "deciding": {"points": 21, "win_by": 2, "cap": 30},
-        },
-        "duration_minutes": 45,
-        "venue_type": "indoor_court",
-    },
+    code: {
+        "scoring": (d.scoring or {"type": "goals"}),
+        "duration_minutes": d.duration_minutes,
+        "venue_type": d.venue_type,
+    }
+    for code, d in SPORT_DEFINITIONS.items()
 }
 
 # Back-compat alias: the set-scoring subset of the profiles.

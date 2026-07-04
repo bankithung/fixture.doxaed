@@ -64,6 +64,15 @@ def transition_match(
         if not can_transition(frm, to_status):
             raise ValidationError(f"Illegal match transition: {frm} -> {to_status}")
 
+        # P1: sport-gate football phases. A set sport pauses between sets on
+        # its own and must never enter HALF_TIME — the console already hid the
+        # button, but the API accepted it (architecture finding).
+        if to_status == S.HALF_TIME:
+            from apps.matches.services.set_scoring import rules_for_match
+
+            if rules_for_match(locked) is not None:
+                raise ValidationError("no_half_time_for_set_sport")
+
         replay = frm == S.ABANDONED and to_status == S.SCHEDULED
         if (
             frm in _IN_PLAY
@@ -82,7 +91,11 @@ def transition_match(
         update_fields = ["status", "current_period", "updated_at"]
         if to_status == S.LIVE:
             if not locked.current_period:
-                locked.current_period = "first_half"
+                # P1: the opening period is a sport trait — football kicks off
+                # its first half; a set sport opens set/game 1.
+                from apps.matches.services.sport_defs import get_definition
+
+                locked.current_period = get_definition(locked.sport).opening_period
             elif frm == S.HALF_TIME:
                 # Resume: the sticky "half_time" label used to survive the
                 # whole second half (the scoreboard read "Live · half time").
@@ -201,10 +214,22 @@ def _stamp_walkover(locked: Match, winner_team_id) -> None:
     being awarded the match — anything else is rejected loudly."""
     if winner_team_id is not None:
         wid = str(winner_team_id)
+        # P1: the awarded scoreline is a sport trait. Football keeps the
+        # conventional 3-0; a set sport awards best_of//2+1 SETS (a "3-0"
+        # sets tally in a best-of-3 was an illegal result). set_scores stay
+        # EMPTY on a walkover — nothing was played, and stats/badges rely on
+        # empty set_scores to skip walkovers (master plan §6 guard).
+        from apps.matches.services.set_scoring import rules_for_match
+
+        rules = rules_for_match(locked)
+        win_score = (
+            WALKOVER_SCORE if rules is None
+            else int(rules.get("best_of", 3)) // 2 + 1
+        )
         if wid == str(locked.home_team_id):
-            locked.home_score, locked.away_score = WALKOVER_SCORE, 0
+            locked.home_score, locked.away_score = win_score, 0
         elif wid == str(locked.away_team_id):
-            locked.home_score, locked.away_score = 0, WALKOVER_SCORE
+            locked.home_score, locked.away_score = 0, win_score
         else:
             raise ValidationError("walkover_winner_not_in_match")
         locked.save(update_fields=["home_score", "away_score", "updated_at"])
