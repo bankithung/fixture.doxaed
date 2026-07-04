@@ -27,6 +27,7 @@ import { SportsStepBar } from "./SportsStepBar";
 import { FixtureStepBar } from "./FixtureStepBar";
 import { StaggeredNavMenu } from "./StaggeredNavMenu";
 import { AppBackdrop } from "@/components/backdrop/AppBackdrop";
+import { ClickSpark } from "@/components/backdrop/ClickSpark";
 import {
   computeTournamentNav,
   computeWorkspaceNav,
@@ -420,7 +421,9 @@ export function AppShell(): React.ReactElement {
         ) : null}
 
         <main className="flex flex-1 flex-col">
-          <Outlet />
+          <ClickSpark>
+            <Outlet />
+          </ClickSpark>
         </main>
       </div>
     </div>

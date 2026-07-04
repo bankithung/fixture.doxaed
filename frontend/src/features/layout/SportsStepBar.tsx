@@ -1,8 +1,8 @@
 import { Link, useSearchParams } from "react-router-dom";
-import { Check, ChevronRight } from "lucide-react";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import "@/components/backdrop/effects.css";
 
 /** The Sports page's three sub-steps, in order. */
 const SUB_STEPS: { key: string; label: string }[] = [
@@ -44,16 +44,34 @@ export function SportsStepBar({
               : `${routes.tournamentSports(tournamentId)}?step=${s.key}`;
           const inner = (
             <>
+              {/* Stepper (React Bits) indicator states, token-native: done
+                  draws its check in, active carries the dot, upcoming stays
+                  a numbered ring. */}
               <span
                 className={cn(
-                  "grid h-5 w-5 shrink-0 place-items-center rounded-full text-[0.6875rem] font-semibold",
+                  "grid h-5 w-5 shrink-0 place-items-center rounded-full text-[0.6875rem] font-semibold transition-colors duration-300",
                   active || done
                     ? "bg-primary text-primary-foreground"
                     : "border border-border text-muted-foreground",
                 )}
               >
                 {done ? (
-                  <Check aria-hidden="true" className="h-3 w-3" />
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={3}
+                    className="step-check h-3 w-3"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                ) : active ? (
+                  <span className="h-2 w-2 rounded-full bg-primary-foreground" />
                 ) : (
                   <span className="font-tabular">{i + 1}</span>
                 )}
@@ -87,10 +105,14 @@ export function SportsStepBar({
                 </span>
               )}
               {i < SUB_STEPS.length - 1 ? (
-                <ChevronRight
+                <span
                   aria-hidden="true"
-                  className="mx-0.5 h-4 w-4 shrink-0 text-muted-foreground/40"
-                />
+                  className="step-connector mx-1.5 w-8 shrink-0"
+                >
+                  <span
+                    className={cn("step-connector-fill", done && "done")}
+                  />
+                </span>
               ) : null}
             </span>
           );

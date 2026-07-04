@@ -1,0 +1,122 @@
+/* Shared micro-effect keyframes (React Bits GooeyNav + Stepper, re-cut on
+   tokens). The gooey burst spans are spawned by lib/burst.ts; the stepper
+   check/connector classes are used by the stage step bars. */
+
+.gooey-particle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  pointer-events: none;
+  z-index: 30;
+  display: block;
+  opacity: 0;
+  animation: gooey-particle var(--time, 900ms) ease 1 -50ms;
+}
+
+.gooey-particle .gooey-point {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--color, hsl(var(--primary)));
+  opacity: 1;
+  animation: gooey-point var(--time, 900ms) ease 1 -50ms;
+}
+
+@keyframes gooey-particle {
+  0% {
+    transform: rotate(0deg) translate(var(--start-x), var(--start-y));
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45);
+  }
+  70% {
+    transform: rotate(calc(var(--rotate) * 0.5))
+      translate(calc(var(--end-x) * 1.2), calc(var(--end-y) * 1.2));
+    opacity: 1;
+    animation-timing-function: ease;
+  }
+  85% {
+    transform: rotate(calc(var(--rotate) * 0.66))
+      translate(var(--end-x), var(--end-y));
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(calc(var(--rotate) * 1.2))
+      translate(calc(var(--end-x) * 0.5), calc(var(--end-y) * 0.5));
+    opacity: 1;
+  }
+}
+
+@keyframes gooey-point {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+    animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45);
+  }
+  25% {
+    transform: scale(calc(var(--scale, 1) * 0.25));
+  }
+  38% {
+    opacity: 1;
+  }
+  65% {
+    transform: scale(var(--scale, 1));
+    opacity: 1;
+    animation-timing-function: ease;
+  }
+  85% {
+    transform: scale(var(--scale, 1));
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0);
+    opacity: 0;
+  }
+}
+
+/* Stepper check: the tick draws itself in when a stage completes. */
+.step-check path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: step-check-draw 0.35s ease-out 0.05s forwards;
+}
+
+@keyframes step-check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Stepper connector: the line fills toward the next stage when done. */
+.step-connector {
+  position: relative;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: hsl(var(--border));
+}
+
+.step-connector-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.step-connector-fill.done {
+  transform: scaleX(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gooey-particle,
+  .gooey-particle .gooey-point {
+    animation: none;
+    display: none;
+  }
+}
