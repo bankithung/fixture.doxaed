@@ -117,6 +117,18 @@ def record_match_event(
             or event_type == MatchEventType.OWN_GOAL
         ):
             raise DjangoValidationError("set_based_sport_uses_set_scores")
+        # Pillar E: a player serving a card ban cannot be credited with play.
+        # Lineups already hard-block (PRD 5.4); this closes the event layer
+        # (a lineup is optional, an event attribution is not). VOIDs stay
+        # legal — corrections must never be blocked by a ban.
+        if player is not None and event_type != MatchEventType.VOID:
+            from apps.matches.services.discipline import suspended_player_ids
+
+            if str(player.id) in suspended_player_ids(locked.tournament):
+                pname = (
+                    player.person.full_name if player.person_id else str(player.id)
+                )
+                raise DjangoValidationError(f"player_suspended:{pname}")
         # Status guard (mirrors record_score): events land on an open match.
         # The one exception is a correction on a COMPLETED match whose score
         # is event-derived — walkover/aggregate-scored matches carry a STAMPED

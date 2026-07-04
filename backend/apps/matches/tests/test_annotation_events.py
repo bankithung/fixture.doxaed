@@ -101,3 +101,25 @@ def test_annotation_events_are_voidable():
     assert MatchEvent.objects.filter(
         match=m, event_type=MatchEventType.VOID, voids=ev
     ).exists()
+
+
+def test_suspended_player_cannot_be_attributed_events():
+    """Pillar E: the card-ban engine bites at the EVENT layer too, not only
+    in optional lineups."""
+    from unittest import mock
+
+    admin, m, a = _live_sepak()
+    player = a.players.first()
+    with mock.patch(
+        "apps.matches.services.discipline.suspended_player_ids",
+        return_value={str(player.id)},
+    ):
+        with pytest.raises(DjangoValidationError, match="player_suspended"):
+            record_match_event(
+                match=m, event_type=MatchEventType.ACE, team=a, player=player,
+                by=admin,
+            )
+    # Unsuspended: same call passes.
+    record_match_event(
+        match=m, event_type=MatchEventType.ACE, team=a, player=player, by=admin,
+    )
