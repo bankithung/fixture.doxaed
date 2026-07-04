@@ -18,6 +18,18 @@ def _sort_key(row: dict, tiebreakers: list[str]):
     for tb in tiebreakers:
         if tb == "points":
             key.append(-row["Pts"])
+        elif tb == "ratio_games":
+            # ITTF Reg 3.7.6: ratio of games (sets) won to lost — a team that
+            # never lost a game ranks above any quotient (div-by-zero = inf).
+            key.append(
+                -(row["GF"] / row["GA"] if row["GA"] else float("inf"))
+                if (row["GF"] or row["GA"]) else 0.0
+            )
+        elif tb == "ratio_points":
+            key.append(
+                -(row["PF_pts"] / row["PA_pts"] if row["PA_pts"] else float("inf"))
+                if (row["PF_pts"] or row["PA_pts"]) else 0.0
+            )
         elif tb in ("goal_difference", "set_difference"):
             # For set sports the "score" is sets won, so GD == set difference.
             key.append(-row["GD"])
@@ -168,6 +180,11 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
     rules = merge_rules(getattr(tournament, "rules", None))
     pts = rules["points"]
     win_pts, draw_pts, loss_pts = pts["win"], pts["draw"], pts["loss"]
+    # ITTF-style: a walkover loss may score fewer points than a played loss
+    # (rules.points.walkover_loss; None = same as loss).
+    wo_loss_pts = pts.get("walkover_loss")
+    if wo_loss_pts is None:
+        wo_loss_pts = loss_pts
 
     # Walkovers enter the table only when they carry a scoreline (the
     # withdrawal executor awards 3-0); legacy score-less walkovers keep
@@ -220,10 +237,11 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
             if isinstance(s, (list, tuple)) and len(s) == 2:
                 h["PF_pts"] += s[0]; h["PA_pts"] += s[1]
                 a["PF_pts"] += s[1]; a["PA_pts"] += s[0]
+        lp = wo_loss_pts if m.status == MatchStatus.WALKOVER else loss_pts
         if hs > as_:
-            h["W"] += 1; a["L"] += 1; h["Pts"] += win_pts; a["Pts"] += loss_pts
+            h["W"] += 1; a["L"] += 1; h["Pts"] += win_pts; a["Pts"] += lp
         elif as_ > hs:
-            a["W"] += 1; h["L"] += 1; a["Pts"] += win_pts; h["Pts"] += loss_pts
+            a["W"] += 1; h["L"] += 1; a["Pts"] += win_pts; h["Pts"] += lp
         else:
             h["D"] += 1; a["D"] += 1; h["Pts"] += draw_pts; a["Pts"] += draw_pts
 

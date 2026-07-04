@@ -19,7 +19,10 @@ DEFAULT_RULES: dict[str, Any] = {
     "format": "round_robin",  # round_robin | knockout | groups_knockout
     "group_size": 5,
     "advance_per_group": 2,
-    "points": {"win": 3, "draw": 1, "loss": 0},
+    # ``walkover_loss`` = points for LOSING BY WALKOVER; None means "same as
+    # a played loss". ITTF group scoring is win 2 / played loss 1 / walkover
+    # loss 0 (Reg 3.7.5) — set it per TT leaf via by_leaf or a preset.
+    "points": {"win": 3, "draw": 1, "loss": 0, "walkover_loss": None},
     "tiebreakers": ["points", "goal_difference", "goals_for", "head_to_head", "name"],
     "match": {"halves": 2, "half_minutes": 45, "extra_time": False, "penalties": True},
     "squad": {"min_players": 7, "max_players": 23, "max_subs": 5},
@@ -66,6 +69,9 @@ _TIEBREAKERS = {
     "points", "goal_difference", "goals_for", "goals_against", "wins",
     "head_to_head", "name", "set_difference", "sets_for",
     "point_difference", "points_for", "points_against", "coin_toss",
+    # ITTF-family RATIO comparators (won:lost quotients, Reg 3.7.6) — a
+    # different beast from subtractive goal/point difference.
+    "ratio_games", "ratio_points",
 }
 
 

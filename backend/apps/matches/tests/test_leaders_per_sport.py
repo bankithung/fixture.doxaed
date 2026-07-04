@@ -107,3 +107,46 @@ def test_day_zero_shows_each_sports_empty_boards():
         "match_wins", "set_ratio", "point_diff"
     ]
     assert all(b["rows"] == [] for b in tt["boards"])
+
+
+def test_ittf_group_scoring_and_ratio_tiebreakers():
+    """P2 (TT vertical): win 2 / played loss 1 / walkover loss 0 (Reg 3.7.5)
+    and ratio_games ranks by won:lost quotient, not subtraction."""
+    from apps.matches.services.standings import compute_standings
+    from apps.matches.services.state import transition_match
+    from apps.matches.models import MatchStatus as MS
+
+    admin, t, a, b, c, d = _setup()
+    t.rules = {
+        "points": {"win": 2, "draw": 1, "loss": 1, "walkover_loss": 0},
+        "tiebreakers": ["points", "ratio_games", "ratio_points", "name"],
+    }
+    t.save(update_fields=["rules"])
+    label = "TT U14 Group A"
+
+    def tt(home, away):
+        return Match.objects.create(
+            organization=t.organization, tournament=t, sport="table_tennis",
+            stage="group", group_label=label, home_team=home, away_team=away,
+        )
+    TT_RULES = {"type": "sets", "points": 11, "win_by": 2, "cap": None,
+                "best_of": 3}
+    # A beats B 2-0 (played); C loses to A by WALKOVER; B beats C 2-1.
+    m1 = tt(a, b)
+    record_set_result(match=m1, set_scores=[[11, 5], [11, 7]], rules=TT_RULES,
+                      by=admin, event_id=uuid.uuid4())
+    m2 = tt(a, c)
+    transition_match(match=m2, to_status=MS.WALKOVER, by=admin,
+                     winner_team_id=a.id)
+    m3 = tt(b, c)
+    record_set_result(match=m3, set_scores=[[11, 9], [8, 11], [11, 6]],
+                      rules=TT_RULES, by=admin, event_id=uuid.uuid4())
+
+    rows = compute_standings(t, group_label=label)
+    table = {r["name"]: r for r in rows}
+    # A: 2 wins = 4. B: played loss (1) + win (2) = 3. C: walkover loss (0)
+    # + played loss (1) = 1.
+    assert table["A"]["Pts"] == 4
+    assert table["B"]["Pts"] == 3
+    assert table["C"]["Pts"] == 1
+    assert [r["name"] for r in rows] == ["A", "B", "C"]
