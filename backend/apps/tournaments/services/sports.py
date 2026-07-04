@@ -440,3 +440,33 @@ def sports_inputs_hash(sports: list[dict] | None) -> str:
     return hashlib.sha256(
         json.dumps(sports or [], sort_keys=True).encode("utf-8")
     ).hexdigest()
+
+
+def guard_leaf_removal(tournament, new_sports: list[dict] | None) -> None:
+    """Refuse a sports-tree replacement that would ORPHAN registered data (H4).
+
+    A leaf key is stable across renames (the registry mints once), so renames,
+    reorders, format edits and NEW leaves always pass; only REMOVING a leaf
+    that teams or matches already reference is blocked. Raises ValueError
+    "leaf_in_use:<key,key>" so the API can name exactly what is stuck.
+    """
+    from apps.matches.models import Match
+    from apps.teams.models import Team
+
+    current = {leaf["leaf_key"] for leaf in iter_leaves(tournament.sports or [])}
+    incoming = {leaf["leaf_key"] for leaf in iter_leaves(new_sports or [])}
+    removed = current - incoming
+    if not removed:
+        return
+
+    used = set(
+        Team.objects.filter(
+            tournament=tournament, deleted_at__isnull=True, leaf_key__in=removed
+        ).values_list("leaf_key", flat=True)
+    ) | set(
+        Match.objects.filter(
+            tournament=tournament, leaf_key__in=removed
+        ).values_list("leaf_key", flat=True)
+    )
+    if used:
+        raise ValueError("leaf_in_use:" + ",".join(sorted(used)))

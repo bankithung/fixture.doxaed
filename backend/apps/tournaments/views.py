@@ -440,31 +440,64 @@ class TournamentSportsView(GenericAPIView):
         return Response({"sports": tournament.sports or []})
 
     def put(self, request, tournament_id):
+        import uuid as _uuid
+
+        from django.db import transaction
+
+        from apps.audit.models import ActorRole, AuditEvent
+        from apps.audit.services import emit_audit
+        from apps.tournaments.services.sports import guard_leaf_removal
+
         tournament = _get_tournament_or_404(request.user, tournament_id)
         if not can_access_module(request.user, tournament, "tournament.editor"):
             raise PermissionDenied("not_tournament_manager")
+
+        # Invariant 3: replays of the same client write return the stored
+        # state instead of re-applying it.
+        event_id = request.data.get("event_id")
+        if event_id:
+            try:
+                event_id = _uuid.UUID(str(event_id))
+            except ValueError:
+                raise DRFValidationError({"detail": "invalid_event_id"})
+            if AuditEvent.objects.filter(
+                idempotency_key=event_id,
+                event_type="tournament_sports_updated",
+            ).exists():
+                return Response({"sports": tournament.sports or []})
+
         try:
             cleaned = normalize_sports(request.data.get("sports"))
         except ValueError as exc:
             raise DRFValidationError({"detail": str(exc)})
 
-        before = {"sports": tournament.sports or []}
-        tournament.sports = cleaned
-        tournament.save(update_fields=["sports", "updated_at"])
-        from apps.audit.models import ActorRole
-        from apps.audit.services import emit_audit
+        with transaction.atomic():
+            locked = type(tournament).objects.select_for_update().get(
+                pk=tournament.pk
+            )
+            # H4: a replacement must never orphan registered teams/fixtures —
+            # the tree was silently rewritable at ANY stage (finding N5).
+            try:
+                guard_leaf_removal(locked, cleaned)
+            except ValueError as exc:
+                raise DRFValidationError({"detail": str(exc)})
 
-        emit_audit(
-            actor_user=request.user,
-            actor_role=ActorRole.ADMIN,
-            event_type="tournament_sports_updated",
-            target_type="tournament",
-            target_id=tournament.id,
-            organization_id=tournament.organization_id,
-            payload_before=before,
-            payload_after={"sports": cleaned},
-            request=request,
-        )
+            before = {"sports": locked.sports or []}
+            locked.sports = cleaned
+            locked.save(update_fields=["sports", "updated_at"])
+            emit_audit(
+                actor_user=request.user,
+                actor_role=ActorRole.ADMIN,
+                event_type="tournament_sports_updated",
+                target_type="tournament",
+                target_id=locked.id,
+                organization_id=locked.organization_id,
+                tournament_id=locked.id,
+                idempotency_key=event_id,
+                payload_before=before,
+                payload_after={"sports": cleaned},
+                request=request,
+            )
         return Response({"sports": cleaned})
 
 
