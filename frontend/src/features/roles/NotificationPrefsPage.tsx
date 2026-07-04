@@ -304,7 +304,7 @@ export function NotificationPrefsPage(): React.ReactElement {
                   </h3>
                 </div>
                 <p className="pb-2 text-xs text-muted-foreground">
-                  {t("Choose which events alert you and where. Changes save instantly.")}
+                  {t("Pick where each alert goes. Saves instantly.")}
                 </p>
                 <div className="flex items-center gap-4 border-b border-border py-1.5 text-[0.6875rem] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                   <span className="flex-1">{t("Event")}</span>
@@ -375,9 +375,7 @@ export function NotificationPrefsPage(): React.ReactElement {
                   />
                 </div>
                 <p className="pt-2 text-xs text-muted-foreground">
-                  {t(
-                    "One quiet email a day with everything you have not read. Nothing unread, nothing sent.",
-                  )}
+{t("One email a day with your unread alerts. Nothing unread, nothing sent.")}
                 </p>
               </div>
             </div>
