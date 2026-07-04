@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+  CreditCard,
   KeyRound,
-  Mail,
   ShieldCheck,
   Trophy,
   UserRound,
@@ -112,7 +112,6 @@ export function MyProfilePage(): React.ReactElement {
     );
   }
 
-  const memberships = user.memberships ?? [];
   const tournaments = tournamentsQuery.data ?? [];
   const pendingInvites = (invitesQuery.data ?? []).filter(
     (i) => i.status === "pending" && i.tournament_id,
@@ -285,48 +284,32 @@ export function MyProfilePage(): React.ReactElement {
           </div>
         </BentoCard>
 
-        {/* Memberships */}
-        <BentoCard className="animate-fade-up" style={{ animationDelay: "120ms" }}>
+        {/* Billing (memberships hidden: orgs are an implementation detail,
+            owner 2026-07-04; no paid plans yet, so this states the truth). */}
+        <BentoCard
+          className="animate-fade-up"
+          style={{ animationDelay: "120ms" }}
+          testId="billing-card"
+        >
           <div className="panel-header gap-2">
-            <Mail aria-hidden="true" className="h-4 w-4 text-primary" />
-            <h2 className="panel-title">{t("Memberships")}</h2>
-            <span className="ml-auto font-tabular text-xs text-muted-foreground">
-              {memberships.length}
-            </span>
+            <CreditCard aria-hidden="true" className="h-4 w-4 text-primary" />
+            <h2 className="panel-title">{t("Billing")}</h2>
           </div>
-          {memberships.length === 0 ? (
-            <p className="p-4 text-sm text-muted-foreground">
-              {t("You are not a member of any organization yet.")}
+          <div className="flex flex-col gap-3 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-medium">{t("Plan")}</p>
+              <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-xs font-medium text-primary">
+                {t("Early access")}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t("All features included. Nothing to pay today.")}
             </p>
-          ) : (
-            <ul className="divide-y divide-border" data-testid="membership-list">
-              {memberships.map((m) => (
-                <li
-                  key={m.org_id}
-                  className="flex items-center justify-between gap-3 px-4 py-2.5"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <Monogram name={m.org_name} />
-                    <div className="min-w-0 flex-col">
-                      <span className="block truncate text-sm font-medium">
-                        {m.org_name}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {(m.roles ?? []).join(", ") || t("(no roles)")}
-                      </span>
-                    </div>
-                  </div>
-                  <Link
-                    to={routes.orgDashboard(m.org_slug)}
-                    className="shrink-0 text-sm font-medium text-primary underline-offset-4 hover:underline"
-                    aria-label={`${t("Switch to")} ${m.org_name}`}
-                  >
-                    {t("Switch")}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
+            <div className="border-t border-border pt-3">
+              <p className="text-sm font-medium">{t("Billing email")}</p>
+              <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+            </div>
+          </div>
         </BentoCard>
 
         {/* Tournaments + invitations — so members find what they're part of. */}

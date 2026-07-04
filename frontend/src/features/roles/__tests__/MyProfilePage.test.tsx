@@ -71,36 +71,33 @@ describe("MyProfilePage", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: /org owner/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText("owner@example.com")).toBeInTheDocument();
+    // Email shows in the header AND the billing card.
+    expect(screen.getAllByText("owner@example.com").length).toBeGreaterThan(0);
     // "Org Owner" -> "OO"
     expect(screen.getByTestId("profile-avatar")).toHaveTextContent("OO");
   });
 
-  it("renders all three sections (Account / Memberships / Security)", () => {
+  it("renders all three sections (Account / Billing / Security)", () => {
     renderProfile();
     expect(
       screen.getByRole("heading", { name: /^account$/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: /memberships/i }),
+      screen.getByRole("heading", { name: /^billing$/i }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: /^security$/i }),
     ).toBeInTheDocument();
+    // Orgs stay hidden (owner 2026-07-04): no Memberships surface.
+    expect(screen.queryByText(/memberships/i)).not.toBeInTheDocument();
   });
 
-  it("lists every membership with its roles and a switch link", () => {
+  it("shows the billing card with the early-access plan", () => {
     renderProfile();
-    const list = screen.getByTestId("membership-list");
-    expect(list).toHaveTextContent("Acme");
-    expect(list).toHaveTextContent("Globex");
-    expect(list).toHaveTextContent("admin");
-    expect(
-      screen.getByRole("link", { name: /switch to acme/i }),
-    ).toHaveAttribute("href", "/o/acme/dashboard");
-    expect(
-      screen.getByRole("link", { name: /switch to globex/i }),
-    ).toHaveAttribute("href", "/o/globex/dashboard");
+    const billing = screen.getByTestId("billing-card");
+    expect(billing).toHaveTextContent(/early access/i);
+    expect(billing).toHaveTextContent(/nothing to pay today/i);
+    expect(screen.queryByTestId("membership-list")).not.toBeInTheDocument();
   });
 
   it("offers Enable 2FA when has_2fa_enrolled=false", () => {
