@@ -78,7 +78,8 @@ describe("ScoringPresetsPanel (D1 one-click)", () => {
       "preset-sepak_takraw-istaf_legacy",
     );
     expect(legacyBtn).toBeDisabled();
-    expect(screen.getByText("ISTAF legacy")).toBeInTheDocument();
+    // The label appears both as the active-regime note and on the button.
+    expect(screen.getAllByText("ISTAF legacy").length).toBeGreaterThan(1);
 
     await userEvent.click(screen.getByTestId("preset-sepak_takraw-istaf_2024"));
     await waitFor(() => expect(tournamentsApi.setSports).toHaveBeenCalled());
