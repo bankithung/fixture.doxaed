@@ -145,6 +145,9 @@ def transition_match(
             mid = locked.id
             transaction.on_commit(lambda: _fire_advancement(mid))
             transaction.on_commit(lambda: _fire_badges(mid))
+            if locked.tie_id:
+                tie_id = locked.tie_id
+                transaction.on_commit(lambda: _fire_tie(tie_id))
         # Tournament lifecycle spine (PRD §5.2): first kickoff flips the
         # tournament LIVE; the last terminal result flips it COMPLETED.
         # Registered AFTER advancement so a deferred next stage materializes
@@ -308,6 +311,16 @@ def _fire_advancement(match_id) -> None:
         advance_from_match(match_id)
     except Exception:  # pragma: no cover - post-commit hook must never crash the request
         logger.exception("advancement hook failed for match=%s", match_id)
+
+
+def _fire_tie(tie_id) -> None:
+    """Post-commit: a rubber finished — re-derive its team tie (P5)."""
+    try:
+        from apps.matches.services.ties import recompute_tie
+
+        recompute_tie(tie_id)
+    except Exception:  # pragma: no cover - post-commit hook must never crash
+        logger.exception("tie hook failed for tie=%s", tie_id)
 
 
 def _fire_badges(match_id) -> None:

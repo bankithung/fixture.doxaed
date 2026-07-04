@@ -68,6 +68,60 @@ SCORING_EVENT_TYPES = frozenset(
 )
 
 
+class MatchTie(models.Model):
+    """A TEAM TIE (P5): one fixture decided by an ordered series of rubbers
+    (TT team events: Olympic ABXY+doubles, Swaythling; sepak team regu =
+    best of 3 regus). The tie is the parent; each rubber is a normal Match
+    with its own scoring. The tie completes the moment one side reaches
+    ``format.stop_at_wins`` — remaining rubbers become DEAD (cancelled,
+    never scored), per ITTF practice.
+
+    format = {"rubbers": [{"no": 1, "kind": "singles"|"doubles"|"regu",
+    "best_of": 5}, ...], "stop_at_wins": 3, "max_matches_per_player": 2}
+    — data instances cover Olympic/Worlds/Swaythling/Corbillon and sepak's
+    team regu; custom shapes are legal (presets, never prisons).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="match_ties",
+    )
+    tournament = models.ForeignKey(
+        "tournaments.Tournament", on_delete=models.CASCADE,
+        related_name="match_ties",
+    )
+    leaf_key = models.CharField(max_length=160, blank=True, db_index=True)
+    stage = models.CharField(max_length=24, blank=True)
+    group_label = models.CharField(max_length=120, blank=True)
+    home_team = models.ForeignKey(
+        "teams.Team", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="ties_home",
+    )
+    away_team = models.ForeignKey(
+        "teams.Team", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="ties_away",
+    )
+    format = models.JSONField(default=dict, blank=True)
+    home_rubbers_won = models.PositiveSmallIntegerField(default=0)
+    away_rubbers_won = models.PositiveSmallIntegerField(default=0)
+    status = models.CharField(max_length=16, default="scheduled", db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "matches_tie"
+
+    @property
+    def winner_id(self):
+        need = int((self.format or {}).get("stop_at_wins") or 0)
+        if need and self.home_rubbers_won >= need:
+            return self.home_team_id
+        if need and self.away_rubbers_won >= need:
+            return self.away_team_id
+        return None
+
+
 class Match(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
     organization = models.ForeignKey(
@@ -117,6 +171,14 @@ class Match(models.Model):
     # generated per leaf; standings/brackets filter on it. Blank = whole-
     # tournament draw (legacy single-competition flow).
     leaf_key = models.CharField(max_length=160, blank=True, db_index=True)
+    # P5: composite team ties — this match is one RUBBER of a tie (TT team
+    # events, sepak team regu). Null for ordinary fixtures.
+    tie = models.ForeignKey(
+        "matches.MatchTie", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="rubbers",
+    )
+    rubber_no = models.PositiveSmallIntegerField(null=True, blank=True)
+    rubber_kind = models.CharField(max_length=16, blank=True, default="")
 
     scheduled_at = models.DateTimeField(null=True, blank=True)
     venue = models.CharField(max_length=120, blank=True)

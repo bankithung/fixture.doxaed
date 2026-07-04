@@ -322,6 +322,11 @@ def record_set_result(
         mid, tid = locked.id, locked.tournament_id
         transaction.on_commit(lambda: _fire_advancement(mid))
         transaction.on_commit(lambda: _fire_badges(mid))
+        if locked.tie_id:
+            from apps.matches.services.state import _fire_tie
+
+            tie_id = locked.tie_id
+            transaction.on_commit(lambda: _fire_tie(tie_id))
         # Lifecycle spine: the last set result may finish the tournament
         # (after advancement, so a materialized next stage is seen).
         transaction.on_commit(lambda: _fire_lifecycle(tid, MatchStatus.COMPLETED))
