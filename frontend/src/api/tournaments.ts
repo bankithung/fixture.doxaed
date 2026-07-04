@@ -320,6 +320,15 @@ export interface ControlRoomPayload {
   venues: ControlRoomVenue[];
   /** Cross-venue "up next": unfinished matches of the day, time order. */
   queue: ControlRoomMatch[];
+  /** P3 advancement health: bracket slots whose feeder finished but whose
+   * team never arrived. Non-empty = the bracket is silently stalled. */
+  advancement_stalled?: {
+    match_id: string;
+    side: "home" | "away";
+    source_type: string;
+    feeder_match_id: string;
+    feeder_status: string;
+  }[];
 }
 
 /** One raw scheduler violation from the repair endpoints (`validate_schedule`
@@ -547,6 +556,12 @@ export const tournamentsApi = {
    * (leaf_label + scorer + officials are always present in the response). */
   matchesEnriched: (id: string) =>
     api.get<ControlRoomMatch[]>(`/api/tournaments/${id}/matches/`),
+  /** P3: re-run advancement for every stalled bracket slot (manager-only,
+   * idempotent — always safe). */
+  refireAdvancement: (id: string) =>
+    api.post<{ filled: number; stalled_before: number; stalled_after: number }>(
+      `/api/tournaments/${id}/advancement:refire/`,
+    ),
   /** The tournament's sports + their SportDefinition descriptors (P1.c). */
   sportsMeta: (id: string) =>
     api.get<SportsMeta>(`/api/tournaments/${id}/sports-meta/`),

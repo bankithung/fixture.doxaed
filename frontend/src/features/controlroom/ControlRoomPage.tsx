@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CloudRainWind, History, ListChecks, Printer, Radio } from "lucide-react";
 import { ShiftDayDialog } from "@/features/fixtures/ShiftDayDialog";
 import { tournamentsApi, type ControlRoomPayload } from "@/api/tournaments";
+import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/Select";
+import { useToast } from "@/components/ui/toast";
 import { useAuthStore } from "@/features/auth/authStore";
 import { ScheduleChangesPanel } from "@/features/fixtures/ScheduleChangesPanel";
 import { qk } from "@/lib/queryKeys";
@@ -37,6 +39,56 @@ import { useControlRoom } from "./useControlRoom";
 /** A scheduled match whose kickoff slot has passed but still has no result —
  * "awaiting result" in the ops band. Kept a plain helper so the wall-clock read
  * stays out of render (matches the codebase's relative-time helpers). */
+function AdvancementStalledBanner({
+  tournamentId,
+  count,
+}: {
+  tournamentId: string;
+  count: number;
+}): React.ReactElement {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const refire = useMutation({
+    mutationFn: () => tournamentsApi.refireAdvancement(tournamentId),
+    onSuccess: (r) => {
+      toast.push({
+        kind: r.stalled_after === 0 ? "success" : "error",
+        title:
+          r.stalled_after === 0
+            ? t("Bracket repaired. Every finished result advanced.")
+            : `${r.stalled_after} ${t("slots are still stalled. Check the feeder results.")}`,
+      });
+      qc.invalidateQueries({ queryKey: qk.controlRoom(tournamentId) });
+      qc.invalidateQueries({ queryKey: qk.matches(tournamentId) });
+    },
+    onError: () =>
+      toast.push({ kind: "error", title: t("Could not re-run advancement.") }),
+  });
+  return (
+    <div
+      role="alert"
+      data-testid="advancement-stalled"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-2.5"
+    >
+      <p className="min-w-0 flex-1 text-sm">
+        <span className="font-semibold">{count}</span>{" "}
+        {t(
+          "bracket slots are stalled: a finished match's winner never advanced.",
+        )}
+      </p>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={refire.isPending}
+        onClick={() => refire.mutate()}
+      >
+        {refire.isPending ? t("Repairing") : t("Re-run advancement")}
+      </Button>
+    </div>
+  );
+}
+
+
 function isOverdue(scheduledAt: string | null): boolean {
   if (!scheduledAt) return false;
   return new Date(scheduledAt).getTime() < Date.now();
@@ -274,6 +326,14 @@ export function ControlRoomPage(): React.ReactElement {
 
   return (
     <div className="flex w-full flex-col gap-3">
+      {/* P3 advancement health: a stalled bracket is invisible without this
+          banner — a feeder finished but its winner never advanced. */}
+      {(data.advancement_stalled?.length ?? 0) > 0 ? (
+        <AdvancementStalledBanner
+          tournamentId={id}
+          count={data.advancement_stalled!.length}
+        />
+      ) : null}
       {/* Header: one row — title, live status, day chips, quiet actions. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 print:hidden">
         <h2 className="page-title">{t("Today")}</h2>

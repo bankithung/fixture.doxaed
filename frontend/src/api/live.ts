@@ -20,8 +20,45 @@ export interface LiveEvent {
   type: string;
   team_id: string | null;
   player: string | null;
+  /** Secondary attribution (assist on a goal, player replaced on a sub). */
+  related_player?: string | null;
   minute: number | null;
   period: string;
+}
+
+/** One team's confirmed team sheet in the public snapshot (P6 hub). */
+export interface LiveLineupEntry {
+  player_id: string;
+  name: string;
+  /** "starter" | "substitute". */
+  role: string;
+  shirt_no: number | null;
+  /** Sport slot, e.g. sepak takraw "tekong" | "left_inside" | "right_inside". */
+  positional_role: string;
+}
+
+export interface LiveLineupSide {
+  confirmed: boolean;
+  entries: LiveLineupEntry[];
+}
+
+/** Per-team event-type counts for the hub's Stats tab. */
+export interface LiveStatRow {
+  type: string;
+  home: number;
+  away: number;
+}
+
+/** A prior completed meeting of the two teams (same tournament). */
+export interface LiveH2HRow {
+  id: string;
+  status: string;
+  scheduled_at: string | null;
+  home_team_id: string;
+  away_team_id: string;
+  home_score: number | null;
+  away_score: number | null;
+  set_scores: number[][] | null;
 }
 
 export interface LiveSnapshot {
@@ -64,7 +101,23 @@ export interface LiveSnapshot {
         change_ends_at?: { regular?: number; deciding?: number } | null;
       } | null;
     } | null;
+    /** P6 hub: schedule context + competition labels. */
+    scheduled_at?: string | null;
+    venue?: string;
+    leaf_key?: string;
+    group_label?: string;
+    /** Confirmed team sheets (only once live/final and a lineup was built). */
+    lineups?: { home?: LiveLineupSide; away?: LiveLineupSide } | null;
   };
+  /** Back-nav target + wall-clock TZ for kickoff rendering. */
+  tournament?: {
+    id: string;
+    slug: string;
+    name: string;
+    time_zone: string;
+  };
+  stats?: LiveStatRow[];
+  h2h?: LiveH2HRow[];
   events: LiveEvent[];
 }
 
