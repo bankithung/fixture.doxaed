@@ -91,3 +91,45 @@ def test_snapshot_serves_sport_meta():
     )
     meta = client.get(f"/api/live/match/{fb.id}/").json()["match"]["sport_meta"]
     assert meta["key"] == "football" and meta["family"] == "timed"
+
+
+@pytest.mark.django_db
+def test_snapshot_serves_hub_blocks():
+    """P6 hub: tournament back-nav block, schedule context, h2h, stats and
+    (once live) confirmed lineups ride the public snapshot."""
+    admin = _verified("hub@test.local")
+    t = create_tournament(user=admin, name="Hub Cup")
+    a, b = register_school(
+        tournament=t, school_name="S",
+        teams=[{"name": "A", "players": [{"full_name": "Nine"}]},
+               {"name": "B", "players": []}],
+    )
+    prior = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=a, away_team=b,
+        status=MatchStatus.COMPLETED, home_score=2, away_score=1,
+    )
+    m = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=a, away_team=b,
+        venue="Court 1",
+    )
+    # Lineups freeze at kickoff: build the sheet BEFORE going live.
+    from apps.matches.services.lineups import set_lineup
+    from apps.matches.services.state import transition_match
+
+    set_lineup(
+        match=m, team=a,
+        entries=[{"player_id": str(a.players.first().id), "role": "starter",
+                  "shirt_no": 9}],
+        by=admin,
+    )
+    transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
+    record_match_event(match=m, event_type=MatchEventType.SHOT, team=a, by=admin)
+
+    data = APIClient().get(f"/api/live/match/{m.id}/").json()
+    assert data["tournament"]["name"] == "Hub Cup"
+    assert data["tournament"]["slug"]
+    assert data["match"]["venue"] == "Court 1"
+    assert data["h2h"][0]["id"] == str(prior.id)
+    assert {"type": "shot", "home": 1, "away": 0} in data["stats"]
+    lineups = data["match"]["lineups"]
+    assert lineups["home"]["entries"][0]["shirt_no"] == 9
