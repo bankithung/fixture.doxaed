@@ -10,6 +10,14 @@ import { useEventStream } from "@/lib/useEventStream";
  * land together; one refetch covers the burst. */
 const TICK_DEBOUNCE_MS = 500;
 
+/** Heavy derived aggregates (standings, leaders, suspensions) refresh at
+ * most this often under tick load. During parallel set-sport play every
+ * point tap ticks tournament-wide; refetching FIVE aggregates per client
+ * per tap was the confirmed Dimapur-scale hazard (scale-stress finding) —
+ * the hot board stays sub-second while the derived tables trail by at most
+ * this window. */
+const HEAVY_THROTTLE_MS = 10_000;
+
 /** Polling cadence while the SSE stream is down/unavailable (graceful
  * degradation — exactly the public page's pre-SSE behavior). */
 const FALLBACK_POLL_MS = 60_000;
@@ -48,17 +56,23 @@ export function useControlRoom(
   });
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastHeavy = useRef(0);
   const onTick = useCallback(() => {
     if (timer.current) return; // a refetch is already queued for this burst
     timer.current = setTimeout(() => {
       timer.current = null;
+      // HOT path: the board itself, sub-second.
       qc.invalidateQueries({ queryKey: qk.controlRoom(tournamentId) });
       qc.invalidateQueries({ queryKey: qk.matches(tournamentId) });
-      qc.invalidateQueries({ queryKey: qk.standings(tournamentId) });
-      // Leaderboards + suspensions ride the same tick (owner: a live
-      // leader board that changes in real time).
-      qc.invalidateQueries({ queryKey: ["t-leaders", tournamentId] });
-      qc.invalidateQueries({ queryKey: ["t-suspensions", tournamentId] });
+      // HEAVY derived aggregates trail on a throttle (leader boards still
+      // read live to a human; five refetches per point tap did not).
+      const now = Date.now();
+      if (now - lastHeavy.current >= HEAVY_THROTTLE_MS) {
+        lastHeavy.current = now;
+        qc.invalidateQueries({ queryKey: qk.standings(tournamentId) });
+        qc.invalidateQueries({ queryKey: ["t-leaders", tournamentId] });
+        qc.invalidateQueries({ queryKey: ["t-suspensions", tournamentId] });
+      }
     }, TICK_DEBOUNCE_MS);
   }, [qc, tournamentId]);
   useEffect(
