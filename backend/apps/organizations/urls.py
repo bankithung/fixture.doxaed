@@ -21,6 +21,7 @@ from apps.teams.views_houses import (
     SeasonGroupsView,
     SeasonHousePointsView,
     SeasonHouseTableView,
+    SeasonMeetResultView,
 )
 
 urlpatterns = [
@@ -57,6 +58,11 @@ urlpatterns = [
         "<uuid:uuid>/seasons/<uuid:season_id>/house-points/",
         SeasonHousePointsView.as_view(),
         name="org-season-house-points",
+    ),
+    path(
+        "<uuid:uuid>/seasons/<uuid:season_id>/meet-results/",
+        SeasonMeetResultView.as_view(),
+        name="org-season-meet-results",
     ),
     # Colon-verbs (UUID-only)
     path(

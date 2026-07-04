@@ -160,3 +160,54 @@ def test_house_api_end_to_end():
     c2 = APIClient()
     c2.force_authenticate(user=outsider)
     assert c2.get(f"/api/orgs/{org.id}/seasons/").status_code == 404
+
+
+def test_meet_event_result_scores_the_ladder():
+    """P4 meet mode: one entry of placements -> the whole ladder lands
+    (7-5-4-3-2-1, x2 relays), idempotently."""
+    from apps.teams.services.house_points import record_meet_event_result
+
+    u, t, season, red, blue = _season()
+    eid = uuid.uuid4()
+    for _ in range(2):  # replayed sheet never double-scores
+        record_meet_event_result(
+            season=season, event_label="100m U-14 boys",
+            placements=[red, blue], by=u, event_id=eid,
+        )
+    table = {r["name"]: r for r in season_house_table(season)}
+    assert table["Red House"]["points"] == 7
+    assert table["Blue House"]["points"] == 5
+
+    record_meet_event_result(
+        season=season, event_label="4x100m relay U-14",
+        placements=[blue, red], by=u, relay=True, event_id=uuid.uuid4(),
+    )
+    table = {r["name"]: r for r in season_house_table(season)}
+    assert table["Blue House"]["points"] == 5 + 14  # 7 x2 relay
+    assert table["Red House"]["points"] == 7 + 10   # 5 x2
+
+    # Custom ladder wins (presets, never prisons).
+    record_meet_event_result(
+        season=season, event_label="Tug of war",
+        placements=[red], by=u, place_points=[10], event_id=uuid.uuid4(),
+    )
+    table = {r["name"]: r for r in season_house_table(season)}
+    assert table["Red House"]["points"] == 17 + 10
+
+
+def test_meet_result_api():
+    from rest_framework.test import APIClient
+
+    u, t, season, red, blue = _season()
+    c = APIClient()
+    c.force_authenticate(user=u)
+    r = c.post(
+        f"/api/orgs/{t.organization.id}/seasons/{season.id}/meet-results/",
+        {"event_label": "Long jump U-17", "placements": [str(blue.id), str(red.id)],
+         "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 201
+    assert r.data["entries"] == 2
+    assert r.data["table"][0]["name"] == "Blue House"
+    assert r.data["table"][0]["points"] == 7

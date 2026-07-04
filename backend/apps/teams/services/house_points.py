@@ -104,3 +104,73 @@ def season_house_table(season: Season) -> list[dict]:
     rows = list(totals.values())
     rows.sort(key=lambda r: (-r["points"], r["name"]))
     return rows
+
+# The canonical Indian school convention (Kerala Sports Manual / CBSE):
+# places 1-6 score 7-5-4-3-2-1, doubled for relays. A custom points ladder
+# always wins — presets, never prisons.
+DEFAULT_PLACE_POINTS: tuple[int, ...] = (7, 5, 4, 3, 2, 1)
+
+
+def record_meet_event_result(
+    *,
+    season: Season,
+    event_label: str,
+    placements: list,
+    by=None,
+    relay: bool = False,
+    place_points: tuple[int, ...] | list[int] | None = None,
+    tournament=None,
+    event_id: _uuid.UUID | None = None,
+    request=None,
+) -> list[HousePointEntry]:
+    """MEET MODE (P4): one event's ordered placements become house points in
+    a single write. ``placements`` = TeamGroup rows (or ids) in finishing
+    order; place N earns place_points[N-1] (x2 for relays). Idempotent per
+    (event_id, place) via derived uuid5 keys, so a replayed sports-day sheet
+    never double-scores; entries land as source=result with the event label
+    as the reason.
+    """
+    if not (event_label or "").strip():
+        raise ValidationError("meet_event_label_required")
+    ladder = [int(x) for x in (place_points or DEFAULT_PLACE_POINTS)]
+    if not ladder or any(x < 0 for x in ladder):
+        raise ValidationError("invalid_place_points")
+    factor = 2 if relay else 1
+
+    groups: list[TeamGroup] = []
+    for item in placements:
+        g = item if isinstance(item, TeamGroup) else TeamGroup.objects.filter(
+            pk=item, season=season
+        ).first()
+        if g is None or g.season_id != season.id:
+            raise ValidationError("group_not_in_season")
+        groups.append(g)
+    if len({g.id for g in groups}) != len(groups):
+        raise ValidationError("duplicate_placement")
+
+    entries: list[HousePointEntry] = []
+    label = event_label.strip()
+    with transaction.atomic():
+        for place, group in enumerate(groups, start=1):
+            if place > len(ladder):
+                break  # places beyond the ladder score nothing
+            pts = ladder[place - 1] * factor
+            derived = (
+                _uuid.uuid5(_uuid.NAMESPACE_URL, f"meet:{event_id}:{place}")
+                if event_id is not None else None
+            )
+            entries.append(
+                award_house_points(
+                    season=season,
+                    group=group,
+                    points=pts,
+                    reason=f"{label}: place {place}"[:200],
+                    by=by,
+                    source=HousePointSource.RESULT,
+                    tournament=tournament,
+                    event_id=derived,
+                    request=request,
+                )
+            )
+    return entries
+

@@ -24,7 +24,11 @@ from apps.organizations.models import (
     OrganizationMembership,
 )
 from apps.teams.models import HousePointSource, Season, TeamGroup, TeamGroupKind
-from apps.teams.services.house_points import award_house_points, season_house_table
+from apps.teams.services.house_points import (
+    award_house_points,
+    record_meet_event_result,
+    season_house_table,
+)
 
 _MANAGE_ROLES = (MembershipRole.ADMIN, MembershipRole.CO_ORGANIZER)
 
@@ -197,3 +201,55 @@ class SeasonHousePointsView(GenericAPIView):
              "group_id": str(group.id)},
             status=201,
         )
+
+class MeetResultSerializer(serializers.Serializer):
+    event_label = serializers.CharField(max_length=150)
+    """Ordered group ids, winner first."""
+    placements = serializers.ListField(
+        child=serializers.UUIDField(), min_length=1, max_length=12,
+    )
+    relay = serializers.BooleanField(required=False, default=False)
+    place_points = serializers.ListField(
+        child=serializers.IntegerField(min_value=0, max_value=99),
+        required=False, min_length=1, max_length=12,
+    )
+    event_id = serializers.UUIDField(required=False)
+
+
+class SeasonMeetResultView(GenericAPIView):
+    """`POST /api/orgs/{uuid}/seasons/{season_id}/meet-results/` — MEET MODE
+    (P4): one event's placements in, the whole points ladder lands in the
+    house table (7-5-4-3-2-1, x2 relays, custom ladders legal)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, uuid, season_id):
+        org, can_manage = _org_or_404(request.user, uuid)
+        if not can_manage:
+            raise PermissionDenied("not_org_manager")
+        season = Season.objects.filter(pk=season_id, organization=org).first()
+        if season is None:
+            raise NotFound("season_not_found")
+        ser = MeetResultSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+        try:
+            entries = record_meet_event_result(
+                season=season,
+                event_label=data["event_label"],
+                placements=[str(x) for x in data["placements"]],
+                by=request.user,
+                relay=data["relay"],
+                place_points=data.get("place_points"),
+                event_id=data.get("event_id"),
+                request=request,
+            )
+        except DjangoValidationError as e:
+            raise DRFValidationError(
+                {"detail": getattr(e, "message", "invalid_meet_result")}
+            )
+        return Response(
+            {"entries": len(entries), "table": season_house_table(season)},
+            status=201,
+        )
+
