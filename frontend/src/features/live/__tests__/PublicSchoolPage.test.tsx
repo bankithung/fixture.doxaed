@@ -19,7 +19,7 @@ const TEAM = {
   leaf_key: "football.u14.boys",
   played: 4, wins: 3, draws: 0, losses: 1,
   scored: 9, conceded: 3, difference: 6,
-  form: ["W", "W", "L", "W"],
+  form: ["W", "W", "L", "W"] as ("W" | "D" | "L")[],
   matches: [], institution: null, roster: [], badges: [],
 };
 
