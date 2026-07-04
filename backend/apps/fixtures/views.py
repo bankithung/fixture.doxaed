@@ -817,7 +817,23 @@ class ControlRoomDayView(GenericAPIView):
                 )
             ],
             "queue": queue,
+            # P3 advancement health: bracket slots whose feeder finished but
+            # whose team never arrived (a swallowed advancement failure or a
+            # misrouted stage bridge). Non-empty = act now.
+            "advancement_stalled": _stalled(t),
         })
+
+
+def _stalled(t) -> list[dict]:
+    from apps.fixtures.services.advance import stalled_slots
+
+    try:
+        return stalled_slots(t)
+    except Exception:  # pragma: no cover — health must never break the board
+        import logging
+
+        logging.getLogger(__name__).exception("advancement health failed")
+        return []
 
 
 class TournamentDrawConfigView(GenericAPIView):

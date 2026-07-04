@@ -211,3 +211,47 @@ def test_parallel_semifinal_finalization_fills_both_final_slots():
     final.refresh_from_db()
     assert final.home_team_id == semis[0].home_team_id  # semi-0 home won
     assert final.away_team_id == semis[1].away_team_id  # semi-1 away won
+
+
+@pytest.mark.django_db
+def test_stalled_slots_detects_silent_advancement_failures():
+    """P3: a dependent whose feeder is final but whose slot stayed empty is
+    reported; pending feeders and walkover loser_of slots are not."""
+    from apps.fixtures.services.advance import stalled_slots
+    from apps.matches.models import Match, MatchStatus as MS
+
+    admin = _verified("stalled@test.local")
+    t = create_tournament(user=admin, name="Stalled Cup")
+    teams = register_school(
+        tournament=t, school_name="S",
+        teams=[{"name": f"S{i + 1}", "players": []} for i in range(4)],
+    )
+    a, b, c, d = teams
+    feeder_done = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=a, away_team=b,
+        status=MS.COMPLETED, home_score=2, away_score=0,
+    )
+    feeder_pending = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=c, away_team=d,
+    )
+    dep = Match.objects.create(
+        organization=t.organization, tournament=t, stage="knockout",
+        home_source={"type": "winner_of", "match_id": str(feeder_done.id)},
+        away_source={"type": "winner_of", "match_id": str(feeder_pending.id)},
+    )
+    out = stalled_slots(t)
+    assert [
+        (r["match_id"], r["side"], r["feeder_status"]) for r in out
+    ] == [(str(dep.id), "home", "completed")]
+
+    # A walkover loser_of slot is LEGITIMATELY empty (withdrawal never
+    # occupies the loser slot) — not stalled.
+    wo = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=a, away_team=b,
+        status=MS.WALKOVER, home_score=2, away_score=0,
+    )
+    Match.objects.create(
+        organization=t.organization, tournament=t, stage="knockout",
+        home_source={"type": "loser_of", "match_id": str(wo.id)},
+    )
+    assert len(stalled_slots(t)) == 1  # unchanged

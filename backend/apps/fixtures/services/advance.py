@@ -161,3 +161,51 @@ def _resolve_group_positions(m: Match) -> list[Match]:
                 dep.save(update_fields=[*fields, "updated_at"])
                 resolved.append(dep)
     return resolved
+
+
+def stalled_slots(tournament) -> list[dict]:
+    """Bracket slots whose FEEDER finished but whose team never arrived (P3
+    advancement health). Advancement runs in a swallowed post-commit hook —
+    when it fails (or a bridge misroutes, stages finding), the bracket
+    stalls SILENTLY. The control room surfaces what this returns; repair is
+    one re-fire away.
+    """
+    stalled: list[dict] = []
+    dependents = Match.objects.filter(
+        tournament=tournament, deleted_at__isnull=True,
+    ).exclude(home_source={}, away_source={})
+    feeder_ids: set = set()
+    rows: list[tuple] = []
+    for dep in dependents:
+        for side in ("home", "away"):
+            if getattr(dep, f"{side}_team_id") is not None:
+                continue
+            src = getattr(dep, f"{side}_source") or {}
+            if src.get("type") not in ("winner_of", "loser_of"):
+                continue
+            fid = src.get("match_id")
+            if not fid:
+                continue
+            rows.append((dep, side, src, fid))
+            feeder_ids.add(fid)
+    if not rows:
+        return stalled
+    feeders = {
+        str(f.id): f
+        for f in Match.objects.filter(id__in=feeder_ids)
+    }
+    for dep, side, src, fid in rows:
+        feeder = feeders.get(str(fid))
+        if feeder is None or feeder.status not in _FINAL:
+            continue  # feeder still to play — not stalled, just pending
+        # Walkover losers legitimately never fill loser_of slots (§9 A7).
+        if src.get("type") == "loser_of" and feeder.status == MatchStatus.WALKOVER:
+            continue
+        stalled.append({
+            "match_id": str(dep.id),
+            "side": side,
+            "source_type": src.get("type"),
+            "feeder_match_id": str(fid),
+            "feeder_status": feeder.status,
+        })
+    return stalled
