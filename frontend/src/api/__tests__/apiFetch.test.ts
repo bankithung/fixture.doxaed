@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiFetch } from "../client";
+import { apiFetch, isNetworkError } from "../client";
 import { ApiError } from "@/types/api";
 
 function setCsrf(token: string): void {
@@ -129,5 +129,51 @@ describe("apiFetch", () => {
       const err = e as ApiError;
       expect(err.isPasswordReauthRequired).toBe(true);
     }
+  });
+});
+
+describe("apiFetch timeout (H2)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("aborts a hung request after timeoutMs so courtside writes fail fast", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(
+              (init.signal as AbortSignal).reason ??
+                new DOMException("timeout", "TimeoutError"),
+            ),
+          );
+        }),
+    );
+    const err = await apiFetch("/api/x/", { method: "POST", timeoutMs: 20 }).then(
+      () => null,
+      (e) => e,
+    );
+    expect(err).not.toBeNull();
+    expect(isNetworkError(err)).toBe(true);
+  });
+
+  it("timeoutMs: 0 disables the abort signal entirely", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(okJson({ ok: true }));
+    await apiFetch("/api/x/", { timeoutMs: 0 });
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.signal ?? null).toBeNull();
+  });
+});
+
+describe("isNetworkError (H2)", () => {
+  it("classifies offline/timeout as network, server responses as not", () => {
+    expect(isNetworkError(new TypeError("Failed to fetch"))).toBe(true);
+    expect(isNetworkError(new DOMException("t", "TimeoutError"))).toBe(true);
+    expect(isNetworkError(new DOMException("a", "AbortError"))).toBe(true);
+    expect(isNetworkError(new ApiError(400, { detail: "nope" }))).toBe(false);
+    expect(isNetworkError(new ApiError(500, {}))).toBe(false);
+    expect(isNetworkError(new Error("misc"))).toBe(false);
   });
 });

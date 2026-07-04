@@ -19,6 +19,24 @@ export interface ApiFetchOptions extends Omit<RequestInit, "body"> {
   body?: BodyInit | Record<string, unknown> | unknown[] | null;
   /** Disables auto-attachment of the X-CSRFToken header (e.g. for login). */
   skipCsrf?: boolean;
+  /** Abort the request after this many ms (0 disables). Courtside phones on
+   * weak connections must fail fast so idempotent writes can queue and
+   * replay instead of freezing the UI on a hung socket. */
+  timeoutMs?: number;
+}
+
+/** True when the failure never reached the server (offline, DNS, abort or
+ * timeout) — the class of error an idempotent write may safely queue and
+ * replay. Server responses (ApiError) are never "network" failures. */
+export function isNetworkError(e: unknown): boolean {
+  if (e instanceof ApiError) return false;
+  // Match abort/timeout by NAME, not instanceof: the AbortSignal.timeout
+  // reason can come from a different realm than the page's DOMException.
+  if (e && typeof e === "object" && "name" in e) {
+    const name = (e as { name?: unknown }).name;
+    if (name === "AbortError" || name === "TimeoutError") return true;
+  }
+  return e instanceof TypeError;
 }
 
 /**
@@ -32,8 +50,24 @@ export async function apiFetch<T = unknown>(
   path: string,
   opts: ApiFetchOptions = {},
 ): Promise<T> {
-  const { body, skipCsrf, headers: callerHeaders, ...rest } = opts;
+  const {
+    body,
+    skipCsrf,
+    headers: callerHeaders,
+    timeoutMs = 20_000,
+    signal: callerSignal,
+    ...rest
+  } = opts;
   const method = (rest.method ?? "GET").toUpperCase();
+
+  let signal = callerSignal ?? null;
+  if (timeoutMs > 0 && typeof AbortSignal.timeout === "function") {
+    const timeout = AbortSignal.timeout(timeoutMs);
+    signal =
+      signal && typeof AbortSignal.any === "function"
+        ? AbortSignal.any([signal, timeout])
+        : timeout;
+  }
 
   const headers = new Headers(callerHeaders);
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
@@ -67,6 +101,7 @@ export async function apiFetch<T = unknown>(
     headers,
     body: serialisedBody,
     credentials: "include",
+    ...(signal ? { signal } : {}),
   });
 
   if (res.status === 204) {

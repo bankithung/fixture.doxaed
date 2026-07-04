@@ -16,7 +16,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
+import { isNetworkError } from "@/api/client";
 import { newEventId } from "@/lib/eventId";
+import {
+  enqueueWrite,
+  initOfflineQueue,
+  useOfflineQueue,
+} from "@/lib/offlineQueue";
 import { invalidateTournament } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -149,6 +155,18 @@ function fmtClock(totalSeconds: number): string {
 
 type Side = "home" | "away";
 type SetRow = [string, string];
+/** The frozen wire payload of one tap. Built (minute included) and given its
+ * event_id at TAP time, so a retry or offline replay re-sends the SAME id
+ * and the server dedupes instead of double-counting (H2, invariant 3). */
+type RecordEventPayload = {
+  event_type: string;
+  side?: string;
+  player_id?: string;
+  related_player_id?: string;
+  voids_seq?: number;
+  minute?: number;
+  event_id: string;
+};
 type SetScoring = {
   best_of?: number;
   points?: number;
@@ -242,31 +260,49 @@ export function MatchConsolePage(): React.ReactElement {
   };
 
   const ev = useMutation({
-    mutationFn: (p: {
-      event_type: string;
-      side?: string;
-      player_id?: string;
-      related_player_id?: string;
-      voids_seq?: number;
-    }) =>
-      liveApi.recordEvent(matchId, {
-        ...p,
-        minute:
-          p.event_type === "void"
-            ? undefined
-            : minute
-              ? Number(minute)
-              : (autoMinute ?? undefined),
-        event_id: newEventId(),
-      }),
+    mutationFn: (p: RecordEventPayload) => liveApi.recordEvent(matchId, p),
     onSuccess: () => {
       // A recorded event consumes the transient attribution + manual minute,
       // so the next tap starts clean (stale-minute timelines, P7a).
       setMinute("");
       refresh();
     },
-    onError,
+    onError: (e, vars) => {
+      if (isNetworkError(e)) {
+        // Server unreachable: the tap is parked on this phone and replayed
+        // when the connection returns; its event_id makes the replay safe.
+        enqueueWrite({
+          id: vars.event_id,
+          path: `/api/matches/${matchId}/events/`,
+          body: vars as unknown as Record<string, unknown>,
+        });
+        setMinute("");
+        toast.push({
+          kind: "info",
+          title: t("No connection. The tap is saved on this phone and will sync."),
+        });
+        return;
+      }
+      onError(e);
+    },
   });
+  const fireEvent = (p: {
+    event_type: string;
+    side?: string;
+    player_id?: string;
+    related_player_id?: string;
+    voids_seq?: number;
+  }) =>
+    ev.mutate({
+      ...p,
+      minute:
+        p.event_type === "void"
+          ? undefined
+          : minute
+            ? Number(minute)
+            : (autoMinute ?? undefined),
+      event_id: newEventId(),
+    });
   const tr = useMutation({
     mutationFn: (to: string) => liveApi.transition(matchId, to),
     onSuccess: () => {
@@ -279,11 +315,11 @@ export function MatchConsolePage(): React.ReactElement {
     },
   });
   const shootout = useMutation({
-    mutationFn: () =>
+    mutationFn: (v: { event_id: string }) =>
       liveApi.scoreShootout(matchId, {
         home_pens: Number(pens.home),
         away_pens: Number(pens.away),
-        event_id: newEventId(),
+        event_id: v.event_id,
       }),
     onSuccess: () => {
       setShootoutOpen(false);
@@ -314,23 +350,53 @@ export function MatchConsolePage(): React.ReactElement {
   );
 
   // Live tap scoring: the running points save themselves (no Save button).
+  // The steppers hold the truth locally, so a push lost to a dead connection
+  // is never lost data: syncFailed flips on and the retry loop below re-sends
+  // the LATEST rows until the network returns.
+  const [syncFailed, setSyncFailed] = useState(false);
   const progress = useMutation({
-    mutationFn: (rows: SetRow[]) =>
+    mutationFn: (p: { rows: SetRow[]; event_id: string }) =>
       liveApi.recordSetProgress(matchId, {
-        set_scores: rows.map(([h, a]) => [Number(h || 0), Number(a || 0)]),
-        event_id: newEventId(),
+        set_scores: p.rows.map(([h, a]) => [Number(h || 0), Number(a || 0)]),
+        event_id: p.event_id,
       }),
-    onSuccess: refresh,
-    onError,
+    onSuccess: () => {
+      setSyncFailed(false);
+      refresh();
+    },
+    onError: (e, vars) => {
+      if (isNetworkError(e)) {
+        pendingRows.current = vars.rows;
+        setSyncFailed(true);
+        return;
+      }
+      setSyncFailed(false);
+      onError(e);
+    },
   });
+  const progressMutate = progress.mutate;
+  useEffect(() => {
+    if (!syncFailed) return;
+    const id = window.setInterval(() => {
+      if (pendingRows.current) {
+        progressMutate({ rows: pendingRows.current, event_id: newEventId() });
+      }
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [syncFailed, progressMutate]);
+  // Replay any taps parked by a previous (offline) session.
+  const queued = useOfflineQueue();
+  useEffect(() => {
+    initOfflineQueue();
+  }, []);
 
   const submitSets = useMutation({
-    mutationFn: () =>
+    mutationFn: (v: { event_id: string }) =>
       liveApi.recordSetScores(matchId, {
         set_scores: setRows
           .filter(([h, a]) => h !== "" && a !== "")
           .map(([h, a]) => [Number(h), Number(a)]),
-        event_id: newEventId(),
+        event_id: v.event_id,
       }),
     onSuccess: () => {
       setConfirmSets(false);
@@ -400,7 +466,10 @@ export function MatchConsolePage(): React.ReactElement {
     if (pushTimer.current) clearTimeout(pushTimer.current);
     pushTimer.current = setTimeout(() => {
       pushTimer.current = null;
-      if (pendingRows.current) progress.mutate(pendingRows.current);
+      if (pendingRows.current) {
+        // One debounced push = one logical write = one event_id.
+        progress.mutate({ rows: pendingRows.current, event_id: newEventId() });
+      }
     }, 500);
   };
   const setSide = (i: number, sideIdx: 0 | 1, value: string) => {
@@ -451,6 +520,14 @@ export function MatchConsolePage(): React.ReactElement {
             {homeName} <span className="text-muted-foreground">{t("vs")}</span> {awayName}
           </h1>
         </div>
+        {queued > 0 ? (
+          <span
+            data-testid="offline-queued"
+            className="inline-flex items-center gap-1.5 rounded-md bg-warning-muted px-2 py-1 font-tabular text-xs font-medium text-warning-foreground"
+          >
+            {queued} {t("saved on this phone, will sync")}
+          </span>
+        ) : null}
         {live && elapsedSec != null ? (
           // Stopwatch: runs from the moment the scorer started the match.
           <div
@@ -801,7 +878,11 @@ export function MatchConsolePage(): React.ReactElement {
                     className="text-xs text-muted-foreground"
                     aria-live="polite"
                   >
-                    {progress.isPending ? t("Saving") : t("Saves as you tap")}
+                    {progress.isPending
+                      ? t("Saving")
+                      : syncFailed
+                        ? t("Offline. Points are safe on this phone.")
+                        : t("Saves as you tap")}
                   </span>
                 ) : null}
                 <Button
@@ -853,7 +934,7 @@ export function MatchConsolePage(): React.ReactElement {
               const team: LiveTeam | null = side === "home" ? match.home_team : match.away_team;
               const players = team?.players ?? [];
               const fire = (event_type: string) =>
-                ev.mutate({ event_type, side, player_id: sel[side] });
+                fireEvent({ event_type, side, player_id: sel[side] });
               const playerLabel = side === "home" ? t("Home player") : t("Away player");
               const subLabel = side === "home" ? t("Home sub on") : t("Away sub on");
               const palette = setBased ? SET_EVENT_BUTTONS : EVENT_BUTTONS;
@@ -919,7 +1000,7 @@ export function MatchConsolePage(): React.ReactElement {
                         variant="outline"
                         disabled={ev.isPending || !sel[side] || !subOn[side]}
                         onClick={() =>
-                          ev.mutate({
+                          fireEvent({
                             event_type: "substitution",
                             side,
                             player_id: sel[side],
@@ -949,7 +1030,7 @@ export function MatchConsolePage(): React.ReactElement {
                 variant="outline"
                 disabled={ev.isPending}
                 onClick={() =>
-                  ev.mutate({ event_type: "void", voids_seq: lastEvent.sequence_no })
+                  fireEvent({ event_type: "void", voids_seq: lastEvent.sequence_no })
                 }
               >
                 <Undo2 aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
@@ -993,7 +1074,7 @@ export function MatchConsolePage(): React.ReactElement {
                       aria-label={`${t("Undo")} ${t(e.type.replace(/_/g, " "))} #${e.sequence_no}`}
                       disabled={ev.isPending}
                       onClick={() =>
-                        ev.mutate({ event_type: "void", voids_seq: e.sequence_no })
+                        fireEvent({ event_type: "void", voids_seq: e.sequence_no })
                       }
                       className="rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
                     >
@@ -1060,7 +1141,7 @@ export function MatchConsolePage(): React.ReactElement {
           <Button
             size="sm"
             disabled={submitSets.isPending}
-            onClick={() => submitSets.mutate()}
+            onClick={() => submitSets.mutate({ event_id: newEventId() })}
             data-testid="confirm-sets"
           >
             {t("Record result")}
@@ -1109,7 +1190,7 @@ export function MatchConsolePage(): React.ReactElement {
               pens.away === "" ||
               Number(pens.home) === Number(pens.away)
             }
-            onClick={() => shootout.mutate()}
+            onClick={() => shootout.mutate({ event_id: newEventId() })}
             data-testid="confirm-shootout"
           >
             {t("Record shootout")}

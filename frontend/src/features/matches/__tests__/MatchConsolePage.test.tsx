@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MatchConsolePage } from "../MatchConsolePage";
 import { ToastProvider } from "@/components/ui/toast";
 import { liveApi, type LiveSnapshot } from "@/api/live";
+import { clearWrites, pendingWrites } from "@/lib/offlineQueue";
 import { ApiError } from "@/types/api";
 
 vi.mock("@/api/live");
@@ -50,7 +51,33 @@ function snap(status: string, extra: Partial<LiveSnapshot["match"]> = {}): LiveS
 }
 
 describe("MatchConsolePage", () => {
-  beforeEach(() => vi.resetAllMocks());
+  beforeEach(() => {
+    vi.resetAllMocks();
+    clearWrites();
+  });
+
+  it("parks a tap offline (queued, not lost, no error toast) when the server is unreachable", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(snap("live"));
+    vi.mocked(liveApi.recordEvent).mockRejectedValue(
+      new TypeError("Failed to fetch"),
+    );
+    renderConsole();
+    await screen.findAllByText("Alpha");
+
+    await userEvent.click(screen.getAllByRole("button", { name: /^goal$/i })[0]);
+
+    // The tap lands in the replay queue with its original event_id...
+    await waitFor(() => expect(pendingWrites()).toBe(1));
+    const queued = JSON.parse(
+      localStorage.getItem("fixture.offline-writes.v1") ?? "[]",
+    );
+    expect(queued[0].path).toBe("/api/matches/m1/events/");
+    expect(queued[0].body.event_type).toBe("goal");
+    expect(queued[0].id).toBe(queued[0].body.event_id);
+    // ...the header shows the offline chip, and no error alert fires.
+    expect(await screen.findByTestId("offline-queued")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 
   it("records a goal event for the home side", async () => {
     vi.mocked(liveApi.snapshot).mockResolvedValue(snap("live"));
