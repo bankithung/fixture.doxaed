@@ -60,6 +60,13 @@ def test_overview_aggregates_across_tournaments():
         organization=t2.organization, tournament=t2, home_team=a2, away_team=b2,
         match_no=2, scheduled_at=now + timedelta(days=1),
     )
+    # A stale live match (scheduled weeks ago, never ended) buckets TODAY:
+    # live is a now-state, not a schedule slot.
+    m4 = Match.objects.create(
+        organization=t2.organization, tournament=t2, home_team=a2, away_team=b2,
+        match_no=3, scheduled_at=now - timedelta(days=20),
+    )
+    Match.objects.filter(pk=m4.pk).update(status=MatchStatus.LIVE)
 
     c = APIClient()
     c.force_authenticate(user=admin)
@@ -68,9 +75,10 @@ def test_overview_aggregates_across_tournaments():
 
     totals = r.data["totals"]
     assert totals["tournaments"] == 2
-    assert totals["matches"] == 3
+    assert totals["matches"] == 4
     assert totals["matches_completed"] == 1
-    assert totals["matches_live"] == 1
+    assert totals["matches_live"] == 2
+    assert totals["matches_today"] == 2  # today's scheduled + the stale live
     assert totals["matches_next7"] == 1
     assert totals["teams"] == 4
     assert totals["players"] == 1
@@ -80,21 +88,27 @@ def test_overview_aggregates_across_tournaments():
     # Status mix covers both draft tournaments, with per-status volumes.
     mix = {row["status"]: row for row in r.data["tournament_status"]}
     assert sum(row["count"] for row in mix.values()) == 2
-    assert mix["draft"]["matches"] == 3
+    assert mix["draft"]["matches"] == 4
     assert mix["draft"]["teams"] == 4
 
-    # The per-day series buckets all three matches.
+    # The per-day series buckets all four matches, and every live one lands
+    # on TODAY (tournament-local), never on its stale scheduled date.
     series_total = sum(
         d["completed"] + d["live"] + d["scheduled"]
         for d in r.data["matches_per_day"]
     )
-    assert series_total == 3
+    assert series_total == 4
+    from zoneinfo import ZoneInfo
+
+    today_iso = now.astimezone(ZoneInfo(t2.time_zone)).date().isoformat()
+    live_days = {d["date"] for d in r.data["matches_per_day"] if d["live"]}
+    assert live_days == {today_iso}
 
     # Progress rows exist for both tournaments; the live one sorts first.
     progress = r.data["progress"]
     assert {p["name"] for p in progress} == {"Cup A", "Cup B"}
     assert progress[0]["name"] == "Cup B"
-    assert progress[0]["live"] == 1
+    assert progress[0]["live"] == 2
 
     # Recent results carry the completed match with its score.
     results = r.data["recent_results"]
@@ -104,11 +118,11 @@ def test_overview_aggregates_across_tournaments():
     assert results[0]["tournament_name"] == "Cup A"
 
     # Sports mix names football (default sport) and breaks matches down by
-    # state: 1 played, 1 live, 1 upcoming.
+    # state: 1 played, 2 live, 1 upcoming.
     football = next(s for s in r.data["sports"] if s["key"] == "football")
-    assert football["matches"] == 3
+    assert football["matches"] == 4
     assert football["completed"] == 1
-    assert football["live"] == 1
+    assert football["live"] == 2
     assert football["scheduled"] == 1
 
 

@@ -80,15 +80,40 @@ def transition_match(
             and not (reason or "").strip()
         ):
             raise ValidationError("reason_required")
+        derived_sets = False
         if to_status == S.WALKOVER:
             _stamp_walkover(locked, winner_team_id)
         elif to_status == S.COMPLETED:
+            # Set sports: ending the match finalizes sets won. When the
+            # entered sets never met the configured target (rules vs how they
+            # actually played), the lenient live mirror leaves 0-0 — derive
+            # the final from raw per-set leads so a decided match never
+            # completes as a phantom draw (owner report 2026-07-04: a 3-0
+            # sepak result showed 0-0). Before the knockout guard, so decided
+            # knockout set matches pass it.
+            from apps.matches.services.set_scoring import (
+                rules_for_match,
+                sets_won_raw,
+            )
+
+            if (
+                rules_for_match(locked) is not None
+                and locked.set_scores
+                and (locked.home_score or 0) == (locked.away_score or 0)
+            ):
+                raw_home, raw_away = sets_won_raw(locked.set_scores)
+                if raw_home != raw_away:
+                    locked.home_score = raw_home
+                    locked.away_score = raw_away
+                    derived_sets = True
             _guard_knockout_draw(locked)
         elif replay:
             _reset_for_replay(locked, reason)
 
         locked.status = to_status
         update_fields = ["status", "current_period", "updated_at"]
+        if derived_sets:
+            update_fields += ["home_score", "away_score"]
         if to_status == S.LIVE:
             if not locked.current_period:
                 # P1: the opening period is a sport trait — football kicks off

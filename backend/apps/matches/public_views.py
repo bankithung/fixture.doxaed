@@ -386,8 +386,13 @@ class MyOverviewView(GenericAPIView):
         matches_today = 0
         matches_next7 = 0
         tz_cache: dict[str, ZoneInfo] = {}
+        # Live matches bucket on TODAY, not their scheduled slot: live is a
+        # now-state, and a match left running since an old scheduled date
+        # otherwise paints "Live" weeks in the past while today shows none
+        # (owner report 2026-07-04).
         for t_id, scheduled_at, status in matches.filter(
-            scheduled_at__gte=window_start, scheduled_at__lte=window_end
+            Q(scheduled_at__gte=window_start, scheduled_at__lte=window_end)
+            | Q(status__in=live_statuses)
         ).values_list("tournament_id", "scheduled_at", "status"):
             t = by_id.get(t_id)
             tz_name = (t.time_zone if t else "") or "UTC"
@@ -398,19 +403,24 @@ class MyOverviewView(GenericAPIView):
                 except KeyError:
                     tz = ZoneInfo("UTC")
                 tz_cache[tz_name] = tz
-            local = scheduled_at.astimezone(tz)
-            day = local.date().isoformat()
+            local_today = now.astimezone(tz).date()
+            is_live = status in live_statuses
+            local_day = (
+                local_today
+                if is_live or scheduled_at is None
+                else scheduled_at.astimezone(tz).date()
+            )
+            day = local_day.isoformat()
             bucket = day_buckets.setdefault(
                 day, {"completed": 0, "live": 0, "scheduled": 0}
             )
             if status == MatchStatus.COMPLETED:
                 bucket["completed"] += 1
-            elif status in live_statuses:
+            elif is_live:
                 bucket["live"] += 1
             else:
                 bucket["scheduled"] += 1
-            local_today = now.astimezone(tz).date()
-            delta_days = (local.date() - local_today).days
+            delta_days = (local_day - local_today).days
             if delta_days == 0:
                 matches_today += 1
             if 0 < delta_days <= 7 and status == MatchStatus.SCHEDULED:

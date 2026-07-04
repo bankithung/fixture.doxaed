@@ -187,6 +187,27 @@ def sets_won_lenient(set_scores: list, rules: dict) -> tuple[int, int]:
     return home_sets, away_sets
 
 
+def sets_won_raw(set_scores: list) -> tuple[int, int]:
+    """Sets won by RAW per-set lead, no rule validation. The completion
+    fallback: when an operator ends a set match whose entered sets never met
+    the configured target (the rules didn't match how they actually played),
+    the honest final is who led each set — not the 0-0 the lenient counter
+    left behind."""
+    home_sets = away_sets = 0
+    for s in set_scores or []:
+        if not (isinstance(s, (list, tuple)) and len(s) == 2):
+            continue
+        try:
+            h, a = int(s[0]), int(s[1])
+        except (TypeError, ValueError):
+            continue
+        if h > a:
+            home_sets += 1
+        elif a > h:
+            away_sets += 1
+    return home_sets, away_sets
+
+
 def update_set_progress(
     *, match: Match, set_scores: list, rules: dict, by=None,
     event_id: _uuid.UUID | None = None, request=None,

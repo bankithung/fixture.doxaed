@@ -393,3 +393,31 @@ def test_progress_still_leaves_completion_to_record_result():
     m.refresh_from_db()
     assert m.status == MatchStatus.COMPLETED
     assert (m.home_score, m.away_score) == (2, 0)
+
+
+def test_sets_won_raw_counts_leads():
+    from apps.matches.services.set_scoring import sets_won_raw
+
+    assert sets_won_raw([[12, 7], [11, 10], [8, 6]]) == (3, 0)
+    assert sets_won_raw([[5, 7], [9, 3]]) == (1, 1)
+    assert sets_won_raw([]) == (0, 0)
+
+
+def test_completion_derives_raw_set_leads_when_rules_never_satisfied():
+    """Owner report 2026-07-04: sepak sets entered to 12/11/8 (below the
+    21-point target) kept the lenient live mirror at 0-0, and ending the
+    match completed a clearly decided 3-0 as a phantom draw. Completion now
+    falls back to raw per-set leads."""
+    from apps.matches.services.state import transition_match
+
+    admin = _admin("raw@test.local")
+    t = create_tournament(user=admin, name="Raw Sepak")
+    m = _match(t, sport="sepak_takraw")
+    transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
+    Match.objects.filter(pk=m.pk).update(
+        set_scores=[[12, 7], [11, 10], [8, 6]], home_score=0, away_score=0,
+    )
+    m.refresh_from_db()
+    transition_match(match=m, to_status=MatchStatus.COMPLETED, by=admin)
+    m.refresh_from_db()
+    assert (m.home_score, m.away_score) == (3, 0)
