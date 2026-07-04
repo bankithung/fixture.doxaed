@@ -1,29 +1,46 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BellRing, Inbox, Mail, Newspaper, Radio } from "lucide-react";
+import {
+  ArrowLeft,
+  BellRing,
+  Inbox,
+  Mail,
+  Newspaper,
+  Radio,
+  SlidersHorizontal,
+} from "lucide-react";
 import {
   notificationsApi,
   type NotificationPrefs,
   type NotificationPrefsUpdate,
 } from "@/api/notifications";
 import { useToast } from "@/components/ui/toast";
+import { StaggeredDrawer } from "@/components/ui/StaggeredDrawer";
 import { BentoCard, BentoGrid } from "@/features/dashboard/BentoCard";
+import { RangePills } from "@/features/dashboard/RangePills";
 import { relativeTime } from "@/features/layout/OrgDashboardPage";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
 /**
- * `/me/notifications` — the notifications center: the FULL inbox (every
- * notification, not the bell's dropdown slice) plus live delivery
- * preferences. The kind catalog comes from the server
- * (GET /api/notifications/prefs/); every switch saves immediately with an
- * optimistic flip and rolls back on error. In-app off = the bell stays
- * silent for that event; email on = a branded email the moment it happens;
- * digest = one daily unread summary.
+ * `/me/notifications` — the notifications center: a full-screen inbox with
+ * read/unread filtering, and ALL delivery preferences tucked into a
+ * right-side StaggeredMenu drawer behind the Settings button (owner
+ * 2026-07-04: keep the options out of the reading surface). Preferences
+ * save instantly with optimistic flips; in-app off = the bell stays silent
+ * for that event; email on = a branded email the moment it happens; digest
+ * = one daily unread summary.
  */
 
 const PREFS_KEY = ["notification-prefs"];
+
+const FILTERS = [
+  { value: "all", label: "All" },
+  { value: "unread", label: "Unread" },
+  { value: "read", label: "Read" },
+];
 
 function Toggle({
   checked,
@@ -63,6 +80,8 @@ function Toggle({
 export function NotificationPrefsPage(): React.ReactElement {
   const qc = useQueryClient();
   const toast = useToast();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [filter, setFilter] = useState("all");
 
   const prefsQuery = useQuery({
     queryKey: PREFS_KEY,
@@ -83,8 +102,6 @@ export function NotificationPrefsPage(): React.ReactElement {
     mutationFn: (id: string) => notificationsApi.markRead(id),
     onSuccess: invalidateList,
   });
-  const inboxItems = listQuery.data?.results ?? [];
-  const unread = listQuery.data?.unread_count ?? 0;
 
   const save = useMutation({
     mutationFn: (payload: NotificationPrefsUpdate) =>
@@ -115,221 +132,258 @@ export function NotificationPrefsPage(): React.ReactElement {
   });
 
   const prefs = prefsQuery.data;
+  const allItems = listQuery.data?.results ?? [];
+  const unread = listQuery.data?.unread_count ?? 0;
+  const items =
+    filter === "unread"
+      ? allItems.filter((n) => n.read_at === null)
+      : filter === "read"
+        ? allItems.filter((n) => n.read_at !== null)
+        : allItems;
 
   return (
     <section
-      aria-label={t("Notification preferences")}
+      aria-label={t("Notifications")}
       className="flex w-full flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8"
     >
-      <header className="flex flex-wrap items-end justify-between gap-3">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="page-title">{t("Notifications")}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {t("Choose which events alert you and where. Changes save instantly.")}
+            {t("Everything that needs your attention, in one place.")}
           </p>
         </div>
-        <Link
-          to={routes.myProfile()}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline"
-        >
-          <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-          {t("Back to profile")}
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to={routes.myProfile()}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+            {t("Profile")}
+          </Link>
+          <button
+            type="button"
+            data-testid="open-notification-settings"
+            onClick={() => setSettingsOpen(true)}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <SlidersHorizontal aria-hidden="true" className="h-4 w-4 text-primary" />
+            {t("Settings")}
+          </button>
+        </div>
       </header>
 
-      {prefsQuery.isLoading ? (
-        <div
-          className="h-56 animate-pulse rounded-xl border border-border bg-card"
-          data-testid="prefs-skeleton"
+      {/* Filter row */}
+      <div className="flex flex-wrap items-center gap-3">
+        <RangePills
+          label={t("Filter notifications")}
+          value={filter}
+          onChange={setFilter}
+          options={FILTERS.map((f) => ({ value: f.value, label: t(f.label) }))}
         />
-      ) : prefsQuery.isError || !prefs ? (
-        <p role="alert" className="text-sm text-destructive">
-          {t("Could not load your preferences.")}
-        </p>
-      ) : (
-        <BentoGrid className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-          {/* The full inbox — everything, not the bell's dropdown slice. */}
-          <BentoCard
-            className="animate-fade-up lg:order-1 lg:col-span-2"
-            testId="notifications-inbox"
+        {unread > 0 ? (
+          <span className="rounded-full bg-primary/15 px-2 py-0.5 font-tabular text-[11px] font-medium text-primary">
+            {unread} {t("unread")}
+          </span>
+        ) : null}
+        {unread > 0 ? (
+          <button
+            type="button"
+            onClick={() => markAll.mutate()}
+            className="ml-auto text-xs font-medium text-primary hover:underline"
           >
-            <div className="panel-header gap-2">
-              <Inbox aria-hidden="true" className="h-4 w-4 text-primary" />
-              <h2 className="panel-title">{t("Inbox")}</h2>
-              {unread > 0 ? (
-                <span className="rounded-full bg-primary/15 px-2 py-0.5 font-tabular text-[11px] font-medium text-primary">
-                  {unread} {t("unread")}
-                </span>
-              ) : null}
-              {unread > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => markAll.mutate()}
-                  className="ml-auto text-xs font-medium text-primary hover:underline"
-                >
-                  {t("Mark all read")}
-                </button>
-              ) : null}
-            </div>
-            {listQuery.isLoading ? (
-              <div className="h-32 animate-pulse" />
-            ) : inboxItems.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
-                <Inbox aria-hidden="true" className="h-7 w-7 text-muted-foreground/40" />
-                <p className="text-sm text-muted-foreground">
-                  {t("No notifications yet. New alerts will land here.")}
-                </p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-border">
-                {inboxItems.map((n) => {
-                  const row = (
-                    <>
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
-                          n.read_at ? "bg-transparent" : "bg-primary",
-                        )}
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span
-                          className={cn(
-                            "block truncate text-sm",
-                            n.read_at
-                              ? "text-muted-foreground"
-                              : "font-medium text-foreground",
-                          )}
-                        >
-                          {n.title}
-                        </span>
-                        {n.body ? (
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {n.body}
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className="shrink-0 font-tabular text-xs text-muted-foreground">
-                        {relativeTime(n.created_at)}
-                      </span>
-                    </>
-                  );
-                  const cls = cn(
-                    "flex w-full items-start gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-accent/40",
-                    !n.read_at && "bg-primary/[0.03]",
-                  );
-                  return (
-                    <li key={n.id}>
-                      {n.url ? (
-                        <Link
-                          to={n.url}
-                          className={cls}
-                          onClick={() => {
-                            if (!n.read_at) markOne.mutate(n.id);
-                          }}
-                        >
-                          {row}
-                        </Link>
-                      ) : (
-                        <button
-                          type="button"
-                          className={cls}
-                          onClick={() => {
-                            if (!n.read_at) markOne.mutate(n.id);
-                          }}
-                        >
-                          {row}
-                        </button>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </BentoCard>
+            {t("Mark all read")}
+          </button>
+        ) : null}
+      </div>
 
-          <BentoCard
-            className="animate-fade-up lg:order-3 lg:col-span-3"
-            style={{ animationDelay: "120ms" }}
-            testId="prefs-matrix"
-          >
-            <div className="panel-header gap-2">
-              <BellRing aria-hidden="true" className="h-4 w-4 text-primary" />
-              <h2 className="panel-title">{t("Alerts by event")}</h2>
-            </div>
-            <div className="flex items-center gap-6 border-b border-border px-4 py-2 text-[0.6875rem] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-              <span className="flex-1">{t("Event")}</span>
-              <span className="flex w-12 items-center justify-center gap-1">
-                <Radio aria-hidden="true" className="h-3 w-3" />
-                {t("Bell")}
-              </span>
-              <span className="flex w-12 items-center justify-center gap-1">
-                <Mail aria-hidden="true" className="h-3 w-3" />
-                {t("Email")}
-              </span>
-            </div>
-            <ul className="divide-y divide-border">
-              {prefs.kinds.map((k) => (
-                <li key={k.kind} className="flex items-center gap-6 px-4 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{t(k.label)}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {t(k.description)}
-                    </p>
-                  </div>
-                  <span className="flex w-12 justify-center">
-                    <Toggle
-                      checked={k.in_app}
-                      label={`${t(k.label)}: ${t("in-app")}`}
-                      testId={`toggle-${k.kind}-in_app`}
-                      onChange={(next) =>
-                        save.mutate({ kinds: { [k.kind]: { in_app: next } } })
-                      }
-                    />
-                  </span>
-                  <span className="flex w-12 justify-center">
-                    <Toggle
-                      checked={k.email}
-                      label={`${t(k.label)}: ${t("email")}`}
-                      testId={`toggle-${k.kind}-email`}
-                      onChange={(next) =>
-                        save.mutate({ kinds: { [k.kind]: { email: next } } })
-                      }
-                    />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </BentoCard>
-
-          <BentoCard
-            className="animate-fade-up lg:order-2"
-            style={{ animationDelay: "60ms" }}
-            testId="prefs-digest"
-          >
-            <div className="panel-header gap-2">
-              <Newspaper aria-hidden="true" className="h-4 w-4 text-primary" />
-              <h2 className="panel-title">{t("Daily digest")}</h2>
-            </div>
-            <div className="flex flex-col gap-3 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium">{t("Send me a daily summary")}</p>
-                <Toggle
-                  checked={prefs.digest}
-                  label={t("Daily digest")}
-                  testId="toggle-digest"
-                  onChange={(next) => save.mutate({ digest: next })}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t(
-                  "One quiet email a day with everything you have not read. Nothing unread, nothing sent.",
-                )}
+      {/* Full-screen inbox */}
+      <BentoGrid className="flex flex-col">
+        <BentoCard className="animate-fade-up" testId="notifications-inbox">
+          {listQuery.isLoading ? (
+            <div className="h-40 animate-pulse" data-testid="inbox-skeleton" />
+          ) : items.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 px-4 py-16 text-center">
+              <Inbox aria-hidden="true" className="h-8 w-8 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">
+                {allItems.length === 0
+                  ? t("No notifications yet. New alerts will land here.")
+                  : t("Nothing matches this filter.")}
               </p>
             </div>
-          </BentoCard>
-        </BentoGrid>
-      )}
+          ) : (
+            <ul className="divide-y divide-border">
+              {items.map((n) => {
+                const row = (
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
+                        n.read_at ? "bg-transparent" : "bg-primary",
+                      )}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className={cn(
+                          "block truncate text-sm",
+                          n.read_at
+                            ? "text-muted-foreground"
+                            : "font-medium text-foreground",
+                        )}
+                      >
+                        {n.title}
+                      </span>
+                      {n.body ? (
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {n.body}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="shrink-0 font-tabular text-xs text-muted-foreground">
+                      {relativeTime(n.created_at)}
+                    </span>
+                  </>
+                );
+                const cls = cn(
+                  "flex w-full items-start gap-2.5 px-4 py-3 text-left transition-colors hover:bg-accent/40",
+                  !n.read_at && "bg-primary/[0.03]",
+                );
+                return (
+                  <li key={n.id}>
+                    {n.url ? (
+                      <Link
+                        to={n.url}
+                        className={cls}
+                        onClick={() => {
+                          if (!n.read_at) markOne.mutate(n.id);
+                        }}
+                      >
+                        {row}
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        className={cls}
+                        onClick={() => {
+                          if (!n.read_at) markOne.mutate(n.id);
+                        }}
+                      >
+                        {row}
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </BentoCard>
+      </BentoGrid>
+
+      {/* All delivery options live in the staggered settings drawer. */}
+      <StaggeredDrawer
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        title={t("Notification settings")}
+        testId="notification-settings-drawer"
+      >
+        {prefsQuery.isLoading ? (
+          <div className="h-40 animate-pulse rounded-lg bg-muted/50" />
+        ) : prefsQuery.isError || !prefs ? (
+          <p role="alert" className="text-sm text-destructive">
+            {t("Could not load your preferences.")}
+          </p>
+        ) : (
+          <>
+            <div className="sdrawer-itemwrap">
+              <div className="sdrawer-item" data-testid="prefs-matrix">
+                <div className="flex items-center gap-2 pb-1">
+                  <BellRing aria-hidden="true" className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold tracking-tight">
+                    {t("Alerts by event")}
+                  </h3>
+                </div>
+                <p className="pb-2 text-xs text-muted-foreground">
+                  {t("Choose which events alert you and where. Changes save instantly.")}
+                </p>
+                <div className="flex items-center gap-4 border-b border-border py-1.5 text-[0.6875rem] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                  <span className="flex-1">{t("Event")}</span>
+                  <span className="flex w-10 items-center justify-center gap-1">
+                    <Radio aria-hidden="true" className="h-3 w-3" />
+                    {t("Bell")}
+                  </span>
+                  <span className="flex w-10 items-center justify-center gap-1">
+                    <Mail aria-hidden="true" className="h-3 w-3" />
+                    {t("Email")}
+                  </span>
+                </div>
+                <ul className="divide-y divide-border">
+                  {prefs.kinds.map((k) => (
+                    <li key={k.kind} className="flex items-center gap-4 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">{t(k.label)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {t(k.description)}
+                        </p>
+                      </div>
+                      <span className="flex w-10 justify-center">
+                        <Toggle
+                          checked={k.in_app}
+                          label={`${t(k.label)}: ${t("in-app")}`}
+                          testId={`toggle-${k.kind}-in_app`}
+                          onChange={(next) =>
+                            save.mutate({ kinds: { [k.kind]: { in_app: next } } })
+                          }
+                        />
+                      </span>
+                      <span className="flex w-10 justify-center">
+                        <Toggle
+                          checked={k.email}
+                          label={`${t(k.label)}: ${t("email")}`}
+                          testId={`toggle-${k.kind}-email`}
+                          onChange={(next) =>
+                            save.mutate({ kinds: { [k.kind]: { email: next } } })
+                          }
+                        />
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="sdrawer-itemwrap">
+              <div
+                className="sdrawer-item border-t border-border pt-4"
+                data-testid="prefs-digest"
+              >
+                <div className="flex items-center gap-2 pb-1">
+                  <Newspaper aria-hidden="true" className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold tracking-tight">
+                    {t("Daily digest")}
+                  </h3>
+                </div>
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <p className="text-sm font-medium">
+                    {t("Send me a daily summary")}
+                  </p>
+                  <Toggle
+                    checked={prefs.digest}
+                    label={t("Daily digest")}
+                    testId="toggle-digest"
+                    onChange={(next) => save.mutate({ digest: next })}
+                  />
+                </div>
+                <p className="pt-2 text-xs text-muted-foreground">
+                  {t(
+                    "One quiet email a day with everything you have not read. Nothing unread, nothing sent.",
+                  )}
+                </p>
+              </div>
+            </div>
+          </>
+        )}
+      </StaggeredDrawer>
     </section>
   );
 }

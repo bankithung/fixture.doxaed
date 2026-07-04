@@ -1,0 +1,61 @@
+/* StaggeredMenu (React Bits) re-cut as a generic right-side settings drawer:
+   brand prelayers sweep in ahead of a bg-card panel, then tagged content
+   sections ([data-sdrawer-item]) reveal with the clip + rise stagger. Token
+   colors throughout; StaggeredDrawer.tsx drives it via gsap and renders the
+   resting state when animations are off. */
+
+.sdrawer-root {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.sdrawer-scrim {
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--foreground) / 0.4);
+}
+
+.sdrawer-layers {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: min(26rem, 92vw);
+  pointer-events: none;
+}
+
+.sdrawer-layer {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+.sdrawer-layer--1 {
+  background: hsl(var(--primary));
+}
+
+.sdrawer-layer--2 {
+  background: hsl(var(--accent));
+}
+
+.sdrawer-panel {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: min(26rem, 92vw);
+  display: flex;
+  flex-direction: column;
+  background: hsl(var(--card));
+  border-left: 1px solid hsl(var(--border));
+  box-shadow: 0 12px 28px -6px hsl(222 47% 11% / 0.2);
+  overflow-y: auto;
+  will-change: transform;
+}
+
+/* Each tagged section sits in an overflow-hidden wrap so the rise reveal
+   clips at its own edge (the source component's signature move). */
+.sdrawer-itemwrap {
+  overflow: hidden;
+}
+
+.sdrawer-item {
+  will-change: transform;
+}

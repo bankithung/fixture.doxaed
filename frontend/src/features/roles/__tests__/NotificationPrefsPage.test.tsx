@@ -87,8 +87,9 @@ beforeEach(() => {
 });
 
 describe("NotificationPrefsPage", () => {
-  it("renders the live matrix from the server catalog", async () => {
+  it("renders the live matrix inside the settings drawer", async () => {
     renderPage();
+    await userEvent.click(await screen.findByTestId("open-notification-settings"));
     expect(await screen.findByText("Match assignments")).toBeInTheDocument();
     const matrix = screen.getByTestId("prefs-matrix");
     expect(within(matrix).getByTestId("toggle-match_assignment-email")).toHaveAttribute(
@@ -117,6 +118,7 @@ describe("NotificationPrefsPage", () => {
     vi.mocked(notificationsApi.updatePrefs).mockResolvedValue(flipped);
 
     renderPage();
+    await userEvent.click(await screen.findByTestId("open-notification-settings"));
     const toggle = await screen.findByTestId("toggle-match_assignment-email");
     await userEvent.click(toggle);
     await waitFor(() =>
@@ -131,24 +133,41 @@ describe("NotificationPrefsPage", () => {
 
   it("shows the full inbox with unread state and mark-all-read", async () => {
     renderPage();
-    const inbox = within(await screen.findByTestId("notifications-inbox"));
+    await screen.findByText("You are assigned to score: A vs B");
+    const inbox = within(screen.getByTestId("notifications-inbox"));
     expect(
       inbox.getByText("You are assigned to score: A vs B"),
     ).toBeInTheDocument();
     expect(inbox.getByText("New dispute raised")).toBeInTheDocument();
-    expect(inbox.getByText("1 unread")).toBeInTheDocument();
+    expect(screen.getByText("1 unread")).toBeInTheDocument();
     // Deep-linked rows are links to their target.
     expect(
       inbox.getByRole("link", { name: /assigned to score/i }),
     ).toHaveAttribute("href", "/tournaments/t1/matches/m1");
-    await userEvent.click(inbox.getByRole("button", { name: /mark all read/i }));
+    await userEvent.click(screen.getByRole("button", { name: /mark all read/i }));
     await waitFor(() =>
       expect(notificationsApi.markAllRead).toHaveBeenCalled(),
     );
   });
 
+  it("filters the inbox by read state", async () => {
+    renderPage();
+    await screen.findByText("You are assigned to score: A vs B");
+    await userEvent.click(screen.getByRole("button", { name: "Unread" }));
+    expect(screen.queryByText("New dispute raised")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("You are assigned to score: A vs B"),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Read" }));
+    expect(screen.getByText("New dispute raised")).toBeInTheDocument();
+    expect(
+      screen.queryByText("You are assigned to score: A vs B"),
+    ).not.toBeInTheDocument();
+  });
+
   it("saves the digest opt-in", async () => {
     renderPage();
+    await userEvent.click(await screen.findByTestId("open-notification-settings"));
     const toggle = await screen.findByTestId("toggle-digest");
     await userEvent.click(toggle);
     await waitFor(() =>
