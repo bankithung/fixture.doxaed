@@ -1104,6 +1104,7 @@ export function SportsTab(): React.ReactElement {
           {/* Editor with folder-style sport tabs (left) + live preview (right). */}
               {/* Sport tabs — bookmarked onto the editor card below: the active
                   tab is the same surface as the panel, with no line between. */}
+              <div className="flex flex-col">
               <div
                 role="tablist"
                 aria-label={t("Sports")}
@@ -1301,6 +1302,7 @@ export function SportsTab(): React.ReactElement {
               ) : null}
             </div>
           </aside>
+          </div>
           </div>
 
           {/* Per-sport progression (owner 2026-06-10): walk every sport
