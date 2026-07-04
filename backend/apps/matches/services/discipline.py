@@ -28,6 +28,11 @@ def compute_suspensions(tournament) -> list[dict]:
     policy = merge_rules(getattr(tournament, "rules", None)).get("discipline") or {}
     y_threshold = int(policy.get("yellow_suspension_threshold") or 0)
     red_ban = max(1, int(policy.get("red_matches_banned") or 1))
+    # P5: FIFA-style wipe — accumulated (single) yellows reset entering the
+    # last N knockout rounds (2 = semis + final; Art. 12 World Cup regs
+    # wipe after the quarter finals). Straight reds and two-yellows-in-one-
+    # match always survive the wipe.
+    wipe_last_rounds = int(policy.get("yellow_wipe_final_rounds") or 0)
 
     events = list(
         MatchEvent.objects.filter(
@@ -60,6 +65,22 @@ def compute_suspensions(tournament) -> list[dict]:
     for tid in team_matches:
         team_matches[tid].sort(key=_match_order_key)
 
+    # The wipe boundary: the first of the last N knockout rounds.
+    wipe_boundary = None
+    if wipe_last_rounds:
+        rounds = [
+            m.round_no for ms in team_matches.values() for m in ms
+            if m.stage == "knockout" and m.round_no
+        ] or [
+            m.round_no
+            for m in Match.objects.filter(
+                tournament=tournament, stage="knockout",
+                deleted_at__isnull=True, round_no__isnull=False,
+            )
+        ]
+        if rounds:
+            wipe_boundary = max(rounds) - wipe_last_rounds + 1
+
     # Cards per player per match, in match order.
     per_player: dict = defaultdict(lambda: defaultdict(lambda: {"y": 0, "r": 0}))
     match_by_id: dict = {}
@@ -75,8 +96,16 @@ def compute_suspensions(tournament) -> list[dict]:
     for player, by_match in per_player.items():
         ordered = sorted(by_match.items(), key=lambda kv: _match_order_key(match_by_id[kv[0]]))
         acc_yellows = 0
+        wiped = False
         for match_id, counts in ordered:
             trigger = match_by_id[match_id]
+            if (
+                wipe_last_rounds and not wiped and wipe_boundary is not None
+                and trigger.stage == "knockout"
+                and (trigger.round_no or 0) >= wipe_boundary
+            ):
+                acc_yellows = 0
+                wiped = True
             reasons: list[tuple[str, int]] = []
             if counts["r"] >= 1 or counts["y"] >= 2:
                 # A straight red, or two yellows in one match.

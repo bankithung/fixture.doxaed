@@ -26,7 +26,13 @@ DEFAULT_RULES: dict[str, Any] = {
     "tiebreakers": ["points", "goal_difference", "goals_for", "head_to_head", "name"],
     "match": {"halves": 2, "half_minutes": 45, "extra_time": False, "penalties": True},
     "squad": {"min_players": 7, "max_players": 23, "max_subs": 5},
-    "discipline": {"yellow_suspension_threshold": 2, "red_matches_banned": 1},
+    "discipline": {
+        "yellow_suspension_threshold": 2,
+        "red_matches_banned": 1,
+        # FIFA-style: wipe accumulated yellows entering the last N knockout
+        # rounds (0 = never wipe; 2 = semis + final).
+        "yellow_wipe_final_rounds": 0,
+    },
     # Fixture-engine redesign §2.6: groups at/under max_size auto-play double
     # round-robin (0 = off). Participant-facing (changes competitive
     # outcomes), so it correctly lives under the invariant-7 freeze; consumed

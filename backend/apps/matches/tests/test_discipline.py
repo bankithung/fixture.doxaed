@@ -136,3 +136,41 @@ def test_suspended_player_blocked_from_lineup():
             by=admin,
         )
     assert "player_suspended" in str(exc.value)
+
+
+def test_yellow_wipe_entering_final_rounds():
+    """P5: with yellow_wipe_final_rounds=2 (semis + final), a group-stage
+    yellow plus a SEMI yellow does NOT suspend (the wipe consumed the first);
+    without the wipe the same two yellows do."""
+    admin, t, a, rocky, (m1, m2, m3) = _setup()
+    t.rules = {"discipline": {
+        "yellow_suspension_threshold": 2,
+        "red_matches_banned": 1,
+        "yellow_wipe_final_rounds": 2,
+    }}
+    t.save(update_fields=["rules"])
+    # Shape the fixture: m1 = group game, m2 = semi (KO round 1 of 2),
+    # m3 = final (KO round 2).
+    Match.objects.filter(pk=m1.pk).update(stage="group", round_no=1)
+    Match.objects.filter(pk=m2.pk).update(stage="knockout", round_no=1)
+    Match.objects.filter(pk=m3.pk).update(stage="knockout", round_no=2)
+    for m in (m1, m2):
+        m.refresh_from_db()
+        record_match_event(
+            match=m, event_type=MatchEventType.YELLOW_CARD, team=rocky.team,
+            player=rocky, by=admin,
+        )
+    Match.objects.filter(pk__in=[m1.pk, m2.pk]).update(
+        status=MatchStatus.COMPLETED
+    )
+
+    rows = compute_suspensions(t)
+    assert [r for r in rows if r["reason"] == "yellow_accumulation"] == []
+
+    # Without the wipe the same two yellows suspend for the final.
+    t.rules = {"discipline": {"yellow_suspension_threshold": 2,
+                              "red_matches_banned": 1}}
+    t.save(update_fields=["rules"])
+    t.refresh_from_db()
+    rows = compute_suspensions(t)
+    assert [r for r in rows if r["reason"] == "yellow_accumulation"]
