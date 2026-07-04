@@ -9,7 +9,11 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/tournaments")>();
   return {
     ...actual,
-    tournamentsApi: { ...actual.tournamentsApi, publicSchedule: vi.fn() },
+    tournamentsApi: {
+      ...actual.tournamentsApi,
+      publicSchedule: vi.fn(),
+      publicStandings: vi.fn(),
+    },
   };
 });
 
@@ -68,7 +72,10 @@ function wrap() {
   );
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(tournamentsApi.publicStandings).mockResolvedValue({ groups: [] });
+});
 
 describe("PublicBracketPage", () => {
   it("renders a knockout tree per competition and ignores group matches", async () => {

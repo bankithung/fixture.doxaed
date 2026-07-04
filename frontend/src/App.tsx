@@ -43,7 +43,8 @@ import { ResponsesPage } from "@/features/forms/ResponsesPage";
 import { PublicFormPage } from "@/features/forms/PublicFormPage";
 import { PublicDirectoryPage } from "@/features/forms/PublicDirectoryPage";
 import { LiveViewerPage } from "@/features/live/LiveViewerPage";
-import { PublicLiveScoreboardPage } from "@/features/live/PublicLiveScoreboardPage";
+import { PublicLiveRedirect } from "@/features/live/PublicLiveRedirect";
+import { PublicStandingsPage } from "@/features/live/PublicStandingsPage";
 import { PublicBracketPage } from "@/features/live/PublicBracketPage";
 import { PublicTeamPage } from "@/features/live/PublicTeamPage";
 import { ExplorePage } from "@/features/live/ExplorePage";
@@ -69,6 +70,7 @@ import { ComingSoonPage } from "@/features/errors/ComingSoonPage";
 import { InviteAcceptPage } from "@/features/orgs/InviteAcceptPage";
 import { MemberDirectoryPage } from "@/features/orgs/MemberDirectoryPage";
 import { OrgSettingsPage } from "@/features/orgs/OrgSettingsPage";
+import { HousePointsPage } from "@/features/orgs/HousePointsPage";
 import { OrgBrandingPage } from "@/features/orgs/OrgBrandingPage";
 import { OrgAuditLogPage } from "@/features/orgs/OrgAuditLogPage";
 // Permissions (B4).
@@ -156,13 +158,16 @@ export default function App(): React.ReactElement {
               <Route path="/f/:formId" element={<PublicFormPage />} />
               <Route path="/r/:token" element={<PublicFormPage />} />
               <Route path="/m/:matchId" element={<LiveViewerPage />} />
-              {/* Public read-only tournament views (trust layer): schedule,
-                  live scoreboard, knockout bracket · all SSE-live, no login. */}
+              {/* Public read-only tournament panel (trust layer): Matches,
+                  Standings, Knockout as instant tabs over one shared fetch ·
+                  all SSE-live, no login. The legacy /live scoreboard redirects
+                  to Matches (live matches pin into its Now-playing band). */}
               <Route path="/t/:slug/:id/schedule" element={<PublicSchedulePage />} />
               <Route
-                path="/t/:slug/:id/live"
-                element={<PublicLiveScoreboardPage />}
+                path="/t/:slug/:id/standings"
+                element={<PublicStandingsPage />}
               />
+              <Route path="/t/:slug/:id/live" element={<PublicLiveRedirect />} />
               <Route path="/t/:slug/:id/bracket" element={<PublicBracketPage />} />
               <Route path="/t/:slug/:id/team/:teamId" element={<PublicTeamPage />} />
               <Route path="/explore" element={<ExplorePage />} />
@@ -272,6 +277,11 @@ export default function App(): React.ReactElement {
                 <Route
                   path="/o/:orgSlug/settings"
                   element={<OrgSettingsPage />}
+                />
+                {/* Institution operator surface (P4): seasons + house points. */}
+                <Route
+                  path="/o/:orgSlug/houses"
+                  element={<HousePointsPage />}
                 />
                 <Route
                   path="/o/:orgSlug/branding"

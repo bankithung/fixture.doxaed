@@ -27,6 +27,8 @@ export const routes = {
   orgPermissions: (slug: string) =>
     `/o/${encodeURIComponent(slug)}/permissions`,
   orgSettings: (slug: string) => `/o/${encodeURIComponent(slug)}/settings`,
+  /** Institution operator surface: seasons, houses, the live house table. */
+  orgHouses: (slug: string) => `/o/${encodeURIComponent(slug)}/houses`,
   orgAudit: (slug: string) => `/o/${encodeURIComponent(slug)}/audit`,
   orgBranding: (slug: string) => `/o/${encodeURIComponent(slug)}/branding`,
   /** Phase 1B teaser landing page for Tournament list. */
@@ -101,7 +103,10 @@ export const routes = {
   /** Public team profile: record, form, results, roster, badges. */
   publicTeam: (slug: string, id: string, teamId: string) =>
     `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/team/${encodeURIComponent(teamId)}`,
-  /** Public, read-only live scoreboard — every in-play match (no login). */
+  /** Public group standings, every competition's tables (no login). */
+  publicStandings: (slug: string, id: string) =>
+    `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/standings`,
+  /** Legacy live-scores URL; redirects to the Matches tab (live band). */
   publicLive: (slug: string, id: string) =>
     `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/live`,
   /** Public, read-only knockout bracket per competition (no login). */

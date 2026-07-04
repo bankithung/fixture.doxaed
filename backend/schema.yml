@@ -226,6 +226,24 @@ paths:
       responses:
         '200':
           description: No response body
+  /api/accounts/auth/resend-verification/:
+    post:
+      operationId: accounts_auth_resend_verification_create
+      description: |-
+        Re-send the email-verification link for a pending account.
+
+        Enumeration-safe: always returns 202 regardless of whether the email maps
+        to a pending account. Only acts for users that exist, aren't deleted, and
+        are still unverified — minting a fresh token and invalidating older unused
+        ones so a single live link exists at a time.
+      tags:
+      - accounts
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '202':
+          description: No response body
   /api/accounts/auth/signup/:
     post:
       operationId: accounts_auth_signup_create
@@ -424,6 +442,58 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuditEventListResponse'
           description: ''
+  /api/disputes/{dispute_id}/reject/:
+    post:
+      operationId: disputes_reject_create
+      parameters:
+      - in: path
+        name: dispute_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - disputes
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/disputes/{dispute_id}/resolve/:
+    post:
+      operationId: disputes_resolve_create
+      parameters:
+      - in: path
+        name: dispute_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - disputes
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/disputes/{dispute_id}/withdraw/:
+    post:
+      operationId: disputes_withdraw_create
+      description: The raiser withdraws their own dispute.
+      parameters:
+      - in: path
+        name: dispute_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - disputes
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
   /api/feedback/submit/:
     post:
       operationId: feedback_submit_create
@@ -458,14 +528,584 @@ paths:
               schema:
                 $ref: '#/components/schemas/FeedbackSubmitResponse'
           description: ''
+  /api/forms/{form_id}/:
+    get:
+      operationId: forms_retrieve
+      description: '`GET/PATCH/DELETE /api/forms/{id}/` — read, partial-update, soft-delete.'
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: forms_partial_update
+      description: '`GET/PATCH/DELETE /api/forms/{id}/` — read, partial-update, soft-delete.'
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: forms_destroy
+      description: '`GET/PATCH/DELETE /api/forms/{id}/` — read, partial-update, soft-delete.'
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/forms/{form_id}/contact/:
+    post:
+      operationId: forms_contact_create
+      description: |-
+        `POST /api/forms/{id}/contact/` — a public visitor messages the organisers.
+
+        Emails the tournament's active admins/co-organizers (sender set as reply-to)
+        so anyone hitting an issue can reach a human. AllowAny + throttled; never
+        leaks whether/which organisers exist.
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/forms/{form_id}/directory/:
+    get:
+      operationId: forms_directory_retrieve
+      description: |-
+        `GET /api/forms/{form_id}/directory/` — AllowAny public directory of the
+        institutions registered through an org-registration form, with filters
+        derived dynamically from the form's own choice fields. Exposes only
+        name/region/kind + the choice-field selections (never contact details).
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/forms/{form_id}/public/:
+    get:
+      operationId: forms_public_retrieve
+      description: |-
+        `GET/POST /api/forms/{id}/public/` and `/api/forms/r/{token}/`.
+
+        GET returns the form schema (or ``{"closed": true}`` when not accepting
+        submissions); POST validates + records a response. Resolves either by form
+        id (open public form) or by an active share token.
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: forms_public_create
+      description: |-
+        `GET/POST /api/forms/{id}/public/` and `/api/forms/r/{token}/`.
+
+        GET returns the form schema (or ``{"closed": true}`` when not accepting
+        submissions); POST validates + records a response. Resolves either by form
+        id (open public form) or by an active share token.
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/forms/{form_id}/responses/:
+    get:
+      operationId: forms_responses_retrieve
+      description: '`GET /api/forms/{id}/responses/` — list submissions, or `?export=csv`.'
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/forms/{form_id}/responses/{response_id}/:
+    patch:
+      operationId: forms_responses_partial_update
+      description: '`PATCH /api/forms/{id}/responses/{rid}/` — review status (accept/reject/...).'
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: response_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/forms/{form_id}/team-access/:
+    post:
+      operationId: forms_team_access_create
+      description: |-
+        `POST /api/forms/{form_id}/team-access/` — exchange (institution,
+        access code) for a short-lived signed token + the institution's previous
+        submission for editing. AllowAny, but: per-IP throttle, per-institution
+        failure lockout, constant-time hash check, and the response only carries
+        data the code-holder is entitled to (their own previous answers).
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/forms/{form_id}/uploads/:
+    post:
+      operationId: forms_uploads_create
+      description: |-
+        `POST /api/forms/{id}/uploads/` — stage a file before submission.
+
+        Returns an ``upload_ref`` the client later includes in ``upload_refs`` on the
+        submission; ``submit_response`` then claims the unattached row. Validates
+        size + content type. AllowAny + throttled.
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/forms/{form_id}:close/:
+    post:
+      operationId: forms_:close_create
+      description: '`POST /api/forms/{id}:close/` — open -> closed.'
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/forms/{form_id}:copy-from/:
+    post:
+      operationId: forms_:copy_from_create
+      description: |-
+        `POST /api/forms/{id}:copy-from/` — replace this form's schema (+ bindings)
+        with a built-in template or another accessible form's schema. Manager-only on
+        the target; the source must be a template id or a form the user can access.
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/forms/{form_id}:duplicate/:
+    post:
+      operationId: forms_:duplicate_create
+      description: '`POST /api/forms/{id}:duplicate/` — clone schema into a new draft
+        form.'
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/forms/{form_id}:institution-links/:
+    post:
+      operationId: forms_:institution_links_create
+      description: |-
+        `POST /api/forms/{id}:institution-links/` — mint one bound, prefilled
+        share-link per registered institution for this (team-registration) form.
+
+        Each link locks the institution and prefills its Stage-1 identity/contact, so
+        a school just confirms and adds teams. Idempotent: institutions that already
+        have a link are returned without a fresh token (tokens are hashed at rest, so
+        only newly-minted ones expose a path).
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/forms/{form_id}:publish/:
+    post:
+      operationId: forms_:publish_create
+      description: '`POST /api/forms/{id}:publish/` — draft -> open.'
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/forms/{form_id}:regenerate/:
+    post:
+      operationId: forms_:regenerate_create
+      description: |-
+        `POST /api/forms/{id}:regenerate/` — rebuild a GENERATED form's schema
+        from the tournament's CURRENT sports/category config (invariant 10: the
+        regenerate half of regenerate/keep). Hand-built forms are refused — only
+        forms carrying the generator's settings tags can be rebuilt. Bindings,
+        structural tags and the staleness fingerprint are refreshed; title,
+        status and share links are preserved. Audited via update_form.
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/forms/{form_id}:send-stage2/:
+    post:
+      operationId: forms_:send_stage2_create
+      description: |-
+        `POST /api/forms/{id}:send-stage2/` — mint per-respondent share-links.
+
+        For each *accepted* response on this (stage-1) form, mint a single-use
+        share-link against the target ``team_registration`` form so the school can
+        submit its roster. Returns the minted links so the UI can display/copy them
+        (email enqueue is a follow-up; see plan NOTE on Task 5.2).
+      parameters:
+      - in: path
+        name: form_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/forms/copyable/:
+    get:
+      operationId: forms_copyable_retrieve
+      description: |-
+        `GET /api/forms/copyable/` — built-in templates + every form the user can
+        access (across their tournaments) that has content, for the "copy from" picker.
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/forms/field-types/:
+    get:
+      operationId: forms_field_types_retrieve
+      description: '`GET /api/forms/field-types/` — the field-type catalog for the
+        builder UI.'
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/forms/r/{token}/:
+    get:
+      operationId: forms_r_retrieve
+      description: |-
+        `GET/POST /api/forms/{id}/public/` and `/api/forms/r/{token}/`.
+
+        GET returns the form schema (or ``{"closed": true}`` when not accepting
+        submissions); POST validates + records a response. Resolves either by form
+        id (open public form) or by an active share token.
+      parameters:
+      - in: path
+        name: token
+        schema:
+          type: string
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: forms_r_create
+      description: |-
+        `GET/POST /api/forms/{id}/public/` and `/api/forms/r/{token}/`.
+
+        GET returns the form schema (or ``{"closed": true}`` when not accepting
+        submissions); POST validates + records a response. Resolves either by form
+        id (open public form) or by an active share token.
+      parameters:
+      - in: path
+        name: token
+        schema:
+          type: string
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/forms/uploads/{upload_ref}/:
+    get:
+      operationId: forms_uploads_retrieve
+      description: |-
+        `GET /api/forms/uploads/{upload_ref}/` — stream a stored form upload.
+
+        Capability-based: a valid signed ``?t=`` token authorizes anyone (the URL is
+        minted only into payloads the viewer is already entitled to — admin roster
+        detail, public-form prefill), and an authenticated tournament manager is
+        allowed too. ``?dl=1`` forces a download instead of inline display. A
+        missing file and an unauthorized request both 404 (no existence leak).
+      parameters:
+      - in: path
+        name: upload_ref
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - forms
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/institutions/{institution_id}:claim/:
+    post:
+      operationId: institutions_:claim_create
+      description: |-
+        `POST /api/institutions/{institution_id}:claim/` — the graduation from
+        account-less registrant to institution OPERATOR (P4). The logged-in,
+        verified claimant proves control with the school's team access code;
+        success mints their Organization(kind=institution) tenant.
+      parameters:
+      - in: path
+        name: institution_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - institutions
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/invitations/:
+    get:
+      operationId: invitations_retrieve
+      description: |-
+        GET /api/invitations/
+
+        Returns ALL invitations addressed to the signed-in user's email
+        (case-insensitive), enriched for the inbox UI: actionable PENDING ones
+        first (newest first), then the history (accepted / declined / revoked /
+        expired). A PENDING invite past its expiry is reported as ``expired``
+        (effective status — the DB row is materialized lazily on accept).
+        Tournament-scoped invites carry a ``tournament_id`` + ``tournament_name``;
+        org-level invites have both null.
+      tags:
+      - invitations
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/invitations/{invitation_id}:accept/:
+    post:
+      operationId: invitations_:accept_create
+      description: |-
+        POST /api/invitations/{uuid}:accept/
+
+        In-app accept by invitation id. The signed-in user proves ownership by
+        matching the invite email. Wrong email → 403; already-accepted / expired /
+        declined / revoked → 400.
+      parameters:
+      - in: path
+        name: invitation_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - invitations
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/invitations/{invitation_id}:decline/:
+    post:
+      operationId: invitations_:decline_create
+      description: |-
+        POST /api/invitations/{uuid}:decline/
+
+        In-app decline by invitation id. Email-ownership enforced (403). Only a
+        PENDING invitation may be declined; otherwise 400.
+      parameters:
+      - in: path
+        name: invitation_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - invitations
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
   /api/invitations:accept/:
     post:
       operationId: invitations:accept_create
       description: |-
         POST /api/invitations:accept/
 
-        Public path BUT the accepting user must be authenticated (otherwise
-        we 401 with a redirect hint).
+        AllowAny: a logged-out invitee can accept. If the invite's email has no
+        account, one is created inline (password required); the email is taken from
+        the signed invite, NEVER the request body (account-takeover guard). If an
+        active account already exists, respond 401 `login_required`.
       tags:
       - invitations:accept
       requestBody:
@@ -482,13 +1122,603 @@ paths:
         required: true
       security:
       - cookieAuth: []
+      - {}
       responses:
         '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrganizationMembership'
-          description: ''
+          description: No response body
+  /api/live/match-card/{match_id}.png:
+    get:
+      operationId: live_match_card_.png_retrieve
+      description: '`GET /api/public/match-card/{match_id}.png` — the OG/share image.'
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - live
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/live/match-meta/{match_id}/:
+    get:
+      operationId: live_match_meta_retrieve
+      description: '`GET /api/live/match-meta/{match_id}/` — OG/Twitter meta HTML.'
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - live
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/live/match/{match_id}/:
+    get:
+      operationId: live_match_retrieve
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - live
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/live/tournament-meta/{slug}/{tournament_id}/:
+    get:
+      operationId: live_tournament_meta_retrieve
+      description: |-
+        `GET /api/live/tournament-meta/{slug}/{tournament_id}/` — OG meta for
+        shared public tournament links (/t/:slug/:id/...).
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - live
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/matches/{match_id}/amend/:
+    post:
+      operationId: matches_amend_create
+      description: |-
+        `POST /api/matches/{id}/amend/` — manager-only, audited correction of a
+        COMPLETED set-sport result (H3). Requires a reason; re-fires advancement
+        so a flipped winner corrects the dependent bracket slots. Goal-based
+        matches correct through VOID events instead (which already ripple).
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/matches/{match_id}/call/:
+    post:
+      operationId: matches_call_create
+      description: |-
+        `POST/DELETE /api/matches/{id}/call/` — mark / unmark a match as
+        called to its venue (control room, spec 2026-06-12 §2.b). `called_at` is
+        an operational annotation of `scheduled`, NOT a lifecycle state (PRD §5.5
+        note, decision 72) — the state machine is untouched, and kickoff clears
+        it (see transition_match). Gate: the schedule_editor module (mirrors
+        MatchLockView). Idempotent (a repeat call/un-call is a no-op); only legal
+        while the match is `scheduled` (409 otherwise); audited
+        (`match_called`/`match_call_cleared`).
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: matches_call_destroy
+      description: |-
+        `POST/DELETE /api/matches/{id}/call/` — mark / unmark a match as
+        called to its venue (control room, spec 2026-06-12 §2.b). `called_at` is
+        an operational annotation of `scheduled`, NOT a lifecycle state (PRD §5.5
+        note, decision 72) — the state machine is untouched, and kickoff clears
+        it (see transition_match). Gate: the schedule_editor module (mirrors
+        MatchLockView). Idempotent (a repeat call/un-call is a no-op); only legal
+        while the match is `scheduled` (409 otherwise); audited
+        (`match_called`/`match_call_cleared`).
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/matches/{match_id}/delay/:
+    post:
+      operationId: matches_delay_create
+      description: |-
+        `POST /api/matches/{id}/delay/` — delay cascade (repair seam,
+        increment C). Body `{minutes (1..480), cascade?=true, force?,
+        event_id?}`. Gate: the schedule_editor module. Shifts the match by
+        +minutes; with cascade, later same-venue movable matches are pushed just
+        enough (scheduled_at order) to restore venue non-overlap + rest gaps —
+        live/completed/locked matches never move (fixed obstacles). Everything
+        moved is re-validated; hard violations 409 with the structured payload
+        unless force. ONE `match_delay_cascade` audit row carries the full
+        {match_id, old, new} list; idempotent on event_id.
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/matches/{match_id}/events/:
+    post:
+      operationId: matches_events_create
+      description: |-
+        `POST /api/matches/{id}/events/` — append a live event (goal/card/etc.).
+        Scores derive from the event log (invariant #4).
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/matches/{match_id}/events/export/:
+    get:
+      operationId: matches_events_export_retrieve
+      description: '`GET /api/matches/{id}/events/export/` — full event timeline as
+        CSV.'
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/matches/{match_id}/incidents/:
+    get:
+      operationId: matches_incidents_retrieve
+      description: |-
+        `GET/POST /api/matches/{id}/incidents/` — list incident reports (any
+        match viewer) or file one (manager/scorer/referee). Append-only.
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: matches_incidents_create
+      description: |-
+        `GET/POST /api/matches/{id}/incidents/` — list incident reports (any
+        match viewer) or file one (manager/scorer/referee). Append-only.
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/matches/{match_id}/lineups/:
+    get:
+      operationId: matches_lineups_retrieve
+      description: |-
+        `GET/POST /api/matches/{id}/lineups/` — read both teams' lineups (any
+        match viewer) or set a team's lineup (manager/scorer/referee).
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: matches_lineups_create
+      description: |-
+        `GET/POST /api/matches/{id}/lineups/` — read both teams' lineups (any
+        match viewer) or set a team's lineup (manager/scorer/referee).
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/matches/{match_id}/lineups/confirm/:
+    post:
+      operationId: matches_lineups_confirm_create
+      description: |-
+        `POST /api/matches/{id}/lineups/confirm/` — referee/manager confirms a
+        team's lineup before kickoff.
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/matches/{match_id}/lock/:
+    post:
+      operationId: matches_lock_create
+      description: |-
+        `POST/DELETE /api/matches/{id}/lock/` — pin / release a match's slot
+        (repair seam, increment B). A locked match is never reassigned by a
+        scheduler re-run; its (venue, time, teams) stays on the calendar as a
+        fixed busy booking. Gate: the schedule_editor module. Idempotent (a
+        second lock/unlock is a no-op); audited (`match_locked`/`match_unlocked`).
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: matches_lock_destroy
+      description: |-
+        `POST/DELETE /api/matches/{id}/lock/` — pin / release a match's slot
+        (repair seam, increment B). A locked match is never reassigned by a
+        scheduler re-run; its (venue, time, teams) stays on the calendar as a
+        fixed busy booking. Gate: the schedule_editor module. Idempotent (a
+        second lock/unlock is a no-op); audited (`match_locked`/`match_unlocked`).
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/matches/{match_id}/officials/:
+    post:
+      operationId: matches_officials_create
+      description: |-
+        Assign / remove a match official (referee, assistant, fourth, umpire).
+
+        `POST /api/matches/{id}/officials/` body {user_id, role, event_id?} → assign;
+        `DELETE` body {official_id} → remove. Gate: a manager OR the
+        `match.assign_officials` module (admin / co-organizer / game-coordinator).
+        Returns the match's full officials list; POST also flags a soft
+        double-booking warning when the person clashes with another assignment.
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: matches_officials_destroy
+      description: |-
+        Assign / remove a match official (referee, assistant, fourth, umpire).
+
+        `POST /api/matches/{id}/officials/` body {user_id, role, event_id?} → assign;
+        `DELETE` body {official_id} → remove. Gate: a manager OR the
+        `match.assign_officials` module (admin / co-organizer / game-coordinator).
+        Returns the match's full officials list; POST also flags a soft
+        double-booking warning when the person clashes with another assignment.
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/matches/{match_id}/period/:
+    post:
+      operationId: matches_period_create
+      description: |-
+        `POST /api/matches/{id}/period/` — move a LIVE knockout football match
+        into extra time or the shootout phase (P5). Scorer or manager.
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/matches/{match_id}/schedule/:
+    patch:
+      operationId: matches_schedule_partial_update
+      description: |-
+        `PATCH /api/matches/{id}/schedule/` — control-room manual reslot
+        (repair seam, increment A). Gate: the schedule_editor module (same as
+        ScheduleFixturesView). Only `scheduled`/`postponed` matches move; the
+        change is validated against the scheduler's constraint machinery (other
+        leaves' bookings + shared-player links count) — hard conflicts 409 with
+        the structured violations payload unless force=true (then applied, the
+        violations ride along as warnings). Idempotent on event_id; audited
+        (`match_rescheduled`, before/after slot).
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/matches/{match_id}/score/:
+    post:
+      operationId: matches_score_create
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/matches/{match_id}/scorer/:
+    post:
+      operationId: matches_scorer_create
+      description: |-
+        `POST /api/matches/{id}/scorer/` — a manager assigns a scorer to a match.
+        Body: {"user_id": "<uuid>"}. The target must be a tournament member.
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/matches/{match_id}/shootout/:
+    post:
+      operationId: matches_shootout_create
+      description: |-
+        `POST /api/matches/{id}/shootout/` — record a penalty-shootout result
+        for a LEVEL knockout match (rules.match.penalties). Recordable while LIVE
+        (then complete normally) or on an already-COMPLETED drawn match, where it
+        self-heals a stalled bracket by re-firing advancement.
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/matches/{match_id}/transition/:
+    post:
+      operationId: matches_transition_create
+      description: |-
+        `POST /api/matches/{id}/transition/` — move the match through its state
+        machine (start/half-time/complete/etc.).
+      parameters:
+      - in: path
+        name: match_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - matches
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/me/today/:
+    get:
+      operationId: me_today_retrieve
+      description: |-
+        `GET /api/me/today/` — the operator command center feed: everything
+        live or scheduled today across EVERY tournament the caller can access,
+        plus a "needs you" strip (open disputes, unstaffed matches today). The
+        root dashboard used to re-list tournaments instead of answering "what is
+        happening right now".
+      tags:
+      - me
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/notifications/:
+    get:
+      operationId: notifications_retrieve
+      description: '`GET /api/notifications/` — the current user''s notifications
+        + unread count.'
+      tags:
+      - notifications
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/notifications/{notification_id}/read/:
+    post:
+      operationId: notifications_read_create
+      parameters:
+      - in: path
+        name: notification_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - notifications
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/notifications/read-all/:
+    post:
+      operationId: notifications_read_all_create
+      tags:
+      - notifications
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
   /api/orgs/:
     get:
       operationId: orgs_list
@@ -888,6 +2118,165 @@ paths:
       responses:
         '204':
           description: Removed
+  /api/orgs/{uuid}/seasons/:
+    get:
+      operationId: orgs_seasons_retrieve
+      description: '`GET/POST /api/orgs/{uuid}/seasons/`.'
+      parameters:
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: orgs_seasons_create
+      description: '`GET/POST /api/orgs/{uuid}/seasons/`.'
+      parameters:
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/orgs/{uuid}/seasons/{season_id}/groups/:
+    get:
+      operationId: orgs_seasons_groups_retrieve
+      description: '`GET/POST /api/orgs/{uuid}/seasons/{season_id}/groups/`.'
+      parameters:
+      - in: path
+        name: season_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: orgs_seasons_groups_create
+      description: '`GET/POST /api/orgs/{uuid}/seasons/{season_id}/groups/`.'
+      parameters:
+      - in: path
+        name: season_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/orgs/{uuid}/seasons/{season_id}/house-points/:
+    post:
+      operationId: orgs_seasons_house_points_create
+      parameters:
+      - in: path
+        name: season_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/orgs/{uuid}/seasons/{season_id}/house-table/:
+    get:
+      operationId: orgs_seasons_house_table_retrieve
+      description: |-
+        `GET /api/orgs/{uuid}/seasons/{season_id}/house-table/` — the live
+        board every notice-board flagpole update comes from.
+        `POST .../house-points/` (same view family) appends a judged award.
+      parameters:
+      - in: path
+        name: season_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/orgs/{uuid}/seasons/{season_id}/meet-results/:
+    post:
+      operationId: orgs_seasons_meet_results_create
+      description: |-
+        `POST /api/orgs/{uuid}/seasons/{season_id}/meet-results/` — MEET MODE
+        (P4): one event's placements in, the whole points ladder lands in the
+        house table (7-5-4-3-2-1, x2 relays, custom ladders legal).
+      parameters:
+      - in: path
+        name: season_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: uuid
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - orgs
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
   /api/orgs/{uuid}:archive/:
     post:
       operationId: orgs_:archive_create
@@ -1066,13 +2455,10 @@ paths:
         required: true
       security:
       - cookieAuth: []
+      - {}
       responses:
         '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrganizationMembership'
-          description: ''
+          description: No response body
   /api/permissions/me/modules/:
     get:
       operationId: permissions_me_modules_retrieve
@@ -1302,6 +2688,320 @@ paths:
                 items:
                   $ref: '#/components/schemas/GrantRow'
           description: ''
+  /api/public/badges/{award_id}/:
+    get:
+      operationId: public_badges_retrieve
+      description: '`GET /api/public/badges/{award_id}/` — one award (certificate
+        page).'
+      parameters:
+      - in: path
+        name: award_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - public
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/public/badges/{award_id}/card.png:
+    get:
+      operationId: public_badges_card.png_retrieve
+      description: |-
+        `GET /api/public/badges/{award_id}/card.png` — the shareable social
+        card (1200x630 OG image). Public: award ids are UUIDv7 capabilities and
+        the tournament must be public-facing.
+      parameters:
+      - in: path
+        name: award_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - public
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/public/teams/{team_id}/calendar.ics:
+    get:
+      operationId: public_teams_calendar.ics_retrieve
+      description: |-
+        `GET /api/public/teams/{team_id}/calendar.ics?token=` — the team's
+        schedule as an iCal feed (trust layer, increment H). AllowAny but
+        capability-gated: a missing, tampered, or another team's token → 403.
+      parameters:
+      - in: path
+        name: team_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - public
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/public/tournaments/:
+    get:
+      operationId: public_tournaments_retrieve
+      description: |-
+        `GET /api/public/tournaments/` — the explore directory: every
+        public-facing tournament with dates, season, sports, and a live flag.
+        Cold visitors used to dead-end on the landing page with no way to find
+        any tournament without an out-of-band link.
+      tags:
+      - public
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/public/tournaments/{slug}/{tournament_id}/badges/:
+    get:
+      operationId: public_tournaments_badges_retrieve
+      description: '`GET /api/public/tournaments/{slug}/{id}/badges/` — public gallery.'
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - public
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/public/tournaments/{slug}/{tournament_id}/institutions/{inst_id}/record/:
+    get:
+      operationId: public_tournaments_institutions_record_retrieve
+      description: |-
+        `GET /api/public/tournaments/{slug}/{id}/institutions/{inst_id}/record/`
+        — a school's rollup for this tournament plus its season-grouped history
+        across every public tournament it entered ("any time").
+      parameters:
+      - in: path
+        name: inst_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - public
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/public/tournaments/{slug}/{tournament_id}/leaders/:
+    get:
+      operationId: public_tournaments_leaders_retrieve
+      description: |-
+        `GET /api/public/tournaments/{slug}/{id}/leaders/` — the FIFA-style
+        public leaderboard: present from day zero (empty arrays), refreshed by
+        viewers on every SSE tick.
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - public
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/public/tournaments/{slug}/{tournament_id}/schedule/:
+    get:
+      operationId: public_tournaments_schedule_retrieve
+      description: |-
+        `GET /api/public/tournaments/{slug}/{id}/schedule/` — public read-only
+        schedule (trust layer, increment H). AllowAny; resolves the (slug, UUID)
+        pair (invariant 1 — wrong slug 404s) and answers ONLY while the
+        tournament status is public-facing (registration_open / scheduled /
+        live / completed). Flat match list with day/time/venue/teams/leaf — no
+        PII beyond team/school names.
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - public
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/public/tournaments/{slug}/{tournament_id}/standings/:
+    get:
+      operationId: public_tournaments_standings_retrieve
+      description: |-
+        `GET /api/public/tournaments/{slug}/{id}/standings/` — public
+        read-only standings (control room spec 2026-06-12 §2.d). AllowAny; same
+        (slug, UUID) + public-status gating as the public schedule. Body mirrors
+        TournamentStandingsView — `{groups: [{group_label, rows}]}` via
+        compute_standings verbatim (rows are team aggregates, public-safe).
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - public
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/public/tournaments/{slug}/{tournament_id}/teams/{team_id}/:
+    get:
+      operationId: public_tournaments_teams_retrieve
+      description: |-
+        `GET /api/public/tournaments/{slug}/{id}/teams/{team_id}/` — one
+        team's record, form, results, roster, and badges.
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: team_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - public
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/register/{token}/:
+    get:
+      operationId: register_retrieve
+      description: |-
+        `GET/POST /api/register/{token}/` — AllowAny. GET returns tournament
+        context; POST registers a school's teams + players via the link.
+      parameters:
+      - in: path
+        name: token
+        schema:
+          type: string
+        required: true
+      tags:
+      - register
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchoolRegistration'
+          description: ''
+    post:
+      operationId: register_create
+      description: |-
+        `GET/POST /api/register/{token}/` — AllowAny. GET returns tournament
+        context; POST registers a school's teams + players via the link.
+      parameters:
+      - in: path
+        name: token
+        schema:
+          type: string
+        required: true
+      tags:
+      - register
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SchoolRegistration'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SchoolRegistration'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SchoolRegistration'
+        required: true
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchoolRegistration'
+          description: ''
   /api/sports/:
     get:
       operationId: sports_list
@@ -1358,6 +3058,1540 @@ paths:
               schema:
                 $ref: '#/components/schemas/Sport'
           description: ''
+  /api/tournaments/:
+    get:
+      operationId: tournaments_retrieve
+      description: |-
+        `GET` — tournaments the user can access (isolation-scoped).
+        `POST` — self-serve create; auto-provisions a workspace.
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TournamentCreate'
+          description: ''
+    post:
+      operationId: tournaments_create
+      description: |-
+        `GET` — tournaments the user can access (isolation-scoped).
+        `POST` — self-serve create; auto-provisions a workspace.
+      tags:
+      - tournaments
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TournamentCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TournamentCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TournamentCreate'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TournamentCreate'
+          description: ''
+  /api/tournaments/{tournament_id}/:
+    patch:
+      operationId: tournaments_partial_update
+      description: |-
+        `PATCH {"name": str}` — rename (MANAGER-allowed: admins / co-organizers
+        / org owner). `PATCH {"active": bool}` — deactivate/reactivate
+        (ORGANIZER-only). Either or both; renaming keeps the slug stable so
+        existing public ``(slug, UUID)`` links keep resolving (invariant 1).
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: tournaments_destroy
+      description: |-
+        `DELETE /api/tournaments/{id}/` — soft-delete a tournament (e.g. created by
+        mistake). `PATCH {"active": bool}` — deactivate (archive) or reactivate it.
+
+        ORGANIZER-only (the creator / workspace org admin — owner decision
+        2026-06-11): invited members, even tournament-admins, can manage but never
+        delete or deactivate. 404 on no access (no leak), 403 for invited managers.
+        Delete is blocked while the tournament is `live` (a match in progress).
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/tournaments/{tournament_id}/advancement:refire/:
+    post:
+      operationId: tournaments_advancement:refire_create
+      description: |-
+        `POST /api/tournaments/{id}/advancement:refire/` — manager-only: re-run
+        advancement for every stalled slot's feeder (P3). Advancement is
+        idempotent (typed pointers fill deterministically), so re-firing is
+        always safe; this is the one-click repair the health banner offers.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/assistant/chat/:
+    post:
+      operationId: tournaments_assistant_chat_create
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/audit/:
+    get:
+      operationId: tournaments_audit_retrieve
+      description: |-
+        `GET /api/tournaments/{id}/audit/` — tournament-scoped audit feed.
+
+        Manager-only (audit is sensitive → 403 for non-managers; 404 if the
+        tournament is not accessible). Newest first, limited. Mirrors the org audit
+        view's serialization shape.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/badges/:
+    get:
+      operationId: tournaments_badges_retrieve
+      description: '`GET /api/tournaments/{id}/badges/` — the honours board.'
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/complete/:
+    post:
+      operationId: tournaments_complete_create
+      description: |-
+        `POST /api/tournaments/{id}/complete/` — manual "Wrap up tournament"
+        (PRD §5.2 lifecycle spine). Blocked while a match is in play; outstanding
+        matches require `{"force": true, "reason": ...}` (409 with the count until
+        acknowledged). COMPLETED stays public read-only; archiving stays the
+        separate hide action. Manager verb; idempotent on event_id.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/control-room/:
+    get:
+      operationId: tournaments_control_room_retrieve
+      description: |-
+        `GET /api/tournaments/{id}/control-room/?day=YYYY-MM-DD` — the live-ops
+        cockpit's day-view aggregate (control room, spec 2026-06-12 §2.a): ONE
+        query over the schedule, grouped in Python by tournament-TZ day
+        (invariant 14) then venue, plus a cross-venue "next up" queue. Read-only;
+        ANY active member may read (404 idiom — no existence leak); writes stay
+        gated per action. Day defaults to today (tournament TZ) when it has
+        matches, else the next day with matches, else the last one. Delay
+        visibility stays client-side via the schedule-changes feed.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/disputes/:
+    get:
+      operationId: tournaments_disputes_retrieve
+      description: |-
+        `GET/POST /api/tournaments/{id}/disputes/` — list (manager: all; else own)
+        and raise a dispute (any accessible member).
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: tournaments_disputes_create
+      description: |-
+        `GET/POST /api/tournaments/{id}/disputes/` — list (manager: all; else own)
+        and raise a dispute (any accessible member).
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/draw-config/:
+    get:
+      operationId: tournaments_draw_config_retrieve
+      description: |-
+        `GET/PATCH /api/tournaments/{id}/draw-config/` — per-competition draw
+        configuration (redesign spec §2.1). GET: any tournament member. PATCH:
+        bracket-editor verb; body `{leaf_key|"*", config, event_id}`; whitelist
+        merge, idempotent on `event_id`, audited (`draw_config_updated`).
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: tournaments_draw_config_partial_update
+      description: |-
+        `GET/PATCH /api/tournaments/{id}/draw-config/` — per-competition draw
+        configuration (redesign spec §2.1). GET: any tournament member. PATCH:
+        bracket-editor verb; body `{leaf_key|"*", config, event_id}`; whitelist
+        merge, idempotent on `event_id`, audited (`draw_config_updated`).
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/fixture-readiness/:
+    get:
+      operationId: tournaments_fixture_readiness_retrieve
+      description: |-
+        `GET /api/tournaments/{id}/fixture-readiness/` — the server-computed
+        per-leaf readiness checklist (redesign spec §5.1). Gate: any tournament
+        member (read-only; the FE never replicates the checks).
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/fixtures/:
+    delete:
+      operationId: tournaments_fixtures_destroy
+      description: |-
+        `DELETE /api/tournaments/{id}/fixtures/?leaf_key=…&event_id=…` — the
+        accepted-the-wrong-draw escape hatch (redesign spec §5.3, D7).
+        Soft-deletes the scope's matches ONLY while every one is still
+        `scheduled` status (nothing live/completed); audited (`draw_deleted`),
+        idempotent on `event_id`. Gate: bracket_editor.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/tournaments/{tournament_id}/fixtures/next-round/:
+    post:
+      operationId: tournaments_fixtures_next_round_create
+      description: |-
+        `POST /api/tournaments/{id}/fixtures/next-round/` — materialize the
+        NEXT Swiss round from current standings (increment P). Body `{leaf_key?,
+        event_id?}`. Gate: bracket_editor. Pairs by standings order (points —
+        byes credited as wins — then GD), never repeating a previous pairing
+        (greedy with backtracking); odd counts sit one team out (no second bye
+        while anyone has had none). Refuses with 400 `round_incomplete` while the
+        current round has unfinished matches, `swiss_not_started` before round 1,
+        `swiss_complete` once the configured `swiss_rounds` exist. Idempotent per
+        round on `event_id` (invariant 3) — a replay answers from the
+        `swiss_round_generated` audit row instead of pairing again.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/fixtures/preview/:
+    post:
+      operationId: tournaments_fixtures_preview_create
+      description: |-
+        `POST /api/tournaments/{id}/fixtures/preview/` — pure simulate
+        (redesign spec §5.2, D6): persists nothing, no `event_id` (read-only
+        POST). Gate: bracket_editor. Body `{leaf_key?, draw?, schedule?,
+        include_schedule}`.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/fixtures/preview-all/:
+    post:
+      operationId: tournaments_fixtures_preview_all_create
+      description: |-
+        `POST /api/tournaments/{id}/fixtures/preview-all/` — ONE combined dry-run
+        across EVERY competition (all sports + categories), scheduled together so
+        shared courts + cross-sport clashes are coordinated globally. Persists
+        nothing (read-only POST, no `event_id`). Gate: bracket_editor. Body
+        `{schedule?, include_schedule}`.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/fixtures/publish-all/:
+    post:
+      operationId: tournaments_fixtures_publish_all_create
+      description: |-
+        `POST /api/tournaments/{id}/fixtures/publish-all/` — generate EVERY
+        competition's draw (idempotent: existing draws are kept) then schedule them
+        ALL together in one run. The whole request is one transaction
+        (ATOMIC_REQUESTS), so it commits all-or-nothing. Gates: bracket_editor
+        (generate) + schedule_editor (schedule). Body `{schedule?}`.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/fixtures/shift-day/:
+    post:
+      operationId: tournaments_fixtures_shift_day_create
+      description: |-
+        `POST /api/tournaments/{id}/fixtures/shift-day/` — rain-day shift
+        (repair seam, increment D). Body `{from_date, to_date?, leaf_key?,
+        force?, event_id?}`. Gate: schedule_editor. Moves every movable
+        (scheduled/postponed, not locked) match on from_date to to_date keeping
+        time-of-day + venue; to_date omitted ⇒ first stored reserve day on/after
+        from_date (error `reserve_day_unavailable` if none). A reserve to_date
+        is ACTIVATED (scheduling_config["activated_reserve_days"]) so the grid
+        and future runs keep the day. Hard violations 409 with the structured
+        payload unless force; ONE `shift_day` audit row; idempotent on
+        event_id.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/fixtures/swap-slots/:
+    post:
+      operationId: tournaments_fixtures_swap_slots_create
+      description: |-
+        `POST /api/tournaments/{id}/fixtures/swap-slots/` — exchange
+        scheduled_at+venue between two movable matches (repair seam, increment
+        B). Body `{match_a, match_b, event_id?, force?}`. Gate: schedule_editor.
+        Conflict-checked exactly like the manual reslot (hard → 409 with the
+        structured violations unless force=true); ONE audit row
+        (`match_slots_swapped`); idempotent on event_id — a replay answers from
+        the audit log instead of swapping back.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/forms/:
+    get:
+      operationId: tournaments_forms_retrieve
+      description: '`GET/POST /api/tournaments/{id}/forms/` — list (access-scoped)
+        + create.'
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: tournaments_forms_create
+      description: '`GET/POST /api/tournaments/{id}/forms/` — list (access-scoped)
+        + create.'
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/forms/generate-institution/:
+    post:
+      operationId: tournaments_forms_generate_institution_create
+      description: |-
+        `POST /api/tournaments/{id}/forms/generate-institution/` — auto-generate a
+        draft institution-registration form from the tournament's chosen sports (with
+        per-sport category questions). Manager-only. Returns the new form to review.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/forms/generate-team/:
+    post:
+      operationId: tournaments_forms_generate_team_create
+      description: |-
+        `POST /api/tournaments/{id}/forms/generate-team/` — auto-generate a draft
+        team-registration form from the org-reg form's categories + registered
+        institutions. Manager-only. Returns the new form for the admin to review.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/generate-fixtures/:
+    post:
+      operationId: tournaments_generate_fixtures_create
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/institutions/:
+    get:
+      operationId: tournaments_institutions_retrieve
+      description: |-
+        `GET` registered institutions (the Stage-2 dropdown source; access-scoped).
+        `POST` admin direct-add of an institution (Stage-1; manager-only).
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstitutionIn'
+          description: ''
+    post:
+      operationId: tournaments_institutions_create
+      description: |-
+        `GET` registered institutions (the Stage-2 dropdown source; access-scoped).
+        `POST` admin direct-add of an institution (Stage-1; manager-only).
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstitutionIn'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/InstitutionIn'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/InstitutionIn'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstitutionIn'
+          description: ''
+  /api/tournaments/{tournament_id}/institutions/{institution_id}/:
+    patch:
+      operationId: tournaments_institutions_partial_update
+      description: |-
+        `PATCH /api/tournaments/{id}/institutions/{iid}/` — edit / withdraw an
+        institution (manager-only; reversible per the staged-flow design).
+      parameters:
+      - in: path
+        name: institution_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedInstitutionIn'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedInstitutionIn'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedInstitutionIn'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstitutionIn'
+          description: ''
+    delete:
+      operationId: tournaments_institutions_destroy
+      description: |-
+        Permanently remove an application: soft-delete the institution and
+        cascade to its teams, their players, and the originating Stage-1
+        submission — so it leaves the directory, the institutions table AND the
+        raw-submissions list. Reversible at the DB level (deleted_at), unlike a
+        reject which only hides it from the public. Manager-only.
+      parameters:
+      - in: path
+        name: institution_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/tournaments/{tournament_id}/institutions/{institution_id}/edit-link/:
+    post:
+      operationId: tournaments_institutions_edit_link_create
+      description: |-
+        `POST /api/tournaments/{id}/institutions/{institution_id}/edit-link/` —
+        mint a TEMPORARY, single-submission link a school uses to add or edit its
+        OWN details on the Stage-1 form (manager-only).
+
+        The link opens the institution-registration form prefilled with the
+        school's previous answers, bound to the institution (a rename updates the
+        row, never duplicates it), works even after Stage 1 closed, expires in 7
+        days, and is spent after one submission. Re-issuing deactivates earlier
+        links for the same school — "resend" always means ONE live link.
+      parameters:
+      - in: path
+        name: institution_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/invitations/:
+    post:
+      operationId: tournaments_invitations_create
+      description: |-
+        `POST /api/tournaments/{id}/invitations/` — invite anyone by email to a
+        tournament with a tournament-scoped role. The token is emailed, never returned.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TournamentInvitationCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TournamentInvitationCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TournamentInvitationCreate'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TournamentInvitationCreate'
+          description: ''
+  /api/tournaments/{tournament_id}/leaders/:
+    get:
+      operationId: tournaments_leaders_retrieve
+      description: |-
+        `GET /api/tournaments/{id}/leaders/` — the ops leaderboards (owner
+        ask: best players, teams, scorers visible in the app). Same payload as
+        the public endpoint; see services/leaders.py.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/matches/:
+    get:
+      operationId: tournaments_matches_retrieve
+      description: |-
+        Tournament-wide match list — the all-days source for the operations
+        Matches board. Rows are enriched (leaf_label + scorer + officials) the same
+        way as the control-room day view, so the board can show + filter crew.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/members/:
+    get:
+      operationId: tournaments_members_retrieve
+      description: |-
+        `GET /api/tournaments/{id}/members/` — the tournament roster.
+
+        Viewable by any tournament member (access-scoped → 404 on no access, no
+        existence leak). Returns active + suspended memberships (revoked excluded).
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TournamentMembership'
+          description: ''
+  /api/tournaments/{tournament_id}/members/{membership_id}/:
+    patch:
+      operationId: tournaments_members_partial_update
+      description: |-
+        `PATCH /api/tournaments/{id}/members/{membership_id}/` — manage a member.
+
+        Manager-only (else 403; 404 if the tournament is not accessible). Changes the
+        member's role and/or status (e.g. status=revoked to remove). Refuses to
+        remove/demote the last active admin (`last_admin`). Audited.
+      parameters:
+      - in: path
+        name: membership_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTournamentMembershipUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTournamentMembershipUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTournamentMembershipUpdate'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TournamentMembershipUpdate'
+          description: ''
+  /api/tournaments/{tournament_id}/permissions/:
+    get:
+      operationId: tournaments_permissions_retrieve
+      description: |-
+        `GET /api/tournaments/{id}/permissions/` — the member x module matrix
+        for this tournament (manager-only): every active member with their roles,
+        effective module set and explicit overrides. The Members page renders the
+        per-member permission editor from this (spec 2026-06-10 P5).
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/permissions/grants/:
+    put:
+      operationId: tournaments_permissions_grants_update
+      description: |-
+        `PUT /api/tournaments/{id}/permissions/grants/` — set one member's
+        per-module override (grant/deny/default + mandatory reason). Manager-only;
+        target must be an active member. Audited; resolver cache invalidated.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/presets/:
+    get:
+      operationId: tournaments_presets_retrieve
+      description: |-
+        `GET /api/tournaments/{id}/presets/` — the event-preset catalog.
+        `POST` {key, event_id?} applies one: the preset tree replaces the sports
+        tree through the SAME guarded path as the editor (H4 protects in-use
+        leaves), so presets are safe to apply and re-apply. Manager-only.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: tournaments_presets_create
+      description: |-
+        `GET /api/tournaments/{id}/presets/` — the event-preset catalog.
+        `POST` {key, event_id?} applies one: the preset tree replaces the sports
+        tree through the SAME guarded path as the editor (H4 protects in-use
+        leaves), so presets are safe to apply and re-apply. Manager-only.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/registration-link/:
+    post:
+      operationId: tournaments_registration_link_create
+      description: |-
+        `POST /api/tournaments/{id}/registration-link/` — organizer mints a
+        shareable link schools use to self-register. Token returned once.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/schedule/:
+    post:
+      operationId: tournaments_schedule_create
+      description: |-
+        POST /api/tournaments/{id}/schedule/ — run the FET-style engine over the
+        tournament's matches with the wizard's constraint payload; persist + explain.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/schedule-changes/:
+    get:
+      operationId: tournaments_schedule_changes_retrieve
+      description: |-
+        `GET /api/tournaments/{id}/schedule-changes/?since=&leaf_key=` —
+        unified slot-change feed (trust layer, increment F). Flattens the
+        existing repair/scheduler audit rows (no new model) into reverse-chrono
+        per-match entries `{match_id, match_label, leaf_key, changed_at, actor,
+        kind, old, new, reason, batch_id}`. Visible to ANY accessible tournament
+        member (404 idiom — no existence leak).
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/settings/:
+    get:
+      operationId: tournaments_settings_retrieve
+      description: |-
+        `GET`/`PATCH /api/tournaments/{id}/settings/` — data-driven rules + constraints.
+
+        PATCH is manager-only, idempotent on `event_id`, and blocked once rules are
+        frozen (invariant 7) unless `amend=true` + a reason.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: tournaments_settings_partial_update
+      description: |-
+        `GET`/`PATCH /api/tournaments/{id}/settings/` — data-driven rules + constraints.
+
+        PATCH is manager-only, idempotent on `event_id`, and blocked once rules are
+        frozen (invariant 7) unless `amend=true` + a reason.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/sports/:
+    get:
+      operationId: tournaments_sports_retrieve
+      description: |-
+        `GET/PUT /api/tournaments/{id}/sports/` — the sports this tournament runs.
+
+        GET: any tournament member (access-scoped → 404 on no access). PUT:
+        manager-only; replaces the list, normalized by the sports registry
+        (recursive category nodes with stable keys; legacy 2-level shape coerced;
+        per-sport scoring/scheduling config preserved). Audited.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    put:
+      operationId: tournaments_sports_update
+      description: |-
+        `GET/PUT /api/tournaments/{id}/sports/` — the sports this tournament runs.
+
+        GET: any tournament member (access-scoped → 404 on no access). PUT:
+        manager-only; replaces the list, normalized by the sports registry
+        (recursive category nodes with stable keys; legacy 2-level shape coerced;
+        per-sport scoring/scheduling config preserved). Audited.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/sports-meta/:
+    get:
+      operationId: tournaments_sports_meta_retrieve
+      description: |-
+        `GET /api/tournaments/{id}/sports-meta/` — the tournament's sports with
+        their SportDefinition descriptors (P1.c): scoring family, terminology,
+        standings columns and leader-board specs, so every surface renders
+        sport-native without hardcoding. Access-scoped like the sports tree.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/stage/:
+    get:
+      operationId: tournaments_stage_retrieve
+      description: |-
+        GET the setup-stepper state; POST executes a stage transition.
+
+        Mirrors the tournament view pattern: _get_tournament_or_404 (404-not-403),
+        then the manager verb gate on writes. GET is visible to any member.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: tournaments_stage_create
+      description: |-
+        GET the setup-stepper state; POST executes a stage transition.
+
+        Mirrors the tournament view pattern: _get_tournament_or_404 (404-not-403),
+        then the manager verb gate on writes. GET is visible to any member.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/stage/preview/:
+    post:
+      operationId: tournaments_stage_preview_create
+      description: POST a dry-run of a transition; never mutates. Manager-only.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/standings/:
+    get:
+      operationId: tournaments_standings_retrieve
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/suspensions/:
+    get:
+      operationId: tournaments_suspensions_retrieve
+      description: |-
+        `GET /api/tournaments/{id}/suspensions/` — card-derived bans (PRD 5.8):
+        who is serving, why, and how much remains. Derived from the event log on
+        demand, like standings.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/team-codes/:
+    post:
+      operationId: tournaments_team_codes_create
+      description: |-
+        `POST /api/tournaments/{id}/team-codes/` — (re)issue team-registration
+        access codes to registered institutions (manager-only). Default fills only
+        institutions without a code (safe after late registrations); body
+        ``{"force": true}`` rotates every code.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/teams/:
+    get:
+      operationId: tournaments_teams_retrieve
+      description: |-
+        `GET` registered teams (access-scoped); `POST` admin direct-add of a team
+        under an institution (Stage-2; manager-only).
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: tournaments_teams_create
+      description: |-
+        `GET` registered teams (access-scoped); `POST` admin direct-add of a team
+        under an institution (Stage-2; manager-only).
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/teams/{team_id}/calendar-link/:
+    post:
+      operationId: tournaments_teams_calendar_link_create
+      description: |-
+        `POST /api/tournaments/{id}/teams/{team_id}/calendar-link/` — mint a
+        signed per-team iCal token (trust layer, increment H). Allowed for a
+        tournament manager OR the authenticated registered contact of the team's
+        institution (that team's authorized context); other members 403,
+        outsiders 404 (no existence leak). The token rides the public
+        `calendar.ics` URL — same `django.core.signing` pattern as the
+        team-access share links.
+      parameters:
+      - in: path
+        name: team_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/teams/{team_id}/registration/:
+    get:
+      operationId: tournaments_teams_registration_retrieve
+      description: |-
+        `GET /api/tournaments/{tid}/teams/{team_id}/registration/` — the rich
+        detail the mapper drops onto the floor: team logo, coaches (+ documents),
+        and each player's full date of birth + uploaded documents, read back out of
+        the originating submission and merged with the domain roster. Manager-gated
+        because it exposes the schools' uploaded personal documents.
+      parameters:
+      - in: path
+        name: team_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/teams/{team_id}/withdraw/:
+    post:
+      operationId: tournaments_teams_withdraw_create
+      description: |-
+        `POST /api/tournaments/{id}/teams/{team_id}/withdraw/` — minimal
+        withdrawal executor (redesign spec §7 inc 16, §9 A7): marks the team
+        withdrawn and walkovers its remaining scheduled matches. Body
+        `{event_id?, reason?}`. Gate: tournament.bracket_editor; idempotent
+        (invariant 3); audited (`team_withdrawn`).
+      parameters:
+      - in: path
+        name: team_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/teams/seeds/:
+    put:
+      operationId: tournaments_teams_seeds_update
+      description: |-
+        `PUT /api/tournaments/{id}/teams/seeds/` — bulk seed assignment for a
+        competition (redesign spec §4.3: Team.seed finally becomes settable).
+        Body `{leaf_key?, seeds: [{team_id, seed|null}], event_id}`. Gate:
+        tournament.bracket_editor; idempotent on `event_id` (invariant 3);
+        audited (`team_seeds_updated`).
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/venues/:
+    get:
+      operationId: tournaments_venues_retrieve
+      description: |-
+        `GET/POST /api/tournaments/{id}/venues/` — the workspace's venue pool
+        (shared across its tournaments). GET: any member; POST: manager-only.
+        The scheduler uses these (types + windows) when a run names no venues.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: tournaments_venues_create
+      description: |-
+        `GET/POST /api/tournaments/{id}/venues/` — the workspace's venue pool
+        (shared across its tournaments). GET: any member; POST: manager-only.
+        The scheduler uses these (types + windows) when a run names no venues.
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/tournaments/{tournament_id}/venues/{venue_id}/:
+    patch:
+      operationId: tournaments_venues_partial_update
+      description: '`PATCH/DELETE /api/tournaments/{id}/venues/{venue_id}/` — manager-only.'
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: venue_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: tournaments_venues_destroy
+      description: '`PATCH/DELETE /api/tournaments/{id}/venues/{venue_id}/` — manager-only.'
+      parameters:
+      - in: path
+        name: tournament_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: venue_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/tournaments/constraint-types/:
+    get:
+      operationId: tournaments_constraint_types_retrieve
+      description: '`GET /api/tournaments/constraint-types/` — static catalog for
+        the UI builder.'
+      tags:
+      - tournaments
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: No response body
 components:
   schemas:
     AcceptInvitation:
@@ -1366,6 +4600,13 @@ components:
         token:
           type: string
           maxLength: 128
+        password:
+          type: string
+          writeOnly: true
+          minLength: 12
+        name:
+          type: string
+          maxLength: 200
       required:
       - token
     AdminInvitation:
@@ -1396,7 +4637,6 @@ components:
           allOf:
           - $ref: '#/components/schemas/AdminInvitationStatusEnum'
           readOnly: true
-          default: pending
         effective_status:
           type: string
           readOnly: true
@@ -1465,12 +4705,14 @@ components:
       - accepted
       - expired
       - revoked
+      - declined
       type: string
       description: |-
         * `pending` - Pending
         * `accepted` - Accepted
         * `expired` - Expired
         * `revoked` - Revoked
+        * `declined` - Declined
     Archive:
       type: object
       properties:
@@ -1699,6 +4941,50 @@ components:
       - reason
       - state
       - updated_at
+    InstitutionIn:
+      type: object
+      description: Admin direct-add / edit of an Institution (Stage-1).
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/KindEnum'
+          default: school
+        region:
+          type: string
+          maxLength: 120
+        short_name:
+          type: string
+          maxLength: 40
+        contact_name:
+          type: string
+          maxLength: 200
+        contact_email:
+          type: string
+          format: email
+        contact_phone:
+          type: string
+          maxLength: 32
+      required:
+      - name
+    KindEnum:
+      enum:
+      - school
+      - college
+      - university
+      - club
+      - academy
+      - other
+      type: string
+      description: |-
+        * `school` - school
+        * `college` - college
+        * `university` - university
+        * `club` - club
+        * `academy` - academy
+        * `other` - other
     Login:
       type: object
       properties:
@@ -2082,6 +5368,32 @@ components:
           format: email
       required:
       - email
+    PatchedInstitutionIn:
+      type: object
+      description: Admin direct-add / edit of an Institution (Stage-1).
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/KindEnum'
+          default: school
+        region:
+          type: string
+          maxLength: 120
+        short_name:
+          type: string
+          maxLength: 40
+        contact_name:
+          type: string
+          maxLength: 200
+        contact_email:
+          type: string
+          format: email
+        contact_phone:
+          type: string
+          maxLength: 32
     PatchedMe:
       type: object
       description: |-
@@ -2147,6 +5459,39 @@ components:
         time_zone:
           type: string
           maxLength: 64
+    PatchedTournamentMembershipUpdate:
+      type: object
+      description: PATCH body for member management — role and/or status, both optional.
+      properties:
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        status:
+          $ref: '#/components/schemas/StatusC3bEnum'
+    PlayerIn:
+      type: object
+      properties:
+        full_name:
+          type: string
+          maxLength: 200
+        jersey_no:
+          type: integer
+          maximum: 999
+          minimum: 1
+        position:
+          type: string
+          maxLength: 16
+        dob_year:
+          type: integer
+          maximum: 2025
+          minimum: 1950
+        is_goalkeeper:
+          type: boolean
+          default: false
+        captain:
+          type: boolean
+          default: false
+      required:
+      - full_name
     Reauth:
       type: object
       properties:
@@ -2193,6 +5538,23 @@ components:
         * `match_scorer` - Match scorer
         * `referee` - Referee
         * `team_manager` - Team manager
+    SchoolRegistration:
+      type: object
+      description: Payload a school submits via the public registration link.
+      properties:
+        school_name:
+          type: string
+          maxLength: 200
+        teams:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamIn'
+        event_id:
+          type: string
+          format: uuid
+      required:
+      - school_name
+      - teams
     Signup:
       type: object
       description: |-
@@ -2335,6 +5697,16 @@ components:
         * `default` - Default (no override)
         * `grant` - Grant (force on)
         * `deny` - Deny (force off)
+    StatusC3bEnum:
+      enum:
+      - active
+      - suspended
+      - revoked
+      type: string
+      description: |-
+        * `active` - Active
+        * `suspended` - Suspended
+        * `revoked` - Revoked
     Suspend:
       type: object
       properties:
@@ -2343,6 +5715,94 @@ components:
           maxLength: 500
       required:
       - reason
+    TeamIn:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        short_name:
+          type: string
+          maxLength: 40
+        players:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlayerIn'
+      required:
+      - name
+    TournamentCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        sport_code:
+          type: string
+        event_id:
+          type: string
+          format: uuid
+      required:
+      - name
+    TournamentInvitationCreate:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        event_id:
+          type: string
+          format: uuid
+      required:
+      - email
+      - role
+    TournamentMembership:
+      type: object
+      description: 'Roster row: user identity + tournament-scoped role/status.'
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        user_id:
+          type: string
+          format: uuid
+          readOnly: true
+        email:
+          type: string
+          readOnly: true
+        full_name:
+          type: string
+          readOnly: true
+        role:
+          allOf:
+          - $ref: '#/components/schemas/RoleEnum'
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusC3bEnum'
+          readOnly: true
+        assigned_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - assigned_at
+      - email
+      - full_name
+      - id
+      - role
+      - status
+      - user_id
+    TournamentMembershipUpdate:
+      type: object
+      description: PATCH body for member management — role and/or status, both optional.
+      properties:
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        status:
+          $ref: '#/components/schemas/StatusC3bEnum'
     TransferOwnership:
       type: object
       description: |-

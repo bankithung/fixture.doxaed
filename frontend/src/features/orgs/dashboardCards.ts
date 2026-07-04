@@ -2,6 +2,7 @@ import {
   Bell,
   ClipboardList,
   FileText,
+  Medal,
   MessageSquare,
   Palette,
   Settings,
@@ -22,6 +23,7 @@ import { t } from "@/lib/t";
 export type DashboardCardKey =
   | "members"
   | "settings"
+  | "houses"
   | "permissions"
   | "audit"
   | "tournaments"
@@ -143,6 +145,18 @@ export function computeDashboardCards(opts: {
     });
   }
 
+  // 2b. Houses & points (P4 institution operator surface) — every org
+  //     member sees the live house table; managers get the write panels.
+  if (membership) {
+    cards.push({
+      key: "houses",
+      icon: Medal,
+      title: t("Houses & points"),
+      description: t("Seasons, houses, the live house table, meet results."),
+      href: routes.orgHouses(slug),
+    });
+  }
+
   // 3. Permissions (Module Overrides) — admin role + org owner ONLY.
   //    Backend gate is `IsOrgAdminOrOwner` (admin role OR is_org_owner=True);
   //    co-organizer and game-coordinator are intentionally excluded per
@@ -232,6 +246,7 @@ export function computeDashboardCards(opts: {
 export const ALL_CARD_KEYS: DashboardCardKey[] = [
   "members",
   "settings",
+  "houses",
   "permissions",
   "audit",
   "tournaments",
@@ -248,6 +263,7 @@ export const PHASE_1B_TEASERS: readonly string[] = [] as const;
 export const CARD_ICONS = {
   Users,
   Settings,
+  Medal,
   Shield,
   FileText,
   Trophy,

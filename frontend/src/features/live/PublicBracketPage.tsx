@@ -1,15 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { liveApi } from "@/api/live";
-import {
-  tournamentsApi,
-  type MatchRow,
-  type PublicScheduleMatch,
-} from "@/api/tournaments";
+import { type MatchRow, type PublicScheduleMatch } from "@/api/tournaments";
 import { BracketView } from "@/features/tournaments/BracketView";
+import { usePublicTournament } from "@/features/fixtures/publicTournament";
 import { t } from "@/lib/t";
-import { useEventStream } from "@/lib/useEventStream";
 import { PublicViewerHeader } from "./PublicViewerHeader";
 
 /** Public schedule row → the MatchRow shape BracketView renders (set-sport
@@ -44,42 +38,26 @@ function toMatchRow(m: PublicScheduleMatch): MatchRow {
 }
 
 /**
- * Public, login-free KNOCKOUT BRACKET (R13): one connected tree per
- * competition, auto-updating over the public SSE tick stream as results land.
- * Reuses the same BracketView component the admin sees; no new backend (the
- * public schedule endpoint already serves every knockout match).
+ * Public, login-free KNOCKOUT tab (R13): one connected FifaBracket tree per
+ * competition (via the shared BracketView), reading the SAME schedule query
+ * as the Matches and Standings tabs so switching is instant; the SSE tick
+ * stream advances it as results land. No new backend (the public schedule
+ * endpoint already serves every knockout match).
  */
 export function PublicBracketPage(): React.ReactElement {
   const { slug = "", id = "" } = useParams();
-  const qc = useQueryClient();
-
-  const tickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onTick = useCallback(() => {
-    if (tickTimer.current) return;
-    tickTimer.current = setTimeout(() => {
-      tickTimer.current = null;
-      qc.invalidateQueries({ queryKey: ["public-schedule", slug, id] });
-    }, 400);
-  }, [qc, slug, id]);
-  useEffect(
-    () => () => {
-      if (tickTimer.current) clearTimeout(tickTimer.current);
-    },
-    [],
-  );
-  const { connected } = useEventStream(
-    slug && id ? liveApi.streamUrl(slug, id) : null,
-    onTick,
+  const { scheduleQ: query, connected, hasKnockout } = usePublicTournament(
+    slug,
+    id,
   );
 
-  const query = useQuery({
-    queryKey: ["public-schedule", slug, id],
-    queryFn: () => tournamentsApi.publicSchedule(slug, id),
-    refetchInterval: connected ? false : 60_000,
-  });
+  const tournamentName = query.data?.tournament.name;
+  useEffect(() => {
+    if (tournamentName) document.title = `${tournamentName} · ${t("Knockout")}`;
+  }, [tournamentName]);
 
   // One bracket per competition leaf (TT Singles, Sepak Takraw, …) — only the
-  // knockout matches; the group stage lives on the Schedule tab's standings.
+  // knockout matches; the group stage lives on the Standings tab.
   const brackets = useMemo(() => {
     const byLeaf = new Map<
       string,
@@ -101,9 +79,10 @@ export function PublicBracketPage(): React.ReactElement {
       <PublicViewerHeader
         slug={slug}
         id={id}
-        tournamentName={query.data?.tournament.name}
+        tournamentName={tournamentName}
         active="bracket"
         connected={connected}
+        showKnockout={hasKnockout !== false}
       />
       <main className="flex w-full flex-1 flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8">
         {query.isLoading ? (
@@ -114,7 +93,7 @@ export function PublicBracketPage(): React.ReactElement {
               {t("The knockout bracket appears here once the group stage finishes.")}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {t("See group tables on the Schedule tab.")}
+              {t("See group tables on the Standings tab.")}
             </p>
           </div>
         ) : (

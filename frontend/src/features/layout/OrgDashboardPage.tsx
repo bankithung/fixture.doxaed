@@ -5,6 +5,7 @@ import {
   ArrowDownUp,
   ChevronRight,
   ListChecks,
+  Medal,
   MessageSquarePlus,
   Plus,
   Search,
@@ -429,6 +430,15 @@ export function OrgDashboardPage(): React.ReactElement {
               <Link to="/tournaments/new" className="flex items-center gap-3 rounded-lg border border-border/60 bg-background px-3 py-2.5 text-sm transition-colors hover:border-primary/40 hover:bg-accent">
                 <Plus aria-hidden="true" className="h-4 w-4 text-primary" />
                 {t("New tournament")}
+              </Link>
+              {/* Institution operator surface (P4) — member-visible. */}
+              <Link
+                to={routes.orgHouses(orgSlug)}
+                data-testid="quick-houses"
+                className="flex items-center gap-3 rounded-lg border border-border/60 bg-background px-3 py-2.5 text-sm transition-colors hover:border-primary/40 hover:bg-accent"
+              >
+                <Medal aria-hidden="true" className="h-4 w-4 text-primary" />
+                {t("Houses & points")}
               </Link>
               <button
                 type="button"

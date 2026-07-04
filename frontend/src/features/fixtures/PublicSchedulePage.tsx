@@ -1,14 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Printer, Search, Trophy, X } from "lucide-react";
-import { liveApi } from "@/api/live";
-import {
-  tournamentsApi,
-  type PublicScheduleMatch,
-  type StandingRow,
-  type StandingsGroup,
-} from "@/api/tournaments";
+import { type PublicScheduleMatch } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/Select";
 import { PublicLeaders } from "@/features/live/PublicLeaders";
@@ -19,45 +12,17 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import { useBreakpoint } from "@/lib/useBreakpoint";
-import { useEventStream } from "@/lib/useEventStream";
 import { PublicViewerTabs } from "@/features/live/PublicViewerHeader";
-
-const LIVE_STATUSES = new Set(["live", "half_time", "extra_time", "penalties"]);
-const FINAL_STATUSES = new Set(["completed", "walkover"]);
-
-/** Competition labels arrive joined by separators ("Sepak Takraw — U-14 —
- * Boys"); a raw dashed string is the #1 design tell, so we split into segments
- * and chip them. Internal hyphens with no surrounding spaces ("U-14") survive
- * the split and are tidied to "U14" at render. */
-const LABEL_SEP = /\s+[·–—|/-]+\s+/;
-
-function splitLabel(label: string): string[] {
-  return label
-    .split(LABEL_SEP)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-/** The sport segment (first label part), used to group + label competitions. */
-function sportOf(m: Pick<PublicScheduleMatch, "leaf_label" | "sport">): string {
-  const parts = splitLabel(m.leaf_label);
-  if (parts.length) return parts[0];
-  if (m.sport) {
-    return m.sport.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  }
-  return t("Other");
-}
-
-/** "Sepak Takraw — U-14 — Boys — Group A" minus the competition prefix →
- * "Group A". The leaf chips already carry the competition, so when the group
- * label adds nothing beyond the leaf we render NOTHING — never the raw
- * dashed chain (it duplicated every chip row). */
-function shortGroup(groupLabel: string, leafLabel: string): string {
-  if (!groupLabel || groupLabel === leafLabel) return "";
-  const last = splitLabel(groupLabel).pop()?.trim() ?? "";
-  if (!last || (leafLabel && leafLabel.endsWith(last))) return "";
-  return last;
-}
+import {
+  FINAL_STATUSES,
+  LIVE_STATUSES,
+  buildCompetitions,
+  shortGroup,
+  splitLabel,
+  usePublicTournament,
+  type Competition,
+} from "./publicTournament";
+import { GroupTable, LabelChips } from "./publicTournamentViews";
 
 function statusMeta(status: string): { label: string; cls: string; live: boolean } {
   if (LIVE_STATUSES.has(status)) {
@@ -117,41 +82,6 @@ function teamHit(m: PublicScheduleMatch, q: string): boolean {
   const h = m.home?.name?.toLowerCase() ?? "";
   const a = m.away?.name?.toLowerCase() ?? "";
   return h.includes(q) || a.includes(q);
-}
-
-/** Competition label as clean chips: sport (accent) then age/gender/discipline
- * (muted), no separator glyphs. `omitSport` drops the leading sport chip when
- * the surrounding header already names it. */
-function LabelChips({
-  label,
-  omitSport = false,
-  className,
-}: {
-  label: string;
-  omitSport?: boolean;
-  className?: string;
-}): React.ReactElement | null {
-  let parts = splitLabel(label);
-  if (omitSport) parts = parts.slice(1);
-  if (parts.length === 0) return null;
-  return (
-    <span className={cn("inline-flex flex-wrap items-center gap-1", className)}>
-      {parts.map((p, i) => (
-        <span
-          key={`${p}-${i}`}
-          className={cn(
-            "rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium leading-tight",
-            !omitSport && i === 0
-              ? "bg-primary/10 text-primary"
-              : "bg-muted text-muted-foreground",
-          )}
-        >
-          {/* "U-14" → "U14": the internal hyphen is the last dash on the page. */}
-          {/^U-\d/.test(p) ? p.replace("-", "") : p}
-        </span>
-      ))}
-    </span>
-  );
 }
 
 function StatusPill({ status }: { status: string }): React.ReactElement {
@@ -291,131 +221,6 @@ function MatchCard({
       ) : null}
     </li>
   );
-}
-
-/** Compact FIFA-style group table (P W D L +/- Pts) — qualifying rows get a
- * 2px accent left rule (not a fill, not a dot). */
-function GroupTable({ rows }: { rows: StandingRow[] }): React.ReactElement {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-[0.625rem] uppercase tracking-wide text-muted-foreground">
-            <th className="px-4 py-1.5 font-medium">{t("Team")}</th>
-            {["P", "W", "D", "L", "+/-", "Pts"].map((h) => (
-              <th key={h} className="px-2 py-1.5 text-right font-medium">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, idx) => (
-            <tr
-              key={r.team_id}
-              data-testid={`group-standing-${r.team_id}`}
-              className={cn(
-                "border-t border-border",
-                idx < 2 && "border-l-2 border-primary",
-              )}
-            >
-              <td className="px-4 py-1.5 font-medium">
-                <span className="mr-1.5 font-tabular text-xs text-muted-foreground">
-                  {idx + 1}
-                </span>
-                {r.name}
-              </td>
-              {[r.P, r.W, r.D, r.L, r.GD, r.Pts].map((v, i) => (
-                <td
-                  key={i}
-                  className={cn(
-                    "px-2 py-1.5 text-right font-tabular",
-                    i === 5
-                      ? "font-semibold text-foreground"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {i === 4 && typeof v === "number" && v > 0 ? `+${v}` : v}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-type Group = {
-  key: string;
-  label: string;
-  matches: PublicScheduleMatch[];
-  standing?: StandingsGroup;
-};
-type Competition = {
-  key: string;
-  label: string;
-  sport: string;
-  teamCount: number;
-  liveCount: number;
-  groups: Group[];
-  matches: PublicScheduleMatch[];
-};
-
-function buildCompetitions(
-  matches: PublicScheduleMatch[],
-  standingsGroups: StandingsGroup[] | undefined,
-): Competition[] {
-  const stMap = new Map<string, StandingsGroup>();
-  for (const g of standingsGroups ?? []) {
-    if (g.group_label) stMap.set(g.group_label, g);
-  }
-  const byLeaf = new Map<string, PublicScheduleMatch[]>();
-  for (const m of matches) {
-    const key = m.leaf_key || "_";
-    if (!byLeaf.has(key)) byLeaf.set(key, []);
-    byLeaf.get(key)!.push(m);
-  }
-  const comps: Competition[] = [];
-  for (const [key, ms] of byLeaf) {
-    const label = ms[0]?.leaf_label || t("Competition");
-    const byGroup = new Map<string, PublicScheduleMatch[]>();
-    for (const m of ms) {
-      const gk = m.group_label || (m.stage === "knockout" ? "__ko" : "__other");
-      if (!byGroup.has(gk)) byGroup.set(gk, []);
-      byGroup.get(gk)!.push(m);
-    }
-    const groups: Group[] = [...byGroup.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([gk, gms]) => ({
-        key: gk,
-        label:
-          gk === "__ko"
-            ? t("Knockout")
-            : gk === "__other"
-              ? t("Fixtures")
-              : shortGroup(gk, label) || gk,
-        matches: gms,
-        standing: gk.startsWith("__") ? undefined : stMap.get(gk),
-      }));
-    const teams = new Set<string>();
-    let live = 0;
-    for (const m of ms) {
-      if (m.home) teams.add(m.home.id);
-      if (m.away) teams.add(m.away.id);
-      if (LIVE_STATUSES.has(m.status)) live++;
-    }
-    comps.push({
-      key,
-      label,
-      sport: ms[0] ? sportOf(ms[0]) : "",
-      teamCount: teams.size,
-      liveCount: live,
-      groups,
-      matches: ms,
-    });
-  }
-  return comps.sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function LivePulse(): React.ReactElement {
@@ -712,7 +517,7 @@ function CompetitionStandings({
             </span>
           </h3>
           {g.standing && g.standing.rows.length > 0 ? (
-            <GroupTable rows={g.standing.rows} />
+            <GroupTable rows={g.standing.rows} family={comp.family} />
           ) : null}
           <ul className="divide-y divide-border border-t border-border">
             {g.shown.map((m) => (
@@ -999,43 +804,20 @@ function TodayOverview({
  */
 export function PublicSchedulePage(): React.ReactElement {
   const { slug = "", id = "" } = useParams();
-  const qc = useQueryClient();
   const { up } = useBreakpoint();
   const wideRail = up("lg");
 
-  const tickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onTick = useCallback(() => {
-    if (tickTimer.current) return;
-    tickTimer.current = setTimeout(() => {
-      tickTimer.current = null;
-      qc.invalidateQueries({ queryKey: ["public-schedule", slug, id] });
-      qc.invalidateQueries({ queryKey: ["public-standings", slug, id] });
-      qc.invalidateQueries({ queryKey: ["public-leaders", id] });
-    }, 500);
-  }, [qc, slug, id]);
-  useEffect(
-    () => () => {
-      if (tickTimer.current) clearTimeout(tickTimer.current);
-    },
-    [],
-  );
-  const { connected } = useEventStream(
-    slug && id ? liveApi.streamUrl(slug, id) : null,
-    onTick,
-  );
+  const {
+    scheduleQ: query,
+    standingsQ,
+    connected,
+    hasKnockout,
+  } = usePublicTournament(slug, id);
 
-  const query = useQuery({
-    queryKey: ["public-schedule", slug, id],
-    queryFn: () => tournamentsApi.publicSchedule(slug, id),
-    refetchInterval: connected ? false : 60_000,
-  });
-  const standingsQ = useQuery({
-    queryKey: ["public-standings", slug, id],
-    queryFn: () => tournamentsApi.publicStandings(slug, id),
-    enabled: query.data !== undefined,
-    retry: false,
-    refetchInterval: connected ? false : 60_000,
-  });
+  const tournamentName = query.data?.tournament.name;
+  useEffect(() => {
+    if (tournamentName) document.title = `${tournamentName} · ${t("Matches")}`;
+  }, [tournamentName]);
 
   const tz = query.data?.tournament.time_zone ?? "UTC";
   const allMatches = useMemo(() => query.data?.matches ?? [], [query.data]);
@@ -1147,7 +929,12 @@ export function PublicSchedulePage(): React.ReactElement {
         </div>
       </header>
       <div className="border-b border-border bg-card px-4 print:hidden sm:px-6">
-        <PublicViewerTabs slug={slug} id={id} active="schedule" />
+        <PublicViewerTabs
+          slug={slug}
+          id={id}
+          active="schedule"
+          showKnockout={hasKnockout !== false}
+        />
       </div>
 
       {query.isLoading ? (

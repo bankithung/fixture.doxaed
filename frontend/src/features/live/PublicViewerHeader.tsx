@@ -6,24 +6,31 @@ import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
-type Tab = "schedule" | "live" | "bracket";
+type Tab = "schedule" | "standings" | "bracket";
 
-/** The three public-viewer tabs (Schedule / Live / Bracket). Standalone so the
- * existing schedule page can mount it under its own richer header. */
+/** The public-viewer tabs (Matches / Standings / Knockout), Google-sports-panel
+ * style. Standalone so the schedule page can mount it under its own richer
+ * header. There is no Live tab: live matches pin into the Matches tab's
+ * "Now playing" band (the old /live route redirects there). `showKnockout`
+ * hides the Knockout tab for tournaments with no knockout-stage matches. */
 export function PublicViewerTabs({
   slug,
   id,
   active,
+  showKnockout = true,
 }: {
   slug: string;
   id: string;
   active: Tab;
+  showKnockout?: boolean;
 }): React.ReactElement {
   const tabs: { key: Tab; label: string; to: string }[] = [
-    { key: "schedule", label: t("Schedule"), to: routes.publicSchedule(slug, id) },
-    { key: "live", label: t("Live"), to: routes.publicLive(slug, id) },
-    { key: "bracket", label: t("Bracket"), to: routes.publicBracket(slug, id) },
+    { key: "schedule", label: t("Matches"), to: routes.publicSchedule(slug, id) },
+    { key: "standings", label: t("Standings"), to: routes.publicStandings(slug, id) },
   ];
+  if (showKnockout) {
+    tabs.push({ key: "bracket", label: t("Knockout"), to: routes.publicBracket(slug, id) });
+  }
   return (
     <nav className="flex gap-1" aria-label={t("Tournament views")}>
       {tabs.map((tab) => (
@@ -47,10 +54,10 @@ export function PublicViewerTabs({
 }
 
 /**
- * Shared chrome for the public, login-free tournament viewer pages (schedule,
- * live scoreboard, bracket). Brand + tournament name + the three tabs + a
- * "Live" badge that lights when the SSE tick stream is connected. Lives outside
- * the authenticated AppShell, exactly like the /m/ match viewer.
+ * Shared chrome for the public, login-free tournament viewer pages (matches,
+ * standings, knockout). Brand + tournament name + the tabs + a "Live" badge
+ * that lights when the SSE tick stream is connected. Lives outside the
+ * authenticated AppShell, exactly like the /m/ match viewer.
  */
 export function PublicViewerHeader({
   slug,
@@ -58,12 +65,14 @@ export function PublicViewerHeader({
   tournamentName,
   active,
   connected,
+  showKnockout = true,
 }: {
   slug: string;
   id: string;
   tournamentName: string | undefined;
   active: Tab;
   connected: boolean;
+  showKnockout?: boolean;
 }): React.ReactElement {
   return (
     <header className="sticky top-0 z-10 flex flex-col gap-2 border-b border-border bg-card px-4 pt-3 print:hidden sm:px-6">
@@ -95,7 +104,7 @@ export function PublicViewerHeader({
         <ShareButton title={tournamentName} />
         <ThemeToggle />
       </div>
-      <PublicViewerTabs slug={slug} id={id} active={active} />
+      <PublicViewerTabs slug={slug} id={id} active={active} showKnockout={showKnockout} />
     </header>
   );
 }

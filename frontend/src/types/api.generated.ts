@@ -180,6 +180,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/accounts/auth/resend-verification/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Re-send the email-verification link for a pending account.
+         *
+         *     Enumeration-safe: always returns 202 regardless of whether the email maps
+         *     to a pending account. Only acts for users that exist, aren't deleted, and
+         *     are still unverified — minting a fresh token and invalidating older unused
+         *     ones so a single live link exists at a time.
+         */
+        post: operations["accounts_auth_resend_verification_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/accounts/auth/signup/": {
         parameters: {
             query?: never;
@@ -292,6 +316,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/disputes/{dispute_id}/reject/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["disputes_reject_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/disputes/{dispute_id}/resolve/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["disputes_resolve_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/disputes/{dispute_id}/withdraw/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description The raiser withdraws their own dispute. */
+        post: operations["disputes_withdraw_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/feedback/submit/": {
         parameters: {
             query?: never;
@@ -303,6 +376,511 @@ export interface paths {
         put?: never;
         /** @description Submit feedback from any authenticated user. Body is PII-redacted at the service layer (B.11). Throttled to 10/hr/user. */
         post: operations["feedback_submit_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/{form_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET/PATCH/DELETE /api/forms/{id}/` — read, partial-update, soft-delete. */
+        get: operations["forms_retrieve"];
+        put?: never;
+        post?: never;
+        /** @description `GET/PATCH/DELETE /api/forms/{id}/` — read, partial-update, soft-delete. */
+        delete: operations["forms_destroy"];
+        options?: never;
+        head?: never;
+        /** @description `GET/PATCH/DELETE /api/forms/{id}/` — read, partial-update, soft-delete. */
+        patch: operations["forms_partial_update"];
+        trace?: never;
+    };
+    "/api/forms/{form_id}/contact/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/forms/{id}/contact/` — a public visitor messages the organisers.
+         *
+         *     Emails the tournament's active admins/co-organizers (sender set as reply-to)
+         *     so anyone hitting an issue can reach a human. AllowAny + throttled; never
+         *     leaks whether/which organisers exist.
+         */
+        post: operations["forms_contact_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/{form_id}/directory/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/forms/{form_id}/directory/` — AllowAny public directory of the
+         *     institutions registered through an org-registration form, with filters
+         *     derived dynamically from the form's own choice fields. Exposes only
+         *     name/region/kind + the choice-field selections (never contact details).
+         */
+        get: operations["forms_directory_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/{form_id}/public/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET/POST /api/forms/{id}/public/` and `/api/forms/r/{token}/`.
+         *
+         *     GET returns the form schema (or ``{"closed": true}`` when not accepting
+         *     submissions); POST validates + records a response. Resolves either by form
+         *     id (open public form) or by an active share token.
+         */
+        get: operations["forms_public_retrieve"];
+        put?: never;
+        /**
+         * @description `GET/POST /api/forms/{id}/public/` and `/api/forms/r/{token}/`.
+         *
+         *     GET returns the form schema (or ``{"closed": true}`` when not accepting
+         *     submissions); POST validates + records a response. Resolves either by form
+         *     id (open public form) or by an active share token.
+         */
+        post: operations["forms_public_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/{form_id}/responses/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET /api/forms/{id}/responses/` — list submissions, or `?export=csv`. */
+        get: operations["forms_responses_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/{form_id}/responses/{response_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** @description `PATCH /api/forms/{id}/responses/{rid}/` — review status (accept/reject/...). */
+        patch: operations["forms_responses_partial_update"];
+        trace?: never;
+    };
+    "/api/forms/{form_id}/team-access/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/forms/{form_id}/team-access/` — exchange (institution,
+         *     access code) for a short-lived signed token + the institution's previous
+         *     submission for editing. AllowAny, but: per-IP throttle, per-institution
+         *     failure lockout, constant-time hash check, and the response only carries
+         *     data the code-holder is entitled to (their own previous answers).
+         */
+        post: operations["forms_team_access_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/{form_id}/uploads/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/forms/{id}/uploads/` — stage a file before submission.
+         *
+         *     Returns an ``upload_ref`` the client later includes in ``upload_refs`` on the
+         *     submission; ``submit_response`` then claims the unattached row. Validates
+         *     size + content type. AllowAny + throttled.
+         */
+        post: operations["forms_uploads_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/{form_id}:close/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description `POST /api/forms/{id}:close/` — open -> closed. */
+        post: operations["forms_:close_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/{form_id}:copy-from/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/forms/{id}:copy-from/` — replace this form's schema (+ bindings)
+         *     with a built-in template or another accessible form's schema. Manager-only on
+         *     the target; the source must be a template id or a form the user can access.
+         */
+        post: operations["forms_:copy_from_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/{form_id}:duplicate/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description `POST /api/forms/{id}:duplicate/` — clone schema into a new draft form. */
+        post: operations["forms_:duplicate_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/{form_id}:institution-links/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/forms/{id}:institution-links/` — mint one bound, prefilled
+         *     share-link per registered institution for this (team-registration) form.
+         *
+         *     Each link locks the institution and prefills its Stage-1 identity/contact, so
+         *     a school just confirms and adds teams. Idempotent: institutions that already
+         *     have a link are returned without a fresh token (tokens are hashed at rest, so
+         *     only newly-minted ones expose a path).
+         */
+        post: operations["forms_:institution_links_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/{form_id}:publish/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description `POST /api/forms/{id}:publish/` — draft -> open. */
+        post: operations["forms_:publish_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/{form_id}:regenerate/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/forms/{id}:regenerate/` — rebuild a GENERATED form's schema
+         *     from the tournament's CURRENT sports/category config (invariant 10: the
+         *     regenerate half of regenerate/keep). Hand-built forms are refused — only
+         *     forms carrying the generator's settings tags can be rebuilt. Bindings,
+         *     structural tags and the staleness fingerprint are refreshed; title,
+         *     status and share links are preserved. Audited via update_form.
+         */
+        post: operations["forms_:regenerate_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/{form_id}:send-stage2/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/forms/{id}:send-stage2/` — mint per-respondent share-links.
+         *
+         *     For each *accepted* response on this (stage-1) form, mint a single-use
+         *     share-link against the target ``team_registration`` form so the school can
+         *     submit its roster. Returns the minted links so the UI can display/copy them
+         *     (email enqueue is a follow-up; see plan NOTE on Task 5.2).
+         */
+        post: operations["forms_:send_stage2_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/copyable/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/forms/copyable/` — built-in templates + every form the user can
+         *     access (across their tournaments) that has content, for the "copy from" picker.
+         */
+        get: operations["forms_copyable_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/field-types/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET /api/forms/field-types/` — the field-type catalog for the builder UI. */
+        get: operations["forms_field_types_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/r/{token}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET/POST /api/forms/{id}/public/` and `/api/forms/r/{token}/`.
+         *
+         *     GET returns the form schema (or ``{"closed": true}`` when not accepting
+         *     submissions); POST validates + records a response. Resolves either by form
+         *     id (open public form) or by an active share token.
+         */
+        get: operations["forms_r_retrieve"];
+        put?: never;
+        /**
+         * @description `GET/POST /api/forms/{id}/public/` and `/api/forms/r/{token}/`.
+         *
+         *     GET returns the form schema (or ``{"closed": true}`` when not accepting
+         *     submissions); POST validates + records a response. Resolves either by form
+         *     id (open public form) or by an active share token.
+         */
+        post: operations["forms_r_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/uploads/{upload_ref}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/forms/uploads/{upload_ref}/` — stream a stored form upload.
+         *
+         *     Capability-based: a valid signed ``?t=`` token authorizes anyone (the URL is
+         *     minted only into payloads the viewer is already entitled to — admin roster
+         *     detail, public-form prefill), and an authenticated tournament manager is
+         *     allowed too. ``?dl=1`` forces a download instead of inline display. A
+         *     missing file and an unauthorized request both 404 (no existence leak).
+         */
+        get: operations["forms_uploads_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/institutions/{institution_id}:claim/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/institutions/{institution_id}:claim/` — the graduation from
+         *     account-less registrant to institution OPERATOR (P4). The logged-in,
+         *     verified claimant proves control with the school's team access code;
+         *     success mints their Organization(kind=institution) tenant.
+         */
+        post: operations["institutions_:claim_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invitations/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description GET /api/invitations/
+         *
+         *     Returns ALL invitations addressed to the signed-in user's email
+         *     (case-insensitive), enriched for the inbox UI: actionable PENDING ones
+         *     first (newest first), then the history (accepted / declined / revoked /
+         *     expired). A PENDING invite past its expiry is reported as ``expired``
+         *     (effective status — the DB row is materialized lazily on accept).
+         *     Tournament-scoped invites carry a ``tournament_id`` + ``tournament_name``;
+         *     org-level invites have both null.
+         */
+        get: operations["invitations_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invitations/{invitation_id}:accept/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description POST /api/invitations/{uuid}:accept/
+         *
+         *     In-app accept by invitation id. The signed-in user proves ownership by
+         *     matching the invite email. Wrong email → 403; already-accepted / expired /
+         *     declined / revoked → 400.
+         */
+        post: operations["invitations_:accept_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invitations/{invitation_id}:decline/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description POST /api/invitations/{uuid}:decline/
+         *
+         *     In-app decline by invitation id. Email-ownership enforced (403). Only a
+         *     PENDING invitation may be declined; otherwise 400.
+         */
+        post: operations["invitations_:decline_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -321,10 +899,532 @@ export interface paths {
         /**
          * @description POST /api/invitations:accept/
          *
-         *     Public path BUT the accepting user must be authenticated (otherwise
-         *     we 401 with a redirect hint).
+         *     AllowAny: a logged-out invitee can accept. If the invite's email has no
+         *     account, one is created inline (password required); the email is taken from
+         *     the signed invite, NEVER the request body (account-takeover guard). If an
+         *     active account already exists, respond 401 `login_required`.
          */
         post: operations["invitations:accept_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live/match-card/{match_id}.png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET /api/public/match-card/{match_id}.png` — the OG/share image. */
+        get: operations["live_match_card_.png_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live/match-meta/{match_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET /api/live/match-meta/{match_id}/` — OG/Twitter meta HTML. */
+        get: operations["live_match_meta_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live/match/{match_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["live_match_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live/tournament-meta/{slug}/{tournament_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/live/tournament-meta/{slug}/{tournament_id}/` — OG meta for
+         *     shared public tournament links (/t/:slug/:id/...).
+         */
+        get: operations["live_tournament_meta_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{match_id}/amend/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/matches/{id}/amend/` — manager-only, audited correction of a
+         *     COMPLETED set-sport result (H3). Requires a reason; re-fires advancement
+         *     so a flipped winner corrects the dependent bracket slots. Goal-based
+         *     matches correct through VOID events instead (which already ripple).
+         */
+        post: operations["matches_amend_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{match_id}/call/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST/DELETE /api/matches/{id}/call/` — mark / unmark a match as
+         *     called to its venue (control room, spec 2026-06-12 §2.b). `called_at` is
+         *     an operational annotation of `scheduled`, NOT a lifecycle state (PRD §5.5
+         *     note, decision 72) — the state machine is untouched, and kickoff clears
+         *     it (see transition_match). Gate: the schedule_editor module (mirrors
+         *     MatchLockView). Idempotent (a repeat call/un-call is a no-op); only legal
+         *     while the match is `scheduled` (409 otherwise); audited
+         *     (`match_called`/`match_call_cleared`).
+         */
+        post: operations["matches_call_create"];
+        /**
+         * @description `POST/DELETE /api/matches/{id}/call/` — mark / unmark a match as
+         *     called to its venue (control room, spec 2026-06-12 §2.b). `called_at` is
+         *     an operational annotation of `scheduled`, NOT a lifecycle state (PRD §5.5
+         *     note, decision 72) — the state machine is untouched, and kickoff clears
+         *     it (see transition_match). Gate: the schedule_editor module (mirrors
+         *     MatchLockView). Idempotent (a repeat call/un-call is a no-op); only legal
+         *     while the match is `scheduled` (409 otherwise); audited
+         *     (`match_called`/`match_call_cleared`).
+         */
+        delete: operations["matches_call_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{match_id}/delay/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/matches/{id}/delay/` — delay cascade (repair seam,
+         *     increment C). Body `{minutes (1..480), cascade?=true, force?,
+         *     event_id?}`. Gate: the schedule_editor module. Shifts the match by
+         *     +minutes; with cascade, later same-venue movable matches are pushed just
+         *     enough (scheduled_at order) to restore venue non-overlap + rest gaps —
+         *     live/completed/locked matches never move (fixed obstacles). Everything
+         *     moved is re-validated; hard violations 409 with the structured payload
+         *     unless force. ONE `match_delay_cascade` audit row carries the full
+         *     {match_id, old, new} list; idempotent on event_id.
+         */
+        post: operations["matches_delay_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{match_id}/events/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/matches/{id}/events/` — append a live event (goal/card/etc.).
+         *     Scores derive from the event log (invariant #4).
+         */
+        post: operations["matches_events_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{match_id}/events/export/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET /api/matches/{id}/events/export/` — full event timeline as CSV. */
+        get: operations["matches_events_export_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{match_id}/incidents/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET/POST /api/matches/{id}/incidents/` — list incident reports (any
+         *     match viewer) or file one (manager/scorer/referee). Append-only.
+         */
+        get: operations["matches_incidents_retrieve"];
+        put?: never;
+        /**
+         * @description `GET/POST /api/matches/{id}/incidents/` — list incident reports (any
+         *     match viewer) or file one (manager/scorer/referee). Append-only.
+         */
+        post: operations["matches_incidents_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{match_id}/lineups/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET/POST /api/matches/{id}/lineups/` — read both teams' lineups (any
+         *     match viewer) or set a team's lineup (manager/scorer/referee).
+         */
+        get: operations["matches_lineups_retrieve"];
+        put?: never;
+        /**
+         * @description `GET/POST /api/matches/{id}/lineups/` — read both teams' lineups (any
+         *     match viewer) or set a team's lineup (manager/scorer/referee).
+         */
+        post: operations["matches_lineups_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{match_id}/lineups/confirm/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/matches/{id}/lineups/confirm/` — referee/manager confirms a
+         *     team's lineup before kickoff.
+         */
+        post: operations["matches_lineups_confirm_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{match_id}/lock/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST/DELETE /api/matches/{id}/lock/` — pin / release a match's slot
+         *     (repair seam, increment B). A locked match is never reassigned by a
+         *     scheduler re-run; its (venue, time, teams) stays on the calendar as a
+         *     fixed busy booking. Gate: the schedule_editor module. Idempotent (a
+         *     second lock/unlock is a no-op); audited (`match_locked`/`match_unlocked`).
+         */
+        post: operations["matches_lock_create"];
+        /**
+         * @description `POST/DELETE /api/matches/{id}/lock/` — pin / release a match's slot
+         *     (repair seam, increment B). A locked match is never reassigned by a
+         *     scheduler re-run; its (venue, time, teams) stays on the calendar as a
+         *     fixed busy booking. Gate: the schedule_editor module. Idempotent (a
+         *     second lock/unlock is a no-op); audited (`match_locked`/`match_unlocked`).
+         */
+        delete: operations["matches_lock_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{match_id}/officials/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Assign / remove a match official (referee, assistant, fourth, umpire).
+         *
+         *     `POST /api/matches/{id}/officials/` body {user_id, role, event_id?} → assign;
+         *     `DELETE` body {official_id} → remove. Gate: a manager OR the
+         *     `match.assign_officials` module (admin / co-organizer / game-coordinator).
+         *     Returns the match's full officials list; POST also flags a soft
+         *     double-booking warning when the person clashes with another assignment.
+         */
+        post: operations["matches_officials_create"];
+        /**
+         * @description Assign / remove a match official (referee, assistant, fourth, umpire).
+         *
+         *     `POST /api/matches/{id}/officials/` body {user_id, role, event_id?} → assign;
+         *     `DELETE` body {official_id} → remove. Gate: a manager OR the
+         *     `match.assign_officials` module (admin / co-organizer / game-coordinator).
+         *     Returns the match's full officials list; POST also flags a soft
+         *     double-booking warning when the person clashes with another assignment.
+         */
+        delete: operations["matches_officials_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{match_id}/period/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/matches/{id}/period/` — move a LIVE knockout football match
+         *     into extra time or the shootout phase (P5). Scorer or manager.
+         */
+        post: operations["matches_period_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{match_id}/schedule/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * @description `PATCH /api/matches/{id}/schedule/` — control-room manual reslot
+         *     (repair seam, increment A). Gate: the schedule_editor module (same as
+         *     ScheduleFixturesView). Only `scheduled`/`postponed` matches move; the
+         *     change is validated against the scheduler's constraint machinery (other
+         *     leaves' bookings + shared-player links count) — hard conflicts 409 with
+         *     the structured violations payload unless force=true (then applied, the
+         *     violations ride along as warnings). Idempotent on event_id; audited
+         *     (`match_rescheduled`, before/after slot).
+         */
+        patch: operations["matches_schedule_partial_update"];
+        trace?: never;
+    };
+    "/api/matches/{match_id}/score/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["matches_score_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{match_id}/scorer/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/matches/{id}/scorer/` — a manager assigns a scorer to a match.
+         *     Body: {"user_id": "<uuid>"}. The target must be a tournament member.
+         */
+        post: operations["matches_scorer_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{match_id}/shootout/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/matches/{id}/shootout/` — record a penalty-shootout result
+         *     for a LEVEL knockout match (rules.match.penalties). Recordable while LIVE
+         *     (then complete normally) or on an already-COMPLETED drawn match, where it
+         *     self-heals a stalled bracket by re-firing advancement.
+         */
+        post: operations["matches_shootout_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{match_id}/transition/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/matches/{id}/transition/` — move the match through its state
+         *     machine (start/half-time/complete/etc.).
+         */
+        post: operations["matches_transition_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/today/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/me/today/` — the operator command center feed: everything
+         *     live or scheduled today across EVERY tournament the caller can access,
+         *     plus a "needs you" strip (open disputes, unstaffed matches today). The
+         *     root dashboard used to re-list tournaments instead of answering "what is
+         *     happening right now".
+         */
+        get: operations["me_today_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET /api/notifications/` — the current user's notifications + unread count. */
+        get: operations["notifications_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/{notification_id}/read/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["notifications_read_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/read-all/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["notifications_read_all_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -540,6 +1640,100 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/orgs/{uuid}/seasons/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET/POST /api/orgs/{uuid}/seasons/`. */
+        get: operations["orgs_seasons_retrieve"];
+        put?: never;
+        /** @description `GET/POST /api/orgs/{uuid}/seasons/`. */
+        post: operations["orgs_seasons_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orgs/{uuid}/seasons/{season_id}/groups/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET/POST /api/orgs/{uuid}/seasons/{season_id}/groups/`. */
+        get: operations["orgs_seasons_groups_retrieve"];
+        put?: never;
+        /** @description `GET/POST /api/orgs/{uuid}/seasons/{season_id}/groups/`. */
+        post: operations["orgs_seasons_groups_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orgs/{uuid}/seasons/{season_id}/house-points/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["orgs_seasons_house_points_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orgs/{uuid}/seasons/{season_id}/house-table/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/orgs/{uuid}/seasons/{season_id}/house-table/` — the live
+         *     board every notice-board flagpole update comes from.
+         *     `POST .../house-points/` (same view family) appends a judged award.
+         */
+        get: operations["orgs_seasons_house_table_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orgs/{uuid}/seasons/{season_id}/meet-results/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/orgs/{uuid}/seasons/{season_id}/meet-results/` — MEET MODE
+         *     (P4): one event's placements in, the whole points ladder lands in the
+         *     house table (7-5-4-3-2-1, x2 relays, custom ladders legal).
+         */
+        post: operations["orgs_seasons_meet_results_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/orgs/{uuid}:archive/": {
         parameters: {
             query?: never;
@@ -748,6 +1942,237 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/public/badges/{award_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET /api/public/badges/{award_id}/` — one award (certificate page). */
+        get: operations["public_badges_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/badges/{award_id}/card.png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/public/badges/{award_id}/card.png` — the shareable social
+         *     card (1200x630 OG image). Public: award ids are UUIDv7 capabilities and
+         *     the tournament must be public-facing.
+         */
+        get: operations["public_badges_card.png_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/teams/{team_id}/calendar.ics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/public/teams/{team_id}/calendar.ics?token=` — the team's
+         *     schedule as an iCal feed (trust layer, increment H). AllowAny but
+         *     capability-gated: a missing, tampered, or another team's token → 403.
+         */
+        get: operations["public_teams_calendar.ics_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/tournaments/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/public/tournaments/` — the explore directory: every
+         *     public-facing tournament with dates, season, sports, and a live flag.
+         *     Cold visitors used to dead-end on the landing page with no way to find
+         *     any tournament without an out-of-band link.
+         */
+        get: operations["public_tournaments_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/tournaments/{slug}/{tournament_id}/badges/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET /api/public/tournaments/{slug}/{id}/badges/` — public gallery. */
+        get: operations["public_tournaments_badges_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/tournaments/{slug}/{tournament_id}/institutions/{inst_id}/record/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/public/tournaments/{slug}/{id}/institutions/{inst_id}/record/`
+         *     — a school's rollup for this tournament plus its season-grouped history
+         *     across every public tournament it entered ("any time").
+         */
+        get: operations["public_tournaments_institutions_record_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/tournaments/{slug}/{tournament_id}/leaders/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/public/tournaments/{slug}/{id}/leaders/` — the FIFA-style
+         *     public leaderboard: present from day zero (empty arrays), refreshed by
+         *     viewers on every SSE tick.
+         */
+        get: operations["public_tournaments_leaders_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/tournaments/{slug}/{tournament_id}/schedule/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/public/tournaments/{slug}/{id}/schedule/` — public read-only
+         *     schedule (trust layer, increment H). AllowAny; resolves the (slug, UUID)
+         *     pair (invariant 1 — wrong slug 404s) and answers ONLY while the
+         *     tournament status is public-facing (registration_open / scheduled /
+         *     live / completed). Flat match list with day/time/venue/teams/leaf — no
+         *     PII beyond team/school names.
+         */
+        get: operations["public_tournaments_schedule_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/tournaments/{slug}/{tournament_id}/standings/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/public/tournaments/{slug}/{id}/standings/` — public
+         *     read-only standings (control room spec 2026-06-12 §2.d). AllowAny; same
+         *     (slug, UUID) + public-status gating as the public schedule. Body mirrors
+         *     TournamentStandingsView — `{groups: [{group_label, rows}]}` via
+         *     compute_standings verbatim (rows are team aggregates, public-safe).
+         */
+        get: operations["public_tournaments_standings_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/tournaments/{slug}/{tournament_id}/teams/{team_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/public/tournaments/{slug}/{id}/teams/{team_id}/` — one
+         *     team's record, form, results, roster, and badges.
+         */
+        get: operations["public_tournaments_teams_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/register/{token}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET/POST /api/register/{token}/` — AllowAny. GET returns tournament
+         *     context; POST registers a school's teams + players via the link.
+         */
+        get: operations["register_retrieve"];
+        put?: never;
+        /**
+         * @description `GET/POST /api/register/{token}/` — AllowAny. GET returns tournament
+         *     context; POST registers a school's teams + players via the link.
+         */
+        post: operations["register_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sports/": {
         parameters: {
             query?: never;
@@ -788,12 +2213,1202 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tournaments/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET` — tournaments the user can access (isolation-scoped).
+         *     `POST` — self-serve create; auto-provisions a workspace.
+         */
+        get: operations["tournaments_retrieve"];
+        put?: never;
+        /**
+         * @description `GET` — tournaments the user can access (isolation-scoped).
+         *     `POST` — self-serve create; auto-provisions a workspace.
+         */
+        post: operations["tournaments_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * @description `DELETE /api/tournaments/{id}/` — soft-delete a tournament (e.g. created by
+         *     mistake). `PATCH {"active": bool}` — deactivate (archive) or reactivate it.
+         *
+         *     ORGANIZER-only (the creator / workspace org admin — owner decision
+         *     2026-06-11): invited members, even tournament-admins, can manage but never
+         *     delete or deactivate. 404 on no access (no leak), 403 for invited managers.
+         *     Delete is blocked while the tournament is `live` (a match in progress).
+         */
+        delete: operations["tournaments_destroy"];
+        options?: never;
+        head?: never;
+        /**
+         * @description `PATCH {"name": str}` — rename (MANAGER-allowed: admins / co-organizers
+         *     / org owner). `PATCH {"active": bool}` — deactivate/reactivate
+         *     (ORGANIZER-only). Either or both; renaming keeps the slug stable so
+         *     existing public ``(slug, UUID)`` links keep resolving (invariant 1).
+         */
+        patch: operations["tournaments_partial_update"];
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/advancement:refire/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/advancement:refire/` — manager-only: re-run
+         *     advancement for every stalled slot's feeder (P3). Advancement is
+         *     idempotent (typed pointers fill deterministically), so re-firing is
+         *     always safe; this is the one-click repair the health banner offers.
+         */
+        post: operations["tournaments_advancement:refire_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/assistant/chat/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["tournaments_assistant_chat_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/audit/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/tournaments/{id}/audit/` — tournament-scoped audit feed.
+         *
+         *     Manager-only (audit is sensitive → 403 for non-managers; 404 if the
+         *     tournament is not accessible). Newest first, limited. Mirrors the org audit
+         *     view's serialization shape.
+         */
+        get: operations["tournaments_audit_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/badges/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET /api/tournaments/{id}/badges/` — the honours board. */
+        get: operations["tournaments_badges_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/complete/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/complete/` — manual "Wrap up tournament"
+         *     (PRD §5.2 lifecycle spine). Blocked while a match is in play; outstanding
+         *     matches require `{"force": true, "reason": ...}` (409 with the count until
+         *     acknowledged). COMPLETED stays public read-only; archiving stays the
+         *     separate hide action. Manager verb; idempotent on event_id.
+         */
+        post: operations["tournaments_complete_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/control-room/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/tournaments/{id}/control-room/?day=YYYY-MM-DD` — the live-ops
+         *     cockpit's day-view aggregate (control room, spec 2026-06-12 §2.a): ONE
+         *     query over the schedule, grouped in Python by tournament-TZ day
+         *     (invariant 14) then venue, plus a cross-venue "next up" queue. Read-only;
+         *     ANY active member may read (404 idiom — no existence leak); writes stay
+         *     gated per action. Day defaults to today (tournament TZ) when it has
+         *     matches, else the next day with matches, else the last one. Delay
+         *     visibility stays client-side via the schedule-changes feed.
+         */
+        get: operations["tournaments_control_room_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/disputes/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET/POST /api/tournaments/{id}/disputes/` — list (manager: all; else own)
+         *     and raise a dispute (any accessible member).
+         */
+        get: operations["tournaments_disputes_retrieve"];
+        put?: never;
+        /**
+         * @description `GET/POST /api/tournaments/{id}/disputes/` — list (manager: all; else own)
+         *     and raise a dispute (any accessible member).
+         */
+        post: operations["tournaments_disputes_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/draw-config/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET/PATCH /api/tournaments/{id}/draw-config/` — per-competition draw
+         *     configuration (redesign spec §2.1). GET: any tournament member. PATCH:
+         *     bracket-editor verb; body `{leaf_key|"*", config, event_id}`; whitelist
+         *     merge, idempotent on `event_id`, audited (`draw_config_updated`).
+         */
+        get: operations["tournaments_draw_config_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * @description `GET/PATCH /api/tournaments/{id}/draw-config/` — per-competition draw
+         *     configuration (redesign spec §2.1). GET: any tournament member. PATCH:
+         *     bracket-editor verb; body `{leaf_key|"*", config, event_id}`; whitelist
+         *     merge, idempotent on `event_id`, audited (`draw_config_updated`).
+         */
+        patch: operations["tournaments_draw_config_partial_update"];
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/fixture-readiness/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/tournaments/{id}/fixture-readiness/` — the server-computed
+         *     per-leaf readiness checklist (redesign spec §5.1). Gate: any tournament
+         *     member (read-only; the FE never replicates the checks).
+         */
+        get: operations["tournaments_fixture_readiness_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/fixtures/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * @description `DELETE /api/tournaments/{id}/fixtures/?leaf_key=…&event_id=…` — the
+         *     accepted-the-wrong-draw escape hatch (redesign spec §5.3, D7).
+         *     Soft-deletes the scope's matches ONLY while every one is still
+         *     `scheduled` status (nothing live/completed); audited (`draw_deleted`),
+         *     idempotent on `event_id`. Gate: bracket_editor.
+         */
+        delete: operations["tournaments_fixtures_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/fixtures/next-round/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/fixtures/next-round/` — materialize the
+         *     NEXT Swiss round from current standings (increment P). Body `{leaf_key?,
+         *     event_id?}`. Gate: bracket_editor. Pairs by standings order (points —
+         *     byes credited as wins — then GD), never repeating a previous pairing
+         *     (greedy with backtracking); odd counts sit one team out (no second bye
+         *     while anyone has had none). Refuses with 400 `round_incomplete` while the
+         *     current round has unfinished matches, `swiss_not_started` before round 1,
+         *     `swiss_complete` once the configured `swiss_rounds` exist. Idempotent per
+         *     round on `event_id` (invariant 3) — a replay answers from the
+         *     `swiss_round_generated` audit row instead of pairing again.
+         */
+        post: operations["tournaments_fixtures_next_round_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/fixtures/preview/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/fixtures/preview/` — pure simulate
+         *     (redesign spec §5.2, D6): persists nothing, no `event_id` (read-only
+         *     POST). Gate: bracket_editor. Body `{leaf_key?, draw?, schedule?,
+         *     include_schedule}`.
+         */
+        post: operations["tournaments_fixtures_preview_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/fixtures/preview-all/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/fixtures/preview-all/` — ONE combined dry-run
+         *     across EVERY competition (all sports + categories), scheduled together so
+         *     shared courts + cross-sport clashes are coordinated globally. Persists
+         *     nothing (read-only POST, no `event_id`). Gate: bracket_editor. Body
+         *     `{schedule?, include_schedule}`.
+         */
+        post: operations["tournaments_fixtures_preview_all_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/fixtures/publish-all/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/fixtures/publish-all/` — generate EVERY
+         *     competition's draw (idempotent: existing draws are kept) then schedule them
+         *     ALL together in one run. The whole request is one transaction
+         *     (ATOMIC_REQUESTS), so it commits all-or-nothing. Gates: bracket_editor
+         *     (generate) + schedule_editor (schedule). Body `{schedule?}`.
+         */
+        post: operations["tournaments_fixtures_publish_all_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/fixtures/shift-day/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/fixtures/shift-day/` — rain-day shift
+         *     (repair seam, increment D). Body `{from_date, to_date?, leaf_key?,
+         *     force?, event_id?}`. Gate: schedule_editor. Moves every movable
+         *     (scheduled/postponed, not locked) match on from_date to to_date keeping
+         *     time-of-day + venue; to_date omitted ⇒ first stored reserve day on/after
+         *     from_date (error `reserve_day_unavailable` if none). A reserve to_date
+         *     is ACTIVATED (scheduling_config["activated_reserve_days"]) so the grid
+         *     and future runs keep the day. Hard violations 409 with the structured
+         *     payload unless force; ONE `shift_day` audit row; idempotent on
+         *     event_id.
+         */
+        post: operations["tournaments_fixtures_shift_day_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/fixtures/swap-slots/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/fixtures/swap-slots/` — exchange
+         *     scheduled_at+venue between two movable matches (repair seam, increment
+         *     B). Body `{match_a, match_b, event_id?, force?}`. Gate: schedule_editor.
+         *     Conflict-checked exactly like the manual reslot (hard → 409 with the
+         *     structured violations unless force=true); ONE audit row
+         *     (`match_slots_swapped`); idempotent on event_id — a replay answers from
+         *     the audit log instead of swapping back.
+         */
+        post: operations["tournaments_fixtures_swap_slots_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/forms/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET/POST /api/tournaments/{id}/forms/` — list (access-scoped) + create. */
+        get: operations["tournaments_forms_retrieve"];
+        put?: never;
+        /** @description `GET/POST /api/tournaments/{id}/forms/` — list (access-scoped) + create. */
+        post: operations["tournaments_forms_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/forms/generate-institution/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/forms/generate-institution/` — auto-generate a
+         *     draft institution-registration form from the tournament's chosen sports (with
+         *     per-sport category questions). Manager-only. Returns the new form to review.
+         */
+        post: operations["tournaments_forms_generate_institution_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/forms/generate-team/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/forms/generate-team/` — auto-generate a draft
+         *     team-registration form from the org-reg form's categories + registered
+         *     institutions. Manager-only. Returns the new form for the admin to review.
+         */
+        post: operations["tournaments_forms_generate_team_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/generate-fixtures/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["tournaments_generate_fixtures_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/institutions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET` registered institutions (the Stage-2 dropdown source; access-scoped).
+         *     `POST` admin direct-add of an institution (Stage-1; manager-only).
+         */
+        get: operations["tournaments_institutions_retrieve"];
+        put?: never;
+        /**
+         * @description `GET` registered institutions (the Stage-2 dropdown source; access-scoped).
+         *     `POST` admin direct-add of an institution (Stage-1; manager-only).
+         */
+        post: operations["tournaments_institutions_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/institutions/{institution_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * @description Permanently remove an application: soft-delete the institution and
+         *     cascade to its teams, their players, and the originating Stage-1
+         *     submission — so it leaves the directory, the institutions table AND the
+         *     raw-submissions list. Reversible at the DB level (deleted_at), unlike a
+         *     reject which only hides it from the public. Manager-only.
+         */
+        delete: operations["tournaments_institutions_destroy"];
+        options?: never;
+        head?: never;
+        /**
+         * @description `PATCH /api/tournaments/{id}/institutions/{iid}/` — edit / withdraw an
+         *     institution (manager-only; reversible per the staged-flow design).
+         */
+        patch: operations["tournaments_institutions_partial_update"];
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/institutions/{institution_id}/edit-link/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/institutions/{institution_id}/edit-link/` —
+         *     mint a TEMPORARY, single-submission link a school uses to add or edit its
+         *     OWN details on the Stage-1 form (manager-only).
+         *
+         *     The link opens the institution-registration form prefilled with the
+         *     school's previous answers, bound to the institution (a rename updates the
+         *     row, never duplicates it), works even after Stage 1 closed, expires in 7
+         *     days, and is spent after one submission. Re-issuing deactivates earlier
+         *     links for the same school — "resend" always means ONE live link.
+         */
+        post: operations["tournaments_institutions_edit_link_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/invitations/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/invitations/` — invite anyone by email to a
+         *     tournament with a tournament-scoped role. The token is emailed, never returned.
+         */
+        post: operations["tournaments_invitations_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/leaders/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/tournaments/{id}/leaders/` — the ops leaderboards (owner
+         *     ask: best players, teams, scorers visible in the app). Same payload as
+         *     the public endpoint; see services/leaders.py.
+         */
+        get: operations["tournaments_leaders_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/matches/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Tournament-wide match list — the all-days source for the operations
+         *     Matches board. Rows are enriched (leaf_label + scorer + officials) the same
+         *     way as the control-room day view, so the board can show + filter crew.
+         */
+        get: operations["tournaments_matches_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/members/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/tournaments/{id}/members/` — the tournament roster.
+         *
+         *     Viewable by any tournament member (access-scoped → 404 on no access, no
+         *     existence leak). Returns active + suspended memberships (revoked excluded).
+         */
+        get: operations["tournaments_members_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/members/{membership_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * @description `PATCH /api/tournaments/{id}/members/{membership_id}/` — manage a member.
+         *
+         *     Manager-only (else 403; 404 if the tournament is not accessible). Changes the
+         *     member's role and/or status (e.g. status=revoked to remove). Refuses to
+         *     remove/demote the last active admin (`last_admin`). Audited.
+         */
+        patch: operations["tournaments_members_partial_update"];
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/permissions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/tournaments/{id}/permissions/` — the member x module matrix
+         *     for this tournament (manager-only): every active member with their roles,
+         *     effective module set and explicit overrides. The Members page renders the
+         *     per-member permission editor from this (spec 2026-06-10 P5).
+         */
+        get: operations["tournaments_permissions_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/permissions/grants/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * @description `PUT /api/tournaments/{id}/permissions/grants/` — set one member's
+         *     per-module override (grant/deny/default + mandatory reason). Manager-only;
+         *     target must be an active member. Audited; resolver cache invalidated.
+         */
+        put: operations["tournaments_permissions_grants_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/presets/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/tournaments/{id}/presets/` — the event-preset catalog.
+         *     `POST` {key, event_id?} applies one: the preset tree replaces the sports
+         *     tree through the SAME guarded path as the editor (H4 protects in-use
+         *     leaves), so presets are safe to apply and re-apply. Manager-only.
+         */
+        get: operations["tournaments_presets_retrieve"];
+        put?: never;
+        /**
+         * @description `GET /api/tournaments/{id}/presets/` — the event-preset catalog.
+         *     `POST` {key, event_id?} applies one: the preset tree replaces the sports
+         *     tree through the SAME guarded path as the editor (H4 protects in-use
+         *     leaves), so presets are safe to apply and re-apply. Manager-only.
+         */
+        post: operations["tournaments_presets_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/registration-link/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/registration-link/` — organizer mints a
+         *     shareable link schools use to self-register. Token returned once.
+         */
+        post: operations["tournaments_registration_link_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/schedule/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description POST /api/tournaments/{id}/schedule/ — run the FET-style engine over the
+         *     tournament's matches with the wizard's constraint payload; persist + explain.
+         */
+        post: operations["tournaments_schedule_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/schedule-changes/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/tournaments/{id}/schedule-changes/?since=&leaf_key=` —
+         *     unified slot-change feed (trust layer, increment F). Flattens the
+         *     existing repair/scheduler audit rows (no new model) into reverse-chrono
+         *     per-match entries `{match_id, match_label, leaf_key, changed_at, actor,
+         *     kind, old, new, reason, batch_id}`. Visible to ANY accessible tournament
+         *     member (404 idiom — no existence leak).
+         */
+        get: operations["tournaments_schedule_changes_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/settings/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET`/`PATCH /api/tournaments/{id}/settings/` — data-driven rules + constraints.
+         *
+         *     PATCH is manager-only, idempotent on `event_id`, and blocked once rules are
+         *     frozen (invariant 7) unless `amend=true` + a reason.
+         */
+        get: operations["tournaments_settings_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * @description `GET`/`PATCH /api/tournaments/{id}/settings/` — data-driven rules + constraints.
+         *
+         *     PATCH is manager-only, idempotent on `event_id`, and blocked once rules are
+         *     frozen (invariant 7) unless `amend=true` + a reason.
+         */
+        patch: operations["tournaments_settings_partial_update"];
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/sports/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET/PUT /api/tournaments/{id}/sports/` — the sports this tournament runs.
+         *
+         *     GET: any tournament member (access-scoped → 404 on no access). PUT:
+         *     manager-only; replaces the list, normalized by the sports registry
+         *     (recursive category nodes with stable keys; legacy 2-level shape coerced;
+         *     per-sport scoring/scheduling config preserved). Audited.
+         */
+        get: operations["tournaments_sports_retrieve"];
+        /**
+         * @description `GET/PUT /api/tournaments/{id}/sports/` — the sports this tournament runs.
+         *
+         *     GET: any tournament member (access-scoped → 404 on no access). PUT:
+         *     manager-only; replaces the list, normalized by the sports registry
+         *     (recursive category nodes with stable keys; legacy 2-level shape coerced;
+         *     per-sport scoring/scheduling config preserved). Audited.
+         */
+        put: operations["tournaments_sports_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/sports-meta/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/tournaments/{id}/sports-meta/` — the tournament's sports with
+         *     their SportDefinition descriptors (P1.c): scoring family, terminology,
+         *     standings columns and leader-board specs, so every surface renders
+         *     sport-native without hardcoding. Access-scoped like the sports tree.
+         */
+        get: operations["tournaments_sports_meta_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/stage/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description GET the setup-stepper state; POST executes a stage transition.
+         *
+         *     Mirrors the tournament view pattern: _get_tournament_or_404 (404-not-403),
+         *     then the manager verb gate on writes. GET is visible to any member.
+         */
+        get: operations["tournaments_stage_retrieve"];
+        put?: never;
+        /**
+         * @description GET the setup-stepper state; POST executes a stage transition.
+         *
+         *     Mirrors the tournament view pattern: _get_tournament_or_404 (404-not-403),
+         *     then the manager verb gate on writes. GET is visible to any member.
+         */
+        post: operations["tournaments_stage_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/stage/preview/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description POST a dry-run of a transition; never mutates. Manager-only. */
+        post: operations["tournaments_stage_preview_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/standings/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["tournaments_standings_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/suspensions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/tournaments/{id}/suspensions/` — card-derived bans (PRD 5.8):
+         *     who is serving, why, and how much remains. Derived from the event log on
+         *     demand, like standings.
+         */
+        get: operations["tournaments_suspensions_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/team-codes/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/team-codes/` — (re)issue team-registration
+         *     access codes to registered institutions (manager-only). Default fills only
+         *     institutions without a code (safe after late registrations); body
+         *     ``{"force": true}`` rotates every code.
+         */
+        post: operations["tournaments_team_codes_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/teams/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET` registered teams (access-scoped); `POST` admin direct-add of a team
+         *     under an institution (Stage-2; manager-only).
+         */
+        get: operations["tournaments_teams_retrieve"];
+        put?: never;
+        /**
+         * @description `GET` registered teams (access-scoped); `POST` admin direct-add of a team
+         *     under an institution (Stage-2; manager-only).
+         */
+        post: operations["tournaments_teams_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/teams/{team_id}/calendar-link/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/teams/{team_id}/calendar-link/` — mint a
+         *     signed per-team iCal token (trust layer, increment H). Allowed for a
+         *     tournament manager OR the authenticated registered contact of the team's
+         *     institution (that team's authorized context); other members 403,
+         *     outsiders 404 (no existence leak). The token rides the public
+         *     `calendar.ics` URL — same `django.core.signing` pattern as the
+         *     team-access share links.
+         */
+        post: operations["tournaments_teams_calendar_link_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/teams/{team_id}/registration/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET /api/tournaments/{tid}/teams/{team_id}/registration/` — the rich
+         *     detail the mapper drops onto the floor: team logo, coaches (+ documents),
+         *     and each player's full date of birth + uploaded documents, read back out of
+         *     the originating submission and merged with the domain roster. Manager-gated
+         *     because it exposes the schools' uploaded personal documents.
+         */
+        get: operations["tournaments_teams_registration_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/teams/{team_id}/withdraw/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST /api/tournaments/{id}/teams/{team_id}/withdraw/` — minimal
+         *     withdrawal executor (redesign spec §7 inc 16, §9 A7): marks the team
+         *     withdrawn and walkovers its remaining scheduled matches. Body
+         *     `{event_id?, reason?}`. Gate: tournament.bracket_editor; idempotent
+         *     (invariant 3); audited (`team_withdrawn`).
+         */
+        post: operations["tournaments_teams_withdraw_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/teams/seeds/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * @description `PUT /api/tournaments/{id}/teams/seeds/` — bulk seed assignment for a
+         *     competition (redesign spec §4.3: Team.seed finally becomes settable).
+         *     Body `{leaf_key?, seeds: [{team_id, seed|null}], event_id}`. Gate:
+         *     tournament.bracket_editor; idempotent on `event_id` (invariant 3);
+         *     audited (`team_seeds_updated`).
+         */
+        put: operations["tournaments_teams_seeds_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/venues/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET/POST /api/tournaments/{id}/venues/` — the workspace's venue pool
+         *     (shared across its tournaments). GET: any member; POST: manager-only.
+         *     The scheduler uses these (types + windows) when a run names no venues.
+         */
+        get: operations["tournaments_venues_retrieve"];
+        put?: never;
+        /**
+         * @description `GET/POST /api/tournaments/{id}/venues/` — the workspace's venue pool
+         *     (shared across its tournaments). GET: any member; POST: manager-only.
+         *     The scheduler uses these (types + windows) when a run names no venues.
+         */
+        post: operations["tournaments_venues_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tournaments/{tournament_id}/venues/{venue_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description `PATCH/DELETE /api/tournaments/{id}/venues/{venue_id}/` — manager-only. */
+        delete: operations["tournaments_venues_destroy"];
+        options?: never;
+        head?: never;
+        /** @description `PATCH/DELETE /api/tournaments/{id}/venues/{venue_id}/` — manager-only. */
+        patch: operations["tournaments_venues_partial_update"];
+        trace?: never;
+    };
+    "/api/tournaments/constraint-types/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description `GET /api/tournaments/constraint-types/` — static catalog for the UI builder. */
+        get: operations["tournaments_constraint_types_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         AcceptInvitation: {
             token: string;
+            password?: string;
+            name?: string;
         };
         /**
          * @description Read-side serializer. Surfaces effective_status (computed) which
@@ -809,7 +3424,6 @@ export interface components {
             /** Format: email */
             readonly email: string;
             readonly role: components["schemas"]["RoleEnum"];
-            /** @default pending */
             readonly status: components["schemas"]["AdminInvitationStatusEnum"];
             readonly effective_status: string;
             /** Format: date-time */
@@ -844,9 +3458,10 @@ export interface components {
          *     * `accepted` - Accepted
          *     * `expired` - Expired
          *     * `revoked` - Revoked
+         *     * `declined` - Declined
          * @enum {string}
          */
-        AdminInvitationStatusEnum: "pending" | "accepted" | "expired" | "revoked";
+        AdminInvitationStatusEnum: "pending" | "accepted" | "expired" | "revoked" | "declined";
         Archive: {
             reason: string;
         };
@@ -950,6 +3565,28 @@ export interface components {
             /** Format: date-time */
             readonly updated_at: string;
         };
+        /** @description Admin direct-add / edit of an Institution (Stage-1). */
+        InstitutionIn: {
+            name: string;
+            /** @default school */
+            kind: components["schemas"]["KindEnum"];
+            region?: string;
+            short_name?: string;
+            contact_name?: string;
+            /** Format: email */
+            contact_email?: string;
+            contact_phone?: string;
+        };
+        /**
+         * @description * `school` - school
+         *     * `college` - college
+         *     * `university` - university
+         *     * `club` - club
+         *     * `academy` - academy
+         *     * `other` - other
+         * @enum {string}
+         */
+        KindEnum: "school" | "college" | "university" | "club" | "academy" | "other";
         Login: {
             /** Format: email */
             email: string;
@@ -1112,6 +3749,18 @@ export interface components {
             /** Format: email */
             email: string;
         };
+        /** @description Admin direct-add / edit of an Institution (Stage-1). */
+        PatchedInstitutionIn: {
+            name?: string;
+            /** @default school */
+            kind: components["schemas"]["KindEnum"];
+            region?: string;
+            short_name?: string;
+            contact_name?: string;
+            /** Format: email */
+            contact_email?: string;
+            contact_phone?: string;
+        };
         /**
          * @description Used by GET/PATCH /api/accounts/me/.
          *
@@ -1146,6 +3795,21 @@ export interface components {
             name?: string;
             time_zone?: string;
         };
+        /** @description PATCH body for member management — role and/or status, both optional. */
+        PatchedTournamentMembershipUpdate: {
+            role?: components["schemas"]["RoleEnum"];
+            status?: components["schemas"]["StatusC3bEnum"];
+        };
+        PlayerIn: {
+            full_name: string;
+            jersey_no?: number;
+            position?: string;
+            dob_year?: number;
+            /** @default false */
+            is_goalkeeper: boolean;
+            /** @default false */
+            captain: boolean;
+        };
         Reauth: {
             password: string;
         };
@@ -1172,6 +3836,13 @@ export interface components {
          * @enum {string}
          */
         RolesEnum: "admin" | "co_organizer" | "game_coordinator" | "match_scorer" | "referee" | "team_manager";
+        /** @description Payload a school submits via the public registration link. */
+        SchoolRegistration: {
+            school_name: string;
+            teams: components["schemas"]["TeamIn"][];
+            /** Format: uuid */
+            event_id?: string;
+        };
         /**
          * @description Public self-signup payload (v1Users.md §2.3 Path B).
          *
@@ -1242,8 +3913,51 @@ export interface components {
          * @enum {string}
          */
         StateEnum: "default" | "grant" | "deny";
+        /**
+         * @description * `active` - Active
+         *     * `suspended` - Suspended
+         *     * `revoked` - Revoked
+         * @enum {string}
+         */
+        StatusC3bEnum: "active" | "suspended" | "revoked";
         Suspend: {
             reason: string;
+        };
+        TeamIn: {
+            name: string;
+            short_name?: string;
+            players?: components["schemas"]["PlayerIn"][];
+        };
+        TournamentCreate: {
+            name: string;
+            sport_code?: string;
+            /** Format: uuid */
+            event_id?: string;
+        };
+        TournamentInvitationCreate: {
+            /** Format: email */
+            email: string;
+            role: components["schemas"]["RoleEnum"];
+            /** Format: uuid */
+            event_id?: string;
+        };
+        /** @description Roster row: user identity + tournament-scoped role/status. */
+        TournamentMembership: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            readonly user_id: string;
+            readonly email: string;
+            readonly full_name: string;
+            readonly role: components["schemas"]["RoleEnum"];
+            readonly status: components["schemas"]["StatusC3bEnum"];
+            /** Format: date-time */
+            readonly assigned_at: string;
+        };
+        /** @description PATCH body for member management — role and/or status, both optional. */
+        TournamentMembershipUpdate: {
+            role?: components["schemas"]["RoleEnum"];
+            status?: components["schemas"]["StatusC3bEnum"];
         };
         /**
          * @description Accepts either ``new_owner_user_id`` (canonical) or ``to_user_id``
@@ -1535,6 +4249,24 @@ export interface operations {
             };
         };
     };
+    accounts_auth_resend_verification_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     accounts_auth_signup_create: {
         parameters: {
             query?: never;
@@ -1705,6 +4437,66 @@ export interface operations {
             };
         };
     };
+    disputes_reject_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    disputes_resolve_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    disputes_withdraw_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     feedback_submit_create: {
         parameters: {
             query?: never;
@@ -1738,6 +4530,541 @@ export interface operations {
             };
         };
     };
+    forms_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    forms_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    forms_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    forms_contact_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    forms_directory_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    forms_public_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    forms_public_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    forms_responses_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    forms_responses_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+                response_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    forms_team_access_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    forms_uploads_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    "forms_:close_create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    "forms_:copy_from_create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    "forms_:duplicate_create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    "forms_:institution_links_create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    "forms_:publish_create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    "forms_:regenerate_create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    "forms_:send_stage2_create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    forms_copyable_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    forms_field_types_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    forms_r_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    forms_r_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    forms_uploads_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    "institutions_:claim_create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    invitations_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    "invitations_:accept_create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invitation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    "invitations_:decline_create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invitation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     "invitations:accept_create": {
         parameters: {
             query?: never;
@@ -1753,13 +5080,587 @@ export interface operations {
             };
         };
         responses: {
+            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["OrganizationMembership"];
+                content?: never;
+            };
+        };
+    };
+    "live_match_card_.png_retrieve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content?: never;
+            };
+        };
+    };
+    live_match_meta_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    live_match_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    live_tournament_meta_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_amend_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_call_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_call_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_delay_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_events_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_events_export_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_incidents_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_incidents_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_lineups_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_lineups_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_lineups_confirm_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_lock_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_lock_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_officials_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_officials_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_period_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_schedule_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_score_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_scorer_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_shootout_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    matches_transition_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    me_today_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    notifications_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    notifications_read_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    notifications_read_all_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2090,6 +5991,151 @@ export interface operations {
             };
         };
     };
+    orgs_seasons_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    orgs_seasons_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    orgs_seasons_groups_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    orgs_seasons_groups_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    orgs_seasons_house_points_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    orgs_seasons_house_table_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    orgs_seasons_meet_results_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     "orgs_:archive_create": {
         parameters: {
             query?: never;
@@ -2234,13 +6280,12 @@ export interface operations {
             };
         };
         responses: {
+            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["OrganizationMembership"];
-                };
+                content?: never;
             };
         };
     };
@@ -2427,6 +6472,260 @@ export interface operations {
             };
         };
     };
+    public_badges_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                award_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    "public_badges_card.png_retrieve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                award_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    "public_teams_calendar.ics_retrieve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                team_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    public_tournaments_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    public_tournaments_badges_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    public_tournaments_institutions_record_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                inst_id: string;
+                slug: string;
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    public_tournaments_leaders_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    public_tournaments_schedule_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    public_tournaments_standings_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    public_tournaments_teams_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                team_id: string;
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    register_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchoolRegistration"];
+                };
+            };
+        };
+    };
+    register_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchoolRegistration"];
+                "application/x-www-form-urlencoded": components["schemas"]["SchoolRegistration"];
+                "multipart/form-data": components["schemas"]["SchoolRegistration"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchoolRegistration"];
+                };
+            };
+        };
+    };
     sports_list: {
         parameters: {
             query?: {
@@ -2469,6 +6768,1367 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Sport"];
                 };
+            };
+        };
+    };
+    tournaments_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TournamentCreate"];
+                };
+            };
+        };
+    };
+    tournaments_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TournamentCreate"];
+                "application/x-www-form-urlencoded": components["schemas"]["TournamentCreate"];
+                "multipart/form-data": components["schemas"]["TournamentCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TournamentCreate"];
+                };
+            };
+        };
+    };
+    tournaments_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    "tournaments_advancement:refire_create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_assistant_chat_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_audit_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_badges_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_complete_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_control_room_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_disputes_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_disputes_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_draw_config_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_draw_config_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_fixture_readiness_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_fixtures_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_fixtures_next_round_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_fixtures_preview_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_fixtures_preview_all_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_fixtures_publish_all_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_fixtures_shift_day_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_fixtures_swap_slots_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_forms_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_forms_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_forms_generate_institution_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_forms_generate_team_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_generate_fixtures_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_institutions_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionIn"];
+                };
+            };
+        };
+    };
+    tournaments_institutions_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstitutionIn"];
+                "application/x-www-form-urlencoded": components["schemas"]["InstitutionIn"];
+                "multipart/form-data": components["schemas"]["InstitutionIn"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionIn"];
+                };
+            };
+        };
+    };
+    tournaments_institutions_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_institutions_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedInstitutionIn"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedInstitutionIn"];
+                "multipart/form-data": components["schemas"]["PatchedInstitutionIn"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionIn"];
+                };
+            };
+        };
+    };
+    tournaments_institutions_edit_link_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_invitations_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TournamentInvitationCreate"];
+                "application/x-www-form-urlencoded": components["schemas"]["TournamentInvitationCreate"];
+                "multipart/form-data": components["schemas"]["TournamentInvitationCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TournamentInvitationCreate"];
+                };
+            };
+        };
+    };
+    tournaments_leaders_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_matches_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_members_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TournamentMembership"];
+                };
+            };
+        };
+    };
+    tournaments_members_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membership_id: string;
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedTournamentMembershipUpdate"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedTournamentMembershipUpdate"];
+                "multipart/form-data": components["schemas"]["PatchedTournamentMembershipUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TournamentMembershipUpdate"];
+                };
+            };
+        };
+    };
+    tournaments_permissions_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_permissions_grants_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_presets_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_presets_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_registration_link_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_schedule_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_schedule_changes_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_settings_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_settings_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_sports_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_sports_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_sports_meta_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_stage_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_stage_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_stage_preview_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_standings_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_suspensions_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_team_codes_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_teams_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_teams_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_teams_calendar_link_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                team_id: string;
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_teams_registration_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                team_id: string;
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_teams_withdraw_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                team_id: string;
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_teams_seeds_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_venues_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_venues_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_venues_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+                venue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_venues_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+                venue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    tournaments_constraint_types_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

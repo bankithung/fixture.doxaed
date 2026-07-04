@@ -1,0 +1,112 @@
+import { type StandingRow } from "@/api/tournaments";
+import { cn } from "@/lib/tailwind";
+import { t } from "@/lib/t";
+import { splitLabel } from "./publicTournament";
+
+/** Presentational pieces shared by the public tournament tabs (Matches /
+ * Standings). Data + label logic lives in publicTournament.ts. */
+
+/** Competition label as clean chips: sport (accent) then age/gender/discipline
+ * (muted), no separator glyphs. `omitSport` drops the leading sport chip when
+ * the surrounding header already names it. */
+export function LabelChips({
+  label,
+  omitSport = false,
+  className,
+}: {
+  label: string;
+  omitSport?: boolean;
+  className?: string;
+}): React.ReactElement | null {
+  let parts = splitLabel(label);
+  if (omitSport) parts = parts.slice(1);
+  if (parts.length === 0) return null;
+  return (
+    <span className={cn("inline-flex flex-wrap items-center gap-1", className)}>
+      {parts.map((p, i) => (
+        <span
+          key={`${p}-${i}`}
+          className={cn(
+            "rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium leading-tight",
+            !omitSport && i === 0
+              ? "bg-primary/10 text-primary"
+              : "bg-muted text-muted-foreground",
+          )}
+        >
+          {/* "U-14" → "U14": the internal hyphen is the last dash on the page. */}
+          {/^U-\d/.test(p) ? p.replace("-", "") : p}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** Compact FIFA-style group table — qualifying rows get a 2px accent left
+ * rule (not a fill, not a dot). Columns are SPORT-NATIVE: timed sports read
+ * P W D L +/- Pts (goal difference); target (set) sports read P W L Sets +/-
+ * Pts (sets for-against + within-set point diff) — a sepak table never shows
+ * a draw column. */
+export function GroupTable({
+  rows,
+  family = "timed",
+}: {
+  rows: StandingRow[];
+  family?: "timed" | "target";
+}): React.ReactElement {
+  const target = family === "target";
+  const heads = target
+    ? ["P", "W", "L", t("Sets"), "+/-", "Pts"]
+    : ["P", "W", "D", "L", "+/-", "Pts"];
+  const cells = (r: StandingRow): (number | string)[] =>
+    target
+      ? [r.P, r.W, r.L, `${r.GF}-${r.GA}`, r.PD_pts ?? 0, r.Pts]
+      : [r.P, r.W, r.D, r.L, r.GD, r.Pts];
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-[0.625rem] uppercase tracking-wide text-muted-foreground">
+            <th className="px-4 py-1.5 font-medium">{t("Team")}</th>
+            {heads.map((h) => (
+              <th key={h} className="px-2 py-1.5 text-right font-medium">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, idx) => (
+            <tr
+              key={r.team_id}
+              data-testid={`group-standing-${r.team_id}`}
+              className={cn(
+                "border-t border-border",
+                idx < 2 && "border-l-2 border-primary",
+              )}
+            >
+              <td className="px-4 py-1.5 font-medium">
+                <span className="mr-1.5 font-tabular text-xs text-muted-foreground">
+                  {idx + 1}
+                </span>
+                {r.name}
+              </td>
+              {cells(r).map((v, i) => (
+                <td
+                  key={i}
+                  className={cn(
+                    "px-2 py-1.5 text-right font-tabular",
+                    i === 5
+                      ? "font-semibold text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {i === 4 && typeof v === "number" && v > 0 ? `+${v}` : v}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
