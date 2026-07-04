@@ -4,6 +4,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import { Trophy } from "lucide-react";
+import { BentoCard, BentoGrid } from "@/features/dashboard/BentoCard";
 import { tournamentsApi } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
@@ -60,13 +62,17 @@ export function CreateTournamentPage(): React.ReactElement {
 
   return (
     <div className="flex min-h-[80dvh] w-full items-center justify-center px-4 py-10">
-      <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-sm sm:p-8">
-        <h1 className="text-center text-2xl font-semibold tracking-tight">
-          {t("Start a tournament")}
-        </h1>
-        <p className="mt-2 text-center text-sm text-muted-foreground">
-          {t("Name it. You'll be admin and can invite people next.")}
-        </p>
+      <BentoGrid className="w-full max-w-md">
+        <BentoCard particles className="animate-fade-up p-6 sm:p-8">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
+            <Trophy aria-hidden="true" className="h-6 w-6 text-primary" />
+          </span>
+          <h1 className="mt-4 text-center text-2xl font-semibold tracking-tight">
+            {t("Start a tournament")}
+          </h1>
+          <p className="mt-2 text-center text-sm text-muted-foreground">
+            {t("Name it. You'll be admin and can invite people next.")}
+          </p>
 
         {error ? (
           <div
@@ -101,7 +107,8 @@ export function CreateTournamentPage(): React.ReactElement {
             {submitting ? t("Creating...") : t("Create tournament")}
           </Button>
         </form>
-      </div>
+        </BentoCard>
+      </BentoGrid>
     </div>
   );
 }

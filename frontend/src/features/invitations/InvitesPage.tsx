@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { BentoCard, BentoGrid } from "@/features/dashboard/BentoCard";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
@@ -366,9 +367,9 @@ export function InvitesPage(): React.ReactElement {
   const busy = acceptMutation.isPending || declineMutation.isPending;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="flex w-full flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
       <div className="min-w-0">
-        <h1 className="text-xl font-semibold tracking-tight">
+        <h1 className="page-title">
           {t("Invitations")}
         </h1>
         <p className="mt-0.5 font-tabular text-sm text-muted-foreground">
@@ -418,16 +419,18 @@ export function InvitesPage(): React.ReactElement {
           </Button>
         </div>
       ) : (
-        <>
-          <section
-            className="flex flex-col gap-3"
-            aria-label={t("Pending invitations")}
-          >
-            <h2 className="text-sm font-semibold text-foreground">
-              {t("Pending")}
-            </h2>
+        <BentoGrid className="flex flex-col gap-3">
+          <BentoCard className="animate-fade-up" testId="invites-pending-panel">
+            <section aria-label={t("Pending invitations")}>
+            <div className="panel-header gap-2">
+              <Inbox aria-hidden="true" className="h-4 w-4 text-primary" />
+              <h2 className="panel-title">{t("Pending")}</h2>
+              <span className="ml-auto font-tabular text-xs text-muted-foreground">
+                {pending.length}
+              </span>
+            </div>
             {pending.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-card p-10 text-center">
+              <div className="flex flex-col items-center justify-center gap-3 p-10 text-center">
                 <Inbox
                   className="h-8 w-8 text-muted-foreground/50"
                   aria-hidden="true"
@@ -443,7 +446,7 @@ export function InvitesPage(): React.ReactElement {
               </div>
             ) : isMobile ? (
               <div
-                className="flex flex-col gap-3"
+                className="flex flex-col gap-3 p-3"
                 aria-label={t("Invitations table")}
                 data-testid="invites-table"
               >
@@ -458,7 +461,7 @@ export function InvitesPage(): React.ReactElement {
                 ))}
               </div>
             ) : (
-              <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+              <div>
                 <div className="overflow-x-auto">
                   <table
                     className="w-full min-w-[42rem] text-sm"
@@ -495,19 +498,25 @@ export function InvitesPage(): React.ReactElement {
                 </div>
               </div>
             )}
-          </section>
+            </section>
+          </BentoCard>
 
           {history.length > 0 ? (
-            <section
-              className="flex flex-col gap-3"
-              aria-label={t("Invitation history")}
+            <BentoCard
+              className="animate-fade-up"
+              style={{ animationDelay: "60ms" }}
+              testId="invites-history-panel"
             >
-              <h2 className="text-sm font-semibold text-foreground">
-                {t("History")}
-              </h2>
+              <section aria-label={t("Invitation history")}>
+              <div className="panel-header gap-2">
+                <h2 className="panel-title">{t("History")}</h2>
+                <span className="ml-auto font-tabular text-xs text-muted-foreground">
+                  {history.length}
+                </span>
+              </div>
               {isMobile ? (
                 <div
-                  className="flex flex-col gap-3"
+                  className="flex flex-col gap-3 p-3"
                   data-testid="invites-history"
                 >
                   {history.map((inv) => (
@@ -515,7 +524,7 @@ export function InvitesPage(): React.ReactElement {
                   ))}
                 </div>
               ) : (
-                <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+                <div>
                   <div className="overflow-x-auto">
                     <table
                       className="w-full min-w-[42rem] text-sm"
@@ -550,9 +559,10 @@ export function InvitesPage(): React.ReactElement {
                   </div>
                 </div>
               )}
-            </section>
+              </section>
+            </BentoCard>
           ) : null}
-        </>
+        </BentoGrid>
       )}
 
       <Dialog

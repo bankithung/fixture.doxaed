@@ -245,7 +245,7 @@ export function TournamentsListPage(): React.ReactElement {
   );
 
   return (
-    <div className="flex w-full flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="flex w-full flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">{t("Your tournaments")}</h1>
@@ -271,7 +271,7 @@ export function TournamentsListPage(): React.ReactElement {
           {startCta}
         </div>
       ) : (
-        <BentoGrid className="flex flex-col gap-4">
+        <BentoGrid className="flex flex-col gap-3">
           {/* Pulse band — compact tiles (owner: the md tiles read big here). */}
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <BentoCard>
