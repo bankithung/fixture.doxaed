@@ -927,43 +927,74 @@ export function SportsTab(): React.ReactElement {
 
   return (
     <div className="flex w-full flex-col gap-6">
-      {/* Header */}
-      <div className="min-w-0">
-        <h2 className="text-lg font-semibold">{t("Sports")}</h2>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          {effectiveStep === "pick"
-            ? t("Pick the sports this tournament runs.")
-            : effectiveStep === "configure"
+      {/* Header — the pick step is one self-titled panel; the stepper above
+          already says where you are (owner 2026-07-04: no heading + subtext). */}
+      {effectiveStep !== "pick" ? (
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold">{t("Sports")}</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {effectiveStep === "configure"
               ? t("Add each sport's categories. The last level is one competition.")
               : t("Review the competitions, then create the registration form.")}
-        </p>
-      </div>
+          </p>
+        </div>
+      ) : null}
 
       {effectiveStep === "pick" ? (
-        <>
-          {/* Selected — cards (icon tile, name, competition count, remove). */}
-          <section className="flex flex-col gap-3">
+        <section className="panel" aria-label={t("Choose sports")}>
+          {/* One toolbar: selected count, search, and Next in a single row. */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
             <h3 className="text-sm font-semibold">
               {t("Selected")}{" "}
               <span className="font-tabular text-muted-foreground">
                 ({selected.length})
               </span>
             </h3>
+            <label className="relative ml-auto w-full sm:w-72">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t("Search sports…")}
+                className="h-9 w-full pl-9"
+                aria-label={t("Search sports")}
+              />
+            </label>
+            {selected.length > 0 ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  setActiveKey(selected[0].key);
+                  setStep("configure");
+                }}
+              >
+                {t("Next: set up categories")}
+                <ArrowRight aria-hidden="true" className="h-4 w-4" />
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-4 p-3">
+            {/* Selected — cards (icon tile, name, competition count, remove). */}
             {selected.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-border bg-card p-6 text-center text-sm text-muted-foreground">
+              <p className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
                 {t("No sports yet. Add at least one below.")}
               </p>
             ) : (
-              <ul className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-3">
+              <ul className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-2">
                 {selected.map((s) => {
                   const leaves = leafLabels(s.nodes ?? []).length;
                   return (
                     <li
                       key={s.key}
                       data-testid={`sport-${s.key}`}
-                      className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-sm"
+                      className="flex items-center gap-3 rounded-lg border border-primary/30 bg-accent/40 p-2.5"
                     >
-                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-accent text-primary">
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-accent text-primary">
                         <Trophy aria-hidden="true" className="h-5 w-5" />
                       </span>
                       <div className="min-w-0 flex-1">
@@ -989,24 +1020,8 @@ export function SportsTab(): React.ReactElement {
                 })}
               </ul>
             )}
-          </section>
 
-          {/* Add from catalog / custom */}
-          <section className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
-            <h3 className="text-sm font-semibold">{t("Add a sport")}</h3>
-            <label className="relative">
-              <Search
-                aria-hidden="true"
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={t("Search sports…")}
-                className="h-9 pl-9"
-                aria-label={t("Search sports")}
-              />
-            </label>
+            <div aria-hidden="true" className="border-t border-border" />
 
             {customName && !customExists ? (
               <Button
@@ -1073,23 +1088,8 @@ export function SportsTab(): React.ReactElement {
                 {t("Type to find a sport, or add a custom one.")}
               </p>
             ) : null}
-          </section>
-
-          {selected.length > 0 ? (
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                onClick={() => {
-                  setActiveKey(selected[0].key);
-                  setStep("configure");
-                }}
-              >
-                {t("Next: set up categories")}
-                <ArrowRight aria-hidden="true" className="h-4 w-4" />
-              </Button>
-            </div>
-          ) : null}
-        </>
+          </div>
+        </section>
       ) : effectiveStep === "configure" ? (
         <>
           {/* Editor with folder-style sport tabs (left) + live preview (right). */}
