@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { OrgChooserPage } from "../OrgChooserPage";
 import { useAuthStore } from "@/features/auth/authStore";
 import { tournamentsApi, type Tournament } from "@/api/tournaments";
 import { invitationsApi, type MyInvitation } from "@/api/invitations";
+import { overviewApi, type Overview } from "@/api/overview";
 import type { User } from "@/types/user";
 
 vi.mock("@/api/tournaments", () => ({
@@ -18,6 +19,9 @@ vi.mock("@/api/invitations", async (importOriginal) => {
     invitationsApi: { ...actual.invitationsApi, myInvitations: vi.fn() },
   };
 });
+vi.mock("@/api/overview", () => ({
+  overviewApi: { get: vi.fn() },
+}));
 
 function makeUser(memberships: User["memberships"]): User {
   return {
@@ -62,6 +66,59 @@ const PENDING_INVITE: MyInvitation = {
   created_at: "2026-06-01T10:00:00Z",
 };
 
+const todayIso = new Date().toISOString().slice(0, 10);
+
+const OVERVIEW: Overview = {
+  totals: {
+    tournaments: 2,
+    tournaments_live: 1,
+    matches: 12,
+    matches_completed: 7,
+    matches_live: 1,
+    matches_today: 3,
+    matches_next7: 4,
+    teams: 14,
+    players: 151,
+    institutions: 5,
+    goals: 23,
+  },
+  tournament_status: [
+    { status: "live", count: 1 },
+    { status: "draft", count: 1 },
+  ],
+  sports: [
+    { key: "football", name: "Football", tournaments: 2, matches: 12 },
+  ],
+  matches_per_day: [
+    { date: todayIso, completed: 1, live: 1, scheduled: 1 },
+  ],
+  progress: [
+    {
+      id: "t-9",
+      slug: "anpsa",
+      name: "Anpsa",
+      status: "live",
+      total: 10,
+      completed: 3,
+      live: 1,
+      teams: 8,
+    },
+  ],
+  recent_results: [
+    {
+      match_id: "m-1",
+      tournament_id: "t-9",
+      tournament_name: "Anpsa",
+      home: "Alpha HSS",
+      away: "Beta HSS",
+      home_score: 2,
+      away_score: 1,
+      sport: "football",
+      ended_at: "2026-07-04T10:00:00Z",
+    },
+  ],
+};
+
 function renderPage(): void {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -76,6 +133,7 @@ function renderPage(): void {
 beforeEach(() => {
   useAuthStore.setState({ user: makeUser([]), bootstrapped: true });
   vi.mocked(tournamentsApi.matches).mockResolvedValue([] as never);
+  vi.mocked(overviewApi.get).mockResolvedValue(OVERVIEW);
 });
 
 afterEach(() => {
@@ -107,7 +165,7 @@ describe("OrgChooserPage (Dashboard)", () => {
 
     renderPage();
 
-    expect(await screen.findByText("Anpsa")).toBeInTheDocument();
+    expect(await screen.findAllByText("Anpsa")).not.toHaveLength(0);
     // The individual workspace: KPI strip over everything the user is part of.
     expect(screen.getByTestId("kpi-strip")).toBeInTheDocument();
     expect(screen.getByTestId("dashboard-tournament-t-9")).toHaveAttribute(
@@ -116,6 +174,54 @@ describe("OrgChooserPage (Dashboard)", () => {
     );
     // It's a real dashboard now, not the empty state.
     expect(screen.queryByText("Welcome to Fixture")).not.toBeInTheDocument();
+  });
+
+  it("renders the analytics overview from /api/me/overview/", async () => {
+    vi.mocked(tournamentsApi.list).mockResolvedValue([INVITED_TOURNAMENT]);
+    vi.mocked(invitationsApi.myInvitations).mockResolvedValue([]);
+
+    renderPage();
+
+    // KPI band carries the cross-tournament totals (count-up lands on the
+    // final value immediately: no matchMedia in jsdom counts as reduced).
+    const strip = await screen.findByTestId("kpi-strip");
+    expect(within(strip).getByText("Tournaments")).toBeInTheDocument();
+    expect(within(strip).getByText("14")).toBeInTheDocument(); // teams
+    expect(within(strip).getByText("23")).toBeInTheDocument(); // goals
+    expect(within(strip).getByText("151 players")).toBeInTheDocument();
+
+    // The bento chart cells render from the same payload.
+    expect(screen.getByTestId("overview-activity")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("overview-status")).getByText("Live"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("overview-sports")).getByText("Football"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("overview-progress")).getByText("3/10"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("overview-results")).getByText("2-1"),
+    ).toBeInTheDocument();
+
+    // The activity chart ships its WCAG table twin.
+    expect(screen.getByText("Matches per day")).toBeInTheDocument();
+  });
+
+  it("keeps the dashboard standing when the overview endpoint fails", async () => {
+    vi.mocked(tournamentsApi.list).mockResolvedValue([INVITED_TOURNAMENT]);
+    vi.mocked(invitationsApi.myInvitations).mockResolvedValue([]);
+    vi.mocked(overviewApi.get).mockRejectedValue(new Error("boom"));
+
+    renderPage();
+
+    // Table + KPI strip still render; chart cells degrade to a quiet notice.
+    expect(await screen.findByTestId("dashboard-tournament-t-9")).toBeInTheDocument();
+    expect(screen.getByTestId("kpi-strip")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Analytics unavailable right now.").length,
+    ).toBeGreaterThan(0);
   });
 
   it("never surfaces the org/workspace concept, even for workspace owners", async () => {

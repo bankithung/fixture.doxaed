@@ -55,6 +55,14 @@
     --brand-muted: 160 50% 96%;
     --brand-ink: 222 47% 11%;
 
+    /* Chart series (dashboard dataviz). Validated categorical trio per mode
+       (CVD ΔE >= 12, >= 3:1 on the card surface): 1 = played (emerald,
+       matches primary), 2 = upcoming (blue), 3 = live (amber). */
+    --chart-1: 160 84% 30%;
+    --chart-2: 214 70% 45%;
+    --chart-3: 38 92% 42%;
+    --chart-grid: 214 30% 92%;
+
     /* Tell the browser to paint native form controls (the date/time picker
        glyphs + their popups) in the active theme. Without this the calendar
        indicator stays a near-black glyph and vanishes on dark surfaces. */
@@ -102,6 +110,12 @@
     --brand-fg: 222 47% 9%;
     --brand-muted: 158 40% 18%;
     --brand-ink: 210 40% 96%;
+
+    /* Chart series, re-stepped for the dark card surface (validated). */
+    --chart-1: 159 73% 36%;
+    --chart-2: 213 77% 56%;
+    --chart-3: 40 100% 39%;
+    --chart-grid: 217 33% 16%;
   }
 }
 

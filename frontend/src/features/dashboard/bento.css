@@ -1,0 +1,107 @@
+/* Token-driven MagicBento adaptation (React Bits). All color comes from the
+   theme vars so light/dark both work: the cursor spotlight, the border glow
+   that follows the pointer, and the hover particles are all primary-hued. */
+
+.bento-card {
+  --glow-x: 50%;
+  --glow-y: 50%;
+  --glow-intensity: 0;
+  position: relative;
+  transition:
+    box-shadow 0.3s ease,
+    transform 0.3s ease;
+}
+
+.bento-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px hsl(var(--primary) / 0.1);
+}
+
+/* Border glow: a masked ring so the gradient paints ONLY the 1.5px border
+   band, at the cursor position, scaled by --glow-intensity. */
+.bento-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1.5px;
+  border-radius: inherit;
+  background: radial-gradient(
+    280px circle at var(--glow-x) var(--glow-y),
+    hsl(var(--primary) / calc(var(--glow-intensity) * 0.8)) 0%,
+    hsl(var(--primary) / calc(var(--glow-intensity) * 0.4)) 35%,
+    transparent 65%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.bento-particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  box-shadow: 0 0 6px hsl(var(--primary) / 0.6);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* The global cursor spotlight. Light mode: a faint primary wash. Dark mode:
+   screen-blended so it reads as light, like the original. */
+.bento-spotlight {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 700px;
+  height: 700px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    hsl(var(--primary) / 0.08) 0%,
+    hsl(var(--primary) / 0.04) 30%,
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 40;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.dark .bento-spotlight {
+  background: radial-gradient(
+    circle,
+    hsl(var(--primary) / 0.14) 0%,
+    hsl(var(--primary) / 0.07) 30%,
+    transparent 70%
+  );
+  mix-blend-mode: screen;
+}
+
+/* Chart draw-ins. Columns grow from the baseline, bars/meters sweep from the
+   left; both are transform/opacity only and collapse under reduced motion via
+   the global safety net in index.css. */
+.chart-col {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  transform: scaleY(0);
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.chart-drawn .chart-col {
+  transform: scaleY(1);
+}
+.chart-bar {
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.chart-drawn .chart-bar {
+  transform: scaleX(1);
+}

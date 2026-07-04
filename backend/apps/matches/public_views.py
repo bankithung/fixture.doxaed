@@ -247,6 +247,212 @@ class MyTodayView(GenericAPIView):
         return Response({"matches": rows, "needs": needs})
 
 
+class MyOverviewView(GenericAPIView):
+    """`GET /api/me/overview/` — the analytics rollup behind the root
+    dashboard: totals, tournament status/sport mix, a matches-per-day series
+    (past 30d + next 14d, bucketed in each tournament's own TZ per invariant
+    14), per-tournament completion, and the latest results — all scoped to
+    every tournament the caller can access."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from collections import Counter
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+
+        from django.db.models import Count, F, Q, Sum
+        from django.utils import timezone as dj_tz
+
+        from apps.matches.models import Match, MatchStatus
+        from apps.teams.models import Player
+        from apps.tournaments.scope import accessible_tournaments
+
+        tournaments = list(accessible_tournaments(request.user))
+        by_id = {t.id: t for t in tournaments}
+        ids = list(by_id.keys())
+        live_statuses = (MatchStatus.LIVE, MatchStatus.HALF_TIME)
+
+        matches = Match.objects.filter(
+            tournament_id__in=ids, deleted_at__isnull=True
+        )
+        agg = matches.aggregate(
+            total=Count("id"),
+            completed=Count("id", filter=Q(status=MatchStatus.COMPLETED)),
+            live=Count("id", filter=Q(status__in=live_statuses)),
+            # Goals only where home/away_score means goals (blank sport =
+            # football; set-based sports store SETS won there).
+            goals=Sum(
+                F("home_score") + F("away_score"),
+                filter=Q(status=MatchStatus.COMPLETED)
+                & (Q(sport="") | Q(sport="football")),
+            ),
+        )
+        teams_by_t = dict(
+            Team.objects.filter(tournament_id__in=ids, deleted_at__isnull=True)
+            .values_list("tournament_id")
+            .annotate(n=Count("id"))
+        )
+        players_count = Player.objects.filter(
+            tournament_id__in=ids, deleted_at__isnull=True
+        ).count()
+        institutions_count = Institution.objects.filter(
+            tournament_id__in=ids, deleted_at__isnull=True
+        ).count()
+
+        # Tournament status mix (live* variants fold into "live").
+        status_mix = Counter(
+            "live" if t.status.startswith("live") else t.status
+            for t in tournaments
+        )
+
+        # Sport mix: names from the tournaments' sports config; match counts
+        # from Match.sport (blank = football).
+        sport_names: dict[str, str] = {}
+        sport_tournaments: Counter[str] = Counter()
+        for t in tournaments:
+            keys = set()
+            for s in t.sports or []:
+                key = s.get("key") or ""
+                if not key:
+                    continue
+                keys.add(key)
+                sport_names.setdefault(key, s.get("name") or key.replace("_", " ").title())
+            if not keys and t.sport_id:
+                keys.add(t.sport.code)
+            for key in keys:
+                sport_tournaments[key] += 1
+        sport_matches: Counter[str] = Counter()
+        for sport, n in (
+            matches.values_list("sport").annotate(n=Count("id"))
+        ):
+            sport_matches[sport or "football"] += n
+        sports = [
+            {
+                "key": key,
+                "name": sport_names.get(key, key.replace("_", " ").title()),
+                "tournaments": sport_tournaments.get(key, 0),
+                "matches": sport_matches.get(key, 0),
+            }
+            for key in sorted(
+                set(sport_tournaments) | set(sport_matches),
+                key=lambda k: -(sport_matches.get(k, 0) + sport_tournaments.get(k, 0)),
+            )
+        ]
+
+        # Matches-per-day series, bucketed in each tournament's own timezone.
+        now = dj_tz.now()
+        window_start = now - timedelta(days=31)
+        window_end = now + timedelta(days=15)
+        day_buckets: dict[str, dict[str, int]] = {}
+        matches_today = 0
+        matches_next7 = 0
+        tz_cache: dict[str, ZoneInfo] = {}
+        for t_id, scheduled_at, status in matches.filter(
+            scheduled_at__gte=window_start, scheduled_at__lte=window_end
+        ).values_list("tournament_id", "scheduled_at", "status"):
+            t = by_id.get(t_id)
+            tz_name = (t.time_zone if t else "") or "UTC"
+            tz = tz_cache.get(tz_name)
+            if tz is None:
+                try:
+                    tz = ZoneInfo(tz_name)
+                except KeyError:
+                    tz = ZoneInfo("UTC")
+                tz_cache[tz_name] = tz
+            local = scheduled_at.astimezone(tz)
+            day = local.date().isoformat()
+            bucket = day_buckets.setdefault(
+                day, {"completed": 0, "live": 0, "scheduled": 0}
+            )
+            if status == MatchStatus.COMPLETED:
+                bucket["completed"] += 1
+            elif status in live_statuses:
+                bucket["live"] += 1
+            else:
+                bucket["scheduled"] += 1
+            local_today = now.astimezone(tz).date()
+            delta_days = (local.date() - local_today).days
+            if delta_days == 0:
+                matches_today += 1
+            if 0 < delta_days <= 7 and status == MatchStatus.SCHEDULED:
+                matches_next7 += 1
+        matches_per_day = [
+            {"date": day, **counts}
+            for day, counts in sorted(day_buckets.items())
+        ]
+
+        # Per-tournament completion (the progress rail).
+        per_t = {
+            row["tournament_id"]: row
+            for row in matches.values("tournament_id").annotate(
+                total=Count("id"),
+                completed=Count("id", filter=Q(status=MatchStatus.COMPLETED)),
+                live=Count("id", filter=Q(status__in=live_statuses)),
+            )
+        }
+        progress = []
+        for t in tournaments:
+            row = per_t.get(t.id)
+            progress.append({
+                "id": str(t.id),
+                "slug": t.slug,
+                "name": t.name,
+                "status": t.status,
+                "total": row["total"] if row else 0,
+                "completed": row["completed"] if row else 0,
+                "live": row["live"] if row else 0,
+                "teams": teams_by_t.get(t.id, 0),
+            })
+        progress.sort(key=lambda p: (-p["live"], -p["total"]))
+
+        recent = (
+            matches.filter(status=MatchStatus.COMPLETED)
+            .select_related("home_team", "away_team", "tournament")
+            .order_by(F("ended_at").desc(nulls_last=True), "-updated_at")[:8]
+        )
+        recent_results = [
+            {
+                "match_id": str(m.id),
+                "tournament_id": str(m.tournament_id),
+                "tournament_name": m.tournament.name,
+                "home": m.home_team.name if m.home_team_id else "TBD",
+                "away": m.away_team.name if m.away_team_id else "TBD",
+                "home_score": m.home_score,
+                "away_score": m.away_score,
+                "sport": m.sport or "football",
+                "ended_at": m.ended_at.isoformat() if m.ended_at else None,
+            }
+            for m in recent
+        ]
+
+        return Response({
+            "totals": {
+                "tournaments": len(tournaments),
+                "tournaments_live": sum(
+                    1 for t in tournaments if t.status.startswith("live")
+                ),
+                "matches": agg["total"] or 0,
+                "matches_completed": agg["completed"] or 0,
+                "matches_live": agg["live"] or 0,
+                "matches_today": matches_today,
+                "matches_next7": matches_next7,
+                "teams": sum(teams_by_t.values()),
+                "players": players_count,
+                "institutions": institutions_count,
+                "goals": agg["goals"] or 0,
+            },
+            "tournament_status": [
+                {"status": s, "count": n}
+                for s, n in sorted(status_mix.items(), key=lambda kv: -kv[1])
+            ],
+            "sports": sports,
+            "matches_per_day": matches_per_day,
+            "progress": progress[:12],
+            "recent_results": recent_results,
+        })
+
+
 def models_q_live():
     from django.db.models import Q
 
