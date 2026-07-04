@@ -80,13 +80,13 @@ def render_match_card(m: Match) -> bytes:
     )
     _center(d, label, 158, pf, _BG if live else _MUTED)
 
-    # Team names.
-    f_team = _fit(d, max(home, away, key=len), 520, 56)
-    d.text((90, 300), home, font=f_team, fill=_INK)
+    # Team names on their own row; the score/vs sits BELOW them so long
+    # school names never collide with the center column.
+    f_team = _fit(d, max(home, away, key=len), 500, 52)
+    d.text((90, 248), home, font=f_team, fill=_INK)
     aw = d.textlength(away, font=f_team)
-    d.text((_W - 90 - aw, 300), away, font=f_team, fill=_INK)
+    d.text((_W - 90 - aw, 248), away, font=f_team, fill=_INK)
 
-    # Center score / vs.
     if live or final:
         if m.set_scores and not final:
             cur = m.set_scores[-1]
@@ -98,17 +98,17 @@ def render_match_card(m: Match) -> bytes:
                 "Sets " + ", ".join(f"{a}-{b}" for a, b in m.set_scores)
                 if m.set_scores else ""
             )
-        f_score = _font(110)
-        _center(d, score, 270, f_score, _PRIMARY if live else _INK)
+        f_score = _font(104)
+        _center(d, score, 340, f_score, _PRIMARY if live else _INK)
         if sub:
-            _center(d, sub[:60], 400, _font(34, bold=False), _MUTED)
+            _center(d, sub[:60], 468, _font(34, bold=False), _MUTED)
     else:
-        _center(d, "vs", 292, _font(72), _MUTED)
+        _center(d, "vs", 352, _font(64), _MUTED)
         when = (
             m.scheduled_at.strftime("%a %d %b, %H:%M UTC")
             if m.scheduled_at else "Schedule to follow"
         )
-        _center(d, when, 400, _font(34, bold=False), _MUTED)
+        _center(d, when, 456, _font(34, bold=False), _MUTED)
 
     # Footer: venue + call to action.
     footer = " · ".join(x for x in (m.venue, "Live scores on Fixture") if x)
