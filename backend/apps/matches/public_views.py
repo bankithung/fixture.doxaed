@@ -300,14 +300,35 @@ class MyOverviewView(GenericAPIView):
             tournament_id__in=ids, deleted_at__isnull=True
         ).count()
 
-        # Tournament status mix (live* variants fold into "live").
+        # Match totals per tournament (feeds both the status breakdown and,
+        # further down, the per-tournament progress rail).
+        match_counts_by_t = {
+            row["tournament_id"]: row
+            for row in matches.values("tournament_id").annotate(
+                total=Count("id"),
+                completed=Count("id", filter=Q(status=MatchStatus.COMPLETED)),
+                live=Count("id", filter=Q(status__in=live_statuses)),
+            )
+        }
+
+        # Tournament status breakdown (live* variants fold into "live"):
+        # tournament count + their match and team volumes per status.
+        status_rows: dict[str, dict[str, int]] = {}
+        for t in tournaments:
+            key = "live" if t.status.startswith("live") else t.status
+            row = status_rows.setdefault(
+                key, {"count": 0, "matches": 0, "teams": 0}
+            )
+            row["count"] += 1
+            row["matches"] += match_counts_by_t.get(t.id, {}).get("total", 0)
+            row["teams"] += teams_by_t.get(t.id, 0)
         status_mix = Counter(
-            "live" if t.status.startswith("live") else t.status
-            for t in tournaments
+            {key: row["count"] for key, row in status_rows.items()}
         )
 
         # Sport mix: names from the tournaments' sports config; match counts
-        # from Match.sport (blank = football).
+        # (with a played/live/upcoming breakdown) from Match.sport (blank =
+        # football).
         sport_names: dict[str, str] = {}
         sport_tournaments: Counter[str] = Counter()
         for t in tournaments:
@@ -322,21 +343,38 @@ class MyOverviewView(GenericAPIView):
                 keys.add(t.sport.code)
             for key in keys:
                 sport_tournaments[key] += 1
-        sport_matches: Counter[str] = Counter()
-        for sport, n in (
-            matches.values_list("sport").annotate(n=Count("id"))
+        sport_matches: dict[str, dict[str, int]] = {}
+        for row in (
+            matches.values("sport").annotate(
+                n=Count("id"),
+                completed=Count("id", filter=Q(status=MatchStatus.COMPLETED)),
+                live=Count("id", filter=Q(status__in=live_statuses)),
+                scheduled=Count("id", filter=Q(status=MatchStatus.SCHEDULED)),
+            )
         ):
-            sport_matches[sport or "football"] += n
+            key = row["sport"] or "football"
+            agg_row = sport_matches.setdefault(
+                key, {"n": 0, "completed": 0, "live": 0, "scheduled": 0}
+            )
+            for field in ("n", "completed", "live", "scheduled"):
+                agg_row[field] += row[field]
+        empty_sport = {"n": 0, "completed": 0, "live": 0, "scheduled": 0}
         sports = [
             {
                 "key": key,
                 "name": sport_names.get(key, key.replace("_", " ").title()),
                 "tournaments": sport_tournaments.get(key, 0),
-                "matches": sport_matches.get(key, 0),
+                "matches": sport_matches.get(key, empty_sport)["n"],
+                "completed": sport_matches.get(key, empty_sport)["completed"],
+                "live": sport_matches.get(key, empty_sport)["live"],
+                "scheduled": sport_matches.get(key, empty_sport)["scheduled"],
             }
             for key in sorted(
                 set(sport_tournaments) | set(sport_matches),
-                key=lambda k: -(sport_matches.get(k, 0) + sport_tournaments.get(k, 0)),
+                key=lambda k: -(
+                    sport_matches.get(k, empty_sport)["n"]
+                    + sport_tournaments.get(k, 0)
+                ),
             )
         ]
 
@@ -383,17 +421,9 @@ class MyOverviewView(GenericAPIView):
         ]
 
         # Per-tournament completion (the progress rail).
-        per_t = {
-            row["tournament_id"]: row
-            for row in matches.values("tournament_id").annotate(
-                total=Count("id"),
-                completed=Count("id", filter=Q(status=MatchStatus.COMPLETED)),
-                live=Count("id", filter=Q(status__in=live_statuses)),
-            )
-        }
         progress = []
         for t in tournaments:
-            row = per_t.get(t.id)
+            row = match_counts_by_t.get(t.id)
             progress.append({
                 "id": str(t.id),
                 "slug": t.slug,
@@ -443,8 +473,8 @@ class MyOverviewView(GenericAPIView):
                 "goals": agg["goals"] or 0,
             },
             "tournament_status": [
-                {"status": s, "count": n}
-                for s, n in sorted(status_mix.items(), key=lambda kv: -kv[1])
+                {"status": s, **status_rows[s]}
+                for s, _n in sorted(status_mix.items(), key=lambda kv: -kv[1])
             ],
             "sports": sports,
             "matches_per_day": matches_per_day,

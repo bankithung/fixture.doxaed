@@ -83,11 +83,19 @@ const OVERVIEW: Overview = {
     goals: 23,
   },
   tournament_status: [
-    { status: "live", count: 1 },
-    { status: "draft", count: 1 },
+    { status: "live", count: 1, matches: 8, teams: 9 },
+    { status: "draft", count: 1, matches: 4, teams: 5 },
   ],
   sports: [
-    { key: "football", name: "Football", tournaments: 2, matches: 12 },
+    {
+      key: "football",
+      name: "Football",
+      tournaments: 2,
+      matches: 12,
+      completed: 7,
+      live: 1,
+      scheduled: 4,
+    },
   ],
   matches_per_day: [
     { date: todayIso, completed: 1, live: 1, scheduled: 1 },
@@ -192,12 +200,16 @@ describe("OrgChooserPage (Dashboard)", () => {
 
     // The bento chart cells render from the same payload.
     expect(screen.getByTestId("overview-activity")).toBeInTheDocument();
-    expect(
-      within(screen.getByTestId("overview-status")).getByText("Live"),
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByTestId("overview-sports")).getByText("Football"),
-    ).toBeInTheDocument();
+    // Status + sport cells are breakdown tables: label rows against Total
+    // plus per-dimension columns.
+    const statusCell = within(screen.getByTestId("overview-status"));
+    expect(statusCell.getByText("Live")).toBeInTheDocument();
+    expect(statusCell.getByText("Teams")).toBeInTheDocument();
+    expect(statusCell.getByText("9")).toBeInTheDocument(); // live row teams
+    const sportsCell = within(screen.getByTestId("overview-sports"));
+    expect(sportsCell.getByText("Football")).toBeInTheDocument();
+    expect(sportsCell.getByText("Played")).toBeInTheDocument();
+    expect(sportsCell.getByText("7")).toBeInTheDocument(); // football played
     expect(
       within(screen.getByTestId("overview-progress")).getByText("3/10"),
     ).toBeInTheDocument();

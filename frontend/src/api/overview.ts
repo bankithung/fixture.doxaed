@@ -20,6 +20,8 @@ export interface OverviewTotals {
 export interface OverviewStatusRow {
   status: string;
   count: number;
+  matches: number;
+  teams: number;
 }
 
 export interface OverviewSportRow {
@@ -27,6 +29,9 @@ export interface OverviewSportRow {
   name: string;
   tournaments: number;
   matches: number;
+  completed: number;
+  live: number;
+  scheduled: number;
 }
 
 export interface OverviewDay {

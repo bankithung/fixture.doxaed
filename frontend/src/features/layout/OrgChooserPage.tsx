@@ -27,7 +27,7 @@ import { RangePills } from "@/features/dashboard/RangePills";
 import {
   ActivityChart,
   ActivityLegend,
-  BarList,
+  BreakdownTable,
   Meter,
   fillDays,
   type ActivityWindow,
@@ -321,12 +321,15 @@ export function OrgChooserPage(): React.ReactElement {
               <h2 className="panel-title">{t("Tournaments by status")}</h2>
             </div>
             {ov && ov.tournament_status.length > 0 ? (
-              <div className="p-4">
-                <BarList
-                  live
-                  items={ov.tournament_status.map((row) => ({
+              <div className="pb-1">
+                <p className="px-4 pb-2 pt-3 text-xs text-muted-foreground">
+                  {t("Where every tournament stands, with its match and team volume.")}
+                </p>
+                <BreakdownTable
+                  columns={[t("Total"), t("Matches"), t("Teams")]}
+                  rows={ov.tournament_status.map((row) => ({
                     label: t(statusMeta(row.status).label),
-                    value: row.count,
+                    values: [row.count, row.matches, row.teams],
                     isLive: row.status === "live",
                   }))}
                 />
@@ -341,11 +344,16 @@ export function OrgChooserPage(): React.ReactElement {
               <h2 className="panel-title">{t("Matches by sport")}</h2>
             </div>
             {ov && ov.sports.length > 0 ? (
-              <div className="p-4">
-                <BarList
-                  items={ov.sports.slice(0, 6).map((s) => ({
+              <div className="pb-1">
+                <p className="px-4 pb-2 pt-3 text-xs text-muted-foreground">
+                  {t("Match volume per sport, split by played, live and upcoming.")}
+                </p>
+                <BreakdownTable
+                  columns={[t("Total"), t("Played"), t("Live"), t("Upcoming")]}
+                  rows={ov.sports.slice(0, 6).map((s) => ({
                     label: s.name,
-                    value: s.matches,
+                    values: [s.matches, s.completed, s.live, s.scheduled],
+                    isLive: s.live > 0,
                   }))}
                 />
               </div>

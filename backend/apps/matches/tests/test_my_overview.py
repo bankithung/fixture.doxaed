@@ -77,9 +77,11 @@ def test_overview_aggregates_across_tournaments():
     assert totals["institutions"] == 2
     assert totals["goals"] == 3
 
-    # Status mix covers both draft tournaments.
-    mix = {row["status"]: row["count"] for row in r.data["tournament_status"]}
-    assert sum(mix.values()) == 2
+    # Status mix covers both draft tournaments, with per-status volumes.
+    mix = {row["status"]: row for row in r.data["tournament_status"]}
+    assert sum(row["count"] for row in mix.values()) == 2
+    assert mix["draft"]["matches"] == 3
+    assert mix["draft"]["teams"] == 4
 
     # The per-day series buckets all three matches.
     series_total = sum(
@@ -101,8 +103,13 @@ def test_overview_aggregates_across_tournaments():
     assert results[0]["away_score"] == 1
     assert results[0]["tournament_name"] == "Cup A"
 
-    # Sports mix names football (default sport).
-    assert any(s["key"] == "football" for s in r.data["sports"])
+    # Sports mix names football (default sport) and breaks matches down by
+    # state: 1 played, 1 live, 1 upcoming.
+    football = next(s for s in r.data["sports"] if s["key"] == "football")
+    assert football["matches"] == 3
+    assert football["completed"] == 1
+    assert football["live"] == 1
+    assert football["scheduled"] == 1
 
 
 def test_overview_is_scoped_to_accessible_tournaments():

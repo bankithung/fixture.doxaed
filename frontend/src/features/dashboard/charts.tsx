@@ -312,55 +312,75 @@ export function ActivityLegend(): React.ReactElement {
   );
 }
 
-/** Horizontal single-hue bar list: magnitude comparison with labeled rows. */
-export function BarList({
-  items,
-  live,
+/** Breakdown table: labeled rows against a Total column plus per-dimension
+ * numeric columns (the congregation-report look the owner asked for). The
+ * Total column leads in weight; secondary columns stay muted; every number
+ * is tabular so the columns align. */
+export function BreakdownTable({
+  columns,
+  rows,
 }: {
-  items: { label: string; value: number; hint?: string; isLive?: boolean }[];
-  live?: boolean;
+  columns: string[];
+  rows: {
+    label: string;
+    values: number[];
+    isLive?: boolean;
+  }[];
 }): React.ReactElement {
-  const [drawn, setDrawn] = useState(false);
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setDrawn(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
-  const max = Math.max(1, ...items.map((i) => i.value));
   return (
-    <ul className={cn("flex flex-col gap-2.5", drawn && "chart-drawn")}>
-      {items.map((item, i) => (
-        <li key={item.label}>
-          <div className="flex items-baseline justify-between gap-2 text-xs">
-            <span className="flex min-w-0 items-center gap-1.5 truncate text-foreground">
-              {live && item.isLive ? (
-                <span className="relative flex h-1.5 w-1.5 shrink-0">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-chart-3 opacity-75" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-chart-3" />
-                </span>
-              ) : null}
-              <span className="truncate">{item.label}</span>
-            </span>
-            <span className="font-tabular font-semibold">
-              {item.value.toLocaleString()}
-              {item.hint ? (
-                <span className="ml-1 font-normal text-muted-foreground">
-                  {item.hint}
-                </span>
-              ) : null}
-            </span>
-          </div>
-          <div className="mt-1 h-2.5 overflow-hidden rounded-sm">
-            <div
-              className="chart-bar h-full rounded-sm bg-chart-1"
-              style={{
-                width: `${Math.max(2, (item.value / max) * 100)}%`,
-                transitionDelay: `${i * 50}ms`,
-              }}
-            />
-          </div>
-        </li>
-      ))}
-    </ul>
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="border-b border-border text-[0.6875rem] uppercase tracking-[0.08em] text-muted-foreground">
+          <th scope="col" className="py-2 pl-4 pr-2 text-left font-medium">
+            <span className="sr-only">{t("Category")}</span>
+          </th>
+          {columns.map((col) => (
+            <th
+              key={col}
+              scope="col"
+              className="px-2 py-2 text-right font-medium last:pr-4"
+            >
+              {col}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-border">
+        {rows.map((row) => (
+          <tr key={row.label}>
+            <th
+              scope="row"
+              className="py-2 pl-4 pr-2 text-left font-medium text-foreground"
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                {row.isLive ? (
+                  <span className="relative flex h-1.5 w-1.5 shrink-0">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-chart-3 opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-chart-3" />
+                  </span>
+                ) : null}
+                <span className="truncate">{row.label}</span>
+              </span>
+            </th>
+            {row.values.map((v, i) => (
+              <td
+                key={columns[i]}
+                className={cn(
+                  "px-2 py-2 text-right font-tabular last:pr-4",
+                  i === 0
+                    ? "font-semibold text-foreground"
+                    : v === 0
+                      ? "text-muted-foreground/50"
+                      : "text-muted-foreground",
+                )}
+              >
+                {v.toLocaleString()}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
