@@ -979,21 +979,6 @@ export function MatchActionsMenu({
           onClose={() => setAssign(false)}
         />
       ) : null}
-      {stateVerb ? (
-        <MatchStateDialog
-          tournamentId={tournamentId}
-          match={match}
-          verb={stateVerb}
-          onClose={() => setStateVerb(null)}
-        />
-      ) : null}
-      {incident ? (
-        <IncidentDialog
-          tournamentId={tournamentId}
-          match={match}
-          onClose={() => setIncident(false)}
-        />
-      ) : null}
       {dispute ? (
         <DisputeDialog
           tournamentId={tournamentId}
