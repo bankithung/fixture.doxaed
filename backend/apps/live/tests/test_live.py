@@ -179,3 +179,16 @@ def test_match_meta_serves_og_tags_with_score():
     html = r.content.decode()
     assert 'property="og:title" content="A 8 - 7 B (LIVE)"' in html
     assert f"match-card/{m.id}.png" in html
+
+
+@pytest.mark.django_db
+def test_tournament_meta_serves_og_tags():
+    admin = _verified("t-og@test.local")
+    t = create_tournament(user=admin, name="Share Cup")
+    r = APIClient().get(f"/api/live/tournament-meta/{t.slug}/{t.id}/")
+    assert r.status_code == 200
+    assert 'og:title" content="Share Cup"' in r.content.decode()
+    # Wrong slug for the id: 404, no leak.
+    assert APIClient().get(
+        f"/api/live/tournament-meta/wrong-slug/{t.id}/"
+    ).status_code == 404

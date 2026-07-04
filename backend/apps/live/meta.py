@@ -77,3 +77,50 @@ class MatchMetaView(GenericAPIView):
         resp = HttpResponse(html, content_type="text/html; charset=utf-8")
         resp["Cache-Control"] = "public, max-age=60"
         return resp
+
+class TournamentMetaView(GenericAPIView):
+    """`GET /api/live/tournament-meta/{slug}/{tournament_id}/` — OG meta for
+    shared public tournament links (/t/:slug/:id/...)."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, slug, tournament_id):
+        from apps.tournaments.models import Tournament
+
+        t = Tournament.objects.filter(
+            id=tournament_id, deleted_at__isnull=True
+        ).first()
+        if t is None or t.slug != slug:
+            raise NotFound("tournament_not_found")
+        n_matches = Match.objects.filter(
+            tournament=t, deleted_at__isnull=True
+        ).count()
+        live_now = Match.objects.filter(
+            tournament=t, deleted_at__isnull=True,
+            status__in=(MatchStatus.LIVE, MatchStatus.HALF_TIME),
+        ).count()
+        title = t.name
+        bits = [f"{n_matches} matches"]
+        if live_now:
+            bits.append(f"{live_now} live now")
+        bits.append("Schedule, live scores, standings and brackets on Fixture")
+        description = " · ".join(bits)
+        url = f"{_BASE}/t/{t.slug}/{t.id}/schedule"
+        te, de = escape(title), escape(description)
+        html = f"""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>{te}</title>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Fixture">
+<meta property="og:title" content="{te}">
+<meta property="og:description" content="{de}">
+<meta property="og:url" content="{url}">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{te}">
+<meta name="twitter:description" content="{de}">
+</head><body>{te}</body></html>"""
+        resp = HttpResponse(html, content_type="text/html; charset=utf-8")
+        resp["Cache-Control"] = "public, max-age=300"
+        return resp
+
