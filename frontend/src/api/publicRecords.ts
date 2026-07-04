@@ -39,9 +39,56 @@ export interface PublicTeamRecord {
   badges: PublicBadge[];
 }
 
+export interface SchoolTotals {
+  played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  scored: number;
+  conceded: number;
+  difference: number;
+}
+
+export interface SchoolHistorySeason {
+  season: string;
+  tournaments: {
+    tournament_id: string;
+    tournament_name: string;
+    tournament_slug: string;
+    season: string;
+    starts_at: string | null;
+    status: string;
+    totals: SchoolTotals;
+    teams: {
+      team_id: string;
+      team_name: string;
+      leaf_key: string;
+      played: number;
+      wins: number;
+      draws: number;
+      losses: number;
+    }[];
+  }[];
+}
+
+export interface PublicSchoolRecord {
+  institution_id: string;
+  institution_name: string;
+  tournament_id: string;
+  totals: SchoolTotals;
+  teams: PublicTeamRecord[];
+  badges: PublicBadge[];
+  history: SchoolHistorySeason[];
+}
+
 export const publicRecordsApi = {
   team: (slug: string, tournamentId: string, teamId: string) =>
     api.get<PublicTeamRecord>(
       `/api/public/tournaments/${slug}/${tournamentId}/teams/${teamId}/`,
+    ),
+  /** A school's rollup for one tournament + its cross-year history. */
+  school: (slug: string, tournamentId: string, instId: string) =>
+    api.get<PublicSchoolRecord>(
+      `/api/public/tournaments/${slug}/${tournamentId}/institutions/${instId}/record/`,
     ),
 };

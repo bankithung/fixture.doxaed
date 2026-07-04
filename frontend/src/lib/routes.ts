@@ -101,6 +101,8 @@ export const routes = {
   publicSchedule: (slug: string, id: string) =>
     `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/schedule`,
   /** Public team profile: record, form, results, roster, badges. */
+  publicSchool: (slug: string, id: string, instId: string) =>
+    `/t/${slug}/${id}/school/${instId}`,
   publicTeam: (slug: string, id: string, teamId: string) =>
     `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/team/${encodeURIComponent(teamId)}`,
   /** Public group standings, every competition's tables (no login). */

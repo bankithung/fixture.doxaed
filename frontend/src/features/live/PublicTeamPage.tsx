@@ -80,7 +80,14 @@ export function PublicTeamPage(): React.ReactElement {
                 {team.team_name}
               </h1>
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                {team.institution ? <span>{team.institution.name}</span> : null}
+                {team.institution ? (
+                  <Link
+                    to={routes.publicSchool(slug, id, team.institution.id)}
+                    className="hover:text-primary hover:underline"
+                  >
+                    {team.institution.name}
+                  </Link>
+                ) : null}
                 <LeafLabel label={team.leaf_key} />
               </div>
             </div>

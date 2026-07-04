@@ -77,6 +77,7 @@ const LiveViewerPage = lazy(() => import("@/features/live/LiveViewerPage").then(
 const PublicStandingsPage = lazy(() => import("@/features/live/PublicStandingsPage").then((m) => ({ default: m.PublicStandingsPage })));
 const PublicBracketPage = lazy(() => import("@/features/live/PublicBracketPage").then((m) => ({ default: m.PublicBracketPage })));
 const PublicTeamPage = lazy(() => import("@/features/live/PublicTeamPage").then((m) => ({ default: m.PublicTeamPage })));
+const PublicSchoolPage = lazy(() => import("@/features/live/PublicSchoolPage").then((m) => ({ default: m.PublicSchoolPage })));
 const ExplorePage = lazy(() => import("@/features/live/ExplorePage").then((m) => ({ default: m.ExplorePage })));
 const CertificatePage = lazy(() => import("@/features/live/CertificatePage").then((m) => ({ default: m.CertificatePage })));
 const VenueDisplayPage = lazy(() => import("@/features/live/VenueDisplayPage").then((m) => ({ default: m.VenueDisplayPage })));
@@ -183,6 +184,7 @@ export default function App(): React.ReactElement {
               <Route path="/t/:slug/:id/live" element={<PublicLiveRedirect />} />
               <Route path="/t/:slug/:id/bracket" element={<PublicBracketPage />} />
               <Route path="/t/:slug/:id/team/:teamId" element={<PublicTeamPage />} />
+              <Route path="/t/:slug/:id/school/:instId" element={<PublicSchoolPage />} />
               <Route path="/explore" element={<ExplorePage />} />
               <Route path="/cert/:awardId" element={<CertificatePage />} />
               <Route path="/t/:slug/:id/display" element={<VenueDisplayPage />} />
