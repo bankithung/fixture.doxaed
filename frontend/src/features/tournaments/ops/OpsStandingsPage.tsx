@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveApi } from "@/api/live";
 import {
@@ -8,6 +8,7 @@ import {
 } from "@/api/tournaments";
 import { qk } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
+import { isSetSport } from "@/lib/setDisplay";
 import { t } from "@/lib/t";
 import { useEventStream } from "@/lib/useEventStream";
 import { BracketView } from "@/features/tournaments/BracketView";
@@ -31,13 +32,33 @@ function shortGroupTitle(label: string): string {
 }
 
 /** One group's standings table from the server (honours the tournament's
- * points + tiebreakers — `compute_standings`). GF/GA/GD fold away on mobile. */
-function GroupCard({ group }: { group: StandingsGroup }): React.ReactElement {
-  const wideCols: [string, (r: StandingsGroup["rows"][number]) => number][] = [
-    ["GF", (r) => r.GF],
-    ["GA", (r) => r.GA],
-    ["GD", (r) => r.GD],
-  ];
+ * points + tiebreakers — `compute_standings`). Columns are SPORT-NATIVE
+ * (P1.c): timed sports read P/W/D/L + GF/GA/GD; target (set) sports read
+ * P/W/L + Sets + point diff — a sepak table never shows goal columns.
+ * Wide columns fold away on mobile. */
+function GroupCard({
+  group,
+  family = "timed",
+}: {
+  group: StandingsGroup;
+  family?: "timed" | "target";
+}): React.ReactElement {
+  type Row = StandingsGroup["rows"][number];
+  const narrowCols: [string, (r: Row) => number][] =
+    family === "target"
+      ? [["P", (r) => r.P], ["W", (r) => r.W], ["L", (r) => r.L]]
+      : [["P", (r) => r.P], ["W", (r) => r.W], ["D", (r) => r.D], ["L", (r) => r.L]];
+  const wideCols: [string, (r: Row) => number | string][] =
+    family === "target"
+      ? [
+          [t("Sets"), (r) => `${r.GF}-${r.GA}`],
+          ["+/-", (r) => r.PD_pts ?? 0],
+        ]
+      : [
+          ["GF", (r) => r.GF],
+          ["GA", (r) => r.GA],
+          ["GD", (r) => r.GD],
+        ];
   return (
     <section
       data-testid={`ops-group-${group.group_label}`}
@@ -55,7 +76,7 @@ function GroupCard({ group }: { group: StandingsGroup }): React.ReactElement {
             <th className="py-2 pl-4 pr-2 text-left font-medium">
               {t("Team")}
             </th>
-            {["P", "W", "D", "L"].map((h) => (
+            {narrowCols.map(([h]) => (
               <th key={h} className="px-1.5 py-1.5 text-right font-medium">
                 {h}
               </th>
@@ -95,9 +116,9 @@ function GroupCard({ group }: { group: StandingsGroup }): React.ReactElement {
                   </span>
                 </div>
               </td>
-              {[r.P, r.W, r.D, r.L].map((v, j) => (
-                <td key={j} className="px-1.5 py-1.5 text-right">
-                  {v}
+              {narrowCols.map(([h, get]) => (
+                <td key={h} className="px-1.5 py-1.5 text-right">
+                  {get(r)}
                 </td>
               ))}
               {wideCols.map(([h, get]) => (
@@ -131,7 +152,24 @@ export function OpsStandingsPage(): React.ReactElement {
   const { id = "" } = useParams();
   const qc = useQueryClient();
   const [leaf, setLeaf] = useState<string | null>(null);
-  const [sport, setSport] = useState<string | null>(null);
+  // The sport facet lives in the URL (?sport=) so it survives navigation
+  // between ops pages and deep-links (P1.c, multisport design).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sport = searchParams.get("sport");
+  const setSport = (sp: string) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("sport", sp);
+        return next;
+      },
+      { replace: true },
+    );
+  const metaQ = useQuery({
+    queryKey: ["sports-meta", id],
+    queryFn: () => tournamentsApi.sportsMeta(id),
+    staleTime: 300_000,
+  });
 
   const tournamentQ = useQuery({
     queryKey: ["tournament", id],
@@ -169,6 +207,12 @@ export function OpsStandingsPage(): React.ReactElement {
   );
   const activeSport = sport ?? sports[0] ?? "";
   const inSport = competitions.filter((c) => c.sport === activeSport);
+  // Chips carry HUMANIZED sport names ("Sepak Takraw"); descriptors are
+  // keyed by the underscored sport key — normalize before looking up.
+  const activeSportKey = activeSport.toLowerCase().replace(/\s+/g, "_");
+  const family =
+    metaQ.data?.descriptors[activeSportKey]?.family ??
+    (isSetSport({ sport: activeSportKey }) ? "target" : "timed");
   const selected =
     leaf && inSport.some((c) => c.key === leaf)
       ? leaf
@@ -322,7 +366,7 @@ export function OpsStandingsPage(): React.ReactElement {
           {groupLabels.length > 0 ? (
             <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
               {groupLabels.map((lbl) => (
-                <GroupCard key={lbl} group={standMap.get(lbl)!} />
+                <GroupCard key={lbl} group={standMap.get(lbl)!} family={family} />
               ))}
             </div>
           ) : null}

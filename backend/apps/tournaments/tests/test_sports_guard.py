@@ -123,3 +123,20 @@ def test_event_id_replay_is_idempotent():
     assert AuditEvent.objects.filter(
         idempotency_key=eid, event_type="tournament_sports_updated"
     ).count() == 1
+
+
+def test_sports_meta_serves_descriptors_per_sport():
+    """P1.c — sports-meta returns each sport's family/boards so surfaces
+    render sport-native without hardcoding."""
+    u, t, leaves, c = _setup()
+    r = c.get(f"/api/tournaments/{t.id}/sports-meta/")
+    assert r.status_code == 200
+    assert [s["key"] for s in r.data["sports"]] == ["table_tennis"]
+    assert r.data["sports"][0]["leaf_count"] == 2
+    d = r.data["descriptors"]["table_tennis"]
+    assert d["family"] == "target"
+    assert d["has_draw"] is False
+    assert d["terms"]["period"] == "Game"
+    assert [b["key"] for b in d["boards"]] == [
+        "match_wins", "set_ratio", "point_diff"
+    ]

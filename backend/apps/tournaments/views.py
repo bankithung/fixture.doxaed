@@ -501,6 +501,62 @@ class TournamentSportsView(GenericAPIView):
         return Response({"sports": cleaned})
 
 
+class TournamentSportsMetaView(GenericAPIView):
+    """`GET /api/tournaments/{id}/sports-meta/` — the tournament's sports with
+    their SportDefinition descriptors (P1.c): scoring family, terminology,
+    standings columns and leader-board specs, so every surface renders
+    sport-native without hardcoding. Access-scoped like the sports tree."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id):
+        from apps.matches.services.sport_defs import get_definition
+        from apps.tournaments.services.sports import iter_leaves
+
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        leaves = iter_leaves(tournament.sports or [])
+        counts: dict[str, int] = {}
+        names: dict[str, str] = {}
+        for leaf in leaves:
+            d = get_definition(leaf["sport_key"])
+            counts[d.code] = counts.get(d.code, 0) + 1
+            names.setdefault(d.code, leaf["sport_name"] or d.display_name)
+
+        # Matches may carry sports no longer on the tree (or '' = football):
+        # the descriptor set must cover everything that can render.
+        from apps.matches.models import Match
+
+        for sport in (
+            Match.objects.filter(tournament=tournament, deleted_at__isnull=True)
+            .values_list("sport", flat=True)
+            .distinct()
+        ):
+            d = get_definition(sport)
+            counts.setdefault(d.code, 0)
+            names.setdefault(d.code, d.display_name)
+
+        descriptors = {}
+        sports = []
+        for code in sorted(counts, key=lambda c: names[c]):
+            d = get_definition(code)
+            descriptors[code] = {
+                "key": code,
+                "name": names[code],
+                "family": d.period_model,
+                "has_draw": d.period_model == "timed",
+                "terms": d.terms,
+                "boards": [
+                    {"key": b.key, "label": b.label, "subject": b.subject,
+                     "fmt": b.fmt}
+                    for b in d.leaderboards
+                ],
+            }
+            sports.append({
+                "key": code, "name": names[code], "leaf_count": counts[code],
+            })
+        return Response({"sports": sports, "descriptors": descriptors})
+
+
 class ConstraintTypesView(GenericAPIView):
     """`GET /api/tournaments/constraint-types/` — static catalog for the UI builder."""
 

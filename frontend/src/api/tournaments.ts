@@ -435,6 +435,25 @@ export interface StandingRow {
   GA: number;
   GD: number;
   Pts: number;
+  /** Raw within-set points (set sports; 0 for football). */
+  PF_pts?: number;
+  PA_pts?: number;
+  PD_pts?: number;
+}
+
+/** One sport's SportDefinition descriptor (P1.c, /sports-meta/). */
+export interface SportDescriptor {
+  key: string;
+  name: string;
+  family: "timed" | "target";
+  has_draw: boolean;
+  terms: Record<string, string>;
+  boards: { key: string; label: string; subject: string; fmt: string }[];
+}
+
+export interface SportsMeta {
+  sports: { key: string; name: string; leaf_count: number }[];
+  descriptors: Record<string, SportDescriptor>;
 }
 
 export interface StandingsGroup {
@@ -513,6 +532,9 @@ export const tournamentsApi = {
    * (leaf_label + scorer + officials are always present in the response). */
   matchesEnriched: (id: string) =>
     api.get<ControlRoomMatch[]>(`/api/tournaments/${id}/matches/`),
+  /** The tournament's sports + their SportDefinition descriptors (P1.c). */
+  sportsMeta: (id: string) =>
+    api.get<SportsMeta>(`/api/tournaments/${id}/sports-meta/`),
   /** Standings grouped by pool. */
   /** Live leaderboards, PER SPORT (P1.b): each sport ships its own boards
    * from the SportDefinition catalog; sports never pool into one table. */

@@ -19,6 +19,7 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       get: vi.fn(),
       matches: vi.fn(),
       standings: vi.fn(),
+      sportsMeta: vi.fn(),
     },
   };
 });
@@ -78,6 +79,10 @@ beforeEach(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
   vi.mocked(tournamentsApi.standings).mockResolvedValue({ groups: [GROUP_A] });
+  vi.mocked(tournamentsApi.sportsMeta).mockResolvedValue({
+    sports: [],
+    descriptors: {},
+  });
 });
 
 describe("OpsStandingsPage", () => {
@@ -115,4 +120,49 @@ describe("OpsStandingsPage", () => {
     mount();
     expect(await screen.findByText("No fixtures yet")).toBeInTheDocument();
   });
+
+  it("renders sport-native columns for set sports (P1.c)", async () => {
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([
+      match({
+        id: "m3",
+        leaf_key: "sepak_takraw.u14",
+        group_label: "Sepak U14 Group A",
+        sport: "sepak_takraw",
+      }),
+    ]);
+    vi.mocked(tournamentsApi.standings).mockResolvedValue({
+      groups: [
+        {
+          group_label: "Sepak U14 Group A",
+          rows: [
+            {
+              team_id: "th", name: "Alpha", school: "", P: 1, W: 1, D: 0,
+              L: 0, GF: 2, GA: 0, GD: 2, Pts: 3,
+              PF_pts: 42, PA_pts: 22, PD_pts: 20,
+            },
+          ],
+        },
+      ],
+    });
+    vi.mocked(tournamentsApi.sportsMeta).mockResolvedValue({
+      sports: [{ key: "sepak_takraw", name: "Sepak Takraw", leaf_count: 1 }],
+      descriptors: {
+        sepak_takraw: {
+          key: "sepak_takraw", name: "Sepak Takraw", family: "target",
+          has_draw: false, terms: { period: "Set" }, boards: [],
+        },
+      },
+    });
+    mount();
+
+    const table = await screen.findByTestId("ops-group-Sepak U14 Group A");
+    // Set-native columns: Sets + point diff, NO draw and NO goal columns.
+    expect(within(table).getByText("Sets")).toBeInTheDocument();
+    expect(within(table).getByText("2-0")).toBeInTheDocument(); // sets W-L
+    expect(within(table).getByText("20")).toBeInTheDocument();  // PD_pts
+    expect(within(table).queryByText("D")).toBeNull();
+    expect(within(table).queryByText("GF")).toBeNull();
+    expect(within(table).queryByText("GD")).toBeNull();
+  });
+
 });

@@ -48,6 +48,7 @@ from apps.teams.views import (
     TournamentTeamsListView,
 )
 from apps.tournaments.views import (
+    TournamentSportsMetaView,
     ConstraintTypesView,
     TournamentAuditView,
     TournamentCompleteView,
@@ -83,6 +84,11 @@ urlpatterns = [
         "<uuid:tournament_id>/sports/",
         TournamentSportsView.as_view(),
         name="tournament-sports",
+    ),
+    path(
+        "<uuid:tournament_id>/sports-meta/",
+        TournamentSportsMetaView.as_view(),
+        name="tournament-sports-meta",
     ),
     path(
         "<uuid:tournament_id>/invitations/",
