@@ -928,19 +928,8 @@ export function SportsTab(): React.ReactElement {
 
   return (
     <div className="flex w-full flex-col gap-6">
-      {/* Header — the pick step is one self-titled panel; the stepper above
-          already says where you are (owner 2026-07-04: no heading + subtext). */}
-      {effectiveStep !== "pick" ? (
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold">{t("Sports")}</h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {effectiveStep === "configure"
-              ? t("Add each sport's categories. The last level is one competition.")
-              : t("Review the competitions, then create the registration form.")}
-          </p>
-        </div>
-      ) : null}
-
+      {/* No page heading on any step: the stage stepper above already places
+          you (owner 2026-07-04). */}
       {effectiveStep === "pick" ? (
         <section className="panel" aria-label={t("Choose sports")}>
           {/* One toolbar: selected count, search, and Next in a single row. */}
