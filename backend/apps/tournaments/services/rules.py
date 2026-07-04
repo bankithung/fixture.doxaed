@@ -101,9 +101,14 @@ def _validate_scoring(d: dict) -> None:
         if extra:
             raise ValueError(f"unknown goals scoring keys: {sorted(extra)}")
         return
-    unknown = set(d) - {"type", "best_of", "points", "win_by", "cap", "deciding"}
+    unknown = set(d) - {
+        "type", "best_of", "points", "win_by", "cap", "deciding", "serve",
+    }
     if unknown:
         raise ValueError(f"unknown scoring keys: {sorted(unknown)}")
+    serve = d.get("serve")
+    if serve is not None:
+        _validate_serve(serve)
     best_of = d.get("best_of", 3)
     if not (isinstance(best_of, int) and not isinstance(best_of, bool) and best_of >= 1):
         raise ValueError("scoring.best_of must be a positive integer")
@@ -113,6 +118,79 @@ def _validate_scoring(d: dict) -> None:
     deciding = d.get("deciding")
     if deciding is not None:
         _validate_set_params(deciding, "scoring.deciding")
+
+
+def _validate_serve(d) -> None:
+    """Service mechanics for set sports (P2 groundwork): how many serves one
+    side takes per turn (sepak legacy = 3, ISTAF-2024 = 1), whether serving
+    alternates every point at deuce, and the score-triggered change-of-ends
+    points (sepak: 11 regular / 8 deciding)."""
+    if not isinstance(d, dict):
+        raise ValueError("scoring.serve must be an object")
+    unknown = set(d) - {"serves_per_turn", "alternate_every_point", "change_ends_at"}
+    if unknown:
+        raise ValueError(f"unknown scoring.serve keys: {sorted(unknown)}")
+    spt = d.get("serves_per_turn", 1)
+    if not (isinstance(spt, int) and not isinstance(spt, bool) and 1 <= spt <= 9):
+        raise ValueError("scoring.serve.serves_per_turn must be an integer 1-9")
+    aep = d.get("alternate_every_point", True)
+    if not isinstance(aep, bool):
+        raise ValueError("scoring.serve.alternate_every_point must be a boolean")
+    cea = d.get("change_ends_at")
+    if cea is not None:
+        if not isinstance(cea, dict):
+            raise ValueError("scoring.serve.change_ends_at must be an object")
+        bad = set(cea) - {"regular", "deciding"}
+        if bad:
+            raise ValueError(f"unknown change_ends_at keys: {sorted(bad)}")
+        for k, v in cea.items():
+            if not (isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 99):
+                raise ValueError(f"change_ends_at.{k} must be an integer 0-99")
+
+
+_FORMAT_EVENT_TYPES = {"regu", "doubles", "quad", "team", "singles", "pairs"}
+
+
+def _validate_format(d) -> None:
+    """Per-game competition format (P2 groundwork): roster shape + in-match
+    allowances (sepak regu = 3 a side, 2 subs and 1 timeout per set...).
+    Any NvN is legal — presets, never prisons."""
+    if not isinstance(d, dict):
+        raise ValueError("format must be an object")
+    unknown = set(d) - {
+        "players_per_side", "reserves_max", "subs_per_set",
+        "timeouts_per_set", "event_type",
+    }
+    if unknown:
+        raise ValueError(f"unknown format keys: {sorted(unknown)}")
+    for key, hi in (
+        ("players_per_side", 22), ("reserves_max", 22),
+        ("subs_per_set", 22), ("timeouts_per_set", 9),
+    ):
+        v = d.get(key)
+        if v is not None and not (
+            isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= hi
+        ):
+            raise ValueError(f"format.{key} must be an integer 0-{hi}")
+    pps = d.get("players_per_side")
+    if pps is not None and pps < 1:
+        raise ValueError("format.players_per_side must be at least 1")
+    et = d.get("event_type")
+    if et is not None and et not in _FORMAT_EVENT_TYPES:
+        raise ValueError(
+            f"format.event_type must be one of {sorted(_FORMAT_EVENT_TYPES)}"
+        )
+
+
+def _validate_leaf_discipline(d) -> None:
+    if not isinstance(d, dict):
+        raise ValueError("discipline must be an object")
+    unknown = set(d) - {"yellow_suspension_threshold", "red_matches_banned"}
+    if unknown:
+        raise ValueError(f"unknown discipline keys: {sorted(unknown)}")
+    for k, v in d.items():
+        if not (isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 99):
+            raise ValueError(f"discipline.{k} must be an integer 0-99")
 
 
 def _validate_tiebreakers(tbs) -> None:
@@ -135,7 +213,7 @@ def _merge_by_leaf(out: dict, partial) -> None:
             continue
         if not isinstance(entry, dict):
             raise ValueError(f"by_leaf[{leaf}] must be an object")
-        unknown = set(entry) - {"scoring", "tiebreakers"}
+        unknown = set(entry) - {"scoring", "tiebreakers", "format", "discipline"}
         if unknown:
             raise ValueError(f"unknown by_leaf keys: {sorted(unknown)}")
         cur = dict(out.get(leaf) or {})
@@ -151,6 +229,16 @@ def _merge_by_leaf(out: dict, partial) -> None:
             else:
                 _validate_tiebreakers(entry["tiebreakers"])
                 cur["tiebreakers"] = entry["tiebreakers"]
+        for key, validate in (
+            ("format", _validate_format),
+            ("discipline", _validate_leaf_discipline),
+        ):
+            if key in entry:
+                if entry[key] is None:
+                    cur.pop(key, None)
+                else:
+                    validate(entry[key])
+                    cur[key] = entry[key]
         if cur:
             out[leaf] = cur
         else:

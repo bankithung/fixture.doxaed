@@ -66,3 +66,28 @@ def test_ws_match_room_receives_broadcast():
         await comm.disconnect()
 
     async_to_sync(flow)()
+
+@pytest.mark.django_db
+def test_snapshot_serves_sport_meta():
+    """P1.d — the snapshot carries the SportDefinition slice (family/terms)
+    so consoles and viewers render sport-natively without hardcoding."""
+    admin = _verified("meta@test.local")
+    t = create_tournament(user=admin, name="Meta Cup")
+    a, b = register_school(
+        tournament=t, school_name="S",
+        teams=[{"name": "A", "players": []}, {"name": "B", "players": []}],
+    )
+    tt = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=a, away_team=b,
+        sport="table_tennis",
+    )
+    client = APIClient()
+    meta = client.get(f"/api/live/match/{tt.id}/").json()["match"]["sport_meta"]
+    assert meta["family"] == "target"
+    assert meta["terms"]["period"] == "Game"
+
+    fb = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=a, away_team=b,
+    )
+    meta = client.get(f"/api/live/match/{fb.id}/").json()["match"]["sport_meta"]
+    assert meta["key"] == "football" and meta["family"] == "timed"

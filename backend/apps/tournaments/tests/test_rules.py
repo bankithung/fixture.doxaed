@@ -114,7 +114,53 @@ def test_by_leaf_rejects_unknown_tiebreaker():
 
 def test_by_leaf_rejects_unknown_inner_key():
     with pytest.raises(ValueError):
-        merge_rules({"by_leaf": {"x": {"discipline": {}}}})
+        merge_rules({"by_leaf": {"x": {"vibes": {}}}})
+
+
+def test_by_leaf_accepts_sport_vocabulary():
+    """P2 groundwork: serve mechanics + per-game format/discipline are legal
+    per-leaf rule blocks (sepak regu config; ISTAF regime presets)."""
+    out = merge_rules({
+        "by_leaf": {
+            "sepak_takraw.u14": {
+                "scoring": {
+                    "type": "sets", "best_of": 3, "points": 21, "win_by": 2,
+                    "cap": 25,
+                    "deciding": {"points": 15, "win_by": 2, "cap": 17},
+                    "serve": {
+                        "serves_per_turn": 3,
+                        "alternate_every_point": False,
+                        "change_ends_at": {"regular": 11, "deciding": 8},
+                    },
+                },
+                "format": {
+                    "players_per_side": 3, "reserves_max": 2,
+                    "subs_per_set": 2, "timeouts_per_set": 1,
+                    "event_type": "regu",
+                },
+                "discipline": {"yellow_suspension_threshold": 2},
+            },
+        },
+    })
+    leaf = out["by_leaf"]["sepak_takraw.u14"]
+    assert leaf["scoring"]["serve"]["serves_per_turn"] == 3
+    assert leaf["format"]["event_type"] == "regu"
+    assert leaf["discipline"]["yellow_suspension_threshold"] == 2
+
+
+def test_serve_and_format_blocks_are_validated():
+    with pytest.raises(ValueError):  # serves_per_turn must be 1-9
+        merge_rules({"by_leaf": {"x": {"scoring": {
+            "type": "sets", "points": 15, "serve": {"serves_per_turn": 0},
+        }}}})
+    with pytest.raises(ValueError):  # unknown serve key
+        merge_rules({"by_leaf": {"x": {"scoring": {
+            "type": "sets", "points": 15, "serve": {"spin": True},
+        }}}})
+    with pytest.raises(ValueError):  # players_per_side >= 1
+        merge_rules({"by_leaf": {"x": {"format": {"players_per_side": 0}}}})
+    with pytest.raises(ValueError):  # unknown event_type
+        merge_rules({"by_leaf": {"x": {"format": {"event_type": "squad"}}}})
 
 
 def test_can_edit_rules_in_draft_then_frozen():

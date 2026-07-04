@@ -21,6 +21,21 @@ def _name(person):
     return person.display_name or person.full_name
 
 
+def _sport_meta(m) -> dict:
+    """The SportDefinition slice a console/viewer needs to render this match
+    sport-natively: family (timed|target), terms, definition version."""
+    from apps.matches.services.sport_defs import get_definition
+
+    d = get_definition(m.sport)
+    return {
+        "key": d.code,
+        "name": d.display_name,
+        "family": d.period_model,
+        "terms": d.terms,
+        "version": d.version,
+    }
+
+
 def _team(t, include_players: bool):
     if t is None:
         return None
@@ -95,6 +110,10 @@ class LiveMatchSnapshotView(GenericAPIView):
                     "sport": m.sport,
                     "set_scores": m.set_scores,
                     "scoring": rules_for_match(m),
+                    # P1.d: the sport's console metadata — the client picks
+                    # its console module (and terminology) from this, never
+                    # from hardcoded sport checks.
+                    "sport_meta": _sport_meta(m),
                 },
                 "events": [
                     {
