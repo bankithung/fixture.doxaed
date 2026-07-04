@@ -16,6 +16,13 @@ from apps.organizations import views
 app_name = "organizations"
 
 
+from apps.teams.views_houses import (
+    OrgSeasonsView,
+    SeasonGroupsView,
+    SeasonHousePointsView,
+    SeasonHouseTableView,
+)
+
 urlpatterns = [
     # GET / POST /api/orgs/
     path("", views.OrgListCreateView.as_view(), name="org-list"),
@@ -34,6 +41,23 @@ urlpatterns = [
 # Re-order: put verb routes BEFORE the bare slug match so colon verbs win.
 urlpatterns = [
     path("", views.OrgListCreateView.as_view(), name="org-list"),
+    # P4 — institution-operator seasons, houses and the house-points ledger.
+    path("<uuid:uuid>/seasons/", OrgSeasonsView.as_view(), name="org-seasons"),
+    path(
+        "<uuid:uuid>/seasons/<uuid:season_id>/groups/",
+        SeasonGroupsView.as_view(),
+        name="org-season-groups",
+    ),
+    path(
+        "<uuid:uuid>/seasons/<uuid:season_id>/house-table/",
+        SeasonHouseTableView.as_view(),
+        name="org-season-house-table",
+    ),
+    path(
+        "<uuid:uuid>/seasons/<uuid:season_id>/house-points/",
+        SeasonHousePointsView.as_view(),
+        name="org-season-house-points",
+    ),
     # Colon-verbs (UUID-only)
     path(
         "<uuid:uuid>:change_slug/",

@@ -117,3 +117,46 @@ def test_day_zero_table_shows_all_houses_at_zero():
     assert [(r["name"], r["points"], r["entries"]) for r in table] == [
         ("Blue House", 0, 0), ("Red House", 0, 0),
     ]
+
+
+def test_house_api_end_to_end():
+    """P4 API: seasons + groups + judged award + live table, org-scoped with
+    no existence leak for outsiders."""
+    from rest_framework.test import APIClient
+
+    u, t, season, red, blue = _season()
+    org = t.organization
+    c = APIClient()
+    c.force_authenticate(user=u)
+
+    # Create a fresh season + a house through the API.
+    r = c.post(f"/api/orgs/{org.id}/seasons/",
+               {"label": "2027-28", "is_current": True}, format="json")
+    assert r.status_code == 201
+    sid = r.data["id"]
+    r = c.post(f"/api/orgs/{org.id}/seasons/{sid}/groups/",
+               {"name": "Green House", "colour": "green"}, format="json")
+    assert r.status_code == 201
+    gid = r.data["id"]
+
+    r = c.post(
+        f"/api/orgs/{org.id}/seasons/{sid}/house-points/",
+        {"group_id": gid, "points": 10, "reason": "March past shield",
+         "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 201
+
+    r = c.get(f"/api/orgs/{org.id}/seasons/{sid}/house-table/")
+    assert r.status_code == 200
+    assert r.data["table"][0]["name"] == "Green House"
+    assert r.data["table"][0]["points"] == 10
+
+    # Outsider: 404, never 403 (no existence leak).
+    outsider = User.objects.create_user(
+        email="outsider-houses@test.local", password="FixtureDemo2026!",
+        is_active=True,
+    )
+    c2 = APIClient()
+    c2.force_authenticate(user=outsider)
+    assert c2.get(f"/api/orgs/{org.id}/seasons/").status_code == 404
