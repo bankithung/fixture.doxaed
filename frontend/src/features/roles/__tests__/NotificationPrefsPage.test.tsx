@@ -15,6 +15,9 @@ vi.mock("@/api/notifications", async (importOriginal) => {
       ...actual.notificationsApi,
       prefs: vi.fn(),
       updatePrefs: vi.fn(),
+      list: vi.fn(),
+      markRead: vi.fn(),
+      markAllRead: vi.fn(),
     },
   };
 });
@@ -56,6 +59,31 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(notificationsApi.prefs).mockResolvedValue(PREFS);
   vi.mocked(notificationsApi.updatePrefs).mockResolvedValue(PREFS);
+  vi.mocked(notificationsApi.list).mockResolvedValue({
+    results: [
+      {
+        id: "n1",
+        kind: "match_assignment",
+        title: "You are assigned to score: A vs B",
+        body: "Cup A",
+        url: "/tournaments/t1/matches/m1",
+        read_at: null,
+        created_at: "2026-07-04T10:00:00Z",
+        tournament: null,
+      },
+      {
+        id: "n2",
+        kind: "dispute_raised",
+        title: "New dispute raised",
+        body: "",
+        url: "",
+        read_at: "2026-07-04T11:00:00Z",
+        created_at: "2026-07-03T10:00:00Z",
+        tournament: null,
+      },
+    ],
+    unread_count: 1,
+  });
 });
 
 describe("NotificationPrefsPage", () => {
@@ -98,6 +126,24 @@ describe("NotificationPrefsPage", () => {
     );
     await waitFor(() =>
       expect(toggle).toHaveAttribute("aria-checked", "false"),
+    );
+  });
+
+  it("shows the full inbox with unread state and mark-all-read", async () => {
+    renderPage();
+    const inbox = within(await screen.findByTestId("notifications-inbox"));
+    expect(
+      inbox.getByText("You are assigned to score: A vs B"),
+    ).toBeInTheDocument();
+    expect(inbox.getByText("New dispute raised")).toBeInTheDocument();
+    expect(inbox.getByText("1 unread")).toBeInTheDocument();
+    // Deep-linked rows are links to their target.
+    expect(
+      inbox.getByRole("link", { name: /assigned to score/i }),
+    ).toHaveAttribute("href", "/tournaments/t1/matches/m1");
+    await userEvent.click(inbox.getByRole("button", { name: /mark all read/i }));
+    await waitFor(() =>
+      expect(notificationsApi.markAllRead).toHaveBeenCalled(),
     );
   });
 

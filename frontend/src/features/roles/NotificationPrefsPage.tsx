@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BellRing, Mail, Newspaper, Radio } from "lucide-react";
+import { ArrowLeft, BellRing, Inbox, Mail, Newspaper, Radio } from "lucide-react";
 import {
   notificationsApi,
   type NotificationPrefs,
@@ -8,16 +8,19 @@ import {
 } from "@/api/notifications";
 import { useToast } from "@/components/ui/toast";
 import { BentoCard, BentoGrid } from "@/features/dashboard/BentoCard";
+import { relativeTime } from "@/features/layout/OrgDashboardPage";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
 /**
- * `/me/notifications` — live notification preferences (Phase 1B, shipped).
- * The kind catalog comes from the server (GET /api/notifications/prefs/);
- * every switch saves immediately with an optimistic flip and rolls back on
- * error. In-app off = the bell stays silent for that event; email on = a
- * branded email the moment it happens; digest = one daily unread summary.
+ * `/me/notifications` — the notifications center: the FULL inbox (every
+ * notification, not the bell's dropdown slice) plus live delivery
+ * preferences. The kind catalog comes from the server
+ * (GET /api/notifications/prefs/); every switch saves immediately with an
+ * optimistic flip and rolls back on error. In-app off = the bell stays
+ * silent for that event; email on = a branded email the moment it happens;
+ * digest = one daily unread summary.
  */
 
 const PREFS_KEY = ["notification-prefs"];
@@ -65,6 +68,23 @@ export function NotificationPrefsPage(): React.ReactElement {
     queryKey: PREFS_KEY,
     queryFn: notificationsApi.prefs,
   });
+  // Shares the bell's cache: read/mark states stay in lockstep.
+  const listQuery = useQuery({
+    queryKey: ["notifications"],
+    queryFn: notificationsApi.list,
+  });
+  const invalidateList = () =>
+    qc.invalidateQueries({ queryKey: ["notifications"] });
+  const markAll = useMutation({
+    mutationFn: notificationsApi.markAllRead,
+    onSuccess: invalidateList,
+  });
+  const markOne = useMutation({
+    mutationFn: (id: string) => notificationsApi.markRead(id),
+    onSuccess: invalidateList,
+  });
+  const inboxItems = listQuery.data?.results ?? [];
+  const unread = listQuery.data?.unread_count ?? 0;
 
   const save = useMutation({
     mutationFn: (payload: NotificationPrefsUpdate) =>
@@ -128,7 +148,111 @@ export function NotificationPrefsPage(): React.ReactElement {
         </p>
       ) : (
         <BentoGrid className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-          <BentoCard className="animate-fade-up lg:col-span-2" testId="prefs-matrix">
+          {/* The full inbox — everything, not the bell's dropdown slice. */}
+          <BentoCard
+            className="animate-fade-up lg:order-1 lg:col-span-2"
+            testId="notifications-inbox"
+          >
+            <div className="panel-header gap-2">
+              <Inbox aria-hidden="true" className="h-4 w-4 text-primary" />
+              <h2 className="panel-title">{t("Inbox")}</h2>
+              {unread > 0 ? (
+                <span className="rounded-full bg-primary/15 px-2 py-0.5 font-tabular text-[11px] font-medium text-primary">
+                  {unread} {t("unread")}
+                </span>
+              ) : null}
+              {unread > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => markAll.mutate()}
+                  className="ml-auto text-xs font-medium text-primary hover:underline"
+                >
+                  {t("Mark all read")}
+                </button>
+              ) : null}
+            </div>
+            {listQuery.isLoading ? (
+              <div className="h-32 animate-pulse" />
+            ) : inboxItems.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
+                <Inbox aria-hidden="true" className="h-7 w-7 text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">
+                  {t("No notifications yet. New alerts will land here.")}
+                </p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-border">
+                {inboxItems.map((n) => {
+                  const row = (
+                    <>
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
+                          n.read_at ? "bg-transparent" : "bg-primary",
+                        )}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span
+                          className={cn(
+                            "block truncate text-sm",
+                            n.read_at
+                              ? "text-muted-foreground"
+                              : "font-medium text-foreground",
+                          )}
+                        >
+                          {n.title}
+                        </span>
+                        {n.body ? (
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {n.body}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="shrink-0 font-tabular text-xs text-muted-foreground">
+                        {relativeTime(n.created_at)}
+                      </span>
+                    </>
+                  );
+                  const cls = cn(
+                    "flex w-full items-start gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-accent/40",
+                    !n.read_at && "bg-primary/[0.03]",
+                  );
+                  return (
+                    <li key={n.id}>
+                      {n.url ? (
+                        <Link
+                          to={n.url}
+                          className={cls}
+                          onClick={() => {
+                            if (!n.read_at) markOne.mutate(n.id);
+                          }}
+                        >
+                          {row}
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          className={cls}
+                          onClick={() => {
+                            if (!n.read_at) markOne.mutate(n.id);
+                          }}
+                        >
+                          {row}
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </BentoCard>
+
+          <BentoCard
+            className="animate-fade-up lg:order-3 lg:col-span-3"
+            style={{ animationDelay: "120ms" }}
+            testId="prefs-matrix"
+          >
             <div className="panel-header gap-2">
               <BellRing aria-hidden="true" className="h-4 w-4 text-primary" />
               <h2 className="panel-title">{t("Alerts by event")}</h2>
@@ -179,7 +303,7 @@ export function NotificationPrefsPage(): React.ReactElement {
           </BentoCard>
 
           <BentoCard
-            className="animate-fade-up"
+            className="animate-fade-up lg:order-2"
             style={{ animationDelay: "60ms" }}
             testId="prefs-digest"
           >

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell } from "lucide-react";
 import { notificationsApi } from "@/api/notifications";
 import { useEventStream } from "@/lib/useEventStream";
+import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 
 /** Notification bell: unread badge + dropdown panel with mark-read actions. */
@@ -123,6 +124,16 @@ export function NotificationBell(): React.ReactElement {
                 </button>
               ))
             )}
+          </div>
+          <div className="border-t p-1">
+            <Link
+              to={routes.myNotifications()}
+              onClick={() => setOpen(false)}
+              data-testid="view-all-notifications"
+              className="block rounded-sm px-3 py-1.5 text-center text-sm font-medium text-primary hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+            >
+              {t("View all notifications")}
+            </Link>
           </div>
         </div>
       ) : null}
