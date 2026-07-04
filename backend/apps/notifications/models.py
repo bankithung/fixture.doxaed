@@ -35,3 +35,28 @@ class Notification(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"{self.kind} -> {self.user_id}"
+
+
+class NotificationPreference(models.Model):
+    """Per-user delivery preferences (Phase 1B). `prefs` maps a notification
+    kind to its channel switches ({"match_assignment": {"in_app": true,
+    "email": false}, ...}); kinds absent from the map fall back to the
+    catalog defaults in services/prefs.py, so newly-added kinds work without
+    a data migration. `digest` opts into the daily unread-summary email."""
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notification_preference",
+    )
+    prefs = models.JSONField(default=dict, blank=True)
+    digest = models.BooleanField(default=False)
+    digest_sent_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "notifications_preference"
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"prefs -> {self.user_id}"

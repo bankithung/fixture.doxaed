@@ -37,14 +37,52 @@ def _publish(user_id, notification_id) -> None:
         logger.exception("notification SSE fan-out failed")
 
 
+def _email(user, kind: str, title: str, body: str, url: str) -> None:
+    """Post-commit immediate email (the user opted this kind into email).
+    Branded template; failure is logged, never raised (mail must not break
+    the write that triggered it)."""
+    try:
+        from django.conf import settings
+
+        from apps.accounts.services.mailer import send_branded_email
+
+        base = getattr(settings, "FRONTEND_BASE_URL", "").rstrip("/")
+        send_branded_email(
+            subject=title,
+            to=user.email,
+            template="notification",
+            context={
+                "title": title,
+                "body": body,
+                "action_url": f"{base}{url}" if url else "",
+            },
+            fail_silently=True,
+        )
+    except Exception:  # pragma: no cover - mail is best-effort
+        logger.exception("notification email failed (%s to %s)", kind, user.id)
+
+
 def create_notification(
     *, user, kind: str, title: str, body: str = "", url: str = "",
     tournament=None, event_id: _uuid.UUID | None = None,
-) -> Notification:
+) -> Notification | None:
+    """Create the durable in-app row and fan out per the user's preferences
+    (services/prefs.py): in-app off -> no row, no ping; email on -> a branded
+    email rides the same commit. Returns None when in-app is suppressed."""
+    from apps.notifications.services.prefs import allows
+
     if event_id is not None:
         prior = Notification.objects.filter(event_id=event_id).first()
         if prior is not None:
             return prior
+
+    if user.email and allows(user, kind, "email"):
+        transaction.on_commit(
+            lambda: _email(user, kind, title, body, url)
+        )
+
+    if not allows(user, kind, "in_app"):
+        return None
     notif = Notification.objects.create(
         user=user, kind=kind, title=title[:200], body=body, url=url[:300],
         tournament=tournament, event_id=event_id,

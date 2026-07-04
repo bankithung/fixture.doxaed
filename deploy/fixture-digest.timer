@@ -1,0 +1,9 @@
+[Unit]
+Description=Run the Fixture notification digest daily at 17:30 IST (12:00 UTC)
+
+[Timer]
+OnCalendar=*-*-* 12:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

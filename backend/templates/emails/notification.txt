@@ -1,0 +1,6 @@
+{{ title }}
+
+{% if body %}{{ body }}
+
+{% endif %}{% if action_url %}Open in Fixture: {{ action_url }}
+{% endif %}

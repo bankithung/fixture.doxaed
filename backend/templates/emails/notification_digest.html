@@ -1,0 +1,30 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Your Fixture digest{% endblock %}
+{% block preheader %}{{ count }} notification{{ count|pluralize }} you have not read yet.{% endblock %}
+
+{% block content %}
+  <h1 style="margin:0 0 16px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:24px; line-height:32px; font-weight:700; color:#0f172a; letter-spacing:-0.3px;">
+    While you were away
+  </h1>
+  <p style="margin:0 0 16px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#334155;">
+    {{ count }} notification{{ count|pluralize }} since your last digest:
+  </p>
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px 0; background:#f8fafc; border-radius:8px; width:100%;">
+    <tr><td style="padding:14px 18px;">
+      {% for item in items %}
+      <p style="margin:0 0 10px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; line-height:22px; color:#334155;">
+        <strong style="color:#0f172a;">{{ item.title }}</strong>{% if item.body %}<br>{{ item.body|truncatechars:140 }}{% endif %}
+      </p>
+      {% endfor %}
+      {% if more %}
+      <p style="margin:0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#64748b;">
+        and {{ more }} more in the app.
+      </p>
+      {% endif %}
+    </td></tr>
+  </table>
+  <p style="margin:0;">
+    <a class="btn" href="{{ bell_url }}" style="display:inline-block; background:#6840dd; color:#ffffff; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; line-height:20px; padding:12px 22px; border-radius:8px; text-decoration:none;">Open your notifications</a>
+  </p>
+{% endblock %}

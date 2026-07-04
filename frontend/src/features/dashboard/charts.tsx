@@ -371,7 +371,7 @@ export function BreakdownTable({
               </span>
               <span aria-hidden="true" className="mt-1 block w-16">
                 <span
-                  className="chart-bar block h-1 rounded-sm bg-chart-1"
+                  className="chart-bar block h-2 rounded-[1px] bg-chart-1"
                   style={{
                     width: `${Math.max(3, ((row.values[0] ?? 0) / maxTotal) * 100)}%`,
                     transitionDelay: `${ri * 50}ms`,

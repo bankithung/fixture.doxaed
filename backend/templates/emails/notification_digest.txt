@@ -1,0 +1,10 @@
+While you were away
+
+{{ count }} notification{{ count|pluralize }} since your last digest:
+
+{% for item in items %}- {{ item.title }}{% if item.body %} : {{ item.body|truncatechars:140 }}{% endif %}
+{% endfor %}{% if more %}
+and {{ more }} more in the app.
+{% endif %}
+
+Open your notifications: {{ bell_url }}

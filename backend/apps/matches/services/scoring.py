@@ -82,26 +82,14 @@ def _notify_assignment(user_id, match_id, tournament_id, verb: str) -> None:
             when = f" on {match.scheduled_at.strftime('%d %b %H:%M')} UTC"
         title = f"You are assigned to {verb}: {home} vs {away}"
         url = f"/tournaments/{tournament_id}/matches/{match_id}"
+        # Email now rides the dispatcher per the user's notification prefs
+        # (match_assignment defaults email ON), replacing the ad-hoc
+        # send_mail that ignored preferences.
         create_notification(
             user=user, kind="match_assignment", title=title,
             body=f"{match.tournament.name}{when}. Open your console from this link.",
             url=url, tournament=match.tournament,
         )
-        if user.email:
-            from django.conf import settings
-            from django.core.mail import send_mail
-
-            send_mail(
-                subject=title,
-                message=(
-                    f"{match.tournament.name}\n\n"
-                    f"{home} vs {away}{when}.\n"
-                    f"Open your match console: https://fixture.doxaed.com{url}\n"
-                ),
-                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
-                recipient_list=[user.email],
-                fail_silently=True,  # in-app row is the durable record
-            )
     except Exception:  # pragma: no cover - notification must never block ops
         import logging
 
