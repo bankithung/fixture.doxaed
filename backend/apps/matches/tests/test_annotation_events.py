@@ -123,3 +123,25 @@ def test_suspended_player_cannot_be_attributed_events():
     record_match_event(
         match=m, event_type=MatchEventType.ACE, team=a, player=player, by=admin,
     )
+
+
+def test_event_detail_persists_through_the_api():
+    """P2: the consoles' fault reasons ride event.detail — DRF was silently
+    dropping the field before the serializer accepted it."""
+    from rest_framework.test import APIClient
+
+    admin, m, a = _live_sepak()
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    r = c.post(
+        f"/api/matches/{m.id}/events/",
+        {"event_type": "point", "side": "home",
+         "detail": {"reason": "three_touch", "scoring_side": "home"},
+         "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code in (200, 201)
+    ev = MatchEvent.objects.filter(match=m, event_type="point").latest(
+        "sequence_no"
+    )
+    assert ev.detail == {"reason": "three_touch", "scoring_side": "home"}

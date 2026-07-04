@@ -57,6 +57,12 @@ export interface LiveSnapshot {
       win_by?: number;
       cap?: number | null;
       deciding?: Record<string, unknown> | null;
+      /** Serve rotation + change-ends triggers (set sports, P2 consoles). */
+      serve?: {
+        serves_per_turn?: number;
+        alternate_every_point?: boolean;
+        change_ends_at?: { regular?: number; deciding?: number } | null;
+      } | null;
     } | null;
   };
   events: LiveEvent[];
@@ -78,6 +84,8 @@ export const liveApi = {
       event_id: string;
       /** Undo: sequence_no of the event a "void" reverses. */
       voids_seq?: number;
+      /** Annotation context (e.g. rally reason + scoring side). */
+      detail?: Record<string, unknown>;
     },
   ) => api.post(`/api/matches/${matchId}/events/`, payload),
   /** Record the penalty-shootout result for a level knockout match, then

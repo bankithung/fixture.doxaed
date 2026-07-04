@@ -59,7 +59,10 @@ describe("MatchConsolePage", () => {
   it("amends a completed set result with a mandatory reason (H3)", async () => {
     vi.mocked(liveApi.snapshot).mockResolvedValue(
       snap("completed", {
-        sport: "table_tennis",
+        // A target-family sport WITHOUT a native console module, so these
+        // chassis tests keep exercising the generic set surface (P2 gave
+        // table_tennis and sepak_takraw native consoles of their own).
+        sport: "badminton",
         scoring: { type: "sets", best_of: 3, points: 11, win_by: 2 },
         set_scores: [
           [11, 8],
@@ -251,7 +254,7 @@ describe("MatchConsolePage", () => {
   it("shows set entry instead of the goal palette for set sports", async () => {
     vi.mocked(liveApi.snapshot).mockResolvedValue(
       snap("live", {
-        sport: "table_tennis",
+        sport: "badminton",
         scoring: { type: "sets", best_of: 5, points: 11, win_by: 2 },
         set_scores: [],
       }),
@@ -280,7 +283,7 @@ describe("MatchConsolePage", () => {
   it("tap scoring: +/- moves points by the chosen step and auto-saves live", async () => {
     vi.mocked(liveApi.snapshot).mockResolvedValue(
       snap("live", {
-        sport: "table_tennis",
+        sport: "badminton",
         scoring: { type: "sets", best_of: 3, points: 11, win_by: 2 },
         set_scores: [],
       }),
@@ -317,7 +320,7 @@ describe("MatchConsolePage", () => {
   it("tap scoring stays local while the match has not started", async () => {
     vi.mocked(liveApi.snapshot).mockResolvedValue(
       snap("scheduled", {
-        sport: "table_tennis",
+        sport: "badminton",
         scoring: { type: "sets", best_of: 3, points: 11, win_by: 2 },
         set_scores: [],
       }),

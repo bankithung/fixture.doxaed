@@ -499,6 +499,7 @@ class RecordMatchEventView(GenericAPIView):
                 player=player,
                 related_player=related_player,
                 minute=ser.validated_data.get("minute"),
+                detail=ser.validated_data.get("detail"),
                 by=request.user,
                 event_id=ser.validated_data.get("event_id"),
                 request=request,

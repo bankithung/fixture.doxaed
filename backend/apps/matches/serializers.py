@@ -111,6 +111,16 @@ class RecordEventSerializer(serializers.Serializer):
     # VOID target: the sequence_no of the event being reversed (P7a undo —
     # void_match_event was unreachable from the API before this field).
     voids_seq = serializers.IntegerField(required=False, min_value=1)
+    # Sport-specific annotation payload (P2): fault reasons, scoring side,
+    # serve context. Small structured dict; DRF was silently DROPPING it.
+    detail = serializers.DictField(required=False)
+
+    def validate_detail(self, value):
+        import json
+
+        if len(json.dumps(value)) > 1000:
+            raise serializers.ValidationError("detail_too_large")
+        return value
 
 
 class RecordShootoutSerializer(serializers.Serializer):
