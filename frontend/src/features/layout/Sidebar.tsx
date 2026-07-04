@@ -17,8 +17,10 @@ export interface TournamentContext {
 
 const NAV_LINK = (isActive: boolean, collapsed: boolean): string =>
   cn(
-    "group relative flex items-center gap-3 rounded-lg py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-    collapsed ? "justify-center px-0" : "px-3",
+    "group relative flex rounded-lg text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    collapsed
+      ? "flex-col items-center gap-0.5 px-1 py-1.5"
+      : "items-center gap-3 px-3 py-2",
     isActive
       ? "bg-accent font-medium text-accent-foreground"
       : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
@@ -39,13 +41,17 @@ function railNavLink(item: NavItem, collapsed: boolean): React.ReactElement {
             : undefined
         }
         className={cn(
-          "group relative flex cursor-not-allowed items-start gap-3 rounded-lg py-2 text-sm text-muted-foreground/40",
-          collapsed ? "justify-center px-0" : "px-3",
+          "group relative flex cursor-not-allowed rounded-lg text-sm text-muted-foreground/40",
+          collapsed
+            ? "flex-col items-center gap-0.5 px-1 py-1.5"
+            : "items-start gap-3 px-3 py-2",
         )}
       >
         <Lock aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
         {collapsed ? (
-          <span className="sr-only">{item.label}</span>
+          <span className="w-full truncate text-center text-[10px] leading-tight">
+            {item.label}
+          </span>
         ) : (
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate">{item.label}</span>
@@ -79,7 +85,9 @@ function railNavLink(item: NavItem, collapsed: boolean): React.ReactElement {
           <Icon aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
           {collapsed ? (
             <>
-              <span className="sr-only">{item.label}</span>
+              <span className="w-full truncate text-center text-[10px] leading-tight">
+                {item.label}
+              </span>
               {item.badge ? (
                 <span
                   aria-hidden="true"
@@ -129,7 +137,7 @@ export function Sidebar({
     <aside
       className={cn(
         "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border bg-card transition-[width] duration-200 md:flex print:!hidden",
-        collapsed ? "w-16" : "w-60 lg:w-64",
+        collapsed ? "w-20" : "w-60 lg:w-64",
       )}
     >
       <div
@@ -207,12 +215,16 @@ export function Sidebar({
           to={routes.tournamentNew()}
           title={collapsed ? t("New tournament") : undefined}
           className={cn(
-            "flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-            collapsed ? "px-0" : "px-3",
+            "flex w-full items-center justify-center rounded-lg bg-primary font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            collapsed ? "flex-col gap-0.5 px-0 py-1.5" : "gap-2 px-3 py-2 text-sm",
           )}
         >
           <Plus aria-hidden="true" className="h-4 w-4 shrink-0" />
-          {collapsed ? null : t("New tournament")}
+          {collapsed ? (
+            <span className="text-[10px] leading-tight">{t("New")}</span>
+          ) : (
+            t("New tournament")
+          )}
         </Link>
       </div>
     </aside>
