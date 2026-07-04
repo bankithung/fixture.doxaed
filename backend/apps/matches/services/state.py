@@ -120,6 +120,8 @@ def transition_match(
             target_type="match",
             target_id=locked.id,
             organization_id=locked.organization_id,
+            tournament_id=locked.tournament_id,
+            match_id=locked.id,
             reason=reason,
             payload_before={"status": frm},
             payload_after={"status": to_status},

@@ -402,6 +402,13 @@ class OrgMemberRemoveView(APIView):
                 organization_id=org.id,
                 request=request,
             )
+            # A removed member must lose module access NOW, not at cache TTL.
+            from django.db import transaction
+
+            from apps.permissions.services.resolver import invalidate_cache
+
+            uid, oid = membership.user_id, org.id
+            transaction.on_commit(lambda: invalidate_cache(uid, oid))
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

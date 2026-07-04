@@ -572,6 +572,8 @@ class RecordShootoutView(GenericAPIView):
                 target_type="match",
                 target_id=match.id,
                 organization_id=match.organization_id,
+                tournament_id=match.tournament_id,
+                match_id=match.id,
                 payload_before=before,
                 payload_after={
                     "home_pens": match.home_pens, "away_pens": match.away_pens

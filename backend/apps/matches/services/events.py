@@ -183,6 +183,8 @@ def record_match_event(
             target_type="match",
             target_id=locked.id,
             organization_id=locked.organization_id,
+            tournament_id=locked.tournament_id,
+            match_id=locked.id,
             idempotency_key=event_id,
             payload_after={
                 "type": str(event_type),

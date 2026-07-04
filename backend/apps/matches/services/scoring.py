@@ -47,6 +47,8 @@ def assign_scorer(*, match: Match, user, by=None, request=None) -> Match:
             target_type="match",
             target_id=match.id,
             organization_id=match.organization_id,
+            tournament_id=match.tournament_id,
+            match_id=match.id,
             payload_after={"scorer_id": str(user.id) if user else None},
             request=request,
         )
@@ -153,6 +155,8 @@ def record_score(
             target_type="match",
             target_id=locked.id,
             organization_id=locked.organization_id,
+            tournament_id=locked.tournament_id,
+            match_id=locked.id,
             idempotency_key=event_id,
             payload_before=before,
             payload_after={"home": int(home_score), "away": int(away_score)},

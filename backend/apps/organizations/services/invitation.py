@@ -321,6 +321,12 @@ def _accept_invitation_row(inv: AdminInvitation, accepting_user, request):
             "organization_id": str(org.id),
             "role": inv.role,
         }
+        # A fresh/reactivated membership must resolve modules immediately,
+        # not after the resolver cache TTL.
+        from apps.permissions.services.resolver import invalidate_cache
+
+        uid, oid = accepting_user.id, org.id
+        transaction.on_commit(lambda: invalidate_cache(uid, oid))
 
     inv.status = InviteStatus.ACCEPTED
     inv.accepted_at = timezone.now()

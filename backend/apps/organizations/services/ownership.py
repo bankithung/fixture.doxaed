@@ -96,6 +96,15 @@ def transfer_ownership(
         incoming.is_org_owner = True
         incoming.save(update_fields=["is_org_owner"])
 
+        # Both sides' resolved modules may hinge on ownership; drop the
+        # resolver cache once the swap is durable.
+        from apps.permissions.services.resolver import invalidate_cache
+
+        pairs = [(current.user_id, org.id), (incoming.user_id, org.id)]
+        transaction.on_commit(
+            lambda: [invalidate_cache(u, o) for u, o in pairs]
+        )
+
         emit_audit(
             actor_user=requested_by,
             actor_role=ActorRole.ADMIN,
