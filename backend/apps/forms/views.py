@@ -902,12 +902,21 @@ class FormResponseDetailView(GenericAPIView):
         new_status = request.data.get("status")
         if new_status not in ResponseStatus.values:
             raise DRFValidationError({"detail": "invalid_status"})
+        changed = r.status != new_status
         r.status = new_status
         r.save(update_fields=["status"])
         # A Stage-1 review decision must reach the public surfaces, which gate on
         # the mapped institution's status — keep the two in lockstep.
         if form.purpose == FormPurpose.ORGANIZATION_REGISTRATION:
             _sync_institution_from_response(r, new_status)
+        # H6: the school hears the decision (accept/reject/waitlist) by email
+        # the moment it is durable — best-effort, audited in the email ledger.
+        if changed and new_status != ResponseStatus.SUBMITTED:
+            from django.db import transaction as _tx
+
+            from apps.forms.services.notify import send_status_notice
+
+            _tx.on_commit(lambda: send_status_notice(form, r))
         return Response(FormResponseSerializer(r).data)
 
 

@@ -106,4 +106,25 @@ def submit_response(
             payload_after={"title": resp.title},
             request=request,
         )
+        # H6: the school gets a receipt the moment the write is durable —
+        # previously post-submit was a dead end (finding N6). Best-effort,
+        # audited in the email ledger, never blocks the submission.
+        rid = resp.id
+        transaction.on_commit(lambda: _send_receipt_safe(form, rid))
     return resp
+
+
+def _send_receipt_safe(form, response_id) -> None:
+    try:
+        resp = FormResponse.objects.filter(pk=response_id).first()
+        if resp is None:
+            return
+        from apps.forms.services.notify import send_submission_receipt
+
+        send_submission_receipt(form, resp)
+    except Exception:  # noqa: BLE001 — receipts must never break a submit
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "submission receipt failed for response %s", response_id
+        )

@@ -1,0 +1,9 @@
+Match schedule updated
+
+The following matches involving your teams in {{ tournament_name }} have
+changed:
+{% for line in lines %}
+- {{ line }}{% endfor %}
+{% if schedule_url %}
+Full schedule: {{ schedule_url }}
+{% endif %}

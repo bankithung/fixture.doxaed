@@ -1,0 +1,11 @@
+Registration {{ status }}
+
+{% if school_name %}Hello {{ school_name }},{% else %}Hello,{% endif %}
+
+Your registration for {{ tournament_name }} ({{ form_title }}, reference
+{{ reference }}) is now {{ status }}.
+{% if status == "rejected" or status == "waitlisted" %}
+If you believe this is a mistake, reply to the organizer or update and
+resubmit your registration while it stays open.
+{% endif %}
+{{ form_url }}

@@ -60,8 +60,9 @@ def issue_team_access_codes(
     if institution_ids:
         qs = qs.filter(id__in=list(institution_ids))
         only_missing = False  # an explicit pick always (re)issues
-    sent, no_email, skipped = 0, 0, 0
+    sent, no_email, skipped, failed = 0, 0, 0, 0
     no_email_institutions: list[dict] = []
+    failed_institutions: list[dict] = []
     base = getattr(django_settings, "PUBLIC_BASE_URL", "https://fixture.doxaed.com")
     url = f"{base}/f/{form.id}"
     for inst in qs:
@@ -76,25 +77,49 @@ def issue_team_access_codes(
             continue
         code = generate_code()
         inst.team_code_hash = make_password(code)
-        inst.team_code_sent_at = timezone.now()
-        inst.save(update_fields=["team_code_hash", "team_code_sent_at", "updated_at"])
-        send_mail(
-            subject=f"{tournament.name} · team registration code for {inst.name}",
-            message=(
-                f"Hello {inst.contact_name or inst.name},\n\n"
-                f"Team registration for {tournament.name} is open.\n\n"
-                f"Register (or update) your teams here:\n{url}\n\n"
-                f"Select \"{inst.name}\" and enter your access code:\n\n"
-                f"    {code}\n\n"
-                "Keep this code private — anyone with it can edit your "
-                "school's team registration. You can come back with the same "
-                "code to update your teams while registration stays open.\n"
-            ),
-            from_email=None,  # DEFAULT_FROM_EMAIL
-            recipient_list=[inst.contact_email.strip()],
-            fail_silently=True,
+        inst.save(update_fields=["team_code_hash", "updated_at"])
+        # C21: sent_at is stamped ONLY when the mail actually left — a failed
+        # send used to be shown as delivered. Outcome lands in the email
+        # ledger either way.
+        try:
+            send_mail(
+                subject=f"{tournament.name} · team registration code for {inst.name}",
+                message=(
+                    f"Hello {inst.contact_name or inst.name},\n\n"
+                    f"Team registration for {tournament.name} is open.\n\n"
+                    f"Register (or update) your teams here:\n{url}\n\n"
+                    f"Select \"{inst.name}\" and enter your access code:\n\n"
+                    f"    {code}\n\n"
+                    "Keep this code private — anyone with it can edit your "
+                    "school's team registration. You can come back with the same "
+                    "code to update your teams while registration stays open.\n"
+                ),
+                from_email=None,  # DEFAULT_FROM_EMAIL
+                recipient_list=[inst.contact_email.strip()],
+                fail_silently=False,
+            )
+            delivered = True
+        except Exception:  # noqa: BLE001 — one bounce must not stop the batch
+            delivered = False
+        if delivered:
+            inst.team_code_sent_at = timezone.now()
+            inst.save(update_fields=["team_code_sent_at", "updated_at"])
+            sent += 1
+        else:
+            failed += 1
+            failed_institutions.append({"id": str(inst.id), "name": inst.name})
+        emit_audit(
+            actor_user=actor,
+            actor_role=ActorRole.SYSTEM if actor is None else ActorRole.ADMIN,
+            event_type="email_sent" if delivered else "email_failed",
+            target_type="institution",
+            target_id=inst.id,
+            organization_id=tournament.organization_id,
+            tournament_id=tournament.id,
+            payload_after={
+                "kind": "team_access_code", "to": inst.contact_email.strip(),
+            },
         )
-        sent += 1
     emit_audit(
         actor_user=actor,
         actor_role=ActorRole.SYSTEM if actor is None else ActorRole.ADMIN,
@@ -102,15 +127,17 @@ def issue_team_access_codes(
         target_type="tournament",
         target_id=tournament.id,
         organization_id=tournament.organization_id,
-        payload_after={"sent": sent, "no_email": no_email, "skipped": skipped,
-                       "form_id": str(form.id)},
+        payload_after={"sent": sent, "failed": failed, "no_email": no_email,
+                       "skipped": skipped, "form_id": str(form.id)},
         request=request,
     )
     return {
         "sent": sent,
+        "failed": failed,
         "no_email": no_email,
         "skipped": skipped,
         "no_email_institutions": no_email_institutions,
+        "failed_institutions": failed_institutions,
     }
 
 

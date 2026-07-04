@@ -1,0 +1,25 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Registration {{ status }} · {{ tournament_name }}{% endblock %}
+{% block preheader %}Your registration for {{ tournament_name }} is {{ status }}.{% endblock %}
+
+{% block content %}
+  <h1 style="margin:0 0 16px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:24px; line-height:32px; font-weight:700; color:#0f172a; letter-spacing:-0.3px;">
+    Registration {{ status }}
+  </h1>
+  <p style="margin:0 0 16px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#334155;">
+    {% if school_name %}Hello {{ school_name }},{% else %}Hello,{% endif %}<br>
+    Your registration for <strong>{{ tournament_name }}</strong>
+    ({{ form_title }}, reference {{ reference }}) is now
+    <strong>{{ status }}</strong>.
+  </p>
+  {% if status == "rejected" or status == "waitlisted" %}
+  <p style="margin:0 0 16px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#334155;">
+    If you believe this is a mistake, reply to the organizer or update and
+    resubmit your registration while it stays open.
+  </p>
+  {% endif %}
+  <p style="margin:0;">
+    <a class="btn" href="{{ form_url }}" style="display:inline-block; background:#0c8d62; color:#ffffff; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; line-height:20px; padding:12px 22px; border-radius:8px; text-decoration:none;">Open the registration form</a>
+  </p>
+{% endblock %}

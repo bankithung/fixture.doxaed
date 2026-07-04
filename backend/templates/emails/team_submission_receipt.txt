@@ -1,0 +1,18 @@
+Registration received
+
+{% if school_name %}Hello {{ school_name }},{% else %}Hello,{% endif %}
+
+We received your submission for {{ tournament_name }} ({{ form_title }}).
+Your reference is {{ reference }}.
+{% for line in team_lines %}
+- {{ line }}{% endfor %}
+
+Need to make a change while registration stays open? Return to the form with
+your access code and resubmit — the newest submission replaces the earlier
+one:
+
+{{ form_url }}
+{% if schedule_url %}
+Fixtures and live scores will appear on the public tournament page once
+published: {{ schedule_url }}
+{% endif %}

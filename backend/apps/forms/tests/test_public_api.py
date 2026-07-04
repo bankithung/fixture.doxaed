@@ -437,7 +437,8 @@ def test_team_access_codes_issue_hash_and_email(mailoutbox):
     _admin_user, t, inst, team_form = _team_reg_fixture("issue")
     out = issue_team_access_codes(tournament=t, form=team_form)
     assert out == {
-        "sent": 1, "no_email": 0, "skipped": 0, "no_email_institutions": [],
+        "sent": 1, "failed": 0, "no_email": 0, "skipped": 0,
+        "no_email_institutions": [], "failed_institutions": [],
     }
     inst.refresh_from_db()
     # Hashed with the configured Django hasher (Argon2id) — never plaintext.

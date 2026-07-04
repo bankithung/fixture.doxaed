@@ -252,6 +252,58 @@ def _send_slot_change_notifications(
             ),
         )
 
+    # H6 (finding N6): accountless schools — the platform's MAIN customers —
+    # previously received NOTHING here because delivery targeted User rows
+    # only. Contact addresses with no matching account now get a real email
+    # listing their affected matches. Best-effort, audited in the ledger.
+    covered = {
+        (u.email or "").strip().lower() for u in users if u.email
+    }
+    for email in sorted(all_emails - covered):
+        mine = [i for i in items if email in emails_by_match[i["match_id"]]]
+        if not mine:
+            continue
+        _email_schedule_change(tournament, email, mine)
+
+
+def _fmt_slot(slot: dict | None) -> str:
+    slot = slot or {}
+    when = str(slot.get("scheduled_at") or "TBD")
+    when = when.replace("T", " ")[:16]
+    venue = slot.get("venue")
+    return f"{when} ({venue})" if venue else when
+
+
+def _email_schedule_change(tournament, email: str, mine: list[dict]) -> None:
+    from django.conf import settings as django_settings
+
+    from apps.notifications.services.mailer import send_school_email
+
+    base = getattr(django_settings, "PUBLIC_BASE_URL", "https://fixture.doxaed.com")
+    lines = [
+        f"{i.get('match_label') or 'Match'}: "
+        f"{_fmt_slot(i.get('old'))} to {_fmt_slot(i.get('new'))}"
+        for i in mine
+    ]
+    send_school_email(
+        kind="schedule_change",
+        to=email,
+        subject=f"Schedule updated · {tournament.name}",
+        template="schedule_change",
+        context={
+            "tournament_name": tournament.name,
+            "lines": lines,
+            "schedule_url": (
+                f"{base}/t/{tournament.slug}/{tournament.id}/schedule"
+                if tournament.slug else ""
+            ),
+        },
+        target_type="tournament",
+        target_id=tournament.id,
+        organization_id=tournament.organization_id,
+        tournament_id=tournament.id,
+    )
+
 
 def schedule_changes(
     tournament: Any,

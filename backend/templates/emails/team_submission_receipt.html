@@ -1,0 +1,38 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Registration received · {{ tournament_name }}{% endblock %}
+{% block preheader %}We received your registration for {{ tournament_name }}. Reference {{ reference }}.{% endblock %}
+
+{% block content %}
+  <h1 style="margin:0 0 16px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:24px; line-height:32px; font-weight:700; color:#0f172a; letter-spacing:-0.3px;">
+    Registration received
+  </h1>
+  <p style="margin:0 0 16px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#334155;">
+    {% if school_name %}Hello {{ school_name }},{% else %}Hello,{% endif %}<br>
+    We received your submission for <strong>{{ tournament_name }}</strong>
+    ({{ form_title }}). Your reference is <strong>{{ reference }}</strong>.
+  </p>
+  {% if team_lines %}
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px 0; background:#f8fafc; border-radius:8px; width:100%;">
+    <tr><td style="padding:14px 18px;">
+      {% for line in team_lines %}
+      <p style="margin:0 0 4px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; line-height:22px; color:#334155;">{{ line }}</p>
+      {% endfor %}
+    </td></tr>
+  </table>
+  {% endif %}
+  <p style="margin:0 0 16px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#334155;">
+    Need to make a change while registration stays open? Return to the form
+    with your access code and resubmit — the newest submission replaces the
+    earlier one.
+  </p>
+  <p style="margin:0 0 8px 0;">
+    <a class="btn" href="{{ form_url }}" style="display:inline-block; background:#0c8d62; color:#ffffff; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; line-height:20px; padding:12px 22px; border-radius:8px; text-decoration:none;">Open the registration form</a>
+  </p>
+  {% if schedule_url %}
+  <p style="margin:0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#64748b;">
+    Fixtures and live scores will appear on the
+    <a href="{{ schedule_url }}" style="color:#0c8d62;">public tournament page</a> once published.
+  </p>
+  {% endif %}
+{% endblock %}
