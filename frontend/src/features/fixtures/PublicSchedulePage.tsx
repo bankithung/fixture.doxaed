@@ -428,7 +428,10 @@ function LivePulse(): React.ReactElement {
 }
 
 /** The one earned card: live matches, lifted out of position so they're never
- * buried, and pinned regardless of which competition/day is selected. */
+ * buried, and pinned regardless of which competition/day is selected. Each
+ * match renders as the scorer console's scoreboard (big centered tabular
+ * score, status pill, Set N · Sets line, finished-set chips) so the public
+ * band and the console read as the same product surface. */
 function LiveBand({
   matches,
   timeZone,
@@ -437,60 +440,118 @@ function LiveBand({
   timeZone: string;
 }): React.ReactElement | null {
   if (matches.length === 0) return null;
+  const single = matches.length === 1;
   return (
-    <section
-      data-testid="live-band"
-      className="rounded-xl border border-border bg-card p-4 shadow-sm"
-    >
-      <div className="mb-3 flex items-center gap-2">
+    <section data-testid="live-band" className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
         <LivePulse />
         <h2 className="text-sm font-semibold">{t("Now playing")}</h2>
         <span className="font-tabular text-xs text-muted-foreground">
           {matches.length}
         </span>
       </div>
-      <div className="flex gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:overflow-visible sm:pb-0 xl:grid-cols-3">
+      <div className={cn("grid gap-3", !single && "lg:grid-cols-2")}>
         {matches.map((m) => {
           const sv = liveSetView(m);
+          const sm = statusMeta(m.status);
+          const score: [number, number] = sv
+            ? sv.points
+            : [m.home_score ?? 0, m.away_score ?? 0];
+          const hasPens = m.home_pens != null && m.away_pens != null;
           return (
             <div
               key={m.id}
               data-testid={`live-tile-${m.id}`}
-              className="min-w-[15rem] shrink-0 border-l-2 border-primary pl-3 sm:min-w-0"
+              className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm"
             >
-              <LabelChips label={m.leaf_label} className="text-[0.625rem]" />
-              <div className="mt-1.5 flex flex-col gap-0.5">
-                {[
-                  [m.home?.name, sv ? sv.points[0] : m.home_score],
-                  [m.away?.name, sv ? sv.points[1] : m.away_score],
-                ].map(([name, score], i) => (
-                  <div
-                    key={i}
-                    className="grid grid-cols-[1fr_auto] items-center gap-2 text-sm"
-                  >
-                    <span className="truncate font-medium">
-                      {(name as string) ?? t("TBD")}
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-primary/10 blur-3xl"
+              />
+              <div className="relative flex flex-col items-center gap-3 px-4 py-6 sm:px-6">
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                    sm.cls,
+                  )}
+                >
+                  <LivePulse />
+                  {t(sm.label)}
+                  {/* Football periods never describe a set sport; its pill
+                      relies on the Set N line under the score. */}
+                  {!sv && m.current_period ? (
+                    <span className="capitalize text-muted-foreground">
+                      · {t(m.current_period.replace(/_/g, " "))}
                     </span>
-                    <span className="font-tabular font-semibold">
-                      {(score as number) ?? 0}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-1 flex items-center gap-2 text-[0.6875rem] text-muted-foreground">
-                <span className="font-tabular">
-                  {fmtKickoff(m.scheduled_at, timeZone)}
+                  ) : null}
                 </span>
-                {m.venue ? <span>· {m.venue}</span> : null}
-                {sv ? (
-                  <span className="ml-auto font-tabular text-primary">
-                    {t("Set")} {sv.setNo} · {sv.sets[0]}-{sv.sets[1]}
-                  </span>
-                ) : m.current_period ? (
-                  <span className="ml-auto capitalize text-primary">
-                    {t(m.current_period.replace(/_/g, " "))}
-                  </span>
+
+                <div className="grid w-full max-w-xl grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
+                  <div className="min-w-0 text-right">
+                    <TeamName
+                      side={m.home}
+                      className="block truncate text-sm font-medium sm:text-base"
+                    />
+                    <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
+                      {t("Home")}
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <Link
+                      to={routes.liveViewer(m.id)}
+                      aria-label={t("Open the match centre")}
+                      className={cn(
+                        "block rounded-md px-1 font-tabular font-semibold tabular-nums transition-colors hover:text-primary",
+                        single ? "text-4xl sm:text-6xl" : "text-4xl sm:text-5xl",
+                      )}
+                    >
+                      {score[0]}
+                      <span className="px-2 text-muted-foreground">-</span>
+                      {score[1]}
+                    </Link>
+                    {sv ? (
+                      <p className="mt-1 font-tabular text-sm text-muted-foreground">
+                        {t("Set")} {sv.setNo} · {t("Sets")} {sv.sets[0]}-{sv.sets[1]}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="min-w-0 text-left">
+                    <TeamName
+                      side={m.away}
+                      className="block truncate text-sm font-medium sm:text-base"
+                    />
+                    <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
+                      {t("Away")}
+                    </div>
+                  </div>
+                </div>
+
+                {sv && sv.finished.length > 0 ? (
+                  <div className="flex flex-wrap justify-center gap-1.5">
+                    {sv.finished.map((s, i) => (
+                      <span
+                        key={i}
+                        className="rounded-md bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground"
+                      >
+                        {s[0]}-{s[1]}
+                      </span>
+                    ))}
+                  </div>
                 ) : null}
+
+                {hasPens ? (
+                  <p className="font-tabular text-xs text-muted-foreground">
+                    {t("Pens")} {m.home_pens}-{m.away_pens}
+                  </p>
+                ) : null}
+
+                <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                  <LabelChips label={m.leaf_label} />
+                  <span className="font-tabular">
+                    {fmtKickoff(m.scheduled_at, timeZone)}
+                  </span>
+                  {m.venue ? <span>· {m.venue}</span> : null}
+                </div>
               </div>
             </div>
           );
