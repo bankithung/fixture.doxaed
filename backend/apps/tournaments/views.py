@@ -501,6 +501,83 @@ class TournamentSportsView(GenericAPIView):
         return Response({"sports": cleaned})
 
 
+class TournamentPresetsView(GenericAPIView):
+    """`GET /api/tournaments/{id}/presets/` — the event-preset catalog.
+    `POST` {key, event_id?} applies one: the preset tree replaces the sports
+    tree through the SAME guarded path as the editor (H4 protects in-use
+    leaves), so presets are safe to apply and re-apply. Manager-only."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id):
+        from apps.tournaments.services.presets import TOURNAMENT_PRESETS
+
+        _get_tournament_or_404(request.user, tournament_id)
+        return Response({
+            "presets": [
+                {"key": k, "label": v["label"], "note": v["note"]}
+                for k, v in TOURNAMENT_PRESETS.items()
+            ]
+        })
+
+    def post(self, request, tournament_id):
+        import uuid as _uuid
+
+        from django.db import transaction
+
+        from apps.audit.models import ActorRole, AuditEvent
+        from apps.audit.services import emit_audit
+        from apps.tournaments.services.presets import TOURNAMENT_PRESETS
+        from apps.tournaments.services.sports import guard_leaf_removal
+
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        if not can_access_module(request.user, tournament, "tournament.editor"):
+            raise PermissionDenied("not_tournament_manager")
+        preset = TOURNAMENT_PRESETS.get(str(request.data.get("key") or ""))
+        if preset is None:
+            raise DRFValidationError({"detail": "unknown_preset"})
+        event_id = request.data.get("event_id")
+        if event_id:
+            try:
+                event_id = _uuid.UUID(str(event_id))
+            except ValueError:
+                raise DRFValidationError({"detail": "invalid_event_id"})
+            if AuditEvent.objects.filter(
+                idempotency_key=event_id,
+                event_type="tournament_preset_applied",
+            ).exists():
+                return Response({"sports": tournament.sports or []})
+        try:
+            cleaned = normalize_sports(preset["sports"])
+        except ValueError as exc:  # pragma: no cover — presets are static
+            raise DRFValidationError({"detail": str(exc)})
+        with transaction.atomic():
+            locked = type(tournament).objects.select_for_update().get(
+                pk=tournament.pk
+            )
+            try:
+                guard_leaf_removal(locked, cleaned)
+            except ValueError as exc:
+                raise DRFValidationError({"detail": str(exc)})
+            before = {"sports": locked.sports or []}
+            locked.sports = cleaned
+            locked.save(update_fields=["sports", "updated_at"])
+            emit_audit(
+                actor_user=request.user,
+                actor_role=ActorRole.ADMIN,
+                event_type="tournament_preset_applied",
+                target_type="tournament",
+                target_id=locked.id,
+                organization_id=locked.organization_id,
+                tournament_id=locked.id,
+                idempotency_key=event_id,
+                payload_before=before,
+                payload_after={"preset": request.data.get("key")},
+                request=request,
+            )
+        return Response({"sports": cleaned})
+
+
 class TournamentSportsMetaView(GenericAPIView):
     """`GET /api/tournaments/{id}/sports-meta/` — the tournament's sports with
     their SportDefinition descriptors (P1.c): scoring family, terminology,

@@ -158,3 +158,40 @@ def test_sports_meta_ships_scoring_presets():
     for presets in SCORING_PRESETS.values():
         for preset in presets:
             merge_rules({"by_leaf": {"x": {"scoring": preset["scoring"]}}})
+
+
+def test_event_presets_apply_through_the_guarded_path():
+    """P4: presets one-click a full setup tree, replayed idempotently, and
+    the H4 guard still protects in-use leaves on re-apply."""
+    u, t, leaves, c = _setup()
+    r = c.get(f"/api/tournaments/{t.id}/presets/")
+    assert r.status_code == 200
+    keys = [p["key"] for p in r.data["presets"]]
+    assert "annual_sports_day" in keys and "nagaland_school_games" in keys
+
+    eid = str(uuid.uuid4())
+    r = c.post(f"/api/tournaments/{t.id}/presets/",
+               {"key": "nagaland_school_games", "event_id": eid},
+               format="json")
+    assert r.status_code == 200
+    keys = {l["leaf_key"] for l in iter_leaves(r.data["sports"])}
+    assert any(k.startswith("sepak_takraw.") for k in keys)
+    assert any(k.startswith("table_tennis.") and k.endswith("2v2") for k in keys)
+
+    # Replay: no double-apply.
+    r2 = c.post(f"/api/tournaments/{t.id}/presets/",
+                {"key": "nagaland_school_games", "event_id": eid},
+                format="json")
+    assert r2.status_code == 200
+
+    # Register a team into a preset leaf, then applying a DIFFERENT preset
+    # that would orphan it is blocked by the H4 guard.
+    used = sorted(k for k in keys if k.startswith("sepak_takraw."))[0]
+    register_school(
+        tournament=t, school_name="Guarded",
+        teams=[{"name": "G", "players": [], "leaf_key": used}],
+    )
+    r3 = c.post(f"/api/tournaments/{t.id}/presets/",
+                {"key": "inter_class_knockout"}, format="json")
+    assert r3.status_code == 400
+    assert "leaf_in_use" in str(r3.data["detail"])
