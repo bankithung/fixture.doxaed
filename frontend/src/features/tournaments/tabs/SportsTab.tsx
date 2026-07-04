@@ -37,7 +37,6 @@ import { useToast } from "@/components/ui/toast";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
-import { TargetCursor } from "@/components/backdrop/TargetCursor";
 import { burstFrom } from "@/lib/burst";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -944,7 +943,6 @@ export function SportsTab(): React.ReactElement {
 
       {effectiveStep === "pick" ? (
         <section className="panel" aria-label={t("Choose sports")}>
-          <TargetCursor />
           {/* One toolbar: selected count, search, and Next in a single row. */}
           <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
             <h3 className="text-sm font-semibold">
@@ -995,7 +993,7 @@ export function SportsTab(): React.ReactElement {
                     <li
                       key={s.key}
                       data-testid={`sport-${s.key}`}
-                      className="cursor-target flex items-center gap-3 rounded-lg border border-primary/30 bg-accent/40 p-2.5"
+                      className="flex items-center gap-3 rounded-lg border border-primary/30 bg-accent/40 p-2.5"
                     >
                       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-accent text-primary">
                         <Trophy aria-hidden="true" className="h-5 w-5" />
@@ -1060,7 +1058,7 @@ export function SportsTab(): React.ReactElement {
                     }}
                     title={added ? t("Added · click to remove") : t("Add sport")}
                     className={cn(
-                      "cursor-target relative flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "relative flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       added
                         ? "border-primary bg-accent"
                         : "border-border bg-card hover:border-primary/40 hover:bg-muted",
