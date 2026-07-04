@@ -327,8 +327,16 @@ export function BreakdownTable({
     isLive?: boolean;
   }[];
 }): React.ReactElement {
+  const [drawn, setDrawn] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setDrawn(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  // A short proportion bar rides under each label: row Total vs the largest
+  // row. The numbers stay the loud part; the bar is a quiet scan aid.
+  const maxTotal = Math.max(1, ...rows.map((r) => r.values[0] ?? 0));
   return (
-    <table className="w-full text-sm">
+    <table className={cn("w-full text-sm", drawn && "chart-drawn")}>
       <thead>
         <tr className="border-b border-border text-[0.6875rem] uppercase tracking-[0.08em] text-muted-foreground">
           <th scope="col" className="py-2 pl-4 pr-2 text-left font-medium">
@@ -346,7 +354,7 @@ export function BreakdownTable({
         </tr>
       </thead>
       <tbody className="divide-y divide-border">
-        {rows.map((row) => (
+        {rows.map((row, ri) => (
           <tr key={row.label}>
             <th
               scope="row"
@@ -361,12 +369,21 @@ export function BreakdownTable({
                 ) : null}
                 <span className="truncate">{row.label}</span>
               </span>
+              <span aria-hidden="true" className="mt-1 block w-16">
+                <span
+                  className="chart-bar block h-1 rounded-sm bg-chart-1"
+                  style={{
+                    width: `${Math.max(3, ((row.values[0] ?? 0) / maxTotal) * 100)}%`,
+                    transitionDelay: `${ri * 50}ms`,
+                  }}
+                />
+              </span>
             </th>
             {row.values.map((v, i) => (
               <td
                 key={columns[i]}
                 className={cn(
-                  "px-2 py-2 text-right font-tabular last:pr-4",
+                  "px-2 py-2 text-right align-top font-tabular last:pr-4",
                   i === 0
                     ? "font-semibold text-foreground"
                     : v === 0
