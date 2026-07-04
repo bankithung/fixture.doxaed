@@ -270,7 +270,7 @@ def test_substitution_budget_enforced_and_void_refunds():
     )
     # Voiding refunds.
     record_match_event(
-        match=m, event_type=MatchEventType.VOID, voids=e1.sequence_no,
+        match=m, event_type=MatchEventType.VOID, voids=e1,
         by=u, event_id=uuid.uuid4(),
     )
     record_match_event(
