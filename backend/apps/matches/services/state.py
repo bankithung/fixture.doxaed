@@ -207,6 +207,63 @@ def _reset_for_replay(locked: Match, reason: str) -> None:
     locked.current_period = ""
 
 
+# P5: the football periods a scorer can move a LIVE match through
+# explicitly. Kickoff/half-time transitions stay implicit; extra time and
+# the shootout phase are deliberate steps (knockout + level + enabled in
+# rules.match). TARGET sports have no periods to set.
+_SETTABLE_PERIODS = (
+    "extra_time_first", "extra_time_second", "penalties",
+)
+
+
+def set_match_period(*, match, period: str, by=None, request=None) -> Match:
+    """Move a LIVE football match into extra time or the shootout phase."""
+    from apps.matches.services.set_scoring import rules_for_match
+    from apps.tournaments.services.rules import merge_rules
+
+    if period not in _SETTABLE_PERIODS:
+        raise ValidationError("invalid_period")
+    with transaction.atomic():
+        locked = Match.objects.select_for_update().get(pk=match.pk)
+        if locked.status != S.LIVE:
+            raise ValidationError("period_change_requires_live")
+        if rules_for_match(locked) is not None:
+            raise ValidationError("no_periods_for_set_sport")
+        if locked.stage == "group" or not locked.stage:
+            raise ValidationError("extra_time_knockout_only")
+        if (locked.home_score or 0) != (locked.away_score or 0):
+            raise ValidationError("extra_time_requires_level_score")
+        cfg = merge_rules(getattr(locked.tournament, "rules", None))["match"]
+        if period.startswith("extra_time") and not cfg.get("extra_time"):
+            raise ValidationError("extra_time_disabled")
+        if period == "penalties" and not cfg.get("penalties"):
+            raise ValidationError("penalties_disabled")
+
+        before = locked.current_period
+        locked.current_period = period
+        locked.save(update_fields=["current_period", "updated_at"])
+        emit_audit(
+            actor_user=by,
+            actor_role=ActorRole.ADMIN,
+            event_type="match_period_changed",
+            target_type="match",
+            target_id=locked.id,
+            organization_id=locked.organization_id,
+            tournament_id=locked.tournament_id,
+            match_id=locked.id,
+            payload_before={"period": before},
+            payload_after={"period": period},
+            request=request,
+        )
+        mid, tid = locked.id, locked.tournament_id
+        transaction.on_commit(
+            lambda: __import__(
+                "apps.matches.services.events", fromlist=["publish_match_event"]
+            ).publish_match_event(mid, None, tid, kind="score")
+        )
+    return locked
+
+
 def _stamp_walkover(locked: Match, winner_team_id) -> None:
     """A walkover MUST carry a decisive result, or `winner_id` stays None and
     the bracket silently stalls (stress-test #3). Either the caller pre-set a

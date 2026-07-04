@@ -203,3 +203,44 @@ def test_quick_result_level_knockout_is_refused():
         record_score(match=m, home_score=1, away_score=1, by=admin)
     m.refresh_from_db()
     assert m.status == MatchStatus.SCHEDULED  # nothing committed
+
+
+def test_extra_time_period_control():
+    """P5: a LIVE, LEVEL knockout football match steps into extra time and
+    penalties explicitly — gated by rules.match, refused for set sports,
+    group games and decided scores."""
+    from apps.matches.services.state import set_match_period
+
+    admin, m = _match()
+    # Group/no-stage: refused.
+    transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
+    with pytest.raises(ValidationError, match="knockout_only"):
+        set_match_period(match=m, period="extra_time_first", by=admin)
+
+    # Knockout + ET enabled + level: allowed.
+    m.stage = "knockout"
+    m.save(update_fields=["stage"])
+    t = m.tournament
+    t.rules = {"match": {"extra_time": True, "penalties": True}}
+    t.save(update_fields=["rules"])
+    set_match_period(match=m, period="extra_time_first", by=admin)
+    m.refresh_from_db()
+    assert m.current_period == "extra_time_first"
+    set_match_period(match=m, period="penalties", by=admin)
+    m.refresh_from_db()
+    assert m.current_period == "penalties"
+
+    # ET disabled: refused.
+    t.rules = {"match": {"extra_time": False, "penalties": True}}
+    t.save(update_fields=["rules"])
+    m.tournament.refresh_from_db()
+    with pytest.raises(ValidationError, match="extra_time_disabled"):
+        set_match_period(match=m, period="extra_time_second", by=admin)
+
+    # Decided score: no extra time.
+    t.rules = {"match": {"extra_time": True, "penalties": True}}
+    t.save(update_fields=["rules"])
+    Match.objects.filter(pk=m.pk).update(home_score=2, away_score=1)
+    m.refresh_from_db()
+    with pytest.raises(ValidationError, match="requires_level"):
+        set_match_period(match=m, period="extra_time_first", by=admin)

@@ -403,6 +403,33 @@ class RecordScoreView(GenericAPIView):
         return Response(MatchSerializer(match).data)
 
 
+class MatchPeriodView(GenericAPIView):
+    """`POST /api/matches/{id}/period/` — move a LIVE knockout football match
+    into extra time or the shootout phase (P5). Scorer or manager."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, match_id):
+        from apps.matches.services.state import set_match_period
+
+        match = _match_or_404(request.user, match_id)
+        if not _can_score(request.user, match):
+            raise PermissionDenied("not_allowed_to_score")
+        try:
+            set_match_period(
+                match=match,
+                period=str(request.data.get("period") or ""),
+                by=request.user,
+                request=request,
+            )
+        except ValidationError as e:
+            raise DRFValidationError(
+                {"detail": getattr(e, "message", "invalid_period")}
+            )
+        match.refresh_from_db()
+        return Response(MatchSerializer(match).data)
+
+
 class AmendResultView(GenericAPIView):
     """`POST /api/matches/{id}/amend/` — manager-only, audited correction of a
     COMPLETED set-sport result (H3). Requires a reason; re-fires advancement
