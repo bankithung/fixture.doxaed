@@ -511,6 +511,7 @@ class TournamentSportsMetaView(GenericAPIView):
 
     def get(self, request, tournament_id):
         from apps.matches.services.sport_defs import get_definition
+        from apps.matches.services.sport_defs.presets import SCORING_PRESETS
         from apps.tournaments.services.sports import iter_leaves
 
         tournament = _get_tournament_or_404(request.user, tournament_id)
@@ -550,6 +551,9 @@ class TournamentSportsMetaView(GenericAPIView):
                      "fmt": b.fmt}
                     for b in d.leaderboards
                 ],
+                # Named, sourced scoring presets (P2) the organizer can pick
+                # then freely edit — presets, never prisons.
+                "presets": SCORING_PRESETS.get(code, []),
             }
             sports.append({
                 "key": code, "name": names[code], "leaf_count": counts[code],

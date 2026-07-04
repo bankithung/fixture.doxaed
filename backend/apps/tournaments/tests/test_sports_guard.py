@@ -140,3 +140,21 @@ def test_sports_meta_serves_descriptors_per_sport():
     assert [b["key"] for b in d["boards"]] == [
         "match_wins", "set_ratio", "point_diff"
     ]
+
+
+def test_sports_meta_ships_scoring_presets():
+    """P2: named ISTAF/ITTF presets ride the descriptor so Settings offers a
+    one-click regime pick (owner decision D1) that stays fully editable."""
+    from apps.tournaments.services.rules import merge_rules
+
+    u, t, leaves, c = _setup()
+    d = c.get(f"/api/tournaments/{t.id}/sports-meta/").data["descriptors"]
+    keys = [p["key"] for p in d["table_tennis"]["presets"]]
+    assert keys == ["ittf_bo3", "ittf_bo5", "ittf_bo7"]
+    # EVERY preset of EVERY sport must be legal as a per-leaf override —
+    # a preset that fails validation is a landmine in Settings.
+    from apps.matches.services.sport_defs.presets import SCORING_PRESETS
+
+    for presets in SCORING_PRESETS.values():
+        for preset in presets:
+            merge_rules({"by_leaf": {"x": {"scoring": preset["scoring"]}}})
