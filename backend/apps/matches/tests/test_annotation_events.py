@@ -220,3 +220,60 @@ def test_shootout_kick_stream():
             match=grp, event_type=MatchEventType.SHOOTOUT_KICK, team=x,
             detail={"round": 1, "outcome": "scored"}, by=u2,
         )
+
+
+def test_substitution_budget_enforced_and_void_refunds():
+    """P5: rules.squad.max_subs refuses the over-budget sub at the event
+    layer; a VOIDed sub refunds the budget."""
+    from apps.matches.services.state import transition_match
+    from apps.teams.models import Team
+    from apps.tournaments.services.create import create_tournament
+    from django.contrib.auth import get_user_model
+    from django.utils import timezone as _tz
+
+    User = get_user_model()
+    u = User.objects.create_user(
+        email="subs@test.local", password="FixtureDemo2026!", is_active=True
+    )
+    u.email_verified_at = _tz.now()
+    u.save(update_fields=["email_verified_at"])
+    t = create_tournament(user=u, name="Subs Cup")
+    t.rules = {"squad": {"max_subs": 2}}
+    t.save(update_fields=["rules"])
+    register_school(
+        tournament=t, school_name="S",
+        teams=[{"name": "A", "players": []}, {"name": "B", "players": []}],
+    )
+    x, y = list(Team.objects.filter(tournament=t).order_by("name"))
+    m = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=x, away_team=y,
+    )
+    transition_match(match=m, to_status=MatchStatus.LIVE, by=u)
+
+    e1 = record_match_event(
+        match=m, event_type=MatchEventType.SUBSTITUTION, team=x, by=u,
+        event_id=uuid.uuid4(),
+    )
+    record_match_event(
+        match=m, event_type=MatchEventType.SUBSTITUTION, team=x, by=u,
+        event_id=uuid.uuid4(),
+    )
+    with pytest.raises(DjangoValidationError, match="budget_exhausted"):
+        record_match_event(
+            match=m, event_type=MatchEventType.SUBSTITUTION, team=x, by=u,
+            event_id=uuid.uuid4(),
+        )
+    # The OTHER team's budget is untouched.
+    record_match_event(
+        match=m, event_type=MatchEventType.SUBSTITUTION, team=y, by=u,
+        event_id=uuid.uuid4(),
+    )
+    # Voiding refunds.
+    record_match_event(
+        match=m, event_type=MatchEventType.VOID, voids=e1.sequence_no,
+        by=u, event_id=uuid.uuid4(),
+    )
+    record_match_event(
+        match=m, event_type=MatchEventType.SUBSTITUTION, team=x, by=u,
+        event_id=uuid.uuid4(),
+    )

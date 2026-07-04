@@ -139,6 +139,29 @@ def record_match_event(
                     player.person.full_name if player.person_id else str(player.id)
                 )
                 raise DjangoValidationError(f"player_suspended:{pname}")
+        # P5: the substitution budget (rules.squad.max_subs, FIFA default 5)
+        # is enforced where subs are recorded — the sixth sub is refused,
+        # not logged-and-regretted. VOIDed subs refund the budget; 0 or a
+        # missing value means unlimited (rolling subs).
+        if event_type == MatchEventType.SUBSTITUTION and team is not None:
+            from apps.tournaments.services.rules import merge_rules
+
+            max_subs = int(
+                (merge_rules(getattr(locked.tournament, "rules", None))
+                 .get("squad") or {}).get("max_subs") or 0
+            )
+            if max_subs:
+                used_q = MatchEvent.objects.filter(
+                    match=locked,
+                    event_type=MatchEventType.SUBSTITUTION,
+                    team=team,
+                )
+                voided_subs = MatchEvent.objects.filter(
+                    match=locked, event_type=MatchEventType.VOID,
+                    voids__in=used_q.values_list("id", flat=True),
+                ).count()
+                if used_q.count() - voided_subs >= max_subs:
+                    raise DjangoValidationError("substitution_budget_exhausted")
         # Status guard (mirrors record_score): events land on an open match.
         # The one exception is a correction on a COMPLETED match whose score
         # is event-derived — walkover/aggregate-scored matches carry a STAMPED
