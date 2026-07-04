@@ -155,11 +155,11 @@ export function NotificationPrefsPage(): React.ReactElement {
         </div>
         <div className="flex items-center gap-2">
           <Link
-            to={routes.myProfile()}
+            to={routes.orgChooser()}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-            {t("Profile")}
+            {t("Dashboard")}
           </Link>
           <button
             type="button"
