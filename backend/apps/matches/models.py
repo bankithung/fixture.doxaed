@@ -40,6 +40,21 @@ class MatchEventType(models.TextChoices):
     SUBSTITUTION = "substitution", _("Substitution")
     PERIOD_START = "period_start", _("Period start")
     PERIOD_END = "period_end", _("Period end")
+    # P2 — set-sport annotation vocabulary (sepak takraw / TT consoles).
+    # These are NON-SCORING by design: set_scores stays the score of record;
+    # the event log becomes the federation-grade digital scoresheet, feeding
+    # the annotation-tier leader boards (aces, kills, blocks, serve points).
+    SERVE = "serve", _("Serve")
+    ACE = "ace", _("Service ace")
+    SERVICE_FAULT = "service_fault", _("Service fault")
+    KILL = "kill", _("Kill (spike)")
+    BLOCK = "block", _("Block")
+    POINT = "point", _("Rally point")
+    LET = "let", _("Let")
+    TIMEOUT = "timeout", _("Timeout")
+    # Football: a dedicated assist event (cleaner than GOAL.related_player
+    # for secondary assists; the Golden Boot tiebreak needs assists).
+    ASSIST = "assist", _("Assist")
     VOID = "void", _("Void (reversal)")
 
 
@@ -357,6 +372,8 @@ class MatchOfficialRole(models.TextChoices):
     FOURTH = "fourth", _("Fourth official")
     UMPIRE = "umpire", _("Umpire")
     COMMISSIONER = "commissioner", _("Match commissioner")
+    # P2: sepak takraw crews field two linesmen at the diagonal corners.
+    LINESMAN = "linesman", _("Linesman")
 
 
 class MatchOfficialStatus(models.TextChoices):
