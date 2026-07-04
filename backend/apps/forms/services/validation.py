@@ -243,3 +243,64 @@ def promote(schema: dict, clean: dict) -> dict:
     for sec in schema.get("sections", []):
         walk(sec.get("fields", []))
     return out
+
+
+def validate_age_eligibility(form, answers: dict) -> None:
+    """H5 — reject over/under-age players AT SUBMIT, where the school can fix
+    them, instead of at the admin's accept step. Walks the generated team
+    form's category-group bindings (settings.bindings.category_groups), parses
+    each player row's full DOB, and evaluates it against the leaf's structured
+    age rule. Raises AnswerError with dotted row paths, mirroring
+    _validate_group_rows' addressing.
+    """
+    from datetime import date as _date
+
+    tournament = getattr(form, "tournament", None)
+    bindings = (form.settings or {}).get("bindings") or {}
+    groups = bindings.get("category_groups") or []
+    if tournament is None or not groups:
+        return
+
+    from apps.teams.services.eligibility import (
+        age_cutoff,
+        enforce_age_enabled,
+        team_age_rule,
+        violation,
+    )
+
+    if not enforce_age_enabled(tournament):
+        return
+    cutoff = age_cutoff(tournament)
+
+    errors: dict[str, str] = {}
+    for cg in groups:
+        rule = team_age_rule(
+            tournament, cg.get("leaf_key") or cg.get("category") or ""
+        )
+        gkey = cg.get("group")
+        pgroup = cg.get("players_group")
+        pdob = cg.get("player_dob")
+        if not (rule and gkey and pgroup and pdob):
+            continue
+        rows = answers.get(gkey)
+        if not isinstance(rows, list):
+            continue
+        for ti, row in enumerate(rows):
+            if not isinstance(row, dict):
+                continue
+            players = row.get(pgroup)
+            if not isinstance(players, list):
+                continue
+            for pi, pr in enumerate(players):
+                if not isinstance(pr, dict):
+                    continue
+                raw = pr.get(pdob)
+                try:
+                    dob = _date.fromisoformat(str(raw)) if raw else None
+                except ValueError:
+                    dob = None
+                code = violation(rule, cutoff=cutoff, dob=dob) if dob else None
+                if code:
+                    errors[f"{gkey}.{ti}.{pgroup}.{pi}.{pdob}"] = code
+    if errors:
+        raise AnswerError(errors)

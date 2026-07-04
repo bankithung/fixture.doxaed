@@ -21,6 +21,12 @@ from apps.tournaments.services.create import create_tournament
 from apps.tournaments.services.sports import normalize_sports
 
 User = get_user_model()
+
+# Age-eligible DOBs for the U-15 fixture leaf (H5 enforces at submit now):
+# whole-year age on 31 Dec of the current year must be under 15.
+_Y = timezone.now().year
+DOB_A = f"{_Y - 13}-04-12"
+DOB_B = f"{_Y - 12}-09-03"
 pytestmark = pytest.mark.django_db
 
 
@@ -77,9 +83,9 @@ def _seed_submission(admin):
                      cg["coach_docs"]: [str(coach_doc.upload_ref)]},
                 ],
                 cg["players_group"]: [
-                    {cg["player_name"]: "Ravi K", cg["player_dob"]: "2011-04-12",
+                    {cg["player_name"]: "Ravi K", cg["player_dob"]: DOB_A,
                      cg["player_docs"]: [str(pdoc1.upload_ref), str(pdoc2.upload_ref)]},
-                    {cg["player_name"]: "Merithung", cg["player_dob"]: "2010-09-03"},
+                    {cg["player_name"]: "Merithung", cg["player_dob"]: DOB_B},
                 ],
             }
         ],
@@ -107,12 +113,12 @@ def test_team_submission_detail_surfaces_logo_coach_dob_docs():
     assert detail["coaches"][0]["documents"][0]["name"] == "coach.pdf"
 
     players = {p["name"]: p for p in detail["players"]}
-    assert players["Ravi K"]["dob"] == "2011-04-12"
+    assert players["Ravi K"]["dob"] == DOB_A
     assert {d["name"] for d in players["Ravi K"]["documents"]} == {"id1.pdf", "cert.jpg"}
     # The respondent's document name rides along for the admin.
     labels = {d["name"]: d["label"] for d in players["Ravi K"]["documents"]}
     assert labels["id1.pdf"] == "Aadhaar card"
-    assert players["Merithung"]["dob"] == "2010-09-03"
+    assert players["Merithung"]["dob"] == DOB_B
     assert players["Merithung"]["documents"] == []
 
 

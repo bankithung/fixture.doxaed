@@ -15,7 +15,11 @@ from django.db.models import F
 from apps.audit.models import ActorRole
 from apps.forms.constants import ResponseStatus
 from apps.forms.models import Form, FormFileUpload, FormResponse
-from apps.forms.services.validation import promote, validate_answers
+from apps.forms.services.validation import (
+    promote,
+    validate_age_eligibility,
+    validate_answers,
+)
 
 
 def submit_response(
@@ -36,6 +40,7 @@ def submit_response(
             return prior
 
     clean = validate_answers(form.schema, answers)  # raises AnswerError on invalid
+    validate_age_eligibility(form, clean)  # H5: age rules bite at submit
     roles = promote(form.schema, clean)
 
     with transaction.atomic():

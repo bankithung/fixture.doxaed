@@ -18,6 +18,9 @@ from apps.tournaments.services.create import create_tournament
 from apps.tournaments.services.sports import normalize_sports
 
 User = get_user_model()
+
+# H5: the U-15 fixture leaf now enforces age at submit; stay eligible.
+DOB_OK = f"{timezone.now().year - 13}-03-01"
 pytestmark = pytest.mark.django_db
 
 
@@ -79,7 +82,7 @@ def test_blank_team_name_defaults_to_institution_and_maps_dob():
             {
                 cg["team_name"]: "",  # blank → should adopt the institution name
                 cg["players_group"]: [
-                    {cg["player_name"]: "Ravi K", cg["player_dob"]: "2009-03-01"},
+                    {cg["player_name"]: "Ravi K", cg["player_dob"]: DOB_OK},
                 ],
             }
         ],
@@ -92,7 +95,7 @@ def test_blank_team_name_defaults_to_institution_and_maps_dob():
     team = Team.objects.get(tournament=t)
     assert team.name == "Holy Cross"
     player = Player.objects.get(team=team)
-    assert player.person.dob_year == 2009
+    assert player.person.dob_year == timezone.now().year - 13
 
 
 def test_two_blank_teams_in_a_leaf_get_distinct_default_names():

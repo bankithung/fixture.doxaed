@@ -11,6 +11,7 @@ import re
 import secrets
 import uuid as _uuid
 
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
@@ -198,6 +199,33 @@ def register_school(
                 )
             # School-name mirror stays in sync with the institution (deprecated).
             school_label = resolved.name if resolved is not None else (school_name or "")
+
+            # H5 backstop: a leaf's age rule blocks over/under-age players at
+            # the write boundary no matter which surface called us. Coarse
+            # dob_year is exact for the default 31 Dec cutoff; players with
+            # no DOB pass (required-ness is the form's concern).
+            from apps.teams.services.eligibility import (
+                age_cutoff,
+                enforce_age_enabled,
+                team_age_rule,
+                violation,
+            )
+
+            if enforce_age_enabled(tournament):
+                cutoff = age_cutoff(tournament)
+                for td in teams:
+                    rule = team_age_rule(tournament, td.get("leaf_key") or "")
+                    if not rule:
+                        continue
+                    for pd in td.get("players", []):
+                        code = violation(
+                            rule, cutoff=cutoff, dob_year=pd.get("dob_year")
+                        )
+                        if code:
+                            raise ValidationError(
+                                f"player_age_ineligible:{td.get('leaf_key')}:"
+                                f"{pd.get('full_name', '')}:{code}"
+                            )
 
             for td in teams:
                 team = Team.objects.create(

@@ -38,6 +38,10 @@ DEFAULT_RULES: dict[str, Any] = {
         "fixtures": "walkover",
         "rr_results": "void_if_under_half_played",
     },
+    # H5: age reckoned as of a cutoff date in the event year (SGFI/CBSE
+    # convention: 31 Dec). Enforcement is on by default and opt-out-able —
+    # presets, never prisons. Consumed by apps.teams.services.eligibility.
+    "eligibility": {"enforce_age": True, "age_cutoff": "12-31"},
     # Per-GAME (category leaf) overrides — the owner's "everything is per game"
     # rule. `{leaf_key: {"scoring": {...}, "tiebreakers": [...]}}`. Scoring and
     # ranking are participant-facing, so they correctly live under the
@@ -51,7 +55,7 @@ DEFAULT_RULES: dict[str, Any] = {
 # Keys whose value is a dict and may be partially overridden (per-key merge).
 _NESTED = {
     "points", "match", "squad", "discipline", "small_group_double_rr",
-    "withdrawal_policy",
+    "withdrawal_policy", "eligibility",
 }
 
 # Tiebreaker criteria the standings engine understands (validation whitelist).
