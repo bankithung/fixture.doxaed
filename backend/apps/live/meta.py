@@ -106,6 +106,7 @@ class TournamentMetaView(GenericAPIView):
         bits.append("Schedule, live scores, standings and brackets on Fixture")
         description = " · ".join(bits)
         url = f"{_BASE}/t/{t.slug}/{t.id}/schedule"
+        image = f"{_BASE}/api/live/tournament-card/{t.id}.png"
         te, de = escape(title), escape(description)
         html = f"""<!doctype html>
 <html lang="en"><head>
@@ -116,9 +117,13 @@ class TournamentMetaView(GenericAPIView):
 <meta property="og:title" content="{te}">
 <meta property="og:description" content="{de}">
 <meta property="og:url" content="{url}">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="{image}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{te}">
 <meta name="twitter:description" content="{de}">
+<meta name="twitter:image" content="{image}">
 </head><body>{te}</body></html>"""
         resp = HttpResponse(html, content_type="text/html; charset=utf-8")
         resp["Cache-Control"] = "public, max-age=300"

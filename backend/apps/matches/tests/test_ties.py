@@ -94,3 +94,26 @@ def test_tie_tracks_a_split_series():
     recompute_tie(tie.id)
     tie.refresh_from_db()
     assert tie.winner_id == a.id and tie.status == "completed"
+
+
+def test_ties_api_creates_and_lists():
+    """Audit gap closed: ties are product-reachable via the API."""
+    from rest_framework.test import APIClient
+
+    admin, t, a, b = _setup()
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    r = c.post(
+        f"/api/tournaments/{t.id}/ties/",
+        {"home_team_id": str(a.id), "away_team_id": str(b.id),
+         "format_key": "sepak_team_regu", "sport": "sepak_takraw"},
+        format="json",
+    )
+    assert r.status_code == 201
+    assert len(r.data["rubbers"]) == 3
+    assert r.data["format"]["stop_at_wins"] == 2
+
+    listed = c.get(f"/api/tournaments/{t.id}/ties/")
+    assert listed.status_code == 200
+    assert len(listed.data["ties"]) == 1
+    assert listed.data["ties"][0]["rubbers"][0]["rubber_kind"] == "regu"

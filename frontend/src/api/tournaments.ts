@@ -478,6 +478,13 @@ export interface SportDescriptor {
 export interface SportsMeta {
   sports: { key: string; name: string; leaf_count: number }[];
   descriptors: Record<string, SportDescriptor>;
+  /** Named, sourced tiebreaker orders (FIFA, league, ITTF ratio, sets). */
+  tiebreaker_presets?: {
+    key: string;
+    label: string;
+    note: string;
+    tiebreakers: string[];
+  }[];
 }
 
 export interface StandingsGroup {

@@ -140,3 +140,56 @@ class MatchCardView(GenericAPIView):
         resp["ETag"] = etag
         resp["Cache-Control"] = "public, max-age=60"
         return resp
+
+def render_tournament_card(t, n_matches: int, live_now: int) -> bytes:
+    """1200x630 card for a forwarded TOURNAMENT link (audit gap: /t/ links
+    unfurled without an image while /m/ links got the full card)."""
+    img = Image.new("RGB", (_W, _H), _BG)
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, _W, 10], fill=_PRIMARY)
+
+    _center(d, "FIXTURE", 56, _font(30), _PRIMARY)
+    name_font = _fit(d, t.name, _W - 160, 72)
+    _center(d, t.name, 170, name_font, _INK)
+
+    line = f"{n_matches} matches"
+    if live_now:
+        line += f"  |  {live_now} live now"
+    _center(d, line, 300, _font(40, bold=False), _MUTED)
+
+    season = (t.season or "").strip()
+    if season:
+        _center(d, season, 372, _font(34, bold=False), _MUTED)
+
+    _center(d, "Schedule, live scores, standings and brackets", 480,
+            _font(32, bold=False), _MUTED)
+    d.rectangle([0, _H - 10, _W, _H], fill=_PRIMARY)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+class TournamentCardView(GenericAPIView):
+    """`GET /api/live/tournament-card/{id}.png` — the tournament share card."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, tournament_id):
+        from apps.tournaments.models import Tournament
+
+        t = Tournament.objects.filter(
+            id=tournament_id, deleted_at__isnull=True
+        ).first()
+        if t is None:
+            raise NotFound("tournament_not_found")
+        n = Match.objects.filter(tournament=t, deleted_at__isnull=True).count()
+        live_now = Match.objects.filter(
+            tournament=t, deleted_at__isnull=True,
+            status__in=(MatchStatus.LIVE, MatchStatus.HALF_TIME),
+        ).count()
+        png = render_tournament_card(t, n, live_now)
+        resp = HttpResponse(png, content_type="image/png")
+        resp["Cache-Control"] = "public, max-age=300"
+        return resp
+

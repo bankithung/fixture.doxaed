@@ -79,7 +79,7 @@ export function PublicStandingsPage(): React.ReactElement {
           <div className="rounded-xl border border-border bg-card p-8 text-center">
             <p className="text-sm font-medium">{t("No group tables yet.")}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {t("Standings appear once group fixtures are generated.")}
+              {t("Tables appear when the draw places teams into groups.")}
             </p>
           </div>
         ) : (

@@ -402,6 +402,97 @@ class RecordScoreView(GenericAPIView):
         return Response(MatchSerializer(match).data)
 
 
+class TournamentTiesView(GenericAPIView):
+    """`GET/POST /api/tournaments/{tid}/ties/` — team ties (P5). GET: any
+    member (tie cards for the board). POST (manager): create a tie from a
+    named format (olympic_tt, worlds_2026_tt, sepak_team_regu) or a custom
+    rubber list — the audit found the engine had no product surface."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _tie_dict(self, tie) -> dict:
+        return {
+            "id": str(tie.id),
+            "leaf_key": tie.leaf_key,
+            "stage": tie.stage,
+            "group_label": tie.group_label,
+            "home_team": (
+                {"id": str(tie.home_team_id), "name": tie.home_team.name}
+                if tie.home_team_id else None
+            ),
+            "away_team": (
+                {"id": str(tie.away_team_id), "name": tie.away_team.name}
+                if tie.away_team_id else None
+            ),
+            "format": tie.format,
+            "home_rubbers_won": tie.home_rubbers_won,
+            "away_rubbers_won": tie.away_rubbers_won,
+            "status": tie.status,
+            "winner_id": str(tie.winner_id) if tie.winner_id else None,
+            "rubbers": [
+                {
+                    "match_id": str(r.id),
+                    "rubber_no": r.rubber_no,
+                    "rubber_kind": r.rubber_kind,
+                    "status": r.status,
+                    "home_score": r.home_score,
+                    "away_score": r.away_score,
+                }
+                for r in sorted(
+                    tie.rubbers.filter(deleted_at__isnull=True),
+                    key=lambda r: r.rubber_no or 0,
+                )
+            ],
+        }
+
+    def get(self, request, tournament_id):
+        from apps.matches.models import MatchTie
+
+        t = _accessible_tournament_or_404(request.user, tournament_id)
+        ties = MatchTie.objects.filter(tournament=t).select_related(
+            "home_team", "away_team"
+        ).order_by("created_at")
+        return Response({"ties": [self._tie_dict(x) for x in ties]})
+
+    def post(self, request, tournament_id):
+        from apps.matches.services.ties import TIE_FORMATS, create_tie
+        from apps.teams.models import Team
+        from apps.tournaments.permissions import can_manage_tournament
+
+        t = _accessible_tournament_or_404(request.user, tournament_id)
+        if not can_manage_tournament(request.user, t):
+            raise PermissionDenied("not_tournament_manager")
+        data = request.data
+        home = Team.objects.filter(
+            pk=data.get("home_team_id"), tournament=t, deleted_at__isnull=True
+        ).first()
+        away = Team.objects.filter(
+            pk=data.get("away_team_id"), tournament=t, deleted_at__isnull=True
+        ).first()
+        if home is None or away is None or home.pk == away.pk:
+            raise DRFValidationError({"detail": "two_distinct_teams_required"})
+        fmt_key = str(data.get("format_key") or "")
+        custom = data.get("format")
+        if not custom and fmt_key not in TIE_FORMATS:
+            raise DRFValidationError({"detail": "unknown_tie_format"})
+        try:
+            tie = create_tie(
+                tournament=t, home_team=home, away_team=away,
+                sport=str(data.get("sport") or home.sport or ""),
+                leaf_key=str(data.get("leaf_key") or home.leaf_key or ""),
+                fmt=custom if custom else None,
+                format_key=fmt_key if not custom else None,
+                stage=str(data.get("stage") or ""),
+                group_label=str(data.get("group_label") or ""),
+                by=request.user, request=request,
+            )
+        except ValidationError as e:
+            raise DRFValidationError(
+                {"detail": getattr(e, "message", "invalid_tie")}
+            )
+        return Response(self._tie_dict(tie), status=201)
+
+
 class MatchPeriodView(GenericAPIView):
     """`POST /api/matches/{id}/period/` — move a LIVE knockout football match
     into extra time or the shootout phase (P5). Scorer or manager."""

@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.urls import path
 
 from apps.disputes.views import TournamentDisputeView
+from apps.matches.views import TournamentTiesView
 from apps.fixtures.views import (
     AdvancementRefireView,
     ControlRoomDayView,
@@ -96,6 +97,11 @@ urlpatterns = [
         "<uuid:tournament_id>/presets/",
         TournamentPresetsView.as_view(),
         name="tournament-presets",
+    ),
+    path(
+        "<uuid:tournament_id>/ties/",
+        TournamentTiesView.as_view(),
+        name="tournament-ties",
     ),
     path(
         "<uuid:tournament_id>/invitations/",

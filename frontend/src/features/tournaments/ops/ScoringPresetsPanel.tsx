@@ -82,12 +82,43 @@ export function ScoringPresetsPanel({
     },
   });
 
+  const settingsQ = useQuery({
+    queryKey: ["t-settings", tournamentId],
+    queryFn: () => tournamentsApi.settings(tournamentId),
+  });
+  const applyTiebreakers = useMutation({
+    mutationFn: (p: { tiebreakers: string[]; label: string }) =>
+      tournamentsApi.updateSettings(tournamentId, {
+        rules: { tiebreakers: p.tiebreakers },
+        event_id: newEventId(),
+      }),
+    onSuccess: (_d, vars) => {
+      toast.push({
+        kind: "success",
+        title: `${vars.label} ${t("tiebreakers applied.")}`,
+      });
+      qc.invalidateQueries({ queryKey: ["t-settings", tournamentId] });
+    },
+    onError: (e) =>
+      toast.push({
+        kind: "error",
+        title:
+          e instanceof Error && e.message
+            ? e.message
+            : t("Could not apply the tiebreaker order."),
+      }),
+  });
+
   const sports = sportsQ.data?.sports ?? [];
   const descriptors = metaQ.data?.descriptors ?? {};
+  const tbPresets = metaQ.data?.tiebreaker_presets ?? [];
+  const activeTb = JSON.stringify(
+    settingsQ.data?.rules?.tiebreakers ?? [],
+  );
   const rows = sports
     .map((s) => ({ sport: s, presets: descriptors[s.key]?.presets ?? [] }))
     .filter((r) => r.presets.length > 0);
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && tbPresets.length === 0) return null;
 
   return (
     <section
@@ -103,6 +134,41 @@ export function ScoringPresetsPanel({
           "Official rulebook presets per sport. Applying one sets the whole sport; per-game overrides in rules stay possible and always win.",
         )}
       </p>
+      {tbPresets.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-medium">{t("Tiebreaker order")}</span>
+            <span className="text-xs text-muted-foreground">
+              {tbPresets.find(
+                (p) => JSON.stringify(p.tiebreakers) === activeTb,
+              )?.label ?? t("Custom order")}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {tbPresets.map((p) => {
+              const active = JSON.stringify(p.tiebreakers) === activeTb;
+              return (
+                <Button
+                  key={p.key}
+                  size="sm"
+                  variant={active ? "default" : "outline"}
+                  title={p.note}
+                  data-testid={`tb-preset-${p.key}`}
+                  disabled={applyTiebreakers.isPending || active}
+                  onClick={() =>
+                    applyTiebreakers.mutate({
+                      tiebreakers: p.tiebreakers,
+                      label: p.label,
+                    })
+                  }
+                >
+                  {p.label}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
       <div className="flex flex-col gap-4">
         {rows.map(({ sport, presets }) => {
           const activePreset = presets.find((p) =>
