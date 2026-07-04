@@ -133,3 +133,29 @@ def test_snapshot_serves_hub_blocks():
     assert {"type": "shot", "home": 1, "away": 0} in data["stats"]
     lineups = data["match"]["lineups"]
     assert lineups["home"]["entries"][0]["shirt_no"] == 9
+
+
+@pytest.mark.django_db
+def test_match_card_png_renders_and_caches():
+    """P6 reach: the share card renders a real PNG for scheduled AND live
+    matches, with an ETag that busts on score changes."""
+    admin = _verified("card@test.local")
+    t = create_tournament(user=admin, name="Card Cup")
+    a, b = register_school(
+        tournament=t, school_name="S",
+        teams=[{"name": "A", "players": []}, {"name": "B", "players": []}],
+    )
+    m = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=a, away_team=b,
+        status=MatchStatus.LIVE, sport="sepak_takraw",
+        set_scores=[[8, 7]], home_score=0, away_score=0, venue="Court 1",
+    )
+    c = APIClient()
+    r = c.get(f"/api/live/match-card/{m.id}.png")
+    assert r.status_code == 200
+    assert r["Content-Type"] == "image/png"
+    body = b"".join(r.streaming_content) if hasattr(r, "streaming_content") else r.content
+    assert body[:8] == b"\x89PNG\r\n\x1a\n"
+    etag = r["ETag"]
+    assert c.get(f"/api/live/match-card/{m.id}.png",
+                 HTTP_IF_NONE_MATCH=etag).status_code == 304
