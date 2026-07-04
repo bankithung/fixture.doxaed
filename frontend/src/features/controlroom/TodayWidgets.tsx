@@ -8,6 +8,7 @@ import {
 } from "@/api/tournaments";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
+import { SportLeaderBoards } from "@/features/live/SportLeaderBoards";
 import { t } from "@/lib/t";
 import {
   FINAL,
@@ -464,91 +465,7 @@ export function LeadersPanel({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-          <div className="flex flex-col gap-1 p-2.5">
-            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              {t("Top scorers")}
-            </p>
-            {d.top_scorers.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                {t("No goal scorers yet (set sports rank by points below).")}
-              </p>
-            ) : (
-              <ol className="flex flex-col gap-1">
-                {d.top_scorers.map((s, i) => (
-                  <li key={s.player_id} className="flex items-center gap-2 text-sm">
-                    <span className="w-4 shrink-0 font-tabular text-xs text-muted-foreground">
-                      {i + 1}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate font-medium">
-                      {s.name}
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {s.team_name}
-                    </span>
-                    <span className="font-tabular text-sm font-semibold">
-                      {s.goals}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
-          <div className="flex flex-col gap-2 p-2.5">
-            <div>
-              <p className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                {t("Best defence")}
-              </p>
-              {d.best_defence.slice(0, 2).map((r) => (
-                <p key={r.team_id} className="flex items-baseline gap-2 text-sm">
-                  <span className="min-w-0 flex-1 truncate font-medium">
-                    {r.team_name}
-                  </span>
-                  <span className="font-tabular text-xs text-muted-foreground">
-                    {r.conceded} {t("conceded in")} {r.played}
-                  </span>
-                </p>
-              ))}
-            </div>
-            <div>
-              <p className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                {t("Best attack")}
-              </p>
-              {d.best_attack.slice(0, 2).map((r) => (
-                <p key={r.team_id} className="flex items-baseline gap-2 text-sm">
-                  <span className="min-w-0 flex-1 truncate font-medium">
-                    {r.team_name}
-                  </span>
-                  <span className="font-tabular text-xs text-muted-foreground">
-                    {r.scored} {t("scored in")} {r.played}
-                  </span>
-                </p>
-              ))}
-            </div>
-            {d.latest_badges.length > 0 ? (
-              <div>
-                <p className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                  {t("Latest badges")}
-                </p>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {d.latest_badges.slice(0, 4).map((b) => (
-                    <Link
-                      key={b.id}
-                      to={`/cert/${b.id}`}
-                      className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[0.6875rem] font-medium text-primary hover:bg-primary/10"
-                      title={b.subject}
-                    >
-                      <Trophy aria-hidden="true" className="h-3 w-3 shrink-0" />
-                      <span className="truncate">
-                        {b.name} · {b.subject}
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <SportLeaderBoards sports={d.sports} rows={3} dense />
       )}
     </section>
   );

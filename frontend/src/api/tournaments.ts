@@ -514,13 +514,31 @@ export const tournamentsApi = {
   matchesEnriched: (id: string) =>
     api.get<ControlRoomMatch[]>(`/api/tournaments/${id}/matches/`),
   /** Standings grouped by pool. */
-  /** Live leaderboards: top scorers, best defence/attack, latest badges. */
+  /** Live leaderboards, PER SPORT (P1.b): each sport ships its own boards
+   * from the SportDefinition catalog; sports never pool into one table. */
   leaders: (id: string, opts?: { full?: boolean }) =>
     api.get<{
       played: number;
-      top_scorers: { player_id: string; name: string; team_name: string; goals: number }[];
-      best_defence: { team_id: string; team_name: string; played: number; scored: number; conceded: number }[];
-      best_attack: { team_id: string; team_name: string; played: number; scored: number; conceded: number }[];
+      sports: {
+        sport: string;
+        name: string;
+        played: number;
+        boards: {
+          key: string;
+          label: string;
+          subject: "player" | "team" | "regu" | "pair";
+          fmt: string;
+          rows: {
+            player_id?: string;
+            team_id?: string;
+            name?: string;
+            team_name?: string;
+            played?: number;
+            value: number | string;
+            detail?: string;
+          }[];
+        }[];
+      }[];
       latest_badges: { id: string; name: string; subject: string; evidence: Record<string, unknown> }[];
     }>(`/api/tournaments/${id}/leaders/${opts?.full ? "?full=1" : ""}`),
   /** Card-derived suspensions (PRD 5.8) — who is banned, why, remaining. */

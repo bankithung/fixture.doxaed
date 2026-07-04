@@ -79,7 +79,10 @@ def test_leaders_endpoint_scorers_defence_badges():
 
     r = c.get(f"/api/tournaments/{t.id}/leaders/")
     assert r.status_code == 200
-    assert r.data["played"] == 0 and r.data["top_scorers"] == []
+    assert r.data["played"] == 0
+    fb = next(s for s in r.data["sports"] if s["sport"] == "football")
+    scorer_board = next(b for b in fb["boards"] if b["key"] == "top_scorers")
+    assert scorer_board["rows"] == []
 
     pa = a.players.first()
     record_match_event(match=m, event_type=MatchEventType.GOAL, team=a, player=pa, by=admin)
@@ -89,7 +92,9 @@ def test_leaders_endpoint_scorers_defence_badges():
 
     r = c.get(f"/api/tournaments/{t.id}/leaders/")
     assert r.data["played"] == 1
-    assert r.data["top_scorers"][0]["name"] == "Asen"
-    assert r.data["top_scorers"][0]["goals"] == 2
-    assert r.data["best_defence"][0]["team_name"] == "A"  # conceded 0
+    fb = next(s for s in r.data["sports"] if s["sport"] == "football")
+    boards = {b["key"]: b for b in fb["boards"]}
+    assert boards["top_scorers"]["rows"][0]["name"] == "Asen"
+    assert boards["top_scorers"]["rows"][0]["value"] == 2
+    assert boards["best_defence"]["rows"][0]["team_name"] == "A"  # conceded 0
     assert isinstance(r.data["latest_badges"], list)
