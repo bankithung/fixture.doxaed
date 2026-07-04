@@ -1213,65 +1213,76 @@ export function SportsTab(): React.ReactElement {
 
           {/* Live competitions preview — updates in real time as you add
               categories; grouped by top-level category so it stays scannable. */}
-          <aside className="flex w-full flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:w-80 lg:shrink-0 lg:overflow-y-auto">
-            <div>
-              <h3 className="flex items-center gap-2 text-sm font-semibold">
-                {t("Competitions")}
-                <span className="rounded-full bg-primary/10 px-2 py-0.5 font-tabular text-xs text-primary">
-                  {activeLeaves.length}
-                </span>
-              </h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {t("Each gets its own entries and fixtures.")}
-              </p>
+          <aside className="panel w-full lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:w-80 lg:shrink-0 lg:overflow-y-auto">
+            <div className="panel-header gap-2">
+              <Trophy aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+              <h3 className="panel-title truncate">{t("Competitions")}</h3>
+              <span className="ml-auto rounded-full bg-primary/10 px-2 py-0.5 font-tabular text-xs font-semibold text-primary">
+                {activeLeaves.length}
+              </span>
             </div>
-            {activeLeaves.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border bg-muted/20 px-3 py-8 text-center text-xs text-muted-foreground">
-                {t("Add categories on the left to see competitions here.")}
-              </div>
-            ) : (
-              <ul className="flex flex-col gap-3">
-                {activeLeafGroups.map(({ head, subs }) =>
-                  subs.length === 0 ? (
-                    <li
-                      key={head}
-                      className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-2 text-xs"
-                    >
-                      <Trophy
-                        aria-hidden="true"
-                        className="h-3.5 w-3.5 shrink-0 text-primary"
-                      />
-                      <span className="truncate font-medium">{head}</span>
-                    </li>
-                  ) : (
-                    <li key={head} className="flex flex-col gap-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                          {head}
-                        </span>
-                        <span className="rounded-full bg-muted px-1.5 font-tabular text-[0.625rem] text-muted-foreground">
-                          {subs.length}
-                        </span>
-                      </div>
-                      <ul className="flex flex-col gap-1 border-l-2 border-border pl-2.5">
-                        {subs.map((rest, i) => (
-                          <li
-                            key={i}
-                            className="flex items-center gap-2 rounded-md bg-muted/40 px-2 py-1 text-xs"
-                          >
-                            <span
-                              aria-hidden="true"
-                              className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary/60"
-                            />
-                            <span className="truncate">{rest}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </li>
-                  ),
-                )}
-              </ul>
-            )}
+            <div className="flex flex-col gap-2.5 p-3">
+              <p className="text-xs text-muted-foreground">
+                {activeSport?.name}: {t("each competition gets its own entries and fixtures.")}
+              </p>
+              {activeLeaves.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border bg-muted/20 px-3 py-8 text-center text-xs text-muted-foreground">
+                  {t("Add categories on the left to see competitions here.")}
+                </div>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {activeLeafGroups.map(({ head, subs }, gi) =>
+                    subs.length === 0 ? (
+                      <li
+                        key={head}
+                        className="animate-fade-up flex items-center gap-2 rounded-lg border border-primary/25 bg-accent/40 px-2.5 py-2 text-xs"
+                        style={{ animationDelay: `${gi * 40}ms` }}
+                      >
+                        <Trophy
+                          aria-hidden="true"
+                          className="h-3.5 w-3.5 shrink-0 text-primary"
+                        />
+                        <span className="truncate font-semibold">{head}</span>
+                      </li>
+                    ) : (
+                      <li
+                        key={head}
+                        className="animate-fade-up overflow-hidden rounded-lg border border-border bg-background"
+                        style={{ animationDelay: `${gi * 40}ms` }}
+                      >
+                        <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-muted/30 px-2.5 py-1.5">
+                          <span className="truncate text-xs font-semibold">
+                            {head}
+                          </span>
+                          <span className="rounded-full bg-primary/10 px-1.5 font-tabular text-[0.625rem] font-semibold text-primary">
+                            {subs.length}
+                          </span>
+                        </div>
+                        <ul className="flex flex-wrap gap-1.5 p-2">
+                          {subs.map((rest, i) => (
+                            <li
+                              key={i}
+                              className="flex max-w-full items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs"
+                            >
+                              <span
+                                aria-hidden="true"
+                                className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
+                              />
+                              <span className="truncate">{rest}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    ),
+                  )}
+                </ul>
+              )}
+              {activeLeaves.length > 0 ? (
+                <p className="border-t border-border pt-2 text-right font-tabular text-[11px] text-muted-foreground">
+                  {activeLeaves.length} {activeLeaves.length === 1 ? t("competition") : t("competitions")} · {activeLeafGroups.length} {activeLeafGroups.length === 1 ? t("category") : t("categories")}
+                </p>
+              ) : null}
+            </div>
           </aside>
           </div>
 
