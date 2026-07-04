@@ -100,6 +100,47 @@ export function PublicFormPage(): React.ReactElement {
   const [eventId] = useState(newEventId); // stable across retries (idempotency)
   const [done, setDone] = useState<string | null>(null);
 
+  // H8: a refresh used to wipe an entire typed roster (the LONGEST public
+  // form) and force access-code re-verification. Answers now autosave to
+  // this device and restore on return; the draft clears on submit.
+  const draftKey = `fixture.form-draft.v1.${formId ?? token ?? ""}`;
+  const draftRestored = useRef(false);
+  useEffect(() => {
+    if (draftRestored.current) return;
+    draftRestored.current = true;
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) return;
+      const draft = JSON.parse(raw) as {
+        answers?: Record<string, unknown>;
+        fileLabels?: Record<string, string>;
+      };
+      if (draft.answers && Object.keys(draft.answers).length > 0) {
+        setAnswers((a) =>
+          Object.keys(a).length === 0 ? draft.answers! : { ...draft.answers, ...a },
+        );
+        if (draft.fileLabels) setFileLabels((l) => ({ ...draft.fileLabels, ...l }));
+      }
+    } catch {
+      // A corrupt draft must never block the form.
+    }
+  }, [draftKey]);
+  useEffect(() => {
+    if (done !== null) return;
+    if (Object.keys(answers).length === 0) return;
+    const id = window.setTimeout(() => {
+      try {
+        localStorage.setItem(
+          draftKey,
+          JSON.stringify({ answers, fileLabels, savedAt: Date.now() }),
+        );
+      } catch {
+        // Storage full/blocked: typing continues, only persistence degrades.
+      }
+    }, 600);
+    return () => window.clearTimeout(id);
+  }, [answers, fileLabels, done, draftKey]);
+
   const data = payload.data;
   const form = data?.form;
 
@@ -398,7 +439,14 @@ export function PublicFormPage(): React.ReactElement {
           })
         : formsApi.publicSubmit(form?.id ?? formId ?? "", body);
     },
-    onSuccess: (res) => setDone(res.message),
+    onSuccess: (res) => {
+      try {
+        localStorage.removeItem(draftKey);
+      } catch {
+        /* draft cleanup is best-effort */
+      }
+      setDone(res.message);
+    },
     onError: (e) => {
       const fieldErrs = serverFieldErrors(e);
       if (Object.keys(fieldErrs).length) {

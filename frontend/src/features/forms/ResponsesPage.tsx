@@ -69,13 +69,68 @@ function StatusPill({
   );
 }
 
-/** Render a (possibly array / object) answer value as readable text. */
+/** Render a scalar (or scalar-array) answer value as readable text. */
 function formatAnswer(value: unknown): string {
   if (value == null || value === "") return "·";
-  if (Array.isArray(value)) return value.map((v) => String(v)).join(", ");
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => (v && typeof v === "object" ? t("entry") : String(v)))
+      .join(", ");
+  }
   if (typeof value === "object") return JSON.stringify(value);
   if (typeof value === "boolean") return value ? t("Yes") : t("No");
   return String(value);
+}
+
+/** Structured renderer: repeatable-group answers (arrays of row objects —
+ * team rosters, player lists) render as labeled row cards instead of
+ * "[object Object]" (C12); nested groups recurse. Scalars fall back to
+ * formatAnswer. */
+function AnswerValue({
+  value,
+  labels,
+}: {
+  value: unknown;
+  labels: Record<string, string>;
+}): React.ReactElement {
+  const isRowObject = (v: unknown): v is Record<string, unknown> =>
+    !!v && typeof v === "object" && !Array.isArray(v);
+  if (Array.isArray(value) && value.some(isRowObject)) {
+    return (
+      <div className="flex flex-col gap-2" data-testid="group-answer">
+        {value.map((row, i) => (
+          <div
+            key={i}
+            className="rounded-md border border-border bg-muted/30 px-3 py-2"
+          >
+            <p className="mb-1 font-tabular text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
+              #{i + 1}
+            </p>
+            {isRowObject(row) ? (
+              <dl className="flex flex-col gap-1">
+                {Object.entries(row).map(([k, v]) => (
+                  <div
+                    key={k}
+                    className="grid grid-cols-[minmax(0,10rem)_1fr] gap-2"
+                  >
+                    <dt className="truncate text-xs text-muted-foreground">
+                      {labels[k] ?? k}
+                    </dt>
+                    <dd className="min-w-0 text-sm">
+                      <AnswerValue value={v} labels={labels} />
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <span className="text-sm">{formatAnswer(row)}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return <>{formatAnswer(value)}</>;
 }
 
 /** Format an ISO timestamp for display in the responses table. */
@@ -339,7 +394,9 @@ function ResponseDetailDialog({
                 <dt className="text-xs font-medium text-muted-foreground">
                   {labels[key] ?? key}
                 </dt>
-                <dd className="text-sm">{formatAnswer(value)}</dd>
+                <dd className="text-sm">
+                  <AnswerValue value={value} labels={labels} />
+                </dd>
               </div>
             ))
           )}
