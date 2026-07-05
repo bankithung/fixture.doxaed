@@ -403,9 +403,17 @@ export function FieldRenderer({
               const extra = selected ? optionExtra?.(String(o.value)) : null;
               return (
                 <div key={o.value} className="flex flex-col">
+                  {/* Whole row is the hit target: bordered, hoverable,
+                      violet when picked (bare browser radios read as
+                      unfinished on the public forms). */}
                   <label
                     htmlFor={oid}
-                    className="flex cursor-pointer items-center gap-2 text-sm"
+                    className={cn(
+                      "flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2 text-sm transition-colors",
+                      selected
+                        ? "border-primary/50 bg-accent/60 font-medium"
+                        : "border-border bg-card hover:border-primary/40 hover:bg-muted/40",
+                    )}
                   >
                     <input
                       id={oid}
@@ -415,12 +423,12 @@ export function FieldRenderer({
                       checked={selected}
                       disabled={disabled}
                       onChange={() => onChange(o.value)}
-                      className="h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="h-4 w-4 shrink-0 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                     {o.image ? (
                       <img src={o.image} alt="" className="h-6 w-6 shrink-0 rounded object-cover" />
                     ) : null}
-                    <span>{t(o.label)}</span>
+                    <span className="min-w-0">{t(o.label)}</span>
                   </label>
                   {extra ? <div className="mt-2">{extra}</div> : null}
                 </div>
@@ -448,7 +456,12 @@ export function FieldRenderer({
                 <div key={o.value} className="flex flex-col">
                   <label
                     htmlFor={oid}
-                    className="flex cursor-pointer items-center gap-2 text-sm"
+                    className={cn(
+                      "flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2 text-sm transition-colors",
+                      checked
+                        ? "border-primary/50 bg-accent/60 font-medium"
+                        : "border-border bg-card hover:border-primary/40 hover:bg-muted/40",
+                    )}
                   >
                     <input
                       id={oid}
@@ -463,12 +476,12 @@ export function FieldRenderer({
                             : arr.filter((v) => v !== String(o.value)),
                         )
                       }
-                      className="h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="h-4 w-4 shrink-0 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                     {o.image ? (
                       <img src={o.image} alt="" className="h-6 w-6 shrink-0 rounded object-cover" />
                     ) : null}
-                    <span>{t(o.label)}</span>
+                    <span className="min-w-0">{t(o.label)}</span>
                   </label>
                   {extra ? <div className="mt-2">{extra}</div> : null}
                 </div>

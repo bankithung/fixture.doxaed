@@ -680,7 +680,7 @@ export function PublicFormPage(): React.ReactElement {
                 );
                 if (!list.length) return null;
                 return (
-                  <div className="ml-6 flex flex-col gap-3 border-l-2 border-primary/40 pl-3">
+                  <div className="ml-4 flex flex-col gap-3 border-l-2 border-primary/40 pl-3 pb-0.5">
                     {list.map((k) => renderChain(k, true))}
                   </div>
                 );
