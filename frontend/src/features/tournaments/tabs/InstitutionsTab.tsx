@@ -137,6 +137,8 @@ export function InstitutionsTab(): React.ReactElement {
   const list = useQuery({ queryKey: ["t-institutions", id], queryFn: () => institutionsApi.list(id) });
   const stage = useQuery({ queryKey: ["tournament-stage", id], queryFn: () => tournamentsApi.stage(id) });
   const sportsQ = useQuery({ queryKey: ["t-sports", id], queryFn: () => tournamentsApi.sports(id) });
+  // Same key the workspace shell uses, so this reads from cache.
+  const tournament = useQuery({ queryKey: ["tournament", id], queryFn: () => tournamentsApi.get(id) });
   const canManage = stage.data?.can_manage ?? false;
 
   const orgForm =
@@ -289,7 +291,8 @@ export function InstitutionsTab(): React.ReactElement {
 
   const runExport = (): void => {
     const meta = {
-      title: orgForm?.title ?? t("Institution registration"),
+      title: tournament.data?.name ?? t("Tournament"),
+      subtitle: orgForm?.title ?? t("Institution registration"),
       filterSummary: hasActiveFilters ? filterSummary : "",
       shownCount: filteredItems.length,
       totalCount: items.length,

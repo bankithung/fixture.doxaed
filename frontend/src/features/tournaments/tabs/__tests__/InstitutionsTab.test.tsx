@@ -13,7 +13,12 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/tournaments")>();
   return {
     ...actual,
-    tournamentsApi: { ...actual.tournamentsApi, stage: vi.fn(), sports: vi.fn() },
+    tournamentsApi: {
+      ...actual.tournamentsApi,
+      stage: vi.fn(),
+      sports: vi.fn(),
+      get: vi.fn(),
+    },
   };
 });
 vi.mock("@/api/institutions", async (importOriginal) => {
@@ -87,6 +92,8 @@ beforeEach(() => {
   vi.mocked(institutionsApi.list).mockResolvedValue([INSTITUTION] as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   vi.mocked(tournamentsApi.stage).mockResolvedValue({ can_manage: true } as any);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  vi.mocked(tournamentsApi.get).mockResolvedValue({ name: "Anpsa Test" } as any);
   vi.mocked(tournamentsApi.sports).mockResolvedValue({
     sports: [
       {
@@ -175,7 +182,7 @@ describe("InstitutionsTab", () => {
   it("PDF export opens a print view carrying the rows", async () => {
     const write = vi.fn();
     const fakeWin = {
-      document: { write, close: vi.fn() },
+      document: { write, close: vi.fn(), querySelector: vi.fn(() => null) },
       focus: vi.fn(),
       print: vi.fn(),
     };
@@ -190,6 +197,8 @@ describe("InstitutionsTab", () => {
     expect(write).toHaveBeenCalledWith(
       expect.stringContaining("Ketoulhou Sekhose"),
     );
+    // The tournament name heads the document.
+    expect(write).toHaveBeenCalledWith(expect.stringContaining("Anpsa Test"));
   });
 
   it("filter tree lists every configured sport, even without entries", async () => {
