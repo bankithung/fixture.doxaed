@@ -10,10 +10,13 @@
   z-index: 50;
 }
 
+/* Transparent scrim: the page stays fully visible while the drawer is open
+   (owner 2026-07-05: filtering should feel like you never left the page).
+   It still catches outside clicks to close. */
 .sdrawer-scrim {
   position: absolute;
   inset: 0;
-  background: hsl(var(--foreground) / 0.4);
+  background: transparent;
 }
 
 .sdrawer-layers {
@@ -45,7 +48,8 @@
   flex-direction: column;
   background: hsl(var(--card));
   border-left: 1px solid hsl(var(--border));
-  box-shadow: 0 12px 28px -6px hsl(222 47% 11% / 0.2);
+  /* A stronger left shadow carries the layering the scrim used to provide. */
+  box-shadow: -20px 0 48px -16px hsl(222 47% 11% / 0.35);
   overflow-y: auto;
   will-change: transform;
 }
