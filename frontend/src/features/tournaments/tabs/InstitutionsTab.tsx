@@ -10,11 +10,11 @@ import {
   Download,
   ExternalLink,
   Eye,
-  Link2,
   MoreVertical,
   Pencil,
   Plus,
   Send,
+  Share2,
   SlidersHorizontal,
   Trash2,
   Trophy,
@@ -38,6 +38,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ShareDialog } from "@/components/ui/ShareDialog";
+import { StaggeredDrawer } from "@/components/ui/StaggeredDrawer";
 import { useToast } from "@/components/ui/toast";
 import { flipPlacement } from "@/lib/popover";
 import { invalidateTournament } from "@/lib/queryKeys";
@@ -80,7 +82,7 @@ export function InstitutionsTab(): React.ReactElement {
   const qc = useQueryClient();
   const toast = useToast();
   const navigate = useNavigate();
-  const [copied, setCopied] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
@@ -111,16 +113,6 @@ export function InstitutionsTab(): React.ReactElement {
 
   const publicUrl = orgForm ? `${window.location.origin}/f/${orgForm.id}` : "";
   const directoryUrl = orgForm ? `${window.location.origin}/f/${orgForm.id}/directory` : "";
-  const copy = async (url: string): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      toast.push({ kind: "success", title: t("Link copied") });
-    } catch {
-      toast.push({ kind: "error", title: t("Could not copy"), description: url });
-    }
-  };
 
   // Table COLUMNS come from every form field (as before); the rail's
   // per-question FILTERS exclude the sport/category chain questions (same
@@ -218,85 +210,103 @@ export function InstitutionsTab(): React.ReactElement {
     setSearch("");
   };
 
-  // Close the filter slide-over on Escape.
-  useEffect(() => {
-    if (!filtersOpen) return;
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") setFiltersOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [filtersOpen]);
-
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h2 className="text-lg font-semibold">{t("Institution registration")}</h2>
-        <p className="text-sm text-muted-foreground">
-          {t("Share one form, or add schools yourself.")}
-        </p>
-      </div>
-
-      {/* Form-management card (the single registration mechanism). */}
-      {canManage ? (
-        !orgForm ? (
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card py-10 text-center">
-            <Building2 aria-hidden="true" className="h-8 w-8 text-muted-foreground/40" />
-            <div>
-              <p className="text-sm font-medium">{t("Create the registration form first")}</p>
-              <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                {t("Add questions, then share the form or add schools.")}
-              </p>
-            </div>
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus aria-hidden="true" className="h-4 w-4" />
-              {t("Create registration form")}
-            </Button>
+      {canManage && !orgForm ? (
+        /* No form yet: creating it is the only thing to do. */
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card py-10 text-center">
+          <Building2 aria-hidden="true" className="h-8 w-8 text-muted-foreground/40" />
+          <div>
+            <p className="text-sm font-medium">{t("Create the registration form first")}</p>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">
+              {t("Add questions, then share the form or add schools.")}
+            </p>
           </div>
-        ) : (
-          <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium">{orgForm.title}</span>
-                  <span
-                    className={cn(
-                      "rounded-full px-2 py-0.5 text-[0.6875rem] font-medium capitalize",
-                      isOpen ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
-                    )}
-                  >
-                    {t(orgForm.status)}
-                  </span>
-                </div>
-                <p className="mt-0.5 font-tabular text-xs text-muted-foreground">
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus aria-hidden="true" className="h-4 w-4" />
+            {t("Create registration form")}
+          </Button>
+        </div>
+      ) : (
+        /* ONE panel: form status + actions in the toolbar, quick links under
+           it, the registrations table below (owner 2026-07-05: merged). */
+        <section className="panel" aria-label={t("Institution registration")}>
+          <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
+            <Building2 aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+            <h2 className="text-sm font-semibold">{t("Institution registration")}</h2>
+            {orgForm ? (
+              <>
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-[0.6875rem] font-medium capitalize",
+                    isOpen ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {t(orgForm.status)}
+                </span>
+                <span className="font-tabular text-xs text-muted-foreground">
                   {orgForm.response_count} {t("submissions")}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => navigate(routes.tournamentFormBuilder(id, orgForm.id))}>
-                  <Pencil aria-hidden="true" className="h-4 w-4" />
-                  {t("Edit form")}
+                </span>
+              </>
+            ) : null}
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {items.length > 0 ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFiltersOpen(true)}
+                  aria-haspopup="dialog"
+                  data-testid="open-institution-filters"
+                >
+                  <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
+                  {t("Filters")}
+                  {activeFilterCount > 0 ? (
+                    <span className="rounded-full bg-primary px-1.5 py-px font-tabular text-[10px] font-semibold text-primary-foreground">
+                      {activeFilterCount}
+                    </span>
+                  ) : null}
                 </Button>
-                {!isOpen ? (
-                  <Button size="sm" onClick={() => publish.mutate()} disabled={publish.isPending}>
-                    <Send aria-hidden="true" className="h-4 w-4" />
-                    {t("Open registration")}
+              ) : null}
+              {canManage && orgForm ? (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => navigate(routes.tournamentFormBuilder(id, orgForm.id))}>
+                    <Pencil aria-hidden="true" className="h-4 w-4" />
+                    {t("Edit form")}
                   </Button>
-                ) : (
-                  <>
-                    <Button size="sm" variant="outline" onClick={() => void copy(publicUrl)}>
-                      {copied ? <Check aria-hidden="true" className="h-4 w-4" /> : <Link2 aria-hidden="true" className="h-4 w-4" />}
-                      {t("Share link")}
+                  {!isOpen ? (
+                    <Button size="sm" onClick={() => publish.mutate()} disabled={publish.isPending}>
+                      <Send aria-hidden="true" className="h-4 w-4" />
+                      {t("Open registration")}
                     </Button>
-                    <Button size="sm" onClick={() => navigate(`/f/${orgForm.id}`)}>
-                      <Plus aria-hidden="true" className="h-4 w-4" />
-                      {t("Add institute")}
-                    </Button>
-                  </>
-                )}
-              </div>
+                  ) : (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="open-share-dialog"
+                        onClick={() => setShareOpen(true)}
+                      >
+                        <Share2 aria-hidden="true" className="h-4 w-4" />
+                        {t("Share link")}
+                      </Button>
+                      {/* New tab: adding a school should not lose this page. */}
+                      <Button
+                        size="sm"
+                        onClick={() => window.open(`/f/${orgForm.id}`, "_blank", "noopener")}
+                      >
+                        <Plus aria-hidden="true" className="h-4 w-4" />
+                        {t("Add institute")}
+                        <ExternalLink aria-hidden="true" className="h-3 w-3" />
+                      </Button>
+                    </>
+                  )}
+                </>
+              ) : null}
             </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-medium">
+          </div>
+
+          {orgForm ? (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-border px-3 py-2 text-xs font-medium">
               {isOpen ? (
                 <a href={directoryUrl} target="_blank" rel="noreferrer"
                   className="inline-flex items-center gap-1.5 text-primary hover:underline">
@@ -318,127 +328,102 @@ export function InstitutionsTab(): React.ReactElement {
                   {t("Export CSV")}
                 </a>
               ) : null}
+              <span className="ml-auto font-tabular text-muted-foreground">
+                {filteredItems.length === items.length
+                  ? `${items.length} ${t("registered")}`
+                  : `${filteredItems.length}/${items.length} ${t("shown")}`}
+              </span>
             </div>
-          </div>
-        )
-      ) : null}
+          ) : null}
 
-      {/* Registered institutions — the flexible table driven by the form's
-          fields. The directory-style filters live in a right slide-over opened
-          on demand (toggle below), so the table keeps the full width. */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold">{t("Registered institutions")}</h3>
-            <span className="font-tabular text-xs text-muted-foreground">
-              {filteredItems.length === items.length ? items.length : `${filteredItems.length}/${items.length}`}
-            </span>
+          <div className="p-3">
+            {list.isLoading ? (
+              <div className="h-40 animate-pulse rounded-xl border border-border bg-muted" />
+            ) : items.length === 0 ? (
+              <EmptyState
+                icon={<Building2 className="h-8 w-8" />}
+                title={t("No institutions registered yet")}
+                hint={t("Share the form, or add a school yourself.")}
+              />
+            ) : filteredItems.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">
+                {t("No institutions match your filters.")}
+              </p>
+            ) : (
+              <InstitutionTable
+                items={filteredItems}
+                tournamentId={id}
+                canManage={canManage}
+              />
+            )}
           </div>
-          {items.length > 0 ? (
+        </section>
+      )}
+
+      {/* Filters — same right-side drawer as the sports picker. */}
+      <StaggeredDrawer
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title={t("Filters")}
+        testId="institution-filter-drawer"
+      >
+        <div className="sdrawer-itemwrap">
+          <div className="sdrawer-item">
+            <FilterPanel
+              search={search}
+              onSearch={setSearch}
+              compTree={compTree}
+              compSel={compSel}
+              onToggleComp={toggleComp}
+              expanded={expanded}
+              onExpand={toggleExpand}
+              filters={choiceFields.map((f) => ({
+                key: f.key,
+                label: f.label,
+                options: (f.options ?? []).map((o) => ({
+                  value: String(o.value),
+                  label: o.label,
+                })),
+              }))}
+              values={filters}
+              onValue={(key, v) => setFilters((s) => ({ ...s, [key]: v }))}
+            />
+          </div>
+        </div>
+        <div className="sdrawer-itemwrap mt-auto">
+          <div className="sdrawer-item flex items-center gap-2 border-t border-border pt-3">
             <Button
+              type="button"
               variant="outline"
               size="sm"
-              onClick={() => setFiltersOpen(true)}
-              aria-haspopup="dialog"
+              disabled={!hasActiveFilters}
+              onClick={clearFilters}
             >
-              <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
-              {t("Filters")}
-              {activeFilterCount > 0 ? (
-                <span className="grid h-5 min-w-[1.25rem] place-items-center rounded-full bg-primary px-1 font-tabular text-[0.6875rem] font-semibold text-primary-foreground">
-                  {activeFilterCount}
-                </span>
-              ) : null}
+              {t("Clear all")}
             </Button>
-          ) : null}
+            <Button
+              type="button"
+              size="sm"
+              className="ml-auto"
+              onClick={() => setFiltersOpen(false)}
+            >
+              {hasActiveFilters
+                ? `${t("Show")} ${filteredItems.length} ${filteredItems.length === 1 ? t("school") : t("schools")}`
+                : t("Done")}
+            </Button>
+          </div>
         </div>
+      </StaggeredDrawer>
 
-        {list.isLoading ? (
-          <div className="h-40 animate-pulse rounded-xl border border-border bg-muted" />
-        ) : items.length === 0 ? (
-          <EmptyState
-            icon={<Building2 className="h-8 w-8" />}
-            title={t("No institutions registered yet")}
-            hint={t("Share the form, or add a school yourself.")}
-          />
-        ) : filteredItems.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">
-            {t("No institutions match your filters.")}
-          </p>
-        ) : (
-          <InstitutionTable
-            items={filteredItems}
-            tournamentId={id}
-            canManage={canManage}
-          />
-        )}
-      </div>
-
-      {/* Filter slide-over (right). Toggled by the Filters button; portaled so
-          it overlays the whole workspace, not just this column. */}
-      {filtersOpen
-        ? createPortal(
-            <div className="fixed inset-0 z-50 flex justify-end">
-              <div
-                className="absolute inset-0 bg-foreground/40 backdrop-blur-sm"
-                aria-hidden="true"
-                onClick={() => setFiltersOpen(false)}
-              />
-              <aside
-                role="dialog"
-                aria-modal="true"
-                aria-label={t("Filters")}
-                className="relative z-10 flex h-full w-full max-w-sm flex-col border-l border-border bg-card shadow-xl"
-              >
-                <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
-                  <h4 className="text-sm font-semibold">{t("Filters")}</h4>
-                  <div className="flex items-center gap-1">
-                    {hasActiveFilters ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={clearFilters}
-                        className="h-8 px-2"
-                      >
-                        <X aria-hidden="true" className="h-3.5 w-3.5" />
-                        {t("Clear")}
-                      </Button>
-                    ) : null}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setFiltersOpen(false)}
-                      aria-label={t("Close filters")}
-                    >
-                      <X aria-hidden="true" className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4">
-                  <FilterPanel
-                    search={search}
-                    onSearch={setSearch}
-                    compTree={compTree}
-                    compSel={compSel}
-                    onToggleComp={toggleComp}
-                    expanded={expanded}
-                    onExpand={toggleExpand}
-                    filters={choiceFields.map((f) => ({
-                      key: f.key,
-                      label: f.label,
-                      options: (f.options ?? []).map((o) => ({
-                        value: String(o.value),
-                        label: o.label,
-                      })),
-                    }))}
-                    values={filters}
-                    onValue={(key, v) => setFilters((s) => ({ ...s, [key]: v }))}
-                  />
-                </div>
-              </aside>
-            </div>,
-            document.body,
-          )
-        : null}
+      {orgForm ? (
+        <ShareDialog
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          url={publicUrl}
+          text={orgForm.title}
+          title={t("Share the registration form")}
+        />
+      ) : null}
 
       <CreateFormDialog
         tournamentId={id}
@@ -792,44 +777,47 @@ function InstitutionTable({
                       colSpan={canManage ? 8 : 7}
                       className="border-b border-border bg-muted/20 px-4 py-3"
                     >
+                      {/* Same visual language as the setup Competitions
+                          panel: tinted sport head + count, one chip per
+                          entered competition. */}
                       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                         {groupCompetitions(comps).map((g) => (
                           <div
                             key={g.sport}
-                            className="rounded-lg border border-border bg-card p-3"
+                            className="overflow-hidden rounded-lg border border-border bg-card"
                           >
-                            <div className="mb-2 flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 border-b border-border bg-accent/40 px-2.5 py-1.5">
                               <Trophy
                                 aria-hidden="true"
                                 className="h-3.5 w-3.5 shrink-0 text-primary"
                               />
-                              <span className="truncate text-sm font-medium">
+                              <span className="truncate text-[0.8125rem] font-semibold">
                                 {g.sport}
                               </span>
+                              <span className="ml-auto rounded-full bg-primary/15 px-1.5 py-px font-tabular text-[0.6875rem] font-semibold text-primary">
+                                {g.items.length || 1}
+                              </span>
                             </div>
-                            {g.items.length ? (
-                              <ul className="flex flex-col gap-1">
-                                {g.items.map((segs, k) => (
-                                  <li
+                            <div className="flex flex-wrap gap-1.5 p-2.5">
+                              {g.items.length ? (
+                                g.items.map((segs, k) => (
+                                  <span
                                     key={k}
-                                    className="flex flex-wrap items-center gap-1"
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium capitalize"
                                   >
-                                    {segs.map((seg, j) => (
-                                      <span
-                                        key={j}
-                                        className="rounded bg-muted px-1.5 py-0.5 text-[0.6875rem] font-medium"
-                                      >
-                                        {seg}
-                                      </span>
-                                    ))}
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <p className="text-xs text-muted-foreground">
-                                {t("Whole sport")}
-                              </p>
-                            )}
+                                    <span
+                                      aria-hidden="true"
+                                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
+                                    />
+                                    {segs.join(" · ")}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-xs text-muted-foreground">
+                                  {t("Whole sport")}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
