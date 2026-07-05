@@ -857,7 +857,7 @@ function TeamsTable({
     return (
       <div className="flex flex-col gap-4">
         {groups.map((g) => (
-          <section key={g.key} className="star-rim rounded-xl border border-border bg-card shadow-sm">
+          <section key={g.key} className="bento-card star-rim rounded-xl border border-border bg-card shadow-sm">
             <button
               type="button"
               aria-expanded={!collapsed.has(g.key)}
@@ -929,7 +929,7 @@ function TeamsTable({
   }
 
   return (
-    <div className="star-rim max-h-[36rem] overflow-auto rounded-xl border border-border bg-card shadow-sm">
+    <div className="bento-card star-rim max-h-[36rem] overflow-auto rounded-xl border border-border bg-card shadow-sm">
       <table className="w-full border-separate border-spacing-0 text-sm">
         <thead>
           <tr>

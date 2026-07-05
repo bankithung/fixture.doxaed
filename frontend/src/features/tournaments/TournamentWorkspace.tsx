@@ -12,6 +12,7 @@ import { StageContinue } from "./StageContinue";
 import { pathStageKey } from "@/features/layout/computeNavItems";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
+import { BentoGrid } from "@/features/dashboard/BentoCard";
 import { t } from "@/lib/t";
 
 /** Each setup stage → its work page, for the clickable top stepper. */
@@ -247,7 +248,11 @@ export function TournamentWorkspace(): React.ReactElement {
             </p>
           </div>
         ) : (
-          <Outlet />
+          /* ONE MagicBento driver for every stage tab: any .bento-card
+             rendered by the outlet gets the cursor border glow. */
+          <BentoGrid>
+            <Outlet />
+          </BentoGrid>
         )}
       </div>
 

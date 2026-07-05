@@ -1006,7 +1006,7 @@ export function SportsTab(): React.ReactElement {
           you (owner 2026-07-04). */}
       {effectiveStep === "pick" ? (
         <StarBorder>
-        <section className="panel" aria-label={t("Choose sports")}>
+        <section className="bento-card panel" aria-label={t("Choose sports")}>
           {/* One toolbar: selected count, search, and Next in a single row. */}
           <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
             <h3 className="text-sm font-semibold">
@@ -1310,7 +1310,7 @@ export function SportsTab(): React.ReactElement {
               {/* Active sport's category tree — the panel the tabs attach to. */}
               {activeSport ? (
                 <section
-                  className="star-rim flex flex-col gap-3 rounded-b-xl rounded-tr-xl border border-border bg-card p-4 shadow-sm"
+                  className="bento-card star-rim flex flex-col gap-3 rounded-b-xl rounded-tr-xl border border-border bg-card p-4 shadow-sm"
                   data-testid={`sport-${activeSport.key}`}
                 >
               <div className="flex items-center justify-between gap-2">
@@ -1399,7 +1399,7 @@ export function SportsTab(): React.ReactElement {
 
           {/* Live competitions preview — updates in real time as you add
               categories; grouped by top-level category so it stays scannable. */}
-          <aside className="panel star-rim w-full lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:w-80 lg:shrink-0 lg:overflow-y-auto">
+          <aside className="bento-card panel star-rim w-full lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:w-80 lg:shrink-0 lg:overflow-y-auto">
             <div className="panel-header gap-2">
               <Trophy aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
               <h3 className="panel-title truncate">{t("Competitions")}</h3>
@@ -1561,7 +1561,7 @@ export function SportsTab(): React.ReactElement {
                   const paths = leafPaths(activeSport.nodes ?? []);
                   return (
                     <section
-                      className="star-rim flex flex-col gap-3 rounded-b-xl rounded-tr-xl border border-border bg-card p-4 shadow-sm"
+                      className="bento-card star-rim flex flex-col gap-3 rounded-b-xl rounded-tr-xl border border-border bg-card p-4 shadow-sm"
                       data-testid={`review-${activeSport.key}`}
                     >
                       <div className="flex items-center justify-between gap-2">

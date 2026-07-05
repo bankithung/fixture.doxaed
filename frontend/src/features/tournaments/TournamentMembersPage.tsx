@@ -411,7 +411,7 @@ function InvitePanel({ tournamentId }: { tournamentId: string }): React.ReactEle
 
   return (
     <section
-      className="star-rim rounded-xl border border-border bg-card p-4 shadow-sm"
+      className="bento-card star-rim rounded-xl border border-border bg-card p-4 shadow-sm"
       aria-label={t("Invite a member")}
     >
       <div className="mb-3">
@@ -576,7 +576,7 @@ export function TournamentMembersPage(): React.ReactElement {
       <InvitePanel tournamentId={id} />
 
       <section
-        className="star-rim overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+        className="bento-card star-rim overflow-hidden rounded-xl border border-border bg-card shadow-sm"
         aria-label={t("Roster")}
       >
         <div className="flex h-9 items-center gap-2 border-b border-border px-4">

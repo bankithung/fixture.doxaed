@@ -28,6 +28,7 @@ import {
   sectionActiveFields,
   validateRequired,
 } from "@/lib/formLogic";
+import { BentoGrid } from "@/features/dashboard/BentoCard";
 import { t } from "@/lib/t";
 import { Centered, PublicShell } from "@/features/registration/PublicShell";
 import { ContactAdminDialog } from "./ContactAdminDialog";
@@ -761,7 +762,7 @@ export function PublicFormPage(): React.ReactElement {
     <PublicShell tournamentName={data?.tournament_name}>
       {/* Extra bottom padding reserves room for the floating contact button so it
           never covers the Back/Next/Submit footer (notably on narrow screens). */}
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 pb-28 pt-8 sm:px-6">
+      <BentoGrid className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 pb-28 pt-8 sm:px-6">
         {/* Heading — the registry link sits top-right on the same row as the title. */}
         <div className="flex flex-col gap-4">
           <div className="flex items-start justify-between gap-3">
@@ -859,7 +860,7 @@ export function PublicFormPage(): React.ReactElement {
           <StarBorder>
           <section
             aria-label={t("Review your registration")}
-            className="flex flex-col gap-6 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6"
+            className="bento-card flex flex-col gap-6 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6"
           >
             <div>
               <h2 className="text-base font-semibold">
@@ -892,7 +893,7 @@ export function PublicFormPage(): React.ReactElement {
           <StarBorder>
           <section
             aria-label={current.title || t("Section")}
-            className="flex flex-col gap-5 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6"
+            className="bento-card flex flex-col gap-5 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6"
           >
             <div>
               <h2 className="text-base font-semibold">{t(current.title)}</h2>
@@ -1031,7 +1032,7 @@ export function PublicFormPage(): React.ReactElement {
             </Button>
           )}
         </div>
-      </div>
+      </BentoGrid>
     </PublicShell>
   );
 }

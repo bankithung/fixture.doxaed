@@ -28,6 +28,7 @@ import {
 } from "./FilterPanel";
 import { cn } from "@/lib/tailwind";
 import { useBreakpoint } from "@/lib/useBreakpoint";
+import { BentoGrid } from "@/features/dashboard/BentoCard";
 import { t } from "@/lib/t";
 
 function matches(entry: DirectoryEntry, key: string, value: string): boolean {
@@ -89,9 +90,7 @@ function CompetitionsSection({
     >
       {groups.map((g, gi) => (
         <StarBorder key={g.sport} speed={`${6 + gi}s`}>
-        <div
-          className="flex h-full flex-col gap-1 rounded-xl border border-border bg-card p-4 shadow-sm"
-        >
+        <div className="bento-card flex h-full flex-col gap-1 rounded-xl border border-border bg-card p-4 shadow-sm">
           <h3 className="text-sm font-semibold">{g.sport}</h3>
           <ul className="mt-1 flex flex-col divide-y divide-border/60">
             {g.rows.map((r) => (
@@ -389,8 +388,9 @@ export function PublicDirectoryPage(): React.ReactElement {
         {/* ONE panel (owner 2026-07-05): toolbar with the total + view tabs,
             a slim per-game stats strip, then the content beside the filter
             rail — wrapped in the StarBorder orbit. */}
+        <BentoGrid>
         <StarBorder>
-        <section className="panel" aria-label={t("Registered institutions")}>
+        <section className="bento-card panel" aria-label={t("Registered institutions")}>
           <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
             <Building2 aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
             <h2 className="text-sm font-semibold">{t("Registered institutions")}</h2>
@@ -702,6 +702,7 @@ export function PublicDirectoryPage(): React.ReactElement {
           </div>
         </section>
         </StarBorder>
+        </BentoGrid>
 
         {/* Floating Filters pill (phones/tablets) — always on-screen at the
             bottom edge, opens the bottom-sheet. The desktop rail replaces it

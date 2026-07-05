@@ -136,7 +136,7 @@ export function GlobalSetupCard({
   return (
     <section
       data-testid="global-setup-strip"
-      className="star-rim overflow-hidden rounded-lg border border-border bg-card shadow-sm"
+      className="bento-card star-rim overflow-hidden rounded-lg border border-border bg-card shadow-sm"
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border px-4 py-2.5">
         <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">

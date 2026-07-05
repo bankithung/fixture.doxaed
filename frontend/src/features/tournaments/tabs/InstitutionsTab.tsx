@@ -52,7 +52,6 @@ import { ShareDialog } from "@/components/ui/ShareDialog";
 import { StaggeredDrawer } from "@/components/ui/StaggeredDrawer";
 import { StarBorder } from "@/components/ui/StarBorder";
 import { useToast } from "@/components/ui/toast";
-import { BentoGrid } from "@/features/dashboard/BentoCard";
 import { RangePills } from "@/features/dashboard/RangePills";
 import { flipPlacement } from "@/lib/popover";
 import { invalidateTournament } from "@/lib/queryKeys";
@@ -361,7 +360,6 @@ export function InstitutionsTab(): React.ReactElement {
         /* ONE panel: form status + actions in the toolbar, quick links under
            it, the registrations table below — with the dashboard's bento
            glow + the StarBorder orbit (owner 2026-07-05). */
-        <BentoGrid>
         <StarBorder>
         <section
           className="bento-card panel"
@@ -563,7 +561,6 @@ export function InstitutionsTab(): React.ReactElement {
           </div>
         </section>
         </StarBorder>
-        </BentoGrid>
       )}
 
       {/* Filters — same right-side drawer as the sports picker. */}
