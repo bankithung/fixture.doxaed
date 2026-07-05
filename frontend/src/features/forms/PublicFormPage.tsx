@@ -766,7 +766,7 @@ export function PublicFormPage(): React.ReactElement {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className={OVERLINE}>{t("Registration")}</p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+              <h1 className="page-title mt-1">
                 {t(form.title)}
               </h1>
             </div>
