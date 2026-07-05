@@ -33,6 +33,7 @@ import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import "@/components/ui/star-border.css";
 import { AssistantWidget } from "@/features/assistant/AssistantPanel";
 import { AdvanceToKnockoutDialog } from "./AdvanceToKnockoutDialog";
 import { CompetitionCard } from "./CompetitionCard";
@@ -733,7 +734,7 @@ export function FixtureSetupHub({
         /* §6.1 empty state — nothing else is actionable before dates + venues. */
         <section
           data-testid="global-setup-gate"
-          className="flex flex-col items-center gap-3 rounded-xl border border-border bg-card px-6 py-12 text-center shadow-sm"
+          className="star-rim flex flex-col items-center gap-3 rounded-xl border border-border bg-card px-6 py-12 text-center shadow-sm"
         >
           <span className="grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">
             <CalendarRange aria-hidden="true" className="h-6 w-6" />
@@ -1010,7 +1011,7 @@ export function FixtureSetupHub({
           {tabs.length > 0 ? (
             <section
               data-testid="advanced-tools"
-              className="overflow-hidden rounded-lg border border-border bg-card shadow-sm"
+              className="star-rim overflow-hidden rounded-lg border border-border bg-card shadow-sm"
             >
               <button
                 type="button"

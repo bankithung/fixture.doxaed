@@ -26,6 +26,7 @@ import { newEventId } from "@/lib/eventId";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import "@/components/ui/star-border.css";
 
 /**
  * Tournament-scoped Members & roles (Increment 11). Mirrors the org
@@ -410,7 +411,7 @@ function InvitePanel({ tournamentId }: { tournamentId: string }): React.ReactEle
 
   return (
     <section
-      className="rounded-xl border border-border bg-card p-4 shadow-sm"
+      className="star-rim rounded-xl border border-border bg-card p-4 shadow-sm"
       aria-label={t("Invite a member")}
     >
       <div className="mb-3">
@@ -575,7 +576,7 @@ export function TournamentMembersPage(): React.ReactElement {
       <InvitePanel tournamentId={id} />
 
       <section
-        className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+        className="star-rim overflow-hidden rounded-xl border border-border bg-card shadow-sm"
         aria-label={t("Roster")}
       >
         <div className="flex h-9 items-center gap-2 border-b border-border px-4">

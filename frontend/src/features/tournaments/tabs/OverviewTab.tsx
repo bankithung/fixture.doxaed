@@ -13,6 +13,7 @@ import { institutionsApi } from "@/api/institutions";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import "@/components/ui/star-border.css";
 import { StageStepper } from "../StageStepper";
 
 /** Soft, dark-mode-aware tint per metric (icon tile color). */
@@ -81,7 +82,7 @@ export function OverviewTab(): React.ReactElement {
       <StageStepper tournamentId={id} />
 
       {tdata?.starts_at ? (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-card px-4 py-2.5 text-sm shadow-sm">
+        <div className="star-rim flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-card px-4 py-2.5 text-sm shadow-sm">
           <span className="font-medium">
             {fmtDate(tdata.starts_at)}
             {tdata.ends_at && tdata.ends_at !== tdata.starts_at
@@ -180,7 +181,7 @@ function MetricCard({
   return (
     <Link
       to={metric.to}
-      className="group flex items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-sm transition-colors hover:border-primary/30 hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="star-rim group flex items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-sm transition-colors hover:border-primary/30 hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {inner}
     </Link>

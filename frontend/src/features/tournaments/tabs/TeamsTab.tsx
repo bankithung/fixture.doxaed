@@ -43,6 +43,7 @@ import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { t } from "@/lib/t";
+import "@/components/ui/star-border.css";
 import { CreateFormDialog } from "../CreateFormDialog";
 import { EmptyState } from "./shared";
 
@@ -856,7 +857,7 @@ function TeamsTable({
     return (
       <div className="flex flex-col gap-4">
         {groups.map((g) => (
-          <section key={g.key} className="rounded-xl border border-border bg-card shadow-sm">
+          <section key={g.key} className="star-rim rounded-xl border border-border bg-card shadow-sm">
             <button
               type="button"
               aria-expanded={!collapsed.has(g.key)}
@@ -928,7 +929,7 @@ function TeamsTable({
   }
 
   return (
-    <div className="max-h-[36rem] overflow-auto rounded-xl border border-border bg-card shadow-sm">
+    <div className="star-rim max-h-[36rem] overflow-auto rounded-xl border border-border bg-card shadow-sm">
       <table className="w-full border-separate border-spacing-0 text-sm">
         <thead>
           <tr>

@@ -67,3 +67,54 @@
     display: none;
   }
 }
+
+/* Class-only variant: a single comet orbits an EXISTING card's rim via a
+   masked conic gradient — add .star-rim to any bordered card, no wrapper
+   needed. Browsers without @property show a faint static arc instead. */
+@property --star-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.star-rim {
+  position: relative;
+}
+
+.star-rim::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--star-angle),
+    transparent 0deg,
+    transparent 290deg,
+    hsl(var(--primary) / 0.9) 337deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: star-rim-spin 7s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes star-rim-spin {
+  to {
+    --star-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .star-rim::after {
+    display: none;
+  }
+}
