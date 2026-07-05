@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { gsap } from "gsap";
 import { X } from "lucide-react";
 import { t } from "@/lib/t";
@@ -119,7 +120,10 @@ export function StaggeredDrawer({
 
   if (!rendered) return null;
 
-  return (
+  // Portaled to <body>: panels/StarBorder wrappers use overflow-hidden and
+  // transforms, which turn position:fixed into position-in-my-corner (owner
+  // 2026-07-05: the sports filter drawer slid out of the SECTION).
+  return createPortal(
     <div
       ref={rootRef}
       role="dialog"
@@ -148,6 +152,7 @@ export function StaggeredDrawer({
         </div>
         <div className="flex flex-1 flex-col gap-4 p-4">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
