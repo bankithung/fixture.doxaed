@@ -37,8 +37,16 @@ export function SettingsTab(): React.ReactElement {
     queryFn: () => tournamentsApi.get(id),
     enabled: Boolean(id),
   });
+  // Rename gates on MANAGER, not on settings.can_edit — the backend flips
+  // can_edit off once rules freeze (registration open), but a name is not a
+  // rule (owner report 2026-07-05: "no option to edit the name").
+  const stage = useQuery({
+    queryKey: qk.stage(id),
+    queryFn: () => tournamentsApi.stage(id),
+    enabled: Boolean(id),
+  });
 
-  const canEdit = settings.data?.can_edit ?? false;
+  const canEdit = stage.data?.can_manage ?? false;
   const canDelete = settings.data?.can_delete ?? false;
   const archived = tournament.data?.status === "archived";
 
