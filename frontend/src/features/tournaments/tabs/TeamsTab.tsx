@@ -19,7 +19,6 @@ import { institutionsApi } from "@/api/institutions";
 import { formsApi } from "@/api/forms";
 import {
   tournamentsApi,
-  type TeamPlayerRow,
   type TeamRegistrationDetail,
   type TeamRow,
   type TournamentSport,
@@ -44,7 +43,6 @@ import { newEventId } from "@/lib/eventId";
 import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
-import { useBreakpoint } from "@/lib/useBreakpoint";
 import { t } from "@/lib/t";
 import "@/components/ui/star-border.css";
 import { StaggeredDrawer } from "@/components/ui/StaggeredDrawer";
@@ -457,9 +455,9 @@ export function TeamsTab(): React.ReactElement {
             </aside>
             <div className="min-w-0 flex-1">
               {activeGroup ? (
-                <TeamsTable
+                <SchoolDetail
                   key={activeGroup.key}
-                  groups={[activeGroup]}
+                  group={activeGroup}
                   tournamentId={id}
                   canManage={canManage}
                 />
@@ -800,33 +798,26 @@ function PlayerRow({
   );
 }
 
-/** A team's full registration detail — logo + coach(es) header, then one
- * expandable line per player. Lazily fetched: only mounted when the team is
- * expanded, so the list view stays cheap. Falls back to the inline roster while
- * the detail loads or when the team has no originating submission. */
-function TeamDetail({
+/** One team as a rich card: header (logo, name, competition pills, status,
+ * calendar link), coach strip, then the squad list. Detail (DOB/docs/logo)
+ * lazily fetched; the basic roster shows instantly. */
+function TeamCard({
   tournamentId,
-  teamId,
-  teamName,
-  fallback,
+  team,
   canManage,
 }: {
   tournamentId: string;
-  teamId: string;
-  teamName: string;
-  fallback: TeamPlayerRow[];
+  team: TeamRow;
   canManage: boolean;
 }): React.ReactElement {
   const detail = useQuery({
-    queryKey: ["team-reg-detail", tournamentId, teamId],
-    queryFn: () => tournamentsApi.teamRegistrationDetail(tournamentId, teamId),
+    queryKey: ["team-reg-detail", tournamentId, team.id],
+    queryFn: () => tournamentsApi.teamRegistrationDetail(tournamentId, team.id),
   });
   const d = detail.data;
-  // Show the basic roster immediately (no DOB/docs) until the detail lands, so
-  // expanding a team never flashes empty.
   const players: TeamRegistrationDetail["players"] =
     d?.players ??
-    fallback.map((p) => ({
+    (team.players ?? []).map((p) => ({
       id: p.id,
       name: p.full_name,
       jersey_no: p.jersey_no,
@@ -837,70 +828,138 @@ function TeamDetail({
     }));
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* ONE header row: logo + coaches left, the calendar link tucked top
-          right — it used to trail as its own full-width row (owner
-          2026-07-05). */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
-          {d?.logo ? (
-            <a href={d.logo.url} target="_blank" rel="noreferrer" className="shrink-0">
-              <img
-                src={d.logo.url}
-                alt={t(`${teamName} logo`)}
-                className="h-11 w-11 rounded-lg border border-border object-cover"
-              />
-            </a>
-          ) : null}
-          {d && d.coaches.length > 0 ? (
-            <div className="flex min-w-0 flex-col gap-1">
-              <span className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
-                {d.coaches.length === 1 ? t("Coach") : t("Coaches")}
-              </span>
-              {d.coaches.map((c, i) => (
-                <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="font-medium">{c.name}</span>
-                  <FileChips files={c.documents} />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <span className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
-              {t("Squad")}{" "}
-              <span className="font-tabular">({players.length})</span>
+    <article
+      className="overflow-hidden rounded-xl border border-border bg-card"
+      data-testid={`team-card-${team.id}`}
+    >
+      {/* Team header. */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-border bg-accent/30 px-4 py-2.5">
+        {d?.logo ? (
+          <a href={d.logo.url} target="_blank" rel="noreferrer" className="shrink-0">
+            <img
+              src={d.logo.url}
+              alt={t(`${team.name} logo`)}
+              className="h-10 w-10 rounded-lg border border-border object-cover"
+            />
+          </a>
+        ) : (
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-sm font-semibold text-primary">
+            {team.name.slice(0, 1).toUpperCase()}
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold">{team.name}</span>
+            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[0.6875rem] font-medium capitalize text-primary">
+              {t(team.status)}
             </span>
-          )}
+          </div>
+          <div className="mt-1">
+            <CompetitionLabel label={team.pool} />
+          </div>
         </div>
         {canManage ? (
           <TeamCalendarLinkButton
             tournamentId={tournamentId}
-            teamId={teamId}
-            teamName={teamName}
+            teamId={team.id}
+            teamName={team.name}
           />
         ) : null}
       </div>
 
-      {players.length > 0 ? (
-        <ol className="flex flex-col gap-1">
-          {players.map((p) => (
-            <PlayerRow key={p.id} player={p} />
+      {/* Coach strip. */}
+      {d && d.coaches.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/60 px-4 py-2">
+          <span className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
+            {d.coaches.length === 1 ? t("Coach") : t("Coaches")}
+          </span>
+          {d.coaches.map((c, i) => (
+            <span key={i} className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-medium">{c.name}</span>
+              <FileChips files={c.documents} />
+            </span>
           ))}
-        </ol>
-      ) : (
-        <p className="text-xs text-muted-foreground">{t("No players yet.")}</p>
-      )}
-      {detail.isError ? (
-        <p className="text-xs text-muted-foreground">
-          {t("Couldn't load player details.")}
-        </p>
+        </div>
       ) : null}
-    </div>
+
+      {/* Squad. */}
+      <div className="px-4 py-3">
+        <p className="mb-2 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
+          {t("Squad")}{" "}
+          <span className="font-tabular">({players.length})</span>
+        </p>
+        {players.length > 0 ? (
+          <ol className="flex flex-col gap-1">
+            {players.map((p) => (
+              <PlayerRow key={p.id} player={p} />
+            ))}
+          </ol>
+        ) : (
+          <p className="text-xs text-muted-foreground">{t("No players yet.")}</p>
+        )}
+        {detail.isError ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t("Couldn't load player details.")}
+          </p>
+        ) : null}
+      </div>
+    </article>
   );
 }
 
-const TEAM_TH =
-  "sticky top-0 z-10 border-b border-border bg-muted px-3 py-2.5 text-left text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground";
-const TEAM_TD = "border-b border-border px-3 py-2.5 align-middle";
+/** The selected school's detail panel (owner 2026-07-05 redesign): a header
+ * card with the school's totals + submission state, then one rich card per
+ * team — no table chrome, everything open. */
+function SchoolDetail({
+  group,
+  tournamentId,
+  canManage,
+}: {
+  group: SchoolGroup;
+  tournamentId: string;
+  canManage: boolean;
+}): React.ReactElement {
+  const totalPlayers = group.teams.reduce(
+    (n, tm) => n + (tm.player_count ?? 0),
+    0,
+  );
+  return (
+    <section
+      className="flex flex-col gap-3"
+      aria-label={group.name}
+      data-testid={`school-detail-${group.key}`}
+    >
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-base font-semibold text-primary">
+          {group.name.slice(0, 1).toUpperCase()}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-[0.9375rem] font-semibold">{group.name}</h3>
+          <p className="font-tabular text-xs text-muted-foreground">
+            {group.teams.length} {group.teams.length === 1 ? t("team") : t("teams")}
+            {" · "}
+            {totalPlayers} {totalPlayers === 1 ? t("player") : t("players")}
+          </p>
+        </div>
+        <SubmissionBadge submitted={group.submitted} />
+      </div>
+      {group.teams.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border bg-card py-10 text-center text-sm text-muted-foreground">
+          {t("No teams registered yet.")}
+        </p>
+      ) : (
+        group.teams.map((tm) => (
+          <TeamCard
+            key={tm.id}
+            tournamentId={tournamentId}
+            team={tm}
+            canManage={canManage}
+          />
+        ))
+      )}
+    </section>
+  );
+}
 
 /** Render a competition leaf label ("Sport — Age — Gender — Format") as separate
  *  pills instead of a dashed string — the sport tinted, the rest muted (owner:
@@ -1139,221 +1198,5 @@ function SubmissionBadge({ submitted }: { submitted: boolean }): React.ReactElem
       )}
       {submitted ? t("Submitted") : t("Not submitted")}
     </span>
-  );
-}
-
-function TeamsTable({
-  groups,
-  tournamentId,
-  canManage,
-}: {
-  groups: SchoolGroup[];
-  tournamentId: string;
-  /** Managers can mint the per-team iCal calendar link. */
-  canManage: boolean;
-}): React.ReactElement {
-  const { isMobile } = useBreakpoint();
-  // Everything starts OPEN (owner 2026-07-05): school groups and every
-  // team's roster are expanded on arrival — no tap-to-reveal; the chevrons
-  // only fold things away.
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [expanded, setExpanded] = useState<Set<string>>(
-    () => new Set(groups.flatMap((g) => g.teams.map((tm) => tm.id))),
-  );
-  const flip = (
-    set: Set<string>,
-    update: (next: Set<string>) => void,
-    key: string,
-  ): void => {
-    const next = new Set(set);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    update(next);
-  };
-
-  if (isMobile) {
-    return (
-      <div className="flex flex-col gap-4">
-        {groups.map((g) => (
-          <section key={g.key} className="bento-card star-rim rounded-xl border border-border bg-card shadow-sm">
-            <button
-              type="button"
-              aria-expanded={!collapsed.has(g.key)}
-              onClick={() => flip(collapsed, setCollapsed, g.key)}
-              className="flex w-full items-center gap-2 px-4 py-3 text-left"
-            >
-              <ChevronRight
-                aria-hidden="true"
-                className={cn(
-                  "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-                  !collapsed.has(g.key) && "rotate-90",
-                )}
-              />
-              <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{g.name}</h3>
-              <SubmissionBadge submitted={g.submitted} />
-            </button>
-            {!collapsed.has(g.key) ? (
-              <div className="flex flex-col gap-2 border-t border-border p-3">
-                {g.teams.length === 0 ? (
-                  <p className="px-1 py-2 text-xs text-muted-foreground">
-                    {t("No teams registered yet.")}
-                  </p>
-                ) : (
-                  g.teams.map((tm) => (
-                    <div key={tm.id} className="rounded-lg border border-border bg-background">
-                      <button
-                        type="button"
-                        aria-expanded={expanded.has(tm.id)}
-                        onClick={() => flip(expanded, setExpanded, tm.id)}
-                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
-                      >
-                        <ChevronRight
-                          aria-hidden="true"
-                          className={cn(
-                            "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
-                            expanded.has(tm.id) && "rotate-90",
-                          )}
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium">{tm.name}</span>
-                          <span className="mt-1 block">
-                            <CompetitionLabel label={tm.pool} />
-                          </span>
-                          <span className="mt-0.5 block font-tabular text-xs text-muted-foreground">
-                            {tm.player_count} {t("players")}
-                          </span>
-                        </span>
-                      </button>
-                      {expanded.has(tm.id) ? (
-                        <div className="border-t border-border/60 px-3 py-2.5">
-                          <TeamDetail
-                            tournamentId={tournamentId}
-                            teamId={tm.id}
-                            teamName={tm.name}
-                            fallback={tm.players ?? []}
-                            canManage={canManage}
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-                  ))
-                )}
-              </div>
-            ) : null}
-          </section>
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="bento-card star-rim max-h-[36rem] overflow-auto rounded-xl border border-border bg-card shadow-sm">
-      <table className="w-full border-separate border-spacing-0 text-sm">
-        <thead>
-          <tr>
-            <th className={cn(TEAM_TH, "w-8")} aria-label={t("Expand")} />
-            <th className={TEAM_TH}>{t("Team")}</th>
-            <th className={TEAM_TH}>{t("Competition")}</th>
-            <th className={cn(TEAM_TH, "text-right")}>{t("Players")}</th>
-            <th className={TEAM_TH}>{t("Status")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {groups.map((g) => (
-            <Fragment key={g.key}>
-              <tr>
-                <td colSpan={5} className="border-b border-border bg-muted/50 px-3 py-2">
-                  <button
-                    type="button"
-                    aria-expanded={!collapsed.has(g.key)}
-                    onClick={() => flip(collapsed, setCollapsed, g.key)}
-                    className="flex w-full items-center gap-2 text-left"
-                  >
-                    <ChevronRight
-                      aria-hidden="true"
-                      className={cn(
-                        "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-                        !collapsed.has(g.key) && "rotate-90",
-                      )}
-                    />
-                    <span className="text-sm font-semibold">{g.name}</span>
-                    <SubmissionBadge submitted={g.submitted} />
-                    {g.teams.length > 0 ? (
-                      <span className="font-tabular text-xs text-muted-foreground">
-                        {g.teams.length} {g.teams.length === 1 ? t("team") : t("teams")}
-                      </span>
-                    ) : null}
-                  </button>
-                </td>
-              </tr>
-              {!collapsed.has(g.key) && g.teams.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="border-b border-border px-4 py-2.5 pl-12 text-xs text-muted-foreground"
-                  >
-                    {t("No teams registered yet.")}
-                  </td>
-                </tr>
-              ) : null}
-              {!collapsed.has(g.key)
-                ? g.teams.map((tm) => (
-                    <Fragment key={tm.id}>
-                      <tr
-                        className="group cursor-pointer hover:bg-accent/40"
-                        onClick={() => flip(expanded, setExpanded, tm.id)}
-                      >
-                        <td className={cn(TEAM_TD, "pl-4")}>
-                          <button
-                            type="button"
-                            aria-expanded={expanded.has(tm.id)}
-                            aria-label={t(`Show players of ${tm.name}`)}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              flip(expanded, setExpanded, tm.id);
-                            }}
-                            className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-                          >
-                            <ChevronRight
-                              aria-hidden="true"
-                              className={cn(
-                                "h-3.5 w-3.5 transition-transform",
-                                expanded.has(tm.id) && "rotate-90",
-                              )}
-                            />
-                          </button>
-                        </td>
-                        <td className={cn(TEAM_TD, "font-medium")}>{tm.name}</td>
-                        <td className={TEAM_TD}>
-                          <CompetitionLabel label={tm.pool} />
-                        </td>
-                        <td className={cn(TEAM_TD, "text-right font-tabular")}>
-                          {tm.player_count}
-                        </td>
-                        <td className={cn(TEAM_TD, "capitalize text-muted-foreground")}>
-                          {t(tm.status)}
-                        </td>
-                      </tr>
-                      {expanded.has(tm.id) ? (
-                        <tr>
-                          <td colSpan={5} className="border-b border-border bg-muted/20 px-4 py-3 pl-12">
-                            <TeamDetail
-                              tournamentId={tournamentId}
-                              teamId={tm.id}
-                              teamName={tm.name}
-                              fallback={tm.players ?? []}
-                              canManage={canManage}
-                            />
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  ))
-                : null}
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }
