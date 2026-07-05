@@ -20,12 +20,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { Avatar } from "@/components/ui/Avatar";
-import { ROLE_KEYS } from "@/components/ui/RoleBadge";
+import { RoleBadge, ROLE_KEYS } from "@/components/ui/RoleBadge";
 import { PermissionsDialog } from "./PermissionsDialog";
 import { newEventId } from "@/lib/eventId";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { StaggeredDrawer } from "@/components/ui/StaggeredDrawer";
+import { StarBorder } from "@/components/ui/StarBorder";
 import "@/components/ui/star-border.css";
 
 /**
@@ -375,7 +377,15 @@ function MemberCard({
   );
 }
 
-function InvitePanel({ tournamentId }: { tournamentId: string }): React.ReactElement {
+function InvitePanel({
+  tournamentId,
+  open,
+  onClose,
+}: {
+  tournamentId: string;
+  open: boolean;
+  onClose: () => void;
+}): React.ReactElement {
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState<string>("team_manager");
   const toast = useToast();
@@ -410,64 +420,77 @@ function InvitePanel({ tournamentId }: { tournamentId: string }): React.ReactEle
   });
 
   return (
-    <section
-      className="bento-card star-rim rounded-xl border border-border bg-card p-4 shadow-sm"
-      aria-label={t("Invite a member")}
+    <StaggeredDrawer
+      open={open}
+      onClose={onClose}
+      title={t("Invite a member")}
+      testId="invite-drawer"
     >
-      <div className="mb-3">
-        <h2 className="text-sm font-semibold">{t("Invite a member")}</h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">
+      <div className="sdrawer-itemwrap">
+        <p className="sdrawer-item text-xs text-muted-foreground">
           {t(
             "They join the roster once they accept. Invite again with another role to add a role.",
           )}
         </p>
       </div>
       <form
-        className="flex flex-col gap-3 sm:flex-row sm:items-end"
+        className="flex flex-1 flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault();
           if (email && !invite.isPending) invite.mutate();
         }}
       >
-        <div className="flex flex-1 flex-col gap-1">
-          <Label htmlFor="invite-email" className="text-xs text-muted-foreground">
-            {t("Email")}
-          </Label>
-          <Input
-            id="invite-email"
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder={t("person@example.com")}
-            data-testid="invite-email"
-            className="h-9"
-          />
+        <div className="sdrawer-itemwrap">
+          <div className="sdrawer-item flex flex-col gap-1">
+            <Label htmlFor="invite-email" className="text-xs text-muted-foreground">
+              {t("Email")}
+            </Label>
+            <Input
+              id="invite-email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={t("person@example.com")}
+              data-testid="invite-email"
+              className="h-9"
+            />
+          </div>
         </div>
-        <div className="flex flex-col gap-1 sm:w-44">
-          <Label htmlFor="invite-role" className="text-xs text-muted-foreground">
-            {t("Role")}
-          </Label>
-          <Select
-            id="invite-role"
-            size="sm"
-            value={role}
-            onChange={setRole}
-            options={ROLE_OPTIONS}
-            aria-label={t("Invite role")}
-          />
+        <div className="sdrawer-itemwrap">
+          <div className="sdrawer-item flex flex-col gap-1">
+            <Label htmlFor="invite-role" className="text-xs text-muted-foreground">
+              {t("Role")}
+            </Label>
+            <Select
+              id="invite-role"
+              size="sm"
+              value={role}
+              onChange={setRole}
+              options={ROLE_OPTIONS}
+              aria-label={t("Invite role")}
+            />
+          </div>
         </div>
-        <Button
-          type="submit"
-          disabled={!email || invite.isPending}
-          data-testid="invite-submit"
-          className="h-9 shrink-0"
-        >
-          <UserPlus className="h-4 w-4" aria-hidden="true" />
-          {invite.isPending ? t("Sending...") : t("Invite")}
-        </Button>
+        <div className="sdrawer-itemwrap mt-auto">
+          <div className="sdrawer-item flex items-center gap-2 border-t border-border pt-3">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+              {t("Close")}
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={!email || invite.isPending}
+              data-testid="invite-submit"
+              className="ml-auto"
+            >
+              <UserPlus className="h-4 w-4" aria-hidden="true" />
+              {invite.isPending ? t("Sending...") : t("Send invite")}
+            </Button>
+          </div>
+        </div>
       </form>
-    </section>
+    </StaggeredDrawer>
   );
 }
 
@@ -540,11 +563,24 @@ export function TournamentMembersPage(): React.ReactElement {
     setPendingRevoke(null);
   };
 
+  const [inviteOpen, setInviteOpen] = React.useState(false);
   const groups = React.useMemo(
     () => groupByPerson(membersQuery.data ?? []),
     [membersQuery.data],
   );
   const total = groups.length;
+  // KPI strip: memberships per role (revoked excluded) + status details.
+  const roleCounts = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const m of membersQuery.data ?? []) {
+      if (m.status === "revoked") continue;
+      counts.set(m.role, (counts.get(m.role) ?? 0) + 1);
+    }
+    return counts;
+  }, [membersQuery.data]);
+  const suspendedCount = (membersQuery.data ?? []).filter(
+    (m) => m.status === "suspended",
+  ).length;
   const busy = mutation.isPending;
 
   // The person + role context for the pending revoke, so the confirm dialog
@@ -562,31 +598,69 @@ export function TournamentMembersPage(): React.ReactElement {
 
   return (
     <div className="flex w-full flex-col gap-4">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-        <h2 className="text-xl font-semibold tracking-tight">
-          {t("Members & roles")}
-        </h2>
-        <span className="font-tabular text-xs text-muted-foreground">
-          {membersQuery.isLoading
-            ? t("Loading members...")
-            : t(`${total} ${total === 1 ? "member" : "members"}`)}
-        </span>
-      </div>
-
-      <InvitePanel tournamentId={id} />
-
+      {/* ONE panel (owner 2026-07-05): toolbar with the member count and the
+          Invite button (drawer), a per-role KPI strip, the roster below. */}
+      <StarBorder>
       <section
-        className="bento-card star-rim overflow-hidden rounded-xl border border-border bg-card shadow-sm"
-        aria-label={t("Roster")}
+        className="bento-card panel"
+        aria-label={t("Members & roles")}
       >
-        <div className="flex h-9 items-center gap-2 border-b border-border px-4">
-          <h2 className="text-[13px] font-semibold tracking-tight">{t("Roster")}</h2>
-          <span className="text-xs text-muted-foreground">
-            {t("People with a role in this tournament.")}
+        <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
+          <Users aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+          <h2 className="text-sm font-semibold">{t("Members & roles")}</h2>
+          <span
+            className="flex items-baseline gap-1 pl-1"
+            data-testid="members-count"
+          >
+            <span className="font-tabular text-base font-semibold leading-none">
+              {membersQuery.isLoading ? "…" : total}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {total === 1 ? t("member") : t("members")}
+            </span>
           </span>
+          <div className="ml-auto">
+            <Button
+              size="sm"
+              data-testid="open-invite-drawer"
+              onClick={() => setInviteOpen(true)}
+            >
+              <UserPlus aria-hidden="true" className="h-4 w-4" />
+              {t("Invite member")}
+            </Button>
+          </div>
         </div>
 
-        <div className="p-4">
+        {/* Per-role counts — every role shows, zeros dimmed. */}
+        <section
+          aria-label={t("Role summary")}
+          className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-border px-3 py-2"
+        >
+          {ROLE_KEYS.map((r) => (
+            <span
+              key={r}
+              className={cn(
+                "inline-flex items-center gap-1.5",
+                (roleCounts.get(r) ?? 0) === 0 && "opacity-55",
+              )}
+            >
+              <RoleBadge role={r} />
+              <span className="font-tabular text-sm font-semibold">
+                {roleCounts.get(r) ?? 0}
+              </span>
+            </span>
+          ))}
+          {suspendedCount > 0 ? (
+            <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              {t("Suspended")}
+              <span className="font-tabular text-sm font-semibold text-foreground">
+                {suspendedCount}
+              </span>
+            </span>
+          ) : null}
+        </section>
+
+        <div className="p-3">
           {membersQuery.isLoading ? (
             <div
               role="status"
@@ -691,6 +765,13 @@ export function TournamentMembersPage(): React.ReactElement {
           )}
         </div>
       </section>
+      </StarBorder>
+
+      <InvitePanel
+        tournamentId={id}
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+      />
 
       <PermissionsDialog
         tournamentId={id}

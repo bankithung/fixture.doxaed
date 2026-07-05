@@ -166,8 +166,10 @@ describe("TournamentMembersPage", () => {
 
     await screen.findByText("admin@example.com");
 
+    // Inviting lives in the right-side drawer now.
+    await userEvent.click(screen.getByTestId("open-invite-drawer"));
     await userEvent.type(
-      screen.getByTestId("invite-email"),
+      await screen.findByTestId("invite-email"),
       "new@example.com",
     );
     await userEvent.click(screen.getByTestId("invite-submit"));
@@ -220,7 +222,9 @@ describe("TournamentMembersPage", () => {
     // One row per person → the email appears once, not once per role.
     expect(screen.getAllByText("banki@example.com")).toHaveLength(1);
     // Two distinct people, not three membership rows.
-    expect(screen.getByText("2 members")).toBeInTheDocument();
+    expect(screen.getByTestId("members-count")).toHaveTextContent(
+      "2members",
+    );
     // Both of Bankithung's roles are present as editable controls...
     expect(
       screen.getAllByRole("button", { name: /role for bankithung/i }),
