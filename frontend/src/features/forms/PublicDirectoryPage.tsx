@@ -355,16 +355,16 @@ export function PublicDirectoryPage(): React.ReactElement {
 
   return (
     <PublicShell wide tournamentName={d.tournament_name}>
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 pb-24 pt-8 sm:px-6 lg:pb-8">
-        {/* Header — counts live in the KPI card row below; while the form is
-            open, a register CTA links straight back to it. */}
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 pb-24 pt-6 sm:px-6 lg:pb-8">
+        {/* Page header: the tournament leads; while the form is open, a
+            register CTA links straight back to it. */}
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
-              {d.tournament_name}
+              {t("Registered institutions")}
             </p>
             <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
-              {t("Registered institutions")}
+              {d.tournament_name}
             </h1>
             <p className="mt-1 truncate text-sm text-muted-foreground" title={d.form_title}>
               {d.form_title}
@@ -381,129 +381,82 @@ export function PublicDirectoryPage(): React.ReactElement {
           ) : null}
         </header>
 
-        {/* Headline KPIs — the total plus per-MAIN-game counts (admins can
-            switch to total-only from the form builder). Phones get ONE
-            combined summary card (no swiping, no stacked card rows);
-            larger screens get the stat-card grid. */}
-        {isMobile ? (
-          <section
-            aria-label={t("Registration summary")}
-            className="-mt-2 rounded-xl border border-primary/30 bg-primary/5 p-3"
-          >
-            <div className="flex items-center gap-2.5">
-              <Building2 aria-hidden="true" className="h-5 w-5 shrink-0 text-primary" />
-              <span className="font-tabular text-xl font-semibold tracking-tight text-primary">
+        {/* ONE panel (owner 2026-07-05): toolbar with the total + view tabs,
+            a slim per-game stats strip, then the content beside the filter
+            rail — no stacked stat cards or floating sections. */}
+        <section className="panel" aria-label={t("Registered institutions")}>
+          <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
+            <Building2 aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+            <h2 className="text-sm font-semibold">{t("Registered institutions")}</h2>
+            <span
+              className="flex items-baseline gap-1 pl-1"
+              data-testid="registered-count"
+            >
+              <span className="font-tabular text-base font-semibold leading-none">
                 {total}
               </span>
-              <span className="text-sm text-muted-foreground">
-                {total === 1
-                  ? t("institution registered")
-                  : t("institutions registered")}
+              <span className="text-xs text-muted-foreground">
+                {t("registered")}
               </span>
-            </div>
-            {(d.kpi_mode ?? "games") === "games" && gameStats.length > 0 ? (
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 border-t border-primary/20 pt-2">
-                {gameStats.map((g) => (
-                  <span
-                    key={g.key}
+            </span>
+            {tabsVisible ? (
+              <div
+                className="flex w-full rounded-lg border border-border bg-muted/50 p-0.5 text-sm sm:ml-auto sm:w-fit"
+                role="tablist"
+                aria-label={t("View")}
+              >
+                {(
+                  [
+                    ["table", t("Directory")],
+                    ["competitions", t("Competitions")],
+                  ] as readonly (readonly [string, string])[]
+                ).map(([v, label]) => (
+                  <button
+                    key={v}
+                    type="button"
+                    role="tab"
+                    aria-selected={view === v}
+                    onClick={() => setView(v as typeof view)}
                     className={cn(
-                      "inline-flex items-center gap-1.5 text-xs text-muted-foreground",
-                      g.count === 0 && "opacity-60",
+                      "flex-1 whitespace-nowrap rounded-md px-3 py-1 text-center font-medium transition-colors sm:flex-none",
+                      view === v
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    {g.label}
-                    <span className="font-tabular text-sm font-semibold text-foreground">
-                      {g.count}
-                    </span>
-                  </span>
+                    {label}
+                  </button>
                 ))}
               </div>
             ) : null}
-          </section>
-        ) : (
-          <section
-            aria-label={t("Registration summary")}
-            className="-mt-2 grid grid-cols-3 gap-2 lg:grid-cols-4 xl:grid-cols-5"
-          >
-            <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5">
-              <Building2 aria-hidden="true" className="h-5 w-5 shrink-0 text-primary" />
-              <div className="min-w-0 leading-tight">
-                <div className="font-tabular text-2xl font-semibold tracking-tight text-primary">
-                  {total}
-                </div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {total === 1
-                    ? t("institution registered")
-                    : t("institutions registered")}
-                </div>
-              </div>
-            </div>
-            {(d.kpi_mode ?? "games") === "games"
-              ? gameStats.map((g) => (
-                  <div
-                    key={g.key}
-                    className={cn(
-                      "flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5 shadow-sm",
-                      g.count === 0 && "opacity-60",
-                    )}
-                  >
-                    <Trophy
-                      aria-hidden="true"
-                      className="h-5 w-5 shrink-0 text-muted-foreground"
-                    />
-                    <div className="min-w-0 leading-tight">
-                      <div className="font-tabular text-2xl font-semibold tracking-tight">
-                        {g.count}
-                      </div>
-                      <div
-                        className="truncate text-xs text-muted-foreground"
-                        title={g.label}
-                      >
-                        {g.label}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              : null}
-          </section>
-        )}
-
-        {/* Content + the Amazon-style filter rail (right on desktop). */}
-        <div className="flex flex-col gap-6 lg:flex-row">
-        <div className="flex min-w-0 flex-1 flex-col gap-6">
-
-        {/* View tabs — a full-width segmented control on phones (two tabs
-            always fit; nothing scrolls), compact width on desktop. */}
-        {tabsVisible ? (
-          <div
-            className="flex w-full rounded-lg border border-border bg-muted/50 p-0.5 text-sm lg:w-fit"
-            role="tablist"
-            aria-label={t("View")}
-          >
-            {(
-              [
-                ["table", t("Directory")],
-                ["competitions", t("Competitions")],
-              ] as readonly (readonly [string, string])[]
-            ).map(([v, label]) => (
-              <button
-                key={v}
-                type="button"
-                role="tab"
-                aria-selected={view === v}
-                onClick={() => setView(v as typeof view)}
-                className={cn(
-                  "flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-center font-medium transition-colors lg:flex-none lg:py-1",
-                  view === v
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {label}
-              </button>
-            ))}
           </div>
-        ) : null}
+
+          {/* Per-game strip (admins can switch to total-only). */}
+          {(d.kpi_mode ?? "games") === "games" && gameStats.length > 0 ? (
+            <section
+              aria-label={t("Registration summary")}
+              className="flex flex-wrap gap-x-4 gap-y-1.5 border-b border-border px-3 py-2"
+            >
+              {gameStats.map((g) => (
+                <span
+                  key={g.key}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 text-xs text-muted-foreground",
+                    g.count === 0 && "opacity-60",
+                  )}
+                >
+                  <Trophy aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
+                  {g.label}
+                  <span className="font-tabular text-sm font-semibold text-foreground">
+                    {g.count}
+                  </span>
+                </span>
+              ))}
+            </section>
+          ) : null}
+
+          <div className="flex flex-col lg:flex-row lg:items-stretch">
+            <div className="flex min-w-0 flex-1 flex-col gap-4 p-3">
 
         {/* Result count — applies to whichever view is active. */}
         {hasFilters ? (
@@ -740,45 +693,45 @@ export function PublicDirectoryPage(): React.ReactElement {
         )}
           </>
         ) : null}
-        </div>
-
-        {/* Filter rail — desktop only. On phones the SAME panel opens from
-            the toolbar's Filters button as a bottom-sheet (the rail used to
-            render after the list, i.e. uselessly at the bottom of the page). */}
-        <aside
-          aria-label={t("Filters")}
-          className="hidden w-full shrink-0 flex-col gap-4 lg:order-last lg:flex lg:w-72"
-        >
-          <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">{t("Filters")}</h2>
-              {hasFilters ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearFilters}
-                  className="h-7 px-2"
-                >
-                  <X aria-hidden="true" className="h-3.5 w-3.5" />
-                  {t("Clear")}
-                </Button>
-              ) : null}
             </div>
-            <FilterPanel
-              search={search}
-              onSearch={setSearch}
-              compTree={compTree}
-              compSel={compSel}
-              onToggleComp={toggleComp}
-              expanded={expanded}
-              onExpand={toggleExpand}
-              filters={d.filters}
-              values={filters}
-              onValue={(key, v) => setFilters((s) => ({ ...s, [key]: v }))}
-            />
+
+            {/* Filter rail — inside the same panel, split by a hairline.
+                On phones the SAME controls open as a bottom-sheet. */}
+            <aside
+              aria-label={t("Filters")}
+              className="hidden shrink-0 border-border lg:block lg:w-72 lg:border-l"
+            >
+              <div className="flex flex-col gap-3 p-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">{t("Filters")}</h3>
+                  {hasFilters ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearFilters}
+                      className="h-7 px-2"
+                    >
+                      <X aria-hidden="true" className="h-3.5 w-3.5" />
+                      {t("Clear")}
+                    </Button>
+                  ) : null}
+                </div>
+                <FilterPanel
+                  search={search}
+                  onSearch={setSearch}
+                  compTree={compTree}
+                  compSel={compSel}
+                  onToggleComp={toggleComp}
+                  expanded={expanded}
+                  onExpand={toggleExpand}
+                  filters={d.filters}
+                  values={filters}
+                  onValue={(key, v) => setFilters((s) => ({ ...s, [key]: v }))}
+                />
+              </div>
+            </aside>
           </div>
-        </aside>
-        </div>
+        </section>
 
         {/* Floating Filters pill (phones/tablets) — always on-screen at the
             bottom edge, opens the bottom-sheet. The desktop rail replaces it

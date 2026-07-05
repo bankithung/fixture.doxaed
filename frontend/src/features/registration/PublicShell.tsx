@@ -1,5 +1,6 @@
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { AppBackdrop } from "@/components/backdrop/AppBackdrop";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 
 /**
@@ -22,8 +23,12 @@ export function PublicShell({
   wide?: boolean;
 }): React.ReactElement {
   return (
-    <div className="min-h-screen bg-muted/30">
-      <header className="border-b border-border bg-card">
+    // Same ground as the admin shell: token background + the PixelBlast
+    // backdrop (self-disabled on phones / reduced motion), so public pages
+    // stop looking like a different product (owner 2026-07-05).
+    <div className="min-h-screen bg-background">
+      <AppBackdrop />
+      <header className="sticky top-0 z-20 border-b border-border bg-card/80 backdrop-blur">
         <div
           className={cn(
             "mx-auto flex w-full items-center gap-2 px-4 py-3 sm:px-6",

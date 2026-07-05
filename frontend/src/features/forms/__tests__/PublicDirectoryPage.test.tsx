@@ -97,11 +97,14 @@ describe("PublicDirectoryPage", () => {
   it("renders the header, total, filters, and entries", async () => {
     renderPage();
 
+    // Appears as the page eyebrow AND the merged panel's title.
     expect(
-      await screen.findByText("Registered institutions"),
-    ).toBeInTheDocument();
-    // Total stat tile (label unique to the hero count).
-    expect(screen.getByText("institutions registered")).toBeInTheDocument();
+      (await screen.findAllByText("Registered institutions")).length,
+    ).toBeGreaterThan(0);
+    // The headline count lives in the panel toolbar now.
+    expect(screen.getByTestId("registered-count")).toHaveTextContent(
+      "2registered",
+    );
     // The form's own choice questions become rail filters.
     expect(screen.getAllByText("Which competition?").length).toBeGreaterThan(0);
     // A chosen option surfaces in the table cells.
@@ -165,13 +168,15 @@ describe("PublicDirectoryPage", () => {
     const summary = screen.getByRole("region", {
       name: "Registration summary",
     });
-    // The total card plus a matching card per game. Both institutions
-    // entered Sepak Takraw → 2 DISTINCT institutions (sub-categories never
-    // appear in the headline).
-    expect(within(summary).getByText("institutions registered")).toBeInTheDocument();
+    // One chip per MAIN game. Both institutions entered Sepak Takraw →
+    // 2 DISTINCT institutions (sub-categories never appear here); the
+    // total lives in the panel toolbar.
     expect(within(summary).getByText("Sepak Takraw")).toBeInTheDocument();
     expect(within(summary).getAllByText("2").length).toBeGreaterThan(0);
     expect(within(summary).queryByText(/U-14/)).toBeNull();
+    expect(screen.getByTestId("registered-count")).toHaveTextContent(
+      "2registered",
+    );
   });
 
   it("hides the per-game KPI cards when the admin chose total-only", async () => {
@@ -183,11 +188,14 @@ describe("PublicDirectoryPage", () => {
     renderPage();
     await screen.findByText("Grace High");
 
-    const summary = screen.getByRole("region", {
-      name: "Registration summary",
-    });
-    expect(within(summary).getByText("institutions registered")).toBeInTheDocument();
-    expect(within(summary).queryByText("Sepak Takraw")).toBeNull();
+    // Total-only mode: the per-game strip disappears entirely; the toolbar
+    // count remains.
+    expect(
+      screen.queryByRole("region", { name: "Registration summary" }),
+    ).toBeNull();
+    expect(screen.getByTestId("registered-count")).toHaveTextContent(
+      "2registered",
+    );
   });
 
   it("Competitions tab is a full report · all competitions with server counts", async () => {
