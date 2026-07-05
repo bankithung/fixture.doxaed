@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   Copy as CopyIcon,
   FileText,
+  Lock,
   Pencil,
   Plus,
   Search,
@@ -528,6 +529,31 @@ function slugKey(name: string): string {
     .slice(0, 40);
 }
 
+/** Compact display name for tight screens: the part before any parenthetical
+ * or slashed variant list ("Wrestling (Kushti / …)" -> "Wrestling"). DISPLAY
+ * ONLY — adds always send the full catalog name, so stored sports and their
+ * server-minted keys never depend on viewport. */
+function shortName(name: string): string {
+  return name.split(" (")[0].split(" / ")[0].trim();
+}
+
+/** UI labels for the catalog's category bands (values from SportCategory). */
+const CATEGORY_LABELS: Record<string, string> = {
+  team: "Team",
+  individual: "Individual",
+  racket: "Racket",
+  combat: "Combat",
+  athletics: "Athletics",
+  aquatics: "Aquatics",
+  gymnastics: "Gymnastics",
+  strength: "Strength",
+  shooting: "Shooting",
+  mind: "Mind sports",
+  indigenous: "Indigenous",
+  adventure: "Adventure",
+  other: "Other",
+};
+
 /**
  * SETUP step — choose the sport(s) this tournament runs and build each one's
  * category tree (any depth: U15 → Girls → 5v5). Every LEAF of the tree is one
@@ -541,6 +567,7 @@ export function SportsTab(): React.ReactElement {
   const toast = useToast();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const [catFilter, setCatFilter] = useState("all");
   // Add-category modal target: which sport + parent path it adds under
   // (owner 2026-06-10: adding must be a popup carrying name/type/size).
   const [addTarget, setAddTarget] = useState<{
@@ -771,16 +798,31 @@ export function SportsTab(): React.ReactElement {
   const isAdded = (code: string): boolean =>
     selectedKeys.has(code) || selectedKeys.has(slugKey(code));
   // The FULL catalog renders (no cap): a hidden tail made sports look
-  // missing entirely (owner report 2026-07-05). Search narrows it.
+  // missing entirely (owner report 2026-07-05). Search + the category
+  // pills narrow it; ready (active) sports float above locked ones.
   const matches = useMemo(() => {
     const all = catalog.data ?? [];
-    return all.filter(
-      (c) =>
-        !q ||
-        c.name.toLowerCase().includes(q) ||
-        c.category.toLowerCase().includes(q),
-    );
-  }, [catalog.data, q]);
+    return all
+      .filter(
+        (c) =>
+          (catFilter === "all" || c.category === catFilter) &&
+          (!q ||
+            c.name.toLowerCase().includes(q) ||
+            c.category.toLowerCase().includes(q)),
+      )
+      .sort(
+        (a, b) =>
+          (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1),
+      );
+  }, [catalog.data, q, catFilter]);
+  // Category pills, in catalog display order, only for bands that exist.
+  const categories = useMemo(() => {
+    const seen: string[] = [];
+    for (const c of catalog.data ?? []) {
+      if (!seen.includes(c.category)) seen.push(c.category);
+    }
+    return seen;
+  }, [catalog.data]);
 
   const customName = search.trim();
   const customExists =
@@ -1004,8 +1046,12 @@ export function SportsTab(): React.ReactElement {
                         <Trophy aria-hidden="true" className="h-4 w-4" />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-[0.8125rem] font-semibold">
-                          {s.name}
+                        <div
+                          className="truncate text-[0.8125rem] font-semibold"
+                          title={s.name}
+                        >
+                          <span className="sm:hidden">{shortName(s.name)}</span>
+                          <span className="hidden sm:inline">{s.name}</span>
                         </div>
                         <div className="text-[0.6875rem] text-muted-foreground">
                           {leaves > 0
@@ -1045,15 +1091,46 @@ export function SportsTab(): React.ReactElement {
               </Button>
             ) : null}
 
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-2">
+            {/* Category filter pills — wrap on small screens. */}
+            <div
+              role="group"
+              aria-label={t("Filter by category")}
+              className="flex w-fit flex-wrap items-center gap-0.5 rounded-lg bg-secondary p-0.5"
+            >
+              {["all", ...categories].map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  aria-pressed={catFilter === cat}
+                  onClick={() => setCatFilter(cat)}
+                  className={cn(
+                    "h-8 rounded-md px-3 text-xs font-medium transition-colors",
+                    catFilter === cat
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {cat === "all" ? t("All") : t(CATEGORY_LABELS[cat] ?? cat)}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(11rem,1fr))]">
               {matches.map((c) => {
                 const added = isAdded(c.code);
+                // Only sports the platform has fully set up are addable
+                // (owner 2026-07-05: football, sepak takraw, table tennis
+                // for now); the rest show locked. Already-added sports stay
+                // removable regardless.
+                const locked = c.status !== "active" && !added;
                 return (
                   <button
                     key={c.code}
                     type="button"
                     aria-pressed={added}
+                    disabled={locked}
                     onClick={(e) => {
+                      if (locked) return;
                       if (added) {
                         remove(slugKey(c.code));
                       } else {
@@ -1061,18 +1138,31 @@ export function SportsTab(): React.ReactElement {
                         burstFrom(e.currentTarget);
                       }
                     }}
-                    title={added ? t("Added · click to remove") : t("Add sport")}
+                    title={
+                      locked
+                        ? t("Coming soon. This sport is not set up yet.")
+                        : added
+                          ? t("Added · click to remove")
+                          : c.name
+                    }
                     className={cn(
                       "relative flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       added
                         ? "border-primary bg-accent"
-                        : "border-border bg-card hover:border-primary/40 hover:bg-muted",
+                        : locked
+                          ? "cursor-not-allowed border-border bg-card opacity-55"
+                          : "border-border bg-card hover:border-primary/40 hover:bg-muted",
                     )}
                   >
                     {added ? (
                       <Check
                         aria-hidden="true"
                         className="h-4 w-4 shrink-0 text-primary"
+                      />
+                    ) : locked ? (
+                      <Lock
+                        aria-hidden="true"
+                        className="h-4 w-4 shrink-0 text-muted-foreground"
                       />
                     ) : (
                       <Plus
@@ -1081,10 +1171,21 @@ export function SportsTab(): React.ReactElement {
                       />
                     )}
                     <span className="min-w-0">
-                      <span className="block truncate font-medium">{c.name}</span>
-                      <span className="block truncate text-xs capitalize text-muted-foreground">
-                        {added ? t("added") : c.category}
+                      {/* Full name on wide screens, compact variant on
+                          phones. Display only: adds always save c.name. */}
+                      <span className="block truncate font-medium">
+                        <span className="sm:hidden">{shortName(c.name)}</span>
+                        <span className="hidden sm:inline">{c.name}</span>
                       </span>
+                      {locked ? (
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {t("Coming soon")}
+                        </span>
+                      ) : (
+                        <span className="block truncate text-xs capitalize text-muted-foreground">
+                          {added ? t("added") : c.category}
+                        </span>
+                      )}
                     </span>
                   </button>
                 );

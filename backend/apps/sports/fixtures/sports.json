@@ -8,7 +8,7 @@
     "icon": "Trophy",
     "display_order": 10,
     "description": "Association football. The Phase 1B vertical-slice sport for v1.0.",
-    "status": "coming_soon"
+    "status": "active"
   },
   {
     "code": "cricket",
@@ -119,7 +119,8 @@
     "indigenous_to": "Southeast Asia",
     "is_team_sport": true,
     "display_order": 140,
-    "description": "Foot-volleyball; popular in North-East India school games."
+    "description": "Foot-volleyball; popular in North-East India school games.",
+    "status": "active"
   },
   {
     "code": "roll-ball",
@@ -138,7 +139,6 @@
     "is_team_sport": true,
     "display_order": 160
   },
-
   {
     "code": "tennis",
     "name": "Tennis",
@@ -161,7 +161,9 @@
     "category": "racket",
     "indigenous_to": "International",
     "is_individual_sport": true,
-    "display_order": 220
+    "display_order": 220,
+    "status": "active",
+    "description": ""
   },
   {
     "code": "squash",
@@ -171,7 +173,6 @@
     "is_individual_sport": true,
     "display_order": 230
   },
-
   {
     "code": "boxing",
     "name": "Boxing",
@@ -237,7 +238,6 @@
     "is_individual_sport": true,
     "display_order": 370
   },
-
   {
     "code": "athletics",
     "name": "Athletics (Track & Field)",
@@ -271,7 +271,174 @@
     "is_individual_sport": true,
     "display_order": 430
   },
-
+  {
+    "code": "sprint-100m",
+    "name": "100m Sprint",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 441,
+    "description": "Track sprint over 100 metres.",
+    "status": "planned"
+  },
+  {
+    "code": "sprint-200m",
+    "name": "200m Sprint",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 442,
+    "description": "Track sprint over 200 metres.",
+    "status": "planned"
+  },
+  {
+    "code": "sprint-400m",
+    "name": "400m Sprint",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 443,
+    "description": "One-lap track sprint.",
+    "status": "planned"
+  },
+  {
+    "code": "middle-distance",
+    "name": "Middle Distance (800m / 1500m)",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 444,
+    "description": "Middle distance track races.",
+    "status": "planned"
+  },
+  {
+    "code": "long-distance",
+    "name": "Long Distance (3000m / 5000m)",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 445,
+    "description": "Long distance track races.",
+    "status": "planned"
+  },
+  {
+    "code": "relay-race",
+    "name": "Relay Race (4x100m / 4x400m)",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "is_individual_sport": false,
+    "icon": "Trophy",
+    "display_order": 446,
+    "description": "Team relay races.",
+    "status": "planned"
+  },
+  {
+    "code": "hurdles",
+    "name": "Hurdles (100m / 110m / 400m)",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 447,
+    "description": "Track hurdle races.",
+    "status": "planned"
+  },
+  {
+    "code": "race-walking",
+    "name": "Race Walking",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 448,
+    "description": "Track and road race walking.",
+    "status": "planned"
+  },
+  {
+    "code": "long-jump",
+    "name": "Long Jump",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 449,
+    "description": "Horizontal jump for distance.",
+    "status": "planned"
+  },
+  {
+    "code": "high-jump",
+    "name": "High Jump",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 450,
+    "description": "Vertical jump over a bar.",
+    "status": "planned"
+  },
+  {
+    "code": "triple-jump",
+    "name": "Triple Jump",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 451,
+    "description": "Hop, step and jump for distance.",
+    "status": "planned"
+  },
+  {
+    "code": "shot-put",
+    "name": "Shot Put",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 452,
+    "description": "Throwing event with a heavy shot.",
+    "status": "planned"
+  },
+  {
+    "code": "discus-throw",
+    "name": "Discus Throw",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 453,
+    "description": "Throwing event with a discus.",
+    "status": "planned"
+  },
+  {
+    "code": "javelin-throw",
+    "name": "Javelin Throw",
+    "category": "athletics",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 454,
+    "description": "Throwing event with a javelin.",
+    "status": "planned"
+  },
   {
     "code": "swimming",
     "name": "Swimming",
@@ -296,7 +463,6 @@
     "is_team_sport": true,
     "display_order": 520
   },
-
   {
     "code": "artistic-gymnastics",
     "name": "Artistic Gymnastics",
@@ -339,7 +505,6 @@
     "display_order": 640,
     "description": "Indigenous gymnastics performed on a vertical pole or rope. SGFI sport."
   },
-
   {
     "code": "weightlifting",
     "name": "Weightlifting",
@@ -356,7 +521,6 @@
     "is_individual_sport": true,
     "display_order": 710
   },
-
   {
     "code": "shooting",
     "name": "Shooting (Rifle / Pistol / Shotgun)",
@@ -373,7 +537,6 @@
     "is_individual_sport": true,
     "display_order": 810
   },
-
   {
     "code": "chess",
     "name": "Chess",
@@ -391,7 +554,6 @@
     "display_order": 910,
     "description": "Indoor strike-and-pocket board game. Common in Indian school competitions."
   },
-
   {
     "code": "cycling",
     "name": "Cycling (Road / Track / MTB)",
@@ -425,7 +587,6 @@
     "display_order": 1030,
     "description": "Show-jumping / dressage / eventing. Limited to schools with stable access."
   },
-
   {
     "code": "sport-climbing",
     "name": "Sport Climbing",
@@ -458,7 +619,6 @@
     "is_individual_sport": true,
     "display_order": 1130
   },
-
   {
     "code": "gatka",
     "name": "Gatka",
@@ -503,5 +663,77 @@
     "is_team_sport": true,
     "display_order": 1300,
     "description": "Mixed-gender team sport; some SGFI inclusion."
+  },
+  {
+    "code": "dodgeball",
+    "name": "Dodgeball",
+    "category": "team",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "is_individual_sport": false,
+    "icon": "Trophy",
+    "display_order": 1400,
+    "description": "Court game of throwing and dodging.",
+    "status": "planned"
+  },
+  {
+    "code": "ultimate-frisbee",
+    "name": "Ultimate Frisbee",
+    "category": "team",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "is_individual_sport": false,
+    "icon": "Trophy",
+    "display_order": 1410,
+    "description": "Team flying disc sport.",
+    "status": "planned"
+  },
+  {
+    "code": "rope-skipping",
+    "name": "Rope Skipping",
+    "category": "individual",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 1420,
+    "description": "Speed and freestyle jump rope.",
+    "status": "planned"
+  },
+  {
+    "code": "sack-race",
+    "name": "Sack Race",
+    "category": "other",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 1430,
+    "description": "Sports day sack hopping race.",
+    "status": "planned"
+  },
+  {
+    "code": "three-legged-race",
+    "name": "Three-Legged Race",
+    "category": "other",
+    "indigenous_to": "International",
+    "is_team_sport": true,
+    "is_individual_sport": false,
+    "icon": "Trophy",
+    "display_order": 1440,
+    "description": "Paired sports day race.",
+    "status": "planned"
+  },
+  {
+    "code": "lemon-spoon-race",
+    "name": "Lemon & Spoon Race",
+    "category": "other",
+    "indigenous_to": "International",
+    "is_team_sport": false,
+    "is_individual_sport": true,
+    "icon": "Trophy",
+    "display_order": 1450,
+    "description": "Sports day balance race.",
+    "status": "planned"
   }
 ]

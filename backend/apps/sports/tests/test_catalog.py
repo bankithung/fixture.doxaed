@@ -59,13 +59,15 @@ def test_sport_list_endpoint_is_public():
 def test_sport_list_filters_by_status():
     call_command("load_sports")
     client = APIClient()
-    res = client.get("/api/sports/?status=coming_soon")
+    res = client.get("/api/sports/?status=active")
     assert res.status_code == 200
     body = res.json()
-    # Football is seeded with status=coming_soon as the Phase 1B vertical.
-    assert any(s["code"] == "football" for s in body)
+    # The three sports the platform has fully set up are seeded active
+    # (owner 2026-07-05); everything else stays locked in the picker.
+    codes = {s["code"] for s in body}
+    assert {"football", "sepak-takraw", "table-tennis"} == codes
     for s in body:
-        assert s["status"] == "coming_soon"
+        assert s["status"] == "active"
 
 
 @pytest.mark.django_db

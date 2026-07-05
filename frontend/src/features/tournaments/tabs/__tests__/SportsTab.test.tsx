@@ -49,6 +49,8 @@ const SETUP_STAGE = {
 const CATALOG = [
   { code: "football", name: "Football", category: "team", icon: "", is_team_sport: true, status: "active" },
   { code: "sepak_takraw", name: "Sepak Takraw", category: "team", icon: "", is_team_sport: true, status: "active" },
+  { code: "cricket", name: "Cricket", category: "team", icon: "", is_team_sport: true, status: "planned" },
+  { code: "tennis", name: "Tennis", category: "racket", icon: "", is_team_sport: false, status: "planned" },
 ];
 
 function renderTab() {
@@ -108,6 +110,29 @@ describe("SportsTab", () => {
         { key: "kabaddi", name: "Kabaddi", custom: true },
       ]),
     );
+  });
+
+  it("locks catalog sports that are not active yet", async () => {
+    renderTab();
+    const locked = await screen.findByRole("button", { name: /cricket/i });
+    expect(locked).toBeDisabled();
+    expect(locked).toHaveTextContent(/coming soon/i);
+    // Ready sports stay addable.
+    expect(
+      screen.getByRole("button", { name: /football/i }),
+    ).not.toBeDisabled();
+  });
+
+  it("filters the catalog by category", async () => {
+    renderTab();
+    await screen.findByRole("button", { name: /football/i });
+    await userEvent.click(screen.getByRole("button", { name: /^racket$/i }));
+    expect(
+      screen.queryByRole("button", { name: /football/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /tennis/i }),
+    ).toBeInTheDocument();
   });
 
   it("removes a selected sport after the confirm dialog", async () => {
