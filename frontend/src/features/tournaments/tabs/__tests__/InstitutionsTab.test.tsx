@@ -140,6 +140,58 @@ describe("InstitutionsTab", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows ONE registered count in the header, no submissions chip", async () => {
+    renderTab();
+    await screen.findByText("abc");
+    expect(screen.getByTestId("registered-count")).toHaveTextContent(
+      "1registered",
+    );
+    // The old "<n> submissions" chip is gone ("Review raw submissions"
+    // remains as a link).
+    expect(screen.queryByText(/\d+ submissions/i)).not.toBeInTheDocument();
+  });
+
+  it("export drawer offers CSV and PDF and downloads the filtered CSV", async () => {
+    const createObjectURL = vi.fn(() => "blob:x");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL,
+      revokeObjectURL,
+    });
+    renderTab();
+    await userEvent.click(await screen.findByTestId("open-export-drawer"));
+    expect(await screen.findByTestId("export-drawer")).toBeInTheDocument();
+    expect(screen.getByTestId("export-format-csv")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByTestId("export-format-pdf")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("run-export"));
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("PDF export opens a print view carrying the rows", async () => {
+    const write = vi.fn();
+    const fakeWin = {
+      document: { write, close: vi.fn() },
+      focus: vi.fn(),
+      print: vi.fn(),
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const open = vi.spyOn(window, "open").mockReturnValue(fakeWin as any);
+    renderTab();
+    await userEvent.click(await screen.findByTestId("open-export-drawer"));
+    await userEvent.click(await screen.findByTestId("export-format-pdf"));
+    await userEvent.click(screen.getByTestId("run-export"));
+    expect(open).toHaveBeenCalledWith("", "_blank", "noopener");
+    expect(write).toHaveBeenCalledWith(expect.stringContaining("abc"));
+    expect(write).toHaveBeenCalledWith(
+      expect.stringContaining("Ketoulhou Sekhose"),
+    );
+  });
+
   it("filter tree lists every configured sport, even without entries", async () => {
     renderTab();
     await userEvent.click(

@@ -10,6 +10,7 @@ import {
   Download,
   ExternalLink,
   Eye,
+  FileText,
   MoreVertical,
   Pencil,
   Plus,
@@ -32,7 +33,12 @@ import {
   buildCompTree,
   FilterPanel,
   matchesCompPrefix,
+  type CompNode,
 } from "@/features/forms/FilterPanel";
+import {
+  downloadInstitutionsCsv,
+  openInstitutionsPdf,
+} from "./institutionExport";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -121,6 +127,8 @@ export function InstitutionsTab(): React.ReactElement {
   const navigate = useNavigate();
   const [shareOpen, setShareOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<"csv" | "pdf">("csv");
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -254,6 +262,43 @@ export function InstitutionsTab(): React.ReactElement {
     setSearch("");
   };
 
+  // Human summary of what is filtered, stamped onto exports so a shared
+  // file says what it contains.
+  const filterSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (q) parts.push(`${t("Search")} "${search.trim()}"`);
+    if (compSel.size > 0) {
+      const byKey = new Map<string, string>();
+      const walk = (nodes: CompNode[], prefix: string[]): void => {
+        for (const n of nodes) {
+          byKey.set(n.key, [...prefix, n.label].join(" · "));
+          walk(n.children, [...prefix, n.label]);
+        }
+      };
+      walk(compTree, []);
+      parts.push([...compSel].map((k) => byKey.get(k) ?? k).join(", "));
+    }
+    for (const [k, v] of Object.entries(filters)) {
+      if (!v) continue;
+      const f = choiceFields.find((c) => c.key === k);
+      const opt = f?.options?.find((o) => String(o.value) === v);
+      parts.push(`${f?.label ?? k}: ${opt?.label ?? v}`);
+    }
+    return parts.join(" · ");
+  }, [q, search, compSel, compTree, filters, choiceFields]);
+
+  const runExport = (): void => {
+    const meta = {
+      title: orgForm?.title ?? t("Institution registration"),
+      filterSummary: hasActiveFilters ? filterSummary : "",
+      shownCount: filteredItems.length,
+      totalCount: items.length,
+    };
+    if (exportFormat === "csv") downloadInstitutionsCsv(filteredItems, meta);
+    else openInstitutionsPdf(filteredItems, meta);
+    setExportOpen(false);
+  };
+
   return (
     <div className="flex flex-col gap-5">
       {canManage && !orgForm ? (
@@ -279,20 +324,28 @@ export function InstitutionsTab(): React.ReactElement {
             <Building2 aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
             <h2 className="text-sm font-semibold">{t("Institution registration")}</h2>
             {orgForm ? (
-              <>
-                <span
-                  className={cn(
-                    "rounded-full px-2 py-0.5 text-[0.6875rem] font-medium capitalize",
-                    isOpen ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {t(orgForm.status)}
-                </span>
-                <span className="font-tabular text-xs text-muted-foreground">
-                  {orgForm.response_count} {t("submissions")}
-                </span>
-              </>
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-[0.6875rem] font-medium capitalize",
+                  isOpen ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
+                )}
+              >
+                {t(orgForm.status)}
+              </span>
             ) : null}
+            {/* ONE count only — registered schools, readable at a glance
+                (the submissions number confused it, owner 2026-07-05). */}
+            <span
+              className="flex items-baseline gap-1 pl-1"
+              data-testid="registered-count"
+            >
+              <span className="font-tabular text-base font-semibold leading-none">
+                {items.length}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {t("registered")}
+              </span>
+            </span>
             <div className="ml-auto flex flex-wrap items-center gap-2">
               {items.length > 0 ? (
                 <Button
@@ -365,18 +418,22 @@ export function InstitutionsTab(): React.ReactElement {
                 {t("Review raw submissions")}
                 <ExternalLink aria-hidden="true" className="h-3 w-3" />
               </button>
-              {orgForm.response_count > 0 ? (
-                <a href={formsApi.csvUrl(orgForm.id)} download
-                  className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground hover:underline">
+              {items.length > 0 ? (
+                <button
+                  type="button"
+                  data-testid="open-export-drawer"
+                  onClick={() => setExportOpen(true)}
+                  className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground hover:underline"
+                >
                   <Download aria-hidden="true" className="h-3.5 w-3.5" />
-                  {t("Export CSV")}
-                </a>
+                  {t("Export")}
+                </button>
               ) : null}
-              <span className="ml-auto font-tabular text-muted-foreground">
-                {filteredItems.length === items.length
-                  ? `${items.length} ${t("registered")}`
-                  : `${filteredItems.length}/${items.length} ${t("shown")}`}
-              </span>
+              {filteredItems.length !== items.length ? (
+                <span className="ml-auto font-tabular text-muted-foreground">
+                  {filteredItems.length}/{items.length} {t("shown")}
+                </span>
+              ) : null}
             </div>
           ) : null}
 
@@ -454,6 +511,109 @@ export function InstitutionsTab(): React.ReactElement {
               {hasActiveFilters
                 ? `${t("Show")} ${filteredItems.length} ${filteredItems.length === 1 ? t("school") : t("schools")}`
                 : t("Done")}
+            </Button>
+          </div>
+        </div>
+      </StaggeredDrawer>
+
+      {/* Export — right-side drawer: pick a format; whatever filters are on
+          the table travel into the file automatically. */}
+      <StaggeredDrawer
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        title={t("Export schools")}
+        testId="export-drawer"
+      >
+        <div className="sdrawer-itemwrap">
+          <p className="sdrawer-item text-xs text-muted-foreground">
+            {hasActiveFilters
+              ? `${t("Your filters are applied")}: ${filteredItems.length} ${t("of")} ${items.length} ${t("schools go in the file.")}`
+              : `${t("All")} ${items.length} ${items.length === 1 ? t("school goes in the file.") : t("schools go in the file.")}`}
+          </p>
+        </div>
+        {hasActiveFilters && filterSummary ? (
+          <div className="sdrawer-itemwrap">
+            <p className="sdrawer-item rounded-md bg-accent/50 px-2.5 py-2 text-xs text-foreground">
+              {filterSummary}
+            </p>
+          </div>
+        ) : null}
+        <div className="flex flex-col gap-2">
+          {(
+            [
+              {
+                key: "csv" as const,
+                label: t("CSV file"),
+                desc: t("Opens in Excel or Google Sheets."),
+              },
+              {
+                key: "pdf" as const,
+                label: t("PDF file"),
+                desc: t("A clean printable list, ready to share."),
+              },
+            ]
+          ).map((opt) => (
+            <div key={opt.key} className="sdrawer-itemwrap">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={exportFormat === opt.key}
+                data-testid={`export-format-${opt.key}`}
+                onClick={() => setExportFormat(opt.key)}
+                className={cn(
+                  "sdrawer-item flex w-full items-start gap-2.5 rounded-lg border p-3 text-left transition-colors",
+                  exportFormat === opt.key
+                    ? "border-primary bg-accent"
+                    : "border-border bg-card hover:border-primary/40",
+                )}
+              >
+                <FileText
+                  aria-hidden="true"
+                  className={cn(
+                    "mt-0.5 h-4 w-4 shrink-0",
+                    exportFormat === opt.key ? "text-primary" : "text-muted-foreground",
+                  )}
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{opt.label}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {opt.desc}
+                  </span>
+                </span>
+                {exportFormat === opt.key ? (
+                  <Check aria-hidden="true" className="ml-auto h-4 w-4 shrink-0 text-primary" />
+                ) : null}
+              </button>
+            </div>
+          ))}
+        </div>
+        {orgForm && orgForm.response_count > 0 ? (
+          <div className="sdrawer-itemwrap">
+            <a
+              href={formsApi.csvUrl(orgForm.id)}
+              download
+              className="sdrawer-item inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+            >
+              <Download aria-hidden="true" className="h-3.5 w-3.5" />
+              {t("Raw answers CSV: every form question, unfiltered")}
+            </a>
+          </div>
+        ) : null}
+        <div className="sdrawer-itemwrap mt-auto">
+          <div className="sdrawer-item flex items-center gap-2 border-t border-border pt-3">
+            <Button type="button" variant="outline" size="sm" onClick={() => setExportOpen(false)}>
+              {t("Cancel")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="ml-auto"
+              data-testid="run-export"
+              disabled={filteredItems.length === 0}
+              onClick={runExport}
+            >
+              <Download aria-hidden="true" className="h-4 w-4" />
+              {`${t("Export")} ${filteredItems.length} ${filteredItems.length === 1 ? t("school") : t("schools")}`}
             </Button>
           </div>
         </div>
