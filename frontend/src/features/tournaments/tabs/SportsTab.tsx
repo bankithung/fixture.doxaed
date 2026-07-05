@@ -770,16 +770,16 @@ export function SportsTab(): React.ReactElement {
   // entries stay in the list with an explicit "Added ✓" state.
   const isAdded = (code: string): boolean =>
     selectedKeys.has(code) || selectedKeys.has(slugKey(code));
+  // The FULL catalog renders (no cap): a hidden tail made sports look
+  // missing entirely (owner report 2026-07-05). Search narrows it.
   const matches = useMemo(() => {
     const all = catalog.data ?? [];
-    return all
-      .filter(
-        (c) =>
-          !q ||
-          c.name.toLowerCase().includes(q) ||
-          c.category.toLowerCase().includes(q),
-      )
-      .slice(0, 24);
+    return all.filter(
+      (c) =>
+        !q ||
+        c.name.toLowerCase().includes(q) ||
+        c.category.toLowerCase().includes(q),
+    );
   }, [catalog.data, q]);
 
   const customName = search.trim();
@@ -998,16 +998,16 @@ export function SportsTab(): React.ReactElement {
                     <li
                       key={s.key}
                       data-testid={`sport-${s.key}`}
-                      className="flex items-center gap-3 rounded-lg border border-primary/30 bg-accent/40 p-2.5"
+                      className="flex items-center gap-2.5 rounded-lg border border-primary/30 bg-accent/40 p-2"
                     >
-                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-accent text-primary">
-                        <Trophy aria-hidden="true" className="h-5 w-5" />
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent text-primary">
+                        <Trophy aria-hidden="true" className="h-4 w-4" />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-semibold">
+                        <div className="truncate text-[0.8125rem] font-semibold">
                           {s.name}
                         </div>
-                        <div className="text-xs text-muted-foreground">
+                        <div className="text-[0.6875rem] text-muted-foreground">
                           {leaves > 0
                             ? `${leaves} ${leaves === 1 ? t("competition") : t("competitions")}`
                             : t("No categories yet")}
