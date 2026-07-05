@@ -10,7 +10,9 @@ import {
   Paperclip,
   Pencil,
   Plus,
+  Search,
   Sparkles,
+  Trophy,
   Users,
 } from "lucide-react";
 import { institutionsApi } from "@/api/institutions";
@@ -20,6 +22,7 @@ import {
   type TeamPlayerRow,
   type TeamRegistrationDetail,
   type TeamRow,
+  type TournamentSport,
   type UploadRef,
 } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
@@ -47,7 +50,7 @@ import "@/components/ui/star-border.css";
 import { StarBorder } from "@/components/ui/StarBorder";
 import { RangePills } from "@/features/dashboard/RangePills";
 import { CreateFormDialog } from "../CreateFormDialog";
-import { EmptyState } from "./shared";
+import { configuredLeaves, EmptyState } from "./shared";
 
 export function TeamsTab(): React.ReactElement {
   const { id = "" } = useParams();
@@ -64,6 +67,10 @@ export function TeamsTab(): React.ReactElement {
   // Teams table vs the per-category counts view (same switch the
   // institutions page has — owner 2026-07-05).
   const [view, setView] = useState<"teams" | "categories">("teams");
+  // Master-detail (owner 2026-07-05, ChMS-style): the school list on the
+  // left drives which school's teams show on the right.
+  const [selectedSchoolKey, setSelectedSchoolKey] = useState<string | null>(null);
+  const [schoolQuery, setSchoolQuery] = useState("");
   const [emailDrafts, setEmailDrafts] = useState<Record<string, string>>({});
 
   const refreshAfterCodes = (): void => {
@@ -132,6 +139,7 @@ export function TeamsTab(): React.ReactElement {
   });
 
   const teams = useQuery({ queryKey: ["t-teams", id], queryFn: () => tournamentsApi.teams(id) });
+  const sportsQ = useQuery({ queryKey: ["t-sports", id], queryFn: () => tournamentsApi.sports(id) });
   const institutions = useQuery({
     queryKey: ["t-institutions", id],
     queryFn: () => institutionsApi.list(id),
@@ -202,6 +210,15 @@ export function TeamsTab(): React.ReactElement {
       });
     return groups;
   }, [teams.data, institutions.data]);
+  const schoolQ = schoolQuery.trim().toLowerCase();
+  const filteredGroups = schoolQ
+    ? schoolGroups.filter((g) => g.name.toLowerCase().includes(schoolQ))
+    : schoolGroups;
+  const activeGroup =
+    schoolGroups.find((g) => g.key === selectedSchoolKey) ??
+    filteredGroups[0] ??
+    null;
+
   const submittedCount = schoolGroups.filter(
     (g) => g.submitted && g.key !== "__orphans",
   ).length;
@@ -354,19 +371,96 @@ export function TeamsTab(): React.ReactElement {
             hint={t("Register an institution first, then collect its teams.")}
           />
         ) : view === "categories" ? (
-          (teams.data ?? []).length === 0 ? (
-            <p className="rounded-xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">
-              {t("No teams registered yet.")}
-            </p>
-          ) : (
-            <CategoryKpis teams={teams.data ?? []} />
-          )
-        ) : (
-          <TeamsTable
-            groups={schoolGroups}
-            tournamentId={id}
-            canManage={canManage}
+          <CategoryReport
+            teams={teams.data ?? []}
+            sports={sportsQ.data?.sports ?? []}
           />
+        ) : (
+          /* ChMS-style master-detail (owner 2026-07-05): pick a school on
+             the left, its teams + rosters fill the right. */
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+            <aside className="flex w-full shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-card lg:w-80">
+              <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                <span className="text-[0.8125rem] font-semibold">
+                  {t("Schools")}
+                </span>
+                <span className="font-tabular text-xs text-muted-foreground">
+                  {filteredGroups.length === schoolGroups.length
+                    ? schoolGroups.length
+                    : `${filteredGroups.length}/${schoolGroups.length}`}
+                </span>
+              </div>
+              <div className="border-b border-border p-2">
+                <label className="relative block">
+                  <Search
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+                  />
+                  <Input
+                    value={schoolQuery}
+                    onChange={(e) => setSchoolQuery(e.target.value)}
+                    placeholder={t("Search schools…")}
+                    aria-label={t("Search schools")}
+                    className="h-8 pl-8"
+                  />
+                </label>
+              </div>
+              <ul className="max-h-[30rem] overflow-y-auto">
+                {filteredGroups.map((g) => {
+                  const active = g.key === activeGroup?.key;
+                  return (
+                    <li key={g.key}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSchoolKey(g.key)}
+                        data-testid={`school-pick-${g.key}`}
+                        aria-pressed={active}
+                        className={cn(
+                          "flex w-full items-center gap-2.5 border-b border-border/60 border-l-2 px-3 py-2.5 text-left transition-colors",
+                          active
+                            ? "border-l-primary bg-accent"
+                            : "border-l-transparent hover:bg-accent/40",
+                        )}
+                      >
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-sm font-semibold text-primary">
+                          {g.name.slice(0, 1).toUpperCase()}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">
+                            {g.name}
+                          </span>
+                          <span className="block font-tabular text-xs text-muted-foreground">
+                            {g.teams.length}{" "}
+                            {g.teams.length === 1 ? t("team") : t("teams")}
+                          </span>
+                        </span>
+                        <SubmissionBadge submitted={g.submitted} />
+                      </button>
+                    </li>
+                  );
+                })}
+                {filteredGroups.length === 0 ? (
+                  <li className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    {t("No schools match.")}
+                  </li>
+                ) : null}
+              </ul>
+            </aside>
+            <div className="min-w-0 flex-1">
+              {activeGroup ? (
+                <TeamsTable
+                  key={activeGroup.key}
+                  groups={[activeGroup]}
+                  tournamentId={id}
+                  canManage={canManage}
+                />
+              ) : (
+                <p className="rounded-xl border border-dashed border-border bg-card py-10 text-center text-sm text-muted-foreground">
+                  {t("Pick a school to see its teams.")}
+                </p>
+              )}
+            </div>
+          </div>
         )}
       </div>
       </section>
@@ -795,56 +889,142 @@ export function categoryKpis(rows: TeamRow[]): CategoryKpi[] {
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
-/** A KPI panel: how many teams / schools / players registered in each
- * competition category, so the organiser sees at a glance which are full and
- * which still need entries. */
-function CategoryKpis({ teams }: { teams: TeamRow[] }): React.ReactElement | null {
-  const { cats, totalSchools } = useMemo(() => {
-    const cats = categoryKpis(teams);
-    const totalSchools = new Set(
-      teams.map((tm) => tm.institution_id).filter(Boolean),
-    ).size;
-    return { cats, totalSchools };
-  }, [teams]);
-  if (cats.length === 0) return null;
+/** Grouped per-competition report: EVERY configured competition shows —
+ * zeros included, so thin categories are visible (owner 2026-07-05) — as a
+ * table with one section per sport. */
+function CategoryReport({
+  teams,
+  sports,
+}: {
+  teams: TeamRow[];
+  sports: TournamentSport[];
+}): React.ReactElement {
+  const groups = useMemo(() => {
+    const rows = new Map<
+      string,
+      { label: string; teams: number; schools: Set<string>; players: number }
+    >();
+    for (const leaf of configuredLeaves(sports)) {
+      rows.set(leaf.leaf_key, {
+        label: leaf.label,
+        teams: 0,
+        schools: new Set(),
+        players: 0,
+      });
+    }
+    for (const tm of teams) {
+      const key = tm.leaf_key || "__uncategorized";
+      let r = rows.get(key);
+      if (!r) {
+        r = {
+          label: tm.pool || t("Uncategorized"),
+          teams: 0,
+          schools: new Set(),
+          players: 0,
+        };
+        rows.set(key, r);
+      }
+      r.teams += 1;
+      if (tm.institution_id) r.schools.add(tm.institution_id);
+      r.players += tm.player_count ?? 0;
+    }
+    const bySport = new Map<
+      string,
+      {
+        sport: string;
+        teams: number;
+        rows: { key: string; label: string; teams: number; schools: number; players: number }[];
+      }
+    >();
+    for (const [key, r] of [...rows.entries()].sort((a, b) =>
+      a[0].localeCompare(b[0]),
+    )) {
+      const segs = r.label.split(/\s+[\u00b7\u2014]\s+/);
+      const sport = segs[0] ?? r.label;
+      const within =
+        segs.length > 1 ? segs.slice(1).join(" · ") : t("Open competition");
+      const g = bySport.get(sport) ?? { sport, teams: 0, rows: [] };
+      g.rows.push({
+        key,
+        label: within,
+        teams: r.teams,
+        schools: r.schools.size,
+        players: r.players,
+      });
+      g.teams += r.teams;
+      bySport.set(sport, g);
+    }
+    return [...bySport.values()];
+  }, [teams, sports]);
+
+  const num = (v: number): React.ReactElement => (
+    <span
+      className={cn(
+        "inline-block min-w-[1.75rem] rounded-md px-1.5 py-0.5 text-center font-tabular text-xs font-medium",
+        v > 0 ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground/60",
+      )}
+    >
+      {v}
+    </span>
+  );
 
   return (
-    <section className="flex flex-col gap-2" data-testid="category-kpis">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h3 className="text-sm font-semibold">{t("Registrations by category")}</h3>
-        <span className="font-tabular text-xs text-muted-foreground">
-          {cats.length} {cats.length === 1 ? t("category") : t("categories")}
-          {" · "}
-          {teams.length} {t("teams")}
-          {" · "}
-          {totalSchools} {t("schools")}
-        </span>
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {cats.map((c) => (
-          <div
-            key={c.key}
-            data-testid={`kpi-${c.key}`}
-            className="flex flex-col gap-1.5 rounded-lg border border-border bg-card p-3 shadow-sm"
-          >
-            <CompetitionLabel label={c.label} />
-            <div className="flex items-baseline gap-1.5">
-              <span className="font-tabular text-xl font-semibold leading-none">
-                {c.teams}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {c.teams === 1 ? t("team") : t("teams")}
-              </span>
-            </div>
-            <div className="font-tabular text-[0.6875rem] text-muted-foreground">
-              {c.schools} {c.schools === 1 ? t("school") : t("schools")}
-              {" · "}
-              {c.players} {t("players")}
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
+    <div
+      className="overflow-hidden rounded-xl border border-border bg-card"
+      data-testid="category-report"
+    >
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border bg-muted text-left text-[0.6875rem] uppercase tracking-wide text-muted-foreground">
+            <th className="px-4 py-2 font-medium">{t("Competition")}</th>
+            <th className="px-3 py-2 text-right font-medium">{t("Teams")}</th>
+            <th className="px-3 py-2 text-right font-medium">{t("Schools")}</th>
+            <th className="px-3 py-2 text-right font-medium">{t("Players")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((g) => (
+            <Fragment key={g.sport}>
+              <tr className="border-b border-border bg-accent/40">
+                <td colSpan={4} className="px-4 py-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <Trophy
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5 shrink-0 text-primary"
+                    />
+                    <span className="text-[0.8125rem] font-semibold">
+                      {g.sport}
+                    </span>
+                    <span className="ml-auto font-tabular text-xs text-muted-foreground">
+                      {g.teams} {g.teams === 1 ? t("team") : t("teams")}
+                    </span>
+                  </span>
+                </td>
+              </tr>
+              {g.rows.map((r) => (
+                <tr
+                  key={r.key}
+                  data-testid={`report-${r.key}`}
+                  className="border-b border-border transition-colors last:border-b-0 hover:bg-accent/20"
+                >
+                  <td
+                    className={cn(
+                      "px-4 py-2 capitalize",
+                      r.teams === 0 && "text-muted-foreground",
+                    )}
+                  >
+                    {r.label}
+                  </td>
+                  <td className="px-3 py-2 text-right">{num(r.teams)}</td>
+                  <td className="px-3 py-2 text-right">{num(r.schools)}</td>
+                  <td className="px-3 py-2 text-right">{num(r.players)}</td>
+                </tr>
+              ))}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -869,7 +1049,9 @@ function SubmissionBadge({ submitted }: { submitted: boolean }): React.ReactElem
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium",
         submitted
           ? "bg-success-muted text-success"
-          : "bg-warning-muted text-warning-foreground",
+          : // text-warning, NOT -foreground: the foreground pair is dark
+            // amber and disappears on the dark tint (owner 2026-07-05).
+            "bg-warning-muted text-warning",
       )}
     >
       {submitted ? (

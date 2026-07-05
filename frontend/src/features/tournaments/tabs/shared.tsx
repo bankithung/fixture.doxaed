@@ -4,7 +4,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   tournamentsApi,
   type MatchRow,
+  type SportNode,
   type StandingsGroup,
+  type TournamentSport,
 } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +17,39 @@ import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+
+/** Every competition (leaf) the tournament is configured with, as
+ *  {leaf_key, label} matching the registry's dot-joined keys — so category
+ *  reports and filters can list ALL competitions, not just ones with data. */
+export function configuredLeaves(
+  sports: TournamentSport[],
+): { leaf_key: string; label: string }[] {
+  const out: { leaf_key: string; label: string }[] = [];
+  const walk = (
+    sportKey: string,
+    sportName: string,
+    nodes: SportNode[],
+    keyPath: string[],
+    namePath: string[],
+  ): void => {
+    for (const n of nodes) {
+      const k = n.key ?? n.name.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      const kp = [...keyPath, k];
+      const np = [...namePath, n.name];
+      if (n.children?.length) walk(sportKey, sportName, n.children, kp, np);
+      else
+        out.push({
+          leaf_key: [sportKey, ...kp].join("."),
+          label: [sportName, ...np].join(" · "),
+        });
+    }
+  };
+  for (const s of sports) {
+    if (s.nodes?.length) walk(s.key, s.name, s.nodes, [], []);
+    else out.push({ leaf_key: s.key, label: s.name });
+  }
+  return out;
+}
 
 export function statusBadge(status: string): { label: string; cls: string } {
   if (status.startsWith("live")) return { label: "Live", cls: "bg-primary/15 text-primary" };

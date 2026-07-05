@@ -23,11 +23,7 @@ import {
 } from "lucide-react";
 import { institutionsApi, type Institution } from "@/api/institutions";
 import { formsApi } from "@/api/forms";
-import {
-  tournamentsApi,
-  type SportNode,
-  type TournamentSport,
-} from "@/api/tournaments";
+import { tournamentsApi } from "@/api/tournaments";
 import type { Field } from "@/features/forms/types";
 import {
   buildCompTree,
@@ -59,7 +55,7 @@ import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { CreateFormDialog } from "../CreateFormDialog";
-import { EmptyState } from "./shared";
+import { configuredLeaves, EmptyState } from "./shared";
 
 const ORG_PURPOSE = "organization_registration";
 const ORG_STAGE = "org_registration";
@@ -85,39 +81,6 @@ function groupCompetitions(
     } else if (rest.length) {
       out[at].items.push(rest);
     }
-  }
-  return out;
-}
-
-/** Every competition (leaf) the tournament is configured with, as
- *  {leaf_key, label} matching the registry's dot-joined keys — so the filter
- *  tree can list ALL sports, not just the ones with entries already. */
-function configuredLeaves(
-  sports: TournamentSport[],
-): { leaf_key: string; label: string }[] {
-  const out: { leaf_key: string; label: string }[] = [];
-  const walk = (
-    sportKey: string,
-    sportName: string,
-    nodes: SportNode[],
-    keyPath: string[],
-    namePath: string[],
-  ): void => {
-    for (const n of nodes) {
-      const k = n.key ?? n.name.toLowerCase().replace(/[^a-z0-9]+/g, "_");
-      const kp = [...keyPath, k];
-      const np = [...namePath, n.name];
-      if (n.children?.length) walk(sportKey, sportName, n.children, kp, np);
-      else
-        out.push({
-          leaf_key: [sportKey, ...kp].join("."),
-          label: [sportName, ...np].join(" · "),
-        });
-    }
-  };
-  for (const s of sports) {
-    if (s.nodes?.length) walk(s.key, s.name, s.nodes, [], []);
-    else out.push({ leaf_key: s.key, label: s.name });
   }
   return out;
 }
