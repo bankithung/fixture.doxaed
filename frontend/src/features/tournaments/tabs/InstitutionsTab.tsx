@@ -22,7 +22,11 @@ import {
 } from "lucide-react";
 import { institutionsApi, type Institution } from "@/api/institutions";
 import { formsApi } from "@/api/forms";
-import { tournamentsApi } from "@/api/tournaments";
+import {
+  tournamentsApi,
+  type SportNode,
+  type TournamentSport,
+} from "@/api/tournaments";
 import type { Field } from "@/features/forms/types";
 import {
   buildCompTree,
@@ -77,6 +81,39 @@ function groupCompetitions(
   return out;
 }
 
+/** Every competition (leaf) the tournament is configured with, as
+ *  {leaf_key, label} matching the registry's dot-joined keys — so the filter
+ *  tree can list ALL sports, not just the ones with entries already. */
+function configuredLeaves(
+  sports: TournamentSport[],
+): { leaf_key: string; label: string }[] {
+  const out: { leaf_key: string; label: string }[] = [];
+  const walk = (
+    sportKey: string,
+    sportName: string,
+    nodes: SportNode[],
+    keyPath: string[],
+    namePath: string[],
+  ): void => {
+    for (const n of nodes) {
+      const k = n.key ?? n.name.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      const kp = [...keyPath, k];
+      const np = [...namePath, n.name];
+      if (n.children?.length) walk(sportKey, sportName, n.children, kp, np);
+      else
+        out.push({
+          leaf_key: [sportKey, ...kp].join("."),
+          label: [sportName, ...np].join(" · "),
+        });
+    }
+  };
+  for (const s of sports) {
+    if (s.nodes?.length) walk(s.key, s.name, s.nodes, [], []);
+    else out.push({ leaf_key: s.key, label: s.name });
+  }
+  return out;
+}
+
 export function InstitutionsTab(): React.ReactElement {
   const { id = "" } = useParams();
   const qc = useQueryClient();
@@ -91,6 +128,7 @@ export function InstitutionsTab(): React.ReactElement {
   const forms = useQuery({ queryKey: ["forms", id], queryFn: () => formsApi.list(id) });
   const list = useQuery({ queryKey: ["t-institutions", id], queryFn: () => institutionsApi.list(id) });
   const stage = useQuery({ queryKey: ["tournament-stage", id], queryFn: () => tournamentsApi.stage(id) });
+  const sportsQ = useQuery({ queryKey: ["t-sports", id], queryFn: () => tournamentsApi.sports(id) });
   const canManage = stage.data?.can_manage ?? false;
 
   const orgForm =
@@ -150,9 +188,10 @@ export function InstitutionsTab(): React.ReactElement {
   const items = list.data ?? [];
   const isOpen = orgForm?.status === "open";
 
-  // Hierarchical competition tree (same as the public directory's rail) —
-  // built from the registered institutions' labelled leaves; counts = entries
-  // per node. Selecting "Sepak Takraw" matches everything under it.
+  // Hierarchical competition tree (same as the public directory's rail).
+  // Every CONFIGURED competition appears — a sport added after the first
+  // registrations still shows, at count 0 (owner report 2026-07-05); counts
+  // overlay from the registered institutions' entries.
   const compTree = useMemo(() => {
     const counts = new Map<string, { label: string; count: number }>();
     for (const i of items) {
@@ -162,12 +201,17 @@ export function InstitutionsTab(): React.ReactElement {
         else counts.set(c.leaf_key, { label: c.label, count: 1 });
       }
     }
+    for (const leaf of configuredLeaves(sportsQ.data?.sports ?? [])) {
+      if (!counts.has(leaf.leaf_key)) {
+        counts.set(leaf.leaf_key, { label: leaf.label, count: 0 });
+      }
+    }
     return buildCompTree(
       [...counts.entries()]
         .map(([leaf_key, v]) => ({ leaf_key, label: v.label, count: v.count }))
         .sort((a, b) => a.leaf_key.localeCompare(b.leaf_key)),
     );
-  }, [items]);
+  }, [items, sportsQ.data]);
   const [compSel, setCompSel] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggleComp = (key: string, on: boolean): void =>

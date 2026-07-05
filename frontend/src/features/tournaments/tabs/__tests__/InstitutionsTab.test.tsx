@@ -13,7 +13,7 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/tournaments")>();
   return {
     ...actual,
-    tournamentsApi: { ...actual.tournamentsApi, stage: vi.fn() },
+    tournamentsApi: { ...actual.tournamentsApi, stage: vi.fn(), sports: vi.fn() },
   };
 });
 vi.mock("@/api/institutions", async (importOriginal) => {
@@ -87,6 +87,24 @@ beforeEach(() => {
   vi.mocked(institutionsApi.list).mockResolvedValue([INSTITUTION] as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   vi.mocked(tournamentsApi.stage).mockResolvedValue({ can_manage: true } as any);
+  vi.mocked(tournamentsApi.sports).mockResolvedValue({
+    sports: [
+      {
+        key: "sepak_takraw",
+        name: "Sepak Takraw",
+        custom: false,
+        nodes: [
+          { key: "u_15", name: "u-15", children: [{ key: "female", name: "female" }] },
+        ],
+      },
+      {
+        key: "table_tennis",
+        name: "Table Tennis",
+        custom: false,
+        nodes: [{ key: "u_19", name: "u-19" }],
+      },
+    ],
+  });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -120,5 +138,16 @@ describe("InstitutionsTab", () => {
     expect(
       await screen.findByTestId("institution-filter-drawer"),
     ).toBeInTheDocument();
+  });
+
+  it("filter tree lists every configured sport, even without entries", async () => {
+    renderTab();
+    await userEvent.click(
+      await screen.findByTestId("open-institution-filters"),
+    );
+    // Sepak Takraw has the one registration; Table Tennis was added AFTER
+    // and has none yet, but must still be filterable.
+    expect(await screen.findByText("Sepak Takraw")).toBeInTheDocument();
+    expect(screen.getByText("Table Tennis")).toBeInTheDocument();
   });
 });
