@@ -47,6 +47,7 @@ import { cn } from "@/lib/tailwind";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { t } from "@/lib/t";
 import "@/components/ui/star-border.css";
+import { StaggeredDrawer } from "@/components/ui/StaggeredDrawer";
 import { StarBorder } from "@/components/ui/StarBorder";
 import { RangePills } from "@/features/dashboard/RangePills";
 import { CreateFormDialog } from "../CreateFormDialog";
@@ -72,6 +73,8 @@ export function TeamsTab(): React.ReactElement {
   const [selectedSchoolKey, setSelectedSchoolKey] = useState<string | null>(null);
   const [schoolQuery, setSchoolQuery] = useState("");
   const [emailDrafts, setEmailDrafts] = useState<Record<string, string>>({});
+  // Which schools the code batch goes to (drawer checkboxes).
+  const [codeSel, setCodeSel] = useState<Set<string>>(new Set());
 
   const refreshAfterCodes = (): void => {
     qc.invalidateQueries({ queryKey: ["t-institutions", id] });
@@ -93,18 +96,24 @@ export function TeamsTab(): React.ReactElement {
     onError: () =>
       toast.push({ kind: "error", title: t("Could not send access codes") }),
   });
-  // Send / resend to ONE chosen school (force-rotates that school's code).
-  const issueOneCode = useMutation({
-    mutationFn: (instId: string) =>
-      tournamentsApi.issueTeamCodes(id, { institution_ids: [instId] }),
+  // Send to the CHECKED schools (one, several, whatever is picked).
+  const issueSelectedCodes = useMutation({
+    mutationFn: (ids: string[]) =>
+      tournamentsApi.issueTeamCodes(id, { institution_ids: ids }),
     onSuccess: (r) => {
       refreshAfterCodes();
+      setCodeSel(new Set());
       toast.push({
         kind: r.no_email > 0 ? "error" : "success",
-        title: r.no_email > 0 ? t("No email on file") : t("Code emailed"),
+        title:
+          r.no_email > 0
+            ? t("Some schools have no email on file")
+            : t("Codes emailed"),
+        description: `${r.sent} ${t("sent")}`,
       });
     },
-    onError: () => toast.push({ kind: "error", title: t("Could not send the code") }),
+    onError: () =>
+      toast.push({ kind: "error", title: t("Could not send access codes") }),
   });
   const saveEmailAndSend = useMutation({
     mutationFn: async (instId: string) => {
@@ -466,108 +475,168 @@ export function TeamsTab(): React.ReactElement {
       </section>
       </StarBorder>
 
-      {/* Access codes — a per-school list: send to all at once, or send /
-          resend to one; schools without an email get inline recovery. */}
-      <Dialog
+      {/* Access codes — the right-side drawer (owner 2026-07-05, no modal):
+          check one school, several, or all, then send in one go; schools
+          without an email keep inline recovery. */}
+      <StaggeredDrawer
         open={codesOpen}
-        onOpenChange={(o) => {
-          if (!o) setCodesOpen(false);
-        }}
-        ariaLabel={t("Team access codes")}
+        onClose={() => setCodesOpen(false)}
+        title={t("Team access codes")}
+        testId="codes-drawer"
       >
-        <DialogHeader>
-          <DialogTitle>{t("Team access codes")}</DialogTitle>
-          <DialogDescription>
+        <div className="sdrawer-itemwrap">
+          <p className="sdrawer-item text-xs text-muted-foreground">
             {t(
-              "Schools need their emailed code to register or edit teams. Send to all at once, or one at a time.",
+              "Schools need their emailed code to register or edit teams. Check who gets one, then send.",
             )}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-3">
-          <Button
-            disabled={issueAllCodes.isPending}
-            onClick={() => issueAllCodes.mutate()}
-          >
-            <KeyRound aria-hidden="true" className="h-4 w-4" />
-            {issueAllCodes.isPending
-              ? t("Sending…")
-              : t("Email codes to all schools without one")}
-          </Button>
-          <ul className="flex max-h-[22rem] flex-col divide-y divide-border overflow-y-auto rounded-lg border border-border">
-            {(institutions.data ?? []).map((inst) => {
-              const hasEmail = (inst.contact_email ?? "").includes("@");
-              return (
-                <li key={inst.id} className="flex flex-col gap-1.5 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <span className="block truncate text-sm font-medium">
-                        {inst.name}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {inst.has_team_code
-                          ? t("Code sent")
-                          : hasEmail
-                            ? t("No code yet")
-                            : t("No contact email")}
-                        {hasEmail ? ` · ${inst.contact_email}` : ""}
-                      </span>
-                    </div>
-                    {hasEmail ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={issueOneCode.isPending}
-                        onClick={() => issueOneCode.mutate(inst.id)}
-                      >
-                        {inst.has_team_code ? t("Resend") : t("Send code")}
-                      </Button>
-                    ) : null}
-                  </div>
-                  {!hasEmail ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Input
-                        type="email"
-                        value={emailDrafts[inst.id] ?? ""}
-                        onChange={(e) =>
-                          setEmailDrafts((d) => ({ ...d, [inst.id]: e.target.value }))
-                        }
-                        placeholder={t("contact@school.example")}
-                        className="h-9 max-w-[15rem]"
-                        aria-label={t(`Email for ${inst.name}`)}
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={
-                          saveEmailAndSend.isPending ||
-                          !(emailDrafts[inst.id] ?? "").includes("@")
-                        }
-                        onClick={() => saveEmailAndSend.mutate(inst.id)}
-                      >
-                        {t("Save & send")}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={copyEditLink.isPending}
-                        onClick={() => copyEditLink.mutate(inst.id)}
-                      >
-                        <Link2 aria-hidden="true" className="h-3.5 w-3.5" />
-                        {t("Temp link")}
-                      </Button>
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+          </p>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setCodesOpen(false)}>
-            {t("Close")}
-          </Button>
-        </DialogFooter>
-      </Dialog>
+        {(() => {
+          const insts = institutions.data ?? [];
+          const emailable = insts.filter((i) =>
+            (i.contact_email ?? "").includes("@"),
+          );
+          const allChecked =
+            emailable.length > 0 && emailable.every((i) => codeSel.has(i.id));
+          return (
+            <>
+              <div className="sdrawer-itemwrap">
+                <label className="sdrawer-item flex cursor-pointer items-center gap-2 border-b border-border pb-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={allChecked}
+                    onChange={(e) =>
+                      setCodeSel(
+                        e.target.checked
+                          ? new Set(emailable.map((i) => i.id))
+                          : new Set(),
+                      )
+                    }
+                    className="h-4 w-4 accent-[hsl(var(--primary))]"
+                  />
+                  {t("All schools with an email")}
+                  <span className="ml-auto font-tabular text-xs text-muted-foreground">
+                    {emailable.length}
+                  </span>
+                </label>
+              </div>
+              <div className="flex flex-col gap-0.5 overflow-y-auto">
+                {insts.map((inst) => {
+                  const hasEmail = (inst.contact_email ?? "").includes("@");
+                  return (
+                    <div key={inst.id} className="sdrawer-itemwrap">
+                      <div className="sdrawer-item flex flex-col gap-1.5 rounded-md px-1 py-1.5">
+                        <label
+                          className={cn(
+                            "flex items-center gap-2.5",
+                            hasEmail ? "cursor-pointer" : "opacity-70",
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            disabled={!hasEmail}
+                            checked={codeSel.has(inst.id)}
+                            onChange={(e) =>
+                              setCodeSel((prev) => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(inst.id);
+                                else next.delete(inst.id);
+                                return next;
+                              })
+                            }
+                            className="h-4 w-4 shrink-0 accent-[hsl(var(--primary))]"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium">
+                              {inst.name}
+                            </span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {inst.has_team_code
+                                ? t("Code sent")
+                                : hasEmail
+                                  ? t("No code yet")
+                                  : t("No contact email")}
+                              {hasEmail ? ` · ${inst.contact_email}` : ""}
+                            </span>
+                          </span>
+                          {inst.has_team_code ? (
+                            <Check
+                              aria-hidden="true"
+                              className="h-3.5 w-3.5 shrink-0 text-success"
+                            />
+                          ) : null}
+                        </label>
+                        {!hasEmail ? (
+                          <div className="flex flex-wrap items-center gap-2 pl-6">
+                            <Input
+                              type="email"
+                              value={emailDrafts[inst.id] ?? ""}
+                              onChange={(e) =>
+                                setEmailDrafts((d) => ({
+                                  ...d,
+                                  [inst.id]: e.target.value,
+                                }))
+                              }
+                              placeholder={t("contact@school.example")}
+                              className="h-8 max-w-[13rem]"
+                              aria-label={t(`Email for ${inst.name}`)}
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={
+                                saveEmailAndSend.isPending ||
+                                !(emailDrafts[inst.id] ?? "").includes("@")
+                              }
+                              onClick={() => saveEmailAndSend.mutate(inst.id)}
+                            >
+                              {t("Save & send")}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={copyEditLink.isPending}
+                              onClick={() => copyEditLink.mutate(inst.id)}
+                            >
+                              <Link2 aria-hidden="true" className="h-3.5 w-3.5" />
+                              {t("Temp link")}
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="sdrawer-itemwrap mt-auto">
+                <div className="sdrawer-item flex items-center gap-2 border-t border-border pt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={issueAllCodes.isPending}
+                    onClick={() => issueAllCodes.mutate()}
+                    title={t("Emails every school that has no code yet")}
+                  >
+                    <KeyRound aria-hidden="true" className="h-4 w-4" />
+                    {t("All without a code")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="ml-auto"
+                    data-testid="send-selected-codes"
+                    disabled={codeSel.size === 0 || issueSelectedCodes.isPending}
+                    onClick={() => issueSelectedCodes.mutate([...codeSel])}
+                  >
+                    {issueSelectedCodes.isPending
+                      ? t("Sending…")
+                      : `${t("Send code to")} ${codeSel.size} ${codeSel.size === 1 ? t("school") : t("schools")}`}
+                  </Button>
+                </div>
+              </div>
+            </>
+          );
+        })()}
+      </StaggeredDrawer>
 
       <Dialog
         open={open}
