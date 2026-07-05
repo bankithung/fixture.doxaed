@@ -123,15 +123,31 @@ describe("SportsTab", () => {
     ).not.toBeDisabled();
   });
 
-  it("filters the catalog by category", async () => {
+  it("filters the catalog by category from the drawer, multi-select", async () => {
     renderTab();
     await screen.findByRole("button", { name: /football/i });
-    await userEvent.click(screen.getByRole("button", { name: /^racket$/i }));
+    await userEvent.click(screen.getByTestId("open-sport-filters"));
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: /racket/i }),
+    );
     expect(
       screen.queryByRole("button", { name: /football/i }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /tennis/i }),
+    ).toBeInTheDocument();
+    // Multi-select: checking Team ADDS to the racket filter.
+    await userEvent.click(screen.getByRole("checkbox", { name: /team/i }));
+    expect(
+      await screen.findByRole("button", { name: /football/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /tennis/i }),
+    ).toBeInTheDocument();
+    // Clear all restores the unfiltered catalog.
+    await userEvent.click(screen.getByRole("button", { name: /clear all/i }));
+    expect(
+      screen.getByRole("button", { name: /cricket/i }),
     ).toBeInTheDocument();
   });
 

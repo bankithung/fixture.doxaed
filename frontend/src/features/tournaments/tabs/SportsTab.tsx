@@ -11,6 +11,7 @@ import {
   Pencil,
   Plus,
   Search,
+  SlidersHorizontal,
   Trash2,
   Trophy,
   X,
@@ -34,6 +35,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
+import { StaggeredDrawer } from "@/components/ui/StaggeredDrawer";
 import { useToast } from "@/components/ui/toast";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament } from "@/lib/queryKeys";
@@ -567,7 +569,10 @@ export function SportsTab(): React.ReactElement {
   const toast = useToast();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [catFilter, setCatFilter] = useState("all");
+  // Multi-select category filters, applied from the right-side drawer.
+  // Empty = no filter (every sport shows).
+  const [catFilters, setCatFilters] = useState<Set<string>>(new Set());
+  const [filterOpen, setFilterOpen] = useState(false);
   // Add-category modal target: which sport + parent path it adds under
   // (owner 2026-06-10: adding must be a popup carrying name/type/size).
   const [addTarget, setAddTarget] = useState<{
@@ -798,14 +803,14 @@ export function SportsTab(): React.ReactElement {
   const isAdded = (code: string): boolean =>
     selectedKeys.has(code) || selectedKeys.has(slugKey(code));
   // The FULL catalog renders (no cap): a hidden tail made sports look
-  // missing entirely (owner report 2026-07-05). Search + the category
-  // pills narrow it; ready (active) sports float above locked ones.
+  // missing entirely (owner report 2026-07-05). Search + the drawer's
+  // category checks narrow it; ready (active) sports float above locked.
   const matches = useMemo(() => {
     const all = catalog.data ?? [];
     return all
       .filter(
         (c) =>
-          (catFilter === "all" || c.category === catFilter) &&
+          (catFilters.size === 0 || catFilters.has(c.category)) &&
           (!q ||
             c.name.toLowerCase().includes(q) ||
             c.category.toLowerCase().includes(q)),
@@ -814,15 +819,25 @@ export function SportsTab(): React.ReactElement {
         (a, b) =>
           (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1),
       );
-  }, [catalog.data, q, catFilter]);
-  // Category pills, in catalog display order, only for bands that exist.
+  }, [catalog.data, q, catFilters]);
+  // Category bands present in the catalog, in display order, with counts
+  // for the filter drawer.
   const categories = useMemo(() => {
-    const seen: string[] = [];
+    const seen: { key: string; count: number }[] = [];
     for (const c of catalog.data ?? []) {
-      if (!seen.includes(c.category)) seen.push(c.category);
+      const hit = seen.find((s) => s.key === c.category);
+      if (hit) hit.count += 1;
+      else seen.push({ key: c.category, count: 1 });
     }
     return seen;
   }, [catalog.data]);
+  const toggleCatFilter = (cat: string): void =>
+    setCatFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
 
   const customName = search.trim();
   const customExists =
@@ -1011,6 +1026,21 @@ export function SportsTab(): React.ReactElement {
                 aria-label={t("Search sports")}
               />
             </label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-testid="open-sport-filters"
+              onClick={() => setFilterOpen(true)}
+            >
+              <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
+              {t("Filter")}
+              {catFilters.size > 0 ? (
+                <span className="rounded-full bg-primary px-1.5 py-px font-tabular text-[10px] font-semibold text-primary-foreground">
+                  {catFilters.size}
+                </span>
+              ) : null}
+            </Button>
             {selected.length > 0 ? (
               <Button
                 type="button"
@@ -1090,30 +1120,6 @@ export function SportsTab(): React.ReactElement {
                 {t(`Add “${customName}”`)}
               </Button>
             ) : null}
-
-            {/* Category filter pills — wrap on small screens. */}
-            <div
-              role="group"
-              aria-label={t("Filter by category")}
-              className="flex w-fit flex-wrap items-center gap-0.5 rounded-lg bg-secondary p-0.5"
-            >
-              {["all", ...categories].map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  aria-pressed={catFilter === cat}
-                  onClick={() => setCatFilter(cat)}
-                  className={cn(
-                    "h-8 rounded-md px-3 text-xs font-medium transition-colors",
-                    catFilter === cat
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {cat === "all" ? t("All") : t(CATEGORY_LABELS[cat] ?? cat)}
-                </button>
-              ))}
-            </div>
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(11rem,1fr))]">
               {matches.map((c) => {
@@ -1199,6 +1205,64 @@ export function SportsTab(): React.ReactElement {
               </p>
             ) : null}
           </div>
+
+          {/* Category filters live in a right-side drawer (StaggeredDrawer),
+              multi-select: check any mix of bands; empty shows everything. */}
+          <StaggeredDrawer
+            open={filterOpen}
+            onClose={() => setFilterOpen(false)}
+            title={t("Filter sports")}
+            testId="sport-filter-drawer"
+          >
+            <div className="sdrawer-itemwrap">
+              <p className="sdrawer-item text-xs text-muted-foreground">
+                {t("Check the categories you want. None checked shows every sport.")}
+              </p>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              {categories.map((cat) => (
+                <div key={cat.key} className="sdrawer-itemwrap">
+                  <label className="sdrawer-item flex cursor-pointer items-center gap-2.5 rounded-md px-1.5 py-2 text-sm transition-colors hover:bg-accent/50">
+                    <input
+                      type="checkbox"
+                      checked={catFilters.has(cat.key)}
+                      onChange={() => toggleCatFilter(cat.key)}
+                      className="h-4 w-4 accent-[hsl(var(--primary))]"
+                    />
+                    <span className="flex-1 font-medium">
+                      {t(CATEGORY_LABELS[cat.key] ?? cat.key)}
+                    </span>
+                    <span className="font-tabular text-xs text-muted-foreground">
+                      {cat.count}
+                    </span>
+                  </label>
+                </div>
+              ))}
+            </div>
+            <div className="sdrawer-itemwrap mt-auto">
+              <div className="sdrawer-item flex items-center gap-2 border-t border-border pt-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={catFilters.size === 0}
+                  onClick={() => setCatFilters(new Set())}
+                >
+                  {t("Clear all")}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="ml-auto"
+                  onClick={() => setFilterOpen(false)}
+                >
+                  {catFilters.size > 0
+                    ? `${t("Show")} ${matches.length} ${matches.length === 1 ? t("sport") : t("sports")}`
+                    : t("Done")}
+                </Button>
+              </div>
+            </div>
+          </StaggeredDrawer>
         </section>
       ) : effectiveStep === "configure" ? (
         <>
