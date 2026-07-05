@@ -722,13 +722,13 @@ export function GlobalSetupWizard({
           ) : step === 1 ? (
             <Panel
               title="Venues"
-              description="Venues shared by every competition. A hall with 4 courts runs 4 matches at once."
+              description="A venue with 4 courts runs 4 matches at once."
             >
               <div className="flex flex-col gap-3">
             {sportOptions.length > 1 ? (
               <p className="text-xs text-muted-foreground">
                 {t(
-                  "With more than one sport, use “Used by” to dedicate a venue, e.g. give Table Tennis its own tables.",
+                  "Use “Used by” to reserve a venue for one sport.",
                 )}
               </p>
             ) : null}
@@ -743,7 +743,7 @@ export function GlobalSetupWizard({
                 </span>
                 <p className="text-xs text-muted-foreground">
                   {t(
-                    "No match runs during a break. Use one daily break, or set a different break per venue.",
+                    "No matches during breaks.",
                   )}
                 </p>
               </div>
