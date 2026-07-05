@@ -1,0 +1,24 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Message from {{ sender_name }}{% endblock %}
+{% block preheader %}{{ message|truncatechars:120 }}{% endblock %}
+
+{% block content %}
+  <p style="margin:0 0 6px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:16px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:#6840dd;">
+    {{ tournament_name }}
+  </p>
+  <h1 style="margin:0 0 12px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:22px; line-height:30px; font-weight:700; color:#181433; letter-spacing:-0.3px;">
+    New message from {{ sender_name }}
+  </h1>
+  <p style="margin:0 0 16px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#6f6a87;">
+    Sent from the public form <strong style="color:#3f3a58;">{{ form_title }}</strong> ·
+    reply goes straight to <a href="mailto:{{ sender_email }}" style="color:#6840dd;">{{ sender_email }}</a>.
+  </p>
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+    <tr>
+      <td style="background:#f8f7fc; border-left:3px solid #6840dd; border-radius:0 8px 8px 0; padding:14px 16px;">
+        <p style="margin:0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#181433; white-space:pre-line;">{{ message }}</p>
+      </td>
+    </tr>
+  </table>
+{% endblock %}

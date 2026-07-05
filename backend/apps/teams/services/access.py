@@ -23,7 +23,6 @@ from django.conf import settings as django_settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.core import signing
 from django.core.cache import cache
-from django.core.mail import send_mail
 from django.utils import timezone
 
 from apps.audit.models import ActorRole
@@ -81,26 +80,21 @@ def issue_team_access_codes(
         # C21: sent_at is stamped ONLY when the mail actually left — a failed
         # send used to be shown as delivered. Outcome lands in the email
         # ledger either way.
-        try:
-            send_mail(
-                subject=f"{tournament.name} · team registration code for {inst.name}",
-                message=(
-                    f"Hello {inst.contact_name or inst.name},\n\n"
-                    f"Team registration for {tournament.name} is open.\n\n"
-                    f"Register (or update) your teams here:\n{url}\n\n"
-                    f"Select \"{inst.name}\" and enter your access code:\n\n"
-                    f"    {code}\n\n"
-                    "Keep this code private — anyone with it can edit your "
-                    "school's team registration. You can come back with the same "
-                    "code to update your teams while registration stays open.\n"
-                ),
-                from_email=None,  # DEFAULT_FROM_EMAIL
-                recipient_list=[inst.contact_email.strip()],
-                fail_silently=False,
-            )
-            delivered = True
-        except Exception:
-            delivered = False
+        from apps.accounts.services.mailer import send_branded_email
+
+        delivered = send_branded_email(
+            subject=f"{tournament.name} · team registration code for {inst.name}",
+            to=inst.contact_email.strip(),
+            template="team_access_code",
+            context={
+                "tournament_name": tournament.name,
+                "institution_name": inst.name,
+                "contact_name": inst.contact_name or inst.name,
+                "form_url": url,
+                "code": code,
+            },
+            fail_silently=True,
+        )
         if delivered:
             inst.team_code_sent_at = timezone.now()
             inst.save(update_fields=["team_code_sent_at", "updated_at"])

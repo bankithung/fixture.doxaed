@@ -20,9 +20,10 @@ logger = logging.getLogger(__name__)
 def send_branded_email(
     *,
     subject: str,
-    to: str,
+    to: str | list[str],
     template: str,
     context: Mapping[str, Any],
+    reply_to: list[str] | None = None,
     fail_silently: bool = True,
 ) -> bool:
     """Render ``emails/<template>.{html,txt}`` and send as multipart.
@@ -35,7 +36,10 @@ def send_branded_email(
     try:
         text_body = render_to_string(f"emails/{template}.txt", ctx)
         html_body = render_to_string(f"emails/{template}.html", ctx)
-        msg = EmailMultiAlternatives(subject=subject, body=text_body, to=[to])
+        recipients = [to] if isinstance(to, str) else list(to)
+        msg = EmailMultiAlternatives(
+            subject=subject, body=text_body, to=recipients, reply_to=reply_to
+        )
         msg.attach_alternative(html_body, "text/html")
         msg.send(fail_silently=False)
         return True

@@ -19,7 +19,6 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib.sessions.models import Session
 from django.core.cache import cache
-from django.core.mail import send_mail
 from django.db import transaction
 from django.http import HttpRequest
 from django.utils import timezone
@@ -97,20 +96,15 @@ def request_password_reset(email: str, request: HttpRequest | None = None) -> No
     )
 
     reset_link = f"{settings.FRONTEND_BASE_URL}/password-reset/complete?token={plaintext}"
-    try:
-        send_mail(
-            subject="Reset your Fixture Platform password",
-            message=(
-                f"Use the link below within {ttl_minutes} minutes to reset your "
-                f"password:\n\n{reset_link}\n\nIf you did not request this, you can "
-                f"safely ignore this email."
-            ),
-            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@fixture.local"),
-            recipient_list=[user.email],
-            fail_silently=True,
-        )
-    except Exception:  # pragma: no cover - email backend failure is non-fatal in dev
-        logger.exception("Failed to dispatch password reset email")
+    from apps.accounts.services.mailer import send_branded_email
+
+    send_branded_email(
+        subject="Reset your Fixture password",
+        to=user.email,
+        template="password_reset",
+        context={"reset_link": reset_link, "ttl_minutes": ttl_minutes},
+        fail_silently=True,
+    )
 
     emit_audit(
         actor_user=user,

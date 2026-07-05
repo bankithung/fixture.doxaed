@@ -1,0 +1,14 @@
+You're invited to {{ org_name }}
+
+You have been invited to join {{ org_name }} on Fixture{% if role_label %} as {{ role_label }}{% endif %}.
+
+Accept your invitation:
+{{ accept_url }}
+
+Or enter this token manually: {{ token }}
+
+This invitation expires on {{ expires_at|date:"j M Y, H:i" }} UTC.
+
+—
+Fixture Platform · fixture.doxaed.com
+This is an automated message — please don't reply.

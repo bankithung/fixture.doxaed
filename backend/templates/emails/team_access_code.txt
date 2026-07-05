@@ -1,0 +1,20 @@
+{{ tournament_name }} · team registration
+
+Hello {{ contact_name }},
+
+Team registration for {{ tournament_name }} is open.
+
+Register (or update) your teams here:
+{{ form_url }}
+
+Select "{{ institution_name }}" and enter your access code:
+
+    {{ code }}
+
+Keep this code private — anyone with it can edit your school's team
+registration. You can come back with the same code to update your teams
+while registration stays open.
+
+—
+Fixture Platform · fixture.doxaed.com
+This is an automated message — please don't reply.

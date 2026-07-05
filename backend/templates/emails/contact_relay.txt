@@ -1,0 +1,9 @@
+From: {{ sender_name }} <{{ sender_email }}>
+Tournament: {{ tournament_name }}
+Form: {{ form_title }}
+
+{{ message }}
+
+—
+Fixture Platform · fixture.doxaed.com
+Reply to this email to answer {{ sender_name }} directly.

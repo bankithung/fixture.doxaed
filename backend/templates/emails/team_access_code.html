@@ -1,0 +1,33 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Your team registration code{% endblock %}
+{% block preheader %}Your access code for {{ tournament_name }} team registration.{% endblock %}
+
+{% block content %}
+  <p style="margin:0 0 6px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:16px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:#6840dd;">
+    {{ tournament_name }}
+  </p>
+  <h1 style="margin:0 0 12px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:24px; line-height:32px; font-weight:700; color:#181433; letter-spacing:-0.3px;">
+    Team registration is open
+  </h1>
+  <p style="margin:0 0 20px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#3f3a58;">
+    Hello {{ contact_name }},<br>
+    register your teams for <strong>{{ institution_name }}</strong>. On the form,
+    select your school and enter this access code:
+  </p>
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 20px 0;">
+    <tr>
+      <td align="center" style="background:#f3f0fd; border:1px dashed #b7a5ee; border-radius:12px; padding:18px;">
+        <span style="font-family:'SF Mono',Consolas,'Courier New',monospace; font-size:28px; line-height:36px; font-weight:700; letter-spacing:8px; color:#4c2fa8;">{{ code }}</span>
+      </td>
+    </tr>
+  </table>
+  <p style="margin:0 0 24px 0;">
+    <a class="btn" href="{{ form_url }}" style="display:inline-block; background:#6840dd; color:#ffffff; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; line-height:20px; padding:12px 22px; border-radius:8px; text-decoration:none;">Register your teams</a>
+  </p>
+  <p style="margin:0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#6f6a87;">
+    Keep this code private — anyone with it can edit your school's team
+    registration. You can come back with the same code to update your teams
+    while registration stays open.
+  </p>
+{% endblock %}

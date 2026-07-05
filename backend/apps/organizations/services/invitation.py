@@ -22,7 +22,6 @@ from collections.abc import Sequence
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.core.mail import send_mail
 from django.db import transaction
 from django.http import HttpRequest
 from django.utils import timezone
@@ -221,23 +220,23 @@ def create_invitation(
             request=request,
             idempotency_key=idempotency_key,
         )
-        # Send token to the invitee. Console backend in dev.
-        try:
-            send_mail(
-                subject=f"You've been invited to {org.name}",
-                message=(
-                    f"You've been invited to join {org.name} on Fixture Platform.\n\n"
-                    f"Accept your invitation:\n\n"
-                    f"{settings.FRONTEND_BASE_URL}/accept?token={plaintext}\n\n"
-                    f"(Or enter this token manually: {plaintext})\n\n"
-                    f"This invitation expires at {inv.expires_at.isoformat()}."
-                ),
-                from_email=None,  # uses DEFAULT_FROM_EMAIL
-                recipient_list=[email],
-                fail_silently=True,
-            )
-        except Exception:
-            pass
+        # Send token to the invitee (branded template; console backend in dev).
+        from apps.accounts.services.mailer import send_branded_email
+
+        send_branded_email(
+            subject=f"You've been invited to {org.name}",
+            to=email,
+            template="invitation",
+            context={
+                "org_name": org.name,
+                "tournament_name": tournament.name if tournament else "",
+                "role_label": effective_role.replace("_", " "),
+                "accept_url": f"{settings.FRONTEND_BASE_URL}/accept?token={plaintext}",
+                "token": plaintext,
+                "expires_at": inv.expires_at,
+            },
+            fail_silently=True,
+        )
 
     return inv, plaintext
 

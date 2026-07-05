@@ -1,0 +1,29 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}You're invited to {{ org_name }}{% endblock %}
+{% block preheader %}Accept your invitation to {{ org_name }} on Fixture.{% endblock %}
+
+{% block content %}
+  <p style="margin:0 0 6px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:16px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:#6840dd;">
+    Invitation
+  </p>
+  <h1 style="margin:0 0 12px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:24px; line-height:32px; font-weight:700; color:#181433; letter-spacing:-0.3px;">
+    Join {{ org_name }}{% if tournament_name %} for {{ tournament_name }}{% endif %}
+  </h1>
+  <p style="margin:0 0 20px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:24px; color:#3f3a58;">
+    You have been invited to join <strong>{{ org_name }}</strong> on Fixture{% if role_label %} as <strong>{{ role_label }}</strong>{% endif %}.
+    Accept the invitation to get access.
+  </p>
+  <p style="margin:0 0 24px 0;">
+    <a class="btn" href="{{ accept_url }}" style="display:inline-block; background:#6840dd; color:#ffffff; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; line-height:20px; padding:12px 22px; border-radius:8px; text-decoration:none;">Accept invitation</a>
+  </p>
+  <p style="margin:0 0 8px 0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#6f6a87;">
+    Or enter this token manually:
+  </p>
+  <p style="margin:0 0 20px 0; font-family:'SF Mono',Consolas,'Courier New',monospace; font-size:13px; line-height:20px; color:#181433; background:#f3f2f8; border:1px solid #e5e2f2; border-radius:8px; padding:10px 14px; word-break:break-all;">
+    {{ token }}
+  </p>
+  <p style="margin:0; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#6f6a87;">
+    This invitation expires on {{ expires_at|date:"j M Y, H:i" }} UTC.
+  </p>
+{% endblock %}

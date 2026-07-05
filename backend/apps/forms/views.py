@@ -796,19 +796,22 @@ class ContactAdminView(GenericAPIView):
 
         recipients = _organiser_emails(form)
         if recipients:
-            from django.core.mail import EmailMessage
+            from apps.accounts.services.mailer import send_branded_email
 
-            EmailMessage(
+            send_branded_email(
                 subject=f"[{form.tournament.name}] Message from {d['name']}",
-                body=(
-                    f"From: {d['name']} <{d['email']}>\n"
-                    f"Tournament: {form.tournament.name}\n"
-                    f"Form: {form.title}\n\n"
-                    f"{d['message']}\n"
-                ),
                 to=recipients,
+                template="contact_relay",
+                context={
+                    "sender_name": d["name"],
+                    "sender_email": d["email"],
+                    "tournament_name": form.tournament.name,
+                    "form_title": form.title,
+                    "message": d["message"],
+                },
                 reply_to=[d["email"]],
-            ).send(fail_silently=True)
+                fail_silently=True,
+            )
         return Response({"sent": bool(recipients)}, status=201)
 
 
