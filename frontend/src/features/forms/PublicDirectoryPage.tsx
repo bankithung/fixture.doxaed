@@ -6,7 +6,6 @@ import {
   ClipboardList,
   SlidersHorizontal,
   Trophy,
-  X,
 } from "lucide-react";
 import { formsApi, type DirectoryEntry } from "@/api/forms";
 import { ApiError } from "@/types/api";
@@ -17,7 +16,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { StaggeredDrawer } from "@/components/ui/StaggeredDrawer";
 import { Centered, PublicShell } from "@/features/registration/PublicShell";
+import { RangePills } from "@/features/dashboard/RangePills";
 import {
   buildCompTree,
   compLeafKeys,
@@ -399,36 +400,37 @@ export function PublicDirectoryPage(): React.ReactElement {
                 {t("registered")}
               </span>
             </span>
-            {tabsVisible ? (
-              <div
-                className="flex w-full rounded-lg border border-border bg-muted/50 p-0.5 text-sm sm:ml-auto sm:w-fit"
-                role="tablist"
-                aria-label={t("View")}
+            <div className="flex items-center gap-2 sm:ml-auto">
+              {tabsVisible ? (
+                /* PillNav re-cut (RangePills): gsap hover circle, token colors. */
+                <RangePills
+                  label={t("View")}
+                  options={[
+                    { value: "table", label: t("Directory") },
+                    { value: "competitions", label: t("Competitions") },
+                  ]}
+                  value={view}
+                  onChange={(v) => setView(v as typeof view)}
+                />
+              ) : null}
+              {/* Filters open the same right drawer as the admin pages. */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="hidden lg:inline-flex"
+                data-testid="open-directory-filters"
+                onClick={() => setFilterSheet(true)}
+                aria-haspopup="dialog"
               >
-                {(
-                  [
-                    ["table", t("Directory")],
-                    ["competitions", t("Competitions")],
-                  ] as readonly (readonly [string, string])[]
-                ).map(([v, label]) => (
-                  <button
-                    key={v}
-                    type="button"
-                    role="tab"
-                    aria-selected={view === v}
-                    onClick={() => setView(v as typeof view)}
-                    className={cn(
-                      "flex-1 whitespace-nowrap rounded-md px-3 py-1 text-center font-medium transition-colors sm:flex-none",
-                      view === v
-                        ? "bg-card text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+                <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
+                {t("Filters")}
+                {activeFilterCount > 0 ? (
+                  <span className="rounded-full bg-primary px-1.5 py-px font-tabular text-[10px] font-semibold text-primary-foreground">
+                    {activeFilterCount}
+                  </span>
+                ) : null}
+              </Button>
+            </div>
           </div>
 
           {/* Per-game strip (admins can switch to total-only). */}
@@ -455,8 +457,7 @@ export function PublicDirectoryPage(): React.ReactElement {
             </section>
           ) : null}
 
-          <div className="flex flex-col lg:flex-row lg:items-stretch">
-            <div className="flex min-w-0 flex-1 flex-col gap-4 p-3">
+          <div className="flex flex-col gap-4 p-3">
 
         {/* Result count — applies to whichever view is active. */}
         {hasFilters ? (
@@ -693,43 +694,6 @@ export function PublicDirectoryPage(): React.ReactElement {
         )}
           </>
         ) : null}
-            </div>
-
-            {/* Filter rail — inside the same panel, split by a hairline.
-                On phones the SAME controls open as a bottom-sheet. */}
-            <aside
-              aria-label={t("Filters")}
-              className="hidden shrink-0 border-border lg:block lg:w-72 lg:border-l"
-            >
-              <div className="flex flex-col gap-3 p-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold">{t("Filters")}</h3>
-                  {hasFilters ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={clearFilters}
-                      className="h-7 px-2"
-                    >
-                      <X aria-hidden="true" className="h-3.5 w-3.5" />
-                      {t("Clear")}
-                    </Button>
-                  ) : null}
-                </div>
-                <FilterPanel
-                  search={search}
-                  onSearch={setSearch}
-                  compTree={compTree}
-                  compSel={compSel}
-                  onToggleComp={toggleComp}
-                  expanded={expanded}
-                  onExpand={toggleExpand}
-                  filters={d.filters}
-                  values={filters}
-                  onValue={(key, v) => setFilters((s) => ({ ...s, [key]: v }))}
-                />
-              </div>
-            </aside>
           </div>
         </section>
 
@@ -749,51 +713,53 @@ export function PublicDirectoryPage(): React.ReactElement {
           ) : null}
         </Button>
 
-        {/* Mobile filter bottom-sheet — same controls as the rail. */}
-        <Dialog
+        {/* Filters — the same right-side StaggeredMenu drawer as the admin
+            pages, at every breakpoint (rail and bottom-sheet retired). */}
+        <StaggeredDrawer
           open={filterSheet}
-          onOpenChange={setFilterSheet}
-          ariaLabel={t("Filters")}
-          variant="sheet"
+          onClose={() => setFilterSheet(false)}
+          title={t("Filters")}
+          testId="directory-filter-drawer"
         >
-          <DialogHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <DialogTitle>{t("Filters")}</DialogTitle>
-              {hasFilters ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearFilters}
-                  className="h-7 px-2"
-                >
-                  <X aria-hidden="true" className="h-3.5 w-3.5" />
-                  {t("Clear all")}
-                </Button>
-              ) : null}
+          <div className="sdrawer-itemwrap">
+            <div className="sdrawer-item">
+              <FilterPanel
+                search={search}
+                onSearch={setSearch}
+                compTree={compTree}
+                compSel={compSel}
+                onToggleComp={toggleComp}
+                expanded={expanded}
+                onExpand={toggleExpand}
+                filters={d.filters}
+                values={filters}
+                onValue={(key, v) => setFilters((s) => ({ ...s, [key]: v }))}
+              />
             </div>
-          </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <FilterPanel
-              search={search}
-              onSearch={setSearch}
-              compTree={compTree}
-              compSel={compSel}
-              onToggleComp={toggleComp}
-              expanded={expanded}
-              onExpand={toggleExpand}
-              filters={d.filters}
-              values={filters}
-              onValue={(key, v) => setFilters((s) => ({ ...s, [key]: v }))}
-            />
           </div>
-          <Button
-            className="mt-4 w-full"
-            onClick={() => setFilterSheet(false)}
-          >
-            {t("Show")} {entries.length}{" "}
-            {entries.length === 1 ? t("institution") : t("institutions")}
-          </Button>
-        </Dialog>
+          <div className="sdrawer-itemwrap mt-auto">
+            <div className="sdrawer-item flex items-center gap-2 border-t border-border pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!hasFilters}
+                onClick={clearFilters}
+              >
+                {t("Clear all")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="ml-auto"
+                onClick={() => setFilterSheet(false)}
+              >
+                {t("Show")} {entries.length}{" "}
+                {entries.length === 1 ? t("institution") : t("institutions")}
+              </Button>
+            </div>
+          </div>
+        </StaggeredDrawer>
 
         {/* One institution's full competition list, grouped by sport. */}
         <Dialog

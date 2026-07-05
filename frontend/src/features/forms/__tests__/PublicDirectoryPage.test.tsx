@@ -112,9 +112,13 @@ describe("PublicDirectoryPage", () => {
     // Entries table.
     expect(screen.getByText("Grace High")).toBeInTheDocument();
     expect(screen.getByText("Mount Hermon")).toBeInTheDocument();
-    // The Breakdown tab is gone — only Directory + Competitions remain.
-    expect(screen.queryByRole("tab", { name: "Breakdown" })).toBeNull();
-    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    // The Breakdown view is gone — only Directory + Competitions remain
+    // (RangePills buttons, not tabs).
+    expect(screen.queryByRole("button", { name: "Breakdown" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Directory" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Competitions" }),
+    ).toBeInTheDocument();
     // While the form is open the header links back to the registration form.
     expect(
       screen.getByRole("link", { name: /Register your institution/ }),
@@ -141,11 +145,11 @@ describe("PublicDirectoryPage", () => {
     expect(screen.getByRole("table")).toBeInTheDocument();
 
     // Competitions view replaces the table with the sport → category report.
-    await userEvent.click(screen.getByRole("tab", { name: "Competitions" }));
+    await userEvent.click(screen.getByRole("button", { name: "Competitions" }));
     expect(screen.queryByRole("table")).toBeNull();
 
     // Back to the directory list.
-    await userEvent.click(screen.getByRole("tab", { name: "Directory" }));
+    await userEvent.click(screen.getByRole("button", { name: "Directory" }));
     expect(screen.getByRole("table")).toBeInTheDocument();
   });
 
@@ -153,6 +157,8 @@ describe("PublicDirectoryPage", () => {
     renderPage();
     await screen.findByText("Grace High");
 
+    // Filters live in the right-side drawer now.
+    await userEvent.click(screen.getByTestId("open-directory-filters"));
     await userEvent.type(screen.getByLabelText("Search"), "Mount");
 
     await waitFor(() =>
@@ -202,7 +208,7 @@ describe("PublicDirectoryPage", () => {
     renderPage();
     await screen.findByText("Grace High");
 
-    await userEvent.click(screen.getByRole("tab", { name: "Competitions" }));
+    await userEvent.click(screen.getByRole("button", { name: "Competitions" }));
     const section = screen.getByRole("region", {
       name: "Entries by competition",
     });
@@ -215,6 +221,7 @@ describe("PublicDirectoryPage", () => {
     expect(within(row("U-14 · Boys")).getByText("1")).toBeInTheDocument();
 
     // It's a stable report — filtering the directory doesn't prune or rescale it.
+    await userEvent.click(screen.getByTestId("open-directory-filters"));
     await userEvent.type(screen.getByLabelText("Search"), "zzz");
     expect(within(row("U-14 · Girls")).getByText("2")).toBeInTheDocument();
   });
@@ -239,6 +246,8 @@ describe("PublicDirectoryPage", () => {
     renderPage();
     await screen.findByText("Grace High");
 
+    // The competition tree lives in the filter drawer.
+    await userEvent.click(screen.getByTestId("open-directory-filters"));
     // Drill in to the gender leaves (branches start collapsed).
     await userEvent.click(
       screen.getByRole("button", { name: "Expand Sepak Takraw" }),
@@ -270,6 +279,7 @@ describe("PublicDirectoryPage", () => {
     renderPage();
     await screen.findByText("Grace High");
 
+    await userEvent.click(screen.getByTestId("open-directory-filters"));
     // Leaves are hidden initially (branches start collapsed).
     expect(screen.queryByRole("checkbox", { name: /^Girls/ })).toBeNull();
 
@@ -280,7 +290,7 @@ describe("PublicDirectoryPage", () => {
     expect(screen.getByRole("checkbox", { name: /^Boys/ })).toBeChecked();
   });
 
-  it("renders stacked cards and a filter bottom-sheet on mobile", async () => {
+  it("renders stacked cards and the filter drawer on mobile", async () => {
     window.innerWidth = 375;
     renderPage();
     await screen.findByText("Grace High");
@@ -288,8 +298,10 @@ describe("PublicDirectoryPage", () => {
     // No table on phones — entries render as stacked cards.
     expect(screen.queryByRole("table")).toBeNull();
 
-    // Filters live behind the toolbar button → bottom sheet.
-    await userEvent.click(screen.getByRole("button", { name: /Filters/ }));
+    // Filters open the right drawer from the floating pill.
+    await userEvent.click(
+      screen.getAllByRole("button", { name: /Filters/ })[0],
+    );
     const sheet = await screen.findByRole("dialog", { name: "Filters" });
     await userEvent.type(within(sheet).getByLabelText("Search"), "Mount");
     await userEvent.click(
