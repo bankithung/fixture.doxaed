@@ -46,7 +46,7 @@ const PALETTE: Record<RoleKey, PaletteEntry> = {
   },
   match_scorer: {
     label: "Match scorer",
-    className: "bg-warning-muted text-warning-foreground ring-1 ring-warning/25",
+    className: "bg-warning-muted text-warning ring-1 ring-warning/25",
   },
   referee: {
     label: "Referee",

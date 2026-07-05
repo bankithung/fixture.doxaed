@@ -637,15 +637,14 @@ export function TournamentMembersPage(): React.ReactElement {
           className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-border px-3 py-2"
         >
           {ROLE_KEYS.map((r) => (
-            <span
-              key={r}
-              className={cn(
-                "inline-flex items-center gap-1.5",
-                (roleCounts.get(r) ?? 0) === 0 && "opacity-55",
-              )}
-            >
+            <span key={r} className="inline-flex items-center gap-1.5">
               <RoleBadge role={r} />
-              <span className="font-tabular text-sm font-semibold">
+              <span
+                className={cn(
+                  "font-tabular text-sm font-semibold",
+                  (roleCounts.get(r) ?? 0) === 0 && "text-muted-foreground",
+                )}
+              >
                 {roleCounts.get(r) ?? 0}
               </span>
             </span>
