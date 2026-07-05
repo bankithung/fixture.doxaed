@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { PreviewMatch } from "@/api/tournaments";
 import { t } from "@/lib/t";
+import "@/components/ui/star-border.css";
 import { shortGroupName } from "./groupSlotLabel";
 import { competitionLabel } from "./previewFilters";
 import { LEAF_ACCENTS, MatchChip } from "./MatchesByDayGrid";
@@ -90,7 +91,7 @@ export function MatchesByGroupGrid({
         <section
           key={b.key}
           data-testid={`group-${b.key}`}
-          className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+          className="flex flex-col overflow-hidden bento-card star-rim rounded-xl border border-border bg-card shadow-sm"
         >
           <h3 className="flex items-baseline gap-2 border-b border-border bg-muted/40 px-4 py-2 text-sm font-semibold">
             {b.heading}

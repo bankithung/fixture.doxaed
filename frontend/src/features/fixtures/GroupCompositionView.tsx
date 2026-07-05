@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Users } from "lucide-react";
 import type { PreviewMatch } from "@/api/tournaments";
 import { t } from "@/lib/t";
+import "@/components/ui/star-border.css";
 import { shortGroupName } from "./groupSlotLabel";
 import { LeafLabel } from "./LeafLabel";
 import { competitionLabel } from "./previewFilters";
@@ -106,7 +107,7 @@ export function GroupCompositionView({
                 <div
                   key={g.name}
                   data-testid={`draw-${leaf.leafKey}-${g.name}`}
-                  className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+                  className="overflow-hidden bento-card star-rim rounded-xl border border-border bg-card shadow-sm"
                 >
                   <h4 className="flex items-center gap-2 border-b border-border bg-muted/40 px-3 py-2 text-sm font-semibold">
                     <Users aria-hidden="true" className="h-4 w-4 text-primary" />

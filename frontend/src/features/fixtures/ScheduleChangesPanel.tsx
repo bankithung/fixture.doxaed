@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/Select";
 import { qk } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import "@/components/ui/star-border.css";
 
 const PAGE = 50;
 
@@ -283,7 +284,7 @@ export function ScheduleChangesPanel({
       className={
         embedded
           ? undefined
-          : "overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+          : "overflow-hidden bento-card star-rim rounded-xl border border-border bg-card shadow-sm"
       }
     >
       {/* Embedded (dashboard) shows the plain tail — the competition filter

@@ -4,6 +4,7 @@ import type { FairnessFlag, FairnessTeamRow } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import "@/components/ui/star-border.css";
 
 /** Plain fairness-flag explanations per stable code (§7.7). */
 const FLAG_LABELS: Record<string, string> = {
@@ -53,7 +54,7 @@ export function FairnessPanel({
     <section
       data-testid="fairness-panel"
       aria-label={t("Fairness check")}
-      className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+      className="overflow-hidden bento-card star-rim rounded-xl border border-border bg-card shadow-sm"
     >
       <div className="flex items-center gap-2 border-b border-border px-4 py-3">
         <Scale aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />

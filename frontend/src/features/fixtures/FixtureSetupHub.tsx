@@ -976,7 +976,7 @@ export function FixtureSetupHub({
                       </span>
                     </button>
                     {open ? (
-                      <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+                      <div className="overflow-hidden bento-card star-rim rounded-lg border border-border bg-card shadow-sm">
                         {list.map((c) => {
                           const key = c.leafKey || "general";
                           return (

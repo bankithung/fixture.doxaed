@@ -23,6 +23,7 @@ import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import "@/components/ui/star-border.css";
 import { BlackoutDatesField } from "./BlackoutDatesField";
 import { CeremonyField, type CeremonyValue } from "./CeremonyField";
 import { VenueRow, type VenueDraft } from "./VenueRow";
@@ -191,7 +192,7 @@ function Panel({
   className?: string;
 }): React.ReactElement {
   return (
-    <section className={cn("rounded-lg border border-border bg-card", className)}>
+    <section className={cn("bento-card star-rim rounded-lg border border-border bg-card", className)}>
       {title ? (
         <header className="border-b border-border px-4 py-3 sm:px-5">
           <h3 className="text-sm font-semibold">{t(title)}</h3>
@@ -538,7 +539,7 @@ export function GlobalSetupWizard({
     <section
       aria-label={t("Step 1 · When & where")}
       data-testid="global-setup-inline"
-      className="w-full rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6"
+      className="w-full bento-card star-rim rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6"
     >
       {/* Header — eyebrow + title + subtitle. The actions (Cancel / Next / Save)
           live in the footer beside the Tip, so they're within reach right after

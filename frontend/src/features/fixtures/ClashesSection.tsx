@@ -23,6 +23,7 @@ import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import "@/components/ui/star-border.css";
 
 const CLASH = "no_concurrent_competitions";
 const SESSION = "category_session_window";
@@ -71,7 +72,7 @@ function RuleCard({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <section className="rounded-lg border border-border bg-card">
+    <section className="bento-card star-rim rounded-lg border border-border bg-card">
       <header className="flex items-start gap-2.5 border-b border-border px-4 py-3">
         <span className="mt-0.5 shrink-0 text-primary">{icon}</span>
         <div className="min-w-0 flex-1">
@@ -320,7 +321,7 @@ export function ClashesSection({
 
   if (settings.isLoading) {
     return (
-      <section className="w-full rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
+      <section className="w-full bento-card star-rim rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
         <div className="h-20 animate-pulse rounded-lg bg-muted/40" />
       </section>
     );
@@ -331,7 +332,7 @@ export function ClashesSection({
   return (
     <section
       id="clash-builder"
-      className="w-full rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6"
+      className="w-full bento-card star-rim rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6"
     >
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

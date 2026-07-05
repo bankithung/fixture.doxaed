@@ -25,6 +25,8 @@ import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import "@/components/ui/star-border.css";
+import { BentoGrid } from "@/features/dashboard/BentoCard";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { FairnessPanel } from "./FairnessPanel";
 import { InputsChangedBanner } from "./InputsChangedBanner";
@@ -404,7 +406,7 @@ export function DryRunPreviewPage(): React.ReactElement {
   const advancedShown = advancedOpen || forceAdvanced;
 
   return (
-    <div className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
+    <BentoGrid className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
       <Link
         to={routes.tournamentFixtures(id)}
         className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -469,7 +471,7 @@ export function DryRunPreviewPage(): React.ReactElement {
       ) : null}
 
       {calendarMissing ? (
-        <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+        <div className="bento-card star-rim rounded-xl border border-border bg-card p-6 shadow-sm">
           <p className="text-sm font-medium">{t("Step 1 is not finished")}</p>
           <p className="pt-1 text-sm text-muted-foreground">
             {t("The preview needs your tournament dates. Set them in Step 1 first.")}
@@ -511,7 +513,7 @@ export function DryRunPreviewPage(): React.ReactElement {
               quality. Forced open whenever something needs attention. */}
           <section
             data-testid="advanced-details"
-            className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+            className="overflow-hidden bento-card star-rim rounded-xl border border-border bg-card shadow-sm"
           >
             <button
               type="button"
@@ -720,6 +722,6 @@ export function DryRunPreviewPage(): React.ReactElement {
           </div>
         </>
       )}
-    </div>
+    </BentoGrid>
   );
 }

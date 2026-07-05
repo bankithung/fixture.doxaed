@@ -4,6 +4,7 @@ import type { PreviewMatch } from "@/api/tournaments";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import "@/components/ui/star-border.css";
 import { sideName } from "./sideName";
 import { LeafLabel } from "./LeafLabel";
 import { competitionLabel } from "./previewFilters";
@@ -290,7 +291,7 @@ export function MatchesByDayGrid({
         <section
           key={day}
           data-testid={`day-${day}`}
-          className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+          className="overflow-hidden bento-card star-rim rounded-xl border border-border bg-card shadow-sm"
         >
           <h3 className="border-b border-border bg-muted/40 px-4 py-2 text-sm font-semibold">
             {fmtDay(day)}

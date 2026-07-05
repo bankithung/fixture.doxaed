@@ -33,6 +33,7 @@ import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import "@/components/ui/star-border.css";
 import { LeafLabel } from "./LeafLabel";
 import { ScoringControl } from "./ScoringControl";
 import { scoringEqual, type Scoring } from "./scoring";
@@ -108,7 +109,7 @@ function SubCard({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <div className="rounded-lg border border-border bg-card">
+    <div className="bento-card star-rim rounded-lg border border-border bg-card">
       <div className="flex items-center gap-2 border-b border-border px-4 py-3">
         <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
         <span className="text-[0.8125rem] font-semibold text-foreground">{title}</span>
@@ -488,7 +489,7 @@ export function CompetitionFormatBoard({
 
   if (dcQ.isLoading) {
     return (
-      <section className="w-full rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
+      <section className="w-full bento-card star-rim rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
         <div className="h-20 animate-pulse rounded-lg bg-muted/40" />
       </section>
     );
@@ -499,7 +500,7 @@ export function CompetitionFormatBoard({
   return (
     <section
       id="format-board"
-      className="w-full rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6"
+      className="w-full bento-card star-rim rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6"
     >
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-2.5">
@@ -547,7 +548,7 @@ export function CompetitionFormatBoard({
               <div
                 key={sp}
                 data-testid={`format-sport-${sp}`}
-                className="overflow-hidden rounded-lg border border-border bg-card"
+                className="overflow-hidden bento-card star-rim rounded-lg border border-border bg-card"
               >
                 {/* Card header — the sport's identity + a derived structure summary. */}
                 <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
@@ -791,7 +792,7 @@ export function CompetitionFormatBoard({
 
                   {/* 4 · Per-category overrides — the rare escape hatch, disclosed. */}
                   {leaves.length > 1 ? (
-                    <div className="rounded-lg border border-border bg-card">
+                    <div className="bento-card star-rim rounded-lg border border-border bg-card">
                       <button
                         type="button"
                         data-testid={`format-sport-${sp}-customize`}
