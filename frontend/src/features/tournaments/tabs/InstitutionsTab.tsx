@@ -51,6 +51,7 @@ import {
 import { ShareDialog } from "@/components/ui/ShareDialog";
 import { StaggeredDrawer } from "@/components/ui/StaggeredDrawer";
 import { useToast } from "@/components/ui/toast";
+import { RangePills } from "@/features/dashboard/RangePills";
 import { flipPlacement } from "@/lib/popover";
 import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
@@ -132,6 +133,9 @@ export function InstitutionsTab(): React.ReactElement {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // Directory table vs the per-competition counts report (same switch the
+  // public directory has — owner 2026-07-05).
+  const [view, setView] = useState<"table" | "competitions">("table");
 
   const forms = useQuery({ queryKey: ["forms", id], queryFn: () => formsApi.list(id) });
   const list = useQuery({ queryKey: ["t-institutions", id], queryFn: () => institutionsApi.list(id) });
@@ -221,6 +225,38 @@ export function InstitutionsTab(): React.ReactElement {
         .map(([leaf_key, v]) => ({ leaf_key, label: v.label, count: v.count }))
         .sort((a, b) => a.leaf_key.localeCompare(b.leaf_key)),
     );
+  }, [items, sportsQ.data]);
+
+  // Per-competition counts report (the public directory's Competitions tab,
+  // admin-side): every CONFIGURED competition grouped by sport, with how
+  // many institutions entered it — zeros included.
+  const compReport = useMemo(() => {
+    const counts = new Map<string, { label: string; count: number }>();
+    for (const leaf of configuredLeaves(sportsQ.data?.sports ?? [])) {
+      counts.set(leaf.leaf_key, { label: leaf.label, count: 0 });
+    }
+    for (const i of items) {
+      for (const c of i.competitions ?? []) {
+        const cur = counts.get(c.leaf_key);
+        if (cur) cur.count += 1;
+        else counts.set(c.leaf_key, { label: c.label, count: 1 });
+      }
+    }
+    const groups = new Map<
+      string,
+      { sport: string; rows: { key: string; label: string; count: number }[] }
+    >();
+    for (const [key, v] of [...counts.entries()].sort((a, b) =>
+      a[0].localeCompare(b[0]),
+    )) {
+      const segs = v.label.split(/\s+[·—]\s+/);
+      const sport = segs[0] ?? v.label;
+      const within = segs.length > 1 ? segs.slice(1).join(" · ") : t("Open competition");
+      const g = groups.get(sport) ?? { sport, rows: [] };
+      g.rows.push({ key, label: within, count: v.count });
+      groups.set(sport, g);
+    }
+    return [...groups.values()];
   }, [items, sportsQ.data]);
   const [compSel, setCompSel] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -350,7 +386,16 @@ export function InstitutionsTab(): React.ReactElement {
               </span>
             </span>
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              {items.length > 0 ? (
+              <RangePills
+                label={t("View")}
+                options={[
+                  { value: "table", label: t("Directory") },
+                  { value: "competitions", label: t("Competitions") },
+                ]}
+                value={view}
+                onChange={(v) => setView(v as typeof view)}
+              />
+              {items.length > 0 && view === "table" ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -441,7 +486,55 @@ export function InstitutionsTab(): React.ReactElement {
           ) : null}
 
           <div className="p-3">
-            {list.isLoading ? (
+            {view === "competitions" ? (
+              compReport.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">
+                  {t("No competitions configured yet.")}
+                </p>
+              ) : (
+                <div
+                  className="grid gap-3 lg:grid-cols-2"
+                  data-testid="competitions-report"
+                >
+                  {compReport.map((g) => (
+                    <div
+                      key={g.sport}
+                      className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4 shadow-sm"
+                    >
+                      <h3 className="text-sm font-semibold">{g.sport}</h3>
+                      <ul className="mt-1 flex flex-col divide-y divide-border/60">
+                        {g.rows.map((r) => (
+                          <li
+                            key={r.key}
+                            className="flex items-center justify-between gap-2 py-1.5"
+                          >
+                            <span
+                              className={cn(
+                                "min-w-0 truncate text-sm",
+                                r.count === 0 && "text-muted-foreground",
+                              )}
+                              title={r.label}
+                            >
+                              {r.label}
+                            </span>
+                            <span
+                              className={cn(
+                                "shrink-0 rounded-md px-1.5 py-0.5 font-tabular text-xs font-medium",
+                                r.count > 0
+                                  ? "bg-primary/10 text-primary"
+                                  : "bg-muted text-muted-foreground/60",
+                              )}
+                            >
+                              {r.count}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : list.isLoading ? (
               <div className="h-40 animate-pulse rounded-xl border border-border bg-muted" />
             ) : items.length === 0 ? (
               <EmptyState

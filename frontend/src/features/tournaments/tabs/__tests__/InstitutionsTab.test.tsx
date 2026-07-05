@@ -201,6 +201,25 @@ describe("InstitutionsTab", () => {
     expect(write).toHaveBeenCalledWith(expect.stringContaining("Anpsa Test"));
   });
 
+  it("Competitions view reports counts per configured category, zeros included", async () => {
+    renderTab();
+    await screen.findByText("abc");
+    await userEvent.click(screen.getByRole("button", { name: "Competitions" }));
+    const report = await screen.findByTestId("competitions-report");
+    const { within } = await import("@testing-library/react");
+    // The entered sepak leaf counts 1; the never-entered TT leaf shows 0.
+    const sepakRow = within(report)
+      .getByText("u-15 · female")
+      .closest("li") as HTMLElement;
+    expect(within(sepakRow).getByText("1")).toBeInTheDocument();
+    const ttRow = within(report)
+      .getByText("u-19")
+      .closest("li") as HTMLElement;
+    expect(within(ttRow).getByText("0")).toBeInTheDocument();
+    // The directory table is swapped out while the report shows.
+    expect(screen.queryByText("Ketoulhou Sekhose")).toBeNull();
+  });
+
   it("filter tree lists every configured sport, even without entries", async () => {
     renderTab();
     await userEvent.click(
