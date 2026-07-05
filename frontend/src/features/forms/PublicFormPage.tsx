@@ -17,6 +17,7 @@ import { ApiError } from "@/types/api";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RichText } from "@/components/ui/RichText";
+import { StarBorder } from "@/components/ui/StarBorder";
 import { cn } from "@/lib/tailwind";
 import { compressImage } from "@/lib/compressImage";
 import { newEventId } from "@/lib/eventId";
@@ -785,6 +786,7 @@ export function PublicFormPage(): React.ReactElement {
           {/* Instructions — a highlighted callout (dates, age cut-off, rules) so
               applicants actually read them instead of skimming grey body text. */}
           {form.description ? (
+            <StarBorder>
             <aside
               role="note"
               className="flex gap-3 rounded-xl border border-primary/30 bg-primary/[0.06] p-4 sm:p-5"
@@ -795,6 +797,7 @@ export function PublicFormPage(): React.ReactElement {
                 className="text-sm leading-relaxed text-foreground/90 [&_a]:font-medium [&_a]:text-primary [&_a]:underline [&_strong]:font-semibold"
               />
             </aside>
+            </StarBorder>
           ) : null}
         </div>
         <ContactAdminDialog
@@ -853,6 +856,7 @@ export function PublicFormPage(): React.ReactElement {
 
         {/* Review step: read everything back (read-only), then submit. */}
         {isReview ? (
+          <StarBorder>
           <section
             aria-label={t("Review your registration")}
             className="flex flex-col gap-6 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6"
@@ -883,7 +887,9 @@ export function PublicFormPage(): React.ReactElement {
               );
             })}
           </section>
+          </StarBorder>
         ) : current ? (
+          <StarBorder>
           <section
             aria-label={current.title || t("Section")}
             className="flex flex-col gap-5 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6"
@@ -975,6 +981,7 @@ export function PublicFormPage(): React.ReactElement {
               </div>
             ) : null}
           </section>
+          </StarBorder>
         ) : (
           <p className="text-sm text-muted-foreground">
             {t("This form has no questions yet.")}

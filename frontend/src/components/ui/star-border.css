@@ -1,0 +1,69 @@
+/* StarBorder (React Bits), re-cut token-native: two brand-violet comet
+   gradients orbit the card rim (revealed through a 1px padding ring around
+   the opaque inner card). Pure CSS animation — no rAF, no gsap; killed
+   under prefers-reduced-motion. */
+
+.star-border {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 0.85rem; /* wraps .panel's rounded-xl with a 1px rim */
+  padding: 1px;
+}
+
+.star-border-glow {
+  position: absolute;
+  width: 300%;
+  height: 50%;
+  opacity: 0.6;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(circle, hsl(var(--primary)), transparent 12%);
+  animation: star-border-bottom 6s linear infinite alternate;
+}
+
+.star-border-glow--bottom {
+  bottom: -12px;
+  right: -250%;
+}
+
+.star-border-glow--top {
+  top: -12px;
+  left: -250%;
+  animation-name: star-border-top;
+}
+
+.star-border-inner {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+}
+
+@keyframes star-border-bottom {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-100%, 0%);
+    opacity: 0;
+  }
+}
+
+@keyframes star-border-top {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(100%, 0%);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .star-border-glow {
+    display: none;
+  }
+}

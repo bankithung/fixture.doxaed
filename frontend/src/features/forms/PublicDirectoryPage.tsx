@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { StaggeredDrawer } from "@/components/ui/StaggeredDrawer";
+import { StarBorder } from "@/components/ui/StarBorder";
 import { Centered, PublicShell } from "@/features/registration/PublicShell";
 import { RangePills } from "@/features/dashboard/RangePills";
 import {
@@ -86,10 +87,10 @@ function CompetitionsSection({
       aria-label={t("Entries by competition")}
       className="grid gap-3 lg:grid-cols-2"
     >
-      {groups.map((g) => (
+      {groups.map((g, gi) => (
+        <StarBorder key={g.sport} speed={`${6 + gi}s`}>
         <div
-          key={g.sport}
-          className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4 shadow-sm"
+          className="flex h-full flex-col gap-1 rounded-xl border border-border bg-card p-4 shadow-sm"
         >
           <h3 className="text-sm font-semibold">{g.sport}</h3>
           <ul className="mt-1 flex flex-col divide-y divide-border/60">
@@ -121,6 +122,7 @@ function CompetitionsSection({
             ))}
           </ul>
         </div>
+        </StarBorder>
       ))}
     </section>
   );
@@ -386,7 +388,8 @@ export function PublicDirectoryPage(): React.ReactElement {
 
         {/* ONE panel (owner 2026-07-05): toolbar with the total + view tabs,
             a slim per-game stats strip, then the content beside the filter
-            rail — no stacked stat cards or floating sections. */}
+            rail — wrapped in the StarBorder orbit. */}
+        <StarBorder>
         <section className="panel" aria-label={t("Registered institutions")}>
           <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
             <Building2 aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
@@ -521,10 +524,8 @@ export function PublicDirectoryPage(): React.ReactElement {
                 .filter((a) => a.labels.length > 0);
               const comps = e.competitions ?? [];
               return (
-                <li
-                  key={i}
-                  className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4 shadow-sm"
-                >
+                <StarBorder as="li" key={i}>
+                <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4 shadow-sm">
                   <div className="flex min-w-0 items-center gap-2.5">
                     {e.logo ? (
                       <img
@@ -590,7 +591,8 @@ export function PublicDirectoryPage(): React.ReactElement {
                       ))}
                     </dl>
                   ) : null}
-                </li>
+                </div>
+                </StarBorder>
               );
             })}
           </ul>
@@ -699,6 +701,7 @@ export function PublicDirectoryPage(): React.ReactElement {
         ) : null}
           </div>
         </section>
+        </StarBorder>
 
         {/* Floating Filters pill (phones/tablets) — always on-screen at the
             bottom edge, opens the bottom-sheet. The desktop rail replaces it

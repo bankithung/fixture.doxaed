@@ -50,7 +50,9 @@ import {
 } from "@/components/ui/dialog";
 import { ShareDialog } from "@/components/ui/ShareDialog";
 import { StaggeredDrawer } from "@/components/ui/StaggeredDrawer";
+import { StarBorder } from "@/components/ui/StarBorder";
 import { useToast } from "@/components/ui/toast";
+import { BentoGrid } from "@/features/dashboard/BentoCard";
 import { RangePills } from "@/features/dashboard/RangePills";
 import { flipPlacement } from "@/lib/popover";
 import { invalidateTournament } from "@/lib/queryKeys";
@@ -357,8 +359,14 @@ export function InstitutionsTab(): React.ReactElement {
         </div>
       ) : (
         /* ONE panel: form status + actions in the toolbar, quick links under
-           it, the registrations table below (owner 2026-07-05: merged). */
-        <section className="panel" aria-label={t("Institution registration")}>
+           it, the registrations table below — with the dashboard's bento
+           glow + the StarBorder orbit (owner 2026-07-05). */
+        <BentoGrid>
+        <StarBorder>
+        <section
+          className="bento-card panel"
+          aria-label={t("Institution registration")}
+        >
           <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
             <Building2 aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
             <h2 className="text-sm font-semibold">{t("Institution registration")}</h2>
@@ -496,11 +504,9 @@ export function InstitutionsTab(): React.ReactElement {
                   className="grid gap-3 lg:grid-cols-2"
                   data-testid="competitions-report"
                 >
-                  {compReport.map((g) => (
-                    <div
-                      key={g.sport}
-                      className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4 shadow-sm"
-                    >
+                  {compReport.map((g, gi) => (
+                    <StarBorder key={g.sport} speed={`${6 + gi}s`}>
+                    <div className="flex h-full flex-col gap-1 rounded-xl border border-border bg-card p-4 shadow-sm">
                       <h3 className="text-sm font-semibold">{g.sport}</h3>
                       <ul className="mt-1 flex flex-col divide-y divide-border/60">
                         {g.rows.map((r) => (
@@ -531,6 +537,7 @@ export function InstitutionsTab(): React.ReactElement {
                         ))}
                       </ul>
                     </div>
+                    </StarBorder>
                   ))}
                 </div>
               )
@@ -555,6 +562,8 @@ export function InstitutionsTab(): React.ReactElement {
             )}
           </div>
         </section>
+        </StarBorder>
+        </BentoGrid>
       )}
 
       {/* Filters — same right-side drawer as the sports picker. */}

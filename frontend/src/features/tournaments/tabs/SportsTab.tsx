@@ -36,6 +36,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { StaggeredDrawer } from "@/components/ui/StaggeredDrawer";
+import { StarBorder } from "@/components/ui/StarBorder";
 import { useToast } from "@/components/ui/toast";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament } from "@/lib/queryKeys";
@@ -1004,6 +1005,7 @@ export function SportsTab(): React.ReactElement {
       {/* No page heading on any step: the stage stepper above already places
           you (owner 2026-07-04). */}
       {effectiveStep === "pick" ? (
+        <StarBorder>
         <section className="panel" aria-label={t("Choose sports")}>
           {/* One toolbar: selected count, search, and Next in a single row. */}
           <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
@@ -1264,6 +1266,7 @@ export function SportsTab(): React.ReactElement {
             </div>
           </StaggeredDrawer>
         </section>
+        </StarBorder>
       ) : effectiveStep === "configure" ? (
         <>
           {/* Editor with folder-style sport tabs (left) + live preview (right). */}
