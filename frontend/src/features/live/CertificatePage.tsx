@@ -71,7 +71,7 @@ export function CertificatePage(): React.ReactElement {
   });
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen text-foreground">
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-8">
         <div className="flex items-center justify-between print:hidden">
           <Link

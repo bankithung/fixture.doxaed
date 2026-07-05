@@ -26,7 +26,6 @@ import { SetupStepperSidebar } from "./SetupStepperSidebar";
 import { SportsStepBar } from "./SportsStepBar";
 import { FixtureStepBar } from "./FixtureStepBar";
 import { StaggeredNavMenu } from "./StaggeredNavMenu";
-import { AppBackdrop } from "@/components/backdrop/AppBackdrop";
 import { ClickSpark } from "@/components/backdrop/ClickSpark";
 import {
   computeTournamentNav,
@@ -233,7 +232,6 @@ export function AppShell(): React.ReactElement {
     // No bg here: the body carries --background and the fixed -z PixelBlast
     // backdrop paints between the body color and the content's own surfaces.
     <div className="flex min-h-screen">
-      <AppBackdrop />
       {setupMode ? (
         setupSidebar ? (
           <SetupStepperSidebar

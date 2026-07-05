@@ -9,7 +9,7 @@ import { t } from "@/lib/t";
  */
 export function AboutPage(): React.ReactElement {
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col">
       <header className="border-b border-border/60">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between px-6 py-4">
           <Link

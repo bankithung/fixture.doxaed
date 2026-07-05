@@ -75,7 +75,7 @@ export function PublicBracketPage(): React.ReactElement {
   }, [query.data]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col">
       <PublicViewerHeader
         slug={slug}
         id={id}

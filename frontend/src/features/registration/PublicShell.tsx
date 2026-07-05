@@ -1,6 +1,5 @@
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { AppBackdrop } from "@/components/backdrop/AppBackdrop";
 import { ClickSpark } from "@/components/backdrop/ClickSpark";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 
@@ -27,8 +26,7 @@ export function PublicShell({
     // Same ground as the admin shell: token background + the PixelBlast
     // backdrop (self-disabled on phones / reduced motion), so public pages
     // stop looking like a different product (owner 2026-07-05).
-    <div className="flex min-h-screen flex-col bg-background">
-      <AppBackdrop />
+    <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-20 border-b border-border bg-card/80 backdrop-blur">
         <div
           className={cn(

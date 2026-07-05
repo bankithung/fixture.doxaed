@@ -85,7 +85,7 @@ export function PublicTeamPage(): React.ReactElement {
   const team = q.data;
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen text-foreground">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-6">
         <Link
           to={routes.publicSchedule(slug, id)}

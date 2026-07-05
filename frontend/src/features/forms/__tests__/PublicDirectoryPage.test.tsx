@@ -226,7 +226,7 @@ describe("PublicDirectoryPage", () => {
     expect(within(row("U-14 · Girls")).getByText("2")).toBeInTheDocument();
   });
 
-  it("uses the admin's custom KPI label instead of the game name", async () => {
+  it("keeps the sport name in the strip; a custom stat label is its tooltip", async () => {
     vi.mocked(formsApi.directory).mockResolvedValue({
       ...DATA,
       kpi_labels: { sepak: "Sepak (B&G)" },
@@ -238,8 +238,11 @@ describe("PublicDirectoryPage", () => {
     const summary = screen.getByRole("region", {
       name: "Registration summary",
     });
-    expect(within(summary).getByText("Sepak (B&G)")).toBeInTheDocument();
-    expect(within(summary).queryByText("Sepak Takraw")).toBeNull();
+    // Two chips both reading a custom label said nothing — the sport name
+    // always shows; the custom label rides along as the tooltip.
+    const chip = within(summary).getByText("Sepak Takraw");
+    expect(chip).toHaveAttribute("title", "Sepak (B&G)");
+    expect(within(summary).queryByText("Sepak (B&G)")).toBeNull();
   });
 
   it("competition filter: a leaf narrows, the parent shows partial, ticking the parent restores all", async () => {

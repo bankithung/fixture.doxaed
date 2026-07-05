@@ -56,7 +56,7 @@ export function PublicStandingsPage(): React.ReactElement {
     scheduleQ.isLoading || (scheduleQ.data !== undefined && standingsQ.isLoading);
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col">
       <PublicViewerHeader
         slug={slug}
         id={id}

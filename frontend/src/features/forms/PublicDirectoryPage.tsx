@@ -260,12 +260,14 @@ export function PublicDirectoryPage(): React.ReactElement {
         set.add(e.name);
       }
     }
-    // Admins can rename any headline stat in the form builder; the sport name
-    // is just the default (owner 2026-06-16).
+    // The chip always LEADS with the sport's name — two chips both reading
+    // "institute registered" said nothing (owner 2026-07-05). A custom stat
+    // label from the form builder rides along as the chip's tooltip.
     const custom = (dir.data?.kpi_labels ?? {}) as Record<string, string>;
-    return [...sports].map(([key, label]) => ({
+    return [...sports].map(([key, name]) => ({
       key,
-      label: (custom[key] ?? "").trim() || label,
+      name,
+      label: (custom[key] ?? "").trim(),
       count: byGame.get(key)?.size ?? 0,
     }));
   }, [dir.data]);
@@ -442,13 +444,14 @@ export function PublicDirectoryPage(): React.ReactElement {
               {gameStats.map((g) => (
                 <span
                   key={g.key}
+                  title={g.label || undefined}
                   className={cn(
                     "inline-flex items-center gap-1.5 text-xs text-muted-foreground",
                     g.count === 0 && "opacity-60",
                   )}
                 >
                   <Trophy aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
-                  {g.label}
+                  {g.name}
                   <span className="font-tabular text-sm font-semibold text-foreground">
                     {g.count}
                   </span>

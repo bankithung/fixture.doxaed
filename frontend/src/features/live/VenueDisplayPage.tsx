@@ -56,14 +56,14 @@ export function VenueDisplayPage(): React.ReactElement {
 
   if (q.isLoading || !q.data) {
     return (
-      <div className="grid min-h-screen place-items-center bg-background">
+      <div className="grid min-h-screen place-items-center">
         <p className="text-2xl text-muted-foreground">{t("Loading the board")}</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background p-6 text-foreground">
+    <div className="min-h-screen p-6 text-foreground">
       <header className="mb-6 flex items-baseline justify-between gap-4">
         <h1 className="text-3xl font-semibold tracking-tight">
           {q.data.tournament.name}

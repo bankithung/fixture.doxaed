@@ -45,7 +45,7 @@ export function ExplorePage(): React.ReactElement {
   const rest = rows.filter((r) => !r.live_now);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen text-foreground">
       <header className="flex h-14 items-center gap-3 border-b border-border bg-card px-4 sm:px-6">
         <Link to="/" className="flex items-center gap-2 font-semibold">
           <Trophy aria-hidden="true" className="h-5 w-5 text-primary" />

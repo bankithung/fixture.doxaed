@@ -24,7 +24,7 @@ export function AuthLayout({
   subtitle,
 }: AuthLayoutProps): React.ReactElement {
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 bg-background">
+    <div className="min-h-screen grid lg:grid-cols-2">
       <aside
         className="hidden lg:flex flex-col justify-between bg-primary p-12 text-primary-foreground relative overflow-hidden"
         aria-hidden="true"

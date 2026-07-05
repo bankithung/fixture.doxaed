@@ -578,7 +578,7 @@ export function LiveViewerPage(): React.ReactElement {
 
   if (query.isLoading) {
     return (
-      <div className="flex min-h-screen flex-col bg-background">
+      <div className="flex min-h-screen flex-col">
         {header}
         <main className="flex w-full flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
           <div className="h-40 animate-pulse rounded-xl border border-border bg-card" />
@@ -589,7 +589,7 @@ export function LiveViewerPage(): React.ReactElement {
   }
   if (query.isError || !snap || !match) {
     return (
-      <div className="flex min-h-screen flex-col bg-background">
+      <div className="flex min-h-screen flex-col">
         {header}
         <main className="flex w-full flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-card p-6 text-center">
@@ -746,7 +746,7 @@ export function LiveViewerPage(): React.ReactElement {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col">
       {header}
 
       {/* Sticky scoreline band + tab bar (Google-style: always in view). */}

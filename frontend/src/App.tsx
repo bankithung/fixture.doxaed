@@ -9,6 +9,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient, onAuthEvent } from "@/api/queryClient";
 import { useAuthStore } from "@/features/auth/authStore";
 import { ToastProvider } from "@/components/ui/toast";
+import { AppBackdrop } from "@/components/backdrop/AppBackdrop";
 import { ThemeProvider } from "@/features/theme/ThemeProvider";
 import { ProtectedRoute } from "@/features/layout/ProtectedRoute";
 import { AppShell } from "@/features/layout/AppShell";
@@ -128,6 +129,10 @@ export default function App(): React.ReactElement {
       <ToastProvider>
         <ErrorBoundary>
           <BrowserRouter>
+            {/* ONE PixelBlast backdrop for the whole app — admin and public
+                (owner 2026-07-05). Pages must not paint their own opaque
+                bg-background over it; <body> carries the ground color. */}
+            <AppBackdrop />
             <AuthBusBridge />
             <PasswordReauthModal />
             <Suspense

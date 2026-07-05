@@ -953,7 +953,7 @@ export function PublicSchedulePage(): React.ReactElement {
   );
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col">
       <header className="flex h-14 items-center gap-2 border-b border-border bg-card px-4 print:hidden sm:px-6">
         <Link
           to={routes.landing()}
