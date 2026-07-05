@@ -69,7 +69,7 @@ describe("SettingsRoute", () => {
     expect(screen.queryByText("Match format")).toBeNull();
   });
 
-  it("before ready, renders the setup rules editor", async () => {
+  it("before ready, renders the simplified settings page", async () => {
     vi.mocked(tournamentsApi.stage).mockResolvedValue(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { stage: "org_registration", can_manage: true, can_delete: false } as any,
@@ -87,6 +87,10 @@ describe("SettingsRoute", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
     mount();
-    expect(await screen.findByText("Match format")).toBeInTheDocument();
+    // The slimmed settings page: rename + audit + danger zone only (owner
+    // 2026-07-05); the old rules editor is gone from here.
+    expect(await screen.findByText("Tournament name")).toBeInTheDocument();
+    expect(screen.getByText("Audit log")).toBeInTheDocument();
+    expect(screen.queryByText("Match format")).toBeNull();
   });
 });

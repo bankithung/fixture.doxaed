@@ -132,7 +132,7 @@ describe("SettingsTab danger zone", () => {
 
     renderTab();
 
-    await screen.findByText(/scoring rules/i);
+    await screen.findByText("Audit log");
     expect(screen.queryByTestId("delete-tournament")).toBeNull();
   });
 
@@ -148,7 +148,7 @@ describe("SettingsTab danger zone", () => {
 
     renderTab();
 
-    await screen.findByText(/scoring rules/i);
+    await screen.findByText("Audit log");
     expect(screen.queryByTestId("delete-tournament")).toBeNull();
     expect(screen.queryByTestId("toggle-active")).toBeNull();
   });
