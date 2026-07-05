@@ -55,7 +55,7 @@ export function FormPreviewDialog({
       role="dialog"
       aria-modal="true"
       aria-label={t("Form preview")}
-      className="fixed inset-0 z-50 flex flex-col bg-muted/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex flex-col bg-background"
     >
       {/* Top bar */}
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-4 sm:px-6">

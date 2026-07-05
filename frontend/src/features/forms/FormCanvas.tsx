@@ -359,7 +359,7 @@ export function FormCanvas({
   const addSection = useBuilderStore((s) => s.addSection);
 
   return (
-    <div className={cn("flex flex-col gap-4", className)}>
+    <div className={cn("flex flex-col gap-3", className)}>
       {sections.map((s, i) => (
         <SectionCard key={s.key} section={s} index={i} total={sections.length} />
       ))}

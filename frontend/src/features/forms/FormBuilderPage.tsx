@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowLeft,
   CheckCircle2,
   ChevronDown,
-  ClipboardList,
   ExternalLink,
   Eye,
   LayoutTemplate,
@@ -474,14 +474,15 @@ export function FormBuilderPage(): React.ReactElement {
         : t("Back to forms");
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-5 sm:px-6 lg:px-8">
       {/* Header — compact. */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <Link
             to={backHref}
-            className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
           >
+            <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
             {backLabel}
           </Link>
           <div className="mt-1 flex items-center gap-3">
@@ -526,12 +527,6 @@ export function FormBuilderPage(): React.ReactElement {
             <Eye aria-hidden="true" className="h-4 w-4" />
             {t("Preview")}
           </Button>
-          <Link to={routes.tournamentFormResponses(id, formId)}>
-            <Button variant="outline" size="sm">
-              <ClipboardList aria-hidden="true" className="h-4 w-4" />
-              {t("Responses")}
-            </Button>
-          </Link>
           {status === "draft" || status === "closed" ? (
             <Button size="sm" disabled={publish.isPending} onClick={() => publish.mutate()}>
               <Send aria-hidden="true" className="h-4 w-4" />
@@ -645,9 +640,9 @@ export function FormBuilderPage(): React.ReactElement {
 
       {/* Builder: the form column (settings + questions) capped + centered so it
           reads like a real form, beside the collapsible palette rail. */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
         <div className="min-w-0 flex-1">
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
             <SettingsPanel form={form} tournamentId={id} />
             <FormCanvas className="w-full" />
           </div>
