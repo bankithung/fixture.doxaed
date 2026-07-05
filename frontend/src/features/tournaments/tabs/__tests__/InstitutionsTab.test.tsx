@@ -185,7 +185,7 @@ describe("InstitutionsTab", () => {
     await userEvent.click(await screen.findByTestId("open-export-drawer"));
     await userEvent.click(await screen.findByTestId("export-format-pdf"));
     await userEvent.click(screen.getByTestId("run-export"));
-    expect(open).toHaveBeenCalledWith("", "_blank", "noopener");
+    expect(open).toHaveBeenCalledWith("", "_blank");
     expect(write).toHaveBeenCalledWith(expect.stringContaining("abc"));
     expect(write).toHaveBeenCalledWith(
       expect.stringContaining("Ketoulhou Sekhose"),
