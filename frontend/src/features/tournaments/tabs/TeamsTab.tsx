@@ -674,19 +674,19 @@ function PlayerRow({
   const [open, setOpen] = useState(false);
   const hasDocs = player.documents.length > 0;
   return (
-    <li className="rounded-md border border-border bg-background">
+    <li className="overflow-hidden rounded-md border border-border/70 bg-card">
       <button
         type="button"
         disabled={!hasDocs}
         aria-expanded={hasDocs ? open : undefined}
         onClick={() => hasDocs && setOpen((o) => !o)}
         className={cn(
-          "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm",
-          hasDocs && "hover:bg-accent/40",
+          "flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left text-sm",
+          hasDocs && "cursor-pointer hover:bg-accent/40",
         )}
       >
-        <span className="w-5 shrink-0 text-right font-tabular text-xs text-muted-foreground">
-          {player.jersey_no ?? ""}
+        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/10 font-tabular text-[0.6875rem] font-semibold text-primary">
+          {player.jersey_no ?? "·"}
         </span>
         <span className="min-w-0 flex-1 truncate font-medium">
           {player.name || t("Unnamed")}
@@ -767,19 +767,22 @@ function TeamDetail({
 
   return (
     <div className="flex flex-col gap-3">
-      {d && (d.logo || d.coaches.length > 0) ? (
-        <div className="flex flex-wrap items-start gap-4">
-          {d.logo ? (
+      {/* ONE header row: logo + coaches left, the calendar link tucked top
+          right — it used to trail as its own full-width row (owner
+          2026-07-05). */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          {d?.logo ? (
             <a href={d.logo.url} target="_blank" rel="noreferrer" className="shrink-0">
               <img
                 src={d.logo.url}
                 alt={t(`${teamName} logo`)}
-                className="h-16 w-16 rounded-lg border border-border object-cover"
+                className="h-11 w-11 rounded-lg border border-border object-cover"
               />
             </a>
           ) : null}
-          {d.coaches.length > 0 ? (
-            <div className="flex min-w-0 flex-col gap-1.5">
+          {d && d.coaches.length > 0 ? (
+            <div className="flex min-w-0 flex-col gap-1">
               <span className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
                 {d.coaches.length === 1 ? t("Coach") : t("Coaches")}
               </span>
@@ -790,12 +793,24 @@ function TeamDetail({
                 </div>
               ))}
             </div>
-          ) : null}
+          ) : (
+            <span className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
+              {t("Squad")}{" "}
+              <span className="font-tabular">({players.length})</span>
+            </span>
+          )}
         </div>
-      ) : null}
+        {canManage ? (
+          <TeamCalendarLinkButton
+            tournamentId={tournamentId}
+            teamId={teamId}
+            teamName={teamName}
+          />
+        ) : null}
+      </div>
 
       {players.length > 0 ? (
-        <ol className="flex flex-col gap-1.5">
+        <ol className="flex flex-col gap-1">
           {players.map((p) => (
             <PlayerRow key={p.id} player={p} />
           ))}
@@ -807,14 +822,6 @@ function TeamDetail({
         <p className="text-xs text-muted-foreground">
           {t("Couldn't load player details.")}
         </p>
-      ) : null}
-
-      {canManage ? (
-        <TeamCalendarLinkButton
-          tournamentId={tournamentId}
-          teamId={teamId}
-          teamName={teamName}
-        />
       ) : null}
     </div>
   );
@@ -1075,7 +1082,12 @@ function TeamsTable({
   canManage: boolean;
 }): React.ReactElement {
   const { isMobile } = useBreakpoint();
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Everything starts folded (owner 2026-07-05): with several schools every
+  // group begins collapsed; a single (selected) school opens its team list,
+  // but each team's roster still starts closed.
+  const [collapsed, setCollapsed] = useState<Set<string>>(
+    () => new Set(groups.length > 1 ? groups.map((g) => g.key) : []),
+  );
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const flip = (
     set: Set<string>,
