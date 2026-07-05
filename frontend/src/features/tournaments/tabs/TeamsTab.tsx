@@ -44,6 +44,8 @@ import { cn } from "@/lib/tailwind";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { t } from "@/lib/t";
 import "@/components/ui/star-border.css";
+import { StarBorder } from "@/components/ui/StarBorder";
+import { RangePills } from "@/features/dashboard/RangePills";
 import { CreateFormDialog } from "../CreateFormDialog";
 import { EmptyState } from "./shared";
 
@@ -59,6 +61,9 @@ export function TeamsTab(): React.ReactElement {
   // Access-codes dialog (Stage-2 security): send/re-send emailed codes and
   // recover schools without an email (manual entry or a temporary edit link).
   const [codesOpen, setCodesOpen] = useState(false);
+  // Teams table vs the per-category counts view (same switch the
+  // institutions page has — owner 2026-07-05).
+  const [view, setView] = useState<"teams" | "categories">("teams");
   const [emailDrafts, setEmailDrafts] = useState<Record<string, string>>({});
 
   const refreshAfterCodes = (): void => {
@@ -227,15 +232,46 @@ export function TeamsTab(): React.ReactElement {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="text-lg font-semibold">{t("Teams")}</h2>
-          <p className="text-sm text-muted-foreground">
-            {t("Each institution's teams. Add directly, or collect via the form.")}
-          </p>
-        </div>
+      {/* ONE panel, same shape as Institution registration (owner
+          2026-07-05): toolbar with the team count + view switch + actions,
+          a slim progress row, the table below. */}
+      <StarBorder>
+      <section className="bento-card panel" aria-label={t("Team registration")}>
+      <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
+        <Users aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+        <h2 className="text-sm font-semibold">{t("Team registration")}</h2>
+        {teamForm ? (
+          <span
+            className={cn(
+              "rounded-full px-2 py-0.5 text-[0.6875rem] font-medium capitalize",
+              teamForm.status === "open"
+                ? "bg-primary/15 text-primary"
+                : "bg-muted text-muted-foreground",
+            )}
+          >
+            {t(teamForm.status)}
+          </span>
+        ) : null}
+        <span className="flex items-baseline gap-1 pl-1" data-testid="teams-count">
+          <span className="font-tabular text-base font-semibold leading-none">
+            {(teams.data ?? []).length}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {(teams.data ?? []).length === 1 ? t("team") : t("teams")}
+          </span>
+        </span>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <RangePills
+            label={t("View")}
+            options={[
+              { value: "teams", label: t("Teams") },
+              { value: "categories", label: t("By category") },
+            ]}
+            value={view}
+            onChange={(v) => setView(v as typeof view)}
+          />
         {canManage ? (
-          <div className="flex flex-wrap items-center gap-2">
+          <>
             <ActionMenu label={t("Form tools")} icon={FilePlus2} data-testid="form-tools-menu">
               {teamForm?.status === "open" ? (
                 <ActionMenuItem icon={KeyRound} onSelect={() => setCodesOpen(true)}>
@@ -289,35 +325,52 @@ export function TeamsTab(): React.ReactElement {
               <Plus aria-hidden="true" className="h-4 w-4" />
               {t("Add team")}
             </Button>
-          </div>
+          </>
         ) : null}
+        </div>
       </div>
 
-      {canManage && (institutions.data?.length ?? 0) > 0 && !teamForm ? (
-        <p className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-          {t("Tip: “Auto-generate team form” builds a form from each institution's selected categories, with a section per category, ready to review and open.")}
-        </p>
+      {/* Progress + hints row. */}
+      {schoolCount > 0 || (canManage && !teamForm) ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-border px-3 py-2 text-xs">
+          {schoolCount > 0 ? (
+            <span className="font-tabular font-medium text-muted-foreground">
+              {submittedCount}/{schoolCount} {t("schools have submitted teams")}
+            </span>
+          ) : null}
+          {canManage && (institutions.data?.length ?? 0) > 0 && !teamForm ? (
+            <span className="text-muted-foreground">
+              {t("Tip: “Auto-generate team form” builds a form from each institution's selected categories, ready to review and open.")}
+            </span>
+          ) : null}
+        </div>
       ) : null}
 
-      {schoolCount === 0 ? (
-        <EmptyState
-          icon={<Users className="h-8 w-8" />}
-          title={t("No institutions yet")}
-          hint={t("Register an institution first, then collect its teams.")}
-        />
-      ) : (
-        <>
-          <p className="font-tabular text-xs text-muted-foreground">
-            {submittedCount}/{schoolCount} {t("schools have submitted teams")}
-          </p>
-          <CategoryKpis teams={teams.data ?? []} />
+      <div className="p-3">
+        {schoolCount === 0 ? (
+          <EmptyState
+            icon={<Users className="h-8 w-8" />}
+            title={t("No institutions yet")}
+            hint={t("Register an institution first, then collect its teams.")}
+          />
+        ) : view === "categories" ? (
+          (teams.data ?? []).length === 0 ? (
+            <p className="rounded-xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">
+              {t("No teams registered yet.")}
+            </p>
+          ) : (
+            <CategoryKpis teams={teams.data ?? []} />
+          )
+        ) : (
           <TeamsTable
             groups={schoolGroups}
             tournamentId={id}
             canManage={canManage}
           />
-        </>
-      )}
+        )}
+      </div>
+      </section>
+      </StarBorder>
 
       {/* Access codes — a per-school list: send to all at once, or send /
           resend to one; schools without an email get inline recovery. */}
