@@ -623,10 +623,10 @@ export function PublicFormPage(): React.ReactElement {
   const formError = errors.__form;
 
   // Consecutive fields sharing `group` render inside ONE card titled by the
-  // group label, each question indented per `indent` and shown with its
-  // sport-less `short_label` (W2: the flat run of chained category questions
-  // was unreadable once several sports were selected). Ungrouped fields
-  // render exactly as before.
+  // group label. Chain questions NEST: each follow-up renders directly under
+  // the option that revealed it (owner 2026-07-05: pick a sport, its
+  // sub-options unfold right below, level by level) — driven purely by each
+  // field's visibility pointer, nothing sport-specific.
   const renderGrouped = (
     fields: Field[],
     readOnly = false,
@@ -650,6 +650,44 @@ export function PublicFormPage(): React.ReactElement {
         (c) => isVisible(c.visibility, answers) && !lockedSet.has(c.key),
       );
       if (!visible.length) continue;
+
+      // Wire each field to the option that reveals it (visibility points at
+      // the parent field + value). Fields gated from OUTSIDE the chunk (e.g.
+      // by the sports question) are the roots.
+      const chunkKeys = new Set(chunk.map((c) => c.key));
+      const kidsOf = new Map<string, Map<string, Field[]>>();
+      const roots: Field[] = [];
+      for (const c of chunk) {
+        const vis = c.visibility;
+        if (vis && chunkKeys.has(vis.field)) {
+          const byVal = kidsOf.get(vis.field) ?? new Map<string, Field[]>();
+          const val = String(vis.value ?? "");
+          byVal.set(val, [...(byVal.get(val) ?? []), c]);
+          kidsOf.set(vis.field, byVal);
+        } else {
+          roots.push(c);
+        }
+      }
+      const renderChain = (c: Field, nested: boolean): React.ReactNode => {
+        const byVal = kidsOf.get(c.key);
+        return renderField({ ...c, label: c.short_label ?? c.label }, readOnly, {
+          hideLabel: nested,
+          optionExtra: byVal
+            ? (val) => {
+                const list = (byVal.get(val) ?? []).filter(
+                  (k) =>
+                    isVisible(k.visibility, answers) && !lockedSet.has(k.key),
+                );
+                if (!list.length) return null;
+                return (
+                  <div className="ml-6 flex flex-col gap-3 border-l-2 border-primary/40 pl-3">
+                    {list.map((k) => renderChain(k, true))}
+                  </div>
+                );
+              }
+            : undefined,
+        });
+      };
       out.push(
         <div
           key={`group-${group}`}
@@ -658,18 +696,7 @@ export function PublicFormPage(): React.ReactElement {
           <h3 className="text-sm font-semibold">
             {t(chunk[0].group_label ?? group)}
           </h3>
-          {visible.map((c) => {
-            const depth = Math.min(c.indent ?? 0, 4);
-            return (
-              <div
-                key={c.key}
-                className={depth > 0 ? "border-l-2 border-border pl-3" : undefined}
-                style={depth > 0 ? { marginLeft: (depth - 1) * 16 } : undefined}
-              >
-                {renderField({ ...c, label: c.short_label ?? c.label }, readOnly)}
-              </div>
-            );
-          })}
+          {roots.map((c) => renderChain(c, false))}
         </div>,
       );
     }
@@ -679,7 +706,14 @@ export function PublicFormPage(): React.ReactElement {
   // Render a field and, recursively, the nested follow-up fields of any selected
   // option (indented). Returns null for hidden/locked fields. Competition-scoped
   // fields show ONLY the options the selected school registered for.
-  const renderField = (raw: Field, readOnly = false): React.ReactNode => {
+  const renderField = (
+    raw: Field,
+    readOnly = false,
+    extra?: {
+      optionExtra?: (value: string) => React.ReactNode;
+      hideLabel?: boolean;
+    },
+  ): React.ReactNode => {
     if (!isVisible(raw.visibility, answers) || lockedSet.has(raw.key)) return null;
     const f =
       instLeaves && compFieldKeys.has(raw.key)
@@ -710,6 +744,8 @@ export function PublicFormPage(): React.ReactElement {
           fileMeta={displayFileMeta}
           onFileLabel={readOnly ? undefined : handleFileLabel}
           disabled={readOnly}
+          optionExtra={extra?.optionExtra}
+          hideLabel={extra?.hideLabel}
         />
         {nested.length ? (
           <div className="ml-3 flex flex-col gap-5 border-l-2 border-border pl-4">

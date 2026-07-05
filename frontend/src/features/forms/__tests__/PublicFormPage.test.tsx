@@ -177,6 +177,88 @@ describe("PublicFormPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("chain questions unfold NESTED under the option that reveals them", async () => {
+    // Grouped chain (as the generator emits): sports → per-sport card →
+    // categories → gender, each child gated on its parent option.
+    const chainSchema: FormSchema = {
+      version: 1,
+      sections: [
+        {
+          key: "comp",
+          title: "Competition selection",
+          fields: [
+            {
+              key: "sports",
+              type: "multi_choice",
+              label: "Which sport(s)?",
+              required: true,
+              options: [{ value: "sepak", label: "Sepak Takraw" }],
+            },
+            {
+              key: "categories_sepak",
+              type: "multi_choice",
+              label: "Sepak Takraw categories",
+              required: true,
+              group: "sepak",
+              group_label: "Sepak Takraw",
+              short_label: "Categories",
+              visibility: { field: "sports", op: "includes", value: "sepak" },
+              options: [{ value: "sepak.u16", label: "under 16" }],
+            },
+            {
+              key: "categories_sepak_u16",
+              type: "multi_choice",
+              label: "Sepak Takraw · under 16",
+              required: true,
+              group: "sepak",
+              group_label: "Sepak Takraw",
+              short_label: "under 16",
+              indent: 1,
+              visibility: {
+                field: "categories_sepak",
+                op: "includes",
+                value: "sepak.u16",
+              },
+              options: [
+                { value: "sepak.u16.male", label: "male" },
+                { value: "sepak.u16.female", label: "female" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "Anpsa",
+      form: {
+        id: "form1",
+        title: "Institution registration",
+        description: "",
+        schema: chainSchema,
+        confirmation_message: "",
+      },
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: /institution registration/i });
+
+    // Nothing below the sports question until a sport is picked.
+    expect(screen.queryByLabelText("under 16")).toBeNull();
+    await userEvent.click(screen.getByLabelText("Sepak Takraw"));
+    const u16 = await screen.findByLabelText("under 16");
+    expect(screen.queryByLabelText("male")).toBeNull();
+
+    // Ticking "under 16" reveals its genders DIRECTLY under that option row.
+    await userEvent.click(u16);
+    const male = await screen.findByLabelText("male");
+    const optionWrap = u16.closest("label")!.parentElement!;
+    expect(optionWrap.contains(male)).toBe(true);
+    expect(optionWrap.contains(screen.getByLabelText("female"))).toBe(true);
+
+    // Unticking folds the branch back up.
+    await userEvent.click(u16);
+    await waitFor(() => expect(screen.queryByLabelText("male")).toBeNull());
+  });
+
   it("prefills + locks the institution on a bound per-institution link", async () => {
     vi.mocked(formsApi.publicGetByToken).mockResolvedValue({
       tournament_name: "Cup",

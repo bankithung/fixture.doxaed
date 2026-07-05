@@ -29,6 +29,13 @@ export interface FieldRenderProps {
   onFileLabel?: (ref: string, label: string) => void;
   /** Disable inputs (e.g. live preview that is read-only). */
   disabled?: boolean;
+  /** Choice fields only: content to render DIRECTLY under a selected
+   * option's row (progressive disclosure — the follow-up question appears
+   * beneath the option that revealed it). Called per selected option value. */
+  optionExtra?: (value: string) => React.ReactNode;
+  /** Keep the label for screen readers but hide it visually (nested chain
+   * questions sit right under the option carrying the same words). */
+  hideLabel?: boolean;
 }
 
 /** True for an upload we should preview inline as an image (by MIME, else by
@@ -266,6 +273,8 @@ export function FieldRenderer({
   fileMeta,
   onFileLabel,
   disabled,
+  optionExtra,
+  hideLabel,
 }: FieldRenderProps): React.ReactElement {
   const id = useId();
   const labelId = `${id}-label`;
@@ -390,27 +399,31 @@ export function FieldRenderer({
             {noMatches}
             {opts.map((o) => {
               const oid = `${id}-${o.value}`;
+              const selected = asString(value) === String(o.value);
+              const extra = selected ? optionExtra?.(String(o.value)) : null;
               return (
-                <label
-                  key={o.value}
-                  htmlFor={oid}
-                  className="flex cursor-pointer items-center gap-2 text-sm"
-                >
-                  <input
-                    id={oid}
-                    type="radio"
-                    name={id}
-                    value={o.value}
-                    checked={asString(value) === String(o.value)}
-                    disabled={disabled}
-                    onChange={() => onChange(o.value)}
-                    className="h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  />
-                  {o.image ? (
-                    <img src={o.image} alt="" className="h-6 w-6 shrink-0 rounded object-cover" />
-                  ) : null}
-                  <span>{t(o.label)}</span>
-                </label>
+                <div key={o.value} className="flex flex-col">
+                  <label
+                    htmlFor={oid}
+                    className="flex cursor-pointer items-center gap-2 text-sm"
+                  >
+                    <input
+                      id={oid}
+                      type="radio"
+                      name={id}
+                      value={o.value}
+                      checked={selected}
+                      disabled={disabled}
+                      onChange={() => onChange(o.value)}
+                      className="h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                    {o.image ? (
+                      <img src={o.image} alt="" className="h-6 w-6 shrink-0 rounded object-cover" />
+                    ) : null}
+                    <span>{t(o.label)}</span>
+                  </label>
+                  {extra ? <div className="mt-2">{extra}</div> : null}
+                </div>
               );
             })}
           </div>
@@ -430,32 +443,35 @@ export function FieldRenderer({
             {visibleOptions.map((o) => {
               const oid = `${id}-${o.value}`;
               const checked = arr.includes(String(o.value));
+              const extra = checked ? optionExtra?.(String(o.value)) : null;
               return (
-                <label
-                  key={o.value}
-                  htmlFor={oid}
-                  className="flex cursor-pointer items-center gap-2 text-sm"
-                >
-                  <input
-                    id={oid}
-                    type="checkbox"
-                    value={o.value}
-                    checked={checked}
-                    disabled={disabled}
-                    onChange={(e) =>
-                      onChange(
-                        e.target.checked
-                          ? [...arr, String(o.value)]
-                          : arr.filter((v) => v !== String(o.value)),
-                      )
-                    }
-                    className="h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  />
-                  {o.image ? (
-                    <img src={o.image} alt="" className="h-6 w-6 shrink-0 rounded object-cover" />
-                  ) : null}
-                  <span>{t(o.label)}</span>
-                </label>
+                <div key={o.value} className="flex flex-col">
+                  <label
+                    htmlFor={oid}
+                    className="flex cursor-pointer items-center gap-2 text-sm"
+                  >
+                    <input
+                      id={oid}
+                      type="checkbox"
+                      value={o.value}
+                      checked={checked}
+                      disabled={disabled}
+                      onChange={(e) =>
+                        onChange(
+                          e.target.checked
+                            ? [...arr, String(o.value)]
+                            : arr.filter((v) => v !== String(o.value)),
+                        )
+                      }
+                      className="h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                    {o.image ? (
+                      <img src={o.image} alt="" className="h-6 w-6 shrink-0 rounded object-cover" />
+                    ) : null}
+                    <span>{t(o.label)}</span>
+                  </label>
+                  {extra ? <div className="mt-2">{extra}</div> : null}
+                </div>
               );
             })}
           </div>
@@ -710,7 +726,7 @@ export function FieldRenderer({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <Label id={labelId} htmlFor={id}>
+      <Label id={labelId} htmlFor={id} className={hideLabel ? "sr-only" : undefined}>
         {t(field.label)}
         {field.required ? (
           <span aria-hidden="true" className="ml-0.5 text-destructive">
