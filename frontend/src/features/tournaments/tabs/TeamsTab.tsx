@@ -671,7 +671,9 @@ function PlayerRow({
 }: {
   player: TeamRegistrationDetail["players"][number];
 }): React.ReactElement {
-  const [open, setOpen] = useState(false);
+  // Open on arrival (owner 2026-07-05: no tap-to-reveal anywhere); the row
+  // click folds it away.
+  const [open, setOpen] = useState(true);
   const hasDocs = player.documents.length > 0;
   return (
     <li className="overflow-hidden rounded-md border border-border/70 bg-card">
@@ -1082,13 +1084,13 @@ function TeamsTable({
   canManage: boolean;
 }): React.ReactElement {
   const { isMobile } = useBreakpoint();
-  // Everything starts folded (owner 2026-07-05): with several schools every
-  // group begins collapsed; a single (selected) school opens its team list,
-  // but each team's roster still starts closed.
-  const [collapsed, setCollapsed] = useState<Set<string>>(
-    () => new Set(groups.length > 1 ? groups.map((g) => g.key) : []),
+  // Everything starts OPEN (owner 2026-07-05): school groups and every
+  // team's roster are expanded on arrival — no tap-to-reveal; the chevrons
+  // only fold things away.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () => new Set(groups.flatMap((g) => g.teams.map((tm) => tm.id))),
   );
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const flip = (
     set: Set<string>,
     update: (next: Set<string>) => void,
