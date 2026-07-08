@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/features/auth/authStore";
 import { Button } from "@/components/ui/button";
-import { StarBorder } from "@/components/ui/StarBorder";
 import { BentoGrid, BentoCard } from "@/features/dashboard/BentoCard";
 import { useCountUp } from "@/features/dashboard/useCountUp";
 import { pickLandingPathForUser } from "@/features/roles/redirectByRole";
@@ -31,15 +30,18 @@ import {
   SportsMarquee,
   SPORT_NAMES,
 } from "./motion";
-import { StadiumBackdrop } from "./StadiumBackdrop";
+import { AmbientBackdrop } from "./AmbientBackdrop";
 import { CinematicBackdrop } from "./CinematicBackdrop";
 import { ScorerDemo, BracketDemo, FaqItem } from "./demos";
 
 /**
- * Public landing page at `/`, laid out in the Supabase-homepage idiom:
- * centered hero with a gradient second line, a "runs every sport" strip
- * (their framework row), a product bento where the VISUAL lives inside each
- * card, steps, roadmap, a centered closing statement and a columned footer.
+ * Public landing page at `/`: a cinematic, film-first marketing surface.
+ * The scroll-scrubbed footage (CinematicBackdrop) is the page background;
+ * the page locks to DARK tokens regardless of app theme so the glass
+ * surfaces sit naturally on the dark footage. Hero is a full-viewport
+ * title card anchored lower-left; sections ride over the film on glass;
+ * two transparent film windows and a transparent closing beat let the
+ * footage carry the page between content groups.
  *
  * - Authenticated user: redirect via `pickLandingPathForUser` (personal
  *   dashboard; roles only matter inside a tournament).
@@ -47,11 +49,8 @@ import { ScorerDemo, BracketDemo, FaqItem } from "./demos";
  *   pre-bootstrap render is identical to the unauthenticated render so
  *   there is no "Loading..." flash for cold visitors.
  *
- * This is the public marketing surface — it renders OUTSIDE the app shell,
- * so a centered max-width column is intentional here (unlike in-app pages).
- * Colors are token-only (light + dark) so the page tracks the theme. Motion
- * comes from the landing motion kit (./motion) + the reused Bento/StarBorder
- * ports; everything degrades to static under prefers-reduced-motion.
+ * Colors are token-only; motion comes from the landing kit (./motion) and
+ * degrades to static under prefers-reduced-motion.
  */
 export function LandingPage(): React.ReactElement {
   const user = useAuthStore((s) => s.user);
@@ -63,15 +62,14 @@ export function LandingPage(): React.ReactElement {
   }
 
   return (
-    <div className="flex min-h-screen flex-col text-foreground">
-      {/* Backdrops: the SVG stadium is always there; the scroll-scrubbed film
-          paints OVER it when frames are deployed (desktop, motion allowed),
-          so mobile / reduced motion fall back to the stadium scene. */}
-      <StadiumBackdrop />
+    <div className="dark flex min-h-screen flex-col bg-background text-foreground">
+      {/* Backdrops: desktop gets the scroll film (plain page background
+          while its frames load); mobile gets ambient drifting blobs. */}
+      <AmbientBackdrop />
       <CinematicBackdrop />
       {/* Top bar */}
       <header className="sticky top-0 z-20 border-b border-border/60 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3.5 sm:px-6">
+        <div className="flex w-full items-center justify-between px-4 py-3.5 sm:px-6 lg:px-10">
           <Link
             to={routes.landing()}
             className="inline-flex items-center gap-2.5 rounded-sm text-base font-semibold tracking-tight text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -103,49 +101,48 @@ export function LandingPage(): React.ReactElement {
         </div>
       </header>
 
-      {/* Hero: centered, Supabase-style two-line headline */}
-      <section className="relative overflow-hidden border-b border-border/60">
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute left-1/2 top-0 h-96 w-[42rem] -translate-x-1/2 rounded-full bg-primary/10 blur-3xl"
-        />
-        <div className="relative mx-auto w-full max-w-4xl px-4 pb-14 pt-14 text-center sm:px-6 sm:pb-20 sm:pt-24">
-          <h1 className="text-4xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-            <BlurText text={t("Doxaed ·")} />{" "}
-            <BlurLine
-              text={t("Fixture")}
-              delayMs={250}
-              className="bg-gradient-to-r from-primary to-info bg-clip-text text-transparent"
-            />
-          </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-            {t(
-              "Run tournaments, schedule matches, follow live scores. Built for local sport, football first.",
-            )}
-          </p>
-          <p className="mt-3 text-lg font-medium text-muted-foreground">
-            {t("One platform for")}{" "}
-            <RotatingText
-              words={SPORT_NAMES}
-              className="font-semibold text-primary"
-            />
-          </p>
-          <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-            <Link to="/explore" className="w-full sm:w-auto">
-              <Button size="lg" className="w-full gap-2 sm:w-auto">
-                {t("Follow live tournaments")}
-                <ArrowRight aria-hidden="true" className="h-4 w-4" />
-              </Button>
-            </Link>
-            <Link to={routes.signup()} className="w-full sm:w-auto">
-              <Button size="lg" variant="outline" className="w-full sm:w-auto">
-                {t("Organize one")}
-              </Button>
-            </Link>
+      {/* Hero: a full-viewport title card over the opening frame of the
+          film, content anchored lower-left like a broadcast lower third. */}
+      <section className="relative flex min-h-[calc(100dvh-3.75rem)] flex-col justify-end">
+        <div className="w-full px-4 pb-12 pt-16 sm:px-6 sm:pb-16 lg:px-10">
+          <div className="max-w-3xl">
+            <h1 className="text-5xl font-semibold leading-[1.05] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
+              <BlurText text={t("Doxaed ·")} delayMs={90} />{" "}
+              <BlurLine
+                text={t("Fixture")}
+                delayMs={320}
+                className="bg-gradient-to-r from-primary to-info bg-clip-text text-transparent"
+              />
+            </h1>
+            <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+              {t(
+                "Run tournaments, schedule matches, follow live scores. Built for local sport, football first.",
+              )}
+            </p>
+            <p className="mt-3 text-lg font-medium text-muted-foreground">
+              {t("One platform for")}{" "}
+              <RotatingText
+                words={SPORT_NAMES}
+                className="font-semibold text-primary"
+              />
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link to="/explore" className="w-full sm:w-auto">
+                <Button size="lg" className="w-full gap-2 sm:w-auto">
+                  {t("Follow live tournaments")}
+                  <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                </Button>
+              </Link>
+              <Link to={routes.signup()} className="w-full sm:w-auto">
+                <Button size="lg" variant="outline" className="w-full sm:w-auto">
+                  {t("Organize one")}
+                </Button>
+              </Link>
+            </div>
           </div>
 
-          {/* Trust strip */}
-          <dl className="mx-auto mt-12 grid max-w-md grid-cols-3 gap-4 text-center sm:gap-6">
+          {/* Trust strip: lower-third stat row */}
+          <dl className="mt-12 flex flex-wrap items-center gap-x-10 gap-y-4 border-t border-border/40 pt-6 text-left sm:gap-x-14">
             <CountStat value={10} label={t("sports on the chassis")} />
             <Stat value="100%" label={t("multi-tenant")} />
             <Stat value="24/7" label={t("live scores")} />
@@ -161,13 +158,13 @@ export function LandingPage(): React.ReactElement {
         <p className="text-center text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
           {t("Built to run every sport")}
         </p>
-        <SportsMarquee className="mx-auto mt-4 w-full max-w-6xl px-4 sm:px-6" />
+        <SportsMarquee className="mt-4 w-full px-4 sm:px-6 lg:px-10" />
       </section>
 
       {/* Product bento: the visual lives inside each card */}
       <section
         aria-labelledby="features-heading"
-        className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20"
+        className="w-full px-4 py-16 sm:px-6 sm:py-24 lg:px-10"
       >
         <Reveal>
           <h2
@@ -274,7 +271,7 @@ export function LandingPage(): React.ReactElement {
         aria-labelledby="demos-heading"
         className="border-t border-border/60 bg-background/30"
       >
-        <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
+        <div className="w-full px-4 py-16 sm:px-6 sm:py-24 lg:px-10">
           <Reveal>
             <div className="flex flex-wrap items-center gap-3">
               <h2
@@ -312,7 +309,7 @@ export function LandingPage(): React.ReactElement {
         aria-labelledby="schools-heading"
         className="border-t border-border/60"
       >
-        <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[1fr,1.25fr] lg:items-center">
+        <div className="grid w-full gap-10 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-[1fr,1.25fr] lg:items-center lg:px-10">
           <Reveal>
             <h2
               id="schools-heading"
@@ -359,7 +356,7 @@ export function LandingPage(): React.ReactElement {
         aria-labelledby="how-heading"
         className="border-t border-border/60 bg-background/30"
       >
-        <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
+        <div className="w-full px-4 py-16 sm:px-6 sm:py-24 lg:px-10">
           <Reveal>
             <h2
               id="how-heading"
@@ -411,7 +408,7 @@ export function LandingPage(): React.ReactElement {
         aria-labelledby="why-heading"
         className="border-t border-border/60"
       >
-        <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-12">
+        <div className="w-full px-4 py-12 sm:px-6 sm:py-14 lg:px-10">
           <Reveal className="text-center">
             <h2
               id="why-heading"
@@ -445,7 +442,7 @@ export function LandingPage(): React.ReactElement {
         aria-labelledby="roadmap-heading"
         className="border-t border-border/60 bg-background/30"
       >
-        <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
+        <div className="w-full px-4 py-16 sm:px-6 sm:py-24 lg:px-10">
           <Reveal>
             <h2
               id="roadmap-heading"
@@ -497,7 +494,7 @@ export function LandingPage(): React.ReactElement {
 
       {/* FAQ: editorial split, accordion beside the heading */}
       <section aria-labelledby="faq-heading">
-        <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[0.8fr,1.2fr]">
+        <div className="grid w-full gap-10 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-[0.8fr,1.2fr] lg:px-10">
           <Reveal>
             <h2
               id="faq-heading"
@@ -541,44 +538,34 @@ export function LandingPage(): React.ReactElement {
         </div>
       </section>
 
-      {/* Closing CTA: centered statement */}
-      <section className="mx-auto w-full max-w-4xl px-4 py-14 sm:px-6 sm:py-20">
+      {/* Closing: a final beat over the film, no card */}
+      <section className="relative flex min-h-[55vh] flex-col items-center justify-center px-4 py-20 text-center sm:px-6">
         <Reveal>
-          <StarBorder speed="8s">
-            <div className="glass relative overflow-hidden rounded-xl border border-border p-8 text-center shadow-sm sm:p-12">
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute left-1/2 top-0 h-40 w-96 -translate-x-1/2 rounded-full bg-primary/10 blur-3xl"
-              />
-              <div className="relative">
-                <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-                  {t("Ready to run your first tournament?")}
-                </h2>
-                <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base">
-                  {t("Create a free account in minutes.")}
-                </p>
-                <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-                  <Link to={routes.signup()} className="w-full sm:w-auto">
-                    <Button size="lg" className="w-full gap-2 sm:w-auto">
-                      {t("Get started")}
-                      <ArrowRight aria-hidden="true" className="h-4 w-4" />
-                    </Button>
-                  </Link>
-                  <Link to={routes.login()} className="w-full sm:w-auto">
-                    <Button size="lg" variant="outline" className="w-full sm:w-auto">
-                      {t("Sign in")}
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </StarBorder>
+          <h2 className="mx-auto max-w-2xl text-3xl font-semibold tracking-tight [text-shadow:0_2px_28px_hsl(var(--background)),0_0_12px_hsl(var(--background))] sm:text-5xl">
+            {t("Ready to run your first tournament?")}
+          </h2>
+          <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base">
+            {t("Create a free account in minutes.")}
+          </p>
+          <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            <Link to={routes.signup()} className="w-full sm:w-auto">
+              <Button size="lg" className="w-full gap-2 sm:w-auto">
+                {t("Get started")}
+                <ArrowRight aria-hidden="true" className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Link to={routes.login()} className="w-full sm:w-auto">
+              <Button size="lg" variant="outline" className="w-full sm:w-auto">
+                {t("Sign in")}
+              </Button>
+            </Link>
+          </div>
         </Reveal>
       </section>
 
       {/* Footer: columned, Supabase-style */}
       <footer className="mt-auto border-t border-border/60 bg-background/45 backdrop-blur-sm">
-        <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
+        <div className="w-full px-4 py-10 sm:px-6 lg:px-10">
           <div className="grid gap-8 sm:grid-cols-[1.5fr,1fr,1fr]">
             <div>
               <span className="inline-flex items-center gap-2.5 text-base font-semibold tracking-tight text-foreground">
@@ -862,10 +849,10 @@ function CountStat({
  * tones keeps the line readable over any frame. */
 function FilmWindow({ line }: { line: string }): React.ReactElement {
   return (
-    <section className="relative flex min-h-[38vh] items-center justify-center px-4 py-16 sm:min-h-[52vh]">
+    <section className="relative flex min-h-[46vh] items-center justify-center px-4 py-20 sm:min-h-[68vh]">
       <BlurLine
         text={line}
-        className="max-w-3xl text-center text-3xl font-semibold leading-tight tracking-tight text-foreground [text-shadow:0_2px_28px_hsl(var(--background)),0_0_12px_hsl(var(--background))] sm:text-5xl"
+        className="film-line max-w-4xl text-center text-3xl font-semibold leading-tight tracking-tight text-foreground [text-shadow:0_2px_28px_hsl(var(--background)),0_0_12px_hsl(var(--background))] sm:text-6xl"
       />
     </section>
   );

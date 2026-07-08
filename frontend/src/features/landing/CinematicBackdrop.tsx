@@ -17,8 +17,9 @@ import { useBreakpoint } from "@/lib/useBreakpoint";
  * Assets live in /cinematic/<film>/: manifest.json {count,width,height} plus
  * frame_0001.webp … frame_NNNN.webp.
  *
- * Renders NOTHING on mobile / reduced motion / jsdom (StadiumBackdrop is the
- * fallback there), and nothing until every listed manifest is deployed.
+ * Renders NOTHING on mobile / reduced motion / jsdom (AmbientBackdrop covers
+ * mobile; elsewhere the plain page background shows), and nothing until
+ * every listed manifest is deployed.
  */
 
 const FILMS = ["v1", "v2", "v3"] as const;
