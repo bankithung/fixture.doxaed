@@ -64,7 +64,7 @@ export function ScorerDemo(): React.ReactElement {
   }, [animate, score]);
 
   return (
-    <div className="panel flex h-full flex-col p-5" data-testid="scorer-demo">
+    <div className="panel glass flex h-full flex-col p-5" data-testid="scorer-demo">
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-2 font-medium text-destructive">
           <span className="live-dot" />
@@ -133,7 +133,7 @@ function ScorerRow({
 /** Knockout bracket sample: semifinals into a final into a champion. */
 export function BracketDemo(): React.ReactElement {
   return (
-    <div className="panel flex h-full flex-col p-5" data-testid="bracket-demo">
+    <div className="panel glass flex h-full flex-col p-5" data-testid="bracket-demo">
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span className="font-medium uppercase tracking-[0.12em]">
           {t("Knockout · sample")}
@@ -193,7 +193,7 @@ function BracketMatch({
   winner: "a" | "b";
 }): React.ReactElement {
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card text-xs">
+    <div className="overflow-hidden rounded-lg border border-border bg-card/60 text-xs">
       <BracketTeam name={a} score={aScore} won={winner === "a"} />
       <div className="border-t border-border/60" />
       <BracketTeam name={b} score={bs} won={winner === "b"} />
@@ -232,7 +232,7 @@ export function FaqItem({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <details className="faq-item group rounded-xl border border-border bg-card shadow-sm">
+    <details className="faq-item group glass rounded-xl border border-border shadow-sm">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-5 py-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         {q}
         <ChevronDown

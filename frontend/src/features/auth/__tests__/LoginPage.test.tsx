@@ -64,7 +64,7 @@ describe("LoginPage", () => {
     // Brand panel renders the platform name (it's hidden via .lg:hidden on
     // mobile dupe + .hidden on the aside, but jsdom still mounts both).
     expect(screen.getAllByText(/Fixture Platform/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Sports fixtures, made in Nagaland\./i)).toBeInTheDocument();
+    expect(screen.getByText(/Doxaed · Fixture/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
     expect(

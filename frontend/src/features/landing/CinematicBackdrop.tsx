@@ -225,9 +225,9 @@ export function CinematicBackdrop(): React.ReactElement | null {
       className="pointer-events-none fixed inset-0 -z-[4] overflow-hidden print:hidden"
     >
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
-      {/* Readability scrim: lightest over the hero, veils toward the fold so
-          content lower on the page stays legible over the film. */}
-      <div className="absolute inset-0 bg-gradient-to-b from-background/45 via-background/60 to-background/85" />
+      {/* Readability scrim: light enough that the film reads through the
+          whole page; sections and cards carry their own glass washes. */}
+      <div className="absolute inset-0 bg-gradient-to-b from-background/35 via-background/45 to-background/65" />
     </div>
   );
 }

@@ -117,16 +117,12 @@ export function LandingPage(): React.ReactElement {
             <ShinyText text={t("Live now · built in Nagaland")} />
           </p>
           <h1 className="mt-6 text-4xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-            <span className="block">
-              <BlurText text={t("Sports fixtures,")} />
-            </span>{" "}
-            <span className="block">
-              <BlurLine
-                text={t("made in Nagaland.")}
-                delayMs={250}
-                className="bg-gradient-to-r from-primary to-info bg-clip-text text-transparent"
-              />
-            </span>
+            <BlurText text={t("Doxaed ·")} />{" "}
+            <BlurLine
+              text={t("Fixture")}
+              delayMs={250}
+              className="bg-gradient-to-r from-primary to-info bg-clip-text text-transparent"
+            />
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
             {t(
@@ -166,7 +162,7 @@ export function LandingPage(): React.ReactElement {
       {/* "Runs every sport" strip (the framework row) */}
       <section
         aria-label={t("Sports covered")}
-        className="border-b border-border/60 bg-background/55 py-6"
+        className="border-b border-border/60 bg-background/30 py-6"
       >
         <p className="text-center text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
           {t("Built to run every sport")}
@@ -239,7 +235,7 @@ export function LandingPage(): React.ReactElement {
             delayMs={160}
           />
           <Reveal className="sm:col-span-2 lg:col-span-3">
-            <BentoCard className="flex h-full flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+            <BentoCard className="glass flex h-full flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
               <div className="max-w-md">
                 <span
                   aria-hidden="true"
@@ -277,7 +273,7 @@ export function LandingPage(): React.ReactElement {
       {/* Demos: sample data, clearly labeled */}
       <section
         aria-labelledby="demos-heading"
-        className="border-t border-border/60 bg-background/55"
+        className="border-t border-border/60 bg-background/30"
       >
         <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
           <Reveal className="text-center">
@@ -359,7 +355,7 @@ export function LandingPage(): React.ReactElement {
       {/* How it works */}
       <section
         aria-labelledby="how-heading"
-        className="border-t border-border/60 bg-background/55"
+        className="border-t border-border/60 bg-background/30"
       >
         <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
           <Reveal className="text-center">
@@ -439,7 +435,7 @@ export function LandingPage(): React.ReactElement {
       {/* Roadmap strip */}
       <section
         aria-labelledby="roadmap-heading"
-        className="border-t border-border/60 bg-background/55"
+        className="border-t border-border/60 bg-background/30"
       >
         <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
           <Reveal className="text-center">
@@ -542,7 +538,7 @@ export function LandingPage(): React.ReactElement {
       <section className="mx-auto w-full max-w-4xl px-4 py-14 sm:px-6 sm:py-20">
         <Reveal>
           <StarBorder speed="8s">
-            <div className="relative overflow-hidden rounded-xl border border-border bg-card p-8 text-center shadow-sm sm:p-12">
+            <div className="glass relative overflow-hidden rounded-xl border border-border p-8 text-center shadow-sm sm:p-12">
               <span
                 aria-hidden="true"
                 className="pointer-events-none absolute left-1/2 top-0 h-40 w-96 -translate-x-1/2 rounded-full bg-primary/10 blur-3xl"
@@ -574,7 +570,7 @@ export function LandingPage(): React.ReactElement {
       </section>
 
       {/* Footer: columned, Supabase-style */}
-      <footer className="mt-auto border-t border-border/60 bg-background/70">
+      <footer className="mt-auto border-t border-border/60 bg-background/45 backdrop-blur-sm">
         <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
           <div className="grid gap-8 sm:grid-cols-[1.5fr,1fr,1fr]">
             <div>
@@ -633,7 +629,7 @@ function ProductCard({
 }): React.ReactElement {
   return (
     <Reveal delayMs={delayMs} className={className}>
-      <BentoCard particles={particles} className="flex h-full flex-col p-5">
+      <BentoCard particles={particles} className="glass flex h-full flex-col p-5">
         <div
           aria-hidden="true"
           className="select-none rounded-lg border border-border/60 bg-muted/30 p-3.5"
@@ -715,7 +711,7 @@ function OrgsVisual(): React.ReactElement {
       ].map((name, i) => (
         <div
           key={name}
-          className="flex items-center gap-2 rounded-md border border-border/60 bg-card px-2.5 py-1.5"
+          className="flex items-center gap-2 rounded-md border border-border/60 bg-card/60 px-2.5 py-1.5"
         >
           <span
             className={cn(
@@ -867,7 +863,7 @@ function SchoolCard({
 }): React.ReactElement {
   return (
     <Reveal delayMs={delayMs}>
-      <article className="h-full rounded-xl border border-border bg-card p-6 shadow-sm transition-shadow hover:shadow-md">
+      <article className="glass h-full rounded-xl border border-border p-6 shadow-sm transition-shadow hover:shadow-md">
         <span
           aria-hidden="true"
           className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"
@@ -898,7 +894,7 @@ function Step({
 }): React.ReactElement {
   return (
     <Reveal delayMs={delayMs}>
-      <article className="h-full rounded-xl border border-border bg-card p-6 shadow-sm">
+      <article className="glass h-full rounded-xl border border-border p-6 shadow-sm">
         <span
           aria-hidden="true"
           className="font-tabular inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-base font-semibold text-primary-foreground"
@@ -971,7 +967,7 @@ function RoadmapCard({
     future: "text-muted-foreground",
   };
   return (
-    <article className="flex h-full flex-col rounded-xl border border-border bg-card p-6 shadow-sm transition-shadow hover:shadow-md">
+    <article className="glass flex h-full flex-col rounded-xl border border-border p-6 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex items-center gap-2.5">
         <span
           aria-hidden="true"

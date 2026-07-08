@@ -40,7 +40,7 @@ export function AuthLayout({
         </div>
         <div className="relative z-10 max-w-sm space-y-4">
           <h2 className="text-3xl font-semibold leading-tight">
-            {t("Sports fixtures, made in Nagaland.")}
+            {t("Doxaed · Fixture")}
           </h2>
           <p className="text-sm text-white/80 leading-relaxed">
             {t(

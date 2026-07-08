@@ -233,6 +233,14 @@
   display: none;
 }
 
+/* ---- Glass surfaces: cards stay readable while the film shows through.
+   Unlayered on purpose so it beats the @layer components .panel bg. ---- */
+.glass {
+  background-color: hsl(var(--card) / 0.72);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
 /* ---- Ambient backdrop (mobile): two slow-drifting brand blobs ---- */
 .ambient-blob {
   position: absolute;

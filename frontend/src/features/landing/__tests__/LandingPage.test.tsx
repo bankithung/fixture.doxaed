@@ -40,10 +40,10 @@ afterEach(() => {
 describe("LandingPage", () => {
   it("renders hero, CTAs and roadmap when unauthenticated", () => {
     renderAt();
-    // Hero heading
+    // Hero heading: the brand lockup
     expect(
       screen.getByRole("heading", {
-        name: /sports fixtures, made in nagaland\./i,
+        name: /doxaed · fixture/i,
       }),
     ).toBeInTheDocument();
     // CTAs (top bar + hero) — at least one of each
