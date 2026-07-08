@@ -57,6 +57,15 @@ describe("LandingPage", () => {
     expect(screen.getByText(/Phase 1A · shipping/i)).toBeInTheDocument();
     expect(screen.getByText(/Phase 1B · football/i)).toBeInTheDocument();
     expect(screen.getByText(/v2 · beyond football/i)).toBeInTheDocument();
+    // Redesign sections: bento features + how-it-works
+    expect(
+      screen.getByRole("heading", {
+        name: /everything you need to run a competition/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /three steps to matchday/i }),
+    ).toBeInTheDocument();
     // Footer
     expect(screen.getByRole("link", { name: /^about$/i })).toBeInTheDocument();
   });

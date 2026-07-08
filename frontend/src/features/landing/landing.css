@@ -1,0 +1,169 @@
+/* Landing-page motion kit (React Bits re-cuts: BlurText, ShinyText,
+   RotatingText, LogoLoop, ScrollReveal). CSS-only keyframes driven by tiny
+   IntersectionObserver components in motion.tsx; every effect is token-hued
+   and shut off under prefers-reduced-motion (plus the JS gate). */
+
+/* ---- BlurText: per-word blur+drop entrance, staggered via inline delay ---- */
+.blur-text-word {
+  display: inline-block;
+  opacity: 0;
+  filter: blur(8px);
+  transform: translateY(-0.35em);
+  transition:
+    opacity 0.55s ease,
+    filter 0.55s ease,
+    transform 0.55s ease;
+  will-change: opacity, filter, transform;
+}
+.blur-text.is-inview .blur-text-word {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0);
+}
+
+/* ---- ShinyText: gradient shine sweeping across clipped text ---- */
+.shiny-text {
+  background-image: linear-gradient(
+    115deg,
+    hsl(var(--primary)) 0%,
+    hsl(var(--primary)) 38%,
+    hsl(var(--primary-foreground) / 0.95) 50%,
+    hsl(var(--primary)) 62%,
+    hsl(var(--primary)) 100%
+  );
+  background-size: 220% auto;
+  background-position: 150% center;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: landing-shine 3.2s linear infinite;
+}
+.dark .shiny-text {
+  background-image: linear-gradient(
+    115deg,
+    hsl(var(--primary)) 0%,
+    hsl(var(--primary)) 38%,
+    hsl(var(--foreground)) 50%,
+    hsl(var(--primary)) 62%,
+    hsl(var(--primary)) 100%
+  );
+}
+@keyframes landing-shine {
+  from {
+    background-position: 150% center;
+  }
+  to {
+    background-position: -70% center;
+  }
+}
+
+/* ---- RotatingText: the incoming word rises in (retriggered by remount) ---- */
+.rotating-word {
+  display: inline-block;
+  animation: landing-rotate-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes landing-rotate-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.55em);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* ---- Sports marquee (LogoLoop): seamless -50% loop, edge fade, hover pause ---- */
+.sports-marquee {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 10%,
+    black 90%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 10%,
+    black 90%,
+    transparent
+  );
+}
+.sports-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: landing-marquee var(--marquee-duration, 38s) linear infinite;
+  will-change: transform;
+}
+.sports-marquee:hover .sports-marquee-track {
+  animation-play-state: paused;
+}
+@keyframes landing-marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* ---- ScrollReveal: fade-up on first intersection, stagger via delay ---- */
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.6s ease,
+    transform 0.6s ease;
+  will-change: opacity, transform;
+}
+.reveal.is-inview {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---- Live pulse dot for the hero showcase ---- */
+.live-dot {
+  position: relative;
+  display: inline-flex;
+  height: 0.5rem;
+  width: 0.5rem;
+  border-radius: 9999px;
+  background: hsl(var(--destructive));
+}
+.live-dot::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  border: 1.5px solid hsl(var(--destructive) / 0.5);
+  animation: landing-live-ping 1.6s ease-out infinite;
+}
+@keyframes landing-live-ping {
+  from {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+/* Second line of defense: kill every landing effect under reduced motion
+   (the JS gate in motion.tsx is the first). */
+@media (prefers-reduced-motion: reduce) {
+  .blur-text-word,
+  .reveal {
+    opacity: 1 !important;
+    filter: none !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .shiny-text,
+  .rotating-word,
+  .sports-marquee-track,
+  .live-dot::after {
+    animation: none !important;
+  }
+}
