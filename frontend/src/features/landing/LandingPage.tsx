@@ -34,6 +34,7 @@ import {
   SPORT_NAMES,
 } from "./motion";
 import { StadiumBackdrop } from "./StadiumBackdrop";
+import { CinematicScroll } from "./CinematicScroll";
 import { ScorerDemo, BracketDemo, FaqItem } from "./demos";
 
 /**
@@ -168,6 +169,10 @@ export function LandingPage(): React.ReactElement {
         </p>
         <SportsMarquee className="mx-auto mt-4 w-full max-w-6xl px-4 sm:px-6" />
       </section>
+
+      {/* Cinematic scroll-scrub film band: renders only once /cinematic/
+          frames are deployed (desktop, motion allowed). */}
+      <CinematicScroll />
 
       {/* Product bento: the visual lives inside each card */}
       <section
