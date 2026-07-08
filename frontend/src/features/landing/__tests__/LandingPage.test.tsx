@@ -52,11 +52,11 @@ describe("LandingPage", () => {
       screen.getAllByRole("link", { name: /sign up|create an account/i })
         .length,
     ).toBeGreaterThan(0);
-    // Roadmap
-    expect(screen.getByText(/what's coming/i)).toBeInTheDocument();
-    expect(screen.getByText(/Phase 1A · shipping/i)).toBeInTheDocument();
-    expect(screen.getByText(/Phase 1B · football/i)).toBeInTheDocument();
-    expect(screen.getByText(/v2 · beyond football/i)).toBeInTheDocument();
+    // Platform status: everything shipped is marked live, one next item
+    expect(screen.getByText(/live today/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/^Live$/).length).toBe(3);
+    expect(screen.getByText(/ten sports, one chassis/i)).toBeInTheDocument();
+    expect(screen.getByText(/school records & badges/i)).toBeInTheDocument();
     // Redesign sections: bento features + how-it-works
     expect(
       screen.getByRole("heading", {

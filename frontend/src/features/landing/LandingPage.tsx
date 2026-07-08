@@ -325,27 +325,34 @@ export function LandingPage(): React.ReactElement {
         </ul>
       </Chapter>
 
-      {/* Chapter: roadmap, plain rows */}
+      {/* Chapter: platform status, plain rows */}
       <Chapter>
         <ChapterHeading id="roadmap-heading">
-          {t("What's coming.")}
+          {t("Live today.")}
         </ChapterHeading>
         <div className="mt-12 w-full max-w-3xl divide-y divide-border/50 text-left">
           <RoadmapRow
-            phase={t("Phase 1A · shipping")}
+            phase={t("Live")}
             title={t("Accounts & organizations")}
-            body={t("Multi-tenant orgs, role-based access, audit, 2FA.")}
+            body={t("Multi-tenant orgs, role-based access, audit.")}
             active
           />
           <RoadmapRow
-            phase={t("Phase 1B · football")}
+            phase={t("Live")}
             title={t("Tournaments & live scoring")}
             body={t("Brackets, schedules, lineups, public live viewer.")}
+            active
           />
           <RoadmapRow
-            phase={t("v2 · beyond football")}
-            title={t("9 more sports")}
-            body={t("Volleyball, basketball, archery, and more.")}
+            phase={t("Live")}
+            title={t("Ten sports, one chassis")}
+            body={t("Football, sepak takraw, table tennis, volleyball, and more.")}
+            active
+          />
+          <RoadmapRow
+            phase={t("Next")}
+            title={t("School records & badges")}
+            body={t("Season histories, certificates, and house points.")}
           />
         </div>
       </Chapter>
