@@ -23,13 +23,13 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import {
-  BlurText,
-  BlurLine,
   RotatingText,
   Reveal,
   SportsMarquee,
   SPORT_NAMES,
 } from "./motion";
+import { useHeroCinema } from "./useHeroCinema";
+import { CinemaLine } from "./cinema";
 import { AmbientBackdrop } from "./AmbientBackdrop";
 import { CinematicBackdrop } from "./CinematicBackdrop";
 import { ScorerDemo, BracketDemo, FaqItem } from "./demos";
@@ -55,6 +55,7 @@ import { ScorerDemo, BracketDemo, FaqItem } from "./demos";
 export function LandingPage(): React.ReactElement {
   const user = useAuthStore((s) => s.user);
   const bootstrapped = useAuthStore((s) => s.bootstrapped);
+  const heroRef = useHeroCinema();
 
   // Authenticated → bounce into the app.
   if (bootstrapped && user) {
@@ -102,31 +103,44 @@ export function LandingPage(): React.ReactElement {
       </header>
 
       {/* Hero: a full-viewport title card over the opening frame of the
-          film, content anchored lower-left like a broadcast lower third. */}
-      <section className="relative flex min-h-[calc(100dvh-3.75rem)] flex-col justify-end">
-        <div className="w-full px-4 pb-12 pt-16 sm:px-6 sm:pb-16 lg:px-10">
+          film, content anchored lower-left like a broadcast lower third.
+          Choreographed by useHeroCinema (anime.js timeline + exit scrub). */}
+      <section
+        ref={heroRef}
+        className="relative flex min-h-[calc(100dvh-3.75rem)] flex-col justify-end"
+      >
+        <div
+          data-cine="panel"
+          className="w-full px-4 pb-12 pt-16 sm:px-6 sm:pb-16 lg:px-10"
+        >
           <div className="max-w-3xl">
             <h1 className="text-5xl font-semibold leading-[1.05] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
-              <BlurText text={t("Doxaed ·")} delayMs={90} />{" "}
-              <BlurLine
-                text={t("Fixture")}
-                delayMs={320}
-                className="bg-gradient-to-r from-primary to-info bg-clip-text text-transparent"
-              />
+              <span data-cine="brand" className="inline-block">
+                {t("Doxaed ·")}
+              </span>{" "}
+              <span
+                data-cine="fixture"
+                className="inline-block bg-gradient-to-r from-primary to-info bg-clip-text text-transparent"
+              >
+                {t("Fixture")}
+              </span>
             </h1>
-            <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+            <p
+              data-cine="sub"
+              className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg"
+            >
               {t(
                 "Run tournaments, schedule matches, follow live scores. Built for local sport, football first.",
               )}
             </p>
-            <p className="mt-3 text-lg font-medium text-muted-foreground">
+            <p data-cine="line" className="mt-3 text-lg font-medium text-muted-foreground">
               {t("One platform for")}{" "}
               <RotatingText
                 words={SPORT_NAMES}
                 className="font-semibold text-primary"
               />
             </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <div data-cine="ctas" className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link to="/explore" className="w-full sm:w-auto">
                 <Button size="lg" className="w-full gap-2 sm:w-auto">
                   {t("Follow live tournaments")}
@@ -142,7 +156,10 @@ export function LandingPage(): React.ReactElement {
           </div>
 
           {/* Trust strip: lower-third stat row */}
-          <dl className="mt-12 flex flex-wrap items-center gap-x-10 gap-y-4 border-t border-border/40 pt-6 text-left sm:gap-x-14">
+          <dl
+            data-cine="stats"
+            className="mt-12 flex flex-wrap items-center gap-x-10 gap-y-4 border-t border-border/40 pt-6 text-left sm:gap-x-14"
+          >
             <CountStat value={10} label={t("sports on the chassis")} />
             <Stat value="100%" label={t("multi-tenant")} />
             <Stat value="24/7" label={t("live scores")} />
@@ -850,9 +867,9 @@ function CountStat({
 function FilmWindow({ line }: { line: string }): React.ReactElement {
   return (
     <section className="relative flex min-h-[46vh] items-center justify-center px-4 py-20 sm:min-h-[68vh]">
-      <BlurLine
+      <CinemaLine
         text={line}
-        className="film-line max-w-4xl text-center text-3xl font-semibold leading-tight tracking-tight text-foreground [text-shadow:0_2px_28px_hsl(var(--background)),0_0_12px_hsl(var(--background))] sm:text-6xl"
+        className="max-w-4xl text-center text-3xl font-semibold leading-tight tracking-tight text-foreground [text-shadow:0_2px_28px_hsl(var(--background)),0_0_12px_hsl(var(--background))] sm:text-6xl"
       />
     </section>
   );

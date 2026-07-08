@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { motionOff } from "./motionGate";
 import "./landing.css";
 
 /**
@@ -11,14 +12,6 @@ import "./landing.css";
  * prefers-reduced-motion and in environments without matchMedia (jsdom),
  * so tests see final, visible content.
  */
-
-function motionOff(): boolean {
-  return (
-    typeof window === "undefined" ||
-    typeof window.matchMedia !== "function" ||
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
 
 /** First-intersection flag; resolves to true immediately when motion is off
  * or IntersectionObserver is unavailable. */
