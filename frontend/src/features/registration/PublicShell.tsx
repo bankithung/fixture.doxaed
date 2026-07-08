@@ -1,4 +1,6 @@
+import { Link } from "react-router-dom";
 import { cn } from "@/lib/tailwind";
+import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 import { ClickSpark } from "@/components/backdrop/ClickSpark";
 import { BrandLogo } from "@/components/ui/BrandLogo";
@@ -34,10 +36,18 @@ export function PublicShell({
             wide ? "max-w-6xl" : "max-w-3xl",
           )}
         >
-          <BrandLogo className="h-7 w-7" />
-          <span className="text-sm font-semibold tracking-tight text-foreground">
-            {t("DoxaEd Fixture")}
-          </span>
+          {/* Home link: `/` shows the landing page for anonymous visitors
+              and bounces authenticated users to their dashboard. */}
+          <Link
+            to={routes.landing()}
+            className="flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={t("DoxaEd Fixture · home")}
+          >
+            <BrandLogo className="h-7 w-7" />
+            <span className="text-sm font-semibold tracking-tight text-foreground">
+              {t("DoxaEd Fixture")}
+            </span>
+          </Link>
           {tournamentName ? (
             <span className="ml-auto truncate text-xs text-muted-foreground">
               {tournamentName}

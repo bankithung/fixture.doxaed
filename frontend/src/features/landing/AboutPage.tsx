@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 
 /**
  * Stub /about page. Real content (mission, team, contact, terms) is
@@ -16,12 +17,7 @@ export function AboutPage(): React.ReactElement {
             to={routes.landing()}
             className="inline-flex items-center gap-2 text-base font-semibold tracking-tight text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
           >
-            <span
-              aria-hidden="true"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary text-white font-semibold"
-            >
-              F
-            </span>
+            <BrandLogo className="h-8 w-8 shadow-sm" />
             <span>{t("Fixture Platform")}</span>
           </Link>
         </div>

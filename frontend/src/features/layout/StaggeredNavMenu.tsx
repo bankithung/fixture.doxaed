@@ -207,10 +207,14 @@ export function StaggeredNavMenu({
       </div>
       <div className="snav-panel gap-2 p-4">
         <div className="flex items-center justify-between">
-          <span className="flex items-center gap-2 font-semibold">
+          <Link
+            to={routes.landing()}
+            onClick={onClose}
+            className="flex items-center gap-2 rounded-md font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             <BrandLogo className="h-7 w-7 rounded-lg" />
             {t("Fixture")}
-          </span>
+          </Link>
           <button
             ref={closeBtnRef}
             type="button"
