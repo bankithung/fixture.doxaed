@@ -110,8 +110,12 @@ export function RangePills({
               opt.label
             ) : (
               <>
+                {/* Hidden by default (opacity-0/scale-0) so pills stay clean
+                    on mobile + reduced motion, where the gsap layout that
+                    would park these off-pill never runs; gsap's inline
+                    styles take over when the hover effect is active. */}
                 <span
-                  className="pill-circle pointer-events-none absolute rounded-full bg-primary"
+                  className="pill-circle pointer-events-none absolute scale-0 rounded-full bg-primary"
                   aria-hidden="true"
                 />
                 <span className="relative inline-block leading-none">
@@ -119,7 +123,7 @@ export function RangePills({
                     {opt.label}
                   </span>
                   <span
-                    className="pill-label-hover absolute left-0 top-0 inline-block leading-none text-primary-foreground"
+                    className="pill-label-hover absolute left-0 top-0 inline-block leading-none text-primary-foreground opacity-0"
                     aria-hidden="true"
                   >
                     {opt.label}
