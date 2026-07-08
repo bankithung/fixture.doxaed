@@ -9,10 +9,11 @@ import { useBreakpoint } from "@/lib/useBreakpoint";
  * so the background quietly plays as content rides over it. A gradient scrim
  * keeps text readable over any frame.
  *
- * The film is a PLAYLIST: by default v1 (aerial approach over the hills)
- * plays through the first half of the scroll, then cuts to v2 (inside the
- * bowl under the floodlights) for the second half. `?film=v1|v2|v3` previews
- * a single sequence live without a redeploy.
+ * The film is ONE reel by default (v1, the aerial approach); `?film=v2|v3`
+ * previews an alternate sequence live without a redeploy. (The earlier
+ * two-reel splice read as a glitch: a hard cut mid-scroll.) The playhead is
+ * damped, easing toward the scroll position each frame, so scrubbing glides
+ * instead of stepping.
  *
  * Assets live in /cinematic/<film>/: manifest.json {count,width,height} plus
  * frame_0001.webp … frame_NNNN.webp.
@@ -24,7 +25,7 @@ import { useBreakpoint } from "@/lib/useBreakpoint";
 
 const FILMS = ["v1", "v2", "v3"] as const;
 type Film = (typeof FILMS)[number];
-const DEFAULT_PLAYLIST: readonly Film[] = ["v1", "v2"];
+const DEFAULT_PLAYLIST: readonly Film[] = ["v1"];
 
 const DPR_CAP = 1.5;
 const PRELOAD_CONCURRENCY = 6;
@@ -174,14 +175,28 @@ export function CinematicBackdrop(): React.ReactElement | null {
       return Math.min(1, Math.max(0, window.scrollY / scrollable));
     };
 
-    const update = (): void => {
+    // Damped playhead: `shown` eases toward the scroll target each rAF, so
+    // the scrub glides instead of stepping frame to frame.
+    let target = 0;
+    let shown = 0;
+    let settling = false;
+
+    const tick = (): void => {
       raf = 0;
-      current = Math.round(progress() * (total - 1));
+      shown += (target - shown) * 0.16;
+      if (Math.abs(target - shown) < 0.6) {
+        shown = target;
+        settling = false;
+      }
+      current = Math.round(shown);
       if (current !== lastDrawn) draw(current);
+      if (settling) raf = requestAnimationFrame(tick);
     };
 
     const schedule = (): void => {
-      if (!raf) raf = requestAnimationFrame(update);
+      target = progress() * (total - 1);
+      settling = true;
+      if (!raf) raf = requestAnimationFrame(tick);
     };
 
     // Progressive preload with a small concurrency pool; redraw whenever the
