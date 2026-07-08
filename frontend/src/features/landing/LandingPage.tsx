@@ -57,7 +57,7 @@ export function LandingPage(): React.ReactElement {
     <div className="flex min-h-screen flex-col text-foreground">
       {/* Top bar */}
       <header className="sticky top-0 z-20 border-b border-border/60 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-3.5">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3.5 sm:px-6">
           <Link
             to={routes.landing()}
             className="inline-flex items-center gap-2.5 rounded-sm text-base font-semibold tracking-tight text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -99,15 +99,15 @@ export function LandingPage(): React.ReactElement {
           aria-hidden="true"
           className="pointer-events-none absolute -bottom-32 right-0 h-96 w-96 rounded-full bg-primary/10 blur-3xl"
         />
-        <div className="relative mx-auto w-full max-w-6xl px-6 pb-14 pt-16 sm:pt-24">
-          <div className="grid items-center gap-12 lg:grid-cols-[1.1fr,0.9fr]">
+        <div className="relative mx-auto w-full max-w-6xl px-4 pb-12 pt-12 sm:px-6 sm:pb-14 sm:pt-24">
+          <div className="grid items-center gap-10 lg:grid-cols-[1.1fr,0.9fr] lg:gap-12">
             {/* Copy column */}
             <div>
               <p className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-medium">
                 <Sparkles aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
                 <ShinyText text={t("Live now · built in Nagaland")} />
               </p>
-              <h1 className="mt-6 text-4xl font-semibold leading-tight tracking-tight text-foreground sm:text-5xl">
+              <h1 className="mt-6 text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl lg:text-5xl">
                 <BlurText text={t("Sports fixtures, made in Nagaland.")} />
               </h1>
               <p className="mt-4 text-lg font-medium text-muted-foreground sm:text-xl">
@@ -122,22 +122,22 @@ export function LandingPage(): React.ReactElement {
                   "Run tournaments, schedule matches, follow live scores. Built for local sport, football first.",
                 )}
               </p>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Link to="/explore">
-                  <Button size="lg" className="gap-2">
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                <Link to="/explore" className="w-full sm:w-auto">
+                  <Button size="lg" className="w-full gap-2 sm:w-auto">
                     {t("Follow live tournaments")}
                     <ArrowRight aria-hidden="true" className="h-4 w-4" />
                   </Button>
                 </Link>
-                <Link to={routes.signup()}>
-                  <Button size="lg" variant="outline">
+                <Link to={routes.signup()} className="w-full sm:w-auto">
+                  <Button size="lg" variant="outline" className="w-full sm:w-auto">
                     {t("Organize one")}
                   </Button>
                 </Link>
               </div>
 
               {/* Trust strip */}
-              <dl className="mt-12 grid max-w-md grid-cols-3 gap-6">
+              <dl className="mt-10 grid max-w-md grid-cols-3 gap-4 sm:mt-12 sm:gap-6">
                 <CountStat value={10} label={t("sports on the chassis")} />
                 <Stat value="100%" label={t("multi-tenant")} />
                 <Stat value="24/7" label={t("live scores")} />
@@ -151,14 +151,14 @@ export function LandingPage(): React.ReactElement {
 
         {/* Sports marquee */}
         <div className="relative border-t border-border/60 bg-background/50 py-4">
-          <SportsMarquee className="mx-auto w-full max-w-6xl px-6" />
+          <SportsMarquee className="mx-auto w-full max-w-6xl px-4 sm:px-6" />
         </div>
       </section>
 
       {/* Feature highlights (MagicBento) */}
       <section
         aria-labelledby="features-heading"
-        className="mx-auto w-full max-w-6xl px-6 py-16"
+        className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16"
       >
         <Reveal>
           <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
@@ -230,7 +230,7 @@ export function LandingPage(): React.ReactElement {
         aria-labelledby="how-heading"
         className="border-t border-border/60 bg-muted/30"
       >
-        <div className="mx-auto w-full max-w-6xl px-6 py-16">
+        <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
           <Reveal>
             <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
               {t("From draft to full time")}
@@ -276,7 +276,7 @@ export function LandingPage(): React.ReactElement {
         aria-labelledby="roadmap-heading"
         className="border-t border-border/60"
       >
-        <div className="mx-auto w-full max-w-6xl px-6 py-16">
+        <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
           <Reveal>
             <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
               {t("Roadmap")}
@@ -327,10 +327,10 @@ export function LandingPage(): React.ReactElement {
       </section>
 
       {/* Closing CTA */}
-      <section className="mx-auto w-full max-w-6xl px-6 py-16">
+      <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
         <Reveal>
           <StarBorder speed="8s">
-            <div className="relative overflow-hidden rounded-xl border border-border bg-card p-8 shadow-sm sm:p-12">
+            <div className="relative overflow-hidden rounded-xl border border-border bg-card p-6 shadow-sm sm:p-8 lg:p-12">
               <span
                 aria-hidden="true"
                 className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/10 blur-3xl"
@@ -344,15 +344,15 @@ export function LandingPage(): React.ReactElement {
                     {t("Create a free account in minutes.")}
                   </p>
                 </div>
-                <div className="flex shrink-0 flex-wrap gap-3">
-                  <Link to={routes.signup()}>
-                    <Button size="lg" className="gap-2">
+                <div className="flex w-full shrink-0 flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap">
+                  <Link to={routes.signup()} className="w-full sm:w-auto">
+                    <Button size="lg" className="w-full gap-2 sm:w-auto">
                       {t("Get started")}
                       <ArrowRight aria-hidden="true" className="h-4 w-4" />
                     </Button>
                   </Link>
-                  <Link to={routes.login()}>
-                    <Button size="lg" variant="outline">
+                  <Link to={routes.login()} className="w-full sm:w-auto">
+                    <Button size="lg" variant="outline" className="w-full sm:w-auto">
                       {t("Sign in")}
                     </Button>
                   </Link>
@@ -365,7 +365,7 @@ export function LandingPage(): React.ReactElement {
 
       {/* Footer */}
       <footer className="mt-auto border-t border-border/60 bg-muted/30">
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-start justify-between gap-3 px-6 py-6 text-xs text-muted-foreground sm:flex-row sm:items-center">
+        <div className="mx-auto flex w-full max-w-6xl flex-col items-start justify-between gap-3 px-4 py-6 text-xs sm:px-6 text-muted-foreground sm:flex-row sm:items-center">
           <p>{t("© Fixture Platform")}</p>
           <nav aria-label={t("Footer")} className="flex items-center gap-4">
             <Link
@@ -398,7 +398,7 @@ export function LandingPage(): React.ReactElement {
  * Sample data, aria-hidden: it is an illustration, not content. */
 function HeroShowcase(): React.ReactElement {
   return (
-    <div aria-hidden="true" className="relative hidden select-none lg:block">
+    <div aria-hidden="true" className="relative mx-auto w-full max-w-md select-none lg:max-w-none">
       <span
         aria-hidden="true"
         className="pointer-events-none absolute -inset-8 rounded-full bg-primary/5 blur-2xl"
