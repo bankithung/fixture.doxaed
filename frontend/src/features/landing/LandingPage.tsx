@@ -34,7 +34,7 @@ import {
   SPORT_NAMES,
 } from "./motion";
 import { StadiumBackdrop } from "./StadiumBackdrop";
-import { CinematicScroll } from "./CinematicScroll";
+import { CinematicBackdrop } from "./CinematicBackdrop";
 import { ScorerDemo, BracketDemo, FaqItem } from "./demos";
 
 /**
@@ -66,7 +66,11 @@ export function LandingPage(): React.ReactElement {
 
   return (
     <div className="flex min-h-screen flex-col text-foreground">
+      {/* Backdrops: the SVG stadium is always there; the scroll-scrubbed film
+          paints OVER it when frames are deployed (desktop, motion allowed),
+          so mobile / reduced motion fall back to the stadium scene. */}
       <StadiumBackdrop />
+      <CinematicBackdrop />
       {/* Top bar */}
       <header className="sticky top-0 z-20 border-b border-border/60 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3.5 sm:px-6">
@@ -162,17 +166,13 @@ export function LandingPage(): React.ReactElement {
       {/* "Runs every sport" strip (the framework row) */}
       <section
         aria-label={t("Sports covered")}
-        className="border-b border-border/60 bg-muted/30 py-6"
+        className="border-b border-border/60 bg-background/55 py-6"
       >
         <p className="text-center text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
           {t("Built to run every sport")}
         </p>
         <SportsMarquee className="mx-auto mt-4 w-full max-w-6xl px-4 sm:px-6" />
       </section>
-
-      {/* Cinematic scroll-scrub film band: renders only once /cinematic/
-          frames are deployed (desktop, motion allowed). */}
-      <CinematicScroll />
 
       {/* Product bento: the visual lives inside each card */}
       <section
@@ -277,7 +277,7 @@ export function LandingPage(): React.ReactElement {
       {/* Demos: sample data, clearly labeled */}
       <section
         aria-labelledby="demos-heading"
-        className="border-t border-border/60 bg-muted/30"
+        className="border-t border-border/60 bg-background/55"
       >
         <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
           <Reveal className="text-center">
@@ -359,7 +359,7 @@ export function LandingPage(): React.ReactElement {
       {/* How it works */}
       <section
         aria-labelledby="how-heading"
-        className="border-t border-border/60 bg-muted/30"
+        className="border-t border-border/60 bg-background/55"
       >
         <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
           <Reveal className="text-center">
@@ -439,7 +439,7 @@ export function LandingPage(): React.ReactElement {
       {/* Roadmap strip */}
       <section
         aria-labelledby="roadmap-heading"
-        className="border-t border-border/60 bg-muted/30"
+        className="border-t border-border/60 bg-background/55"
       >
         <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
           <Reveal className="text-center">
@@ -574,7 +574,7 @@ export function LandingPage(): React.ReactElement {
       </section>
 
       {/* Footer: columned, Supabase-style */}
-      <footer className="mt-auto border-t border-border/60 bg-muted/30">
+      <footer className="mt-auto border-t border-border/60 bg-background/70">
         <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
           <div className="grid gap-8 sm:grid-cols-[1.5fr,1fr,1fr]">
             <div>

@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
-# Extract a scroll-scrub frame sequence for the landing CinematicScroll band.
+# Extract a scroll-scrub frame sequence for the landing CinematicBackdrop.
 #
-#   scripts/cinematic-frames.sh <input-video> [frame-count] [width]
+#   scripts/cinematic-frames.sh <input-video> [frame-count] [width] [subdir]
 #
-# Writes frontend/public/cinematic/frame_0001.webp … + manifest.json.
-# Defaults: 96 frames at 1280px wide (~3-5 MB total at q72).
+# Writes frontend/public/cinematic/<subdir>/frame_0001.webp … + manifest.json.
+# When [subdir] is omitted the frames land directly in /cinematic/.
+# Defaults: 110 frames at 1366px wide (~2-3 MB total at q68).
 set -euo pipefail
 
-IN="${1:?usage: cinematic-frames.sh <video> [count] [width]}"
-COUNT="${2:-96}"
-WIDTH="${3:-1280}"
-OUT="$(dirname "$0")/../frontend/public/cinematic"
+IN="${1:?usage: cinematic-frames.sh <video> [count] [width] [subdir]}"
+COUNT="${2:-110}"
+WIDTH="${3:-1366}"
+SUBDIR="${4:-}"
+OUT="$(dirname "$0")/../frontend/public/cinematic${SUBDIR:+/$SUBDIR}"
 
 mkdir -p "$OUT"
 rm -f "$OUT"/frame_*.webp "$OUT"/manifest.json
@@ -20,7 +22,7 @@ FPS=$(python3 -c "print($COUNT / float($DUR))")
 
 ffmpeg -hide_banner -loglevel error -y -i "$IN" \
   -vf "fps=${FPS},scale=${WIDTH}:-2" -frames:v "$COUNT" \
-  -c:v libwebp -quality 72 "$OUT/frame_%04d.webp"
+  -c:v libwebp -quality 68 "$OUT/frame_%04d.webp"
 
 N=$(ls "$OUT"/frame_*.webp | wc -l | tr -d ' ')
 read -r W H < <(ffprobe -v error -select_streams v:0 \

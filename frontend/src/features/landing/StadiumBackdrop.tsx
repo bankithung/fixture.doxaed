@@ -14,8 +14,10 @@ import "./landing.css";
  * mid-page, and the trophy fades in near the closing CTA.
  *
  * Everything is stroked in primary-token alphas so it works in light + dark.
- * On mobile / reduced motion / no-matchMedia (jsdom) the scene renders
- * static (beams + trophy shown faintly, no scroll listeners, no gsap).
+ * On mobile the pitch scene is skipped entirely in favor of two ambient
+ * drifting color blobs (pure CSS, no scroll listeners). Under reduced motion
+ * or no-matchMedia (jsdom) the scene renders static (beams + trophy shown
+ * faintly, no scroll listeners, no gsap).
  */
 /** True when the scroll scrub must stay off: mobile, reduced motion, or no
  * matchMedia at all (jsdom) — unlike BentoCard.motionDisabled, a missing
@@ -62,6 +64,21 @@ export function StadiumBackdrop(): React.ReactElement {
 
     return () => ctx.revert();
   }, [isMobile]);
+
+  // Phones skip the pitch scene entirely: two slow-drifting brand-color
+  // blobs give an ambient animated backdrop with zero download weight
+  // (owner decision 2026-07-08; the film stays desktop-only too).
+  if (isMobile) {
+    return (
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-0 -z-[5] overflow-hidden print:hidden"
+      >
+        <span className="ambient-blob ambient-blob--a" />
+        <span className="ambient-blob ambient-blob--b" />
+      </div>
+    );
+  }
 
   return (
     <div
