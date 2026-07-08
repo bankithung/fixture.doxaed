@@ -21,6 +21,25 @@
   transform: translateY(0);
 }
 
+/* Whole-line variant: one element animates as a unit, so gradient
+   bg-clip-text headlines stay intact (per-word spans would break the clip). */
+.blur-line {
+  display: inline-block;
+  opacity: 0;
+  filter: blur(8px);
+  transform: translateY(-0.35em);
+  transition:
+    opacity 0.6s ease,
+    filter 0.6s ease,
+    transform 0.6s ease;
+  will-change: opacity, filter, transform;
+}
+.blur-line.is-inview {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0);
+}
+
 /* ---- ShinyText: gradient shine sweeping across clipped text ---- */
 .shiny-text {
   background-image: linear-gradient(
@@ -154,6 +173,7 @@
    (the JS gate in motion.tsx is the first). */
 @media (prefers-reduced-motion: reduce) {
   .blur-text-word,
+  .blur-line,
   .reveal {
     opacity: 1 !important;
     filter: none !important;

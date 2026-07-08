@@ -22,6 +22,7 @@ import { t } from "@/lib/t";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import {
   BlurText,
+  BlurLine,
   ShinyText,
   RotatingText,
   Reveal,
@@ -30,7 +31,10 @@ import {
 } from "./motion";
 
 /**
- * Public landing page at `/`.
+ * Public landing page at `/`, laid out in the Supabase-homepage idiom:
+ * centered hero with a gradient second line, a "runs every sport" strip
+ * (their framework row), a product bento where the VISUAL lives inside each
+ * card, steps, roadmap, a centered closing statement and a columned footer.
  *
  * - Authenticated user: redirect via `pickLandingPathForUser` (personal
  *   dashboard; roles only matter inside a tournament).
@@ -89,78 +93,81 @@ export function LandingPage(): React.ReactElement {
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="relative overflow-hidden border-b border-border/60 bg-muted/30">
+      {/* Hero: centered, Supabase-style two-line headline */}
+      <section className="relative overflow-hidden border-b border-border/60">
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute -left-24 -top-24 h-80 w-80 rounded-full bg-primary/10 blur-3xl"
+          className="pointer-events-none absolute left-1/2 top-0 h-96 w-[42rem] -translate-x-1/2 rounded-full bg-primary/10 blur-3xl"
         />
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-32 right-0 h-96 w-96 rounded-full bg-primary/10 blur-3xl"
-        />
-        <div className="relative mx-auto w-full max-w-6xl px-4 pb-12 pt-12 sm:px-6 sm:pb-14 sm:pt-24">
-          <div className="grid items-center gap-10 lg:grid-cols-[1.1fr,0.9fr] lg:gap-12">
-            {/* Copy column */}
-            <div>
-              <p className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-medium">
-                <Sparkles aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
-                <ShinyText text={t("Live now · built in Nagaland")} />
-              </p>
-              <h1 className="mt-6 text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl lg:text-5xl">
-                <BlurText text={t("Sports fixtures, made in Nagaland.")} />
-              </h1>
-              <p className="mt-4 text-lg font-medium text-muted-foreground sm:text-xl">
-                {t("One platform for")}{" "}
-                <RotatingText
-                  words={SPORT_NAMES}
-                  className="font-semibold text-primary"
-                />
-              </p>
-              <p className="mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">
-                {t(
-                  "Run tournaments, schedule matches, follow live scores. Built for local sport, football first.",
-                )}
-              </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                <Link to="/explore" className="w-full sm:w-auto">
-                  <Button size="lg" className="w-full gap-2 sm:w-auto">
-                    {t("Follow live tournaments")}
-                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
-                  </Button>
-                </Link>
-                <Link to={routes.signup()} className="w-full sm:w-auto">
-                  <Button size="lg" variant="outline" className="w-full sm:w-auto">
-                    {t("Organize one")}
-                  </Button>
-                </Link>
-              </div>
-
-              {/* Trust strip */}
-              <dl className="mt-10 grid max-w-md grid-cols-3 gap-4 sm:mt-12 sm:gap-6">
-                <CountStat value={10} label={t("sports on the chassis")} />
-                <Stat value="100%" label={t("multi-tenant")} />
-                <Stat value="24/7" label={t("live scores")} />
-              </dl>
-            </div>
-
-            {/* Product showcase column */}
-            <HeroShowcase />
+        <div className="relative mx-auto w-full max-w-4xl px-4 pb-14 pt-14 text-center sm:px-6 sm:pb-20 sm:pt-24">
+          <p className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-medium">
+            <Sparkles aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
+            <ShinyText text={t("Live now · built in Nagaland")} />
+          </p>
+          <h1 className="mt-6 text-4xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
+            <span className="block">
+              <BlurText text={t("Sports fixtures,")} />
+            </span>{" "}
+            <span className="block">
+              <BlurLine
+                text={t("made in Nagaland.")}
+                delayMs={250}
+                className="bg-gradient-to-r from-primary to-info bg-clip-text text-transparent"
+              />
+            </span>
+          </h1>
+          <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+            {t(
+              "Run tournaments, schedule matches, follow live scores. Built for local sport, football first.",
+            )}
+          </p>
+          <p className="mt-3 text-lg font-medium text-muted-foreground">
+            {t("One platform for")}{" "}
+            <RotatingText
+              words={SPORT_NAMES}
+              className="font-semibold text-primary"
+            />
+          </p>
+          <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            <Link to="/explore" className="w-full sm:w-auto">
+              <Button size="lg" className="w-full gap-2 sm:w-auto">
+                {t("Follow live tournaments")}
+                <ArrowRight aria-hidden="true" className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Link to={routes.signup()} className="w-full sm:w-auto">
+              <Button size="lg" variant="outline" className="w-full sm:w-auto">
+                {t("Organize one")}
+              </Button>
+            </Link>
           </div>
-        </div>
 
-        {/* Sports marquee */}
-        <div className="relative border-t border-border/60 bg-background/50 py-4">
-          <SportsMarquee className="mx-auto w-full max-w-6xl px-4 sm:px-6" />
+          {/* Trust strip */}
+          <dl className="mx-auto mt-12 grid max-w-md grid-cols-3 gap-4 text-center sm:gap-6">
+            <CountStat value={10} label={t("sports on the chassis")} />
+            <Stat value="100%" label={t("multi-tenant")} />
+            <Stat value="24/7" label={t("live scores")} />
+          </dl>
         </div>
       </section>
 
-      {/* Feature highlights (MagicBento) */}
+      {/* "Runs every sport" strip (the framework row) */}
+      <section
+        aria-label={t("Sports covered")}
+        className="border-b border-border/60 bg-muted/30 py-6"
+      >
+        <p className="text-center text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          {t("Built to run every sport")}
+        </p>
+        <SportsMarquee className="mx-auto mt-4 w-full max-w-6xl px-4 sm:px-6" />
+      </section>
+
+      {/* Product bento: the visual lives inside each card */}
       <section
         aria-labelledby="features-heading"
-        className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16"
+        className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20"
       >
-        <Reveal>
+        <Reveal className="text-center">
           <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
             {t("Built for the whole tournament")}
           </p>
@@ -171,57 +178,87 @@ export function LandingPage(): React.ReactElement {
             {t("Everything you need to run a competition")}
           </h2>
         </Reveal>
-        <BentoGrid className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Feature
-            icon={<Users aria-hidden="true" className="h-5 w-5" />}
+        <BentoGrid className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ProductCard
+            className="sm:col-span-2"
+            icon={<Radio aria-hidden="true" className="h-4 w-4" />}
+            title={t("Live scoring, in real time")}
+            body={t(
+              "Scorers tap, fans see it instantly. Events, lineups, and standings stay in sync from kickoff to full time.",
+            )}
+            visual={<MatchVisual />}
+            particles
+            delayMs={0}
+          />
+          <ProductCard
+            icon={<Trophy aria-hidden="true" className="h-4 w-4" />}
+            title={t("Standings & brackets")}
+            body={t(
+              "Points, tiebreakers, and knockout trees computed from your rules, never by hand.",
+            )}
+            visual={<StandingsVisual />}
+            delayMs={80}
+          />
+          <ProductCard
+            icon={<Calendar aria-hidden="true" className="h-4 w-4" />}
+            title={t("Auto-generated schedules")}
+            body={t(
+              "Fixtures built around your venues, breaks, and constraints, with conflict warnings and manual overrides.",
+            )}
+            visual={<ScheduleVisual />}
+            delayMs={0}
+          />
+          <ProductCard
+            icon={<Users aria-hidden="true" className="h-4 w-4" />}
             title={t("Multi-tenant from day one")}
             body={t(
               "Each organization gets its own workspace, members, and roles. No data crosses tenants.",
             )}
-            delayMs={0}
+            visual={<OrgsVisual />}
+            delayMs={80}
           />
-          <Feature
-            icon={<Calendar aria-hidden="true" className="h-5 w-5" />}
-            title={t("Auto-generated schedules")}
-            body={t(
-              "Brackets and fixtures generated for you, with conflict warnings and manual overrides.",
-            )}
-            delayMs={60}
-          />
-          <Feature
-            icon={<Radio aria-hidden="true" className="h-5 w-5" />}
-            title={t("Live updates, instantly")}
-            body={t(
-              "Fans follow live scores as they happen. Scorers and referees collaborate without refreshing.",
-            )}
-            delayMs={120}
-            particles
-          />
-          <Feature
-            icon={<Trophy aria-hidden="true" className="h-5 w-5" />}
-            title={t("Tournaments & live scoring")}
-            body={t(
-              "Lineups, events, and standings stay in sync from kickoff to full time.",
-            )}
-            delayMs={0}
-            particles
-          />
-          <Feature
-            icon={<ShieldCheck aria-hidden="true" className="h-5 w-5" />}
+          <ProductCard
+            icon={<ShieldCheck aria-hidden="true" className="h-4 w-4" />}
             title={t("Role-based access & audit")}
             body={t(
               "Granular roles, module grants, and an append-only audit trail keep everyone accountable.",
             )}
-            delayMs={60}
+            visual={<AuditVisual />}
+            delayMs={160}
           />
-          <Feature
-            icon={<Activity aria-hidden="true" className="h-5 w-5" />}
-            title={t("A chassis that scales")}
-            body={t(
-              "Football first; the same engine extends to volleyball, basketball, archery, and more.",
-            )}
-            delayMs={120}
-          />
+          <Reveal className="sm:col-span-2 lg:col-span-3">
+            <BentoCard className="flex h-full flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+              <div className="max-w-md">
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary"
+                >
+                  <Activity aria-hidden="true" className="h-4 w-4" />
+                </span>
+                <h3 className="mt-3 text-base font-semibold tracking-tight text-foreground">
+                  {t("A chassis that scales")}
+                </h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                  {t(
+                    "Football first; the same engine extends to volleyball, basketball, archery, and more.",
+                  )}
+                </p>
+              </div>
+              <div
+                aria-hidden="true"
+                className="flex max-w-md flex-wrap gap-2"
+              >
+                {SPORT_NAMES.map((name) => (
+                  <span
+                    key={name}
+                    className="rounded-full border border-border bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground"
+                  >
+                    {name}
+                  </span>
+                ))}
+              </div>
+            </BentoCard>
+          </Reveal>
         </BentoGrid>
       </section>
 
@@ -231,7 +268,7 @@ export function LandingPage(): React.ReactElement {
         className="border-t border-border/60 bg-muted/30"
       >
         <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
-          <Reveal>
+          <Reveal className="text-center">
             <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
               {t("From draft to full time")}
             </p>
@@ -242,7 +279,7 @@ export function LandingPage(): React.ReactElement {
               {t("Three steps to matchday")}
             </h2>
           </Reveal>
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+          <div className="mt-10 grid gap-4 sm:grid-cols-3">
             <Step
               n="1"
               title={t("Create your tournament")}
@@ -277,7 +314,7 @@ export function LandingPage(): React.ReactElement {
         className="border-t border-border/60"
       >
         <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
-          <Reveal>
+          <Reveal className="text-center">
             <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
               {t("Roadmap")}
             </p>
@@ -288,7 +325,7 @@ export function LandingPage(): React.ReactElement {
               {t("What's coming")}
             </h2>
           </Reveal>
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+          <div className="mt-10 grid gap-4 sm:grid-cols-3">
             <Reveal delayMs={0}>
               <RoadmapCard
                 icon={<Shield aria-hidden="true" className="h-5 w-5" />}
@@ -326,25 +363,23 @@ export function LandingPage(): React.ReactElement {
         </div>
       </section>
 
-      {/* Closing CTA */}
-      <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
+      {/* Closing CTA: centered statement */}
+      <section className="mx-auto w-full max-w-4xl px-4 py-14 sm:px-6 sm:py-20">
         <Reveal>
           <StarBorder speed="8s">
-            <div className="relative overflow-hidden rounded-xl border border-border bg-card p-6 shadow-sm sm:p-8 lg:p-12">
+            <div className="relative overflow-hidden rounded-xl border border-border bg-card p-8 text-center shadow-sm sm:p-12">
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/10 blur-3xl"
+                className="pointer-events-none absolute left-1/2 top-0 h-40 w-96 -translate-x-1/2 rounded-full bg-primary/10 blur-3xl"
               />
-              <div className="relative flex flex-col items-start gap-6 sm:flex-row sm:items-center sm:justify-between">
-                <div className="max-w-xl">
-                  <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
-                    {t("Ready to run your first tournament?")}
-                  </h2>
-                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                    {t("Create a free account in minutes.")}
-                  </p>
-                </div>
-                <div className="flex w-full shrink-0 flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap">
+              <div className="relative">
+                <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                  {t("Ready to run your first tournament?")}
+                </h2>
+                <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base">
+                  {t("Create a free account in minutes.")}
+                </p>
+                <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
                   <Link to={routes.signup()} className="w-full sm:w-auto">
                     <Button size="lg" className="w-full gap-2 sm:w-auto">
                       {t("Get started")}
@@ -363,101 +398,195 @@ export function LandingPage(): React.ReactElement {
         </Reveal>
       </section>
 
-      {/* Footer */}
+      {/* Footer: columned, Supabase-style */}
       <footer className="mt-auto border-t border-border/60 bg-muted/30">
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-start justify-between gap-3 px-4 py-6 text-xs sm:px-6 text-muted-foreground sm:flex-row sm:items-center">
-          <p>{t("© Fixture Platform")}</p>
-          <nav aria-label={t("Footer")} className="flex items-center gap-4">
-            <Link
-              to="/explore"
-              className="rounded-sm transition-colors hover:text-foreground hover:underline focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {t("Explore")}
-            </Link>
-            <Link
-              to={routes.about()}
-              className="rounded-sm transition-colors hover:text-foreground hover:underline focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {t("About")}
-            </Link>
-            <Link
-              to={routes.login()}
-              className="rounded-sm transition-colors hover:text-foreground hover:underline focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {t("Sign in")}
-            </Link>
-          </nav>
+        <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
+          <div className="grid gap-8 sm:grid-cols-[1.5fr,1fr,1fr]">
+            <div>
+              <span className="inline-flex items-center gap-2.5 text-base font-semibold tracking-tight text-foreground">
+                <BrandLogo className="h-7 w-7" />
+                {t("Fixture Platform")}
+              </span>
+              <p className="mt-3 max-w-xs text-xs leading-relaxed text-muted-foreground">
+                {t(
+                  "Multi-tenant tournament and fixture management, built for sport in Nagaland.",
+                )}
+              </p>
+            </div>
+            <FooterCol
+              heading={t("Product")}
+              links={[
+                { to: "/explore", label: t("Explore") },
+                { to: routes.about(), label: t("About") },
+              ]}
+            />
+            <FooterCol
+              heading={t("Account")}
+              links={[
+                { to: routes.login(), label: t("Sign in") },
+                { to: routes.signup(), label: t("Create account") },
+              ]}
+            />
+          </div>
+          <div className="mt-8 border-t border-border/60 pt-5 text-xs text-muted-foreground">
+            <p>{t("© Fixture Platform")}</p>
+          </div>
         </div>
       </footer>
     </div>
   );
 }
 
-/** The hero product mock: a live match card, mini standings and the next
- * fixture, composed from real app chrome (panel, chips, tabular numerals).
- * Sample data, aria-hidden: it is an illustration, not content. */
-function HeroShowcase(): React.ReactElement {
+/** One product bento card: the visual sits inside the card above the copy
+ * (the Supabase card pattern). Visuals are sample data and aria-hidden. */
+function ProductCard({
+  icon,
+  title,
+  body,
+  visual,
+  className,
+  delayMs = 0,
+  particles = false,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+  visual: React.ReactNode;
+  className?: string;
+  delayMs?: number;
+  particles?: boolean;
+}): React.ReactElement {
   return (
-    <div aria-hidden="true" className="relative mx-auto w-full max-w-md select-none lg:max-w-none">
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute -inset-8 rounded-full bg-primary/5 blur-2xl"
-      />
-      <div className="relative space-y-3">
-        {/* Live match card */}
-        <Reveal>
-          <StarBorder speed="7s">
-            <div className="panel p-4">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-2 font-medium text-destructive">
-                  <span className="live-dot" />
-                  {t("LIVE")}
-                </span>
-                <span>{t("Boys U17 · Group A")}</span>
-              </div>
-              <div className="mt-3 space-y-2">
-                <ShowcaseRow team={t("Kohima United")} score="2" leading />
-                <ShowcaseRow team={t("Dimapur FC")} score="1" />
-              </div>
-              <div className="mt-3 flex items-center justify-between border-t border-border pt-2.5 text-xs text-muted-foreground">
-                <span className="font-tabular">{t("74'")}</span>
-                <span>{t("Local Ground, Kohima")}</span>
-              </div>
-            </div>
-          </StarBorder>
-        </Reveal>
+    <Reveal delayMs={delayMs} className={className}>
+      <BentoCard particles={particles} className="flex h-full flex-col p-5">
+        <div
+          aria-hidden="true"
+          className="select-none rounded-lg border border-border/60 bg-muted/30 p-3.5"
+        >
+          {visual}
+        </div>
+        <div className="mt-4 flex items-center gap-2.5">
+          <span
+            aria-hidden="true"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+          >
+            {icon}
+          </span>
+          <h3 className="text-base font-semibold tracking-tight text-foreground">
+            {title}
+          </h3>
+        </div>
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+          {body}
+        </p>
+      </BentoCard>
+    </Reveal>
+  );
+}
 
-        {/* Mini standings */}
-        <Reveal delayMs={120}>
-          <div className="panel p-4">
-            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              {t("Standings · Group A")}
-            </p>
-            <div className="mt-2.5 space-y-1.5 text-sm">
-              <StandingRow pos="1" team={t("Kohima United")} pts="7" top />
-              <StandingRow pos="2" team={t("Dimapur FC")} pts="5" />
-              <StandingRow pos="3" team={t("Mokokchung Town")} pts="4" />
-            </div>
-          </div>
-        </Reveal>
-
-        {/* Next fixture */}
-        <Reveal delayMs={240}>
-          <div className="panel flex items-center justify-between p-4 text-sm">
-            <div>
-              <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                {t("Up next")}
-              </p>
-              <p className="mt-1 font-medium">
-                {t("Semifinal · Sat 3:00 PM")}
-              </p>
-            </div>
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Calendar aria-hidden="true" className="h-5 w-5" />
-            </span>
-          </div>
-        </Reveal>
+/** Live match sample: LIVE chip, score rows, minute. */
+function MatchVisual(): React.ReactElement {
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-2 font-medium text-destructive">
+          <span className="live-dot" />
+          {t("LIVE")}
+        </span>
+        <span>{t("Boys U17 · Group A")}</span>
       </div>
+      <div className="mt-3 space-y-2">
+        <ShowcaseRow team={t("Kohima United")} score="2" leading />
+        <ShowcaseRow team={t("Dimapur FC")} score="1" />
+      </div>
+      <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
+        <span className="font-tabular">{t("74'")}</span>
+        <span>{t("Local Ground, Kohima")}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Mini standings sample. */
+function StandingsVisual(): React.ReactElement {
+  return (
+    <div className="space-y-1.5 text-sm">
+      <StandingRow pos="1" team={t("Kohima United")} pts="7" top />
+      <StandingRow pos="2" team={t("Dimapur FC")} pts="5" />
+      <StandingRow pos="3" team={t("Mokokchung Town")} pts="4" />
+    </div>
+  );
+}
+
+/** Generated fixture list sample. */
+function ScheduleVisual(): React.ReactElement {
+  return (
+    <div className="space-y-1.5 text-xs">
+      <FixtureRow time="9:00" pair={t("Wokha FC v Zunheboto")} />
+      <FixtureRow time="10:30" pair={t("Kohima United v Peren")} />
+      <FixtureRow time="12:00" pair={t("Mon Town v Tuensang")} />
+    </div>
+  );
+}
+
+/** Tenant workspaces sample. */
+function OrgsVisual(): React.ReactElement {
+  return (
+    <div className="space-y-1.5 text-xs">
+      {[
+        t("Nagaland Schools Cup"),
+        t("Kohima District League"),
+        t("Inter-College Meet"),
+      ].map((name, i) => (
+        <div
+          key={name}
+          className="flex items-center gap-2 rounded-md border border-border/60 bg-card px-2.5 py-1.5"
+        >
+          <span
+            className={cn(
+              "inline-flex h-5 w-5 items-center justify-center rounded font-semibold text-[10px]",
+              i === 0
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground",
+            )}
+          >
+            {name.charAt(0)}
+          </span>
+          <span className="truncate font-medium">{name}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Append-only audit trail sample. */
+function AuditVisual(): React.ReactElement {
+  return (
+    <div className="space-y-1.5 font-tabular text-xs text-muted-foreground">
+      <AuditRow at="14:02" what={t("goal recorded · scorer")} />
+      <AuditRow at="14:05" what={t("lineup locked · referee")} />
+      <AuditRow at="14:11" what={t("score corrected · organizer")} />
+    </div>
+  );
+}
+
+function AuditRow({ at, what }: { at: string; what: string }): React.ReactElement {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="shrink-0">{at}</span>
+      <span aria-hidden="true" className="h-1 w-1 shrink-0 rounded-full bg-primary/60" />
+      <span className="truncate">{what}</span>
+    </div>
+  );
+}
+
+function FixtureRow({ time, pair }: { time: string; pair: string }): React.ReactElement {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="font-tabular w-9 shrink-0 text-muted-foreground">
+        {time}
+      </span>
+      <span className="truncate font-medium text-foreground">{pair}</span>
     </div>
   );
 }
@@ -550,39 +679,6 @@ function CountStat({
   return <Stat value={String(shown)} label={label} />;
 }
 
-function Feature({
-  icon,
-  title,
-  body,
-  delayMs = 0,
-  particles = false,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  body: string;
-  delayMs?: number;
-  particles?: boolean;
-}): React.ReactElement {
-  return (
-    <Reveal delayMs={delayMs}>
-      <BentoCard particles={particles} className="h-full p-6">
-        <span
-          aria-hidden="true"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"
-        >
-          {icon}
-        </span>
-        <h3 className="mt-4 text-base font-semibold tracking-tight text-foreground">
-          {title}
-        </h3>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-          {body}
-        </p>
-      </BentoCard>
-    </Reveal>
-  );
-}
-
 function Step({
   n,
   title,
@@ -611,6 +707,34 @@ function Step({
         </p>
       </article>
     </Reveal>
+  );
+}
+
+function FooterCol({
+  heading,
+  links,
+}: {
+  heading: string;
+  links: { to: string; label: string }[];
+}): React.ReactElement {
+  return (
+    <nav aria-label={heading}>
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        {heading}
+      </p>
+      <ul className="mt-3 space-y-2 text-sm">
+        {links.map((link) => (
+          <li key={link.to}>
+            <Link
+              to={link.to}
+              className="rounded-sm text-muted-foreground transition-colors hover:text-foreground hover:underline focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {link.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
   );
 }
 

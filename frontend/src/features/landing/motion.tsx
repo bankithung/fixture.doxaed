@@ -55,11 +55,14 @@ export function BlurText({
   text,
   className,
   delayMs = 70,
+  baseDelayMs = 0,
 }: {
   text: string;
   className?: string;
   /** Stagger between words. */
   delayMs?: number;
+  /** Delay before the first word starts (for multi-line headlines). */
+  baseDelayMs?: number;
 }): React.ReactElement {
   const [ref, inView] = useInView<HTMLSpanElement>();
   const words = text.split(" ");
@@ -69,7 +72,7 @@ export function BlurText({
         <Fragment key={`${String(i)}-${word}`}>
           <span
             className="blur-text-word"
-            style={{ transitionDelay: `${i * delayMs}ms` }}
+            style={{ transitionDelay: `${baseDelayMs + i * delayMs}ms` }}
           >
             {word}
           </span>
@@ -79,6 +82,29 @@ export function BlurText({
           {i < words.length - 1 ? " " : null}
         </Fragment>
       ))}
+    </span>
+  );
+}
+
+/** BlurLine: a whole line blurs+drops in as ONE element, so gradient
+ * bg-clip-text headlines keep their clip (per-word spans would break it). */
+export function BlurLine({
+  text,
+  className,
+  delayMs = 0,
+}: {
+  text: string;
+  className?: string;
+  delayMs?: number;
+}): React.ReactElement {
+  const [ref, inView] = useInView<HTMLSpanElement>();
+  return (
+    <span
+      ref={ref}
+      className={cn("blur-line", inView && "is-inview", className)}
+      style={delayMs > 0 ? { transitionDelay: `${delayMs}ms` } : undefined}
+    >
+      {text}
     </span>
   );
 }
