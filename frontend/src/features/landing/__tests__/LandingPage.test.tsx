@@ -66,6 +66,21 @@ describe("LandingPage", () => {
     expect(
       screen.getByRole("heading", { name: /three steps to matchday/i }),
     ).toBeInTheDocument();
+    // Content sections: demos (sample data), schools, why strip, FAQ
+    expect(
+      screen.getByRole("heading", { name: /see it in action/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("scorer-demo")).toBeInTheDocument();
+    expect(screen.getByTestId("bracket-demo")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /built for institutions/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /why fixture/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /questions, answered/i }),
+    ).toBeInTheDocument();
     // Footer
     expect(screen.getByRole("link", { name: /^about$/i })).toBeInTheDocument();
   });

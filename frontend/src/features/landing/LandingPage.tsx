@@ -9,6 +9,10 @@ import {
   ArrowRight,
   Radio,
   ShieldCheck,
+  School,
+  Home,
+  GraduationCap,
+  CheckCircle2,
 } from "lucide-react";
 import { useAuthStore } from "@/features/auth/authStore";
 import { Button } from "@/components/ui/button";
@@ -29,6 +33,8 @@ import {
   SportsMarquee,
   SPORT_NAMES,
 } from "./motion";
+import { StadiumBackdrop } from "./StadiumBackdrop";
+import { ScorerDemo, BracketDemo, FaqItem } from "./demos";
 
 /**
  * Public landing page at `/`, laid out in the Supabase-homepage idiom:
@@ -59,6 +65,7 @@ export function LandingPage(): React.ReactElement {
 
   return (
     <div className="flex min-h-screen flex-col text-foreground">
+      <StadiumBackdrop />
       {/* Top bar */}
       <header className="sticky top-0 z-20 border-b border-border/60 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3.5 sm:px-6">
@@ -262,6 +269,88 @@ export function LandingPage(): React.ReactElement {
         </BentoGrid>
       </section>
 
+      {/* Demos: sample data, clearly labeled */}
+      <section
+        aria-labelledby="demos-heading"
+        className="border-t border-border/60 bg-muted/30"
+      >
+        <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
+          <Reveal className="text-center">
+            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              {t("Demos · sample data")}
+            </p>
+            <h2
+              id="demos-heading"
+              className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl"
+            >
+              {t("See it in action")}
+            </h2>
+          </Reveal>
+          <div className="mt-10 grid gap-4 lg:grid-cols-[0.85fr,1.15fr]">
+            <Reveal delayMs={0}>
+              <ScorerDemo />
+            </Reveal>
+            <Reveal delayMs={100}>
+              <BracketDemo />
+            </Reveal>
+          </div>
+          <Reveal className="mt-8 text-center" delayMs={160}>
+            <Link to="/explore" className="inline-block">
+              <Button variant="outline" className="gap-2">
+                {t("Explore live tournaments")}
+                <ArrowRight aria-hidden="true" className="h-4 w-4" />
+              </Button>
+            </Link>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* For schools & colleges */}
+      <section
+        aria-labelledby="schools-heading"
+        className="border-t border-border/60"
+      >
+        <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
+          <Reveal className="text-center">
+            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              {t("For schools & colleges")}
+            </p>
+            <h2
+              id="schools-heading"
+              className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl"
+            >
+              {t("Built for institutions")}
+            </h2>
+          </Reveal>
+          <div className="mt-10 grid gap-4 sm:grid-cols-3">
+            <SchoolCard
+              icon={<School aria-hidden="true" className="h-5 w-5" />}
+              title={t("Sports days, sorted")}
+              body={t(
+                "Run the annual sports day on one timetable: events, houses, and results in one place.",
+              )}
+              delayMs={0}
+            />
+            <SchoolCard
+              icon={<Home aria-hidden="true" className="h-5 w-5" />}
+              title={t("House competitions")}
+              body={t(
+                "Points tables for houses across every event, updated the moment results land.",
+              )}
+              delayMs={80}
+            />
+            <SchoolCard
+              icon={<GraduationCap aria-hidden="true" className="h-5 w-5" />}
+              title={t("Roles for staff")}
+              body={t(
+                "PE staff score, teachers manage teams, principals watch live. Everyone gets exactly the access they need.",
+              )}
+              delayMs={160}
+            />
+          </div>
+        </div>
+      </section>
+
       {/* How it works */}
       <section
         aria-labelledby="how-heading"
@@ -308,10 +397,44 @@ export function LandingPage(): React.ReactElement {
         </div>
       </section>
 
+      {/* Why Fixture: differentiators strip */}
+      <section
+        aria-labelledby="why-heading"
+        className="border-t border-border/60"
+      >
+        <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-12">
+          <Reveal className="text-center">
+            <h2
+              id="why-heading"
+              className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground"
+            >
+              {t("Why Fixture")}
+            </h2>
+            <ul className="mt-5 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-sm">
+              {[
+                t("Rules are data, not code"),
+                t("Append-only audit trail"),
+                t("Live scores without refreshing"),
+                t("Public pages for fans"),
+                t("One chassis, every sport"),
+              ].map((claim) => (
+                <li key={claim} className="inline-flex items-center gap-2">
+                  <CheckCircle2
+                    aria-hidden="true"
+                    className="h-4 w-4 shrink-0 text-primary"
+                  />
+                  <span className="text-muted-foreground">{claim}</span>
+                </li>
+              ))}
+            </ul>
+          </Reveal>
+        </div>
+      </section>
+
       {/* Roadmap strip */}
       <section
         aria-labelledby="roadmap-heading"
-        className="border-t border-border/60"
+        className="border-t border-border/60 bg-muted/30"
       >
         <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
           <Reveal className="text-center">
@@ -359,6 +482,53 @@ export function LandingPage(): React.ReactElement {
                 tone="future"
               />
             </Reveal>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section
+        aria-labelledby="faq-heading"
+        className="border-t border-border/60"
+      >
+        <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
+          <Reveal className="text-center">
+            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              {t("FAQ")}
+            </p>
+            <h2
+              id="faq-heading"
+              className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl"
+            >
+              {t("Questions, answered")}
+            </h2>
+          </Reveal>
+          <div className="mt-8 space-y-3">
+            <FaqItem q={t("Which sports can it run?")}>
+              {t(
+                "Football is the reference sport, and the same chassis runs set-based games like table tennis, badminton, and sepak takraw. Formats, scoring, and rules stay configurable per competition.",
+              )}
+            </FaqItem>
+            <FaqItem q={t("Can fans follow without an account?")}>
+              {t(
+                "Yes. Schedules, standings, brackets, and live match pages are public links. No login, no app install.",
+              )}
+            </FaqItem>
+            <FaqItem q={t("How do teams register?")}>
+              {t(
+                "Organizers share a public form link. Each school gets an access code, so only they can submit or update their own team lists.",
+              )}
+            </FaqItem>
+            <FaqItem q={t("Does it work on a busy matchday?")}>
+              {t(
+                "Yes. Scoring is tap-based and built for phones at the ground, and fans' pages update live without refreshing.",
+              )}
+            </FaqItem>
+            <FaqItem q={t("Is our data separate from other organizers?")}>
+              {t(
+                "Yes. Every organization is its own tenant with separate members, roles, and an append-only audit trail.",
+              )}
+            </FaqItem>
           </div>
         </div>
       </section>
@@ -677,6 +847,37 @@ function CountStat({
 }): React.ReactElement {
   const shown = useCountUp(value);
   return <Stat value={String(shown)} label={label} />;
+}
+
+function SchoolCard({
+  icon,
+  title,
+  body,
+  delayMs = 0,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+  delayMs?: number;
+}): React.ReactElement {
+  return (
+    <Reveal delayMs={delayMs}>
+      <article className="h-full rounded-xl border border-border bg-card p-6 shadow-sm transition-shadow hover:shadow-md">
+        <span
+          aria-hidden="true"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"
+        >
+          {icon}
+        </span>
+        <h3 className="mt-4 text-base font-semibold tracking-tight text-foreground">
+          {title}
+        </h3>
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+          {body}
+        </p>
+      </article>
+    </Reveal>
+  );
 }
 
 function Step({

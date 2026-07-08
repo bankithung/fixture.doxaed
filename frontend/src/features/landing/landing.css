@@ -169,6 +169,70 @@
   }
 }
 
+/* ---- Stadium backdrop (scroll-scrubbed grounds view) ---- */
+.stadium-line {
+  fill: none;
+  stroke: hsl(var(--primary) / 0.12);
+  stroke-width: 1.5;
+}
+.stadium-line--strong {
+  stroke: hsl(var(--primary) / 0.18);
+}
+.stadium-dot {
+  fill: hsl(var(--primary) / 0.25);
+}
+.stadium-head {
+  fill: hsl(var(--primary) / 0.2);
+}
+.stadium-beam {
+  fill: hsl(var(--primary) / 0.05);
+}
+.stadium-ball {
+  fill: hsl(var(--primary) / 0.45);
+}
+.stadium-trophy {
+  fill: hsl(var(--primary) / 0.12);
+  stroke: hsl(var(--primary) / 0.35);
+  stroke-width: 1.5;
+}
+.dark .stadium-line {
+  stroke: hsl(var(--primary) / 0.16);
+}
+.dark .stadium-line--strong {
+  stroke: hsl(var(--primary) / 0.24);
+}
+.dark .stadium-beam {
+  fill: hsl(var(--primary) / 0.07);
+}
+/* Static fallback (mobile / reduced motion): beams half on, trophy visible. */
+.stadium-static [data-l="beam"] {
+  opacity: 0.5;
+}
+.stadium-static [data-l="trophy"] {
+  opacity: 0.6;
+}
+
+/* ---- Scorer demo: score pulse on a goal ---- */
+.demo-score-flash {
+  animation: landing-score-pop 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes landing-score-pop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ---- FAQ: hide the default disclosure marker ---- */
+.faq-item summary::-webkit-details-marker {
+  display: none;
+}
+
 /* Second line of defense: kill every landing effect under reduced motion
    (the JS gate in motion.tsx is the first). */
 @media (prefers-reduced-motion: reduce) {
@@ -183,7 +247,8 @@
   .shiny-text,
   .rotating-word,
   .sports-marquee-track,
-  .live-dot::after {
+  .live-dot::after,
+  .demo-score-flash {
     animation: none !important;
   }
 }
