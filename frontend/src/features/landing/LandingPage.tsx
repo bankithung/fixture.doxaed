@@ -63,7 +63,12 @@ export function LandingPage(): React.ReactElement {
   }
 
   return (
-    <div className="dark flex min-h-screen flex-col bg-background text-foreground">
+    <div className="dark flex min-h-screen flex-col text-foreground">
+      {/* Base coat: the page's dark background as its own fixed layer, BELOW
+          the film canvas. It cannot live on this root div: an opaque root
+          background paints over negative-z fixed children and hides the
+          film entirely. */}
+      <span aria-hidden="true" className="fixed inset-0 -z-10 bg-background" />
       {/* Backdrops: desktop gets the scroll film (plain page background
           while its frames load); mobile gets ambient drifting blobs. */}
       <AmbientBackdrop />
