@@ -232,15 +232,15 @@ export function FaqItem({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <details className="faq-item group glass rounded-xl border border-border shadow-sm">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-5 py-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <details className="faq-item group border-b border-border/50">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-4 text-base font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         {q}
         <ChevronDown
           aria-hidden="true"
           className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
         />
       </summary>
-      <p className="px-5 pb-4 text-sm leading-relaxed text-muted-foreground">
+      <p className="pb-5 text-sm leading-relaxed text-muted-foreground">
         {children}
       </p>
     </details>
