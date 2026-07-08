@@ -5,7 +5,6 @@ import {
   Users,
   Activity,
   Shield,
-  Sparkles,
   ArrowRight,
   Radio,
   ShieldCheck,
@@ -27,7 +26,6 @@ import { BrandLogo } from "@/components/ui/BrandLogo";
 import {
   BlurText,
   BlurLine,
-  ShinyText,
   RotatingText,
   Reveal,
   SportsMarquee,
@@ -112,11 +110,7 @@ export function LandingPage(): React.ReactElement {
           className="pointer-events-none absolute left-1/2 top-0 h-96 w-[42rem] -translate-x-1/2 rounded-full bg-primary/10 blur-3xl"
         />
         <div className="relative mx-auto w-full max-w-4xl px-4 pb-14 pt-14 text-center sm:px-6 sm:pb-20 sm:pt-24">
-          <p className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-medium">
-            <Sparkles aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
-            <ShinyText text={t("Live now · built in Nagaland")} />
-          </p>
-          <h1 className="mt-6 text-4xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
+          <h1 className="text-4xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
             <BlurText text={t("Doxaed ·")} />{" "}
             <BlurLine
               text={t("Fixture")}
