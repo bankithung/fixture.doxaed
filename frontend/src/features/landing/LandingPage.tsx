@@ -18,9 +18,9 @@ import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { BrandLogo } from "@/components/ui/BrandLogo";
-import { RotatingText, Reveal, SportsMarquee, SPORT_NAMES } from "./motion";
+import { RotatingText, SportsMarquee, SPORT_NAMES } from "./motion";
 import { useHeroCinema } from "./useHeroCinema";
-import { CinemaLine } from "./cinema";
+import { CinemaLine, ScrollFade } from "./cinema";
 import { AmbientBackdrop } from "./AmbientBackdrop";
 import { CinematicBackdrop } from "./CinematicBackdrop";
 import { ScorerDemo, BracketDemo, FaqItem } from "./demos";
@@ -191,37 +191,31 @@ export function LandingPage(): React.ReactElement {
             icon={<Radio aria-hidden="true" className="h-4 w-4" />}
             title={t("Live scoring, in real time")}
             body={t("Scorers tap, fans see it instantly.")}
-            delayMs={0}
           />
           <FeatureLine
             icon={<Trophy aria-hidden="true" className="h-4 w-4" />}
             title={t("Standings & brackets")}
             body={t("Computed from your rules, never by hand.")}
-            delayMs={60}
           />
           <FeatureLine
             icon={<Calendar aria-hidden="true" className="h-4 w-4" />}
             title={t("Auto-generated schedules")}
             body={t("Built around venues, breaks, and constraints.")}
-            delayMs={120}
           />
           <FeatureLine
             icon={<Users aria-hidden="true" className="h-4 w-4" />}
             title={t("Multi-tenant from day one")}
             body={t("Every organization in its own workspace.")}
-            delayMs={180}
           />
           <FeatureLine
             icon={<ShieldCheck aria-hidden="true" className="h-4 w-4" />}
             title={t("Roles & audit")}
             body={t("Granular access with an append-only trail.")}
-            delayMs={240}
           />
           <FeatureLine
             icon={<Activity aria-hidden="true" className="h-4 w-4" />}
             title={t("A chassis that scales")}
             body={t("Football first; nine more sports on the same engine.")}
-            delayMs={300}
           />
         </div>
       </Chapter>
@@ -236,21 +230,21 @@ export function LandingPage(): React.ReactElement {
         </ChapterHeading>
         <ChapterBody>{t("Sample data. Tap around.")}</ChapterBody>
         <div className="mt-14 grid w-full max-w-6xl gap-4 text-left lg:grid-cols-[0.85fr,1.15fr]">
-          <Reveal delayMs={0}>
+          <ScrollFade>
             <ScorerDemo />
-          </Reveal>
-          <Reveal delayMs={100}>
+          </ScrollFade>
+          <ScrollFade>
             <BracketDemo />
-          </Reveal>
+          </ScrollFade>
         </div>
-        <Reveal className="mt-10" delayMs={160}>
+        <ScrollFade className="mt-10">
           <Link to="/explore" className="inline-block">
             <Button variant="outline" className="gap-2">
               {t("Explore live tournaments")}
               <ArrowRight aria-hidden="true" className="h-4 w-4" />
             </Button>
           </Link>
-        </Reveal>
+        </ScrollFade>
       </Chapter>
 
       {/* Chapter: institutions */}
@@ -268,19 +262,16 @@ export function LandingPage(): React.ReactElement {
             icon={<School aria-hidden="true" className="h-5 w-5" />}
             title={t("Sports days, sorted")}
             body={t("Events, houses, and results on one timetable.")}
-            delayMs={0}
           />
           <PlainPoint
             icon={<Home aria-hidden="true" className="h-5 w-5" />}
             title={t("House competitions")}
             body={t("Points tables updated the moment results land.")}
-            delayMs={80}
           />
           <PlainPoint
             icon={<GraduationCap aria-hidden="true" className="h-5 w-5" />}
             title={t("Roles for staff")}
             body={t("PE staff score, teachers manage, principals watch.")}
-            delayMs={160}
           />
         </div>
       </Chapter>
@@ -295,19 +286,16 @@ export function LandingPage(): React.ReactElement {
             n="01"
             title={t("Create your tournament")}
             body={t("Pick the sport, format, venues and rules.")}
-            delayMs={0}
           />
           <GiantStep
             n="02"
             title={t("Open registration")}
             body={t("Schools register through forms with access codes.")}
-            delayMs={80}
           />
           <GiantStep
             n="03"
             title={t("Generate fixtures & go live")}
             body={t("One click builds the schedule. Fans follow live.")}
-            delayMs={160}
           />
         </div>
       </Chapter>
@@ -322,8 +310,8 @@ export function LandingPage(): React.ReactElement {
             t("Live scores never need a refresh."),
             t("Fans get public pages, no login."),
             t("One chassis runs every sport."),
-          ].map((claim, i) => (
-            <Reveal key={claim} delayMs={i * 70}>
+          ].map((claim) => (
+            <ScrollFade key={claim}>
               <li
                 className={cn(
                   "border-l-2 border-primary/70 pl-5 text-xl font-medium leading-snug text-foreground sm:text-2xl",
@@ -332,7 +320,7 @@ export function LandingPage(): React.ReactElement {
               >
                 {claim}
               </li>
-            </Reveal>
+            </ScrollFade>
           ))}
         </ul>
       </Chapter>
@@ -348,19 +336,16 @@ export function LandingPage(): React.ReactElement {
             title={t("Accounts & organizations")}
             body={t("Multi-tenant orgs, role-based access, audit, 2FA.")}
             active
-            delayMs={0}
           />
           <RoadmapRow
             phase={t("Phase 1B · football")}
             title={t("Tournaments & live scoring")}
             body={t("Brackets, schedules, lineups, public live viewer.")}
-            delayMs={80}
           />
           <RoadmapRow
             phase={t("v2 · beyond football")}
             title={t("9 more sports")}
             body={t("Volleyball, basketball, archery, and more.")}
-            delayMs={160}
           />
         </div>
       </Chapter>
@@ -404,7 +389,7 @@ export function LandingPage(): React.ReactElement {
 
       {/* Closing: a final beat over the film */}
       <section className="relative flex min-h-[60vh] flex-col items-center justify-center px-4 py-24 text-center sm:px-6">
-        <Reveal>
+        <ScrollFade>
           <h2
             className={cn(
               "mx-auto max-w-3xl text-3xl font-semibold leading-[1.1] tracking-tight sm:text-6xl",
@@ -436,7 +421,7 @@ export function LandingPage(): React.ReactElement {
               </Button>
             </Link>
           </div>
-        </Reveal>
+        </ScrollFade>
       </section>
 
       {/* Footer */}
@@ -504,7 +489,7 @@ function ChapterHeading({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <Reveal>
+    <ScrollFade>
       <h2
         id={id}
         className={cn(
@@ -514,7 +499,7 @@ function ChapterHeading({
       >
         {children}
       </h2>
-    </Reveal>
+    </ScrollFade>
   );
 }
 
@@ -525,7 +510,7 @@ function ChapterBody({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <Reveal delayMs={80}>
+    <ScrollFade>
       <p
         className={cn(
           "mt-5 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg",
@@ -534,7 +519,7 @@ function ChapterBody({
       >
         {children}
       </p>
-    </Reveal>
+    </ScrollFade>
   );
 }
 
@@ -559,15 +544,13 @@ function FeatureLine({
   icon,
   title,
   body,
-  delayMs = 0,
 }: {
   icon: React.ReactNode;
   title: string;
   body: string;
-  delayMs?: number;
 }): React.ReactElement {
   return (
-    <Reveal delayMs={delayMs}>
+    <ScrollFade>
       <div className="border-t border-border/50 pt-4">
         <div className="flex items-center gap-2.5">
           <span aria-hidden="true" className="text-primary">
@@ -591,7 +574,7 @@ function FeatureLine({
           {body}
         </p>
       </div>
-    </Reveal>
+    </ScrollFade>
   );
 }
 
@@ -600,15 +583,13 @@ function PlainPoint({
   icon,
   title,
   body,
-  delayMs = 0,
 }: {
   icon: React.ReactNode;
   title: string;
   body: string;
-  delayMs?: number;
 }): React.ReactElement {
   return (
-    <Reveal delayMs={delayMs}>
+    <ScrollFade>
       <span
         aria-hidden="true"
         className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/15 text-primary"
@@ -631,7 +612,7 @@ function PlainPoint({
       >
         {body}
       </p>
-    </Reveal>
+    </ScrollFade>
   );
 }
 
@@ -640,15 +621,13 @@ function GiantStep({
   n,
   title,
   body,
-  delayMs = 0,
 }: {
   n: string;
   title: string;
   body: string;
-  delayMs?: number;
 }): React.ReactElement {
   return (
-    <Reveal delayMs={delayMs}>
+    <ScrollFade>
       <span
         aria-hidden="true"
         className="font-tabular block bg-gradient-to-b from-primary/80 to-primary/20 bg-clip-text text-6xl font-semibold leading-none text-transparent sm:text-7xl"
@@ -671,7 +650,7 @@ function GiantStep({
       >
         {body}
       </p>
-    </Reveal>
+    </ScrollFade>
   );
 }
 
@@ -681,16 +660,14 @@ function RoadmapRow({
   title,
   body,
   active = false,
-  delayMs = 0,
 }: {
   phase: string;
   title: string;
   body: string;
   active?: boolean;
-  delayMs?: number;
 }): React.ReactElement {
   return (
-    <Reveal delayMs={delayMs}>
+    <ScrollFade>
       <div className="flex flex-col gap-1.5 py-5 sm:flex-row sm:items-baseline sm:gap-6">
         <span
           className={cn(
@@ -720,7 +697,7 @@ function RoadmapRow({
           </p>
         </div>
       </div>
-    </Reveal>
+    </ScrollFade>
   );
 }
 

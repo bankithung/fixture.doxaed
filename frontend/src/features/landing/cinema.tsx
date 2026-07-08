@@ -12,6 +12,57 @@ import { motionOff } from "./motionGate";
  * visible and static. Initial hidden states are applied synchronously
  * (utils.set in useLayoutEffect) so nothing flashes.
  */
+/**
+ * ScrollFade: content that rides the scroll like a film title — it fades and
+ * drifts IN as it enters the viewport, holds through the middle, and fades
+ * OUT as it leaves, scrubbing forward and backward with a damped
+ * ScrollObserver. Replaces one-shot reveals on the landing page.
+ *
+ * Static (plain, visible) under prefers-reduced-motion / jsdom.
+ */
+export function ScrollFade({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}): React.ReactElement {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || motionOff()) return;
+
+    utils.set(el, { opacity: 0 });
+
+    const anim = animate(el, {
+      keyframes: {
+        "0%": { opacity: 0, translateY: 56 },
+        "22%": { opacity: 1, translateY: 0 },
+        "78%": { opacity: 1, translateY: 0 },
+        "100%": { opacity: 0, translateY: -56 },
+      },
+      ease: "linear",
+      autoplay: onScroll({
+        target: el,
+        enter: "bottom top",
+        leave: "top bottom",
+        sync: true,
+      }),
+    });
+
+    return () => {
+      anim.revert();
+    };
+  }, []);
+
+  return (
+    <div ref={ref} className={className}>
+      {children}
+    </div>
+  );
+}
+
 export function CinemaLine({
   text,
   className,

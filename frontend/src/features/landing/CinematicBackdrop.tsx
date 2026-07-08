@@ -9,11 +9,11 @@ import { useBreakpoint } from "@/lib/useBreakpoint";
  * so the background quietly plays as content rides over it. A gradient scrim
  * keeps text readable over any frame.
  *
- * The film is ONE reel by default (v1, the aerial approach); `?film=v2|v3`
- * previews an alternate sequence live without a redeploy. (The earlier
- * two-reel splice read as a glitch: a hard cut mid-scroll.) The playhead is
- * damped, easing toward the scroll position each frame, so scrubbing glides
- * instead of stepping.
+ * The film is TWO reels spliced (v1 aerial approach → v2 lights-on inside
+ * the bowl) with a CROSSFADE around the cut, so the reel change reads as a
+ * dissolve instead of a glitchy hard cut. `?film=v1|v2|v3` previews a single
+ * reel live without a redeploy. The playhead is damped, easing toward the
+ * scroll position each frame, so scrubbing glides instead of stepping.
  *
  * Assets live in /cinematic/<film>/: manifest.json {count,width,height} plus
  * frame_0001.webp … frame_NNNN.webp.
@@ -25,10 +25,12 @@ import { useBreakpoint } from "@/lib/useBreakpoint";
 
 const FILMS = ["v1", "v2", "v3"] as const;
 type Film = (typeof FILMS)[number];
-const DEFAULT_PLAYLIST: readonly Film[] = ["v1"];
+const DEFAULT_PLAYLIST: readonly Film[] = ["v1", "v2"];
 
 const DPR_CAP = 1.5;
 const PRELOAD_CONCURRENCY = 6;
+/** Frames on EACH side of a reel boundary blended into a dissolve. */
+const CROSSFADE_FRAMES = 9;
 
 interface Manifest {
   count: number;
@@ -121,6 +123,15 @@ export function CinematicBackdrop(): React.ReactElement | null {
     if (!ctx) return;
 
     const total = reels.reduce((n, r) => n + r.count, 0);
+    // Global indices where a new reel starts (splice points for crossfades).
+    const boundaries: number[] = [];
+    {
+      let acc = 0;
+      for (const reel of reels.slice(0, -1)) {
+        acc += reel.count;
+        boundaries.push(acc);
+      }
+    }
     const frames: (HTMLImageElement | null)[] = Array.from(
       { length: total },
       () => null,
@@ -130,26 +141,21 @@ export function CinematicBackdrop(): React.ReactElement | null {
     let lastDrawn = -1;
     let current = 0;
 
-    const draw = (index: number): void => {
-      // Nearest loaded frame at or before the target, else the first loaded.
-      let img: HTMLImageElement | null = null;
+    // Nearest loaded frame at or before the target, else the first loaded
+    // after it.
+    const nearest = (index: number): HTMLImageElement | null => {
       for (let i = index; i >= 0; i -= 1) {
         const f = frames[i];
-        if (f) {
-          img = f;
-          break;
-        }
+        if (f) return f;
       }
-      if (!img) {
-        for (let i = index + 1; i < frames.length; i += 1) {
-          const f = frames[i];
-          if (f) {
-            img = f;
-            break;
-          }
-        }
+      for (let i = index + 1; i < frames.length; i += 1) {
+        const f = frames[i];
+        if (f) return f;
       }
-      if (!img) return;
+      return null;
+    };
+
+    const paint = (img: HTMLImageElement): void => {
       // Cover-fit.
       const cw = canvas.width;
       const ch = canvas.height;
@@ -157,6 +163,33 @@ export function CinematicBackdrop(): React.ReactElement | null {
       const w = img.width * scale;
       const h = img.height * scale;
       ctx.drawImage(img, (cw - w) / 2, (ch - h) / 2, w, h);
+    };
+
+    const draw = (index: number): void => {
+      // Inside a splice window, dissolve reel A into reel B instead of
+      // hard-cutting: reel A's side keeps playing underneath while reel B's
+      // first frames fade in on top.
+      const b = boundaries.find(
+        (p) => index >= p - CROSSFADE_FRAMES && index < p + CROSSFADE_FRAMES,
+      );
+      if (b !== undefined) {
+        const under = nearest(Math.min(index, b - 1));
+        const over = nearest(Math.max(index, b));
+        if (!under && !over) return;
+        if (under) paint(under);
+        if (over) {
+          const alpha =
+            (index - (b - CROSSFADE_FRAMES) + 1) / (CROSSFADE_FRAMES * 2 + 1);
+          ctx.globalAlpha = Math.min(1, Math.max(0, alpha));
+          paint(over);
+          ctx.globalAlpha = 1;
+        }
+        lastDrawn = index;
+        return;
+      }
+      const img = nearest(index);
+      if (!img) return;
+      paint(img);
       lastDrawn = index;
     };
 
