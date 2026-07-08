@@ -175,16 +175,18 @@ export function LandingPage(): React.ReactElement {
         aria-labelledby="features-heading"
         className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20"
       >
-        <Reveal className="text-center">
-          <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            {t("Built for the whole tournament")}
-          </p>
+        <Reveal>
           <h2
             id="features-heading"
-            className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl"
+            className="text-2xl font-semibold tracking-tight sm:text-3xl"
           >
             {t("Everything you need to run a competition")}
           </h2>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+            {t(
+              "Scoring, schedules, standings, and access control on one chassis.",
+            )}
+          </p>
         </Reveal>
         <BentoGrid className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <ProductCard
@@ -270,22 +272,27 @@ export function LandingPage(): React.ReactElement {
         </BentoGrid>
       </section>
 
+      {/* Film window: the footage alone carries a statement line */}
+      <FilmWindow line={t("From kickoff to the final table.")} />
+
       {/* Demos: sample data, clearly labeled */}
       <section
         aria-labelledby="demos-heading"
         className="border-t border-border/60 bg-background/30"
       >
-        <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
-          <Reveal className="text-center">
-            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              {t("Demos · sample data")}
-            </p>
-            <h2
-              id="demos-heading"
-              className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl"
-            >
-              {t("See it in action")}
-            </h2>
+        <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
+          <Reveal>
+            <div className="flex flex-wrap items-center gap-3">
+              <h2
+                id="demos-heading"
+                className="text-2xl font-semibold tracking-tight sm:text-3xl"
+              >
+                {t("See it in action")}
+              </h2>
+              <span className="rounded-full border border-border bg-muted/50 px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                {t("Sample data")}
+              </span>
+            </div>
           </Reveal>
           <div className="mt-10 grid gap-4 lg:grid-cols-[0.85fr,1.15fr]">
             <Reveal delayMs={0}>
@@ -295,7 +302,7 @@ export function LandingPage(): React.ReactElement {
               <BracketDemo />
             </Reveal>
           </div>
-          <Reveal className="mt-8 text-center" delayMs={160}>
+          <Reveal className="mt-8" delayMs={160}>
             <Link to="/explore" className="inline-block">
               <Button variant="outline" className="gap-2">
                 {t("Explore live tournaments")}
@@ -306,94 +313,101 @@ export function LandingPage(): React.ReactElement {
         </div>
       </section>
 
-      {/* For schools & colleges */}
+      {/* For schools & colleges: split layout, headline beside a rows panel */}
       <section
         aria-labelledby="schools-heading"
         className="border-t border-border/60"
       >
-        <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
-          <Reveal className="text-center">
-            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              {t("For schools & colleges")}
-            </p>
+        <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[1fr,1.25fr] lg:items-center">
+          <Reveal>
             <h2
               id="schools-heading"
-              className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl"
+              className="text-2xl font-semibold tracking-tight sm:text-3xl"
             >
               {t("Built for institutions")}
             </h2>
+            <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base">
+              {t(
+                "Schools and colleges run the busiest sports calendars anywhere. Fixture is shaped around how they actually work.",
+              )}
+            </p>
           </Reveal>
-          <div className="mt-10 grid gap-4 sm:grid-cols-3">
-            <SchoolCard
-              icon={<School aria-hidden="true" className="h-5 w-5" />}
-              title={t("Sports days, sorted")}
-              body={t(
-                "Run the annual sports day on one timetable: events, houses, and results in one place.",
-              )}
-              delayMs={0}
-            />
-            <SchoolCard
-              icon={<Home aria-hidden="true" className="h-5 w-5" />}
-              title={t("House competitions")}
-              body={t(
-                "Points tables for houses across every event, updated the moment results land.",
-              )}
-              delayMs={80}
-            />
-            <SchoolCard
-              icon={<GraduationCap aria-hidden="true" className="h-5 w-5" />}
-              title={t("Roles for staff")}
-              body={t(
-                "PE staff score, teachers manage teams, principals watch live. Everyone gets exactly the access they need.",
-              )}
-              delayMs={160}
-            />
-          </div>
+          <Reveal delayMs={100}>
+            <div className="glass divide-y divide-border/60 rounded-xl border border-border shadow-sm">
+              <InstitutionRow
+                icon={<School aria-hidden="true" className="h-5 w-5" />}
+                title={t("Sports days, sorted")}
+                body={t(
+                  "Run the annual sports day on one timetable: events, houses, and results in one place.",
+                )}
+              />
+              <InstitutionRow
+                icon={<Home aria-hidden="true" className="h-5 w-5" />}
+                title={t("House competitions")}
+                body={t(
+                  "Points tables for houses across every event, updated the moment results land.",
+                )}
+              />
+              <InstitutionRow
+                icon={<GraduationCap aria-hidden="true" className="h-5 w-5" />}
+                title={t("Roles for staff")}
+                body={t(
+                  "PE staff score, teachers manage teams, principals watch live. Everyone gets exactly the access they need.",
+                )}
+              />
+            </div>
+          </Reveal>
         </div>
       </section>
 
-      {/* How it works */}
+      {/* How it works: numbered rail, no cards */}
       <section
         aria-labelledby="how-heading"
         className="border-t border-border/60 bg-background/30"
       >
-        <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
-          <Reveal className="text-center">
-            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              {t("From draft to full time")}
-            </p>
+        <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
+          <Reveal>
             <h2
               id="how-heading"
-              className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl"
+              className="text-2xl font-semibold tracking-tight sm:text-3xl"
             >
               {t("Three steps to matchday")}
             </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+              {t("From a blank draft to fans following live.")}
+            </p>
           </Reveal>
-          <div className="mt-10 grid gap-4 sm:grid-cols-3">
-            <Step
-              n="1"
-              title={t("Create your tournament")}
-              body={t(
-                "Pick the sport, format, venues and rules. Presets get you going, everything stays configurable.",
-              )}
-              delayMs={0}
+          <div className="relative mt-12">
+            <span
+              aria-hidden="true"
+              className="absolute left-[1.125rem] top-2 h-[calc(100%-1rem)] w-px bg-border/80 sm:left-1 sm:right-1 sm:top-[1.125rem] sm:h-px sm:w-auto"
             />
-            <Step
-              n="2"
-              title={t("Open registration")}
-              body={t(
-                "Schools and clubs register teams through public forms with access codes. Rosters map themselves.",
-              )}
-              delayMs={80}
-            />
-            <Step
-              n="3"
-              title={t("Generate fixtures & go live")}
-              body={t(
-                "One click builds the schedule around your constraints. Score live, fans follow in real time.",
-              )}
-              delayMs={160}
-            />
+            <ol className="grid gap-10 sm:grid-cols-3 sm:gap-6">
+              <TimelineStep
+                n="1"
+                title={t("Create your tournament")}
+                body={t(
+                  "Pick the sport, format, venues and rules. Presets get you going, everything stays configurable.",
+                )}
+                delayMs={0}
+              />
+              <TimelineStep
+                n="2"
+                title={t("Open registration")}
+                body={t(
+                  "Schools and clubs register teams through public forms with access codes. Rosters map themselves.",
+                )}
+                delayMs={80}
+              />
+              <TimelineStep
+                n="3"
+                title={t("Generate fixtures & go live")}
+                body={t(
+                  "One click builds the schedule around your constraints. Score live, fans follow in real time.",
+                )}
+                delayMs={160}
+              />
+            </ol>
           </div>
         </div>
       </section>
@@ -437,14 +451,11 @@ export function LandingPage(): React.ReactElement {
         aria-labelledby="roadmap-heading"
         className="border-t border-border/60 bg-background/30"
       >
-        <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
-          <Reveal className="text-center">
-            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              {t("Roadmap")}
-            </p>
+        <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
+          <Reveal>
             <h2
               id="roadmap-heading"
-              className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl"
+              className="text-2xl font-semibold tracking-tight sm:text-3xl"
             >
               {t("What's coming")}
             </h2>
@@ -487,24 +498,25 @@ export function LandingPage(): React.ReactElement {
         </div>
       </section>
 
-      {/* FAQ */}
-      <section
-        aria-labelledby="faq-heading"
-        className="border-t border-border/60"
-      >
-        <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
-          <Reveal className="text-center">
-            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              {t("FAQ")}
-            </p>
+      {/* Film window: a beat of pure footage before the questions */}
+      <FilmWindow line={t("Every ground. Every match. Live.")} />
+
+      {/* FAQ: editorial split, accordion beside the heading */}
+      <section aria-labelledby="faq-heading">
+        <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[0.8fr,1.2fr]">
+          <Reveal>
             <h2
               id="faq-heading"
-              className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl"
+              className="text-2xl font-semibold tracking-tight sm:text-3xl"
             >
               {t("Questions, answered")}
             </h2>
+            <p className="mt-3 max-w-sm text-sm leading-relaxed text-muted-foreground sm:text-base">
+              {t("The short version of what organizers and schools ask most.")}
+            </p>
           </Reveal>
-          <div className="mt-8 space-y-3">
+          <Reveal delayMs={100}>
+            <div className="space-y-3">
             <FaqItem q={t("Which sports can it run?")}>
               {t(
                 "Football is the reference sport, and the same chassis runs set-based games like table tennis, badminton, and sepak takraw. Formats, scoring, and rules stay configurable per competition.",
@@ -530,7 +542,8 @@ export function LandingPage(): React.ReactElement {
                 "Yes. Every organization is its own tenant with separate members, roles, and an append-only audit trail.",
               )}
             </FaqItem>
-          </div>
+            </div>
+          </Reveal>
         </div>
       </section>
 
@@ -850,38 +863,54 @@ function CountStat({
   return <Stat value={String(shown)} label={label} />;
 }
 
-function SchoolCard({
+/** A transparent break where the film alone carries the page: one statement
+ * line over the footage, no wash, no cards. The text-shadow in background
+ * tones keeps the line readable over any frame. */
+function FilmWindow({ line }: { line: string }): React.ReactElement {
+  return (
+    <section className="relative flex min-h-[38vh] items-center justify-center px-4 py-16 sm:min-h-[52vh]">
+      <BlurLine
+        text={line}
+        className="max-w-3xl text-center text-3xl font-semibold leading-tight tracking-tight text-foreground [text-shadow:0_2px_28px_hsl(var(--background)),0_0_12px_hsl(var(--background))] sm:text-5xl"
+      />
+    </section>
+  );
+}
+
+/** One row of the institutions panel: icon beside title + body, rows are
+ * separated by the parent's divide-y instead of individual cards. */
+function InstitutionRow({
   icon,
   title,
   body,
-  delayMs = 0,
 }: {
   icon: React.ReactNode;
   title: string;
   body: string;
-  delayMs?: number;
 }): React.ReactElement {
   return (
-    <Reveal delayMs={delayMs}>
-      <article className="glass h-full rounded-xl border border-border p-6 shadow-sm transition-shadow hover:shadow-md">
-        <span
-          aria-hidden="true"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"
-        >
-          {icon}
-        </span>
-        <h3 className="mt-4 text-base font-semibold tracking-tight text-foreground">
+    <div className="flex gap-4 p-5 sm:p-6">
+      <span
+        aria-hidden="true"
+        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+      >
+        {icon}
+      </span>
+      <div>
+        <h3 className="text-base font-semibold tracking-tight text-foreground">
           {title}
         </h3>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
           {body}
         </p>
-      </article>
-    </Reveal>
+      </div>
+    </div>
   );
 }
 
-function Step({
+/** One stop on the how-it-works rail: a number chip sitting on the
+ * connecting line (vertical on mobile, horizontal from sm up), no card. */
+function TimelineStep({
   n,
   title,
   body,
@@ -893,22 +922,22 @@ function Step({
   delayMs?: number;
 }): React.ReactElement {
   return (
-    <Reveal delayMs={delayMs}>
-      <article className="glass h-full rounded-xl border border-border p-6 shadow-sm">
-        <span
-          aria-hidden="true"
-          className="font-tabular inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-base font-semibold text-primary-foreground"
-        >
-          {n}
-        </span>
-        <h3 className="mt-4 text-base font-semibold tracking-tight text-foreground">
+    <li className="relative pl-14 sm:pl-0 sm:pt-14">
+      <span
+        aria-hidden="true"
+        className="font-tabular absolute left-0 top-0 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary text-base font-semibold text-primary-foreground"
+      >
+        {n}
+      </span>
+      <Reveal delayMs={delayMs}>
+        <h3 className="text-base font-semibold tracking-tight text-foreground">
           {title}
         </h3>
         <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
           {body}
         </p>
-      </article>
-    </Reveal>
+      </Reveal>
+    </li>
   );
 }
 
