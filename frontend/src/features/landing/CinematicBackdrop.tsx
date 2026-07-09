@@ -9,8 +9,8 @@ import { useBreakpoint } from "@/lib/useBreakpoint";
  * so the background quietly plays as content rides over it. A gradient scrim
  * keeps text readable over any frame.
  *
- * The film is TWO reels spliced (v1 aerial approach → v2 lights-on inside
- * the bowl) with a CROSSFADE around the cut, so the reel change reads as a
+ * The film is TWO reels spliced (v1 floodlit stadium football → v2 hillside
+ * court at dusk) with a CROSSFADE around the cut, so the reel change reads as a
  * dissolve instead of a glitchy hard cut. `?film=v1|v2|v3` previews a single
  * reel live without a redeploy. The playhead is damped, easing toward the
  * scroll position each frame, so scrubbing glides instead of stepping.
