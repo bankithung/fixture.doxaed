@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarClock,
@@ -319,9 +319,21 @@ export function FixtureSetupHub({
   // and "How each competition plays" are their OWN pages, reached from the
   // journey stepper; the hub body shows ONE at a time. "overview" is the
   // competition list — the Preview & publish surface (journey step 4).
-  const [view, setView] = useState<"overview" | "clashes" | "formats">(
-    "overview",
-  );
+  // The page lives in the URL (?view=) so a refresh returns to the SAME step
+  // instead of dumping a mid-setup organiser on Preview & publish (owner bug
+  // 2026-07-09); the `view` value itself is derived below once the journey
+  // data is in (no param = the furthest step still in progress).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const setView = (v: "overview" | "clashes" | "formats"): void => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("view", v);
+        return next;
+      },
+      { replace: true },
+    );
+  };
   // Sport to focus when arriving on the formats page from a card's "Change
   // format" deep-link; null = navigated via the step bar (no focus).
   const [formatsFocus, setFormatsFocus] = useState<string | null>(null);
@@ -515,6 +527,26 @@ export function FixtureSetupHub({
 
   const journey = journeyStep(readiness.data, competitions);
 
+  const leafComps = competitions.filter((c) => c.leafKey);
+  const formatsChosen =
+    leafComps.length > 0 &&
+    !leafComps.some((c) =>
+      c.readiness?.checks.some(
+        (k) => k.id === "format_chosen" && k.status === "warn",
+      ),
+    );
+  // The hub page currently showing: the URL param when present (a refresh
+  // returns exactly where the organiser was); otherwise the furthest step
+  // still in progress — formats while any competition sits on the implicit
+  // league default, else the Preview & publish list.
+  const viewParam = searchParams.get("view");
+  const view: "overview" | "clashes" | "formats" =
+    viewParam === "clashes" || viewParam === "formats" || viewParam === "overview"
+      ? viewParam
+      : journey !== "done" && leafComps.length > 0 && !formatsChosen
+        ? "formats"
+        : "overview";
+
   /** The Step 1 wizard renders INLINE as the page body, never as a modal:
    * explicit opens (gate CTA, receipt Edit, chips, fix deep-links) win; in
    * the gate state it IS the page until cancelled back to the gate card. */
@@ -561,14 +593,6 @@ export function FixtureSetupHub({
     "official_capacity",
   ]);
   const clashesConfigured = constraints.some((c) => CLASH_TYPES.has(c.type));
-  const leafComps = competitions.filter((c) => c.leafKey);
-  const formatsChosen =
-    leafComps.length > 0 &&
-    !leafComps.some((c) =>
-      c.readiness?.checks.some(
-        (k) => k.id === "format_chosen" && k.status === "warn",
-      ),
-    );
   const doneSteps: Partial<Record<1 | 2 | 3 | 4, boolean>> = {
     1: !globalsUnset,
     2: clashesConfigured,
