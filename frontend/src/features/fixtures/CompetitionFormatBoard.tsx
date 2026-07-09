@@ -144,14 +144,14 @@ function ModeSegmented({
     cn(
       "h-8 rounded-md px-3 text-xs font-medium transition-colors disabled:opacity-50",
       active
-        ? "bg-card text-foreground shadow-sm"
-        : "text-muted-foreground hover:text-foreground",
+        ? "bg-primary font-semibold text-primary-foreground shadow-sm"
+        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
     );
   return (
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className="inline-flex rounded-lg border border-border bg-muted/20 p-0.5"
+      className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5"
     >
       <button
         type="button"
