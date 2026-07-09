@@ -405,6 +405,20 @@ describe("FixtureSetupHub", () => {
     expect(screen.queryByTestId("competition-card-football.u15")).toBeNull();
   });
 
+  it("opening Step 1 from the stepper un-pins the page (refresh = next stage)", async () => {
+    // The wizard is component state (gone on refresh); if step 1 kept the
+    // ?view=overview pin, a refresh mid-wizard would land on Preview &
+    // publish. Observable here: cancelling out of the wizard falls back to
+    // the derived next stage (Clashes), not the pinned overview.
+    wrap(<FixtureSetupHub tournamentId="t1" />); // mounted pinned to overview
+    expect(await screen.findByTestId("global-setup-strip")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("journey-step-1"));
+    const panel = await screen.findByTestId("global-setup-inline");
+    await userEvent.click(within(panel).getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByTestId("add-clash-rule")).toBeInTheDocument();
+    expect(screen.queryByTestId("competition-card-football.u15")).toBeNull();
+  });
+
   it("ticks the Clashes & sessions step once a clash rule exists, anywhere in the flow", async () => {
     // The owner's bug: clashes were configured (via the assistant) but step 2
     // never showed as done. A stored clash constraint must tick step 2.

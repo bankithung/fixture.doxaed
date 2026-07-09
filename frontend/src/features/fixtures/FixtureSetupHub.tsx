@@ -652,7 +652,18 @@ export function FixtureSetupHub({
     // Stepper navigation is not a per-sport deep-link — clear any card focus.
     setFormatsFocus(null);
     if (n === 1) {
-      setView("overview");
+      // Opening the wizard UN-pins the page param: the wizard is component
+      // state (gone on refresh), so a stale ?view=overview pin would dump a
+      // mid-Step-1 refresh on Preview & publish instead of the next
+      // unfinished stage (owner bug 2026-07-09).
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("view");
+          return next;
+        },
+        { replace: true },
+      );
       setSetup({ step: 0, flow: true });
     } else {
       // Leaving Step 1 for a later page closes the inline wizard if it's open
