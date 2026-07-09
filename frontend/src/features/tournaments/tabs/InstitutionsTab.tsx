@@ -756,8 +756,8 @@ function ReviewMenu({
     const r = wrapRef.current?.getBoundingClientRect();
     if (r) {
       // Flip above the trigger near the bottom of the viewport (~34px/item;
-      // +1 row for Delete).
-      const { top, bottom } = flipPlacement(r, (REVIEW_ACTIONS.length + 1) * 34 + 10, 4);
+      // +2 rows for Edit submission and Delete).
+      const { top, bottom } = flipPlacement(r, (REVIEW_ACTIONS.length + 2) * 34 + 10, 4);
       setPos({ top, bottom, right: window.innerWidth - r.right });
     }
     setOpen(true);
@@ -826,6 +826,30 @@ function ReviewMenu({
       }),
   });
 
+  // Admin edit path: mint the bound, prefilled Stage-1 edit link and open it
+  // in a new tab. Resubmitting updates the SAME institution (never a
+  // duplicate) and refreshes its competitions, contacts and teams scoping.
+  // The tab is opened synchronously on click (popup blockers kill async
+  // window.open) and pointed at the form once the link is minted.
+  const editSubmission = useMutation({
+    mutationFn: (_tab: Window | null) =>
+      institutionsApi.editLink(tournamentId, inst.id),
+    onSuccess: (r, tab) => {
+      const url = window.location.origin + r.path;
+      if (tab) tab.location.href = url;
+      else window.open(url, "_blank", "noopener");
+      qc.invalidateQueries({ queryKey: ["t-institutions", tournamentId] });
+    },
+    onError: (e, tab) => {
+      tab?.close();
+      toast.push({
+        kind: "error",
+        title: t("Could not open the form"),
+        description: e instanceof ApiError ? (e.payload.detail ?? "") : "",
+      });
+    },
+  });
+
   return (
     <span ref={wrapRef} className="inline-block">
       <Button
@@ -853,6 +877,22 @@ function ReviewMenu({
               }}
               className="z-50 w-40 rounded-lg border border-border bg-popover p-1 text-sm text-popover-foreground shadow-md"
             >
+              {/* Edit the school's submission on the prefilled Stage-1 form
+                  (opens in a new tab; saving updates this same row). */}
+              <button
+                type="button"
+                role="menuitem"
+                disabled={editSubmission.isPending}
+                onClick={() => {
+                  setOpen(false);
+                  editSubmission.mutate(window.open("", "_blank"));
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
+                {t("Edit submission")}
+              </button>
+              <div className="my-1 border-t border-border" />
               {REVIEW_ACTIONS.map(({ status, label, Icon }) => {
                 const active = inst.status === status;
                 return (

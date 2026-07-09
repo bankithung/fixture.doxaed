@@ -360,8 +360,8 @@ export function PublicDirectoryPage(): React.ReactElement {
   return (
     <PublicShell wide tournamentName={d.tournament_name}>
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 pb-24 pt-6 sm:px-6 lg:pb-8">
-        {/* Page header: the tournament leads; while the form is open, a
-            register CTA links straight back to it. */}
+        {/* Page header: the tournament leads; the register CTA lives in the
+            panel toolbar beside Filters. */}
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
@@ -374,15 +374,6 @@ export function PublicDirectoryPage(): React.ReactElement {
               {d.form_title}
             </p>
           </div>
-          {d.form_open ? (
-            <Link
-              to={`/f/${formId}`}
-              className="inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <ClipboardList aria-hidden="true" className="h-4 w-4" />
-              {t("Register your institution")}
-            </Link>
-          ) : null}
         </header>
 
         {/* ONE panel (owner 2026-07-05): toolbar with the total + view tabs,
@@ -405,7 +396,7 @@ export function PublicDirectoryPage(): React.ReactElement {
                 {t("registered")}
               </span>
             </span>
-            <div className="flex items-center gap-2 sm:ml-auto">
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
               {tabsVisible ? (
                 /* PillNav re-cut (RangePills): gsap hover circle, token colors. */
                 <RangePills
@@ -417,6 +408,19 @@ export function PublicDirectoryPage(): React.ReactElement {
                   value={view}
                   onChange={(v) => setView(v as typeof view)}
                 />
+              ) : null}
+              {/* Register CTA sits beside Filters; short label on phones so the
+                  toolbar row never overflows. */}
+              {d.form_open ? (
+                <Link
+                  to={`/f/${formId}`}
+                  aria-label={t("Register your institution")}
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <ClipboardList aria-hidden="true" className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{t("Register your institution")}</span>
+                  <span className="sm:hidden">{t("Register")}</span>
+                </Link>
               ) : null}
               {/* Filters open the same right drawer as the admin pages. */}
               <Button
@@ -643,7 +647,9 @@ export function PublicDirectoryPage(): React.ReactElement {
                             className="h-6 w-6 shrink-0 rounded object-cover"
                           />
                         ) : null}
-                        <span className="block max-w-[12rem] truncate">{e.name}</span>
+                        <span className="block min-w-[8rem] max-w-[13rem] whitespace-normal break-words leading-snug sm:max-w-[24rem]">
+                          {e.name}
+                        </span>
                       </span>
                     </td>
                     {showType ? (
