@@ -204,15 +204,19 @@ export function CompetitionFormatBoard({
   const [staged, setStaged] = useState<Record<string, DrawConfigLayer>>({});
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [stagesOpen, setStagesOpen] = useState<Record<string, boolean>>({});
+  // One sport shown at a time behind bookmark tabs (owner ask 2026-07-09);
+  // null = the first sport until the user (or focusSport) picks one.
+  const [activeSport, setActiveSport] = useState<string | null>(null);
   // Staged per-GAME scoring overrides, keyed by leaf (value = override; null =
   // clear back to the sport default). Saved via the settings PATCH (frozen
   // rules), not draw_config — scoring is participant-facing (invariant 7).
   const [stagedScoring, setStagedScoring] = useState<Record<string, Scoring | null>>({});
 
-  // Arriving from a card's "Change format": open the targeted sport's
-  // per-category overrides and scroll its card into view.
+  // Arriving from a card's "Change format": select the targeted sport's tab,
+  // open its per-category overrides and scroll the board into view.
   useEffect(() => {
     if (!focusSport) return;
+    setActiveSport(focusSport);
     setOpen((o) => (o[focusSport] ? o : { ...o, [focusSport]: true }));
     const id = window.setTimeout(() => {
       document
@@ -250,6 +254,15 @@ export function CompetitionFormatBoard({
     }
     leavesBySport.get(c.sport)!.push(c);
   }
+
+  // The tab that is showing: the user's pick while it still exists, else the
+  // deep-link target, else the first sport.
+  const currentSport =
+    activeSport && leavesBySport.has(activeSport)
+      ? activeSport
+      : focusSport && leavesBySport.has(focusSport)
+        ? focusSport
+        : sportsInOrder[0];
 
   const dc = dcQ.data;
   const defaults: DrawConfig | undefined = dc?.defaults;
@@ -511,7 +524,7 @@ export function CompetitionFormatBoard({
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
               {t(
-                "Pick how each sport is played, it applies to every category. Open a sport to give one category a different format.",
+                "Each sport has its own tab. Pick how it plays, it applies to every category; override one inside.",
               )}
             </p>
           </div>
@@ -535,7 +548,64 @@ export function CompetitionFormatBoard({
             {t("Add competitions to this tournament to choose their formats.")}
           </div>
         ) : (
-          sportsInOrder.map((sp) => {
+          <div className="flex flex-col">
+            {/* Bookmark tabs — one folder tab per sport; the open tab fuses
+                into its card below (owner ask 2026-07-09: one sport at a
+                time instead of every sport stacked on the page). */}
+            <div
+              role="tablist"
+              aria-label={t("Sports")}
+              className="flex flex-wrap items-end gap-1 px-2"
+            >
+              {sportsInOrder.map((sp) => {
+                const on = sp === currentSport;
+                const n = leavesBySport.get(sp)!.length;
+                return (
+                  <button
+                    key={sp}
+                    type="button"
+                    role="tab"
+                    aria-selected={on}
+                    data-testid={`format-sport-tab-${sp}`}
+                    onClick={() => setActiveSport(sp)}
+                    className={cn(
+                      "relative flex max-w-full items-center gap-2 rounded-t-lg border px-3.5 py-2 text-[0.8125rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      on
+                        ? "z-10 -mb-px border-border border-b-transparent bg-card text-foreground"
+                        : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <Medal
+                      aria-hidden="true"
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0",
+                        on ? "text-primary" : "text-muted-foreground/70",
+                      )}
+                    />
+                    <span className="truncate">{sportName(sp)}</span>
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 py-0.5 font-tabular text-[0.6875rem] font-medium",
+                        on
+                          ? "bg-secondary text-secondary-foreground"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {n}
+                    </span>
+                    {sportDirty(sp) ? (
+                      <span
+                        aria-hidden="true"
+                        className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
+                      />
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+            {sportsInOrder
+              .filter((sp) => sp === currentSport)
+              .map((sp) => {
             const leaves = leavesBySport.get(sp)!;
             const fmt = sportFormat(sp);
             const isGroups = fmt === "groups_knockout";
@@ -550,25 +620,15 @@ export function CompetitionFormatBoard({
                 data-testid={`format-sport-${sp}`}
                 className="overflow-hidden bento-card star-rim rounded-lg border border-border bg-card"
               >
-                {/* Card header — the sport's identity + a derived structure summary. */}
+                {/* Card header — the open tab carries the sport's name, so the
+                    header holds the derived structure summary + Ask AI. */}
                 <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <Medal aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
                     <h3 className="text-sm font-semibold">{sportName(sp)}</h3>
-                    <span className="rounded-full bg-secondary px-2 py-0.5 font-tabular text-[0.6875rem] font-medium text-secondary-foreground">
-                      {leaves.length === 1
-                        ? t("1 category")
-                        : `${leaves.length} ${t("categories")}`}
-                    </span>
                     <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[0.6875rem] font-medium text-muted-foreground">
                       {structureSummary(sp)}
                     </span>
-                    {sportDirty(sp) ? (
-                      <span
-                        aria-hidden="true"
-                        className="h-1.5 w-1.5 rounded-full bg-primary"
-                      />
-                    ) : null}
                   </div>
                   <AskAiButton
                     variant="icon"
@@ -932,7 +992,8 @@ export function CompetitionFormatBoard({
                 </div>
               </div>
             );
-          })
+          })}
+          </div>
         )}
 
         {sportsInOrder.length > 0 ? (

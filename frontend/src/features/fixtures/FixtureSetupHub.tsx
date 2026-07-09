@@ -378,9 +378,12 @@ export function FixtureSetupHub({
       return c;
     };
     // Server readiness is the canonical competition list (every configured
-    // leaf appears, even before any team registers).
+    // leaf appears, even before any team registers). The payload carries no
+    // sport field; the leaf key's first dot segment IS the sport key (same
+    // convention the backend uses), so derive it here or leaves without a
+    // registered team group under a nameless sport on the format board.
     for (const r of readiness.data?.competitions ?? []) {
-      ensure(r.leaf_key, r.label, "").readiness = r;
+      ensure(r.leaf_key, r.label, r.leaf_key.split(".")[0] ?? "").readiness = r;
     }
     for (const tm of teams.data ?? []) {
       if (tm.status !== "registered") continue;
@@ -669,40 +672,30 @@ export function FixtureSetupHub({
     // (canManage) so the FAB never sits on top of a page's bottom-right actions
     // (the wizard's Next/Save, StageContinue's Continue).
     <div className={cn("flex flex-col gap-4", canManage && "pb-20")}>
-      {/* The "Fixture setup" page title is hidden while the When & Where wizard
-          owns the page · the wizard's own header (eyebrow + title) replaces it,
-          matching its reference design. */}
-      {!setupView ? (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <h2 className="text-base font-semibold">{t("Fixture setup")}</h2>
-            <p className="text-xs text-muted-foreground">
-              {t("Set up, then preview and publish.")}
-            </p>
-          </div>
-          {showToolbar ? (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {!showDoneBanner ? (
-                <Button
-                  size="sm"
-                  data-testid="share-schedule"
-                  disabled={!shareReady}
-                  onClick={() => void shareSchedule()}
-                >
-                  <Share2 aria-hidden="true" className="h-4 w-4" />
-                  {t("Share schedule")}
-                </Button>
-              ) : null}
-              <HubMoreMenu
-                canRepair={canRepair}
-                shareReady={shareReady}
-                bracketTo={routes.tournamentBracket(id)}
-                onReRun={() => setWizard({})}
-                onShiftDay={() => setShiftOpen(true)}
-                onPrint={openPublicSchedule}
-              />
-            </div>
+      {/* No page title here (owner ask 2026-07-09): the sticky step bar already
+          names the page, so the hub goes straight into content. Only the
+          done-state toolbar (Share + overflow) renders up top. */}
+      {showToolbar ? (
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          {!showDoneBanner ? (
+            <Button
+              size="sm"
+              data-testid="share-schedule"
+              disabled={!shareReady}
+              onClick={() => void shareSchedule()}
+            >
+              <Share2 aria-hidden="true" className="h-4 w-4" />
+              {t("Share schedule")}
+            </Button>
           ) : null}
+          <HubMoreMenu
+            canRepair={canRepair}
+            shareReady={shareReady}
+            bracketTo={routes.tournamentBracket(id)}
+            onReRun={() => setWizard({})}
+            onShiftDay={() => setShiftOpen(true)}
+            onPrint={openPublicSchedule}
+          />
         </div>
       ) : null}
 

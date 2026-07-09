@@ -79,6 +79,10 @@ function wrap(ui: React.ReactElement) {
 const mount = (comps = COMPS) =>
   wrap(<CompetitionFormatBoard tournamentId="t1" competitions={comps} />);
 
+/** Open a sport's bookmark tab (one sport card shows at a time). */
+const openSport = async (sp: string) =>
+  userEvent.click(await screen.findByTestId(`format-sport-tab-${sp}`));
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(tournamentsApi.drawConfig).mockResolvedValue(dc());
@@ -94,12 +98,18 @@ beforeEach(() => {
 });
 
 describe("CompetitionFormatBoard", () => {
-  it("renders one group per sport with its category count", async () => {
+  it("shows one bookmark tab per sport and swaps the open card", async () => {
     mount();
+    const ttTab = await screen.findByTestId("format-sport-tab-table_tennis");
+    expect(ttTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("format-sport-tab-sepak_takraw"))
+      .toHaveAttribute("aria-selected", "false");
+    // Only the open tab's card renders; clicking the other tab swaps it in.
     expect(await screen.findByTestId("format-sport-table_tennis")).toBeInTheDocument();
-    expect(screen.getByTestId("format-sport-sepak_takraw")).toBeInTheDocument();
-    expect(screen.getByText(/2 categories/i)).toBeInTheDocument(); // table tennis
-    expect(screen.getByText(/1 category/i)).toBeInTheDocument(); // sepak
+    expect(screen.queryByTestId("format-sport-sepak_takraw")).not.toBeInTheDocument();
+    await openSport("sepak_takraw");
+    expect(await screen.findByTestId("format-sport-sepak_takraw")).toBeInTheDocument();
+    expect(screen.queryByTestId("format-sport-table_tennis")).not.toBeInTheDocument();
   });
 
   it("sets a whole sport's format in one write to the sport layer", async () => {
@@ -121,6 +131,7 @@ describe("CompetitionFormatBoard", () => {
 
   it("group-stage→knockout exposes group size + advance and saves them", async () => {
     mount();
+    await openSport("sepak_takraw");
     await userEvent.click(
       await screen.findByTestId(
         "format-sport-sepak_takraw-format-groups_knockout",
@@ -146,6 +157,7 @@ describe("CompetitionFormatBoard", () => {
 
   it("defaults groups to balanced sizing and lets you turn it off", async () => {
     mount();
+    await openSport("sepak_takraw");
     await userEvent.click(
       await screen.findByTestId(
         "format-sport-sepak_takraw-format-groups_knockout",
@@ -195,6 +207,7 @@ describe("CompetitionFormatBoard", () => {
 
   it("sets a sport-level match duration (applies to all its categories)", async () => {
     mount();
+    await openSport("sepak_takraw");
     fireEvent.change(
       await screen.findByTestId("format-sport-sepak_takraw-duration"),
       { target: { value: "20" } },
@@ -213,6 +226,7 @@ describe("CompetitionFormatBoard", () => {
 
   it("inherits the sport's scoring default on each game's card", async () => {
     mount();
+    await openSport("sepak_takraw");
     // sepak is single-category → its scoring control sits on the sport card,
     // showing the inherited sepak profile (best of 3 · 21 pts · cap 25).
     const summary = await screen.findByTestId("format-sport-sepak_takraw-scoring-summary");
@@ -252,6 +266,7 @@ describe("CompetitionFormatBoard", () => {
 
   it("composes multiple stages and saves them to the sport layer", async () => {
     mount();
+    await openSport("sepak_takraw");
     await userEvent.click(
       await screen.findByTestId("format-sport-sepak_takraw-stages-toggle"),
     );
@@ -307,6 +322,7 @@ describe("CompetitionFormatBoard", () => {
 
   it("saves a per-game tie-breaker order via the settings PATCH", async () => {
     mount();
+    await openSport("sepak_takraw");
     // sepak is single-category → its tie-breakers sit on the sport card
     const id = "format-sport-sepak_takraw-tiebreakers";
     await userEvent.click(await screen.findByTestId(`${id}-toggle`));
@@ -336,6 +352,7 @@ describe("CompetitionFormatBoard", () => {
       settingsPayload({ can_edit: false, rules_frozen_at: "2026-06-01T00:00:00Z" }),
     );
     mount();
+    await openSport("sepak_takraw");
     const id = "format-sport-sepak_takraw-scoring";
     await userEvent.click(await screen.findByTestId(`${id}-toggle`));
     fireEvent.change(screen.getByTestId(`${id}-points`), { target: { value: "25" } });
