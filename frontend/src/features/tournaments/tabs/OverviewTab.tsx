@@ -20,7 +20,7 @@ import { StageStepper } from "../StageStepper";
 const TINT: Record<string, string> = {
   blue: "bg-info-muted text-info",
   violet: "bg-secondary text-secondary-foreground",
-  amber: "bg-warning-muted text-warning-foreground",
+  amber: "bg-warning-muted text-warning",
   emerald: "bg-success-muted text-success",
 };
 

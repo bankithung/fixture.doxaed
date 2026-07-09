@@ -384,7 +384,7 @@ export function MatchConsolePage(): React.ReactElement {
         {queued > 0 ? (
           <span
             data-testid="offline-queued"
-            className="inline-flex items-center gap-1.5 rounded-md bg-warning-muted px-2 py-1 font-tabular text-xs font-medium text-warning-foreground"
+            className="inline-flex items-center gap-1.5 rounded-md bg-warning-muted px-2 py-1 font-tabular text-xs font-medium text-warning"
           >
             {queued} {t("saved on this phone, will sync")}
           </span>

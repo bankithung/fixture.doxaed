@@ -708,7 +708,7 @@ export function InstitutionsTab(): React.ReactElement {
 
 const STATUS_CLS: Record<string, string> = {
   registered: "bg-primary/15 text-primary",
-  invited: "bg-warning-muted text-warning-foreground",
+  invited: "bg-warning-muted text-warning",
   withdrawn: "bg-muted text-muted-foreground",
   rejected: "bg-destructive/15 text-destructive",
 };

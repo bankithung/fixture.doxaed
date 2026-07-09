@@ -54,7 +54,7 @@ const TINTS = [
   "bg-primary/15 text-primary",
   "bg-success-muted text-success",
   "bg-info-muted text-info",
-  "bg-warning-muted text-warning-foreground",
+  "bg-warning-muted text-warning",
   "bg-secondary text-secondary-foreground",
   "bg-accent text-accent-foreground",
 ];

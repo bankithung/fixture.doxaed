@@ -72,7 +72,7 @@ export function FairnessPanel({
             <li
               key={`${fl.code}-${fl.team_id}-${i}`}
               data-testid={`fairness-flag-${fl.code}`}
-              className="text-xs text-warning-foreground"
+              className="text-xs text-warning"
             >
               <span className="font-medium">
                 {names.get(fl.team_id) || fl.team_id}

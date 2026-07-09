@@ -98,7 +98,7 @@ function StatCell({
       <p
         className={cn(
           "font-tabular text-2xl font-semibold leading-none",
-          muted && value > 0 && "text-warning-foreground",
+          muted && value > 0 && "text-warning",
         )}
       >
         {value}

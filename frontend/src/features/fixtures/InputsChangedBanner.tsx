@@ -29,7 +29,7 @@ export function InputsChangedBanner({
       className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/40 bg-warning-muted px-3 py-2"
     >
       <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0 text-warning" />
-      <p className="min-w-0 flex-1 text-sm text-warning-foreground">
+      <p className="min-w-0 flex-1 text-sm text-warning">
         {context === "accept"
           ? t(
               "Something changed while you were looking (a team or a setting). Nothing was saved. Run the preview again to continue.",

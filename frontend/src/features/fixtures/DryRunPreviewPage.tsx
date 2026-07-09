@@ -36,7 +36,6 @@ import { GroupCompositionView } from "./GroupCompositionView";
 import { MatchesByGroupGrid } from "./MatchesByGroupGrid";
 import { PreviewFilterBar } from "./PreviewFilterBar";
 import { competitionLabel, sportKey } from "./previewFilters";
-import { SetupJourneyHeader } from "./SetupJourneyHeader";
 import { sideName } from "./sideName";
 import { ViolationsPanel } from "./ViolationsPanel";
 
@@ -415,18 +414,10 @@ export function DryRunPreviewPage(): React.ReactElement {
         {t("Back to fixture setup")}
       </Link>
 
-      <SetupJourneyHeader
-        step={3}
-        compact
-        activeStep={4}
-        doneSteps={{ 1: true, 3: true }}
-        onStepClick={() => navigate(routes.tournamentFixtures(id))}
-      />
-
       <div className="flex flex-col gap-0.5">
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <h1 className="text-xl font-semibold tracking-tight">
-            {t("Step 4 · Preview & publish")}
+            {t("Preview")}
           </h1>
           {label ? (
             <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
@@ -457,7 +448,7 @@ export function DryRunPreviewPage(): React.ReactElement {
           data-testid="skipped-leaves-notice"
           className="rounded-xl border border-warning/40 bg-warning-muted px-4 py-3"
         >
-          <p className="text-sm font-medium text-warning-foreground">
+          <p className="text-sm font-medium text-warning">
             {t(
               `${skippedLeaves.length} ${skippedLeaves.length === 1 ? "competition is" : "competitions are"} not drawn yet (fewer than 2 teams). Publishing skips them.`,
             )}
@@ -545,7 +536,7 @@ export function DryRunPreviewPage(): React.ReactElement {
                 {warnings.length ? (
                   <ul className="flex flex-col gap-1">
                     {warnings.map((w, i) => (
-                      <li key={i} className="text-xs text-warning-foreground">
+                      <li key={i} className="text-xs text-warning">
                         {t(WARNING_LABELS[w.code!] ?? w.code!)}
                       </li>
                     ))}

@@ -46,7 +46,7 @@ function statusMeta(m: ControlRoomMatch): {
   if (isCalled(m)) {
     return {
       label: "Called",
-      cls: "bg-warning-muted text-warning-foreground",
+      cls: "bg-warning-muted text-warning",
       live: false,
     };
   }
@@ -144,7 +144,7 @@ export function MatchTile({
         {delayMinutes ? (
           <span
             data-testid={`delay-${match.id}`}
-            className="rounded bg-warning-muted px-1.5 py-0.5 font-tabular text-[0.6875rem] font-medium text-warning-foreground"
+            className="rounded bg-warning-muted px-1.5 py-0.5 font-tabular text-[0.6875rem] font-medium text-warning"
           >
             +{delayMinutes} {t("min")}
           </span>

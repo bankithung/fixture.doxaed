@@ -41,7 +41,7 @@ export function ErrorPage({
         <CardHeader className="items-center text-center">
           <span
             aria-hidden="true"
-            className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-warning-muted text-warning-foreground"
+            className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-warning-muted text-warning"
           >
             <AlertTriangle className="h-7 w-7" />
           </span>

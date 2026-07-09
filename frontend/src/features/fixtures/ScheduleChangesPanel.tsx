@@ -33,10 +33,10 @@ const KIND_LABELS: Record<string, string> = {
 const KIND_CLASSES: Record<string, string> = {
   scheduled: "bg-success-muted text-success",
   rescheduled: "bg-primary/15 text-primary",
-  delayed: "bg-warning-muted text-warning-foreground",
+  delayed: "bg-warning-muted text-warning",
   retimed: "bg-primary/15 text-primary",
   swapped: "bg-accent text-accent-foreground",
-  day_shifted: "bg-warning-muted text-warning-foreground",
+  day_shifted: "bg-warning-muted text-warning",
   engine_rerun: "bg-secondary text-secondary-foreground",
   locked: "bg-muted text-muted-foreground",
   unlocked: "bg-muted text-muted-foreground",

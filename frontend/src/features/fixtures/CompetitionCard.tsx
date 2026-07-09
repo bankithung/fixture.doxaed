@@ -22,7 +22,7 @@ const CHIP: Record<CompStatus, { label: string; cls: string }> = {
   ready: { label: "Ready", cls: "bg-primary/15 text-primary" },
   needs_setup: {
     label: "Action needed",
-    cls: "bg-warning-muted text-warning-foreground",
+    cls: "bg-warning-muted text-warning",
   },
   needs_teams: {
     label: "Waiting for teams",

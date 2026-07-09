@@ -58,7 +58,7 @@ function statusMeta(status: string): { label: string; cls: string; live: boolean
   if (status === "postponed" || status === "abandoned") {
     return {
       label: status,
-      cls: "bg-warning-muted text-warning-foreground",
+      cls: "bg-warning-muted text-warning",
       live: false,
     };
   }

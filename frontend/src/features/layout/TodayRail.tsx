@@ -104,7 +104,7 @@ export function TodayRail(): React.ReactElement {
       {needs.length > 0 ? (
         <div className="rounded-xl border border-border bg-card shadow-sm">
           <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-            <CircleAlert aria-hidden="true" className="h-4 w-4 text-warning-foreground" />
+            <CircleAlert aria-hidden="true" className="h-4 w-4 text-warning" />
             <h2 className="text-sm font-semibold">{t("Needs you")}</h2>
           </div>
           <ul className="divide-y divide-border">

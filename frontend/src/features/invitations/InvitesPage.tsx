@@ -75,7 +75,7 @@ const STATUS_STYLES: Record<
 > = {
   pending: {
     label: "Pending",
-    cls: "bg-warning-muted text-warning-foreground",
+    cls: "bg-warning-muted text-warning",
   },
   accepted: {
     label: "Accepted",

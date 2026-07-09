@@ -190,8 +190,8 @@ describe("DryRunPreviewPage", () => {
         include_schedule: true,
       }),
     );
-    // step 4 journey header (Preview & publish) + the trial-run framing
-    expect(screen.getByText("Step 4 · Preview & publish")).toBeInTheDocument();
+    // plain "Preview" title (no journey stepper here) + the trial-run framing
+    expect(screen.getByText("Preview")).toBeInTheDocument();
     expect(
       screen.getByText("This is a trial run. Nothing is saved until you publish."),
     ).toBeInTheDocument();

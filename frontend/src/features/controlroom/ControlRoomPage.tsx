@@ -173,7 +173,7 @@ function OpsHeaderBand({
           </div>
         </div>
         {delayed > 0 ? (
-          <p className="truncate font-tabular text-xs text-warning-foreground">
+          <p className="truncate font-tabular text-xs text-warning">
             {delayed} {t("running late")}
           </p>
         ) : null}
@@ -185,7 +185,7 @@ function OpsHeaderBand({
           <span
             className={cn(
               "font-tabular text-3xl font-semibold leading-none",
-              awaiting > 0 || noVenue > 0 ? "text-warning-foreground" : null,
+              awaiting > 0 || noVenue > 0 ? "text-warning" : null,
             )}
           >
             {awaiting + noVenue}

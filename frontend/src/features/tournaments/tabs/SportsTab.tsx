@@ -1735,7 +1735,7 @@ export function SportsTab(): React.ReactElement {
                       />
                       <span className="flex-1">{s.name}</span>
                       {existing > 0 ? (
-                        <span className="text-xs text-warning-foreground">
+                        <span className="text-xs text-warning">
                           {existing} {t("will be replaced")}
                         </span>
                       ) : null}

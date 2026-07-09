@@ -29,7 +29,7 @@ function StatusIcon({ status }: { status: string }): React.ReactElement {
     return (
       <AlertTriangle
         aria-hidden="true"
-        className="h-4 w-4 shrink-0 text-warning-foreground"
+        className="h-4 w-4 shrink-0 text-warning"
       />
     );
   }

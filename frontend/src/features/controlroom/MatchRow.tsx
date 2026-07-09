@@ -70,7 +70,7 @@ export function MatchRow({
               {match.venue}
             </span>
           ) : (
-            <span className="rounded bg-warning-muted px-1.5 py-0.5 text-[0.6875rem] font-medium text-warning-foreground">
+            <span className="rounded bg-warning-muted px-1.5 py-0.5 text-[0.6875rem] font-medium text-warning">
               {t("No court")}
             </span>
           )}
@@ -124,7 +124,7 @@ export function MatchRow({
         {delayMinutes ? (
           <span
             data-testid={`delay-${match.id}`}
-            className="rounded bg-warning-muted px-1 py-0.5 font-tabular font-medium text-warning-foreground"
+            className="rounded bg-warning-muted px-1 py-0.5 font-tabular font-medium text-warning"
           >
             +{delayMinutes}
           </span>
