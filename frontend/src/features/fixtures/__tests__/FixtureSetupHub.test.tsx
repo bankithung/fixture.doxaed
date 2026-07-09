@@ -104,14 +104,19 @@ const TEAMS: TeamRow[] = [
   },
 ];
 
-function wrap(ui: React.ReactElement) {
+// Most tests exercise the Preview & publish surface, so mount there
+// explicitly (with no ?view param the hub opens the next unfinished stage).
+function wrap(
+  ui: React.ReactElement,
+  path = "/tournaments/t1/fixtures?view=overview",
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
       <ToastProvider>
-        <MemoryRouter initialEntries={["/tournaments/t1/fixtures"]}>
+        <MemoryRouter initialEntries={[path]}>
           <Routes>
             {/* AppShell renders the journey stepper (FixtureStepBar) under the
                 top bar from state the hub publishes; mount it alongside so the
@@ -388,6 +393,15 @@ describe("FixtureSetupHub", () => {
     expect(
       await screen.findByTestId("format-sport-football"),
     ).toBeInTheDocument();
+    expect(screen.queryByTestId("competition-card-football.u15")).toBeNull();
+  });
+
+  it("with no ?view param, opens the next unfinished stage (Clashes after Step 1)", async () => {
+    // Step 1 is done (READINESS globals pass) and no clash rule exists yet →
+    // a fresh load / refresh lands on Clashes & sessions, NOT Preview &
+    // publish (owner ask 2026-07-09).
+    wrap(<FixtureSetupHub tournamentId="t1" />, "/tournaments/t1/fixtures");
+    expect(await screen.findByTestId("add-clash-rule")).toBeInTheDocument();
     expect(screen.queryByTestId("competition-card-football.u15")).toBeNull();
   });
 

@@ -535,17 +535,30 @@ export function FixtureSetupHub({
         (k) => k.id === "format_chosen" && k.status === "warn",
       ),
     );
-  // The hub page currently showing: the URL param when present (a refresh
-  // returns exactly where the organiser was); otherwise the furthest step
-  // still in progress — formats while any competition sits on the implicit
-  // league default, else the Preview & publish list.
+  // The three constraint types the "Clashes & sessions" page owns.
+  const constraints = settings.data?.constraints ?? [];
+  const CLASH_TYPES = new Set([
+    "no_concurrent_competitions",
+    "category_session_window",
+    "official_capacity",
+  ]);
+  const clashesConfigured = constraints.some((c) => CLASH_TYPES.has(c.type));
+  // The hub page currently showing: the URL param when present (a stepper
+  // click writes it, so a refresh returns to that page); otherwise the NEXT
+  // stage in journey order (owner ask 2026-07-09: after a refresh, land on
+  // the first stage not done yet — Step 1 done means open Clashes, never
+  // skip ahead to Preview & publish until the draws are done).
   const viewParam = searchParams.get("view");
   const view: "overview" | "clashes" | "formats" =
     viewParam === "clashes" || viewParam === "formats" || viewParam === "overview"
       ? viewParam
-      : journey !== "done" && leafComps.length > 0 && !formatsChosen
-        ? "formats"
-        : "overview";
+      : journey === "done"
+        ? "overview"
+        : !clashesConfigured
+          ? "clashes"
+          : !formatsChosen && leafComps.length > 0
+            ? "formats"
+            : "overview";
 
   /** The Step 1 wizard renders INLINE as the page body, never as a modal:
    * explicit opens (gate CTA, receipt Edit, chips, fix deep-links) win; in
@@ -585,14 +598,6 @@ export function FixtureSetupHub({
    * (Clashes & sessions) is optional; it ticks once any clash rule or session
    * window exists. Step 3 ticks when no competition is still on the implicit
    * league default. Step 4 ticks when every eligible competition is drawn. */
-  const constraints = settings.data?.constraints ?? [];
-  // The three constraint types the "Clashes & sessions" page owns.
-  const CLASH_TYPES = new Set([
-    "no_concurrent_competitions",
-    "category_session_window",
-    "official_capacity",
-  ]);
-  const clashesConfigured = constraints.some((c) => CLASH_TYPES.has(c.type));
   const doneSteps: Partial<Record<1 | 2 | 3 | 4, boolean>> = {
     1: !globalsUnset,
     2: clashesConfigured,
