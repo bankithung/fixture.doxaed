@@ -31,6 +31,14 @@ export const qk = {
   scheduleChanges: (id: string) => ["t-schedule-changes", id] as const,
   /** Control-room day aggregate (control room spec §2.a) — extend with the day. */
   controlRoom: (id: string) => ["t-control-room", id] as const,
+  /** Guest Lens campaign overview (campaign + stats + passes). */
+  lens: (id: string) => ["t-lens", id] as const,
+  /** Guest Lens photo moderation list — extend with filter params. */
+  lensPhotos: (id: string) => ["t-lens-photos", id] as const,
+  /** Public pass context for the no-login upload page (keyed on the token). */
+  lensPass: (token: string) => ["lens-pass", token] as const,
+  /** Public shared album (approved photos, slug+UUID pair). */
+  publicAlbum: (slug: string, id: string) => ["public-album", slug, id] as const,
 };
 
 /**
@@ -56,6 +64,8 @@ export function invalidateTournament(qc: QueryClient, id: string): void {
     qk.fixtureReadiness(id),
     qk.scheduleChanges(id),
     qk.controlRoom(id),
+    qk.lens(id),
+    qk.lensPhotos(id),
   ];
   for (const key of keys) qc.invalidateQueries({ queryKey: key });
   // The tournaments hub may show this tournament's summary too.

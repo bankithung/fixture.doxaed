@@ -37,6 +37,7 @@ from apps.fixtures.views import (
     PublicTournamentScheduleView,
     PublicTournamentStandingsView,
 )
+from apps.lens.views import PublicTournamentAlbumView
 from apps.live.sse import notification_stream, tournament_stream
 from apps.organizations.views import (  # noqa: E402
     InvitationAcceptByIdView,
@@ -129,6 +130,14 @@ api_v1 = [
         PublicBadgeAwardView.as_view(),
         name="public-badge-award",
     ),
+    # Guest Lens (spec 2026-07-10): the public shared album + the no-login
+    # QR-pass upload tree (apps/lens/urls.py).
+    path(
+        "public/tournaments/<slug:slug>/<uuid:tournament_id>/album/",
+        PublicTournamentAlbumView.as_view(),
+        name="public-tournament-album",
+    ),
+    path("lens/", include("apps.lens.urls")),
     path(
         "public/tournaments/",
         PublicTournamentDirectoryView.as_view(),

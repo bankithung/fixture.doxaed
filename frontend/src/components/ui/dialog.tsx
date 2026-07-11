@@ -20,6 +20,9 @@ export interface DialogProps {
   children: React.ReactNode;
 }
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function Dialog({
   open,
   onOpenChange,
@@ -27,6 +30,9 @@ export function Dialog({
   variant = "center",
   children,
 }: DialogProps): React.ReactElement | null {
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const restoreRef = React.useRef<HTMLElement | null>(null);
+
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -35,6 +41,50 @@ export function Dialog({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onOpenChange]);
+
+  // Focus management (WCAG 2.1 AA, invariant 13): move focus into the panel on
+  // open, trap Tab within it while open, and restore focus to the opener on
+  // close so keyboard/screen-reader users are never left behind the overlay.
+  React.useEffect(() => {
+    if (!open) return;
+    restoreRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const panel = panelRef.current;
+    const focusables = (): HTMLElement[] =>
+      panel ? Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)) : [];
+    const first = focusables()[0];
+    if (first) first.focus();
+    else panel?.focus();
+
+    const onTab = (e: KeyboardEvent): void => {
+      if (e.key !== "Tab" || !panel) return;
+      const items = focusables();
+      if (items.length === 0) {
+        e.preventDefault();
+        panel.focus();
+        return;
+      }
+      const firstEl = items[0];
+      const lastEl = items[items.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey) {
+        if (active === firstEl || !panel.contains(active)) {
+          e.preventDefault();
+          lastEl.focus();
+        }
+      } else if (active === lastEl || !panel.contains(active)) {
+        e.preventDefault();
+        firstEl.focus();
+      }
+    };
+    document.addEventListener("keydown", onTab, true);
+    return () => {
+      document.removeEventListener("keydown", onTab, true);
+      restoreRef.current?.focus?.();
+    };
+  }, [open]);
 
   if (!open) return null;
   // Portaled to <body>: `fixed` positions against the viewport only while no
@@ -58,8 +108,10 @@ export function Dialog({
       }}
     >
       <div
+        ref={panelRef}
+        tabIndex={-1}
         className={cn(
-          "w-full max-w-md border bg-card shadow-lg",
+          "w-full max-w-md border bg-card shadow-lg focus:outline-none",
           variant === "sheet"
             ? "max-h-[85vh] overflow-y-auto rounded-t-2xl p-4 pb-6 sm:rounded-lg sm:p-6"
             : "rounded-lg p-6",

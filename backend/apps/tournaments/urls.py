@@ -22,6 +22,19 @@ from apps.fixtures.views import (
     TournamentVenueDetailView,
     TournamentVenuesView,
 )
+from apps.lens.views import (
+    LensCloseView,
+    LensMintPassesView,
+    LensOpenView,
+    LensOverviewView,
+    LensPassRevokeView,
+    LensPassRotateView,
+    LensPhotoApproveView,
+    LensPhotoAwardView,
+    LensPhotoHideView,
+    LensPhotoListView,
+    LensReopenView,
+)
 from apps.forms.views import (
     GenerateInstitutionFormView,
     GenerateTeamFormView,
@@ -317,5 +330,60 @@ urlpatterns = [
         "<uuid:tournament_id>/complete/",
         TournamentCompleteView.as_view(),
         name="tournament-complete",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/",
+        LensOverviewView.as_view(),
+        name="tournament-lens",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/open/",
+        LensOpenView.as_view(),
+        name="tournament-lens-open",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/close/",
+        LensCloseView.as_view(),
+        name="tournament-lens-close",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/reopen/",
+        LensReopenView.as_view(),
+        name="tournament-lens-reopen",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/passes/mint/",
+        LensMintPassesView.as_view(),
+        name="tournament-lens-passes-mint",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/passes/<uuid:pass_id>/rotate/",
+        LensPassRotateView.as_view(),
+        name="tournament-lens-pass-rotate",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/passes/<uuid:pass_id>/revoke/",
+        LensPassRevokeView.as_view(),
+        name="tournament-lens-pass-revoke",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/photos/",
+        LensPhotoListView.as_view(),
+        name="tournament-lens-photos",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/photos/<uuid:photo_id>/approve/",
+        LensPhotoApproveView.as_view(),
+        name="tournament-lens-photo-approve",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/photos/<uuid:photo_id>/hide/",
+        LensPhotoHideView.as_view(),
+        name="tournament-lens-photo-hide",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/photos/<uuid:photo_id>/award/",
+        LensPhotoAwardView.as_view(),
+        name="tournament-lens-photo-award",
     ),
 ]

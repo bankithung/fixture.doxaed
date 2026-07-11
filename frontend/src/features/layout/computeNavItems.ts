@@ -3,6 +3,7 @@ import {
   BarChart3,
   Building2,
   CalendarClock,
+  Camera,
   FileText,
   LayoutDashboard,
   ListChecks,
@@ -234,6 +235,16 @@ export function computeTournamentNav(
         href: routes.tournamentTeams(tournamentId),
         icon: Building2,
       },
+      // Guest Lens: the shared event album captured by visiting schools
+      // (QR pass cards, moderation, awards) — managers only.
+      canManage
+        ? {
+            key: "lens",
+            label: t("Guest Lens"),
+            href: routes.tournamentLens(tournamentId),
+            icon: Camera,
+          }
+        : null,
       // The fan-facing site, one hop away (replaces the workspace ribbon).
       opts.slug
         ? {
@@ -348,6 +359,17 @@ export function computeTournamentNav(
           label: t("Control room"),
           href: routes.tournamentControl(tournamentId),
           icon: Radio,
+          ...gate("ready"),
+        }
+      : null,
+    // Guest Lens — meaningless before the schedule exists, so it stays locked
+    // until the fixtures are generated (stage `ready`), like the control room.
+    canManage
+      ? {
+          key: "lens",
+          label: t("Guest Lens"),
+          href: routes.tournamentLens(tournamentId),
+          icon: Camera,
           ...gate("ready"),
         }
       : null,

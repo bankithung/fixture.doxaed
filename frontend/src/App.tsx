@@ -88,6 +88,11 @@ const HousePointsPage = lazy(() => import("@/features/orgs/HousePointsPage").the
 const OrgBrandingPage = lazy(() => import("@/features/orgs/OrgBrandingPage").then((m) => ({ default: m.OrgBrandingPage })));
 const OrgAuditLogPage = lazy(() => import("@/features/orgs/OrgAuditLogPage").then((m) => ({ default: m.OrgAuditLogPage })));
 const ModuleMatrixPage = lazy(() => import("@/features/permissions/ModuleMatrixPage").then((m) => ({ default: m.ModuleMatrixPage })));
+// Guest Lens (36 Shots Challenge): manager console + the no-login pass
+// upload page + the public shared album (spec 2026-07-10).
+const LensConsolePage = lazy(() => import("@/features/lens/LensConsolePage").then((m) => ({ default: m.LensConsolePage })));
+const LensUploadPage = lazy(() => import("@/features/lens/LensUploadPage").then((m) => ({ default: m.LensUploadPage })));
+const PublicAlbumPage = lazy(() => import("@/features/lens/PublicAlbumPage").then((m) => ({ default: m.PublicAlbumPage })));
 
 /** Listen for global auth events fired by the query client. */
 function AuthBusBridge(): null {
@@ -190,6 +195,9 @@ export default function App(): React.ReactElement {
               <Route path="/t/:slug/:id/bracket" element={<PublicBracketPage />} />
               <Route path="/t/:slug/:id/team/:teamId" element={<PublicTeamPage />} />
               <Route path="/t/:slug/:id/school/:instId" element={<PublicSchoolPage />} />
+              {/* Guest Lens: QR-card upload page + the public shared album. */}
+              <Route path="/lens/:token" element={<LensUploadPage />} />
+              <Route path="/t/:slug/:id/album" element={<PublicAlbumPage />} />
               <Route path="/explore" element={<ExplorePage />} />
               <Route path="/cert/:awardId" element={<CertificatePage />} />
               <Route path="/t/:slug/:id/display" element={<VenueDisplayPage />} />
@@ -226,6 +234,7 @@ export default function App(): React.ReactElement {
                   <Route path="crew" element={<CrewPage />} />
                   <Route path="leaders" element={<LeadersPage />} />
                   <Route path="changes" element={<ChangeHistoryPage />} />
+                  <Route path="lens" element={<LensConsolePage />} />
                   <Route path="settings" element={<SettingsRoute />} />
                 </Route>
                 <Route

@@ -108,6 +108,14 @@ export const routes = {
   /** Public group standings, every competition's tables (no login). */
   publicStandings: (slug: string, id: string) =>
     `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/standings`,
+  /** Guest Lens campaign console (manager: cards, moderation, awards). */
+  tournamentLens: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/lens`,
+  /** Public no-login photo upload page a Guest Lens QR card opens. */
+  lensUpload: (token: string) => `/lens/${encodeURIComponent(token)}`,
+  /** Public shared event album (approved Guest Lens photos, no login). */
+  publicAlbum: (slug: string, id: string) =>
+    `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/album`,
   /** Legacy live-scores URL; redirects to the Matches tab (live band). */
   publicLive: (slug: string, id: string) =>
     `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/live`,

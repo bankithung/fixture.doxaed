@@ -144,6 +144,7 @@ describe("computeTournamentNav", () => {
       "members",
       "fixtures",
       "control",
+      "lens",
       "settings",
     ]);
   });
@@ -278,6 +279,7 @@ describe("computeTournamentNav", () => {
       "leaders",
       "crew",
       "directory",
+      "lens",
       "public",
     ]);
     // Public page deep-links with the TOURNAMENT slug (slug+UUID pair) —
