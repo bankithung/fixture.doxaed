@@ -205,6 +205,27 @@ describe("CompetitionFormatBoard", () => {
     );
   });
 
+  it("overrides third place for one category, saved to that leaf layer", async () => {
+    mount();
+    await userEvent.click(
+      await screen.findByTestId("format-sport-table_tennis-format-knockout"),
+    );
+    await userEvent.click(screen.getByTestId("format-sport-table_tennis-customize"));
+    await userEvent.click(
+      await screen.findByTestId("format-leaf-table_tennis.u14.boys.singles-third-place"),
+    );
+    await userEvent.click(screen.getByTestId("save-formats"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({
+          leaf_key: "table_tennis.u14.boys.singles",
+          config: expect.objectContaining({ third_place: true }),
+        }),
+      ),
+    );
+  });
+
   it("can override one category's format independently of its sport", async () => {
     mount();
     await userEvent.click(

@@ -981,6 +981,32 @@ export function CompetitionFormatBoard({
                                   </div>
                                 )}
 
+                                {/* Third place playoff for THIS category only
+                                    (inherits the sport's setting until touched). */}
+                                {!leafMulti &&
+                                ["knockout", "groups_knockout"].includes(own || fmt) ? (
+                                  <label className="flex w-fit items-center gap-2 text-sm text-foreground">
+                                    <input
+                                      type="checkbox"
+                                      data-testid={`format-leaf-${c.leafKey}-third-place`}
+                                      disabled={!canManage}
+                                      className="h-4 w-4 rounded border-input accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                      checked={
+                                        (layerVal(c.leafKey, "third_place") as
+                                          | boolean
+                                          | undefined) ??
+                                        boolParam(sp, "third_place", false)
+                                      }
+                                      onChange={(e) =>
+                                        stage(c.leafKey, {
+                                          third_place: e.target.checked,
+                                        })
+                                      }
+                                    />
+                                    {t("Third place match")}
+                                  </label>
+                                ) : null}
+
                                 <label className="flex flex-col gap-1.5">
                                   <span className="text-xs font-medium text-foreground">
                                     {t("Length")}
