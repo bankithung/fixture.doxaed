@@ -15,11 +15,6 @@ import { ApiError } from "@/types/api";
 type Role = "" | "starter" | "substitute";
 type ViewMode = "list" | "court";
 
-/** Tap to cycle a player: Out -> Starter -> Bench -> Out. */
-function nextRole(r: Role): Role {
-  return r === "" ? "starter" : r === "starter" ? "substitute" : "";
-}
-
 /**
  * Pre-kickoff team sheets (the backend was complete with zero UI): declare
  * starters and bench per side, save, then confirm to lock the official
@@ -143,7 +138,7 @@ export function LineupPanel({
         <h2 className="text-sm font-semibold">{t("Team sheets")}</h2>
         <span className="hidden text-xs text-muted-foreground sm:inline">
           {view === "list"
-            ? t("Tap a player: start, bench, out. Confirm locks the sheet.")
+            ? t("Set each player to Start, Bench or Out. Confirm locks the sheet.")
             : t("Read only preview of the sheets.")}
         </span>
         <div
@@ -194,41 +189,80 @@ export function LineupPanel({
                   {starters} {t("start")} · {bench} {t("bench")}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {team.players.map((p) => {
-                  const r = teamRoles[p.id] ?? "";
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      disabled={locked}
-                      aria-label={`${p.name}: ${r || t("out")}`}
-                      onClick={() =>
-                        setRoles((all) => ({
-                          ...all,
-                          [team.id]: { ...teamRoles, [p.id]: nextRole(r) },
-                        }))
-                      }
-                      className={cn(
-                        "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
-                        r === "starter"
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : r === "substitute"
-                            ? "border-primary/40 bg-primary/10 text-primary"
-                            : "border-border bg-card text-muted-foreground hover:bg-accent",
-                      )}
-                    >
-                      {p.jersey_no ? `#${p.jersey_no} ` : ""}
-                      {p.name}
-                    </button>
-                  );
-                })}
-                {team.players.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    {t("No registered players on this team.")}
-                  </p>
-                ) : null}
-              </div>
+              {team.players.length > 0 ? (
+                <div className="flex flex-col overflow-hidden rounded-lg border border-border">
+                  {team.players.map((p, i) => {
+                    const r = teamRoles[p.id] ?? "";
+                    return (
+                      <div
+                        key={p.id}
+                        className={cn(
+                          "flex items-center gap-3 px-3 py-2",
+                          i > 0 && "border-t border-border",
+                          r === "starter" && "bg-primary/5",
+                        )}
+                      >
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-secondary font-tabular text-xs font-semibold text-secondary-foreground">
+                          {p.jersey_no != null
+                            ? p.jersey_no
+                            : (p.name.charAt(0) || "?").toUpperCase()}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{p.name}</p>
+                          {p.position ? (
+                            <p className="truncate text-[0.6875rem] text-muted-foreground">
+                              {p.position}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div
+                          role="radiogroup"
+                          aria-label={`${p.name} ${t("role")}`}
+                          className="inline-flex shrink-0 rounded-lg border border-border bg-muted/20 p-0.5"
+                        >
+                          {(
+                            [
+                              ["starter", t("Start")],
+                              ["substitute", t("Bench")],
+                              ["", t("Out")],
+                            ] as const
+                          ).map(([value, lbl]) => (
+                            <button
+                              key={value || "out"}
+                              type="button"
+                              role="radio"
+                              aria-checked={r === value}
+                              disabled={locked}
+                              onClick={() =>
+                                setRoles((all) => ({
+                                  ...all,
+                                  [team.id]: { ...teamRoles, [p.id]: value },
+                                }))
+                              }
+                              className={cn(
+                                "h-6 rounded-md px-2 text-[0.6875rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+                                r === value
+                                  ? value === "starter"
+                                    ? "bg-primary text-primary-foreground"
+                                    : value === "substitute"
+                                      ? "bg-primary/15 text-primary"
+                                      : "bg-card text-foreground shadow-sm"
+                                  : "text-muted-foreground hover:text-foreground",
+                              )}
+                            >
+                              {lbl}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {t("No registered players on this team.")}
+                </p>
+              )}
               <div className="flex items-center gap-2 border-t border-border pt-3">
                 {locked ? (
                   <span className="inline-flex items-center gap-1.5 text-xs font-medium text-primary">
