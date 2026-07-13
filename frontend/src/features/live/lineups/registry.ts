@@ -25,6 +25,28 @@ const BY_FAMILY: Record<string, LineupViewModule> = {
 
 const FALLBACK: LineupViewModule = { Lineups: FlatLineups };
 
+/** Selectable on-court slots per sport, for the console's team sheet. Empty
+ * = the sport has no fixed positions (the court fills in roster order). */
+const SLOTS_BY_SPORT: Record<string, { key: string; label: string }[]> = {
+  sepak_takraw: [
+    { key: "tekong", label: "Tekong" },
+    { key: "left_inside", label: "Left inside" },
+    { key: "right_inside", label: "Right inside" },
+  ],
+  football: [
+    { key: "gk", label: "Goalkeeper" },
+    { key: "def", label: "Defence" },
+    { key: "mid", label: "Midfield" },
+    { key: "fwd", label: "Attack" },
+  ],
+};
+
+export function slotsForSport(
+  sportKey: string,
+): { key: string; label: string }[] {
+  return SLOTS_BY_SPORT[sportKey] ?? [];
+}
+
 export function resolveLineupView(
   sportKey: string,
   family: string,

@@ -5,7 +5,10 @@ import { liveApi, type LiveTeam } from "@/api/live";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { sideView } from "@/features/live/lineups/adapter";
-import { resolveLineupView } from "@/features/live/lineups/registry";
+import {
+  resolveLineupView,
+  slotsForSport,
+} from "@/features/live/lineups/registry";
 import type { LineupSideView } from "@/features/live/lineups/types";
 import { newEventId } from "@/lib/eventId";
 import { cn } from "@/lib/tailwind";
@@ -46,21 +49,29 @@ export function LineupPanel({
     queryFn: () => liveApi.getLineups(matchId),
   });
 
-  // Local role map per team, seeded from the server sheet once loaded.
+  // Local role + on-court slot maps per team, seeded from the server sheet.
   const [roles, setRoles] = useState<Record<string, Record<string, Role>>>({});
+  const [slots, setSlots] = useState<Record<string, Record<string, string>>>({});
   const [seeded, setSeeded] = useState(false);
   useEffect(() => {
     if (seeded || !q.data) return;
-    const next: Record<string, Record<string, Role>> = {};
+    const nextRoles: Record<string, Record<string, Role>> = {};
+    const nextSlots: Record<string, Record<string, string>> = {};
     for (const lu of q.data.lineups) {
       if (!lu.team) continue;
-      next[lu.team.id] = Object.fromEntries(
+      nextRoles[lu.team.id] = Object.fromEntries(
         lu.entries.map((e) => [e.player_id, e.role as Role]),
       );
+      nextSlots[lu.team.id] = Object.fromEntries(
+        lu.entries.map((e) => [e.player_id, e.positional_role ?? ""]),
+      );
     }
-    setRoles(next);
+    setRoles(nextRoles);
+    setSlots(nextSlots);
     setSeeded(true);
   }, [q.data, seeded]);
+
+  const positions = slotsForSport(sportKey);
 
   const save = useMutation({
     mutationFn: (teamId: string) =>
@@ -68,7 +79,13 @@ export function LineupPanel({
         team_id: teamId,
         entries: Object.entries(roles[teamId] ?? {})
           .filter(([, r]) => r !== "")
-          .map(([player_id, role]) => ({ player_id, role })),
+          .map(([player_id, role]) => ({
+            player_id,
+            role,
+            ...(slots[teamId]?.[player_id]
+              ? { positional_role: slots[teamId][player_id] }
+              : {}),
+          })),
         event_id: newEventId(),
       }),
     onSuccess: () => {
@@ -115,11 +132,7 @@ export function LineupPanel({
     const teamRoles = roles[team.id] ?? {};
     // The saved sheet's positional_role (sepak regu slot, football line) wins
     // over the player's registered position text.
-    const saved = new Map(
-      (q.data?.lineups.find((lu) => lu.team?.id === team.id)?.entries ?? []).map(
-        (e) => [e.player_id, e.positional_role ?? ""],
-      ),
-    );
+    const teamSlots = slots[team.id] ?? {};
     return sideView(team, {
       confirmed: confirmedFor(team.id),
       entries: team.players
@@ -129,7 +142,8 @@ export function LineupPanel({
           name: p.name,
           role: teamRoles[p.id],
           shirt_no: p.jersey_no,
-          positional_role: saved.get(p.id) || p.position,
+          // The picked slot (even unsaved) wins over the registered position.
+          positional_role: teamSlots[p.id] || p.position,
         })),
     });
   };
@@ -232,7 +246,33 @@ export function LineupPanel({
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium">{p.name}</p>
-                          {p.position ? (
+                          {/* Where this starter stands on the court — drives
+                              the Court view (sepak regu, football line). */}
+                          {positions.length > 0 && r === "starter" ? (
+                            <select
+                              aria-label={`${p.name} ${t("position")}`}
+                              data-testid={`lineup-slot-${team.id}-${p.id}`}
+                              disabled={locked}
+                              value={slots[team.id]?.[p.id] ?? ""}
+                              onChange={(e) =>
+                                setSlots((all) => ({
+                                  ...all,
+                                  [team.id]: {
+                                    ...(all[team.id] ?? {}),
+                                    [p.id]: e.target.value,
+                                  },
+                                }))
+                              }
+                              className="mt-0.5 h-6 rounded-md border border-border bg-background px-1 text-[0.6875rem] text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                            >
+                              <option value="">{t("No position")}</option>
+                              {positions.map((s) => (
+                                <option key={s.key} value={s.key}>
+                                  {t(s.label)}
+                                </option>
+                              ))}
+                            </select>
+                          ) : p.position ? (
                             <p className="truncate text-[0.6875rem] text-muted-foreground">
                               {p.position}
                             </p>

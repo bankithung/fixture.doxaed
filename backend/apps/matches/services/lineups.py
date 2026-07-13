@@ -58,7 +58,9 @@ def set_lineup(
     from apps.teams.models import Player
 
     entries = list(entries or [])
-    resolved: list[tuple[Player, str, int | None]] = []
+    # (player, role, shirt_no, positional_role) — the sport slot (sepak regu
+    # tekong/insides, football line) drives the per-sport court visual.
+    resolved: list[tuple[Player, str, int | None, str]] = []
     for entry in entries:
         player_id = entry.get("player_id")
         player = Player.objects.filter(
@@ -71,14 +73,17 @@ def set_lineup(
         role = entry.get("role") or LineupRole.STARTER
         if role not in LineupRole.values:
             raise ValidationError(f"Invalid lineup role: {role}")
-        resolved.append((player, role, entry.get("shirt_no")))
+        resolved.append((
+            player, role, entry.get("shirt_no"),
+            str(entry.get("positional_role") or "")[:40],
+        ))
 
     # PRD §5.4 hard check: a player serving a card ban cannot be named.
     if resolved:
         from apps.matches.services.discipline import suspended_player_ids
 
         banned = suspended_player_ids(match.tournament)
-        for player, _role, _shirt in resolved:
+        for player, _role, _shirt, _slot in resolved:
             if str(player.id) in banned:
                 name = player.person.full_name if player.person_id else str(player.id)
                 raise ValidationError(f"player_suspended:{name}")
@@ -97,9 +102,10 @@ def set_lineup(
         LineupEntry.objects.bulk_create(
             [
                 LineupEntry(
-                    lineup=lineup, player=player, role=role, shirt_no=shirt_no
+                    lineup=lineup, player=player, role=role, shirt_no=shirt_no,
+                    positional_role=positional_role,
                 )
-                for (player, role, shirt_no) in resolved
+                for (player, role, shirt_no, positional_role) in resolved
             ]
         )
         lineup.save(update_fields=["updated_at"])

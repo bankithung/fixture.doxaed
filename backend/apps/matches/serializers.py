@@ -219,6 +219,11 @@ class LineupEntryInputSerializer(serializers.Serializer):
         choices=LineupRole.values, required=False, default=LineupRole.STARTER
     )
     shirt_no = serializers.IntegerField(required=False, allow_null=True, min_value=0, max_value=999)
+    # Sport slot (sepak regu "tekong"/"left_inside"/"right_inside", football
+    # line) — placed on the per-sport court visual.
+    positional_role = serializers.CharField(
+        required=False, allow_blank=True, max_length=40,
+    )
 
 
 class SetLineupSerializer(serializers.Serializer):
