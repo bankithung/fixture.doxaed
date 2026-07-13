@@ -192,3 +192,39 @@ def test_tournament_meta_serves_og_tags():
     assert APIClient().get(
         f"/api/live/tournament-meta/wrong-slug/{t.id}/"
     ).status_code == 404
+
+
+@pytest.mark.django_db
+def test_scheduled_roster_hidden_from_public_but_visible_to_staff():
+    """Rosters stay hidden from anonymous viewers before kickoff, but the
+    staff who build the team sheets (manager / scorer / assigned official)
+    see them on a SCHEDULED match (audit 2026-07-13: the scoring console
+    read 'no registered players' pre-match)."""
+    admin = _verified("mgr@test.local")
+    t = create_tournament(user=admin, name="Cup")
+    a, b = register_school(
+        tournament=t, school_name="S",
+        teams=[
+            {"name": "A", "players": [{"full_name": "Kene Jamir"}]},
+            {"name": "B", "players": [{"full_name": "Salo Walling"}]},
+        ],
+    )
+    m = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=a, away_team=b,
+        status=MatchStatus.SCHEDULED,
+    )
+    url = f"/api/live/match/{m.id}/"
+
+    public = APIClient().get(url).json()
+    assert public["match"]["home_team"]["players"] == []
+
+    staff = APIClient()
+    staff.force_authenticate(user=admin)
+    body = staff.get(url).json()
+    names = [p["name"] for p in body["match"]["home_team"]["players"]]
+    assert names == ["Kene Jamir"]
+
+    outsider = APIClient()
+    outsider.force_authenticate(user=_verified("other@test.local"))
+    body = outsider.get(url).json()
+    assert body["match"]["home_team"]["players"] == []

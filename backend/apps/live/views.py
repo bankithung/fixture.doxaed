@@ -61,6 +61,22 @@ def _team(t, include_players: bool):
     }
 
 
+def _staff_roster_access(request, m) -> bool:
+    """Pre-kickoff roster visibility for the people who run the match:
+    tournament managers, the scoring seat, and assigned officials."""
+    user = getattr(request, "user", None)
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if m.scorer_id and m.scorer_id == user.id:
+        return True
+    from apps.matches.models import MatchOfficial
+    from apps.tournaments.permissions import can_manage_tournament
+
+    if can_manage_tournament(user, m.tournament):
+        return True
+    return MatchOfficial.objects.filter(match=m, user=user).exists()
+
+
 def _lineups(m) -> dict | None:
     """Confirmed lineups for the public hub (P6): starter/bench roles,
     shirt numbers and positional slots — only once the match is live/final
@@ -158,7 +174,13 @@ class LiveMatchSnapshotView(GenericAPIView):
         if m is None:
             raise NotFound("match_not_found")
 
-        include_players = m.status in _ROSTER_VISIBLE
+        # Public viewers see rosters only once the match is live/final; the
+        # STAFF who build the team sheets (tournament managers, this match's
+        # scorer, its assigned officials) need them BEFORE kickoff — the
+        # scoring console reads this same snapshot (audit 2026-07-13).
+        include_players = (
+            m.status in _ROSTER_VISIBLE or _staff_roster_access(request, m)
+        )
 
         all_events = list(
             MatchEvent.objects.filter(match=m)
