@@ -189,14 +189,17 @@ describe("LiveViewerPage", () => {
   it("renders the sepak takraw court with positional roles on the Lineups tab", async () => {
     vi.mocked(liveApi.snapshot).mockResolvedValue(sepakSnapshot());
     renderAt("/m/m1?tab=lineups");
-    expect(await screen.findByTestId("sepak-court")).toBeInTheDocument();
-    expect(screen.getByTestId("court-slot-tekong")).toHaveTextContent("Server One");
-    expect(screen.getByTestId("court-slot-left_inside")).toHaveTextContent("Feeder Two");
-    expect(screen.getByTestId("court-slot-right_inside")).toHaveTextContent("Killer Three");
+    // BOTH sides draw a court now: declared regu slots place exactly; a
+    // side without positions fills the slots in roster order.
+    expect(await screen.findAllByTestId("sepak-court")).toHaveLength(2);
+    const home = screen.getAllByTestId("court-slot-tekong")[0]!;
+    expect(home).toHaveTextContent("Server One");
+    expect(screen.getAllByTestId("court-slot-left_inside")[0]!).toHaveTextContent("Feeder Two");
+    expect(screen.getAllByTestId("court-slot-right_inside")[0]!).toHaveTextContent("Killer Three");
     // Bench renders under the Substitutes label.
     expect(screen.getByText("Substitutes")).toBeInTheDocument();
     expect(screen.getByText("Bench Four")).toBeInTheDocument();
-    // The away side has no positional roles: ordered-list fallback.
+    // The away side has no positional roles: placed on court in order.
     expect(screen.getByText("Away One")).toBeInTheDocument();
     // Running set points are the headline while live (11-8 in set 2).
     expect(screen.getByText("Set 2")).toBeInTheDocument();

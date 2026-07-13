@@ -63,8 +63,25 @@ function Side({ side }: { side: LineupSideView | null }): React.ReactElement {
   }
   const { starters, bench, unroled } = splitRoles(side.entries);
   const onCourt = starters.length > 0 ? starters : unroled;
+  // Declared regu slots win; everyone else fills the remaining slots in
+  // order, so the court ALWAYS draws once players exist (a roster-only
+  // side used to fall back to a plain list and the court never appeared).
+  const bySlot = new Map<string, LineupEntryView>();
+  const leftovers: LineupEntryView[] = [];
+  for (const e of onCourt) {
+    const slot = SLOTS.find(
+      (s) => s.key === e.positional_role && !bySlot.has(s.key),
+    );
+    if (slot) bySlot.set(slot.key, e);
+    else leftovers.push(e);
+  }
+  for (const slot of SLOTS) {
+    if (!bySlot.has(slot.key) && leftovers.length > 0) {
+      bySlot.set(slot.key, leftovers.shift()!);
+    }
+  }
   const placed = SLOTS.flatMap((slot) => {
-    const entry = onCourt.find((e) => e.positional_role === slot.key);
+    const entry = bySlot.get(slot.key);
     return entry ? [{ slot, entry }] : [];
   });
   return (
@@ -98,6 +115,13 @@ function Side({ side }: { side: LineupSideView | null }): React.ReactElement {
           ))}
         </ol>
       )}
+      {leftovers.length > 0 ? (
+        <ol className="flex flex-col">
+          {leftovers.map((e) => (
+            <PlayerRow key={e.player_id} entry={e} />
+          ))}
+        </ol>
+      ) : null}
       <BenchList bench={bench} />
     </div>
   );

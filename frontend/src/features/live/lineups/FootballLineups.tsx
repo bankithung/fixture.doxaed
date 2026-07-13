@@ -69,8 +69,11 @@ function Half({
   side: LineupSideView;
   flip: boolean;
 }): React.ReactElement {
-  const { starters } = splitRoles(side.entries);
-  const rows = lines(starters.slice(0, 11));
+  // No confirmed XI yet -> place the roster instead (balanced shape), so
+  // the pitch always draws once players exist.
+  const { starters, unroled } = splitRoles(side.entries);
+  const onPitch = starters.length > 0 ? starters : unroled;
+  const rows = lines(onPitch.slice(0, 11));
   const ordered = flip ? rows : [...rows].reverse();
   return (
     <div
