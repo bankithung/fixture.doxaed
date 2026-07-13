@@ -1,0 +1,14 @@
+[Unit]
+Description=Fixture auto-deploy (poll GitHub, migrate, rebuild frontend, restart backend)
+After=network-online.target fixture.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/Fixture
+Environment=HOME=/home/ubuntu
+Environment=PATH=/home/ubuntu/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/home/ubuntu/Fixture/deploy/autodeploy.sh
+TimeoutStartSec=1800
