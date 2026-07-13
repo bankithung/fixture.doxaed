@@ -5,57 +5,13 @@ import {
   usePublicTournament,
   type Competition,
 } from "@/features/fixtures/publicTournament";
-import { GroupTable } from "@/features/fixtures/publicTournamentViews";
+import {
+  Bookmark,
+  GroupTable,
+} from "@/features/fixtures/publicTournamentViews";
 import { splitLabel } from "@/features/fixtures/publicTournament";
-import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { PublicViewerHeader } from "./PublicViewerHeader";
-
-/** A bookmark tab: the sheet below is one continuous panel, the active tab
- * merges into it (same pattern as the setup wizard's sport bookmarks). */
-function Bookmark({
-  active,
-  onClick,
-  label,
-  count,
-  testid,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count?: number;
-  testid: string;
-}): React.ReactElement {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      data-testid={testid}
-      onClick={onClick}
-      className={cn(
-        "relative flex max-w-full shrink-0 items-center gap-2 rounded-t-lg border px-3.5 py-2 text-[0.8125rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        active
-          ? "z-10 -mb-px border-border border-b-transparent bg-card text-foreground"
-          : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
-      )}
-    >
-      <span className="truncate">{label}</span>
-      {count != null ? (
-        <span
-          className={cn(
-            "rounded-full px-1.5 py-0.5 font-tabular text-[0.625rem] font-semibold",
-            active
-              ? "bg-primary/15 text-primary"
-              : "bg-muted-foreground/10 text-muted-foreground",
-          )}
-        >
-          {count}
-        </span>
-      ) : null}
-    </button>
-  );
-}
 
 /**
  * Public STANDINGS tab (Google-panel style): every competition's group tables

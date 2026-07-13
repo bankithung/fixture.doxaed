@@ -1,8 +1,12 @@
 import { useEffect, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { type MatchRow, type PublicScheduleMatch } from "@/api/tournaments";
 import { BracketView } from "@/features/tournaments/BracketView";
-import { usePublicTournament } from "@/features/fixtures/publicTournament";
+import {
+  splitLabel,
+  usePublicTournament,
+} from "@/features/fixtures/publicTournament";
+import { Bookmark } from "@/features/fixtures/publicTournamentViews";
 import { t } from "@/lib/t";
 import { PublicViewerHeader } from "./PublicViewerHeader";
 
@@ -44,8 +48,16 @@ function toMatchRow(m: PublicScheduleMatch): MatchRow {
  * stream advances it as results land. No new backend (the public schedule
  * endpoint already serves every knockout match).
  */
+interface Bracket {
+  key: string;
+  label: string;
+  sport: string;
+  matches: MatchRow[];
+}
+
 export function PublicBracketPage(): React.ReactElement {
   const { slug = "", id = "" } = useParams();
+  const [params, setParams] = useSearchParams();
   const { scheduleQ: query, connected, hasKnockout } = usePublicTournament(
     slug,
     id,
@@ -57,22 +69,61 @@ export function PublicBracketPage(): React.ReactElement {
   }, [tournamentName]);
 
   // One bracket per competition leaf (TT Singles, Sepak Takraw, …) — only the
-  // knockout matches; the group stage lives on the Standings tab.
-  const brackets = useMemo(() => {
-    const byLeaf = new Map<
-      string,
-      { key: string; label: string; matches: MatchRow[] }
-    >();
+  // knockout matches; the group stage lives on the Standings tab. Grouped by
+  // sport for the bookmark board.
+  const bySport = useMemo(() => {
+    const byLeaf = new Map<string, Bracket>();
     for (const m of query.data?.matches ?? []) {
       if (m.stage !== "knockout") continue;
       const key = m.leaf_key || "_";
-      if (!byLeaf.has(key)) {
-        byLeaf.set(key, { key, label: m.leaf_label || t("Bracket"), matches: [] });
+      let b = byLeaf.get(key);
+      if (!b) {
+        const label = m.leaf_label || t("Bracket");
+        b = {
+          key,
+          label,
+          sport: splitLabel(label)[0] ?? t("Bracket"),
+          matches: [],
+        };
+        byLeaf.set(key, b);
       }
-      byLeaf.get(key)!.matches.push(toMatchRow(m));
+      b.matches.push(toMatchRow(m));
     }
-    return [...byLeaf.values()];
+    const grouped = new Map<string, Bracket[]>();
+    for (const b of byLeaf.values()) {
+      if (!grouped.has(b.sport)) grouped.set(b.sport, []);
+      grouped.get(b.sport)!.push(b);
+    }
+    return [...grouped.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [query.data]);
+
+  // Sport, then category — a bracket is big, so ONE renders at a time by
+  // default (owner 2026-07-13). Kept in the URL so a view is shareable.
+  const sportParam = params.get("sport") ?? "";
+  const compParam = params.get("comp") ?? "";
+  const sport = bySport.some(([s]) => s === sportParam)
+    ? sportParam
+    : (bySport[0]?.[0] ?? "");
+  const compsOfSport = useMemo(
+    () => bySport.find(([s]) => s === sport)?.[1] ?? [],
+    [bySport, sport],
+  );
+  const comp = compsOfSport.some((c) => c.key === compParam)
+    ? compParam
+    : (compsOfSport[0]?.key ?? "");
+  const shown = compsOfSport.filter((c) => c.key === comp);
+
+  const setFilter = (next: { sport?: string; comp?: string }): void => {
+    const p = new URLSearchParams(params);
+    if (next.sport !== undefined) {
+      p.set("sport", next.sport);
+      p.delete("comp");
+    }
+    if (next.comp !== undefined) p.set("comp", next.comp);
+    setParams(p, { replace: true });
+  };
+
+  const brackets = compsOfSport;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -97,18 +148,69 @@ export function PublicBracketPage(): React.ReactElement {
             </p>
           </div>
         ) : (
-          brackets.map((b) => (
-            <section
-              key={b.key}
-              data-testid={`bracket-${b.key}`}
-              className="flex flex-col gap-3"
+          /* Same bookmarked board as Standings: sport tabs on top, categories
+             inside, ONE bracket at a time (they are large). */
+          <div data-testid="bracket-board" className="flex flex-col">
+            <div
+              role="tablist"
+              aria-label={t("Sports")}
+              className="flex flex-wrap items-end gap-1 overflow-x-auto px-2"
             >
-              <h2 className="text-base font-semibold">{b.label}</h2>
-              <div className="overflow-x-auto rounded-xl border border-border bg-card p-4">
-                <BracketView matches={b.matches} timeZone={query.data?.tournament.time_zone} />
-              </div>
-            </section>
-          ))
+              {bySport.map(([s, comps]) => (
+                <Bookmark
+                  key={s}
+                  testid={`bracket-sport-pick-${s}`}
+                  active={sport === s}
+                  onClick={() => setFilter({ sport: s })}
+                  label={s}
+                  count={comps.length}
+                />
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-4 rounded-xl rounded-tl-none border border-border bg-card p-4 shadow-sm sm:p-5">
+              {compsOfSport.length > 1 ? (
+                <div
+                  role="tablist"
+                  aria-label={t("Categories")}
+                  className="flex flex-wrap items-center gap-1.5 border-b border-border pb-3"
+                >
+                  {compsOfSport.map((c) => (
+                    <Bookmark
+                      key={c.key}
+                      testid={`bracket-comp-pick-${c.key}`}
+                      active={comp === c.key}
+                      onClick={() => setFilter({ comp: c.key })}
+                      label={splitLabel(c.label).slice(1).join(" ") || c.label}
+                    />
+                  ))}
+                </div>
+              ) : null}
+
+              {shown.map((b) => (
+                <section
+                  key={b.key}
+                  data-testid={`bracket-${b.key}`}
+                  className="flex flex-col gap-3"
+                >
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <h2 className="text-sm font-semibold">
+                      {splitLabel(b.label).slice(1).join(" · ") || b.label}
+                    </h2>
+                    <span className="font-tabular text-xs text-muted-foreground">
+                      {b.matches.length} {t("matches")}
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <BracketView
+                      matches={b.matches}
+                      timeZone={query.data?.tournament.time_zone}
+                    />
+                  </div>
+                </section>
+              ))}
+            </div>
+          </div>
         )}
       </main>
     </div>

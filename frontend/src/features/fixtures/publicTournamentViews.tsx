@@ -43,6 +43,53 @@ export function LabelChips({
   );
 }
 
+/** A bookmark tab: the sheet below is one continuous panel and the active tab
+ * merges into it (same pattern as the setup wizard's sport bookmarks). Shared
+ * by the public Standings and Knockout tabs. */
+export function Bookmark({
+  active,
+  onClick,
+  label,
+  count,
+  testid,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count?: number;
+  testid: string;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      data-testid={testid}
+      onClick={onClick}
+      className={cn(
+        "relative flex max-w-full shrink-0 items-center gap-2 rounded-t-lg border px-3.5 py-2 text-[0.8125rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        active
+          ? "z-10 -mb-px border-border border-b-transparent bg-card text-foreground"
+          : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+      )}
+    >
+      <span className="truncate">{label}</span>
+      {count != null ? (
+        <span
+          className={cn(
+            "rounded-full px-1.5 py-0.5 font-tabular text-[0.625rem] font-semibold",
+            active
+              ? "bg-primary/15 text-primary"
+              : "bg-muted-foreground/10 text-muted-foreground",
+          )}
+        >
+          {count}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 /** Compact FIFA-style group table — qualifying rows get a 2px accent left
  * rule (not a fill, not a dot). Columns are SPORT-NATIVE: timed sports read
  * P W D L +/- Pts (goal difference); target (set) sports read P W L Sets +/-
