@@ -79,15 +79,22 @@ def _staff_roster_access(request, m) -> bool:
 
 
 def _lineups(m) -> dict | None:
-    """Confirmed lineups for the public hub (P6): starter/bench roles,
-    shirt numbers and positional slots — only once the match is live/final
-    (same gate as the roster) and only when a lineup was actually built."""
+    """Team sheets for the public hub (P6): starter/bench roles, shirt
+    numbers and positional slots — what the per-sport court/pitch visual
+    draws.
+
+    A CONFIRMED sheet is published as soon as it exists, even before
+    kickoff (owner 2026-07-13 — real fixtures announce lineups ahead of the
+    match, and the public court view was otherwise invisible until a match
+    went live). Unconfirmed drafts stay private until the match is live or
+    final, so a work-in-progress sheet is never public."""
     from apps.matches.models import Lineup
 
+    qs = Lineup.objects.filter(match=m).select_related("team")
     if m.status not in _ROSTER_VISIBLE:
-        return None
+        qs = qs.filter(confirmed_at__isnull=False)
     out: dict = {}
-    for lineup in Lineup.objects.filter(match=m).select_related("team"):
+    for lineup in qs:
         entries = [
             {
                 "player_id": str(e.player_id),
@@ -99,7 +106,10 @@ def _lineups(m) -> dict | None:
             for e in lineup.entries.select_related("player__person").all()
         ]
         side = "home" if lineup.team_id == m.home_team_id else "away"
-        out[side] = {"confirmed": True, "entries": entries}
+        out[side] = {
+            "confirmed": lineup.confirmed_at is not None,
+            "entries": entries,
+        }
     return out or None
 
 

@@ -228,3 +228,50 @@ def test_scheduled_roster_hidden_from_public_but_visible_to_staff():
     outsider.force_authenticate(user=_verified("other@test.local"))
     body = outsider.get(url).json()
     assert body["match"]["home_team"]["players"] == []
+
+
+@pytest.mark.django_db
+def test_confirmed_team_sheet_is_public_before_kickoff_draft_is_not():
+    """The public court/pitch visual needs sheets BEFORE the match starts
+    (owner 2026-07-13). A confirmed sheet publishes on a scheduled match; an
+    unconfirmed draft stays private until the match is live."""
+    from apps.matches.services.lineups import confirm_lineup, set_lineup
+
+    admin = _verified("sheets@test.local")
+    t = create_tournament(user=admin, name="Cup")
+    a, b = register_school(
+        tournament=t, school_name="S",
+        teams=[
+            {"name": "A", "players": [{"full_name": "Kene Jamir"}]},
+            {"name": "B", "players": [{"full_name": "Salo Walling"}]},
+        ],
+    )
+    m = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=a, away_team=b,
+        status=MatchStatus.SCHEDULED,
+    )
+    url = f"/api/live/match/{m.id}/"
+
+    home_player = a.players.first()
+    away_player = b.players.first()
+    set_lineup(
+        match=m, team=a,
+        entries=[{"player_id": str(home_player.id), "role": "starter"}],
+        by=admin,
+    )
+    set_lineup(
+        match=m, team=b,
+        entries=[{"player_id": str(away_player.id), "role": "starter"}],
+        by=admin,
+    )
+
+    # Drafts only: nothing published yet.
+    assert APIClient().get(url).json()["match"]["lineups"] is None
+
+    confirm_lineup(match=m, team=a, by=admin)
+    body = APIClient().get(url).json()["match"]["lineups"]
+    assert body is not None
+    assert [e["name"] for e in body["home"]["entries"]] == ["Kene Jamir"]
+    assert body["home"]["confirmed"] is True
+    # The unconfirmed away draft is still private.
+    assert "away" not in body
