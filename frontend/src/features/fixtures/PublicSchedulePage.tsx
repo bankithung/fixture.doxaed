@@ -117,7 +117,12 @@ function TeamName({
   return (
     <Link
       to={routes.publicTeam(slug, id, side.id)}
-      className={cn(className, "hover:text-primary hover:underline")}
+      // Sits above the row's stretched match link (which covers the row), so
+      // a team name still opens that team's page.
+      className={cn(
+        className,
+        "pointer-events-auto relative z-10 w-fit hover:text-primary hover:underline",
+      )}
     >
       {side.name}
     </Link>
@@ -150,11 +155,19 @@ function MatchCard({
     <li
       data-testid={`public-match-${match.id}`}
       className={cn(
-        "flex flex-col gap-1.5 px-4 py-3",
+        "relative flex flex-col gap-1.5 px-4 py-3 transition-colors hover:bg-accent focus-within:bg-accent",
         live && "border-l-2 border-primary",
       )}
     >
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+      {/* Stretched link: the WHOLE row opens the match centre (line-ups,
+          court view, timeline). The team names sit above it and still go to
+          their own pages — no nested anchors. */}
+      <Link
+        to={routes.liveViewer(match.id)}
+        aria-label={`${match.home?.name ?? t("TBD")} ${t("vs")} ${match.away?.name ?? t("TBD")}`}
+        className="absolute inset-0 z-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      />
+      <div className="pointer-events-none relative z-10 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
         {showTime ? (
           <span className="font-tabular font-semibold text-foreground">
             {fmtKickoff(match.scheduled_at, timeZone)}
@@ -186,13 +199,11 @@ function MatchCard({
           <StatusPill status={match.status} />
         </span>
       </div>
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm">
+      <div className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm">
         <TeamName side={match.home} className="truncate text-right font-medium" />
-        <Link
-          to={routes.liveViewer(match.id)}
-          aria-label={t("Open the match centre")}
+        <span
           className={cn(
-            "rounded-md px-1 text-center font-tabular transition-colors hover:bg-accent hover:text-primary",
+            "pointer-events-none px-1 text-center font-tabular",
             done ? "font-semibold" : "text-xs text-muted-foreground",
           )}
         >
@@ -203,13 +214,13 @@ function MatchCard({
               ? `${setView.points[0]} - ${setView.points[1]}`
               : `${match.home_score ?? 0} - ${match.away_score ?? 0}`
             : t("vs")}
-        </Link>
+        </span>
         <TeamName side={match.away} className="truncate font-medium" />
       </div>
       {done && (sets.length > 0 || hasPens || setView) ? (
         <p
           data-testid={`points-${match.id}`}
-          className="text-center font-tabular text-xs text-muted-foreground"
+          className="pointer-events-none relative z-10 text-center font-tabular text-xs text-muted-foreground"
         >
           {setView ? `${t("Sets")} ${setView.sets[0]}-${setView.sets[1]}` : ""}
           {setView && sets.length > 0 ? " · " : ""}

@@ -338,4 +338,15 @@ describe("PublicSchedulePage", () => {
       );
     });
   });
+
+  it("the whole match row opens the match centre; team names still open their team page", async () => {
+    mount();
+    const m1 = await screen.findByTestId("public-match-m1");
+    // Stretched link over the row -> the match centre (lineups, court view).
+    const row = within(m1).getByRole("link", { name: /vs/i });
+    expect(row).toHaveAttribute("href", "/m/m1");
+    // The team name is still its own link, above the stretched one.
+    const team = within(m1).getByRole("link", { name: "Alpha FC" });
+    expect(team.getAttribute("href")).toContain("/team/");
+  });
 });
