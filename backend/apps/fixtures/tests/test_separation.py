@@ -22,6 +22,7 @@ from apps.fixtures.services.generate import (
     _separate_institutions,
     generate_round_robin_by_category,
     generate_single_elimination,
+    plan_single_elimination,
 )
 from apps.fixtures.services.scheduler import (
     MatchSlotReq,
@@ -259,6 +260,109 @@ def test_duplicate_name_in_one_roster_registers_both_rows():
     # two distinct Persons — a duplicate row is two people (or a typo), never
     # the same entry twice
     assert Person.objects.filter(full_name="Imna Jamir").count() == 2
+
+
+# ------------------------------------- owner rule: meet at the latest stage
+
+
+def _meet_round(plans, a_id, b_id) -> int:
+    """Earliest round two teams CAN meet: walk each team's winner_of chain
+    from its entry plan and return the round of the first shared match."""
+    def chain(tid):
+        entry = min(
+            (p for p in plans if tid in (p.home_team_id, p.away_team_id)),
+            key=lambda p: (p.round_no, p.ref),
+        )
+        refs, cur = [entry.ref], entry.ref
+        while True:
+            nxt = next(
+                (p for p in plans if any(
+                    (src or {}).get("type") == "winner_of"
+                    and (src or {}).get("ref") == cur
+                    for src in (p.home_source, p.away_source)
+                )),
+                None,
+            )
+            if nxt is None:
+                return refs
+            refs.append(nxt.ref)
+            cur = nxt.ref
+
+    by_ref = {p.ref: p for p in plans}
+    other = set(chain(b_id))
+    return by_ref[next(r for r in chain(a_id) if r in other)].round_no
+
+
+def test_same_school_pairs_land_in_opposite_bracket_halves():
+    """2 schools x 2 teams in an 8-team knockout: each pair may only meet in
+    the FINAL (BWF/ITTF club separation), never a semi — and a clean split
+    emits no relaxation warning."""
+    admin = _admin("halves@test.local")
+    t = _cup(admin, "Halves Cup")
+    # registration order whose standard seeding puts both pairs in one half
+    teams = _teams(t, [("A School", "A1"), ("B School", "B1"),
+                       ("B School", "B2"), ("A School", "A2"),
+                       ("S1", "s1"), ("S2", "s2"), ("S3", "s3"), ("S4", "s4")])
+    warnings: list = []
+    plans = plan_single_elimination(teams, warnings=warnings)
+    by_name = {tm.name: tm.id for tm in teams}
+    assert _meet_round(plans, by_name["A1"], by_name["A2"]) == 3  # the final
+    assert _meet_round(plans, by_name["B1"], by_name["B2"]) == 3
+    assert not any(
+        isinstance(w, dict) and w.get("code") == "keep_apart_relaxed"
+        for w in warnings
+    )
+
+
+def test_three_team_school_gets_latest_unavoidable_meeting_and_warns():
+    """One school with 3 teams in an 8-bracket: two of them MUST share a half
+    (pigeonhole) — never round 1, and the relaxation is a named warning."""
+    admin = _admin("trio@test.local")
+    t = _cup(admin, "Trio Cup")
+    teams = _teams(t, [("X School", "X1"), ("X School", "X2"),
+                       ("X School", "X3"),
+                       ("S1", "s1"), ("S2", "s2"), ("S3", "s3"),
+                       ("S4", "s4"), ("S5", "s5")])
+    warnings: list = []
+    created = generate_single_elimination(
+        tournament=t, teams=teams, leaf_key="football.u15", warnings=warnings,
+    )
+    by_id = {tm.id: tm for tm in teams}
+    for m in _opening_matches(created):
+        home, away = by_id[m.home_team_id], by_id[m.away_team_id]
+        assert home.institution_id != away.institution_id
+    w = next(x for x in warnings
+             if isinstance(x, dict) and x.get("code") == "keep_apart_relaxed")
+    assert w["key"] == "school"
+    assert len(w["pairs"]) == 1  # only the unavoidable same-half pair
+
+
+def test_byes_absorb_slack_and_keep_school_pair_separated():
+    """5 entrants (8-bracket with 3 byes): the same-school pair still lands
+    in opposite halves — byes never force them together."""
+    admin = _admin("byes@test.local")
+    t = _cup(admin, "Bye Cup")
+    # seeds 2+3 share the bottom half under standard seeding — a real repair
+    teams = _teams(t, [("S1", "s1"), ("A School", "A1"), ("A School", "A2"),
+                       ("S2", "s2"), ("S3", "s3")])
+    plans = plan_single_elimination(teams, warnings=[])
+    by_name = {tm.name: tm.id for tm in teams}
+    assert _meet_round(plans, by_name["A1"], by_name["A2"]) == 3  # the final
+
+
+def test_bracket_separation_is_deterministic():
+    admin = _admin("det@test.local")
+    t = _cup(admin, "Det Cup")
+    teams = _teams(t, [("A School", "A1"), ("B School", "B1"),
+                       ("B School", "B2"), ("A School", "A2"),
+                       ("S1", "s1"), ("S2", "s2"), ("S3", "s3"), ("S4", "s4")])
+
+    def shape(plans):
+        return [(p.round_no, p.home_team_id, p.away_team_id,
+                 p.home_source, p.away_source) for p in plans]
+
+    assert shape(plan_single_elimination(list(teams))) == \
+        shape(plan_single_elimination(list(teams)))
 
 
 def test_separation_never_introduces_conflicts_six_team_bracket():

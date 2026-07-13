@@ -338,6 +338,215 @@ def _separate_institutions(
     return _separate_by_key(teams, opening_pairs)
 
 
+def _bracket_permit_round(until_round, rounds: int) -> int:
+    """First round a keep-apart key ALLOWS a meeting in. ``None``/0 = as late
+    as mathematically possible — only the final is late enough. Legacy records
+    wrote ``until_round=1`` for the historical opening-round repair, so 1
+    aliases 2 (apart through round 1). Values beyond the bracket depth stay
+    unclamped: the record demands more separation than the bracket has, so
+    EVERY same-key pair reads as a (warned) violation."""
+    n = int(until_round or 0)
+    if n <= 0:
+        return max(1, rounds)
+    return max(2, n)
+
+
+def _bracket_violations(
+    teams: list, ckey, permit_round: int,
+) -> tuple[int, list[list[str]]]:
+    """Weighted violation scan of a SEED-ORDERED entrant list: every same-key
+    pair able to meet before ``permit_round`` counts, squared-weighted so an
+    earlier meeting outweighs later ones. Positions (and byes) come from
+    ``_bracket_order``, so the scan sees exactly the bracket
+    ``plan_single_elimination`` will build. Returns ``(cost, name_pairs)``."""
+    n = len(teams)
+    size = 1
+    while size < n:
+        size *= 2
+    rounds = max(1, size.bit_length() - 1)
+    pos: list[int] = [0] * n
+    for p, s in enumerate(_bracket_order(size)):
+        if s <= n:
+            pos[s - 1] = p
+    cost = 0
+    pairs: list[list[str]] = []
+    for x in range(n):
+        kx = ckey(teams[x])
+        if kx is None:
+            continue
+        for y in range(x + 1, n):
+            if ckey(teams[y]) != kx:
+                continue
+            meet = (pos[x] ^ pos[y]).bit_length()  # first round x/y CAN meet
+            if meet < permit_round:
+                cost += 1 << (2 * (rounds - meet))
+                pairs.append(sorted([
+                    str(getattr(teams[x], "name", teams[x].id)),
+                    str(getattr(teams[y], "name", teams[y].id)),
+                ]))
+    return cost, sorted(pairs)
+
+
+def _separate_bracket_by_key(
+    teams: list,
+    key_map: dict | None = None,
+    until_round: int | None = None,
+) -> tuple[list, list[list[str]]]:
+    """Bracket-aware ``_separate_by_key`` for knockout draws (owner rule
+    2026-07-13: same-school teams may only meet at the LATEST stage possible —
+    classic BWF/ITTF club separation). Returns the reordered SEED list plus
+    the same-key name pairs still able to meet earlier than permitted (the
+    caller emits ``keep_apart_relaxed``).
+
+    Each key bucket is dealt alternately across the two bracket halves
+    (largest contingents first, input order breaking ties), then each half
+    recurses — a 2-team school lands in opposite halves, a 4-team school in
+    all four quarters, and an oversized bucket degrades to the fewest, latest
+    collisions instead of failing. Input order is restored within each half
+    so the deal respects seeding, byes stay glued to each subtree's low seeds
+    (they absorb the slack), and a subtree whose keys are all distinct fills
+    in plain seed order. ``until_round`` sets the FEASIBILITY bar (see
+    ``_bracket_permit_round``): the deal is adopted only when it STRICTLY
+    reduces violations against that bar, so an arrangement the record already
+    permits — e.g. ``until_round=2`` with a round-2 meeting — stays untouched.
+    Deterministic, zero RNG, never raises."""
+    n = len(teams)
+    if n < 3:
+        return list(teams), []
+
+    def ckey(tm) -> object | None:
+        """Conflict key — None never conflicts (mirrors _separate_by_key)."""
+        if key_map is not None:
+            return key_map.get(tm.id)
+        return tm.institution_id
+
+    def bkey(tm) -> object:
+        """Grouping key — excluded teams stay unique (their own id)."""
+        k = ckey(tm)
+        return ("k", k) if k is not None else ("u", tm.id)
+
+    buckets: dict[object, list] = {}
+    for tm in teams:
+        buckets.setdefault(bkey(tm), []).append(tm)
+    if len(buckets) == len(teams):
+        return list(teams), []  # all distinct keys — nothing to separate
+
+    size = 1
+    while size < n:
+        size *= 2
+    rounds = max(1, size.bit_length() - 1)
+    permit = _bracket_permit_round(until_round, rounds)
+    order = _bracket_order(size)
+    real = [order[p] <= n for p in range(size)]
+    placed: list = [None] * size
+
+    def fill(lo: int, hi: int, members: list) -> None:
+        """Assign input-ordered ``(idx, team)`` members to the REAL positions
+        of the subtree ``[lo, hi)`` (bye positions are fixed by seed number)."""
+        keys = [k for k in (ckey(tm) for _i, tm in members) if k is not None]
+        if hi - lo <= 2 or len(keys) == len(set(keys)):
+            # Leaf pair, or nothing left to separate: plain seed-order fill.
+            slots = sorted(
+                (p for p in range(lo, hi) if real[p]), key=lambda p: order[p]
+            )
+            for (_i, tm), p in zip(members, slots, strict=True):
+                placed[p] = tm
+            return
+        mid = (lo + hi) // 2
+        free = [sum(real[lo:mid]), sum(real[mid:hi])]
+        sides: tuple[list, list] = ([], [])
+        grouped: dict[object, list] = {}
+        for item in members:
+            grouped.setdefault(bkey(item[1]), []).append(item)
+        # Largest contingents deal first; a bucket alternates sides (fewest of
+        # its own key, then the freer side, then the top half), overflowing to
+        # the other side when byes exhaust a half's capacity.
+        for g in sorted(grouped.values(), key=lambda g: (-len(g), g[0][0])):
+            here = [0, 0]
+            for item in g:
+                side = min((0, 1), key=lambda s: (here[s], -free[s], s))
+                if free[side] == 0:
+                    side = 1 - side
+                sides[side].append(item)
+                here[side] += 1
+                free[side] -= 1
+        for s in (0, 1):
+            sides[s].sort(key=lambda item: item[0])  # restore input order
+        fill(lo, mid, sides[0])
+        fill(mid, hi, sides[1])
+
+    fill(0, size, list(enumerate(teams)))
+    out: list = [None] * n
+    for p in range(size):
+        if placed[p] is not None:
+            out[order[p] - 1] = placed[p]
+
+    # Adopt the deal only when it strictly beats the input against the
+    # record's own bar — an already-permitted arrangement stays untouched,
+    # and a fully-conflicted field (one school everywhere) keeps its order.
+    before, before_pairs = _bracket_violations(teams, ckey, permit)
+    after, after_pairs = _bracket_violations(out, ckey, permit)
+    if after < before:
+        return out, after_pairs
+    return list(teams), before_pairs
+
+
+def _separate_bracket(
+    teams: list, separators: list[tuple[dict, dict]] | None,
+    warnings: list | None = None,
+) -> list:
+    """Full separation pass for a knockout draw (owner rule 2026-07-13): the
+    built-in school rule at MAXIMAL depth — unless a stored ``school`` record
+    overrides it with its own ``until_round`` — then every stored keep-apart
+    record at its recorded depth (records win, applied last). Violations are
+    re-scanned on the FINAL order (a later record may legitimately perturb an
+    earlier key) and each surviving one emits ``keep_apart_relaxed``; the
+    pairs listed per warning are capped so a fully same-school field doesn't
+    flood the response."""
+    def rec_key(record: dict) -> str:
+        return str((record.get("params") or {}).get("key") or "school")
+
+    has_school_record = any(
+        rec_key(r) == "school" for r, _km in separators or []
+    )
+    if not has_school_record:
+        teams, _conf = _separate_bracket_by_key(teams, None, None)
+    for record, key_map in separators or []:
+        teams, _conf = _separate_bracket_by_key(
+            teams, key_map, (record.get("params") or {}).get("until_round"),
+        )
+    if warnings is None:
+        return teams
+    size = 1
+    while size < len(teams):
+        size *= 2
+    rounds = max(1, size.bit_length() - 1)
+    if not has_school_record:
+        _cost, conflict_pairs = _bracket_violations(
+            teams, lambda tm: tm.institution_id,
+            _bracket_permit_round(None, rounds),
+        )
+        if conflict_pairs:
+            warnings.append({
+                "code": "keep_apart_relaxed", "key": "school", "scope": "all",
+                "pairs": conflict_pairs[:20],
+            })
+    for record, key_map in separators or []:
+        _cost, conflict_pairs = _bracket_violations(
+            teams, lambda tm, km=key_map: km.get(tm.id),
+            _bracket_permit_round(
+                (record.get("params") or {}).get("until_round"), rounds,
+            ),
+        )
+        if conflict_pairs:
+            warnings.append({
+                "code": "keep_apart_relaxed", "key": rec_key(record),
+                "scope": record.get("scope", "all"),
+                "pairs": conflict_pairs[:20],
+            })
+    return teams
+
+
 def _keep_apart_key_map(
     tournament, teams: list[Team], key: str, warnings: list,
 ) -> dict | None:
@@ -403,8 +612,9 @@ def _keep_apart_separators(
 ) -> list[tuple[dict, dict]]:
     """Stored ``keep_apart_until_round`` records in scope for this draw,
     resolved into (record, key_map) pairs the pure plan_* core applies after
-    seeding. ``school`` records are skipped — the built-in pass already
-    separates institutions."""
+    seeding. ``school`` records ride along too (they used to be skipped as
+    built-in): a knockout reads their ``until_round`` to override the built-in
+    pass's maximal depth; in round-robin they repeat the built-in spread."""
     from apps.fixtures.services.constraints import scope_matches
 
     out: list[tuple[dict, dict]] = []
@@ -415,8 +625,6 @@ def _keep_apart_separators(
                              leaf_key=leaf_key or ""):
             continue
         key = str((c.get("params") or {}).get("key") or "school")
-        if key == "school":
-            continue  # built-in
         key_map = _keep_apart_key_map(tournament, teams, key, warnings)
         if key_map:
             out.append((c, key_map))
@@ -442,6 +650,36 @@ def _warn_keep_apart_conflicts(
             "key": (record.get("params") or {}).get("key"),
             "scope": record.get("scope", "all"),
             "pairs": sorted(conflict_pairs),
+        })
+
+
+def _warn_keep_apart_pigeonholes(
+    record: dict, key_map: dict, groups: list[list], warnings: list | None,
+) -> None:
+    """Grouped-RR analogue of ``_warn_keep_apart_conflicts`` (§4.6): teams in
+    the SAME pool inevitably meet, so a same-key pair the spread couldn't
+    pigeonhole into different groups relaxes the record — one named warning
+    listing the co-grouped pairs (capped). Their opening-round repair still
+    applies inside ``_plan_pool``."""
+    if warnings is None:
+        return
+    conflict_pairs = []
+    for group in groups:
+        for x in range(len(group)):
+            kx = key_map.get(group[x].id)
+            if kx is None:
+                continue
+            for y in range(x + 1, len(group)):
+                if key_map.get(group[y].id) == kx:
+                    conflict_pairs.append(
+                        sorted([group[x].name, group[y].name])
+                    )
+    if conflict_pairs:
+        warnings.append({
+            "code": "keep_apart_relaxed",
+            "key": (record.get("params") or {}).get("key"),
+            "scope": record.get("scope", "all"),
+            "pairs": sorted(conflict_pairs)[:20],
         })
 
 
@@ -570,20 +808,24 @@ def _plan_pool(
     separators: list[tuple[dict, dict]] | None = None,
     min_matches_per_team: int | None = None,
     warnings: list | None = None,
+    warn_records: bool = True,
 ) -> list[MatchPlan]:
     """Circle-method plans for ONE round-robin pool (opening-pair repair,
     inputs_hash, small-group leg doubling). ``separators`` are the stored
     keep-apart records (record, key_map) applied after the built-in school
-    pass (§4.6) — surviving conflicts emit a named warning."""
+    pass (§4.6) — surviving conflicts emit a named warning unless
+    ``warn_records=False`` (the grouped path reports the strictly-larger
+    co-grouped pigeonhole set instead, so it isn't double-warned)."""
     pairs = _opening_pairs_circle(len(group))
     group = _separate_institutions(group, pairs)
     for _record, key_map in separators or []:
         group = _separate_by_key(group, pairs, key_map)
-    for record, key_map in separators or []:
-        _warn_keep_apart_conflicts(
-            record, key_map, group, pairs,
-            warnings if warnings is not None else [],
-        )
+    if warn_records:
+        for record, key_map in separators or []:
+            _warn_keep_apart_conflicts(
+                record, key_map, group, pairs,
+                warnings if warnings is not None else [],
+            )
     ih = _group_hash(group)
     if min_matches_per_team:
         # Partial RR (target-N round prefix) bypasses small-group double-RR.
@@ -640,6 +882,11 @@ def plan_round_robin(
         groups = [
             teams[i : i + group_size] for i in range(0, len(teams), group_size)
         ]
+    # Pigeonhole check (§4.6): a same-key pair forced into ONE group will
+    # inevitably meet, so each record's co-grouped pairs relax it — warn,
+    # never re-group (grouping itself is unchanged).
+    for record, key_map in separators or []:
+        _warn_keep_apart_pigeonholes(record, key_map, groups, warnings)
     plans: list[MatchPlan] = []
     for gi, group in enumerate(groups):
         label = f"{label_prefix}Group {_GROUP_LABELS[gi]}"[:80]
@@ -648,7 +895,7 @@ def plan_round_robin(
                 group, label=label, leaf_key=leaf_key, sport=sport, legs=legs,
                 small_group_max=small_group_max, start_ref=len(plans),
                 separators=separators, min_matches_per_team=min_matches_per_team,
-                warnings=warnings,
+                warnings=warnings, warn_records=False,
             )
         )
     return plans
@@ -689,18 +936,26 @@ def plan_single_elimination(
         raise ValueError("single elimination requires at least 2 teams")
 
     teams = _seed_order(list(teams), seeding=seeding, seed=seed)
-    # Constraint repair AFTER seeding (§4.3): same-institution teams don't
-    # meet in round 1 where avoidable (W2-D), then the stored keep-apart
-    # keys (§4.6) — surviving conflicts emit a named warning, never an error.
-    pairs = _opening_pairs_bracket(n)
-    teams = _separate_institutions(list(teams), pairs)
-    for _record, key_map in separators or []:
-        teams = _separate_by_key(teams, pairs, key_map)
-    for record, key_map in separators or []:
-        _warn_keep_apart_conflicts(
-            record, key_map, teams, pairs,
-            warnings if warnings is not None else [],
-        )
+    # Constraint repair AFTER seeding (§4.3). Registration/random draws get
+    # the FULL bracket separation (owner rule 2026-07-13): same-school teams
+    # can only meet at the latest stage possible, stored keep-apart records
+    # at their own ``until_round``. Explicit ``seeded`` draws keep the legacy
+    # opening-pair repair — it bails to the input rather than reorder across
+    # seed values, so maximal separation applies fully only to registration/
+    # random seeding. Surviving conflicts emit a named warning, never an
+    # error.
+    if seeding == "seeded":
+        pairs = _opening_pairs_bracket(n)
+        teams = _separate_institutions(list(teams), pairs)
+        for _record, key_map in separators or []:
+            teams = _separate_by_key(teams, pairs, key_map)
+        for record, key_map in separators or []:
+            _warn_keep_apart_conflicts(
+                record, key_map, teams, pairs,
+                warnings if warnings is not None else [],
+            )
+    else:
+        teams = _separate_bracket(list(teams), separators, warnings=warnings)
 
     size = 1
     while size < n:
@@ -1747,6 +2002,77 @@ def _repair_same_group_pairs(seeds: list[str], group_of: dict) -> None:
             break
 
 
+def _repair_same_institution_pairs(
+    seeds: list[str], inst_of: dict, group_of: dict,
+) -> None:
+    """Institution follow-up to ``_repair_same_group_pairs`` over the cross-
+    seeded qualifier list (owner rule 2026-07-13): a school advancing from two
+    groups shouldn't meet in knockout round 1 when any equivalent swap avoids
+    it. For each same-school opening pair, every donor seed is tried and the
+    swap that pushes ALL same-school meetings deepest into the bracket wins
+    (weighted like ``_bracket_violations`` — halves beat quarters), provided
+    both affected opening pairs stay clean of same-group AND same-school. In
+    place, deterministic, best-effort — an unfixable pair is left for the
+    bracket-separation pass downstream."""
+    n = len(seeds)
+    size = 1
+    while size < n:
+        size *= 2
+    rounds = max(1, size.bit_length() - 1)
+    pos: dict[int, int] = {}
+    for p, s in enumerate(_bracket_order(size)):
+        if s <= n:
+            pos[s - 1] = p
+    pairs = _opening_pairs_bracket(n)
+    pair_of: dict[int, tuple[int, int]] = {}
+    for a, b in pairs:
+        pair_of[a] = pair_of[b] = (a, b)
+
+    def inst(i: int) -> object | None:
+        return inst_of.get(seeds[i]) if i < n else None
+
+    def grp(i: int) -> object | None:
+        return group_of.get(seeds[i]) if i < n else None
+
+    def clean(a: int, b: int) -> bool:
+        if a >= n or b >= n:
+            return True  # a bye side never clashes
+        if grp(a) is not None and grp(a) == grp(b):
+            return False
+        return inst(a) is None or inst(a) != inst(b)
+
+    def cost() -> int:
+        total = 0
+        for x in range(n):
+            ix = inst_of.get(seeds[x])
+            if ix is None:
+                continue
+            for y in range(x + 1, n):
+                if inst_of.get(seeds[y]) == ix:
+                    total += 1 << (
+                        2 * (rounds - (pos[x] ^ pos[y]).bit_length())
+                    )
+        return total
+
+    for i, j in pairs:
+        if j >= n or inst(i) is None or inst(i) != inst(j):
+            continue
+        best: tuple[int, int] | None = None  # (violation cost, donor seed)
+        for cand in range(n):
+            if cand in (i, j):
+                continue
+            ca, cb = pair_of[cand]
+            seeds[j], seeds[cand] = seeds[cand], seeds[j]
+            if clean(i, j) and clean(ca, cb):
+                c = cost()
+                if best is None or (c, cand) < best:
+                    best = (c, cand)
+            seeds[j], seeds[cand] = seeds[cand], seeds[j]  # undo
+        if best is not None:
+            cand = best[1]
+            seeds[j], seeds[cand] = seeds[cand], seeds[j]
+
+
 def plan_knockout_qualifiers(
     tournament, *, advance_per_group: int = 2, leaf_key: str | None = None,
     advance_best_thirds: int = 0, knockout_seeding: str = "cross",
@@ -1843,6 +2169,20 @@ def plan_knockout_qualifiers(
             raise ValueError("Need at least 2 advancing teams for a knockout.")
     else:
         seed_ids = _cross_seed(quals, extra=extra)
+
+    # Institution repair (owner rule 2026-07-13): a school advancing from two
+    # groups shouldn't meet in round 1 either. Runs AFTER the same-group pass
+    # so the school swap never undoes the cross-group crossing; a single-group
+    # pool is a no-op (every swap would re-pair the group). Deterministic.
+    group_of = {tid: gi for gi, q in enumerate(quals) for tid in q}
+    group_of.update(dict(extra))
+    inst_by_id = {
+        str(t.id): t.institution_id
+        for t in Team.objects.filter(id__in=seed_ids)
+    }
+    _repair_same_institution_pairs(
+        seed_ids, {tid: inst_by_id.get(str(tid)) for tid in seed_ids}, group_of,
+    )
     return [Team.objects.get(id=tid) for tid in seed_ids]
 
 
@@ -1925,7 +2265,10 @@ def plan_knockout_from_positions(
     yet resolved to teams); round-1 sides carry those pointers, byes forward a
     pointer straight to round 2, and later rounds carry winner_of pointers —
     every side resolved by advance.py as groups finish then knockout games play.
-    Zero DB writes; mirrors plan_single_elimination's bye/tree logic."""
+    Zero DB writes; mirrors plan_single_elimination's bye/tree logic. NOTE:
+    an eager draw can't know which INSTITUTION lands at each pointer, so the
+    same-school separation rule (2026-07-13) cannot apply here — only the
+    deferred ``plan_knockout_qualifiers`` path repairs school pairings."""
     n = len(slots)
     if n < 2:
         raise ValueError("a knockout needs at least 2 qualifiers")

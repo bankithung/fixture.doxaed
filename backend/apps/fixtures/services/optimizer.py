@@ -258,9 +258,15 @@ def _capacity_ok(
         m = by_id.get(mid)
         if m:
             placed.append((dt, dt + _dur(m, cfg), m.sport, m.leaf_key))
-    pre: list[tuple[datetime, datetime]] = []
+    # Committed bookings count against scoped caps via their (sport, leaf)
+    # meta; legacy meta-less bookings only count for scope "all" — mirrors
+    # the greedy's feasible() (audit 2026-07-13).
     for booking in preoccupied or []:
-        pre.append((booking[1], booking[2]))
+        meta = booking[4] if len(booking) > 4 else None
+        placed.append((
+            booking[1], booking[2],
+            str(meta[0]) if meta else "", str(meta[1]) if meta else "",
+        ))
     for r in caps:
         cap = int(r.params.get("count") or 0)
         if cap < 1:
@@ -269,8 +275,6 @@ def _capacity_ok(
             (s, e) for s, e, sp, lf in placed
             if scope_matches(r.scope, sport=sp, leaf_key=lf)
         ]
-        if r.scope == "all":
-            ivals += pre
         if _max_concurrency(ivals) > cap:
             return False
     return True

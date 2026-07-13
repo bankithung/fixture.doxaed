@@ -45,6 +45,10 @@ const VIOLATION_TITLES: Record<string, string> = {
   venue_unavailable: "This venue is closed on that date",
   pinned_round_venue: "This round is pinned to a different venue",
   concurrent_competitions: "Two competitions that must not clash would run at the same time",
+  predecessor_order: "This match would start before the match that feeds it has finished",
+  blackout_window: "This time sits inside a daily break or blackout window",
+  ceremony_block: "This time overlaps a ceremony",
+  official_capacity_exceeded: "Not enough officials for another match of this sport at that time",
 };
 
 function violationDetail(v: RepairViolation): string {

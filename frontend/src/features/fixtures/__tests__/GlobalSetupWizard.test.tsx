@@ -433,4 +433,79 @@ describe("GlobalSetupWizard", () => {
       ),
     ).toBeUndefined();
   });
+
+  it("per-venue mode drops a stored daily_break record on save", async () => {
+    vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
+      draw_config: {
+        "*": {
+          calendar: {
+            date_start: "2026-08-01",
+            date_end: "2026-08-03",
+            daily_start: "08:00",
+            daily_end: "17:00",
+            slot_minutes: 60,
+          },
+        },
+      },
+      defaults: DEFAULTS,
+    });
+    // A stale overall break is stored AND a venue has its own break: the form
+    // seeds break_mode per_venue while daily_break_from/to still fill in.
+    vi.mocked(tournamentsApi.settings).mockResolvedValue({
+      ...SETTINGS,
+      constraints: [
+        {
+          type: "recurring_blackout_window",
+          scope: "all",
+          hard: true,
+          weight: 5,
+          params: { days: [], from: "13:00", to: "14:00", label: "daily_break" },
+        },
+        {
+          type: "team_unavailable",
+          scope: "team:abc",
+          hard: true,
+          weight: 5,
+          params: { team_id: "abc", dates: ["2026-08-02"] },
+        },
+      ],
+    });
+    vi.mocked(tournamentsApi.venues).mockResolvedValue({
+      venues: [
+        {
+          id: "v1",
+          name: "Main Ground",
+          venue_type: "ground",
+          windows: [],
+          count: 1,
+          breaks: [{ from: "12:00", to: "13:00" }],
+        },
+      ],
+    });
+
+    wrap(<GlobalSetupWizard tournamentId="t1" onClose={() => {}} />);
+    await screen.findByLabelText("First match day");
+    await toStep(3);
+    await userEvent.click(screen.getByTestId("save-global-setup"));
+
+    await waitFor(() =>
+      expect(tournamentsApi.updateSettings).toHaveBeenCalled(),
+    );
+    const constraints =
+      vi.mocked(tournamentsApi.updateSettings).mock.calls.at(-1)![1].constraints!;
+    // Per-venue mode wins: the stale overall daily_break is not re-emitted.
+    expect(
+      constraints.some(
+        (c) =>
+          c.type === "recurring_blackout_window" &&
+          c.params.label === "daily_break",
+      ),
+    ).toBe(false);
+    // Records the wizard does not own stay untouched.
+    expect(
+      constraints.find((c) => c.type === "team_unavailable")?.scope,
+    ).toBe("team:abc");
+    // The venue keeps its own break (unchanged, so no write at all).
+    expect(tournamentsApi.updateVenue).not.toHaveBeenCalled();
+  });
 });

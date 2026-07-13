@@ -388,3 +388,73 @@ def test_format_chosen_ok_for_a_multi_stage_plan():
     chk = _checks(_leaf(fixture_readiness(t), LEAF_U15))["format_chosen"]
     assert chk["status"] == "ok"
     assert chk["hint"] == "2 stages"
+
+
+# ------------------------------------------------------------------ capacity
+def test_capacity_warns_when_days_cannot_fit_matches():
+    """A grossly oversubscribed setup (audit 2026-07-13: 20-team round robin
+    in a single 60-minute day) must surface a capacity warning instead of
+    reading fully Ready."""
+    admin = _verified("cap@test.local")
+    t = _tournament(admin)
+    Venue.objects.create(organization=t.organization, name="Hall", count=1)
+    update_draw_config(
+        tournament=t, leaf_key="*",
+        partial={"calendar": {
+            "date_start": "2026-08-01", "date_end": "2026-08-01",
+            "daily_start": "09:00", "daily_end": "10:00",
+            "slot_minutes": 30,
+        }},
+        by=admin,
+    )
+    _register(t, 20)
+    g = _checks(fixture_readiness(t)["global"])
+    assert g["capacity"]["status"] == "warn"
+    assert g["capacity"]["fix"] == "settings"
+
+
+def test_capacity_ok_with_ample_supply():
+    admin = _verified("cap2@test.local")
+    t = _tournament(admin)
+    Venue.objects.create(organization=t.organization, name="Hall", count=4)
+    update_draw_config(
+        tournament=t, leaf_key="*",
+        partial={"calendar": {
+            "date_start": "2026-08-01", "date_end": "2026-08-07",
+            "daily_start": "09:00", "daily_end": "18:00",
+            "slot_minutes": 30,
+        }},
+        by=admin,
+    )
+    _register(t, 4)
+    g = _checks(fixture_readiness(t)["global"])
+    assert g["capacity"]["status"] == "ok"
+
+
+def test_capacity_respects_official_capacity_cap():
+    """A sport capped to 1 concurrent match halves throughput: a load that
+    four courts could carry becomes too tight."""
+    admin = _verified("cap3@test.local")
+    t = _tournament(admin)
+    Venue.objects.create(organization=t.organization, name="Hall", count=4)
+    update_draw_config(
+        tournament=t, leaf_key="*",
+        partial={"calendar": {
+            "date_start": "2026-08-01", "date_end": "2026-08-01",
+            "daily_start": "09:00", "daily_end": "12:00",
+            "slot_minutes": 30,
+        }},
+        by=admin,
+    )
+    _register(t, 8)  # ~28 matches x 30 min = 840 min vs 180 x cap
+    update_settings(
+        tournament=t,
+        constraints=[{
+            "type": "official_capacity", "scope": "sport:football",
+            "hard": True, "weight": 5, "params": {"count": 1},
+        }],
+        by=admin,
+    )
+    t.refresh_from_db()
+    g = _checks(fixture_readiness(t)["global"])
+    assert g["capacity"]["status"] == "warn"

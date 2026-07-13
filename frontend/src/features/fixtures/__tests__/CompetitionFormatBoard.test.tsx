@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -370,6 +370,71 @@ describe("CompetitionFormatBoard", () => {
         expect.objectContaining({ amend: true, reason: "corrected after a referee meeting" }),
       ),
     );
+  });
+
+  it("names a hidden sport whose stage plan blocks the save", async () => {
+    // Table Tennis has a stored invalid plan (a knockout that is not last).
+    vi.mocked(tournamentsApi.drawConfig).mockResolvedValue(
+      dc({
+        "sport:table_tennis": {
+          stages: [
+            { id: "s1", type: "knockout" },
+            { id: "s2", type: "round_robin", from: { advance_per_group: 2 } },
+          ],
+        },
+      }),
+    );
+    mount();
+    // Work on Sepak Takraw, so the broken sport's tab is hidden.
+    await openSport("sepak_takraw");
+    fireEvent.change(
+      await screen.findByTestId("format-sport-sepak_takraw-duration"),
+      { target: { value: "20" } },
+    );
+    expect(screen.getByTestId("save-formats")).toBeDisabled();
+    const hint = screen.getByTestId("stage-errors-hint");
+    expect(hint).toHaveTextContent("Table Tennis");
+    // Clicking the named sport opens its tab so the inline error is visible…
+    await userEvent.click(
+      within(hint).getByRole("button", { name: "Table Tennis" }),
+    );
+    expect(
+      await screen.findByTestId("format-sport-table_tennis"),
+    ).toBeInTheDocument();
+    // …and the hint goes away (the error sport is no longer hidden).
+    expect(screen.queryByTestId("stage-errors-hint")).not.toBeInTheDocument();
+  });
+
+  it("keeps only the failed layers staged after a mid-save failure", async () => {
+    mount();
+    // Stage edits on two sport layers.
+    await userEvent.click(
+      await screen.findByTestId("format-sport-table_tennis-format-knockout"),
+    );
+    await openSport("sepak_takraw");
+    await userEvent.click(
+      await screen.findByTestId("format-sport-sepak_takraw-format-knockout"),
+    );
+    // First PATCH lands, the second fails mid-loop.
+    vi.mocked(tournamentsApi.updateDrawConfig)
+      .mockResolvedValueOnce({} as never)
+      .mockRejectedValueOnce(new Error("boom"));
+    await userEvent.click(screen.getByTestId("save-formats"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledTimes(2),
+    );
+    expect(
+      await screen.findByText("Could not save the formats"),
+    ).toBeInTheDocument();
+
+    // Re-save sends ONLY the failed layer; the committed one is not re-sent.
+    await userEvent.click(screen.getByTestId("save-formats"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledTimes(3),
+    );
+    expect(
+      vi.mocked(tournamentsApi.updateDrawConfig).mock.calls[2]![1],
+    ).toEqual(expect.objectContaining({ leaf_key: "sport:sepak_takraw" }));
   });
 
   it("overrides one category's match duration; clearing sends null (inherit)", async () => {

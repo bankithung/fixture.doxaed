@@ -432,8 +432,14 @@ export function GlobalSetupWizard({
           params: { days: ["sun"], from: "00:00", to: "13:00",
             label: "sunday_church" } });
       }
-      if (form.daily_break_from && form.daily_break_to) {
-        // Overall daily break — every day (empty `days`), all venues.
+      if (
+        form.break_mode === "overall" &&
+        form.daily_break_from &&
+        form.daily_break_to
+      ) {
+        // Overall daily break — every day (empty `days`), all venues. Only in
+        // overall mode: in per_venue mode any stored daily_break record stays
+        // filtered out above, so the two break kinds never coexist.
         next.push({ type: "recurring_blackout_window", scope: "all",
           params: { days: [], from: form.daily_break_from,
             to: form.daily_break_to, label: "daily_break" } });

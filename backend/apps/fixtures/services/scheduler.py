@@ -80,6 +80,10 @@ class ScheduleConfig:
     grid_step_minutes: int | None = None
     venues: list[str] = field(default_factory=lambda: ["Main Ground"])
     rest_minutes: int = 60          # min gap between a team's matches
+    # True when the payload carried an explicit rest_minutes. A stored hard
+    # all-scope min_rest constraint may LOWER the library default (it is the
+    # organizer's actual number) but never an explicit payload value.
+    rest_minutes_explicit: bool = False
     max_per_team_per_day: int = 1
     excluded_dates: set[date] = field(default_factory=set)
     # Per-venue availability override: {venue: [(start, end)]}. Empty means the
@@ -256,6 +260,7 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
         slot_minutes=int(d.get("slot_minutes", 90)),
         venues=venues,
         rest_minutes=int(d.get("rest_minutes", 60)),
+        rest_minutes_explicit="rest_minutes" in d,
         max_per_team_per_day=int(d.get("max_per_team_per_day", 1)),
         excluded_dates=excluded,
         venue_windows=venue_windows,
@@ -327,6 +332,12 @@ def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> l
             elif minutes > cfg.rest_minutes:
                 cfg.rest_minutes = minutes
                 notes.append(f"Raised rest gap to {minutes} minutes (stored constraint).")
+            elif minutes < cfg.rest_minutes and not cfg.rest_minutes_explicit:
+                # The payload left rest at the library default; the stored hard
+                # constraint is the organizer's actual number — honor it even
+                # downward. An explicit payload value still wins upward.
+                cfg.rest_minutes = minutes
+                notes.append(f"Set rest gap to {minutes} minutes (stored constraint).")
         elif ctype == "max_matches_per_team_per_day":
             count = int(p.get("count") or 0)
             if count < 1:
@@ -588,7 +599,18 @@ def build_slots(cfg: ScheduleConfig) -> list[tuple[datetime, str, datetime]]:
                 # other venue keeps the date.
                 if d in cfg.venue_unavailable_dates.get(base, ()):
                     continue
-                windows = cfg.venue_windows.get(base) or [(cfg.daily_start, cfg.daily_end)]
+                # A venue window can NARROW the tournament daily window, never
+                # extend past it (the docstring's "intersected per-venue" —
+                # previously the venue window replaced the daily one, letting
+                # matches run past daily_end).
+                windows = [
+                    (max(ws, cfg.daily_start), min(we, cfg.daily_end))
+                    for ws, we in (
+                        cfg.venue_windows.get(base)
+                        or [(cfg.daily_start, cfg.daily_end)]
+                    )
+                    if max(ws, cfg.daily_start) < min(we, cfg.daily_end)
+                ]
                 cuts = [
                     (r.params["from"], r.params["to"]) for r in recurring
                     if not r.params.get("days") or d.weekday() in r.params["days"]
@@ -629,6 +651,12 @@ class MatchSlotReq:
     venue_type: str = ""                  # "" → any venue
     stage: str = ""                       # "group"|"knockout" — pinned-round resolution
     stage_no: int = 0                     # multi-stage index: earlier stages time first
+    # Bracket precedence (audit 2026-07-13): ids of matches that must END
+    # before this one starts — its winner_of/loser_of feeders, or every match
+    # of the source group for a group_position side. A feeder that is already
+    # committed outside the run contributes a fixed lower bound instead.
+    after: tuple[str, ...] = ()
+    not_before: datetime | None = None
 
 
 @dataclass
@@ -794,6 +822,17 @@ def schedule_matches(
     team_day: dict[tuple[str, date], int] = defaultdict(int)
     venue_load: dict[str, int] = defaultdict(int)
     unscheduled: list[str] = []
+    unscheduled_ids: set[str] = set()
+    # Bracket precedence bookkeeping: end times of placed matches, and the
+    # reverse (feeder -> dependents) map so a pinned dependent placed FIRST
+    # (finals pin) still caps its feeders' end times.
+    end_of: dict[str, datetime] = {}
+    req_of = {m.id: m for m in matches}
+    succs: dict[str, list[str]] = defaultdict(list)
+    for m in matches:
+        for fid in m.after:
+            if fid in req_of:
+                succs[fid].append(m.id)
 
     # Scoped rule lists (redesign spec §9 A3) resolved per match below.
     rules = cfg.constraint_rules
@@ -900,6 +939,22 @@ def schedule_matches(
         end = dt + dur
         if end > wend:
             return False
+        # Bracket precedence: a dependent never starts before its feeders end
+        # (+ the advancing side's rest gap — the winner plays both matches),
+        # and a feeder never ends into an already-placed dependent's start
+        # (the pinned-final case: the dependent was placed first).
+        if m.after or m.not_before is not None:
+            earliest = m.not_before
+            for fid in m.after:
+                fe = end_of.get(fid)
+                if fe is not None and (earliest is None or fe > earliest):
+                    earliest = fe
+            if earliest is not None and dt < earliest + _rest_for(m, ""):
+                return False
+        for did in succs.get(m.id, ()):
+            dslot = assignments.get(did)
+            if dslot is not None and end > dslot[0] - _rest_for(req_of[did], ""):
+                return False
         if _overlaps(venue_busy[venue], dt, end):
             return False
         tkey = tuple(teams)
@@ -933,13 +988,15 @@ def schedule_matches(
             cap = int(r.params.get("count") or 0)
             if cap < 1:
                 continue
+            # Committed bookings of OTHER leaves count against the cap too —
+            # a per-leaf run scoped to one sport must still see its sibling
+            # leaves' matches (their (sport, leaf) meta travels on the
+            # booking; legacy meta-less bookings only count for scope "all").
             n = sum(
-                1 for s, e, sp, lf in inflight
+                1 for s, e, sp, lf in (*inflight, *pre_intervals)
                 if s < end and dt < e
                 and scope_matches(r.scope, sport=sp, leaf_key=lf)
             )
-            if r.scope == "all":
-                n += sum(1 for s, e, _sp, _lf in pre_intervals if s < end and dt < e)
             if n >= cap:
                 return False
         # Mutual-exclusion groups (owner ask): a match may not overlap (within
@@ -1111,6 +1168,12 @@ def schedule_matches(
     ordered = [m for m in by_order if m.id in pin_of] + \
               [m for m in by_order if m.id not in pin_of]
     for m in ordered:
+        # A dependent whose in-run feeder failed to place can never be timed
+        # correctly — propagate the failure instead of parking it anywhere.
+        if any(fid in unscheduled_ids for fid in m.after):
+            unscheduled.append(m.id)
+            unscheduled_ids.add(m.id)
+            continue
         teams = [t for t in (m.home, m.away) if t]
         dur = timedelta(minutes=m.duration_minutes or cfg.slot_minutes)
         pin = pin_of.get(m.id)
@@ -1129,12 +1192,14 @@ def schedule_matches(
                 best_score, chosen = score, (dt, venue)
         if chosen is None:
             unscheduled.append(m.id)
+            unscheduled_ids.add(m.id)
             if pin is not None:
                 pinned_failed.add(m.id)
             continue
         dt, venue = chosen
         end = dt + dur
         assignments[m.id] = (dt, venue)
+        end_of[m.id] = end
         mx = _max_preference(m, teams)
         if mx > 0:
             window_sat[1] += mx
@@ -1604,6 +1669,112 @@ def validate_schedule(
                         "match_id": subject, "other_match_id": other,
                         "members": [mem_i, mem_j],
                     })
+
+    # Bracket precedence (audit 2026-07-13): a dependent placed at or before
+    # its feeder's end is a hard violation — a manual move must never invert
+    # a bracket (final before its semis) or start a knockout mid-group-stage.
+    for m in matches:
+        slot = assignments.get(m.id)
+        if slot is None:
+            continue
+        for fid in m.after:
+            fslot = assignments.get(fid)
+            if fslot is not None and slot[0] < fslot[0] + dur_of(fid):
+                violations.append({
+                    "code": "predecessor_order", "hard": True,
+                    "match_id": m.id, "other_match_id": fid,
+                })
+        if m.not_before is not None and slot[0] < m.not_before:
+            violations.append({
+                "code": "predecessor_order", "hard": True,
+                "match_id": m.id, "other_match_id": None,
+            })
+
+    # Grid-subtractive rules are cut from the slot grid at build time, so the
+    # greedy can never breach them — but a manual move can land anywhere
+    # (audit 2026-07-13): re-check blackout windows and ceremonies here.
+    def _rule_scope_ok(r: ScopedRule, m: MatchSlotReq | None) -> bool:
+        if m is None:
+            return r.scope == "all"
+        return scope_matches(
+            r.scope, sport=m.sport, leaf_key=m.leaf_key,
+            team_ids=tuple(t for t in (m.home, m.away) if t),
+            team_tags=cfg.team_tags,
+        )
+
+    recurring_hard = [
+        r for r in cfg.constraint_rules
+        if r.type == "recurring_blackout_window" and r.hard
+    ]
+    ceremony_rules = [
+        r for r in cfg.constraint_rules if r.type == "ceremony_block"
+    ]
+    for mid, (dt, venue) in assignments.items():
+        end = dt + dur_of(mid)
+        m = by_id.get(mid)
+        for r in recurring_hard:
+            days = r.params.get("days")
+            if days and dt.weekday() not in days:
+                continue
+            if not _rule_scope_ok(r, m):
+                continue
+            ws = datetime.combine(dt.date(), r.params["from"])
+            we = datetime.combine(dt.date(), r.params["to"])
+            if dt < we and ws < end:
+                violations.append({
+                    "code": "blackout_window", "hard": True, "match_id": mid,
+                    "label": str(r.params.get("label") or ""),
+                    "from": r.params["from"].isoformat(),
+                    "to": r.params["to"].isoformat(),
+                })
+        for r in ceremony_rules:
+            if r.params.get("date") != dt.date():
+                continue
+            wanted = r.params.get("venues")
+            if wanted and base_of.get(venue, venue) not in wanted \
+                    and venue not in wanted:
+                continue
+            ws = datetime.combine(dt.date(), r.params["from"])
+            we = datetime.combine(dt.date(), r.params["to"])
+            if dt < we and ws < end:
+                violations.append({
+                    "code": "ceremony_block", "hard": True, "match_id": mid,
+                    "label": str(r.params.get("label") or ""),
+                    "date": dt.date().isoformat(),
+                })
+
+    # Officials capacity (audit 2026-07-13): concurrent in-scope matches —
+    # including committed bookings via their (sport, leaf) meta — must stay
+    # within the cap; the tipping (movable) match carries the violation.
+    for r in cfg.constraint_rules:
+        if r.type != "official_capacity" or not r.hard:
+            continue
+        cap = int(r.params.get("count") or 0)
+        if cap < 1:
+            continue
+        evs = sorted(
+            (
+                (s, e, mid)
+                for s, e, sp, lf, mid in ex_items
+                if scope_matches(r.scope, sport=sp, leaf_key=lf)
+            ),
+            key=lambda x: (x[0], x[1]),
+        )
+        active: list[tuple[datetime, datetime, str | None]] = []
+        for cur in evs:
+            active = [a for a in active if a[1] > cur[0]]
+            active.append(cur)
+            if len(active) <= cap:
+                continue
+            movable = [a for a in active if a[2] is not None]
+            if not movable:
+                continue
+            subject = cur if cur[2] is not None else movable[-1]
+            violations.append({
+                "code": "official_capacity_exceeded", "hard": True,
+                "match_id": subject[2], "scope": r.scope, "capacity": cap,
+                "at": cur[0].isoformat(),
+            })
     return violations
 
 
@@ -1708,6 +1879,53 @@ def build_schedule_inputs(
             )
             for m in targets
         ]
+        # Bracket precedence: winner_of/loser_of sides depend on their feeder
+        # match; a group_position side depends on every match of that group
+        # (the advancer is only known when the group finishes). Feeders inside
+        # the run go into ``after``; a feeder already committed outside it
+        # (live/completed/locked/other status) becomes a fixed ``not_before``.
+        req_ids = {r.id for r in reqs}
+        by_match_id = {str(m.id): m for m in all_matches}
+        group_ids: dict[tuple[str, str], list[str]] = {}
+        for m in all_matches:
+            if m.group_label:
+                group_ids.setdefault(
+                    (m.leaf_key, m.group_label), []
+                ).append(str(m.id))
+        for req, m in zip(reqs, targets, strict=True):
+            deps: set[str] = set()
+            bound: datetime | None = None
+            for src in (m.home_source, m.away_source):
+                if not isinstance(src, dict):
+                    continue
+                kind = src.get("type")
+                if kind in ("winner_of", "loser_of") and src.get("match_id"):
+                    deps.add(str(src["match_id"]))
+                elif kind == "group_position" and src.get("group_label"):
+                    deps.update(
+                        gid for gid in group_ids.get(
+                            (m.leaf_key, str(src["group_label"])), ()
+                        )
+                        if gid != req.id
+                    )
+            after: list[str] = []
+            for fid in sorted(deps):
+                if fid in req_ids:
+                    after.append(fid)
+                    continue
+                feeder = by_match_id.get(fid)
+                if feeder is not None and feeder.scheduled_at is not None:
+                    fstart = dj_tz.localtime(
+                        feeder.scheduled_at, tz
+                    ).replace(tzinfo=None)
+                    fend = fstart + timedelta(
+                        minutes=duration_for(feeder.sport, feeder.leaf_key or "")
+                        or cfg.slot_minutes
+                    )
+                    if bound is None or fend > bound:
+                        bound = fend
+            req.after = tuple(after)
+            req.not_before = bound
     else:
         plan_leafs = {p.leaf_key for p in plans}
         excluded_ids = {
@@ -1732,6 +1950,34 @@ def build_schedule_inputs(
             )
             for p in plans
         ]
+        # Same precedence wiring for pure plans (preview ≡ commit): pointer
+        # sides reference other plans by ``ref``; a group_position side
+        # depends on its whole source group.
+        plan_group_ids: dict[tuple[str, str], list[str]] = {}
+        for p in plans:
+            if p.group_label:
+                plan_group_ids.setdefault(
+                    (p.leaf_key, p.group_label), []
+                ).append(f"p{p.ref + 1}")
+        for req, p in zip(reqs, plans, strict=True):
+            deps: set[str] = set()
+            for src in (p.home_source, p.away_source):
+                if not isinstance(src, dict):
+                    continue
+                kind = src.get("type")
+                if kind in ("winner_of", "loser_of"):
+                    if src.get("ref") is not None:
+                        deps.add(f"p{int(src['ref']) + 1}")
+                    elif src.get("match_id"):
+                        deps.add(str(src["match_id"]))
+                elif kind == "group_position" and src.get("group_label"):
+                    deps.update(
+                        gid for gid in plan_group_ids.get(
+                            (p.leaf_key, str(src["group_label"])), ()
+                        )
+                        if gid != req.id
+                    )
+            req.after = tuple(sorted(d for d in deps if d != req.id))
 
     # Other matches' bookings (live, completed, other leaves) block the calendar.
     preoccupied: Preoccupied = []

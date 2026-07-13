@@ -415,13 +415,17 @@ export function CompetitionFormatBoard({
   const sportStages = (sp: string): Stage[] => layerStages(`sport:${sp}`);
   const setSportStages = (sp: string, stages: Stage[]): void =>
     setLayerStages(`sport:${sp}`, stages);
-  const stagesHaveErrors = sportsInOrder.some(
+  const stageErrorSports = sportsInOrder.filter(
     (sp) =>
       Object.keys(validateStages(sportStages(sp))).length > 0 ||
       leavesBySport.get(sp)!.some(
         (c) => Object.keys(validateStages(layerStages(c.leafKey))).length > 0,
       ),
   );
+  const stagesHaveErrors = stageErrorSports.length > 0;
+  // Errors on the open tab show inline in its StagesEditor; errors on a hidden
+  // tab would leave the disabled Save unexplained, so those sports get named.
+  const hiddenErrorSports = stageErrorSports.filter((sp) => sp !== currentSport);
 
   const dirty = Object.keys(staged).length > 0 || rulesDirty;
 
@@ -456,30 +460,39 @@ export function CompetitionFormatBoard({
     mutationFn: async () => {
       // One PATCH per changed layer; draw-config edits are governed by the
       // regenerate banner (invariant 10), not the rules freeze — no amend dance.
-      for (const [leafKey, config] of Object.entries(staged)) {
-        try {
+      const committed: string[] = [];
+      try {
+        for (const [leafKey, config] of Object.entries(staged)) {
           await tournamentsApi.updateDrawConfig(tournamentId, {
             leaf_key: leafKey,
             config,
             event_id: newEventId(),
           });
-        } catch (e) {
-          throw e instanceof ApiError ? e : new Error(String(e));
+          committed.push(leafKey);
         }
-      }
-      // Scoring + tiebreakers ride the settings PATCH (frozen → amend + reason).
-      const byLeafPatch = byLeafChanges();
-      if (Object.keys(byLeafPatch).length > 0) {
-        try {
+        // Scoring + tiebreakers ride the settings PATCH (frozen → amend + reason).
+        const byLeafPatch = byLeafChanges();
+        if (Object.keys(byLeafPatch).length > 0) {
           await tournamentsApi.updateSettings(tournamentId, {
             rules: { by_leaf: byLeafPatch },
             amend: rulesFrozen,
             reason: amendReason,
             event_id: newEventId(),
           });
-        } catch (e) {
-          throw e instanceof ApiError ? e : new Error(String(e));
         }
+      } catch (e) {
+        // A mid-loop failure leaves the earlier PATCHes committed server-side:
+        // drop those layers from `staged` so the dirty markers and a re-save
+        // cover only what is truly unsaved, and refetch their stored values.
+        if (committed.length > 0) {
+          setStaged((s) => {
+            const next = { ...s };
+            for (const k of committed) delete next[k];
+            return next;
+          });
+          invalidateTournament(qc, tournamentId);
+        }
+        throw e instanceof ApiError ? e : new Error(String(e));
       }
     },
     onSuccess: () => {
@@ -1013,6 +1026,24 @@ export function CompetitionFormatBoard({
                   onChange={(e) => setAmendReason(e.target.value)}
                 />
               </label>
+            ) : null}
+            {dirty && hiddenErrorSports.length > 0 ? (
+              <p className="text-xs text-destructive" data-testid="stage-errors-hint">
+                {t("Fix the stage plan in")}{" "}
+                {hiddenErrorSports.map((sp, i) => (
+                  <span key={sp}>
+                    {i > 0 ? ", " : ""}
+                    <button
+                      type="button"
+                      className="font-medium underline underline-offset-2"
+                      onClick={() => setActiveSport(sp)}
+                    >
+                      {sportName(sp)}
+                    </button>
+                  </span>
+                ))}{" "}
+                {t("to save.")}
+              </p>
             ) : null}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-muted-foreground">

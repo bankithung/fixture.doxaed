@@ -11,11 +11,16 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from apps.fixtures.services.generate import (
+    _bracket_order,
     _keep_apart_key_map,
     _opening_pairs_bracket,
+    _repair_same_institution_pairs,
+    _separate_bracket_by_key,
     _separate_by_key,
     generate_round_robin_by_category,
     generate_single_elimination,
+    plan_round_robin,
+    plan_single_elimination,
 )
 from apps.fixtures.services.scheduler import ScheduleConfig, merge_stored_constraints
 from apps.teams.models import Institution, Team
@@ -221,6 +226,164 @@ def test_generate_api_surfaces_keep_apart_warnings():
     assert r.status_code == 201, r.content
     codes = {w["code"] for w in r.json().get("warnings") or []}
     assert "keep_apart_relaxed" in codes
+
+
+# ----------------------------------------------- until_round is consumed now
+
+
+class _T:
+    """Stand-in — the bracket helper touches .id / .institution_id / .name."""
+
+    def __init__(self, id):
+        self.id = id
+        self.institution_id = None
+        self.name = f"t{id}"
+
+
+def _bracket_meet(out, km, key) -> int:
+    """First round the two `key` teams can meet in the returned seed list."""
+    size = 1
+    while size < len(out):
+        size *= 2
+    order = _bracket_order(size)
+    a, b = (i for i, tm in enumerate(out) if km.get(tm.id) == key)
+    return (order.index(a + 1) ^ order.index(b + 1)).bit_length()
+
+
+def test_until_round_permits_meetings_at_its_round():
+    """``until_round=2`` = apart through round 1 only: an arrangement whose
+    same-key pair first meets in round 2 is already legal and stays UNTOUCHED
+    (maximal separation would push it to the final instead)."""
+    teams = [_T(i) for i in range(8)]
+    km = {0: "x", 3: "x"}  # seeds 1+4: same half, first meeting = round 2
+    out, conflicts = _separate_bracket_by_key(teams, km, 2)
+    assert out == teams and conflicts == []
+    # the same input under MAXIMAL separation moves the pair to opposite halves
+    out2, conflicts2 = _separate_bracket_by_key(teams, km, None)
+    assert _bracket_meet(out2, km, "x") == 3 and conflicts2 == []
+
+
+def test_until_round_1_still_means_opening_round_separation():
+    """Legacy records wrote ``until_round=1`` for the historical opening-round
+    repair — 1 aliases 2, so a round-1 same-key pair is still broken up."""
+    teams = [_T(i) for i in range(8)]
+    km = {3: "x", 4: "x"}  # seeds 4+5 pair up in round 1
+    out, conflicts = _separate_bracket_by_key(teams, km, 1)
+    assert _bracket_meet(out, km, "x") >= 2 and conflicts == []
+
+
+def test_stored_school_record_until_round_overrides_builtin_depth():
+    admin = _admin("ovr@test.local")
+    t = _cup(admin, "Override Cup")
+    a1 = _team(t, "A School", "A1")
+    b = _team(t, "B School", "B")
+    c = _team(t, "C School", "C")
+    (a2,) = register_school(
+        tournament=t, school_name="A School",
+        teams=[{"name": "A2", "sport": "football", "leaf_key": LEAF,
+                "players": []}],
+    )
+    others = [_team(t, f"S{i}", f"s{i}") for i in range(4)]
+    teams = [a1, b, c, a2, *others]  # A pair = seeds 1+4: meet at the semi
+    record = {"type": "keep_apart_until_round", "scope": "all",
+              "params": {"key": "school", "until_round": 2}}
+    km = _keep_apart_key_map(t, teams, "school", [])
+    warnings: list = []
+    plans = plan_single_elimination(
+        teams, separators=[(record, km)], warnings=warnings,
+    )
+    r1_of = {
+        tid: p.ref for p in plans if p.round_no == 1
+        for tid in (p.home_team_id, p.away_team_id)
+    }
+    # a semi meeting is legal at until_round=2: both A teams stay in the top
+    # half (refs 0+1), untouched, and nothing is relaxed
+    assert {r1_of[a1.id], r1_of[a2.id]} == {0, 1}
+    assert not any(w.get("code") == "keep_apart_relaxed" for w in warnings)
+    # without the record the BUILT-IN pass is maximal: opposite halves
+    plans2 = plan_single_elimination(teams)
+    r1_of2 = {
+        tid: p.ref for p in plans2 if p.round_no == 1
+        for tid in (p.home_team_id, p.away_team_id)
+    }
+    assert (r1_of2[a1.id] < 2) != (r1_of2[a2.id] < 2)
+
+
+# ---------------------------------------------- groups→knockout cross-seed
+
+
+def test_repair_same_institution_pairs_swaps_within_clean_pairs():
+    """A school winning group 0 and running up group 1 used to meet itself in
+    round 1 — the repair swaps it out without re-pairing a group."""
+    seeds = ["a1", "y", "x", "a2"]  # bracket pairs: (a1, a2) and (y, x)
+    inst_of = {"a1": "A", "a2": "A", "x": None, "y": None}
+    group_of = {"a1": 0, "x": 0, "y": 1, "a2": 1}
+    _repair_same_institution_pairs(seeds, inst_of, group_of)
+    for i, j in _opening_pairs_bracket(4):
+        assert inst_of[seeds[i]] is None or inst_of[seeds[i]] != inst_of[seeds[j]]
+        assert group_of[seeds[i]] != group_of[seeds[j]]
+
+
+def test_same_school_qualifiers_from_two_groups_avoid_round_one():
+    from apps.fixtures.services.generate import (
+        generate_knockout_from_groups,
+        generate_round_robin,
+    )
+    from apps.matches.models import Match
+    from apps.matches.services.scoring import record_score
+
+    admin = _admin("gko@test.local")
+    t = create_tournament(user=admin, name="GKO Cup")
+    register_school(tournament=t, school_name="Alpha",
+                    teams=[{"name": "Alpha Blues", "players": []},
+                           {"name": "Alpha Reds", "players": []}])
+    register_school(tournament=t, school_name="Xavier",
+                    teams=[{"name": "Xavier", "players": []}])
+    register_school(tournament=t, school_name="York",
+                    teams=[{"name": "York", "players": []}])
+    generate_round_robin(tournament=t, group_size=2)
+    # institution spread puts one Alpha team in each group; score the groups
+    # so Alpha WINS one and RUNS UP the other (the cross-seed collision case)
+    alpha = {"Alpha Blues", "Alpha Reds"}
+    for m in Match.objects.filter(
+        tournament=t, stage="group", deleted_at__isnull=True,
+    ).select_related("home_team", "away_team"):
+        names = {m.home_team.name, m.away_team.name}
+        assert len(names & alpha) == 1  # sanity: the spread worked
+        alpha_home = m.home_team.name in alpha
+        if "Xavier" in names:  # Alpha loses to Xavier, beats York
+            hs, as_ = (0, 1) if alpha_home else (1, 0)
+        else:
+            hs, as_ = (1, 0) if alpha_home else (0, 1)
+        record_score(match=m, home_score=hs, away_score=as_, by=admin)
+    ko = generate_knockout_from_groups(tournament=t, advance_per_group=2)
+    teams = {tm.id: tm for tm in Team.objects.filter(tournament=t)}
+    for m in _opening(ko):
+        home, away = teams[m.home_team_id], teams[m.away_team_id]
+        assert home.institution_id != away.institution_id, (
+            f"KO round 1 pairs {home.name} vs {away.name} from one school"
+        )
+
+
+# --------------------------------------------------- grouped-RR pigeonhole
+
+
+def test_grouped_round_robin_warns_when_pigeonhole_shares_a_group():
+    """4 same-district schools into 2 groups of 2: every group co-locates a
+    same-key pair — the spread can't fix it, so the record relaxes with a
+    named warning (grouping itself is unchanged)."""
+    admin = _admin("pig@test.local")
+    t = _cup(admin, "Pigeon Cup")
+    teams = [_team(t, f"{c} School", c, district="Kohima")
+             for c in ("A", "B", "C", "D")]
+    record = {"type": "keep_apart_until_round", "scope": "all",
+              "params": {"key": "district", "until_round": 1}}
+    km = _keep_apart_key_map(t, teams, "district", [])
+    warnings: list = []
+    plan_round_robin(teams, group_size=2, separators=[(record, km)],
+                     warnings=warnings)
+    w = next(x for x in warnings if x.get("code") == "keep_apart_relaxed")
+    assert w["key"] == "district" and len(w["pairs"]) == 2  # one per group
 
 
 # ------------------------------------------------------------- scheduler note
