@@ -108,11 +108,16 @@ export function CompetitionPreviewPanel({
     }
     for (const b of byGroup.values()) {
       b.members.sort((a, c) => a.localeCompare(c));
+      // Round FIRST, then kickoff: a group reads as its competition flows
+      // (round 3 on day 2 must not sort above round 2's afternoon).
       b.matches.sort((a, c) => {
+        if ((a.round_no ?? 0) !== (c.round_no ?? 0)) {
+          return (a.round_no ?? 0) - (c.round_no ?? 0);
+        }
         const ta = a.scheduled_at ?? "~";
         const tc = c.scheduled_at ?? "~";
         if (ta !== tc) return ta < tc ? -1 : 1;
-        return (a.round_no ?? 0) - (c.round_no ?? 0);
+        return a.ref < c.ref ? -1 : 1;
       });
     }
     return {
@@ -196,50 +201,83 @@ export function CompetitionPreviewPanel({
       </div>
 
       {tab === "groups" ? (
-        <div
-          data-testid="stage-groups"
-          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
-        >
-          {groups.map((g) => (
-            <div
-              key={g.name}
-              data-testid={`stage-group-${g.name}`}
-              className="flex flex-col overflow-hidden bento-card star-rim rounded-xl border border-border bg-card shadow-sm"
-            >
-              <h4 className="flex items-center gap-2 border-b border-border bg-muted/40 px-3 py-2 text-sm font-semibold">
-                <Users aria-hidden="true" className="h-4 w-4 text-primary" />
-                {g.name}
-                <span className="font-tabular text-xs font-normal text-muted-foreground">
-                  {g.members.length} {t("teams")} · {g.matches.length}{" "}
-                  {t("matches")}
-                </span>
-              </h4>
-              <ol className="flex flex-col border-b border-border">
-                {g.members.map((s, i) => (
-                  <li
-                    key={s}
-                    className="flex items-center gap-2.5 px-3 py-1.5 text-sm"
-                  >
-                    <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-secondary font-tabular text-[0.6875rem] font-medium text-secondary-foreground">
-                      {i + 1}
-                    </span>
-                    <span className="truncate">{s}</span>
-                  </li>
-                ))}
-              </ol>
-              <div className="flex flex-col gap-1.5 p-3">
-                {g.matches.map((m) => (
-                  <MatchChip
-                    key={m.ref}
-                    match={m}
-                    accent={accent}
-                    teamNames={teamNames}
-                    showCompetition={false}
-                  />
-                ))}
+        <div data-testid="stage-groups" className="flex flex-col gap-3">
+          {groups.map((g) => {
+            // Matches grouped by round, each labeled with its day so a
+            // round on day 2 never reads as "earlier" than day 1's afternoon.
+            const rounds = new Map<number, PreviewMatch[]>();
+            for (const m of g.matches) {
+              const r = m.round_no ?? 0;
+              const list = rounds.get(r);
+              if (list) list.push(m);
+              else rounds.set(r, [m]);
+            }
+            const dayOf = (m: PreviewMatch | undefined): string => {
+              if (!m?.scheduled_at) return "";
+              const d = new Date(m.scheduled_at);
+              return Number.isNaN(d.getTime())
+                ? ""
+                : d.toLocaleDateString([], {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                  });
+            };
+            return (
+              <div
+                key={g.name}
+                data-testid={`stage-group-${g.name}`}
+                className="overflow-hidden bento-card star-rim rounded-xl border border-border bg-card shadow-sm"
+              >
+                <h4 className="flex items-center gap-2 border-b border-border bg-muted/40 px-3 py-2 text-sm font-semibold">
+                  <Users aria-hidden="true" className="h-4 w-4 text-primary" />
+                  {g.name}
+                  <span className="font-tabular text-xs font-normal text-muted-foreground">
+                    {g.members.length} {t("teams")} · {g.matches.length}{" "}
+                    {t("matches")}
+                  </span>
+                </h4>
+                <div className="flex flex-col sm:flex-row">
+                  {/* The group itself stays put on the left. */}
+                  <ol className="flex shrink-0 flex-col border-b border-border sm:w-60 sm:border-b-0 sm:border-r">
+                    {g.members.map((s, i) => (
+                      <li
+                        key={s}
+                        className="flex items-center gap-2.5 px-3 py-2 text-sm"
+                      >
+                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-secondary font-tabular text-[0.6875rem] font-medium text-secondary-foreground">
+                          {i + 1}
+                        </span>
+                        <span className="truncate">{s}</span>
+                      </li>
+                    ))}
+                  </ol>
+                  {/* Its matches together on the right, round by round. */}
+                  <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-3">
+                    {[...rounds.entries()]
+                      .sort((a, b) => a[0] - b[0])
+                      .map(([r, ms]) => (
+                        <div key={r} className="flex flex-col gap-1.5">
+                          <p className="pt-1 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground first:pt-0">
+                            {t("Round")} {r}
+                            {dayOf(ms[0]) ? ` · ${dayOf(ms[0])}` : ""}
+                          </p>
+                          {ms.map((m) => (
+                            <MatchChip
+                              key={m.ref}
+                              match={m}
+                              accent={accent}
+                              teamNames={teamNames}
+                              showCompetition={false}
+                            />
+                          ))}
+                        </div>
+                      ))}
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : null}
 

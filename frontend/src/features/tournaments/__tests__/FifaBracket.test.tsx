@@ -112,11 +112,13 @@ describe("FifaBracket", () => {
     const f1 = m({ round_no: 4, away_team: team("f", "Zeta"),
       home_source: { type: "winner_of", ref: "s1" }, away_source: { type: "team", team_id: "f" } }, "f1");
     render(<FifaBracket columns={[[1, [p1]], [2, [q1, q2]], [3, [s1]], [4, [f1]]]} />);
-    // Depth-based headers, each exactly once and correctly ordered by DEPTH.
-    expect(screen.getByText("Round of 16")).toBeInTheDocument();
-    expect(screen.getAllByText("Quarter-finals")).toHaveLength(1);
-    expect(screen.getAllByText("Semi-finals")).toHaveLength(1);
+    // An UNEVEN shape (Zeta enters at the final, rounds 1/2/1/1) gets honest
+    // plain round names — no "Round of 16" fiction for a 6-team field.
+    expect(screen.getByText("Round 1")).toBeInTheDocument();
+    expect(screen.getByText("Round 2")).toBeInTheDocument();
+    expect(screen.getByText("Round 3")).toBeInTheDocument();
     expect(screen.getAllByText("Final")).toHaveLength(1);
+    expect(screen.queryByText(/Round of/)).toBeNull();
     // The play-in teams render (fixed first-round matchup).
     expect(screen.getByText("Alpha")).toBeInTheDocument();
     expect(screen.getByText("Beta")).toBeInTheDocument();
@@ -195,5 +197,38 @@ describe("FifaBracket byes", () => {
       away_source: { type: "winner_of", match_id: "m2" } }, "m3");
     render(<FifaBracket columns={[[1, [sf1, sf2]], [2, [fin]]]} />);
     expect(screen.queryAllByTestId("bracket-bye")).toHaveLength(0);
+  });
+});
+
+describe("FifaBracket uneven (pair_all) brackets", () => {
+  it("labels columns by real round and shows only genuine byes", () => {
+    // 5-team pair_all: full round 1 (2 matches), E enters round 2, the
+    // winner of M2 sits out round 2 and meets the round-2 winner in the
+    // final. Rounds: 2 + 1 + 1.
+    const m1 = m({ round_no: 1,
+      home_team: team("a", "Alpha"), away_team: team("b", "Bravo") }, "m1");
+    const m2 = m({ round_no: 1,
+      home_team: team("c", "Charlie"), away_team: team("d", "Delta") }, "m2");
+    const m3 = m({ round_no: 2,
+      home_source: { type: "winner_of", match_id: "m1" },
+      away_team: team("e", "Echo") }, "m3");
+    const fin = m({ round_no: 3,
+      home_source: { type: "winner_of", match_id: "m3" },
+      away_source: { type: "winner_of", match_id: "m2" } }, "m4");
+    render(<FifaBracket columns={[[1, [m1, m2]], [2, [m3]], [3, [fin]]]} />);
+    // Not a power-of-2 shape: plain round names, no "Round of 32" fiction.
+    expect(screen.getByText("Round 1")).toBeInTheDocument();
+    expect(screen.getByText("Round 2")).toBeInTheDocument();
+    expect(screen.getByText("Final")).toBeInTheDocument();
+    expect(screen.queryByText(/Round of/)).toBeNull();
+    // Exactly two honest byes: Echo enters at round 2 (entry bye), and the
+    // M2 winner sits out round 2 (mid-bracket bye). Round-1 players get NONE.
+    const byes = screen.getAllByTestId("bracket-bye");
+    expect(byes).toHaveLength(2);
+    const text = byes.map((b) => b.textContent).join(" ");
+    expect(text).toContain("Echo");
+    expect(text).toContain("Winner of M");
+    expect(text).not.toContain("Alpha");
+    expect(text).not.toContain("Charlie");
   });
 });

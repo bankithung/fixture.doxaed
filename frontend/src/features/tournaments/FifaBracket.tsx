@@ -302,13 +302,16 @@ function roundNameByDepth(d: number): string {
   return `${t("Round of")} ${2 ** (d + 1)}`;
 }
 
-/** A team that skips the earlier round(s): drawn as a ghost "Bye" card one
- * column left of the match it enters, wired into the same connector bus. */
+/** A slot that skips a round: drawn as a ghost "Bye" card in the column it
+ * sits out, wired into the same connector bus. Entry byes carry a `label`
+ * (team name / group slot); a mid-bracket bye on a winner_of slot carries the
+ * `feederId` instead — the component renders "Winner of M<n>" for it. */
 interface ByeGhost {
   parentId: string;
-  label: string;
   x: number;
   y: number;
+  label?: string;
+  feederId?: string;
 }
 
 interface BracketLayout {
@@ -369,13 +372,20 @@ function layoutBracket(matches: MatchRow[]): BracketLayout {
   }
 
   if (treeOk) {
-    const maxDepth = Math.max(...depth.values());
-    const cols = maxDepth + 1;
+    // Columns follow the matches' ACTUAL rounds, not distance-to-final —
+    // an uneven bracket (pair_all byes) must not draw a round-1 match in a
+    // later column just because its path to the final is shorter.
+    const roundsSorted = [...new Set(matches.map((m) => m.round_no))].sort(
+      (a, b) => a - b,
+    );
+    const colOf = new Map(roundsSorted.map((r, i) => [r, i]));
+    const cols = roundsSorted.length;
+    const lastCol = cols - 1;
     let slot = 0;
     const ghosts: ByeGhost[] = [];
     const placeY = (id: string): number => {
       const m = byId.get(id)!;
-      const d = depth.get(id)!;
+      const col = colOf.get(m.round_no) ?? 0;
       const centers: number[] = [];
       const sides: [MatchRow["home_team"], MatchSource | null | undefined][] = [
         [m.home_team, m.home_source],
@@ -383,38 +393,63 @@ function layoutBracket(matches: MatchRow[]): BracketLayout {
       ];
       for (const [team, src] of sides) {
         const fid = feederId(src);
-        if (fid && byId.has(fid)) centers.push(placeY(fid));
-        else {
+        if (fid && byId.has(fid)) {
+          const fy = placeY(fid);
+          centers.push(fy);
+          // A feeder more than one column back = this slot SAT OUT the
+          // round(s) between — a genuine mid-bracket bye. One ghost per
+          // skipped column, riding the feeder's row.
+          const fcol = colOf.get(byId.get(fid)!.round_no) ?? 0;
+          for (let c = fcol + 1; c < col; c += 1) {
+            ghosts.push({ parentId: id, feederId: fid, x: colX(c), y: fy });
+          }
+        } else {
           const y = (slot + 0.5) * ROW;
           centers.push(y);
           slot += 1;
-          // Entering later than the first round = a bye through the earlier
-          // round(s). Show it: a ghost card in the previous column so the
-          // team's free pass is visible instead of silently missing.
-          if (d < maxDepth) {
+          // Entering later than the first round = an entry bye through the
+          // previous round: show it instead of a silent gap.
+          if (col > 0) {
             const label = team?.name ?? sourceLabel(src ?? null);
             if (label) {
-              ghosts.push({ parentId: id, label, x: colX(maxDepth - d - 1), y });
+              ghosts.push({ parentId: id, label, x: colX(col - 1), y });
             }
           }
         }
       }
       const yc = centers.reduce((a, b) => a + b, 0) / centers.length;
-      pos.set(id, { x: colX(maxDepth - d), y: yc });
+      pos.set(id, { x: colX(col), y: yc });
       return yc;
     };
     const finalY = placeY(roots[0]!.id);
+    // Classic power-of-2 shape keeps the FIFA names: every round after the
+    // first halves cleanly into the final (the first round may be partial —
+    // that is the normal byes/play-in round of a padded bracket). Anything
+    // else (pair_all) is labeled by plain round number, honestly.
+    const countByRound = new Map<number, number>();
+    for (const m of matches) {
+      countByRound.set(m.round_no, (countByRound.get(m.round_no) ?? 0) + 1);
+    }
+    const classic =
+      roundsSorted
+        .slice(1)
+        .every((r, i) => countByRound.get(r) === 2 ** (lastCol - (i + 1))) &&
+      (countByRound.get(roundsSorted[0]!) ?? 0) <= 2 ** lastCol;
     return {
       pos,
       feedersByParent,
       ghosts,
-      colLabels: Array.from({ length: cols }, (_, c) => ({
+      colLabels: roundsSorted.map((_, c) => ({
         x: colX(c) + CARD_W / 2,
-        label: roundNameByDepth(maxDepth - c),
+        label: classic
+          ? roundNameByDepth(lastCol - c)
+          : c === lastCol
+            ? t("Final")
+            : `${t("Round")} ${c + 1}`,
       })),
       H: Math.max(slot, 1) * ROW,
       canvasW: cols * CARD_W + (cols - 1) * COL_GAP,
-      finalX: colX(maxDepth),
+      finalX: colX(lastCol),
       finalY,
     };
   }
@@ -546,7 +581,9 @@ export function FifaBracket({
     seg.push(<span key={`s${segKey++}`} className="absolute" style={{ left: x - 1, top: Math.min(y1, y2), width: 2, height: Math.abs(y2 - y1), background: C.line }} />);
   };
   // Bye ghosts join the same bus as real feeders, so a card fed by one match
-  // and one bye still draws a single clean elbow.
+  // and one bye still draws a single clean elbow. A mid-bracket bye reroutes
+  // its feeder's connector THROUGH the ghost (a straight ride across the
+  // skipped column), and the ghost joins the parent's bus in its place.
   const ghostsByParent = new Map<string, ByeGhost[]>();
   for (const g of ghosts) {
     const list = ghostsByParent.get(g.parentId);
@@ -556,13 +593,29 @@ export function FifaBracket({
   const parents = new Set([...feedersByParent.keys(), ...ghostsByParent.keys()]);
   for (const pid of parents) {
     const p = pos.get(pid);
-    const kp = [
-      ...(feedersByParent.get(pid) ?? [])
-        .map((k) => pos.get(k))
-        .filter((v): v is { x: number; y: number } => !!v),
-      ...(ghostsByParent.get(pid) ?? []).map((g) => ({ x: g.x, y: g.y })),
-    ];
-    if (!p || kp.length === 0) continue;
+    if (!p) continue;
+    const kp: { x: number; y: number }[] = [];
+    const rerouted = new Map<string, ByeGhost>();
+    for (const g of ghostsByParent.get(pid) ?? []) {
+      if (!g.feederId) {
+        kp.push({ x: g.x, y: g.y });
+        continue;
+      }
+      const cur = rerouted.get(g.feederId);
+      if (!cur || g.x > cur.x) rerouted.set(g.feederId, g);
+    }
+    for (const k of feedersByParent.get(pid) ?? []) {
+      const kpos = pos.get(k);
+      if (!kpos) continue;
+      const via = rerouted.get(k);
+      if (via) {
+        hline(kpos.x + CARD_W, via.x, kpos.y);
+        kp.push({ x: via.x, y: via.y });
+      } else {
+        kp.push(kpos);
+      }
+    }
+    if (kp.length === 0) continue;
     const bus = (Math.max(...kp.map((k) => k.x + CARD_W)) + p.x) / 2;
     for (const k of kp) hline(k.x + CARD_W, bus, k.y);
     const ys = [...kp.map((k) => k.y), p.y];
@@ -579,14 +632,20 @@ export function FifaBracket({
     );
   });
 
-  // Ghost "Bye" cards: the team had no opponent in this round and advances
+  // Ghost "Bye" cards: the slot had no opponent in this round and advances
   // automatically (a real-tournament bye), shown instead of a silent gap.
+  // Mid-bracket byes name the slot by its feeder match ("Winner of M18").
   const GHOST_H = 44;
+  const ghostLabel = (g: ByeGhost): string =>
+    g.label ??
+    (g.feederId != null && matchNo.get(g.feederId) != null
+      ? `${t("Winner of M")}${matchNo.get(g.feederId)}`
+      : t("TBD"));
   const ghostCards = ghosts.map((g, i) => (
     <div
       key={`b-${i}`}
       role="group"
-      aria-label={`${g.label} ${t("bye, advances to the next round")}`}
+      aria-label={`${ghostLabel(g)} ${t("bye, advances to the next round")}`}
       data-testid="bracket-bye"
       className="absolute flex flex-col justify-center gap-0.5 rounded-md px-2.5"
       style={{
@@ -600,7 +659,7 @@ export function FifaBracket({
     >
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-[0.6875rem] font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>
-          {g.label}
+          {ghostLabel(g)}
         </span>
         <span
           className="shrink-0 rounded-full px-1.5 py-px text-[0.5625rem] font-semibold uppercase tracking-wider"
