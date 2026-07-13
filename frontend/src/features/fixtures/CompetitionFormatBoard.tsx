@@ -820,6 +820,37 @@ export function CompetitionFormatBoard({
                               {t("Third place match (losing semi-finalists play for bronze)")}
                             </label>
                           ) : null}
+
+                          {/* Bye policy: classic seeded byes vs pair everyone
+                              each round (flat knockout only). */}
+                          {fmt === "knockout" ? (
+                            <div className="flex flex-col gap-1">
+                              <label className="flex w-fit items-center gap-2 text-sm text-foreground">
+                                <input
+                                  type="checkbox"
+                                  data-testid={`format-sport-${sp}-pair-all`}
+                                  className="h-4 w-4 rounded border-input accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  checked={
+                                    (layerVal(`sport:${sp}`, "bye_policy") ??
+                                      layerVal("*", "bye_policy")) === "pair_all"
+                                  }
+                                  onChange={(e) =>
+                                    stage(`sport:${sp}`, {
+                                      bye_policy: e.target.checked
+                                        ? "pair_all"
+                                        : "seeded_byes",
+                                    })
+                                  }
+                                />
+                                {t("Pair every team in round 1 (byes only for leftovers)")}
+                              </label>
+                              <p className="text-xs text-muted-foreground">
+                                {t(
+                                  "Off: the standard bracket keeps all byes in round 1. On: every round pairs as many teams as possible; an odd team out is byed to the next round.",
+                                )}
+                              </p>
+                            </div>
+                          ) : null}
                         </div>
                       )}
                     </div>

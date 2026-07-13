@@ -152,6 +152,26 @@ describe("CompetitionFormatBoard", () => {
     );
   });
 
+  it("knockout exposes the pair-all bye policy and saves it to the sport layer", async () => {
+    mount();
+    await userEvent.click(
+      await screen.findByTestId("format-sport-table_tennis-format-knockout"),
+    );
+    await userEvent.click(
+      screen.getByTestId("format-sport-table_tennis-pair-all"),
+    );
+    await userEvent.click(screen.getByTestId("save-formats"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({
+          leaf_key: "sport:table_tennis",
+          config: expect.objectContaining({ bye_policy: "pair_all" }),
+        }),
+      ),
+    );
+  });
+
   it("group-stage→knockout exposes group size + advance and saves them", async () => {
     mount();
     await openSport("sepak_takraw");

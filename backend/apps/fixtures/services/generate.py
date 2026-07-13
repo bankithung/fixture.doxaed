@@ -919,21 +919,102 @@ def plan_round_robin_pool(
     )
 
 
+def _plan_pair_all(
+    teams: list, *, third_place: bool, stage: str, leaf_key: str,
+    sport: str, label_prefix: str,
+) -> list[MatchPlan]:
+    """bye_policy="pair_all" rounds (owner ask 2026-07-13): every round pairs
+    as many entrants as possible in ADJACENT order; only a leftover odd slot
+    is byed forward (rotated to a slot without a prior bye), so a 20-team
+    field plays a full 10-match round 1 and rounds run 20 -> 10 -> 5 -> 3 -> 2.
+    The 3rd-place playoff meets the losers of the final's two feeder matches
+    (with uneven paths they can come from different rounds — still the two
+    teams the finalists beat last). ``teams`` arrive seeded + separated."""
+    bracket_label = label_prefix.rstrip(" ·—").strip()
+    common = {
+        "stage": stage, "leaf_key": leaf_key, "sport": sport,
+        "group_label": bracket_label,
+    }
+    plans: list[MatchPlan] = []
+
+    def _side(slot: dict) -> tuple:
+        if "team" in slot:
+            tm = slot["team"]
+            return tm.id, {"type": "team", "team_id": str(tm.id)}
+        return None, {"type": "winner_of", "ref": slot["plan"]}
+
+    slots: list[dict] = [{"team": tm} for tm in teams]
+    round_no = 1
+    while len(slots) > 1:
+        carry: dict | None = None
+        if len(slots) % 2 == 1:
+            idx = next(
+                (
+                    i
+                    for i in range(len(slots) - 1, -1, -1)
+                    if not slots[i].get("had_bye")
+                ),
+                len(slots) - 1,
+            )
+            carry = {**slots.pop(idx), "had_bye": True}
+        if third_place and len(slots) == 2 and carry is None \
+                and all("plan" in s for s in slots):
+            plans.append(
+                MatchPlan(
+                    round_no=round_no,
+                    home_source={"type": "loser_of", "ref": slots[0]["plan"]},
+                    away_source={"type": "loser_of", "ref": slots[1]["plan"]},
+                    ref=len(plans),
+                    **{**common, "group_label":
+                        f"{bracket_label} · 3rd Place" if bracket_label
+                        else "3rd Place"},
+                )
+            )
+        nxt: list[dict] = []
+        for i in range(0, len(slots), 2):
+            home_id, home_src = _side(slots[i])
+            away_id, away_src = _side(slots[i + 1])
+            plans.append(
+                MatchPlan(
+                    round_no=round_no,
+                    home_team_id=home_id, away_team_id=away_id,
+                    home_source=home_src, away_source=away_src,
+                    ref=len(plans), **common,
+                )
+            )
+            nxt.append({"plan": plans[-1].ref})
+        if carry is not None:
+            nxt.append(carry)
+        slots = nxt
+        round_no += 1
+    return plans
+
+
 def plan_single_elimination(
     teams: list, *, stage: str = "knockout", leaf_key: str = "",
     sport: str = "", third_place: bool = False,
     seeding: str = "registration", seed: int | None = None,
     separators: list[tuple[dict, dict]] | None = None,
     warnings: list | None = None, label_prefix: str = "",
+    bye_policy: str = "seeded_byes",
 ) -> list[MatchPlan]:
     """Pure pairing core for a single-elimination bracket (byes, winner_of /
     loser_of pointers as plan refs, optional 3rd-place playoff — §4.4). Zero
     DB writes. ``label_prefix`` (e.g. "Table Tennis — u-14 — boys — 1v1 — ")
     names every bracket match so the schedule shows the competition, not a bare
-    "R1" (a knockout has no group_label otherwise — owner ask 2026-06-27)."""
+    "R1" (a knockout has no group_label otherwise — owner ask 2026-06-27).
+
+    ``bye_policy="pair_all"`` (owner ask 2026-07-13): instead of padding the
+    field to a power of two (all byes in round 1), every round pairs as many
+    entrants as possible in order and only a leftover odd slot is byed
+    forward — a 20-team field plays a full 10-match round 1 and rounds run
+    20 -> 10 -> 5 -> 3 -> 2. The leftover bye rotates to a slot that has not
+    had one yet. The 3rd-place playoff then meets the losers of the final's
+    two feeder matches (they can come from different rounds)."""
     n = len(teams)
     if n < 2:
         raise ValueError("single elimination requires at least 2 teams")
+    pair_all = bye_policy == "pair_all"
 
     teams = _seed_order(list(teams), seeding=seeding, seed=seed)
     # Constraint repair AFTER seeding (§4.3). Registration/random draws get
@@ -943,9 +1024,14 @@ def plan_single_elimination(
     # opening-pair repair — it bails to the input rather than reorder across
     # seed values, so maximal separation applies fully only to registration/
     # random seeding. Surviving conflicts emit a named warning, never an
-    # error.
-    if seeding == "seeded":
-        pairs = _opening_pairs_bracket(n)
+    # error. pair_all pairs ADJACENT slots each round (paths are not fixed in
+    # advance), so only its round-1 pairs can be repaired.
+    if seeding == "seeded" or pair_all:
+        pairs = (
+            [(2 * i + 1, 2 * i + 2) for i in range(n // 2)]
+            if pair_all
+            else _opening_pairs_bracket(n)
+        )
         teams = _separate_institutions(list(teams), pairs)
         for _record, key_map in separators or []:
             teams = _separate_by_key(teams, pairs, key_map)
@@ -956,6 +1042,12 @@ def plan_single_elimination(
             )
     else:
         teams = _separate_bracket(list(teams), separators, warnings=warnings)
+
+    if pair_all:
+        return _plan_pair_all(
+            teams, third_place=third_place, stage=stage, leaf_key=leaf_key,
+            sport=sport, label_prefix=label_prefix,
+        )
 
     size = 1
     while size < n:
@@ -1807,7 +1899,7 @@ def generate_single_elimination(
     *, tournament, teams, stage: str = "knockout",
     leaf_key: str = "", sport: str = "", third_place: bool = False,
     plate: bool = False, seeding: str = "registration", seed: int | None = None,
-    warnings: list | None = None,
+    warnings: list | None = None, bye_policy: str = "seeded_byes",
 ) -> list[Match]:
     """Generate a single-elimination bracket from ``teams`` (any count ≥ 2).
 
@@ -1859,6 +1951,7 @@ def generate_single_elimination(
     plans = plan_single_elimination(
         list(teams), stage=stage, leaf_key=leaf_key or "", sport=sport,
         third_place=third_place, seeding=seeding, seed=seed,
+        bye_policy=bye_policy,
         label_prefix=(
             f"{leaf_label(tournament.sports or [], leaf_key)} · "
             if leaf_key else ""
@@ -2416,6 +2509,7 @@ def generate_for_leaf(
             tournament=tournament, teams=_seeded_teams(), leaf_key=leaf_key,
             third_place=bool(cfg.get("third_place")), plate=bool(cfg.get("plate")),
             seeding=seeding, seed=seed, warnings=warnings,
+            bye_policy=str(cfg.get("bye_policy") or "seeded_byes"),
         )
     if fmt == "knockout_from_groups":
         return generate_knockout_from_groups(

@@ -119,3 +119,68 @@ def test_wrapper_resolves_refs_into_real_match_ids():
     third = next(m for m in matches if m.group_label == "3rd Place")
     assert third.home_source == {"type": "loser_of", "match_id": str(semis[0].id)}
     assert "ref" not in third.home_source  # refs never leak into rows
+
+
+# ------------------------------------------------------------ pair_all byes
+def test_pair_all_20_teams_full_first_round():
+    """bye_policy=pair_all (owner ask 2026-07-13): a 20-team field plays a
+    full 10-match round 1; byes only appear when a round goes odd."""
+    teams = _teams(20)
+    plans = plan_single_elimination(teams, bye_policy="pair_all")
+    by_round: dict[int, int] = {}
+    for p in plans:
+        by_round[p.round_no] = by_round.get(p.round_no, 0) + 1
+    # 20 -> 10 -> 5 -> (2 + bye) -> (1 + bye) -> final
+    assert by_round == {1: 10, 2: 5, 3: 2, 4: 1, 5: 1}
+    assert len(plans) == 19
+    # Round 1 pairs every team exactly once — no team missing, none doubled.
+    r1_ids = [
+        tid
+        for p in plans
+        if p.round_no == 1
+        for tid in (p.home_team_id, p.away_team_id)
+    ]
+    assert sorted(map(str, r1_ids)) == sorted(str(t.id) for t in teams)
+
+
+def test_pair_all_byes_forward_winner_pointers_across_rounds():
+    """A byed slot re-enters a LATER round as a winner_of pointer to its
+    earlier match (no phantom matches for byes)."""
+    teams = _teams(5)  # 5 -> (2 + bye) -> (1 + bye) -> final: 4 matches
+    plans = plan_single_elimination(teams, bye_policy="pair_all")
+    assert [p.round_no for p in plans] == [1, 1, 2, 3]
+    final = plans[-1]
+    # One final side comes from round 2, the other rode a bye from round 1.
+    refs = {final.home_source["ref"], final.away_source["ref"]}
+    feeder_rounds = sorted(plans[r].round_no for r in refs)
+    assert feeder_rounds == [1, 2]
+
+
+def test_pair_all_third_place_meets_the_final_feeders_losers():
+    teams = _teams(20)
+    plans = plan_single_elimination(
+        teams, bye_policy="pair_all", third_place=True,
+    )
+    assert len(plans) == 20
+    third = [p for p in plans if "3rd Place" in (p.group_label or "")]
+    assert len(third) == 1
+    final = plans[-1]
+    assert {third[0].home_source["ref"], third[0].away_source["ref"]} == {
+        final.home_source["ref"],
+        final.away_source["ref"],
+    }
+    assert third[0].home_source["type"] == "loser_of"
+
+
+def test_pair_all_default_policy_unchanged():
+    """Without the flag the classic padded bracket is byte-identical."""
+    teams = _teams(20)
+    classic = plan_single_elimination(teams)
+    explicit = plan_single_elimination(teams, bye_policy="seeded_byes")
+    assert [
+        (p.round_no, p.home_team_id, p.away_team_id) for p in classic
+    ] == [(p.round_no, p.home_team_id, p.away_team_id) for p in explicit]
+    by_round: dict[int, int] = {}
+    for p in classic:
+        by_round[p.round_no] = by_round.get(p.round_no, 0) + 1
+    assert by_round == {1: 4, 2: 8, 3: 4, 4: 2, 5: 1}

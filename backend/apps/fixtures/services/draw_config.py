@@ -48,7 +48,12 @@ DEFAULT_DRAW_CONFIG: dict[str, Any] = {
     "seed": None,                    # RNG seed; persisted on first random draw
     "third_place": False,            # knockout formats only
     "plate": False,                  # consolation plate over round-1 losers
-    "bye_policy": "seeded_byes",     # seeded_byes (preliminary_round deferred)
+    # seeded_byes = classic bracket: field padded to a power of two, ALL byes
+    # burned in round 1 (federation standard). pair_all (owner ask 2026-07-13)
+    # = every round pairs as many entrants as possible in order; only a
+    # leftover odd slot is byed forward, so a 20-team field plays a full
+    # 10-match round 1 (at the cost of byes landing deeper when counts go odd).
+    "bye_policy": "seeded_byes",
     "min_entries_action": "prompt",  # prompt | cancel (auto_champion deferred — §9 A6)
     "constraints_reviewed_at": None,  # ISO timestamp ("Mark reviewed" — §9 A10)
     # Global-setup wizard calendar (§5.1 "wizard-saved dates"; only meaningful
@@ -73,7 +78,7 @@ _FORMATS = {"round_robin", "knockout", "groups_knockout", "swiss",
             "double_elim"}
 _SEEDINGS = {"registration", "random", "snake", "seeded"}
 _KNOCKOUT_SEEDINGS = {"cross", "overall"}
-_BYE_POLICIES = {"seeded_byes"}
+_BYE_POLICIES = {"seeded_byes", "pair_all"}
 _MIN_ENTRIES_ACTIONS = {"prompt", "cancel"}
 
 # --- Multi-stage (stages) schema ------------------------------------------

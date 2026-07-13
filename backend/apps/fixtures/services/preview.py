@@ -224,6 +224,7 @@ def _plan_for_config(
             teams, stage="knockout", leaf_key=leaf_key or "", sport=sport,
             third_place=bool(cfg.get("third_place")),
             seeding=seeding, seed=seed,
+            bye_policy=str(cfg.get("bye_policy") or "seeded_byes"),
             label_prefix=f"{leaf_label(sports_cfg, leaf_key)} · " if leaf_key else "",
             separators=_keep_apart_separators(
                 tournament, teams, leaf_key or "", sport, warnings,
