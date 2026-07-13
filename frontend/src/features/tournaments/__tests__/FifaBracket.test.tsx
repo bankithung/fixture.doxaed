@@ -169,9 +169,7 @@ describe("FifaBracket byes", () => {
     expect(text).toContain("Group B top 1");
     expect(text).toContain("Group C top 1");
     expect(text).toContain("Bye");
-    expect(
-      screen.getAllByText("No opponent this round, advances automatically").length,
-    ).toBe(3);
+    expect(screen.getAllByText("Advances automatically").length).toBe(3);
   });
 
   it("shows a named Bye card when a real team skips round 1", () => {

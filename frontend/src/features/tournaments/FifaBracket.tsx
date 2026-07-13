@@ -32,14 +32,15 @@ const STAGE_BG =
   "radial-gradient(130% 100% at 14% 96%, #5d2e93 0%, rgba(93,46,147,0) 52%)," +
   "linear-gradient(135deg, #3a1c67 0%, #46226e 48%, #3a1c67 100%)";
 
-// Geometry (px).
-const CARD_W = 210;
-const CARD_H = 66;
-const META_H = 16;
-const ROW = 84; // vertical pitch between round-1 card centres
-const COL_GAP = 46; // horizontal gap between round columns
-const HEADER_H = 28;
-const LABEL_H = 15; // "3rd place" caption above a consolation card
+// Geometry (px). Roomy on purpose — the cards carry two team rows, a meta
+// strip and (on byes) a second line of text (owner 2026-07-13: "too compact").
+const CARD_W = 244;
+const CARD_H = 82;
+const META_H = 20;
+const ROW = 106; // vertical pitch between round-1 card centres
+const COL_GAP = 60; // horizontal gap between round columns
+const HEADER_H = 32;
+const LABEL_H = 18; // "3rd place" caption above a consolation card
 
 /** Human label for an unresolved bracket slot from its typed pointer:
  * group_position -> "Group A top 1" / "Best 3rd #1"; winner/loser pointers are
@@ -192,22 +193,22 @@ function TeamRow({
   const soft = !isTeam;
   return (
     <div
-      className="flex flex-1 items-center gap-2 px-2.5"
+      className="flex flex-1 items-center gap-2 px-3"
       style={{ borderLeft: `2px solid ${win ? C.gold : "transparent"}` }}
     >
       {isTeam ? (
         <span
           aria-hidden
-          className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[0.5rem] font-semibold"
+          className="flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-full text-[0.5625rem] font-semibold"
           style={{ background: C.avatar, color: C.goldHi }}
         >
           {initials(label ?? "")}
         </span>
       ) : (
-        <Shield aria-hidden className="h-[18px] w-[18px] shrink-0" style={{ color: C.dim }} strokeWidth={1.5} />
+        <Shield aria-hidden className="h-[20px] w-[20px] shrink-0" style={{ color: C.dim }} strokeWidth={1.5} />
       )}
       <span
-        className="min-w-0 flex-1 truncate text-[0.6875rem]"
+        className="min-w-0 flex-1 truncate text-xs"
         style={{
           color: soft ? C.dim : win ? C.text : "rgba(255,255,255,0.85)",
           fontStyle: soft ? "italic" : "normal",
@@ -259,13 +260,13 @@ function MatchCard({ match, tz, no }: { match: MatchRow; tz?: string; no: Map<st
         boxShadow: "inset 0 1px 0 rgba(255,255,255,.06)",
       }}
     >
-      <div className="flex items-center gap-1.5 px-2.5" style={{ height: META_H, background: "rgba(0,0,0,.2)" }}>
+      <div className="flex items-center gap-1.5 px-3" style={{ height: META_H, background: "rgba(0,0,0,.2)" }}>
         {num != null ? (
-          <span className="shrink-0 font-tabular text-[0.5625rem] font-semibold" style={{ color: C.goldHi }}>
+          <span className="shrink-0 font-tabular text-[0.625rem] font-semibold" style={{ color: C.goldHi }}>
             M{num}
           </span>
         ) : null}
-        <span className="min-w-0 flex-1 truncate text-[0.5625rem] font-medium" style={{ color: C.dim }}>
+        <span className="min-w-0 flex-1 truncate text-[0.625rem] font-medium" style={{ color: C.dim }}>
           {kickoff}
         </span>
         {badge ? (
@@ -564,8 +565,8 @@ export function FifaBracket({
   consolation.forEach((m, i) => matchNo.set(m.id, bracketMatches.length + i + 1));
 
   // Consolation cards stack in the Final column, below the Final.
-  const consTop = finalY + CARD_H / 2 + 24;
-  const consBlock = LABEL_H + 4 + CARD_H + 18;
+  const consTop = finalY + CARD_H / 2 + 32;
+  const consBlock = LABEL_H + 6 + CARD_H + 24;
   const canvasH = Math.max(
     H,
     consolation.length ? consTop + consolation.length * consBlock : H,
@@ -635,7 +636,7 @@ export function FifaBracket({
   // Ghost "Bye" cards: the slot had no opponent in this round and advances
   // automatically (a real-tournament bye), shown instead of a silent gap.
   // Mid-bracket byes name the slot by its feeder match ("Winner of M18").
-  const GHOST_H = 44;
+  const GHOST_H = 60;
   const ghostLabel = (g: ByeGhost): string =>
     g.label ??
     (g.feederId != null && matchNo.get(g.feederId) != null
@@ -647,7 +648,7 @@ export function FifaBracket({
       role="group"
       aria-label={`${ghostLabel(g)} ${t("bye, advances to the next round")}`}
       data-testid="bracket-bye"
-      className="absolute flex flex-col justify-center gap-0.5 rounded-md px-2.5"
+      className="absolute flex flex-col justify-center gap-1 rounded-md px-3 py-2"
       style={{
         left: g.x,
         top: g.y - GHOST_H / 2,
@@ -658,18 +659,18 @@ export function FifaBracket({
       }}
     >
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-[0.6875rem] font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>
+        <span className="min-w-0 flex-1 truncate text-xs font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>
           {ghostLabel(g)}
         </span>
         <span
-          className="shrink-0 rounded-full px-1.5 py-px text-[0.5625rem] font-semibold uppercase tracking-wider"
+          className="shrink-0 rounded-full px-2 py-0.5 text-[0.5625rem] font-semibold uppercase tracking-wider"
           style={{ color: C.goldHi, border: `1px solid ${C.gold}` }}
         >
           {t("Bye")}
         </span>
       </div>
-      <span className="text-[0.5625rem]" style={{ color: C.dim }}>
-        {t("No opponent this round, advances automatically")}
+      <span className="truncate text-[0.625rem]" style={{ color: C.dim }}>
+        {t("Advances automatically")}
       </span>
     </div>
   ));
@@ -699,7 +700,7 @@ export function FifaBracket({
     <div
       role="figure"
       aria-label={t("Knockout bracket")}
-      className="w-full rounded-2xl p-4 shadow-xl sm:p-5"
+      className="w-full rounded-2xl p-5 shadow-xl sm:p-6"
       style={{ background: STAGE_BG }}
     >
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -732,8 +733,8 @@ export function FifaBracket({
             {colLabels.map((h, c) => (
               <span
                 key={`h-${c}`}
-                className="absolute -translate-x-1/2 whitespace-nowrap text-[0.625rem] font-semibold uppercase tracking-wider"
-                style={{ left: h.x, top: 4, color: C.goldHi }}
+                className="absolute -translate-x-1/2 whitespace-nowrap text-[0.6875rem] font-semibold uppercase tracking-wider"
+                style={{ left: h.x, top: 6, color: C.goldHi }}
               >
                 {h.label}
               </span>
@@ -748,7 +749,7 @@ export function FifaBracket({
               const top = consTop + i * consBlock;
               return (
                 <div key={`c-${m.id}`} className="absolute" style={{ left: finalX, top, width: CARD_W }}>
-                  <span className="mb-1 block text-[0.5625rem] font-semibold uppercase tracking-wider" style={{ color: C.goldHi }}>
+                  <span className="mb-1.5 block text-[0.625rem] font-semibold uppercase tracking-wider" style={{ color: C.goldHi }}>
                     {consolationLabel(m)}
                   </span>
                   <MatchCard match={m} tz={timeZone} no={matchNo} />
