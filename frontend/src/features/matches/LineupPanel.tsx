@@ -4,12 +4,16 @@ import { ClipboardCheck, Users } from "lucide-react";
 import { liveApi, type LiveTeam } from "@/api/live";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { sideView } from "@/features/live/lineups/adapter";
+import { resolveLineupView } from "@/features/live/lineups/registry";
+import type { LineupSideView } from "@/features/live/lineups/types";
 import { newEventId } from "@/lib/eventId";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { ApiError } from "@/types/api";
 
 type Role = "" | "starter" | "substitute";
+type ViewMode = "list" | "court";
 
 /** Tap to cycle a player: Out -> Starter -> Bench -> Out. */
 function nextRole(r: Role): Role {
@@ -26,13 +30,19 @@ export function LineupPanel({
   matchId,
   homeTeam,
   awayTeam,
+  sportKey,
+  family,
 }: {
   matchId: string;
   homeTeam: LiveTeam | null;
   awayTeam: LiveTeam | null;
+  /** Picks the per-sport court visual (same registry as the public hub). */
+  sportKey: string;
+  family: string;
 }): React.ReactElement | null {
   const qc = useQueryClient();
   const toast = useToast();
+  const [view, setView] = useState<ViewMode>("list");
   const q = useQuery({
     queryKey: ["lineups", matchId],
     queryFn: () => liveApi.getLineups(matchId),
@@ -98,15 +108,77 @@ export function LineupPanel({
       q.data?.lineups.find((lu) => lu.team?.id === teamId)?.confirmed_at,
     );
 
+  // Court view: the SAME per-sport visual the public hub renders (registry +
+  // shared adapter), fed the local role map so it previews unsaved edits too.
+  // No declared players falls back to the roster, exactly like the hub.
+  const CourtLineups = resolveLineupView(sportKey, family).Lineups;
+  const courtSide = (team: LiveTeam | null): LineupSideView | null => {
+    if (!team) return null;
+    const teamRoles = roles[team.id] ?? {};
+    // The saved sheet's positional_role (sepak regu slot, football line) wins
+    // over the player's registered position text.
+    const saved = new Map(
+      (q.data?.lineups.find((lu) => lu.team?.id === team.id)?.entries ?? []).map(
+        (e) => [e.player_id, e.positional_role ?? ""],
+      ),
+    );
+    return sideView(team, {
+      confirmed: confirmedFor(team.id),
+      entries: team.players
+        .filter((p) => (teamRoles[p.id] ?? "") !== "")
+        .map((p) => ({
+          player_id: p.id,
+          name: p.name,
+          role: teamRoles[p.id],
+          shirt_no: p.jersey_no,
+          positional_role: saved.get(p.id) || p.position,
+        })),
+    });
+  };
+
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm">
-      <div className="flex items-center gap-2 border-b border-border px-5 py-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
         <Users aria-hidden="true" className="h-4 w-4 text-primary" />
         <h2 className="text-sm font-semibold">{t("Team sheets")}</h2>
-        <span className="text-xs text-muted-foreground">
-          {t("Tap a player: start, bench, out. Confirm locks the sheet.")}
+        <span className="hidden text-xs text-muted-foreground sm:inline">
+          {view === "list"
+            ? t("Tap a player: start, bench, out. Confirm locks the sheet.")
+            : t("Read only preview of the sheets.")}
         </span>
+        <div
+          role="radiogroup"
+          aria-label={t("Team sheet view")}
+          className="ml-auto inline-flex shrink-0 rounded-lg border border-border bg-muted/20 p-0.5"
+        >
+          {(
+            [
+              ["list", t("List")],
+              ["court", t("Court view")],
+            ] as const
+          ).map(([mode, lbl]) => (
+            <button
+              key={mode}
+              type="button"
+              role="radio"
+              aria-checked={view === mode}
+              data-testid={`lineup-view-${mode}`}
+              onClick={() => setView(mode)}
+              className={cn(
+                "h-7 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                view === mode
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {lbl}
+            </button>
+          ))}
+        </div>
       </div>
+      {view === "court" ? (
+        <CourtLineups home={courtSide(homeTeam)} away={courtSide(awayTeam)} />
+      ) : (
       <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
         {[homeTeam, awayTeam].map((team, idx) => {
           if (!team) return <div key={idx} className="p-5" />;
@@ -189,6 +261,7 @@ export function LineupPanel({
           );
         })}
       </div>
+      )}
     </div>
   );
 }

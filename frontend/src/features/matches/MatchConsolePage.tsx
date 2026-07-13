@@ -546,6 +546,8 @@ export function MatchConsolePage(): React.ReactElement {
           matchId={matchId}
           homeTeam={match.home_team}
           awayTeam={match.away_team}
+          sportKey={match.sport_meta?.key ?? match.sport ?? ""}
+          family={family}
         />
       ) : null}
 

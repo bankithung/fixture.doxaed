@@ -7,19 +7,14 @@ import {
   type ConstraintDraft,
   type DrawCalendar,
   type FixturePreview,
-  type MatchRow,
-  type MatchSource,
-  type MiniTeam,
   type PreviewMatch,
   type PreviewRelaxation,
-  type PreviewSide,
   type PreviewViolation,
   type ScheduleRequest,
 } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { FifaBracket } from "@/features/tournaments/FifaBracket";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
@@ -28,6 +23,7 @@ import { t } from "@/lib/t";
 import "@/components/ui/star-border.css";
 import { BentoGrid } from "@/features/dashboard/BentoCard";
 import { useBreakpoint } from "@/lib/useBreakpoint";
+import { CompetitionPreviewPanel } from "./CompetitionPreviewPanel";
 import { FairnessPanel } from "./FairnessPanel";
 import { InputsChangedBanner } from "./InputsChangedBanner";
 import { LeafLabel } from "./LeafLabel";
@@ -36,43 +32,9 @@ import { GroupCompositionView } from "./GroupCompositionView";
 import { MatchesByGroupGrid } from "./MatchesByGroupGrid";
 import { PreviewFilterBar } from "./PreviewFilterBar";
 import { competitionLabel, sportKey } from "./previewFilters";
+import { shortGroupName } from "./groupSlotLabel";
 import { sideName } from "./sideName";
 import { ViolationsPanel } from "./ViolationsPanel";
-
-/** Adapt a previewed (placeholder) match to the MatchRow shape the FIFA
- * bracket renders — no scores yet, typed pointers passed through so an
- * unresolved slot shows the clean "Group A #1" label. */
-function previewToMatchRow(
-  pm: PreviewMatch,
-  teamNames: ReadonlyMap<string, string>,
-): MatchRow {
-  const team = (s: PreviewSide): MiniTeam | null =>
-    s.team_id
-      ? { id: s.team_id, name: teamNames.get(s.team_id) ?? t("TBD"), short_name: "" }
-      : null;
-  const source = (s: PreviewSide): MatchSource | null =>
-    (s.source as MatchSource | undefined) ?? null;
-  return {
-    id: pm.ref,
-    stage: pm.stage,
-    group_label: pm.group_label,
-    round_no: pm.round_no,
-    match_no: 0,
-    status: "scheduled",
-    home_team: team(pm.home),
-    away_team: team(pm.away),
-    home_score: null,
-    away_score: null,
-    sport: "",
-    set_scores: [],
-    leaf_key: pm.leaf_key,
-    venue: pm.venue ?? "",
-    scoring: null,
-    scheduled_at: pm.scheduled_at,
-    home_source: source(pm.home),
-    away_source: source(pm.away),
-  };
-}
 
 /** Pairing-layer warning labels per stable code (§7.7). */
 const WARNING_LABELS: Record<string, string> = {
@@ -203,50 +165,50 @@ export function DryRunPreviewPage(): React.ReactElement {
 
   // Knockout matches belong in the bracket, not the flat schedule (owner ask
   // 2026-07-01: "if it's knockout always show it in the bracket format"). The
-  // By-day / By-group lists show only the group stage; the Draw tab's bracket
-  // carries every knockout match, with its kickoff time on the card.
+  // all-competitions By-day / By-group lists show only the group stage; each
+  // competition's bracket lives on its panel's Knockout tab.
   const scheduleMatches = useMemo(
     () => filteredMatches.filter((m) => m.stage !== "knockout"),
     [filteredMatches],
   );
 
-  // One FIFA bracket per competition leaf that has placeholder knockout matches
-  // (the multi-stage preview now ships a timed, placeholder Stage 2). Honours
-  // the same sport/category filter as the day-grid below.
-  const knockoutBrackets = useMemo(() => {
-    const filtered = (preview.data?.matches ?? []).filter(
-      (m) =>
-        (!sportFilter || sportKey(m) === sportFilter) &&
-        (!catFilter || m.leaf_key === catFilter),
+  // ONE competition selected (a category filter, or a single-competition
+  // preview) -> the Google-style stage-tabbed panel instead of the global
+  // views (owner ask 2026-07-13: each game and category separate, group
+  // stage and knockout apart, byes shown).
+  const selectedLeaf = useMemo(() => {
+    if (catFilter) return catFilter;
+    const all = preview.data?.matches ?? [];
+    const leaves = new Set(all.map((m) => m.leaf_key));
+    return leaves.size === 1 ? [...leaves][0]! : null;
+  }, [catFilter, preview.data]);
+  const selectedLabel = useMemo(() => {
+    if (!selectedLeaf) return "";
+    const withGroup = (preview.data?.matches ?? []).find(
+      (m) => m.leaf_key === selectedLeaf && m.group_label,
     );
-    const byLeaf = new Map<string, PreviewMatch[]>();
-    for (const m of filtered) {
-      if (m.stage !== "knockout") continue;
-      if (!byLeaf.has(m.leaf_key)) byLeaf.set(m.leaf_key, []);
-      byLeaf.get(m.leaf_key)!.push(m);
+    return (
+      (withGroup ? competitionLabel(withGroup) : "") ||
+      readiness.data?.competitions.find((c) => c.leaf_key === selectedLeaf)
+        ?.label ||
+      selectedLeaf
+    );
+  }, [selectedLeaf, preview.data, readiness.data]);
+
+  // The unplaced list grouped per competition — a count you can open, not a
+  // wall of rows.
+  const unscheduledByLeaf = useMemo(() => {
+    const set = new Set(preview.data?.unscheduled ?? []);
+    const byLabel = new Map<string, PreviewMatch[]>();
+    for (const m of preview.data?.matches ?? []) {
+      if (!set.has(m.ref)) continue;
+      const key = competitionLabel(m);
+      const list = byLabel.get(key);
+      if (list) list.push(m);
+      else byLabel.set(key, [m]);
     }
-    return [...byLeaf.entries()].map(([leafKey, ms]) => {
-      const byRound = new Map<number, MatchRow[]>();
-      for (const m of ms) {
-        if (!byRound.has(m.round_no)) byRound.set(m.round_no, []);
-        byRound.get(m.round_no)!.push(previewToMatchRow(m, teamNames));
-      }
-      const columns = [...byRound.entries()].sort((a, b) => a[0] - b[0]) as [
-        number,
-        MatchRow[],
-      ][];
-      // Prefer the rich competition label off a group match (LeafLabel turns it
-      // into pills); fall back to the readiness label, then the bare key.
-      const grouped = filtered.find(
-        (m) => m.leaf_key === leafKey && m.group_label,
-      );
-      const leafLabel =
-        (grouped ? competitionLabel(grouped) : "") ||
-        readiness.data?.competitions.find((c) => c.leaf_key === leafKey)?.label ||
-        leafKey;
-      return { leafKey, leafLabel, columns };
-    });
-  }, [preview.data, sportFilter, catFilter, teamNames, readiness.data]);
+    return [...byLabel.entries()];
+  }, [preview.data]);
 
   const rePreview = (): void => {
     setStale(false);
@@ -562,8 +524,8 @@ export function DryRunPreviewPage(): React.ReactElement {
             ) : null}
           </section>
 
-          {/* One toolbar: sport/category filters on the left, the day/group/
-              draw view switch on the right. */}
+          {/* One toolbar: the sport/category switcher on the left; the global
+              day/group/draw view switch only while EVERY competition shows. */}
           <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
             <div className="min-w-0 flex-1">
               <PreviewFilterBar
@@ -574,94 +536,119 @@ export function DryRunPreviewPage(): React.ReactElement {
                 onCategory={setCatFilter}
               />
             </div>
-            <div
-              role="radiogroup"
-              aria-label={t("Preview view")}
-              className="inline-flex shrink-0 rounded-lg border border-border bg-muted/20 p-0.5"
-            >
-              {(
-                [
-                  ["day", t("By day")],
-                  ["group", t("By group")],
-                  ["draw", t("Draw")],
-                ] as const
-              ).map(([mode, lbl]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  role="radio"
-                  aria-checked={viewMode === mode}
-                  data-testid={`preview-view-${mode}`}
-                  onClick={() => setViewMode(mode)}
-                  className={cn(
-                    "h-8 rounded-md px-3 text-xs font-medium transition-colors",
-                    viewMode === mode
-                      ? "bg-card text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {lbl}
-                </button>
-              ))}
-            </div>
+            {!selectedLeaf ? (
+              <div
+                role="radiogroup"
+                aria-label={t("Preview view")}
+                className="inline-flex shrink-0 rounded-lg border border-border bg-muted/20 p-0.5"
+              >
+                {(
+                  [
+                    ["day", t("By day")],
+                    ["group", t("By group")],
+                    ["draw", t("Draw")],
+                  ] as const
+                ).map(([mode, lbl]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={viewMode === mode}
+                    data-testid={`preview-view-${mode}`}
+                    onClick={() => setViewMode(mode)}
+                    className={cn(
+                      "h-8 rounded-md px-3 text-xs font-medium transition-colors",
+                      viewMode === mode
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
-          {/* Group stage: the day/group schedule, or (Draw view) the numbered
-              group composition. A pure-knockout competition has no group stage,
-              so nothing renders here · just the bracket below. */}
-          {viewMode === "draw" ? (
-            <GroupCompositionView matches={filteredMatches} teamNames={teamNames} />
-          ) : scheduleMatches.length > 0 ? (
-            viewMode === "day" ? (
-              <MatchesByDayGrid
-                matches={scheduleMatches}
-                teamNames={teamNames}
-                occupancy={preview.data?.matches}
-              />
-            ) : (
-              <MatchesByGroupGrid matches={scheduleMatches} teamNames={teamNames} />
-            )
-          ) : null}
 
-          {/* Knockout bracket, INLINE on the same page (owner ask): a multi-
-              stage competition shows its group stage above then the bracket; a
-              pure knockout shows just the bracket. Placeholder slots read
-              "Group A #1" / "Winner of M3". */}
-          {knockoutBrackets.length ? (
-            <section data-testid="preview-bracket" className="flex flex-col gap-4">
-              <h2 className="text-sm font-semibold">{t("Knockout bracket")}</h2>
-              {knockoutBrackets.map((b) => (
-                <div
-                  key={b.leafKey}
-                  data-testid={`preview-bracket-${b.leafKey}`}
-                  className="flex flex-col gap-2"
-                >
-                  <LeafLabel label={b.leafLabel} />
-                  <FifaBracket columns={b.columns} />
-                </div>
-              ))}
-            </section>
-          ) : null}
+          {selectedLeaf ? (
+            /* ONE competition: its own Google-style panel — Group stage /
+               Knockout (byes shown) / Schedule tabs. */
+            <CompetitionPreviewPanel
+              label={selectedLabel}
+              matches={filteredMatches}
+              teamNames={teamNames}
+              unscheduled={p.unscheduled}
+              occupancy={p.matches}
+            />
+          ) : (
+            <>
+              {/* All competitions: the combined schedule. Pick a category
+                  above for its groups and bracket. */}
+              {viewMode === "draw" ? (
+                <GroupCompositionView
+                  matches={filteredMatches}
+                  teamNames={teamNames}
+                />
+              ) : scheduleMatches.length > 0 ? (
+                viewMode === "day" ? (
+                  <MatchesByDayGrid
+                    matches={scheduleMatches}
+                    teamNames={teamNames}
+                    occupancy={preview.data?.matches}
+                  />
+                ) : (
+                  <MatchesByGroupGrid
+                    matches={scheduleMatches}
+                    teamNames={teamNames}
+                  />
+                )
+              ) : null}
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "Pick a sport and category above to see that competition's groups, knockout bracket and byes.",
+                )}
+              </p>
+            </>
+          )}
 
           {p.unscheduled.length ? (
-            <section className="rounded-xl border border-warning/40 bg-warning-muted px-4 py-3">
+            <section
+              data-testid="unscheduled-summary"
+              className="rounded-xl border border-warning/40 bg-warning-muted px-4 py-3"
+            >
               <h3 className="text-sm font-semibold">
                 {p.unscheduled.length} {t("match(es) have no time yet")}
               </h3>
               <p className="pt-0.5 text-xs text-muted-foreground">
                 {t("Add another day or venue in Step 1, then preview again.")}
               </p>
-              <ul className="pt-1">
-                {p.matches
-                  .filter((m) => p.unscheduled.includes(m.ref))
-                  .map((m) => (
-                    <li key={m.ref} className="text-sm text-muted-foreground">
-                      <span className="font-tabular text-xs">{m.ref}</span>{" "}
-                      {sideName(m.home, teamNames)} {t("vs")}{" "}
-                      {sideName(m.away, teamNames)}
-                      {m.group_label ? ` · ${m.group_label}` : ""}
-                    </li>
-                  ))}
-              </ul>
+              <div className="flex flex-col pt-2">
+                {unscheduledByLeaf.map(([lbl, ms]) => (
+                  <details key={lbl} className="group border-t border-warning/20 py-1.5">
+                    <summary className="flex cursor-pointer list-none items-center gap-2 text-sm">
+                      <ChevronDown
+                        aria-hidden="true"
+                        className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+                      />
+                      <span className="min-w-0 flex-1 truncate">{lbl}</span>
+                      <span className="shrink-0 font-tabular text-xs text-muted-foreground">
+                        {ms.length} {t("matches")}
+                      </span>
+                    </summary>
+                    <ul className="pb-1 pl-6 pt-1">
+                      {ms.map((m) => (
+                        <li key={m.ref} className="text-sm text-muted-foreground">
+                          {sideName(m.home, teamNames)} {t("vs")}{" "}
+                          {sideName(m.away, teamNames)}
+                          {m.group_label
+                            ? ` · ${t("Group")} ${shortGroupName(m.group_label)}`
+                            : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ))}
+              </div>
             </section>
           ) : null}
 

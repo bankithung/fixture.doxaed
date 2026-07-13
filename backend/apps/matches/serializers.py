@@ -184,7 +184,10 @@ class LineupEntryReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = LineupEntry
-        fields = ["id", "player_id", "player_name", "role", "shirt_no"]
+        # positional_role feeds the per-sport court view (sepak regu slots,
+        # football lines) on the admin console, same as the public hub.
+        fields = ["id", "player_id", "player_name", "role", "shirt_no",
+                  "positional_role"]
 
     def get_player_id(self, obj):
         return str(obj.player_id)

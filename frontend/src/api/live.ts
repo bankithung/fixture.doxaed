@@ -185,6 +185,7 @@ export const liveApi = {
           player_name: string;
           role: string;
           shirt_no: number | null;
+          positional_role?: string;
         }[];
         confirmed_at: string | null;
         confirmed_by: string | null;

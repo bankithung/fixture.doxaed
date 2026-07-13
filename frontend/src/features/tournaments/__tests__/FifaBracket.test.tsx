@@ -142,3 +142,58 @@ describe("FifaBracket", () => {
     expect(screen.getByText("3rd Place")).toBeInTheDocument();
   });
 });
+
+describe("FifaBracket byes", () => {
+  it("shows a Bye card for a team that enters after the first round", () => {
+    // 5 entrants: one play-in (D1 vs E1), then A1 joins the winner in the
+    // semi while B1 and C1 pair directly: A1, B1, C1 all skipped the play-in.
+    const playin = m({ round_no: 1,
+      home_source: { type: "group_position", group_label: "Group D", position: 1 },
+      away_source: { type: "group_position", group_label: "Group E", position: 1 } }, "m1");
+    const sf1 = m({ round_no: 2,
+      home_source: { type: "group_position", group_label: "Group A", position: 1 },
+      away_source: { type: "winner_of", match_id: "m1" } }, "m2");
+    const sf2 = m({ round_no: 2,
+      home_source: { type: "group_position", group_label: "Group B", position: 1 },
+      away_source: { type: "group_position", group_label: "Group C", position: 1 } }, "m3");
+    const fin = m({ round_no: 3,
+      home_source: { type: "winner_of", match_id: "m2" },
+      away_source: { type: "winner_of", match_id: "m3" } }, "m4");
+    render(<FifaBracket columns={[[1, [playin]], [2, [sf1, sf2]], [3, [fin]]]} />);
+    const byes = screen.getAllByTestId("bracket-bye");
+    expect(byes).toHaveLength(3);
+    const text = byes.map((b) => b.textContent).join(" ");
+    expect(text).toContain("Group A top 1");
+    expect(text).toContain("Group B top 1");
+    expect(text).toContain("Group C top 1");
+    expect(text).toContain("Bye");
+    expect(
+      screen.getAllByText("No opponent this round, advances automatically").length,
+    ).toBe(3);
+  });
+
+  it("shows a named Bye card when a real team skips round 1", () => {
+    const r1 = m({ round_no: 1,
+      home_team: team("t3", "Gamma FC"), away_team: team("t4", "Delta FC") }, "m1");
+    const sf = m({ round_no: 2,
+      home_team: team("t1", "Alpha FC"),
+      away_source: { type: "winner_of", match_id: "m1" } }, "m2");
+    render(<FifaBracket columns={[[1, [r1]], [2, [sf]]]} />);
+    const byes = screen.getAllByTestId("bracket-bye");
+    expect(byes).toHaveLength(1);
+    expect(byes[0]!.textContent).toContain("Alpha FC");
+    expect(byes[0]!.textContent).toContain("Bye");
+  });
+
+  it("renders no Bye cards in a full bracket", () => {
+    const sf1 = m({ round_no: 1,
+      home_team: team("t1", "A"), away_team: team("t2", "B") }, "m1");
+    const sf2 = m({ round_no: 1,
+      home_team: team("t3", "C"), away_team: team("t4", "D") }, "m2");
+    const fin = m({ round_no: 2,
+      home_source: { type: "winner_of", match_id: "m1" },
+      away_source: { type: "winner_of", match_id: "m2" } }, "m3");
+    render(<FifaBracket columns={[[1, [sf1, sf2]], [2, [fin]]]} />);
+    expect(screen.queryAllByTestId("bracket-bye")).toHaveLength(0);
+  });
+});

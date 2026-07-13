@@ -96,11 +96,12 @@ function isConsolation(m: MatchRow): boolean {
 }
 
 /** Clean, ASCII label for a consolation match, from the trailing group_label
- * segment ("… — 3rd Place" -> "3rd Place"); defaults to "Playoff". */
+ * segment ("… — 3rd Place" / "… · 3rd Place" -> "3rd Place"); defaults to
+ * "Third place" (the only consolation v1 generates). */
 function consolationLabel(m: MatchRow): string {
-  const segs = (m.group_label || "").split(" — ");
+  const segs = (m.group_label || "").split(/ [—·] /);
   const last = segs[segs.length - 1]?.trim();
-  return segs.length > 1 && last ? last : t("Playoff");
+  return segs.length > 1 && last ? last : t("Third place");
 }
 
 /** Which side won a decided match (goals, then penalties); null while open or
@@ -121,12 +122,16 @@ function decided(m: MatchRow): "home" | "away" | null {
   return null;
 }
 
-/** Two-letter monogram from a team name (schools have no country flag). */
+/** Two-letter monogram from a team name (schools have no country flag).
+ * Prefers word INITIALS from alphabetic words, so "Practice School 16" reads
+ * "PS", never the numeric "P1". */
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
+  const alpha = parts.filter((p) => /[A-Za-z]/.test(p[0]!));
+  const use = alpha.length ? alpha : parts;
+  if (use.length === 0) return "?";
+  if (use.length === 1) return use[0]!.slice(0, 2).toUpperCase();
+  return (use[0]![0]! + use[use.length - 1]![0]!).toUpperCase();
 }
 
 /** Long TZ name ("Asia/Kolkata" -> "India Standard Time") for the footnote. */
@@ -297,9 +302,19 @@ function roundNameByDepth(d: number): string {
   return `${t("Round of")} ${2 ** (d + 1)}`;
 }
 
+/** A team that skips the earlier round(s): drawn as a ghost "Bye" card one
+ * column left of the match it enters, wired into the same connector bus. */
+interface ByeGhost {
+  parentId: string;
+  label: string;
+  x: number;
+  y: number;
+}
+
 interface BracketLayout {
   pos: Map<string, { x: number; y: number }>;
   feedersByParent: Map<string, string[]>;
+  ghosts: ByeGhost[];
   colLabels: { x: number; label: string }[];
   H: number;
   canvasW: number;
@@ -357,25 +372,42 @@ function layoutBracket(matches: MatchRow[]): BracketLayout {
     const maxDepth = Math.max(...depth.values());
     const cols = maxDepth + 1;
     let slot = 0;
+    const ghosts: ByeGhost[] = [];
     const placeY = (id: string): number => {
       const m = byId.get(id)!;
+      const d = depth.get(id)!;
       const centers: number[] = [];
-      for (const src of [m.home_source, m.away_source]) {
+      const sides: [MatchRow["home_team"], MatchSource | null | undefined][] = [
+        [m.home_team, m.home_source],
+        [m.away_team, m.away_source],
+      ];
+      for (const [team, src] of sides) {
         const fid = feederId(src);
         if (fid && byId.has(fid)) centers.push(placeY(fid));
         else {
-          centers.push((slot + 0.5) * ROW);
+          const y = (slot + 0.5) * ROW;
+          centers.push(y);
           slot += 1;
+          // Entering later than the first round = a bye through the earlier
+          // round(s). Show it: a ghost card in the previous column so the
+          // team's free pass is visible instead of silently missing.
+          if (d < maxDepth) {
+            const label = team?.name ?? sourceLabel(src ?? null);
+            if (label) {
+              ghosts.push({ parentId: id, label, x: colX(maxDepth - d - 1), y });
+            }
+          }
         }
       }
       const yc = centers.reduce((a, b) => a + b, 0) / centers.length;
-      pos.set(id, { x: colX(maxDepth - depth.get(id)!), y: yc });
+      pos.set(id, { x: colX(maxDepth - d), y: yc });
       return yc;
     };
     const finalY = placeY(roots[0]!.id);
     return {
       pos,
       feedersByParent,
+      ghosts,
       colLabels: Array.from({ length: cols }, (_, c) => ({
         x: colX(c) + CARD_W / 2,
         label: roundNameByDepth(maxDepth - c),
@@ -405,6 +437,7 @@ function layoutBracket(matches: MatchRow[]): BracketLayout {
   return {
     pos,
     feedersByParent,
+    ghosts: [],
     colLabels: keys.map((r, c) => ({
       x: colX(c) + CARD_W / 2,
       label: roundName(byRound.get(r)!.length * 2),
@@ -479,7 +512,7 @@ export function FifaBracket({
     );
   }
 
-  const { pos, feedersByParent, colLabels, H, canvasW, finalX, finalY } =
+  const { pos, feedersByParent, ghosts, colLabels, H, canvasW, finalX, finalY } =
     layoutBracket(bracketMatches);
 
   // Number every card (M1, M2 …) top-to-bottom within each column, left to
@@ -512,11 +545,23 @@ export function FifaBracket({
   const vline = (x: number, y1: number, y2: number): void => {
     seg.push(<span key={`s${segKey++}`} className="absolute" style={{ left: x - 1, top: Math.min(y1, y2), width: 2, height: Math.abs(y2 - y1), background: C.line }} />);
   };
-  for (const [pid, kids] of feedersByParent) {
+  // Bye ghosts join the same bus as real feeders, so a card fed by one match
+  // and one bye still draws a single clean elbow.
+  const ghostsByParent = new Map<string, ByeGhost[]>();
+  for (const g of ghosts) {
+    const list = ghostsByParent.get(g.parentId);
+    if (list) list.push(g);
+    else ghostsByParent.set(g.parentId, [g]);
+  }
+  const parents = new Set([...feedersByParent.keys(), ...ghostsByParent.keys()]);
+  for (const pid of parents) {
     const p = pos.get(pid);
-    const kp = kids
-      .map((k) => pos.get(k))
-      .filter((v): v is { x: number; y: number } => !!v);
+    const kp = [
+      ...(feedersByParent.get(pid) ?? [])
+        .map((k) => pos.get(k))
+        .filter((v): v is { x: number; y: number } => !!v),
+      ...(ghostsByParent.get(pid) ?? []).map((g) => ({ x: g.x, y: g.y })),
+    ];
     if (!p || kp.length === 0) continue;
     const bus = (Math.max(...kp.map((k) => k.x + CARD_W)) + p.x) / 2;
     for (const k of kp) hline(k.x + CARD_W, bus, k.y);
@@ -533,6 +578,42 @@ export function FifaBracket({
       </div>
     );
   });
+
+  // Ghost "Bye" cards: the team had no opponent in this round and advances
+  // automatically (a real-tournament bye), shown instead of a silent gap.
+  const GHOST_H = 44;
+  const ghostCards = ghosts.map((g, i) => (
+    <div
+      key={`b-${i}`}
+      role="group"
+      aria-label={`${g.label} ${t("bye, advances to the next round")}`}
+      data-testid="bracket-bye"
+      className="absolute flex flex-col justify-center gap-0.5 rounded-md px-2.5"
+      style={{
+        left: g.x,
+        top: g.y - GHOST_H / 2,
+        width: CARD_W,
+        height: GHOST_H,
+        background: "rgba(0,0,0,0.16)",
+        border: "1.5px dashed rgba(201,165,88,0.55)",
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1 truncate text-[0.6875rem] font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>
+          {g.label}
+        </span>
+        <span
+          className="shrink-0 rounded-full px-1.5 py-px text-[0.5625rem] font-semibold uppercase tracking-wider"
+          style={{ color: C.goldHi, border: `1px solid ${C.gold}` }}
+        >
+          {t("Bye")}
+        </span>
+      </div>
+      <span className="text-[0.5625rem]" style={{ color: C.dim }}>
+        {t("No opponent this round, advances automatically")}
+      </span>
+    </div>
+  ));
 
   const anyPlaceholder = bracketMatches.some((m) => !m.home_team || !m.away_team);
   const fromGroups = bracketMatches.some(
@@ -602,6 +683,7 @@ export function FifaBracket({
           {/* the bracket */}
           <div className="relative" style={{ width: canvasW, height: canvasH }}>
             {seg}
+            {ghostCards}
             {cards}
             {consolation.map((m, i) => {
               const top = consTop + i * consBlock;

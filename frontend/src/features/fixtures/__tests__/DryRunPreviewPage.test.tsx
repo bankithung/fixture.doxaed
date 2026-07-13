@@ -199,29 +199,36 @@ describe("DryRunPreviewPage", () => {
     expect(await screen.findByTestId("soft-score")).toHaveTextContent(
       "This schedule works. No rules are broken.",
     );
-    expect(screen.getByTestId("day-2026-06-20")).toBeInTheDocument();
+    // A single competition opens its own panel, Group stage first (owner ask
+    // 2026-07-13: groups and knockout apart, like the FIFA panel).
+    expect(screen.getByTestId("competition-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("stage-group-Group A")).toBeInTheDocument();
     expect(screen.getByTestId("chip-p1")).toHaveTextContent("Alpha FC");
-    // The knockout match (p2) is NOT in the schedule — it lives in the bracket.
+    // The knockout match (p2) lives on the Knockout tab, not in the groups.
     expect(screen.queryByTestId("chip-p2")).toBeNull();
-    expect(screen.queryByTestId("day-2026-06-21")).toBeNull();
+    // The Schedule tab shows the whole competition's calendar, knockout too.
+    await userEvent.click(screen.getByTestId("stage-tab-schedule"));
+    expect(screen.getByTestId("day-2026-06-20")).toBeInTheDocument();
+    expect(screen.getByTestId("day-2026-06-21")).toBeInTheDocument();
+    expect(screen.getByTestId("chip-p2")).toBeInTheDocument();
     // nothing persisted by the preview itself
     expect(tournamentsApi.generateFixtures).not.toHaveBeenCalled();
   });
 
-  it("shows the group-stage schedule AND the knockout bracket on the same page", async () => {
+  it("splits a multi-stage competition into Group stage and Knockout tabs", async () => {
     vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue(MULTISTAGE_PREVIEW);
     mount();
 
-    // Day view: the GROUP match is scheduled; knockout slots are NOT chips.
+    // Group stage first: the group match as a chip, knockout out of sight.
     expect(await screen.findByTestId("chip-g1")).toBeInTheDocument();
     expect(screen.queryByTestId("chip-k1")).toBeNull();
     expect(screen.queryByTestId("chip-k2")).toBeNull();
-    expect(screen.getByTestId("day-2026-06-20")).toBeInTheDocument(); // the group day
-    expect(screen.queryByTestId("day-2026-06-21")).toBeNull(); // no knockout day band
-    // The knockout renders INLINE as a bracket on the same page (no tab switch).
+    expect(screen.queryByTestId("preview-bracket")).toBeNull();
+    // Knockout tab: the bracket with its placeholder slots.
+    await userEvent.click(screen.getByTestId("stage-tab-knockout"));
     expect(screen.getByTestId("preview-bracket")).toBeInTheDocument();
-    expect(screen.getByTestId("preview-bracket-football.u15")).toBeInTheDocument();
     expect(screen.getAllByText("Group A top 1").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("chip-g1")).toBeNull();
   });
 
   it("marks a Break where a court has a gap between matches", async () => {
@@ -242,6 +249,7 @@ describe("DryRunPreviewPage", () => {
     });
     mount();
     // g1 ends 09:30, g2 starts 10:30 -> a visible 60-min break between them.
+    await userEvent.click(await screen.findByTestId("stage-tab-schedule"));
     expect(await screen.findByText(/09:30-10:30/)).toBeInTheDocument();
   });
 
@@ -268,6 +276,7 @@ describe("DryRunPreviewPage", () => {
       ],
     });
     mount();
+    await userEvent.click(await screen.findByTestId("stage-tab-schedule"));
     expect(await screen.findByTestId("chip-g1")).toBeInTheDocument();
     expect(screen.queryByText(/Break/)).toBeNull(); // court is busy, not idle
   });
@@ -295,26 +304,26 @@ describe("DryRunPreviewPage", () => {
       ],
     });
     mount();
+    await userEvent.click(await screen.findByTestId("stage-tab-schedule"));
     expect(await screen.findByTestId("chip-g1")).toBeInTheDocument();
     // Break only for the genuinely-idle 10:30-11:30 stretch, not the busy part.
     expect(await screen.findByText(/10:30-11:30/)).toBeInTheDocument();
     expect(screen.queryByText(/09:30-10:30/)).toBeNull();
   });
 
-  it("switches the schedule between By day and By group (owner ask)", async () => {
+  it("moves between Group stage, Knockout and Schedule tabs", async () => {
     vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue(MULTISTAGE_PREVIEW);
     mount();
-    // Default view is by day — the group match's day band (06-20).
-    expect(await screen.findByTestId("day-2026-06-20")).toBeInTheDocument();
-    await userEvent.click(screen.getByTestId("preview-view-group"));
-    // By group: a "Group A" bucket, no day bands, and NO knockout bucket
-    // (knockout lives in the bracket now).
-    expect(screen.getByTestId("group-football.u15::Group A")).toBeInTheDocument();
-    expect(screen.queryByTestId("group-football.u15::__ko__")).toBeNull();
+    // Group stage first: the group card with its teams and fixtures together.
+    expect(await screen.findByTestId("stage-group-Group A")).toBeInTheDocument();
     expect(screen.queryByTestId("day-2026-06-20")).toBeNull();
-    // Back to by day.
-    await userEvent.click(screen.getByTestId("preview-view-day"));
+    // Schedule tab: the day bands.
+    await userEvent.click(screen.getByTestId("stage-tab-schedule"));
     expect(screen.getByTestId("day-2026-06-20")).toBeInTheDocument();
+    expect(screen.queryByTestId("stage-group-Group A")).toBeNull();
+    // Back to the groups.
+    await userEvent.click(screen.getByTestId("stage-tab-groups"));
+    expect(screen.getByTestId("stage-group-Group A")).toBeInTheDocument();
   });
 
   it("shows only the bracket for a pure-knockout competition (no empty grid)", async () => {
@@ -337,7 +346,7 @@ describe("DryRunPreviewPage", () => {
 
   it("keeps the draw number and quality behind the closed Advanced details", async () => {
     mount();
-    await screen.findByTestId("day-2026-06-20");
+    await screen.findByTestId("competition-panel");
     // closed by default when nothing needs attention
     expect(screen.queryByTestId("preview-seed")).toBeNull();
     expect(screen.queryByTestId("schedule-quality")).toBeNull();
@@ -535,7 +544,7 @@ describe("DryRunPreviewPage", () => {
     });
     mount();
 
-    await screen.findByTestId("day-2026-06-20");
+    await screen.findByTestId("competition-panel");
     expect(screen.queryByTestId("fairness-panel")).toBeNull();
     await userEvent.click(screen.getByTestId("advanced-details-toggle"));
     expect(screen.getAllByTestId(/^fairness-row-/)).toHaveLength(8);
@@ -545,7 +554,7 @@ describe("DryRunPreviewPage", () => {
 
   it("omits the fairness panel when the preview carries no per-team data", async () => {
     mount();
-    await screen.findByTestId("day-2026-06-20");
+    await screen.findByTestId("competition-panel");
     await userEvent.click(screen.getByTestId("advanced-details-toggle"));
     expect(screen.queryByTestId("fairness-panel")).toBeNull();
     expect(screen.getByTestId("preview-seed")).toBeInTheDocument();

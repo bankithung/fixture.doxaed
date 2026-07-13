@@ -334,4 +334,55 @@ describe("MatchConsolePage", () => {
     await new Promise((r) => setTimeout(r, 700));
     expect(liveApi.recordSetProgress).not.toHaveBeenCalled();
   });
+
+  it("court view renders the same football pitch the public hub shows, read only", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(snap("scheduled"));
+    vi.mocked(liveApi.getLineups).mockResolvedValue({
+      lineups: [
+        {
+          id: "l1",
+          team: { id: "a", name: "Alpha" },
+          entries: [
+            { player_id: "p1", player_name: "Striker", role: "starter", shirt_no: 9 },
+          ],
+          confirmed_at: null,
+          confirmed_by: null,
+        },
+      ],
+    });
+    renderConsole();
+    await screen.findAllByText("Alpha");
+
+    // The editable list stays the default surface.
+    expect(await screen.findByTestId("save-lineup-a")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("lineup-view-court"));
+    // The registry resolves the football module: pitch + the starter's dot.
+    expect(await screen.findByTestId("football-pitch")).toBeInTheDocument();
+    expect(screen.getByTestId("pitch-player-p1")).toBeInTheDocument();
+    // Read only: no editing controls until List is reselected.
+    expect(screen.queryByTestId("save-lineup-a")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("lineup-view-list"));
+    expect(await screen.findByTestId("save-lineup-a")).toBeInTheDocument();
+  });
+
+  it("court view falls back to the flat lineup module for sports without a court", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      snap("scheduled", {
+        sport: "badminton",
+        scoring: { type: "sets", best_of: 3, points: 11, win_by: 2 },
+        set_scores: [],
+      }),
+    );
+    vi.mocked(liveApi.getLineups).mockResolvedValue({ lineups: [] });
+    renderConsole();
+    await screen.findAllByText("Alpha");
+
+    await userEvent.click(screen.getByTestId("lineup-view-court"));
+    // No native badminton visual: the generic flat list shows the roster.
+    expect(screen.queryByTestId("football-pitch")).toBeNull();
+    expect(await screen.findByTestId("lineup-flat-side")).toBeInTheDocument();
+    expect(screen.getByText("Striker")).toBeInTheDocument();
+  });
 });

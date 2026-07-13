@@ -4,10 +4,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   liveApi,
   type LiveH2HRow,
-  type LiveLineupSide,
   type LiveSnapshot,
   type LiveStatRow,
-  type LiveTeam,
 } from "@/api/live";
 import { ThemeToggle } from "@/features/theme/ThemeToggle";
 import { routes } from "@/lib/routes";
@@ -17,8 +15,8 @@ import { t } from "@/lib/t";
 import { useEventStream } from "@/lib/useEventStream";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import { ShareButton } from "./ShareButton";
+import { sideView } from "./lineups/adapter";
 import { resolveLineupView } from "./lineups/registry";
-import type { LineupSideView } from "./lineups/types";
 
 const OVERLINE =
   "text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground";
@@ -205,36 +203,6 @@ function TeamNameLink({
       {team.name}
     </Link>
   );
-}
-
-/** The team-sheet slice a lineup module renders: the confirmed lineup when
- * the snapshot has one, else the visible roster as an unroled list. */
-function sideView(
-  team: LiveTeam | null,
-  lineup: LiveLineupSide | undefined,
-): LineupSideView | null {
-  if (!team) return null;
-  if (lineup && lineup.entries.length > 0) {
-    return {
-      teamName: team.name,
-      confirmed: lineup.confirmed,
-      entries: lineup.entries,
-    };
-  }
-  if (team.players.length > 0) {
-    return {
-      teamName: team.name,
-      confirmed: false,
-      entries: team.players.map((p) => ({
-        player_id: p.id,
-        name: p.name,
-        role: "",
-        shirt_no: p.jersey_no,
-        positional_role: "",
-      })),
-    };
-  }
-  return { teamName: team.name, confirmed: false, entries: [] };
 }
 
 function EmptyCard({ children }: { children: React.ReactNode }): React.ReactElement {
