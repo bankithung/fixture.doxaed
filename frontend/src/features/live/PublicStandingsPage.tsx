@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import {
   buildCompetitions,
   usePublicTournament,
@@ -9,8 +9,39 @@ import {
   GroupTable,
   LabelChips,
 } from "@/features/fixtures/publicTournamentViews";
+import { splitLabel } from "@/features/fixtures/publicTournament";
+import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { PublicViewerHeader } from "./PublicViewerHeader";
+
+function Pill({
+  active,
+  onClick,
+  label,
+  testid,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  testid: string;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      data-testid={testid}
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border bg-card text-foreground hover:bg-muted",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
 
 /**
  * Public STANDINGS tab (Google-panel style): every competition's group tables
@@ -21,6 +52,7 @@ import { PublicViewerHeader } from "./PublicViewerHeader";
  */
 export function PublicStandingsPage(): React.ReactElement {
   const { slug = "", id = "" } = useParams();
+  const [params, setParams] = useSearchParams();
   const { scheduleQ, standingsQ, connected, hasKnockout } = usePublicTournament(
     slug,
     id,
@@ -33,8 +65,8 @@ export function PublicStandingsPage(): React.ReactElement {
     }
   }, [tournamentName]);
 
-  // Sport → competitions → groups that actually have a standings table.
-  const sections = useMemo(() => {
+  // Every competition that has a table, grouped by sport.
+  const all = useMemo(() => {
     const comps = buildCompetitions(
       scheduleQ.data?.matches ?? [],
       standingsQ.data?.groups,
@@ -51,6 +83,43 @@ export function PublicStandingsPage(): React.ReactElement {
     }
     return [...bySport.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [scheduleQ.data, standingsQ.data]);
+
+  // Sport + category filter (owner 2026-07-13: a 20-competition tournament
+  // stacked every table on one page). Kept in the URL so a filtered view is
+  // shareable; an unknown value falls back to showing everything.
+  const sportParam = params.get("sport") ?? "";
+  const compParam = params.get("comp") ?? "";
+  const sport = all.some(([s]) => s === sportParam) ? sportParam : "";
+  const compsOfSport = useMemo(
+    () => (sport ? (all.find(([s]) => s === sport)?.[1] ?? []) : []),
+    [all, sport],
+  );
+  const comp = compsOfSport.some((c) => c.key === compParam) ? compParam : "";
+
+  const setFilter = (next: { sport?: string; comp?: string }): void => {
+    const p = new URLSearchParams(params);
+    const s = next.sport ?? sport;
+    const c = next.comp ?? "";
+    if (s) p.set("sport", s);
+    else p.delete("sport");
+    if (c) p.set("comp", c);
+    else p.delete("comp");
+    setParams(p, { replace: true });
+  };
+
+  const sections = useMemo(
+    () =>
+      all
+        .filter(([s]) => !sport || s === sport)
+        .map(
+          ([s, comps]) =>
+            [s, comp ? comps.filter((c) => c.key === comp) : comps] as [
+              string,
+              Competition[],
+            ],
+        ),
+    [all, sport, comp],
+  );
 
   const loading =
     scheduleQ.isLoading || (scheduleQ.data !== undefined && standingsQ.isLoading);
@@ -75,7 +144,7 @@ export function PublicStandingsPage(): React.ReactElement {
           >
             {t("These standings are not available.")}
           </p>
-        ) : sections.length === 0 ? (
+        ) : all.length === 0 ? (
           <div className="rounded-xl border border-border bg-card p-8 text-center">
             <p className="text-sm font-medium">{t("No group tables yet.")}</p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -83,37 +152,82 @@ export function PublicStandingsPage(): React.ReactElement {
             </p>
           </div>
         ) : (
-          sections.map(([sport, comps]) => (
-            <section
-              key={sport}
-              data-testid={`standings-sport-${sport}`}
-              className="flex flex-col gap-4"
+          <>
+            {/* Sport, then category: find one table without scrolling past
+                twenty. */}
+            <div
+              data-testid="standings-filter"
+              className="flex flex-col gap-2"
             >
-              <h2 className="text-base font-semibold">{sport}</h2>
-              {comps.map((c) => (
-                <div
-                  key={c.key}
-                  data-testid={`standings-comp-${c.key}`}
-                  className="flex flex-col gap-2"
-                >
-                  <LabelChips label={c.label} omitSport />
-                  <div className="grid grid-cols-1 items-start gap-x-8 gap-y-4 xl:grid-cols-2">
-                    {c.groups.map((g) => (
-                      <div
-                        key={g.key}
-                        className="overflow-hidden rounded-lg border border-border bg-card"
-                      >
-                        <h3 className="border-b border-border px-4 py-2 text-sm font-semibold">
-                          {g.label}
-                        </h3>
-                        <GroupTable rows={g.standing!.rows} family={c.family} />
-                      </div>
-                    ))}
-                  </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Pill
+                  testid="standings-sport-all"
+                  active={!sport}
+                  onClick={() => setFilter({ sport: "", comp: "" })}
+                  label={t("All sports")}
+                />
+                {all.map(([s]) => (
+                  <Pill
+                    key={s}
+                    testid={`standings-sport-pick-${s}`}
+                    active={sport === s}
+                    onClick={() => setFilter({ sport: s, comp: "" })}
+                    label={s}
+                  />
+                ))}
+              </div>
+              {sport && compsOfSport.length > 1 ? (
+                <div className="flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-2">
+                  <Pill
+                    testid="standings-comp-all"
+                    active={!comp}
+                    onClick={() => setFilter({ comp: "" })}
+                    label={t("All categories")}
+                  />
+                  {compsOfSport.map((c) => (
+                    <Pill
+                      key={c.key}
+                      testid={`standings-comp-pick-${c.key}`}
+                      active={comp === c.key}
+                      onClick={() => setFilter({ comp: c.key })}
+                      label={splitLabel(c.label).slice(1).join(" ") || c.label}
+                    />
+                  ))}
                 </div>
-              ))}
-            </section>
-          ))
+              ) : null}
+            </div>
+            {sections.map(([s, comps]) => (
+              <section
+                key={s}
+                data-testid={`standings-sport-${s}`}
+                className="flex flex-col gap-4"
+              >
+                <h2 className="text-base font-semibold">{s}</h2>
+                {comps.map((c) => (
+                  <div
+                    key={c.key}
+                    data-testid={`standings-comp-${c.key}`}
+                    className="flex flex-col gap-2"
+                  >
+                    <LabelChips label={c.label} omitSport />
+                    <div className="grid grid-cols-1 items-start gap-x-8 gap-y-4 xl:grid-cols-2">
+                      {c.groups.map((g) => (
+                        <div
+                          key={g.key}
+                          className="overflow-hidden rounded-lg border border-border bg-card"
+                        >
+                          <h3 className="border-b border-border px-4 py-2 text-sm font-semibold">
+                            {g.label}
+                          </h3>
+                          <GroupTable rows={g.standing!.rows} family={c.family} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </section>
+            ))}
+          </>
         )}
       </main>
     </div>

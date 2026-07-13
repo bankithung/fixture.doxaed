@@ -1,4 +1,6 @@
+import { Link, useParams } from "react-router-dom";
 import { type StandingRow } from "@/api/tournaments";
+import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { splitLabel } from "./publicTournament";
@@ -53,6 +55,9 @@ export function GroupTable({
   rows: StandingRow[];
   family?: "timed" | "target";
 }): React.ReactElement {
+  // Rendered under /t/:slug/:id — each team links to its public profile
+  // (record, form, every played and upcoming match).
+  const { slug = "", id = "" } = useParams();
   const target = family === "target";
   const heads = target
     ? ["P", "W", "L", t("Sets"), "+/-", "Pts"]
@@ -88,7 +93,17 @@ export function GroupTable({
                 <span className="mr-1.5 font-tabular text-xs text-muted-foreground">
                   {idx + 1}
                 </span>
-                {r.name}
+                {slug && id ? (
+                  <Link
+                    to={routes.publicTeam(slug, id, r.team_id)}
+                    data-testid={`standing-team-link-${r.team_id}`}
+                    className="rounded-sm underline-offset-2 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {r.name}
+                  </Link>
+                ) : (
+                  r.name
+                )}
               </td>
               {cells(r).map((v, i) => (
                 <td

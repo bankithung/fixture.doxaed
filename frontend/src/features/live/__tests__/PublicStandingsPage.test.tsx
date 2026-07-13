@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { tournamentsApi, type PublicSchedulePayload } from "@/api/tournaments";
@@ -137,6 +138,28 @@ describe("PublicStandingsPage", () => {
     // Deep data check: one shared fetch shape (schedule + standings).
     expect(tournamentsApi.publicSchedule).toHaveBeenCalledWith("cup", "t1");
     expect(tournamentsApi.publicStandings).toHaveBeenCalledWith("cup", "t1");
+  });
+
+  it("filters to one sport, then one category (owner ask: hard to find a category)", async () => {
+    mount();
+    await screen.findByTestId("standings-sport-Football");
+    // Both sports show until a filter is picked.
+    expect(screen.getByTestId("standings-sport-Table Tennis")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("standings-sport-pick-Football"));
+    expect(screen.getByTestId("standings-sport-Football")).toBeInTheDocument();
+    expect(screen.queryByTestId("standings-sport-Table Tennis")).toBeNull();
+
+    // Back to everything.
+    await userEvent.click(screen.getByTestId("standings-sport-all"));
+    expect(screen.getByTestId("standings-sport-Table Tennis")).toBeInTheDocument();
+  });
+
+  it("links every standings row to that team's public page (all its matches)", async () => {
+    mount();
+    const alpha = await screen.findByTestId("standing-team-link-tm1");
+    expect(alpha).toHaveTextContent("Alpha FC");
+    expect(alpha).toHaveAttribute("href", "/t/cup/t1/team/tm1");
   });
 
   it("hides the Knockout tab when the tournament has no knockout matches", async () => {
