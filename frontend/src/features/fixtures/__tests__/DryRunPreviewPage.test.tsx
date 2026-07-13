@@ -432,7 +432,7 @@ describe("DryRunPreviewPage", () => {
     expect(tournamentsApi.scheduleFixtures).not.toHaveBeenCalled();
   });
 
-  it("a hard violation blocks publishing, forces the details open and offers the one-click preference fix", async () => {
+  it("a hard violation blocks publishing and offers the one-click preference fix", async () => {
     const record = {
       type: "category_session_window", scope: "leaf:football.u15",
       hard: true, weight: 5, params: {},
@@ -471,10 +471,11 @@ describe("DryRunPreviewPage", () => {
       "title",
       "Fix the problems above first.",
     );
-    // problems force the Advanced details open
+    // Advanced details stays closed (owner 2026-07-13) — the verdict panel
+    // above already carries the problem loudly.
     expect(screen.getByTestId("advanced-details-toggle")).toHaveAttribute(
       "aria-expanded",
-      "true",
+      "false",
     );
     // unscheduled matches explained in plain words
     expect(screen.getByText("1 match(es) have no time yet")).toBeInTheDocument();
@@ -499,7 +500,7 @@ describe("DryRunPreviewPage", () => {
     );
   });
 
-  it("fairness flags force the details open and render the plain explanations", async () => {
+  it("fairness flags render plain explanations inside Advanced details", async () => {
     vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
       ...PREVIEW,
       fairness: {
@@ -518,7 +519,10 @@ describe("DryRunPreviewPage", () => {
     });
     mount();
 
-    // flagged → no click needed, the panel is already visible
+    // Closed by default even when flagged; opening reveals the panel.
+    await screen.findByTestId("competition-panel");
+    expect(screen.queryByTestId("fairness-panel")).toBeNull();
+    await userEvent.click(screen.getByTestId("advanced-details-toggle"));
     const panel = await screen.findByTestId("fairness-panel");
     expect(panel).toBeInTheDocument();
     expect(screen.getByTestId("fairness-row-tm1")).toHaveTextContent("Alpha FC");
@@ -583,6 +587,28 @@ describe("DryRunPreviewPage", () => {
     expect(
       await screen.findByText("Published. 2 matches are on the schedule."),
     ).toBeInTheDocument();
+  });
+
+  it("all-mode shows knockout-only competitions in the combined day view", async () => {
+    vi.mocked(tournamentsApi.previewAllFixtures).mockResolvedValue({
+      ...PREVIEW,
+      competitions: 2,
+      matches: [
+        ...PREVIEW.matches,
+        {
+          ref: "k9", leaf_key: "tt.u19", stage: "knockout",
+          group_label: "TT · u19", round_no: 1,
+          home: { team_id: "tm1" }, away: { team_id: "tm2" },
+          scheduled_at: "2026-06-20T11:00:00", venue: "Hall",
+        },
+      ],
+    });
+    mount("/tournaments/t1/fixtures/preview?all=1");
+    // Two competitions -> the combined view, with the knockout match VISIBLE
+    // as a chip (a knockout-only sport must not read as empty).
+    expect(await screen.findByTestId("chip-k9")).toBeInTheDocument();
+    expect(screen.getByTestId("chip-p1")).toBeInTheDocument();
+    expect(screen.queryByTestId("competition-panel")).toBeNull();
   });
 
   it("all-mode previews every competition together and publishes them in one call", async () => {

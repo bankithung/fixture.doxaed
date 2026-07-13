@@ -163,14 +163,11 @@ export function DryRunPreviewPage(): React.ReactElement {
     [preview.data, sportFilter, catFilter],
   );
 
-  // Knockout matches belong in the bracket, not the flat schedule (owner ask
-  // 2026-07-01: "if it's knockout always show it in the bracket format"). The
-  // all-competitions By-day / By-group lists show only the group stage; each
-  // competition's bracket lives on its panel's Knockout tab.
-  const scheduleMatches = useMemo(
-    () => filteredMatches.filter((m) => m.stage !== "knockout"),
-    [filteredMatches],
-  );
+  // The combined (all competitions) schedule shows EVERY timed match,
+  // knockout included — a knockout-only sport must not read as empty
+  // (owner 2026-07-13); each competition's bracket still lives on its
+  // panel's Knockout tab.
+  const scheduleMatches = filteredMatches;
 
   // ONE competition selected (a category filter, or a single-competition
   // preview) -> the Google-style stage-tabbed panel instead of the global
@@ -351,7 +348,6 @@ export function DryRunPreviewPage(): React.ReactElement {
       : "";
 
   const hardCount = (p?.violations ?? []).filter((v) => v.hard).length;
-  const flagCount = p?.fairness.flags?.length ?? 0;
   const warnings = ((p?.warnings ?? []) as { code?: string }[]).filter(
     (w) => w?.code,
   );
@@ -362,9 +358,9 @@ export function DryRunPreviewPage(): React.ReactElement {
         (p?.warnings ?? []) as { code?: string; leaf_key?: string }[]
       ).filter((w) => w?.code === "skipped_leaf" && w.leaf_key)
     : [];
-  // Problems are never hidden — flags or hard violations force the details open.
-  const forceAdvanced = hardCount > 0 || flagCount > 0;
-  const advancedShown = advancedOpen || forceAdvanced;
+  // Closed by default and always closable (owner 2026-07-13) — hard
+  // problems surface loudly in the verdict panel above regardless.
+  const advancedShown = advancedOpen;
 
   return (
     <BentoGrid className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
