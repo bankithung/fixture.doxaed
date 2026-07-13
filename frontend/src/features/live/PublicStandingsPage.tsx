@@ -14,31 +14,48 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { PublicViewerHeader } from "./PublicViewerHeader";
 
-function Pill({
+/** A bookmark tab: the sheet below is one continuous panel, the active tab
+ * merges into it (same pattern as the setup wizard's sport bookmarks). */
+function Bookmark({
   active,
   onClick,
   label,
+  count,
   testid,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
+  count?: number;
   testid: string;
 }): React.ReactElement {
   return (
     <button
       type="button"
+      role="tab"
+      aria-selected={active}
       data-testid={testid}
-      aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+        "relative flex max-w-full shrink-0 items-center gap-2 rounded-t-lg border px-3.5 py-2 text-[0.8125rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border bg-card text-foreground hover:bg-muted",
+          ? "z-10 -mb-px border-border border-b-transparent bg-card text-foreground"
+          : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
     >
-      {label}
+      <span className="truncate">{label}</span>
+      {count != null ? (
+        <span
+          className={cn(
+            "rounded-full px-1.5 py-0.5 font-tabular text-[0.625rem] font-semibold",
+            active
+              ? "bg-primary/15 text-primary"
+              : "bg-muted-foreground/10 text-muted-foreground",
+          )}
+        >
+          {count}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -152,40 +169,49 @@ export function PublicStandingsPage(): React.ReactElement {
             </p>
           </div>
         ) : (
-          <>
-            {/* Sport, then category: find one table without scrolling past
-                twenty. */}
+          /* ONE combined sheet: sport bookmarks on top, category bookmarks
+             inside, every table in the same panel with a clear rule between
+             categories (owner 2026-07-13). */
+          <div data-testid="standings-board" className="flex flex-col">
             <div
-              data-testid="standings-filter"
-              className="flex flex-col gap-2"
+              role="tablist"
+              aria-label={t("Sports")}
+              className="flex flex-wrap items-end gap-1 overflow-x-auto px-2"
             >
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Pill
-                  testid="standings-sport-all"
-                  active={!sport}
-                  onClick={() => setFilter({ sport: "", comp: "" })}
-                  label={t("All sports")}
+              <Bookmark
+                testid="standings-sport-all"
+                active={!sport}
+                onClick={() => setFilter({ sport: "", comp: "" })}
+                label={t("All sports")}
+                count={all.reduce((n, [, comps]) => n + comps.length, 0)}
+              />
+              {all.map(([s, comps]) => (
+                <Bookmark
+                  key={s}
+                  testid={`standings-sport-pick-${s}`}
+                  active={sport === s}
+                  onClick={() => setFilter({ sport: s, comp: "" })}
+                  label={s}
+                  count={comps.length}
                 />
-                {all.map(([s]) => (
-                  <Pill
-                    key={s}
-                    testid={`standings-sport-pick-${s}`}
-                    active={sport === s}
-                    onClick={() => setFilter({ sport: s, comp: "" })}
-                    label={s}
-                  />
-                ))}
-              </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-5 rounded-xl rounded-tl-none border border-border bg-card p-4 shadow-sm sm:p-5">
               {sport && compsOfSport.length > 1 ? (
-                <div className="flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-2">
-                  <Pill
+                <div
+                  role="tablist"
+                  aria-label={t("Categories")}
+                  className="flex flex-wrap items-center gap-1.5 border-b border-border pb-3"
+                >
+                  <Bookmark
                     testid="standings-comp-all"
                     active={!comp}
                     onClick={() => setFilter({ comp: "" })}
                     label={t("All categories")}
                   />
                   {compsOfSport.map((c) => (
-                    <Pill
+                    <Bookmark
                       key={c.key}
                       testid={`standings-comp-pick-${c.key}`}
                       active={comp === c.key}
@@ -195,39 +221,53 @@ export function PublicStandingsPage(): React.ReactElement {
                   ))}
                 </div>
               ) : null}
-            </div>
-            {sections.map(([s, comps]) => (
-              <section
-                key={s}
-                data-testid={`standings-sport-${s}`}
-                className="flex flex-col gap-4"
-              >
-                <h2 className="text-base font-semibold">{s}</h2>
-                {comps.map((c) => (
-                  <div
-                    key={c.key}
-                    data-testid={`standings-comp-${c.key}`}
-                    className="flex flex-col gap-2"
-                  >
-                    <LabelChips label={c.label} omitSport />
-                    <div className="grid grid-cols-1 items-start gap-x-8 gap-y-4 xl:grid-cols-2">
-                      {c.groups.map((g) => (
-                        <div
-                          key={g.key}
-                          className="overflow-hidden rounded-lg border border-border bg-card"
-                        >
-                          <h3 className="border-b border-border px-4 py-2 text-sm font-semibold">
-                            {g.label}
-                          </h3>
-                          <GroupTable rows={g.standing!.rows} family={c.family} />
-                        </div>
-                      ))}
+
+              {sections.map(([s, comps]) => (
+                <section
+                  key={s}
+                  data-testid={`standings-sport-${s}`}
+                  className="flex flex-col gap-5"
+                >
+                  {!sport ? (
+                    <h2 className="text-base font-semibold">{s}</h2>
+                  ) : null}
+                  {comps.map((c, ci) => (
+                    <div
+                      key={c.key}
+                      data-testid={`standings-comp-${c.key}`}
+                      className={cn(
+                        "flex flex-col gap-3",
+                        // A real rule between categories, so twenty stacked
+                        // tables never blur together.
+                        ci > 0 && "border-t-2 border-border pt-5",
+                      )}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <LabelChips label={c.label} omitSport />
+                        <span className="font-tabular text-xs text-muted-foreground">
+                          {c.groups.length}{" "}
+                          {c.groups.length === 1 ? t("group") : t("groups")}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 items-start gap-x-6 gap-y-4 xl:grid-cols-2">
+                        {c.groups.map((g) => (
+                          <div
+                            key={g.key}
+                            className="overflow-hidden rounded-lg border border-border"
+                          >
+                            <h3 className="border-b border-border bg-muted/40 px-4 py-2 text-sm font-semibold">
+                              {g.label}
+                            </h3>
+                            <GroupTable rows={g.standing!.rows} family={c.family} />
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </section>
-            ))}
-          </>
+                  ))}
+                </section>
+              ))}
+            </div>
+          </div>
         )}
       </main>
     </div>
