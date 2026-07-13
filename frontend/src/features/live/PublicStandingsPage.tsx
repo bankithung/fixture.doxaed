@@ -5,10 +5,7 @@ import {
   usePublicTournament,
   type Competition,
 } from "@/features/fixtures/publicTournament";
-import {
-  GroupTable,
-  LabelChips,
-} from "@/features/fixtures/publicTournamentViews";
+import { GroupTable } from "@/features/fixtures/publicTournamentViews";
 import { splitLabel } from "@/features/fixtures/publicTournament";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -231,34 +228,35 @@ export function PublicStandingsPage(): React.ReactElement {
                   {!sport ? (
                     <h2 className="text-base font-semibold">{s}</h2>
                   ) : null}
-                  {comps.map((c, ci) => (
+                  {comps.map((c) => (
                     <div
                       key={c.key}
                       data-testid={`standings-comp-${c.key}`}
-                      className={cn(
-                        "flex flex-col gap-3",
-                        // A real rule between categories, so twenty stacked
-                        // tables never blur together.
-                        ci > 0 && "border-t-2 border-border pt-5",
-                      )}
+                      className="flex flex-col overflow-hidden rounded-xl border border-border"
                     >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <LabelChips label={c.label} omitSport />
+                      {/* Each category is its OWN titled block: a real
+                          heading on a tinted band, not tiny chips. */}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-muted/60 px-4 py-2.5">
+                        <h3 className="text-sm font-semibold">
+                          {splitLabel(c.label).slice(1).join(" · ") || c.label}
+                        </h3>
                         <span className="font-tabular text-xs text-muted-foreground">
                           {c.groups.length}{" "}
                           {c.groups.length === 1 ? t("group") : t("groups")}
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 items-start gap-x-6 gap-y-4 xl:grid-cols-2">
+                      <div className="grid grid-cols-1 items-start gap-x-6 gap-y-5 p-4 xl:grid-cols-2">
                         {c.groups.map((g) => (
-                          <div
-                            key={g.key}
-                            className="overflow-hidden rounded-lg border border-border"
-                          >
-                            <h3 className="border-b border-border bg-muted/40 px-4 py-2 text-sm font-semibold">
+                          <div key={g.key} className="flex flex-col">
+                            <h4 className="pb-1 text-xs font-semibold uppercase tracking-wide text-primary">
                               {g.label}
-                            </h3>
-                            <GroupTable rows={g.standing!.rows} family={c.family} />
+                            </h4>
+                            <div className="overflow-hidden rounded-lg border border-border">
+                              <GroupTable
+                                rows={g.standing!.rows}
+                                family={c.family}
+                              />
+                            </div>
                           </div>
                         ))}
                       </div>

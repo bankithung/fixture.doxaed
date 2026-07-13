@@ -70,10 +70,10 @@ export function GroupTable({
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-[0.625rem] uppercase tracking-wide text-muted-foreground">
-            <th className="px-4 py-1.5 font-medium">{t("Team")}</th>
+          <tr className="border-b border-border bg-muted/40 text-left text-[0.625rem] uppercase tracking-wide text-muted-foreground">
+            <th className="px-4 py-2 font-semibold">{t("Team")}</th>
             {heads.map((h) => (
-              <th key={h} className="px-2 py-1.5 text-right font-medium">
+              <th key={h} className="px-2 py-2 text-right font-semibold">
                 {h}
               </th>
             ))}
