@@ -611,6 +611,29 @@ describe("DryRunPreviewPage", () => {
     expect(screen.queryByTestId("competition-panel")).toBeNull();
   });
 
+  it("all-mode Draw view renders the proper bracket per knockout competition", async () => {
+    vi.mocked(tournamentsApi.previewAllFixtures).mockResolvedValue({
+      ...PREVIEW,
+      competitions: 2,
+      matches: [
+        ...PREVIEW.matches,
+        {
+          ref: "k9", leaf_key: "tt.u19", stage: "knockout",
+          group_label: "TT · u19", round_no: 1,
+          home: { team_id: "tm1" }, away: { team_id: "tm2" },
+          scheduled_at: "2026-06-20T11:00:00", venue: "Hall",
+        },
+      ],
+    });
+    mount("/tournaments/t1/fixtures/preview?all=1");
+    await userEvent.click(await screen.findByTestId("preview-view-draw"));
+    expect(screen.getByTestId("draw-brackets")).toBeInTheDocument();
+    expect(screen.getByTestId("preview-bracket-tt.u19")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("preview-bracket-football.u15"),
+    ).toBeInTheDocument();
+  });
+
   it("all-mode previews every competition together and publishes them in one call", async () => {
     mount("/tournaments/t1/fixtures/preview?all=1");
     // the combined endpoint runs, NOT the per-leaf preview

@@ -23,7 +23,12 @@ import { t } from "@/lib/t";
 import "@/components/ui/star-border.css";
 import { BentoGrid } from "@/features/dashboard/BentoCard";
 import { useBreakpoint } from "@/lib/useBreakpoint";
-import { CompetitionPreviewPanel } from "./CompetitionPreviewPanel";
+import { FifaBracket } from "@/features/tournaments/FifaBracket";
+import type { MatchRow } from "@/api/tournaments";
+import {
+  CompetitionPreviewPanel,
+  previewToMatchRow,
+} from "./CompetitionPreviewPanel";
 import { FairnessPanel } from "./FairnessPanel";
 import { InputsChangedBanner } from "./InputsChangedBanner";
 import { LeafLabel } from "./LeafLabel";
@@ -191,6 +196,41 @@ export function DryRunPreviewPage(): React.ReactElement {
       selectedLeaf
     );
   }, [selectedLeaf, preview.data, readiness.data]);
+
+  // The Draw view's brackets: one per knockout competition in the current
+  // filter — the proper flow fixture, same as the per-category panels
+  // (owner 2026-07-13), instead of only flat "Winner of pN" chips.
+  const drawBrackets = useMemo(() => {
+    const byLeaf = new Map<string, PreviewMatch[]>();
+    for (const m of filteredMatches) {
+      if (m.stage !== "knockout") continue;
+      const list = byLeaf.get(m.leaf_key);
+      if (list) list.push(m);
+      else byLeaf.set(m.leaf_key, [m]);
+    }
+    return [...byLeaf.entries()].map(([leafKey, ms]) => {
+      const byRound = new Map<number, MatchRow[]>();
+      for (const m of ms) {
+        const row = previewToMatchRow(m, teamNames);
+        const list = byRound.get(m.round_no);
+        if (list) list.push(row);
+        else byRound.set(m.round_no, [row]);
+      }
+      const withGroup = filteredMatches.find(
+        (m) => m.leaf_key === leafKey && m.group_label,
+      );
+      const label =
+        (withGroup ? competitionLabel(withGroup) : "") ||
+        readiness.data?.competitions.find((c) => c.leaf_key === leafKey)
+          ?.label ||
+        leafKey;
+      return {
+        leafKey,
+        label,
+        columns: [...byRound.entries()].sort((a, b) => a[0] - b[0]),
+      };
+    });
+  }, [filteredMatches, teamNames, readiness.data]);
 
   // The unplaced list grouped per competition — a count you can open, not a
   // wall of rows.
@@ -581,10 +621,32 @@ export function DryRunPreviewPage(): React.ReactElement {
               {/* All competitions: the combined schedule. Pick a category
                   above for its groups and bracket. */}
               {viewMode === "draw" ? (
-                <GroupCompositionView
-                  matches={filteredMatches}
-                  teamNames={teamNames}
-                />
+                <>
+                  <GroupCompositionView
+                    matches={filteredMatches}
+                    teamNames={teamNames}
+                  />
+                  {drawBrackets.length ? (
+                    <section
+                      data-testid="draw-brackets"
+                      className="flex flex-col gap-4"
+                    >
+                      <h2 className="text-sm font-semibold">
+                        {t("Knockout brackets")}
+                      </h2>
+                      {drawBrackets.map((b) => (
+                        <div
+                          key={b.leafKey}
+                          data-testid={`preview-bracket-${b.leafKey}`}
+                          className="flex flex-col gap-2"
+                        >
+                          <LeafLabel label={b.label} />
+                          <FifaBracket columns={b.columns} />
+                        </div>
+                      ))}
+                    </section>
+                  ) : null}
+                </>
               ) : scheduleMatches.length > 0 ? (
                 viewMode === "day" ? (
                   <MatchesByDayGrid
