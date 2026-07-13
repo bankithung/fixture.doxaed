@@ -27,6 +27,7 @@ export function LineupPanel({
   awayTeam,
   sportKey,
   family,
+  playersPerSide = null,
 }: {
   matchId: string;
   homeTeam: LiveTeam | null;
@@ -34,6 +35,8 @@ export function LineupPanel({
   /** Picks the per-sport court visual (same registry as the public hub). */
   sportKey: string;
   family: string;
+  /** On-court cap from the category's NvN format; null = not defined. */
+  playersPerSide?: number | null;
 }): React.ReactElement | null {
   const qc = useQueryClient();
   const toast = useToast();
@@ -185,10 +188,30 @@ export function LineupPanel({
             <div key={team.id} className="flex flex-col gap-3 p-5">
               <div className="flex items-center justify-between gap-2">
                 <span className="truncate text-sm font-semibold">{team.name}</span>
-                <span className="font-tabular text-xs text-muted-foreground">
+                <span
+                  className={cn(
+                    "font-tabular text-xs",
+                    playersPerSide != null && starters > playersPerSide
+                      ? "font-medium text-destructive"
+                      : "text-muted-foreground",
+                  )}
+                >
                   {starters} {t("start")} · {bench} {t("bench")}
+                  {playersPerSide != null
+                    ? ` · ${playersPerSide} ${t("on court")}`
+                    : ""}
                 </span>
               </div>
+              {playersPerSide != null && starters > playersPerSide ? (
+                <p
+                  data-testid={`lineup-cap-warning-${team.id}`}
+                  className="text-xs font-medium text-destructive"
+                >
+                  {t(
+                    `This category plays ${playersPerSide} at a time. Move ${starters - playersPerSide} starter(s) to the bench.`,
+                  )}
+                </p>
+              ) : null}
               {team.players.length > 0 ? (
                 <div className="flex flex-col overflow-hidden rounded-lg border border-border">
                   {team.players.map((p, i) => {

@@ -335,6 +335,47 @@ describe("MatchConsolePage", () => {
     expect(liveApi.recordSetProgress).not.toHaveBeenCalled();
   });
 
+  it("shows the on-court cap and warns when starters exceed it", async () => {
+    const base = snap("scheduled");
+    vi.mocked(liveApi.snapshot).mockResolvedValue({
+      ...base,
+      match: {
+        ...base.match,
+        players_per_side: 3,
+        home_team: {
+          ...base.match.home_team!,
+          players: [
+            { id: "p1", name: "One A", jersey_no: 1, position: "" },
+            { id: "p2", name: "Two B", jersey_no: 2, position: "" },
+            { id: "p3", name: "Three C", jersey_no: 3, position: "" },
+            { id: "p4", name: "Four D", jersey_no: 4, position: "" },
+          ],
+        },
+      },
+    });
+    vi.mocked(liveApi.getLineups).mockResolvedValue({
+      lineups: [
+        {
+          id: "l1",
+          team: { id: "a", name: "Alpha" },
+          entries: [
+            { player_id: "p1", player_name: "One A", role: "starter", shirt_no: 1 },
+            { player_id: "p2", player_name: "Two B", role: "starter", shirt_no: 2 },
+            { player_id: "p3", player_name: "Three C", role: "starter", shirt_no: 3 },
+            { player_id: "p4", player_name: "Four D", role: "starter", shirt_no: 4 },
+          ],
+          confirmed_at: null,
+          confirmed_by: null,
+        },
+      ],
+    });
+    renderConsole();
+    expect(
+      await screen.findByTestId("lineup-cap-warning-a"),
+    ).toHaveTextContent("plays 3 at a time");
+    expect(screen.getAllByText(/3 on court/).length).toBeGreaterThan(0);
+  });
+
   it("court view renders the same football pitch the public hub shows, read only", async () => {
     vi.mocked(liveApi.snapshot).mockResolvedValue(snap("scheduled"));
     vi.mocked(liveApi.getLineups).mockResolvedValue({

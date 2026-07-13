@@ -77,6 +77,8 @@ export interface LiveSnapshot {
     /** Set sports: raw sport key, per-set points, resolved scoring rules
      * (home/away_score mirror sets won). */
     sport?: string | null;
+    /** On-court cap from the category's NvN format (null when undefined). */
+    players_per_side?: number | null;
     /** The SportDefinition slice a console needs to render sport-natively:
      * family picks the console module, terms carry per-sport vocabulary. */
     sport_meta?: {

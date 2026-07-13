@@ -10,6 +10,7 @@ from rest_framework.response import Response
 
 from apps.matches.models import Match, MatchEvent, MatchEventType, MatchStatus
 from apps.matches.services.set_scoring import rules_for_match
+from apps.tournaments.services.sports import leaf_roster_rules
 
 _ROSTER_VISIBLE = (MatchStatus.LIVE, MatchStatus.HALF_TIME, MatchStatus.COMPLETED)
 
@@ -210,6 +211,16 @@ class LiveMatchSnapshotView(GenericAPIView):
                     "current_period": m.current_period,
                     "home_team": _team(m.home_team, include_players),
                     "away_team": _team(m.away_team, include_players),
+                    # On-court cap from the category's NvN format (None when
+                    # the category doesn't define one) — the console shows it
+                    # next to the team sheet counts.
+                    "players_per_side": (
+                        leaf_roster_rules(
+                            m.tournament.sports, m.leaf_key
+                        ).get("players_per_side")
+                        if m.leaf_key
+                        else None
+                    ),
                     "home_score": m.home_score,
                     "away_score": m.away_score,
                     # Kickoff stamp — drives the console's running clock.
