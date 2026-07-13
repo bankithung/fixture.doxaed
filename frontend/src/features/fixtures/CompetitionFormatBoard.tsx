@@ -800,6 +800,26 @@ export function CompetitionFormatBoard({
                               </p>
                             </div>
                           ) : null}
+
+                          {/* Third place playoff: single-elimination brackets
+                              (flat knockout or groups to knockout). Multi-stage
+                              plans carry their own checkbox in StagesEditor. */}
+                          {fmt === "knockout" || isGroups ? (
+                            <label className="flex w-fit items-center gap-2 text-sm text-foreground">
+                              <input
+                                type="checkbox"
+                                data-testid={`format-sport-${sp}-third-place`}
+                                className="h-4 w-4 rounded border-input accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                checked={boolParam(sp, "third_place", false)}
+                                onChange={(e) =>
+                                  stage(`sport:${sp}`, {
+                                    third_place: e.target.checked,
+                                  })
+                                }
+                              />
+                              {t("Third place match (losing semi-finalists play for bronze)")}
+                            </label>
+                          ) : null}
                         </div>
                       )}
                     </div>
