@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CloudRainWind, ListChecks, Printer, Radio } from "lucide-react";
@@ -90,7 +90,6 @@ function AdvancementStalledBanner({
     </div>
   );
 }
-
 
 function isOverdue(scheduledAt: string | null): boolean {
   if (!scheduledAt) return false;
@@ -364,45 +363,56 @@ function DayBoard({
         aria-label={t("Match day board")}
         className="flex shrink-0 items-center overflow-x-auto border-b border-border px-2"
       >
-        {tabs.map((tb) => {
+        {tabs.map((tb, i) => {
           const on = tb.key === tab;
           return (
-            <button
-              key={tb.key}
-              type="button"
-              role="tab"
-              id={`board-tab-${tb.key}`}
-              aria-selected={on}
-              aria-controls="board-panel"
-              data-testid={`board-tab-${tb.key}`}
-              onClick={() => setTab(tb.key)}
-              className={cn(
-                "-mb-px inline-flex h-11 shrink-0 items-center gap-2 border-b-2 px-4 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                on
-                  ? "border-b-primary font-semibold text-foreground"
-                  : "border-b-transparent font-medium text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {tb.key === "play" && liveCount > 0 ? (
-                <span className="relative flex h-2 w-2 shrink-0" aria-label={t("Live now")}>
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-                </span>
-              ) : null}
-              {tb.label}
-              {tb.count != null ? (
+            <Fragment key={tb.key}>
+              {/* A hairline between tabs, so five labels read as five things. */}
+              {i > 0 ? (
                 <span
-                  className={cn(
-                    "rounded-full px-1.5 py-0.5 font-tabular text-[0.6875rem] font-medium leading-none",
-                    on
-                      ? "bg-primary/10 text-primary"
-                      : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {tb.count}
-                </span>
+                  aria-hidden="true"
+                  className="h-5 w-px shrink-0 bg-border"
+                />
               ) : null}
-            </button>
+              <button
+                type="button"
+                role="tab"
+                id={`board-tab-${tb.key}`}
+                aria-selected={on}
+                aria-controls="board-panel"
+                data-testid={`board-tab-${tb.key}`}
+                onClick={() => setTab(tb.key)}
+                className={cn(
+                  "-mb-px inline-flex h-11 shrink-0 items-center gap-2 border-b-2 px-4 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                  on
+                    ? "border-b-primary font-semibold text-foreground"
+                    : "border-b-transparent font-medium text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {tb.key === "play" && liveCount > 0 ? (
+                  <span
+                    className="relative flex h-2 w-2 shrink-0"
+                    aria-label={t("Live now")}
+                  >
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                  </span>
+                ) : null}
+                {tb.label}
+                {tb.count != null ? (
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 py-0.5 font-tabular text-[0.6875rem] font-medium leading-none",
+                      on
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {tb.count}
+                  </span>
+                ) : null}
+              </button>
+            </Fragment>
           );
         })}
       </div>
@@ -533,7 +543,9 @@ function DayBoard({
             }}
           />
         ) : null}
-        {tab === "leaders" ? <LeadersPanel tournamentId={tournamentId} bare /> : null}
+        {tab === "leaders" ? (
+          <LeadersPanel tournamentId={tournamentId} bare />
+        ) : null}
         {tab === "progress" ? (
           <CompetitionProgressPanel matches={matches} bare />
         ) : null}
@@ -881,7 +893,9 @@ export function ControlRoomPage(): React.ReactElement {
             </thead>
             <tbody>
               {[...ms]
-                .sort((a, b) => (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? ""))
+                .sort((a, b) =>
+                  (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? ""),
+                )
                 .map((m) => (
                   <tr key={m.id} className="border-b border-border align-top">
                     <td className="py-1.5 pr-2 font-tabular">
@@ -894,11 +908,15 @@ export function ControlRoomPage(): React.ReactElement {
                         : ""}
                     </td>
                     <td className="py-1.5 pr-2">
-                      {m.home_team?.name ?? "TBD"} {t("vs")} {m.away_team?.name ?? "TBD"}
+                      {m.home_team?.name ?? "TBD"} {t("vs")}{" "}
+                      {m.away_team?.name ?? "TBD"}
                     </td>
                     <td className="py-1.5 pr-2">{m.leaf_label}</td>
                     <td className="py-1.5 pr-2">
-                      {[m.scorer?.name, ...(m.officials ?? []).map((o) => o.name)]
+                      {[
+                        m.scorer?.name,
+                        ...(m.officials ?? []).map((o) => o.name),
+                      ]
                         .filter(Boolean)
                         .join(", ")}
                     </td>
