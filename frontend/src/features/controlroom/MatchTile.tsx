@@ -1,7 +1,7 @@
 import { Lock, Radio, UserCog } from "lucide-react";
 import type { ControlRoomMatch, MatchRow } from "@/api/tournaments";
 import { LeafLabel } from "@/features/fixtures/LeafLabel";
-import { liveSetView } from "@/lib/setDisplay";
+import { liveSetView, livePeriodLabel } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { FINAL, IN_PLAY, fmtKickoff, isCalled } from "./format";
@@ -74,11 +74,12 @@ export function StatusPill({
   idScope?: string;
 }): React.ReactElement {
   const sm = statusMeta(match);
+  const period = livePeriodLabel(match);
   return (
     <span
       data-testid={`${idScope}pill-${match.id}`}
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium capitalize",
+        "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-[0.6875rem] font-medium capitalize",
         sm.cls,
       )}
     >
@@ -89,12 +90,13 @@ export function StatusPill({
         </span>
       ) : null}
       {t(sm.label)}
-      {/* The period of play a live match is in: "game 1" for a set sport,
-          "first half" for football. Divided off, not joined by a middot — the
-          dot read as a typo rather than a separator. */}
-      {sm.live && match.current_period ? (
-        <span className="border-l border-current/30 pl-1.5 font-normal opacity-90">
-          {t(match.current_period.replace(/_/g, " "))}
+      {/* The period of play a live match is in: "game 2" for a set sport,
+          "first half" for football. Derived (not the stale current_period
+          column), divided off rather than joined by a middot, and kept on one
+          line so the number never wraps away from its noun. */}
+      {sm.live && period ? (
+        <span className="whitespace-nowrap border-l border-current/30 pl-1.5 font-normal opacity-90">
+          {t(period)}
         </span>
       ) : null}
     </span>

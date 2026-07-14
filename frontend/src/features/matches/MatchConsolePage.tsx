@@ -24,6 +24,7 @@ import {
   useOfflineQueue,
 } from "@/lib/offlineQueue";
 import { invalidateTournament } from "@/lib/queryKeys";
+import { livePeriodLabel } from "@/lib/setDisplay";
 import { useMatchSocket } from "@/lib/useMatchSocket";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -320,6 +321,9 @@ export function MatchConsolePage(): React.ReactElement {
     (a) => !(family === "target" && a.to === "half_time"),
   );
   const sm = statusMeta(match.status);
+  // The header says what the console body says: the running game comes from
+  // set_scores, not the write-once current_period column.
+  const headerPeriod = livePeriodLabel(match);
   const homeName = match.home_team?.name ?? t("TBD");
   const awayName = match.away_team?.name ?? t("TBD");
   const lastEvent = events[0];
@@ -499,9 +503,9 @@ export function MatchConsolePage(): React.ReactElement {
                 <span className={cn("h-1.5 w-1.5 rounded-full", sm.dot)} />
               )}
               {t(sm.label)}
-              {match.current_period ? (
-                <span className="text-muted-foreground">
-                  · {t(match.current_period.replace(/_/g, " "))}
+              {headerPeriod ? (
+                <span className="whitespace-nowrap text-muted-foreground">
+                  {t(headerPeriod)}
                 </span>
               ) : null}
               {isLiveNow && autoMinute != null ? (
