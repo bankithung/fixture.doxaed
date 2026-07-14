@@ -651,7 +651,7 @@ class TournamentScheduleChangesView(GenericAPIView):
 
         from django.utils import timezone as dj_tz
 
-        from apps.fixtures.services.schedule_changes import schedule_changes
+        from apps.fixtures.services.schedule_changes import schedule_changes_page
 
         if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
             raise NotFound("tournament_not_found")
@@ -677,14 +677,21 @@ class TournamentScheduleChangesView(GenericAPIView):
             limit = self._DEFAULT_LIMIT
         limit = max(1, min(limit, self._MAX_LIMIT))
 
-        return Response({
-            "results": schedule_changes(
+        try:
+            offset = int(request.query_params.get("offset") or 0)
+        except (TypeError, ValueError):
+            offset = 0
+        offset = max(0, offset)
+
+        return Response(
+            schedule_changes_page(
                 t,
                 since=since,
                 leaf_key=str(request.query_params.get("leaf_key") or "") or None,
                 limit=limit,
+                offset=offset,
             )
-        })
+        )
 
 
 class ControlRoomDayView(GenericAPIView):

@@ -14,10 +14,10 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import "@/components/ui/star-border.css";
 
-const PAGE = 50;
-/** The embedded tail on the Today board (owner 2026-07-14: latest 20, then
- * "View all" into the full page). */
-const TAIL = 20;
+/** The full page walks the feed 20 at a time, Prev/Next (owner 2026-07-14). */
+const PAGE = 20;
+/** The embedded tail on the Today board: the latest 15, then "View all". */
+const TAIL = 15;
 const PREVIEW = 3;
 
 /** Localized chip per feed kind (stable codes from the backend map). */
@@ -321,17 +321,23 @@ export function ScheduleChangesPanel({
 }): React.ReactElement {
   const [leaf, setLeaf] = useState("");
   const [kind, setKind] = useState("");
-  const [limit, setLimit] = useState(viewAllTo ? TAIL : PAGE);
+  const [page, setPage] = useState(0);
+  const limit = viewAllTo ? TAIL : PAGE;
+  const offset = viewAllTo ? 0 : page * PAGE;
 
   const feed = useQuery({
-    queryKey: [...qk.scheduleChanges(tournamentId), leaf, limit],
+    queryKey: [...qk.scheduleChanges(tournamentId), leaf, limit, offset],
     queryFn: () =>
       tournamentsApi.scheduleChanges(tournamentId, {
         ...(leaf ? { leafKey: leaf } : {}),
         limit,
+        ...(offset ? { offset } : {}),
       }),
+    placeholderData: (prev) => prev,
   });
   const entries = feed.data?.results ?? [];
+  const total = feed.data?.total ?? entries.length;
+  const lastPage = Math.max(0, Math.ceil(total / PAGE) - 1);
   // Kind is a client-side lens over what was fetched — the API filters by
   // competition only, and the feed is small enough that a second round trip
   // would cost more than it saves.
@@ -385,7 +391,7 @@ export function ScheduleChangesPanel({
           />
           <h3 className="panel-title">{t("Change history")}</h3>
           <span className="font-tabular text-xs text-muted-foreground">
-            {visible.length}
+            {total}
           </span>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {kinds.length > 1 ? (
@@ -394,7 +400,10 @@ export function ScheduleChangesPanel({
                 size="sm"
                 aria-label={t("Filter by change kind")}
                 value={kind}
-                onChange={setKind}
+                onChange={(v) => {
+                  setKind(v);
+                  setPage(0);
+                }}
                 options={[
                   { value: "", label: t("Every change") },
                   ...kinds.map((k) => ({
@@ -412,7 +421,7 @@ export function ScheduleChangesPanel({
                 value={leaf}
                 onChange={(v) => {
                   setLeaf(v);
-                  setLimit(PAGE);
+                  setPage(0);
                 }}
                 options={[
                   { value: "", label: t("All competitions") },
@@ -436,40 +445,65 @@ export function ScheduleChangesPanel({
       ) : visible.length === 0 ? (
         <p className="px-4 py-8 text-center text-sm text-muted-foreground">
           {kind
-            ? t("No changes of that kind yet.")
+            ? t("No changes of that kind on this page.")
             : t("No changes yet. Any match you move or delay will show up here.")}
         </p>
       ) : (
-        <>
-          {timeline}
-          {viewAllTo ? (
-            <div className="flex items-center gap-2 border-t border-border px-4 py-2.5">
-              <span className="text-xs text-muted-foreground">
-                {t("Showing the latest")}{" "}
-                <span className="font-tabular">{visible.length}</span>
-              </span>
-              <Link
-                to={viewAllTo}
-                data-testid="changes-view-all"
-                className="ml-auto text-[13px] font-medium text-primary hover:underline"
-              >
-                {t("View all changes")}
-              </Link>
-            </div>
-          ) : entries.length >= limit ? (
-            <div className="flex justify-center border-t border-border px-4 py-2.5">
-              <Button
-                size="sm"
-                variant="outline"
-                data-testid="changes-load-more"
-                onClick={() => setLimit((l) => l + PAGE)}
-              >
-                {t("Load more")}
-              </Button>
-            </div>
-          ) : null}
-        </>
+        timeline
       )}
+
+      {/* The tab links out; the full page walks the feed 20 at a time. The
+          pager stays mounted even on an empty page, or a kind filter that
+          clears one page would strand you with no way forward. */}
+      {viewAllTo ? (
+        visible.length > 0 ? (
+          <div className="flex items-center gap-2 border-t border-border px-4 py-2.5">
+            <span className="text-xs text-muted-foreground">
+              {t("Showing the latest")}{" "}
+              <span className="font-tabular">{visible.length}</span>
+            </span>
+            <Link
+              to={viewAllTo}
+              data-testid="changes-view-all"
+              className="ml-auto text-[13px] font-medium text-primary hover:underline"
+            >
+              {t("View all changes")}
+            </Link>
+          </div>
+        ) : null
+      ) : total > 0 ? (
+        <div className="flex items-center gap-2 border-t border-border px-4 py-2.5">
+          <span
+            data-testid="changes-page-status"
+            className="text-xs text-muted-foreground"
+          >
+            <span className="font-tabular">{offset + 1}</span>
+            {t(" to ")}
+            <span className="font-tabular">{offset + entries.length}</span>{" "}
+            {t("of")} <span className="font-tabular">{total}</span>
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="changes-prev"
+              disabled={page === 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+            >
+              {t("Previous")}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="changes-next"
+              disabled={page >= lastPage}
+              onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+            >
+              {t("Next")}
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

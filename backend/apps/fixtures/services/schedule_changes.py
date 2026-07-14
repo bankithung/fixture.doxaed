@@ -305,6 +305,29 @@ def _email_schedule_change(tournament, email: str, mine: list[dict]) -> None:
     )
 
 
+def schedule_changes_page(
+    tournament: Any,
+    *,
+    since: datetime | None = None,
+    leaf_key: str | None = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """One page of the feed plus the total behind it, so the UI can page.
+
+    Enumerating every entry costs nothing extra: the audit scan is already
+    capped at ``_MAX_ROWS`` rows, and the old early-return only skipped the
+    dict-building for rows past the limit.
+    """
+    entries = schedule_changes(
+        tournament, since=since, leaf_key=leaf_key, limit=_MAX_ROWS
+    )
+    return {
+        "results": entries[offset : offset + limit],
+        "total": len(entries),
+    }
+
+
 def schedule_changes(
     tournament: Any,
     *,

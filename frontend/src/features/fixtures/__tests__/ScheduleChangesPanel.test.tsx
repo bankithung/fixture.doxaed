@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   tournamentsApi,
@@ -85,7 +86,7 @@ describe("ScheduleChangesPanel", () => {
     expect(second).not.toHaveTextContent("unscheduled");
 
     expect(tournamentsApi.scheduleChanges).toHaveBeenCalledWith("t1", {
-      limit: 50,
+      limit: 20,
     });
   });
 
@@ -127,25 +128,72 @@ describe("ScheduleChangesPanel", () => {
     await waitFor(() =>
       expect(tournamentsApi.scheduleChanges).toHaveBeenLastCalledWith("t1", {
         leafKey: "football.u17",
-        limit: 50,
+        limit: 20,
       }),
     );
   });
 
-  it("loads more by raising the limit when a full page came back", async () => {
+  it("pages the full feed 20 at a time with Prev/Next", async () => {
     vi.mocked(tournamentsApi.scheduleChanges).mockResolvedValue({
-      results: Array.from({ length: 50 }, (_, i) =>
+      results: Array.from({ length: 20 }, (_, i) =>
         entry({ match_id: `m${i}`, batch_id: `b${i}` }),
       ),
+      total: 45,
     });
     mount();
-    expect(await screen.findByTestId("changes-load-more")).toBeInTheDocument();
-    await userEvent.click(screen.getByTestId("changes-load-more"));
+
+    // Page 1 of 3: Prev is dead, Next walks forward by an offset of 20.
+    expect(await screen.findByTestId("changes-page-status")).toHaveTextContent(
+      "1 to 20 of 45",
+    );
+    expect(screen.getByTestId("changes-prev")).toBeDisabled();
+
+    await userEvent.click(screen.getByTestId("changes-next"));
     await waitFor(() =>
       expect(tournamentsApi.scheduleChanges).toHaveBeenLastCalledWith("t1", {
-        limit: 100,
+        limit: 20,
+        offset: 20,
       }),
     );
+    expect(screen.getByTestId("changes-prev")).not.toBeDisabled();
+
+    // The last page stops: 45 entries is three pages, no fourth.
+    await userEvent.click(screen.getByTestId("changes-next"));
+    await waitFor(() =>
+      expect(tournamentsApi.scheduleChanges).toHaveBeenLastCalledWith("t1", {
+        limit: 20,
+        offset: 40,
+      }),
+    );
+    expect(screen.getByTestId("changes-next")).toBeDisabled();
+  });
+
+  it("the embedded tab shows the latest 15 and links out to the full page", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <ScheduleChangesPanel
+            tournamentId="t1"
+            competitions={COMPETITIONS}
+            embedded
+            viewAllTo="/tournaments/t1/changes"
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId("changes-view-all")).toHaveAttribute(
+      "href",
+      "/tournaments/t1/changes",
+    );
+    expect(tournamentsApi.scheduleChanges).toHaveBeenCalledWith("t1", {
+      limit: 15,
+    });
+    // No inline pager in the tab — "View all" is the only way deeper.
+    expect(screen.queryByTestId("changes-next")).toBeNull();
   });
 
   it("shows an empty state when nothing changed yet", async () => {

@@ -218,6 +218,40 @@ def test_leaf_key_filter():
     assert entries[0]["leaf_key"] == "football.u15"
 
 
+def test_limit_and_offset_page_the_feed_and_report_the_total():
+    """The Change history page walks the feed 20 at a time (Prev/Next), so the
+    endpoint slices server-side and reports how many entries sit behind it."""
+    admin, t, matches = _setup(n_teams=8)
+    tz = ZoneInfo(t.time_zone)
+    # A day apart each, so no move lands on another match's slot at venue G.
+    for i, m in enumerate(matches[:4]):
+        reschedule_match(
+            match=m, by=admin,
+            scheduled_at=datetime(2026, 9, 1 + i, 15, 0, tzinfo=tz),
+        )
+
+    first = _client(admin).get(
+        f"/api/tournaments/{t.id}/schedule-changes/?limit=2"
+    ).json()
+    assert first["total"] == 4
+    assert len(first["results"]) == 2
+
+    second = _client(admin).get(
+        f"/api/tournaments/{t.id}/schedule-changes/?limit=2&offset=2"
+    ).json()
+    assert second["total"] == 4
+    assert len(second["results"]) == 2
+    # Disjoint pages, still reverse-chrono across the boundary.
+    ids = [e["match_id"] for e in first["results"] + second["results"]]
+    assert len(set(ids)) == 4
+
+    # Past the end is an empty page, not an error.
+    past = _client(admin).get(
+        f"/api/tournaments/{t.id}/schedule-changes/?limit=2&offset=99"
+    ).json()
+    assert past["results"] == [] and past["total"] == 4
+
+
 def test_invalid_since_is_400():
     admin, t, _ = _setup()
     r = _client(admin).get(

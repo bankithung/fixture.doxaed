@@ -908,14 +908,20 @@ export const tournamentsApi = {
   /** Unified reverse-chrono slot-change feed (any tournament member). */
   scheduleChanges: (
     id: string,
-    opts: { since?: string; leafKey?: string; limit?: number } = {},
+    opts: {
+      since?: string;
+      leafKey?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
   ) => {
     const q = new URLSearchParams();
     if (opts.since) q.set("since", opts.since);
     if (opts.leafKey) q.set("leaf_key", opts.leafKey);
     if (opts.limit !== undefined) q.set("limit", String(opts.limit));
+    if (opts.offset) q.set("offset", String(opts.offset));
     const qs = q.toString();
-    return api.get<{ results: ScheduleChangeEntry[] }>(
+    return api.get<{ results: ScheduleChangeEntry[]; total?: number }>(
       `/api/tournaments/${id}/schedule-changes/${qs ? `?${qs}` : ""}`,
     );
   },
