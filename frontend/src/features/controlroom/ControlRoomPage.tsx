@@ -357,11 +357,14 @@ function DayBoard({
   return (
     <section data-testid="day-board" className="panel flex flex-col">
       {/* Tab strip: the five views of the day, one card. Counts are badges, not
-          loose numerals — label-then-number ran together into one long line. */}
+          loose numerals — label-then-number ran together into one long line.
+          It still scrolls when a narrow screen cannot fit five tabs, but the
+          bar itself is hidden: the app's global thin scrollbar was rendering
+          inside the header and reading as a stray rule under the tabs. */}
       <div
         role="tablist"
         aria-label={t("Match day board")}
-        className="flex shrink-0 items-center overflow-x-auto border-b border-border px-2"
+        className="flex shrink-0 items-center overflow-x-auto border-b border-border px-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((tb, i) => {
           const on = tb.key === tab;
