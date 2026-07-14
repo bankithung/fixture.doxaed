@@ -103,10 +103,10 @@ describe("ScheduleChangesPanel", () => {
       ),
     });
     mount();
-    const burst = await screen.findByText("5");
-    expect(burst).toBeInTheDocument();
     // First placements read as "Scheduled", not "Re-scheduled".
-    expect(screen.getByText("Scheduled")).toBeInTheDocument();
+    const chip = await screen.findByText("Scheduled");
+    // The flood collapses into ONE burst item headed by its count.
+    expect(chip.closest("li")).toHaveTextContent("5 matches");
     expect(screen.queryByText("Re-scheduled")).not.toBeInTheDocument();
     // Preview shows 3; the expander reveals the rest.
     expect(screen.getByTestId("change-b0-m0")).toBeInTheDocument();

@@ -137,7 +137,93 @@ export function CourtsPanel({
   );
 }
 
-/** COMPETITION PROGRESS — a completion bar per competition leaf. */
+/** One competition leaf as a progress card: what it is, how far along, is it on. */
+function LeafCard({
+  segs,
+  done,
+  total,
+  live,
+}: {
+  segs: string[];
+  done: number;
+  total: number;
+  live: number;
+}): React.ReactElement {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const complete = total > 0 && done === total;
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-2.5 rounded-lg border bg-card p-3",
+        live > 0 ? "border-primary/40 ring-1 ring-primary/15" : "border-border",
+      )}
+    >
+      <div className="flex items-start gap-2">
+        <span className="flex min-w-0 flex-wrap items-center gap-1">
+          {segs.length === 0 ? (
+            <span className="text-[13px] font-medium">{t("All matches")}</span>
+          ) : (
+            segs.map((seg, i) => (
+              <span
+                key={`${i}-${seg}`}
+                className={cn(
+                  "rounded px-1.5 py-0.5 text-[0.6875rem] font-medium leading-4",
+                  i === 0
+                    ? "bg-secondary text-secondary-foreground"
+                    : "bg-muted text-muted-foreground",
+                )}
+              >
+                {seg}
+              </span>
+            ))
+          )}
+        </span>
+        {live > 0 ? (
+          <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[0.6875rem] font-medium leading-4 text-primary">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+            </span>
+            {live} {t("live")}
+          </span>
+        ) : complete ? (
+          <span className="ml-auto shrink-0 rounded-full bg-success-muted px-1.5 py-0.5 text-[0.6875rem] font-medium leading-4 text-success">
+            {t("Done")}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="flex items-center gap-2.5">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+          <div
+            className={cn(
+              "h-full rounded-full transition-[width]",
+              complete ? "bg-success" : "bg-primary",
+            )}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <span className="shrink-0 font-tabular text-[13px] font-semibold leading-none">
+          {done}
+          <span className="font-normal text-muted-foreground">/{total}</span>
+        </span>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        {complete
+          ? t("All matches played")
+          : `${total - done} ${total - done === 1 ? t("match left") : t("matches left")}`}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * COMPETITION PROGRESS — every competition leaf as a progress card, grouped by
+ * sport (redesign 2026-07-14: ten hairline bars stacked under bare chips were
+ * unreadable). Each sport band carries its own aggregate bar; the leaves below
+ * it lay out 2-up/3-up so ten categories fit a screen instead of a scroll.
+ */
 export function CompetitionProgressPanel({
   matches,
   bare = false,
@@ -158,7 +244,7 @@ export function CompetitionProgressPanel({
     byLeaf.set(key, g);
   }
   // Group by sport (first label segment) so "Table Tennis" prints once as a
-  // section header instead of on every row.
+  // band header instead of on every card.
   const groups = new Map<
     string,
     { rest: string[]; total: number; done: number; live: number }[]
@@ -171,88 +257,66 @@ export function CompetitionProgressPanel({
     groups.set(sport, rows);
   }
   const sports = [...groups.keys()].sort((a, b) => a.localeCompare(b));
-  const leafCount = byLeaf.size;
+
   return (
     <Panel
       title={t("Competition progress")}
       icon={Trophy}
-      count={leafCount}
+      count={byLeaf.size}
       bare={bare}
     >
-      <div
-        className={cn(
-          "flex flex-col",
-          // In the board's tab body the leaves read as a 2-up grid — a single
-          // column of 10 thin bars was the "too stacked" complaint.
-          bare && "lg:grid lg:grid-cols-2 lg:gap-x-px lg:bg-border",
-        )}
-      >
+      <div className="flex flex-col divide-y divide-border">
         {sports.map((sport) => {
           const rows = groups
             .get(sport)!
             .sort((a, b) => a.rest.join(" ").localeCompare(b.rest.join(" ")));
           const agg = rows.reduce(
-            (acc, r) => ({ done: acc.done + r.done, total: acc.total + r.total }),
-            { done: 0, total: 0 },
+            (acc, r) => ({
+              done: acc.done + r.done,
+              total: acc.total + r.total,
+              live: acc.live + r.live,
+            }),
+            { done: 0, total: 0, live: 0 },
           );
+          const pct =
+            agg.total > 0 ? Math.round((agg.done / agg.total) * 100) : 0;
           return (
-            <div
-              key={sport}
-              className={cn(
-                "border-b border-border last:border-b-0",
-                bare && "bg-card",
-              )}
-            >
-              <div className="flex items-baseline gap-2 bg-muted/40 px-4 py-1.5">
-                <p className="text-[13px] font-semibold text-foreground">{sport}</p>
+            <div key={sport} className="flex flex-col">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 bg-muted/40 px-4 py-2">
+                <p className="text-sm font-semibold">{sport}</p>
                 <span className="font-tabular text-xs text-muted-foreground">
-                  {agg.done}/{agg.total}
+                  {rows.length} {rows.length === 1 ? t("category") : t("categories")}
                 </span>
-              </div>
-              <div className="flex flex-col divide-y divide-border/60">
-                {rows.map((r) => {
-                  const pct =
-                    r.total > 0 ? Math.round((r.done / r.total) * 100) : 0;
-                  return (
+                {agg.live > 0 ? (
+                  <span className="rounded-full bg-primary/10 px-1.5 py-0.5 font-tabular text-[0.6875rem] font-medium leading-4 text-primary">
+                    {agg.live} {t("live")}
+                  </span>
+                ) : null}
+                <div className="ml-auto flex shrink-0 items-center gap-2.5">
+                  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted sm:w-32">
                     <div
-                      key={`${sport}-${r.rest.join("-")}`}
-                      className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-1.5"
-                    >
-                      <span className="flex min-w-0 flex-wrap items-center gap-1">
-                        {r.rest.length === 0 ? (
-                          <span className="text-[13px] text-muted-foreground">
-                            {t("All matches")}
-                          </span>
-                        ) : (
-                          r.rest.map((seg, i) => (
-                            <span
-                              key={`${i}-${seg}`}
-                              className="rounded bg-muted px-1.5 py-px text-xs font-medium text-foreground"
-                            >
-                              {seg}
-                            </span>
-                          ))
-                        )}
-                      </span>
-                      <div className="flex w-32 shrink-0 items-center gap-2">
-                        {r.live > 0 ? (
-                          <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[0.6875rem] font-medium leading-4 text-primary">
-                            {r.live}
-                          </span>
-                        ) : null}
-                        <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
-                          <div
-                            className="h-full rounded-full bg-primary transition-[width]"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <span className="w-9 text-right font-tabular text-xs text-muted-foreground">
-                          {r.done}/{r.total}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+                      className="h-full rounded-full bg-primary transition-[width]"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <span className="font-tabular text-[13px] font-semibold leading-none">
+                    {agg.done}
+                    <span className="font-normal text-muted-foreground">
+                      /{agg.total}
+                    </span>
+                  </span>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 xl:grid-cols-3">
+                {rows.map((r) => (
+                  <LeafCard
+                    key={`${sport}-${r.rest.join("-")}`}
+                    segs={r.rest}
+                    done={r.done}
+                    total={r.total}
+                    live={r.live}
+                  />
+                ))}
               </div>
             </div>
           );
