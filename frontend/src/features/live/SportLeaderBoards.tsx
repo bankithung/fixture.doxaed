@@ -21,11 +21,24 @@ export interface LeaderBoard {
   rows: LeaderBoardRow[];
 }
 
+/** One competition leaf's own boards. A sport-wide board ranks a school's u-14
+ * boys team against its u-14 girls team — teams that never meet — so the leaf,
+ * not the sport, is what actually has a winner (owner 2026-07-14). */
+export interface CategoryLeaders {
+  leaf_key: string;
+  label: string;
+  played: number;
+  boards: LeaderBoard[];
+}
+
 export interface SportLeaders {
   sport: string;
   name: string;
   played: number;
+  /** The sport-wide roll-up (kept: "best across the sport"). */
   boards: LeaderBoard[];
+  /** Per competition leaf. Absent on older payloads. */
+  categories?: CategoryLeaders[];
 }
 
 /**

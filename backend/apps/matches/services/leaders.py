@@ -142,9 +142,32 @@ def _team_board(spec, aggregates, limit) -> list[dict]:
     return rows[:limit]
 
 
+def _boards_for(tournament, definition, group, played, player_top, team_top):
+    """Every board of one sport's definition, over ONE pool of matches."""
+    aggregates = _team_aggregates(played)
+    boards = []
+    for spec in definition.leaderboards:
+        if spec.subject == "player":
+            if spec.metric == "goals":
+                rows = _scorer_rows(tournament, [m.id for m in group], player_top)
+            else:
+                rows = []  # annotation-fed boards land with the consoles
+        else:
+            rows = _team_board(spec, aggregates, team_top)
+        boards.append({
+            "key": spec.key,
+            "label": spec.label,
+            "subject": spec.subject,
+            "fmt": spec.fmt,
+            "rows": rows,
+        })
+    return boards
+
+
 def compute_leaders(tournament, full: bool = False) -> dict:
     from apps.badges.catalog import BADGE_TEMPLATES
     from apps.badges.models import BadgeAward
+    from apps.tournaments.services.sports import leaf_label
 
     matches = list(
         Match.objects.filter(
@@ -157,6 +180,7 @@ def compute_leaders(tournament, full: bool = False) -> dict:
 
     player_top = None if full else _PLAYER_TOP
     team_top = None if full else _TEAM_TOP
+    sports_cfg = tournament.sports
 
     sports = []
     total_played = 0
@@ -165,30 +189,44 @@ def compute_leaders(tournament, full: bool = False) -> dict:
         group = by_code[code]
         played = [m for m in group if m.status == MatchStatus.COMPLETED]
         total_played += len(played)
-        aggregates = _team_aggregates(played)
-        boards = []
-        for spec in definition.leaderboards:
-            if spec.subject == "player":
-                if spec.metric == "goals":
-                    rows = _scorer_rows(
-                        tournament, [m.id for m in group], player_top
-                    )
-                else:
-                    rows = []  # annotation-fed boards land with the consoles
-            else:
-                rows = _team_board(spec, aggregates, team_top)
-            boards.append({
-                "key": spec.key,
-                "label": spec.label,
-                "subject": spec.subject,
-                "fmt": spec.fmt,
-                "rows": rows,
+
+        # Per CATEGORY (owner 2026-07-14). A sport-wide board ranks a school's
+        # u-14 boys team against its own u-14 girls team — two different teams
+        # that never meet — so the same school appeared twice in one table and
+        # no row was a real winner of anything. The competition leaf IS the
+        # thing that has a winner, so each one gets its own boards.
+        by_leaf: dict[str, list] = defaultdict(list)
+        for m in group:
+            by_leaf[m.leaf_key].append(m)
+        categories = []
+        for leaf_key in sorted(by_leaf):
+            leaf_group = by_leaf[leaf_key]
+            leaf_played = [
+                m for m in leaf_group if m.status == MatchStatus.COMPLETED
+            ]
+            categories.append({
+                "leaf_key": leaf_key,
+                "label": (
+                    leaf_label(sports_cfg, leaf_key, with_sport=False)
+                    if leaf_key
+                    else definition.display_name
+                ),
+                "played": len(leaf_played),
+                "boards": _boards_for(
+                    tournament, definition, leaf_group, leaf_played,
+                    player_top, team_top,
+                ),
             })
+
         sports.append({
             "sport": code,
             "name": definition.display_name,
             "played": len(played),
-            "boards": boards,
+            # Kept: the sport-wide roll-up still answers "best across the sport".
+            "boards": _boards_for(
+                tournament, definition, group, played, player_top, team_top
+            ),
+            "categories": categories,
         })
 
     badges = [

@@ -197,3 +197,50 @@ def test_per_leaf_points_ladder_and_day_zero_rows():
     rows = compute_standings(t, group_label=fb_label)
     table = {r["name"]: r for r in rows}
     assert table["C"]["Pts"] == 3
+
+
+def test_categories_get_their_own_boards_and_never_pool():
+    """Owner 2026-07-14: a sport-wide board ranked a school's u-14 boys team
+    against its own u-14 girls team — teams that never meet. Each competition
+    leaf now carries its own boards; the sport roll-up stays alongside."""
+    admin, t, a, b, c, d = _setup()
+
+    # Two sepak categories, one completed match each.
+    boys = Match.objects.create(
+        organization=t.organization, tournament=t, sport="sepak_takraw",
+        leaf_key="sepak_takraw.u14.boys",
+        home_team=a, away_team=b, status=MatchStatus.SCHEDULED,
+    )
+    record_set_result(
+        match=boys, set_scores=[[21, 10], [21, 12]], rules=SEPAK, by=admin,
+        event_id=uuid.uuid4(),
+    )
+    girls = Match.objects.create(
+        organization=t.organization, tournament=t, sport="sepak_takraw",
+        leaf_key="sepak_takraw.u14.girls",
+        home_team=c, away_team=d, status=MatchStatus.SCHEDULED,
+    )
+    record_set_result(
+        match=girls, set_scores=[[21, 5], [21, 7]], rules=SEPAK, by=admin,
+        event_id=uuid.uuid4(),
+    )
+
+    data = compute_leaders(t)
+    sepak = next(s for s in data["sports"] if s["sport"] == "sepak_takraw")
+
+    cats = {c["leaf_key"]: c for c in sepak["categories"]}
+    assert set(cats) == {"sepak_takraw.u14.boys", "sepak_takraw.u14.girls"}
+    assert cats["sepak_takraw.u14.boys"]["played"] == 1
+
+    # A category's board holds ONLY that category's teams — C and D never
+    # appear in the boys board, which is the whole point.
+    wins = next(
+        bd for bd in cats["sepak_takraw.u14.boys"]["boards"]
+        if bd["subject"] != "player" and bd["rows"]
+    )
+    names = {r["team_name"] for r in wins["rows"]}
+    assert names <= {a.name, b.name}
+    assert c.name not in names and d.name not in names
+
+    # The sport-wide roll-up still spans both categories.
+    assert sepak["played"] == 2

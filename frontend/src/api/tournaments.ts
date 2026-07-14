@@ -21,7 +21,8 @@ export interface SportNodeFormat {
   squad_max?: number;
 }
 
-export type SportNodeKind = "age_group" | "gender" | "format" | "level" | "custom";
+export type SportNodeKind =
+  "age_group" | "gender" | "format" | "level" | "custom";
 
 /** Structured age rule an "age_group" node carries — operator + numbers,
  * never free text, so rules stay comparable (W2). */
@@ -492,6 +493,47 @@ export interface StandingsGroup {
   rows: StandingRow[];
 }
 
+/** One ranked board of the leaders payload (per sport, or per category). */
+export interface LeadersBoard {
+  key: string;
+  label: string;
+  subject: "player" | "team" | "regu" | "pair";
+  fmt: string;
+  rows: {
+    player_id?: string;
+    team_id?: string;
+    name?: string;
+    team_name?: string;
+    played?: number;
+    value: number | string;
+    detail?: string;
+  }[];
+}
+
+export interface LeadersPayload {
+  played: number;
+  sports: {
+    sport: string;
+    name: string;
+    played: number;
+    /** The sport-wide roll-up. */
+    boards: LeadersBoard[];
+    /** Per competition leaf — the level that actually has a winner. */
+    categories?: {
+      leaf_key: string;
+      label: string;
+      played: number;
+      boards: LeadersBoard[];
+    }[];
+  }[];
+  latest_badges: {
+    id: string;
+    name: string;
+    subject: string;
+    evidence: Record<string, unknown>;
+  }[];
+}
+
 export const tournamentsApi = {
   /** Tournaments the user can access (isolation-scoped on the server). */
   list: () => api.get<Tournament[]>("/api/tournaments/"),
@@ -558,7 +600,8 @@ export const tournamentsApi = {
    * competition leaf label + assigned scorer/officials (the operations Matches
    * board reads those via `matchesEnriched`); plain consumers (bracket,
    * standings) keep the lean `MatchRow` view. */
-  matches: (id: string) => api.get<MatchRow[]>(`/api/tournaments/${id}/matches/`),
+  matches: (id: string) =>
+    api.get<MatchRow[]>(`/api/tournaments/${id}/matches/`),
   /** Same endpoint as `matches`, typed as the enriched control-room row
    * (leaf_label + scorer + officials are always present in the response). */
   matchesEnriched: (id: string) =>
@@ -576,30 +619,9 @@ export const tournamentsApi = {
   /** Live leaderboards, PER SPORT (P1.b): each sport ships its own boards
    * from the SportDefinition catalog; sports never pool into one table. */
   leaders: (id: string, opts?: { full?: boolean }) =>
-    api.get<{
-      played: number;
-      sports: {
-        sport: string;
-        name: string;
-        played: number;
-        boards: {
-          key: string;
-          label: string;
-          subject: "player" | "team" | "regu" | "pair";
-          fmt: string;
-          rows: {
-            player_id?: string;
-            team_id?: string;
-            name?: string;
-            team_name?: string;
-            played?: number;
-            value: number | string;
-            detail?: string;
-          }[];
-        }[];
-      }[];
-      latest_badges: { id: string; name: string; subject: string; evidence: Record<string, unknown> }[];
-    }>(`/api/tournaments/${id}/leaders/${opts?.full ? "?full=1" : ""}`),
+    api.get<LeadersPayload>(
+      `/api/tournaments/${id}/leaders/${opts?.full ? "?full=1" : ""}`,
+    ),
   /** Card-derived suspensions (PRD 5.8) — who is banned, why, remaining. */
   suspensions: (id: string) =>
     api.get<{
@@ -682,7 +704,11 @@ export const tournamentsApi = {
     api.get<{ venues: VenueRecord[] }>(`/api/tournaments/${id}/venues/`),
   createVenue: (id: string, body: Omit<VenueRecord, "id">) =>
     api.post<VenueRecord>(`/api/tournaments/${id}/venues/`, body),
-  updateVenue: (id: string, venueId: string, body: Partial<Omit<VenueRecord, "id">>) =>
+  updateVenue: (
+    id: string,
+    venueId: string,
+    body: Partial<Omit<VenueRecord, "id">>,
+  ) =>
     api.patch<VenueRecord>(`/api/tournaments/${id}/venues/${venueId}/`, body),
   deleteVenue: (id: string, venueId: string) =>
     api.delete(`/api/tournaments/${id}/venues/${venueId}/`),
@@ -692,7 +718,12 @@ export const tournamentsApi = {
   /** Set one member's per-module override (manager-only; reason >= 20 chars). */
   setPermission: (
     id: string,
-    body: { user_id: string; module_code: string; state: "grant" | "deny" | "default"; reason: string },
+    body: {
+      user_id: string;
+      module_code: string;
+      state: "grant" | "deny" | "default";
+      reason: string;
+    },
   ) =>
     api.put<{ user_id: string; effective: string[] }>(
       `/api/tournaments/${id}/permissions/grants/`,
@@ -742,7 +773,12 @@ export const tournamentsApi = {
     }),
   transitionStage: (
     id: string,
-    body: { to_stage: string; ack_warnings?: boolean; reason?: string; event_id: string },
+    body: {
+      to_stage: string;
+      ack_warnings?: boolean;
+      reason?: string;
+      event_id: string;
+    },
   ) => api.post<StagePayload>(`/api/tournaments/${id}/stage/`, body),
 
   // --- Rules & settings ---
@@ -1013,9 +1049,17 @@ export interface TournamentRules {
   advance_per_group: number;
   points: { win: number; draw: number; loss: number };
   tiebreakers: string[];
-  match: { halves: number; half_minutes: number; extra_time: boolean; penalties: boolean };
+  match: {
+    halves: number;
+    half_minutes: number;
+    extra_time: boolean;
+    penalties: boolean;
+  };
   squad: { min_players: number; max_players: number; max_subs: number };
-  discipline: { yellow_suspension_threshold: number; red_matches_banned: number };
+  discipline: {
+    yellow_suspension_threshold: number;
+    red_matches_banned: number;
+  };
   /** Per-game scoring/tiebreaker overrides, keyed by competition leaf key. */
   by_leaf?: Record<string, LeafRules>;
 }
@@ -1236,7 +1280,14 @@ export interface ScheduleRequest {
   daily_end?: string;
   slot_minutes?: number;
   /** Plain names or rich records; omit entirely to use the stored venue pool. */
-  venues?: (string | { name: string; venue_type?: string; windows?: { from: string; to: string }[] })[];
+  venues?: (
+    | string
+    | {
+        name: string;
+        venue_type?: string;
+        windows?: { from: string; to: string }[];
+      }
+  )[];
   rest_minutes?: number;
   max_per_team_per_day?: number;
   excluded_dates?: string[];
