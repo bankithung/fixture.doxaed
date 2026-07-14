@@ -272,14 +272,33 @@ describe("ControlRoomPage", () => {
     expect(within(board).queryByTestId("tile-m3")).toBeNull();
   });
 
-  it("the courts tab lists every venue of the day", async () => {
+  it("the courts tab lists every venue, and a court opens its own day", async () => {
     mount();
     await userEvent.click(await screen.findByTestId("board-tab-courts"));
 
     const board = screen.getByTestId("day-board");
     expect(within(board).getByText("Main Ground")).toBeInTheDocument();
     expect(within(board).getByText("Side Pitch")).toBeInTheDocument();
-    // Switching tabs swaps the panel body, so the feed is gone.
+    // Courts start closed: the run-of-play feed is gone with the tab switch,
+    // and no court's matches are on screen yet.
+    expect(within(board).queryByTestId("tile-m1")).toBeNull();
+
+    // Opening a court reveals every match on it that day (m1 + m2 on Main),
+    // and only those — Side Pitch's matches stay closed.
+    await userEvent.click(screen.getByTestId("court-row-Main Ground"));
+    expect(screen.getByTestId("court-row-Main Ground")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(within(board).getByTestId("tile-m1")).toBeInTheDocument();
+    expect(within(board).getByTestId("tile-m2")).toBeInTheDocument();
+    expect(within(board).queryByTestId("tile-m3")).toBeNull();
+
+    // And they are the full action rows, not a read-only list.
+    expect(within(board).getByTestId("actions-m2")).toBeInTheDocument();
+
+    // Clicking again closes it.
+    await userEvent.click(screen.getByTestId("court-row-Main Ground"));
     expect(within(board).queryByTestId("tile-m1")).toBeNull();
   });
 

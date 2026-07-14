@@ -520,7 +520,18 @@ function DayBoard({
         ) : null}
 
         {tab === "courts" ? (
-          <CourtsPanel venues={venues} timeZone={tz} bare />
+          <CourtsPanel
+            venues={venues}
+            timeZone={tz}
+            bare
+            ctx={{
+              tournamentId,
+              perms,
+              isMobile,
+              siblingsOf,
+              delayFor: (m) => delayFor(delays, m),
+            }}
+          />
         ) : null}
         {tab === "leaders" ? <LeadersPanel tournamentId={tournamentId} bare /> : null}
         {tab === "progress" ? (

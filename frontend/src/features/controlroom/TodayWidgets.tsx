@@ -1,16 +1,21 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, Trophy } from "lucide-react";
+import { ChevronRight, MapPin, Trophy } from "lucide-react";
 import {
   tournamentsApi,
   type ControlRoomMatch,
   type ControlRoomVenue,
+  type MatchRow as MatchRowT,
 } from "@/api/tournaments";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { SportLeaderBoards } from "@/features/live/SportLeaderBoards";
 import { t } from "@/lib/t";
 import { FINAL, IN_PLAY, fmtKickoff, isCalled } from "./format";
+import type { ControlRoomPerms } from "./MatchActionsMenu";
+import { MatchRow } from "./MatchRow";
+import { MatchTile } from "./MatchTile";
 
 const teamName = (tm: { name: string } | null): string => tm?.name || t("TBD");
 
@@ -59,79 +64,183 @@ function Panel({
   );
 }
 
+/** One court: the summary row, and (open) every match it holds that day. */
+function CourtRow({
+  venue,
+  timeZone,
+  ctx,
+}: {
+  venue: ControlRoomVenue;
+  timeZone: string;
+  ctx?: CourtContext;
+}): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  const now =
+    venue.matches.find((m) => IN_PLAY.has(m.status)) ??
+    venue.matches.find((m) => isCalled(m)) ??
+    null;
+  const next = venue.matches.find(
+    (m) => m.status === "scheduled" && !isCalled(m),
+  );
+  const done = venue.matches.filter((m) => FINAL.has(m.status)).length;
+  const total = venue.matches.length;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const key = venue.venue || "unassigned";
+  const order = [...venue.matches].sort((a, b) =>
+    (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? ""),
+  );
+
+  return (
+    <div className="flex flex-col">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={`court-matches-${key}`}
+        data-testid={`court-row-${key}`}
+        onClick={() => setOpen((o) => !o)}
+        className="grid w-full grid-cols-[1.25rem_8.5rem_1fr_auto] items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[1.25rem_10rem_1fr_auto]"
+      >
+        <ChevronRight
+          aria-hidden="true"
+          className={cn(
+            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-90",
+          )}
+        />
+        <span className="flex min-w-0 items-center gap-1.5">
+          {now && IN_PLAY.has(now.status) ? (
+            <span className="relative flex h-1.5 w-1.5 shrink-0" aria-label={t("Live now")}>
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+            </span>
+          ) : null}
+          <span className="truncate text-sm font-medium">
+            {venue.venue || t("No court")}
+          </span>
+        </span>
+        <span className="truncate text-[13px] text-muted-foreground">
+          {now ? (
+            `${teamName(now.home_team)} v ${teamName(now.away_team)}`
+          ) : next ? (
+            <>
+              <span className="font-tabular text-foreground">
+                {fmtKickoff(next.scheduled_at, timeZone)}
+              </span>
+              {` ${teamName(next.home_team)} v ${teamName(next.away_team)}`}
+            </>
+          ) : (
+            t("Idle")
+          )}
+        </span>
+        <span className="flex w-20 shrink-0 items-center gap-2">
+          <span className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+            <span
+              className="block h-full rounded-full bg-primary transition-[width]"
+              style={{ width: `${pct}%` }}
+            />
+          </span>
+          <span className="w-8 text-right font-tabular text-xs text-muted-foreground">
+            {done}/{total}
+          </span>
+        </span>
+      </button>
+
+      {open ? (
+        <div id={`court-matches-${key}`} className="border-t border-border">
+          {order.length === 0 ? (
+            <p className="px-4 py-4 text-center text-sm text-muted-foreground">
+              {t("Nothing is on this court today.")}
+            </p>
+          ) : ctx && !ctx.isMobile ? (
+            <div role="table" aria-label={venue.venue || t("No court")}>
+              {order.map((m) => (
+                <MatchRow
+                  key={m.id}
+                  match={m}
+                  timeZone={timeZone}
+                  tournamentId={ctx.tournamentId}
+                  siblings={ctx.siblingsOf(m)}
+                  perms={ctx.perms}
+                  delayMinutes={ctx.delayFor(m)}
+                  showCourt={false}
+                />
+              ))}
+            </div>
+          ) : ctx ? (
+            <div className="flex flex-col gap-2 p-2">
+              {order.map((m) => (
+                <MatchTile
+                  key={m.id}
+                  match={m}
+                  timeZone={timeZone}
+                  tournamentId={ctx.tournamentId}
+                  siblings={ctx.siblingsOf(m)}
+                  perms={ctx.perms}
+                  delayMinutes={ctx.delayFor(m)}
+                />
+              ))}
+            </div>
+          ) : (
+            // No board context (standalone use): a plain read-only order of play.
+            <ul className="flex flex-col divide-y divide-border">
+              {order.map((m) => (
+                <li
+                  key={m.id}
+                  className="flex items-center gap-3 px-4 py-1.5 text-[13px]"
+                >
+                  <span className="w-11 shrink-0 font-tabular text-muted-foreground">
+                    {fmtKickoff(m.scheduled_at, timeZone)}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {teamName(m.home_team)} {t("v")} {teamName(m.away_team)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** What a court's expanded match rows need to stay fully actionable. */
+export interface CourtContext {
+  tournamentId: string;
+  perms: ControlRoomPerms;
+  isMobile: boolean;
+  siblingsOf: (m: ControlRoomMatch) => MatchRowT[];
+  delayFor: (m: ControlRoomMatch) => number | null;
+}
+
 /**
  * COURTS TODAY — one row per court: what is on it now (live/called), what is up
- * next, and how far through its day it is. The at-a-glance venue picture.
+ * next, and how far through its day it is. Clicking a court opens its full order
+ * of play (owner 2026-07-14), with every match keeping its actions, so the venue
+ * picture and the venue's work live in one place.
  */
 export function CourtsPanel({
   venues,
   timeZone,
   bare = false,
+  ctx,
 }: {
   venues: ControlRoomVenue[];
   timeZone: string;
   bare?: boolean;
+  ctx?: CourtContext;
 }): React.ReactElement {
   return (
     <Panel title={t("Courts today")} icon={MapPin} count={venues.length} bare={bare}>
       <div className="flex flex-col divide-y divide-border">
-        {venues.map((v) => {
-          const now =
-            v.matches.find((m) => IN_PLAY.has(m.status)) ??
-            v.matches.find((m) => isCalled(m)) ??
-            null;
-          const next = v.matches.find(
-            (m) => m.status === "scheduled" && !isCalled(m),
-          );
-          const done = v.matches.filter(
-            (m) => FINAL.has(m.status) || m.status === "completed",
-          ).length;
-          const total = v.matches.length;
-          const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-          return (
-            <div
-              key={v.venue || "unassigned"}
-              className="grid grid-cols-[8.5rem_1fr_auto] items-center gap-3 px-4 py-2.5 sm:grid-cols-[10rem_1fr_auto]"
-            >
-              <div className="flex min-w-0 items-center gap-1.5">
-                {now && IN_PLAY.has(now.status) ? (
-                  <span className="relative flex h-1.5 w-1.5 shrink-0" aria-label={t("Live now")}>
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
-                  </span>
-                ) : null}
-                <span className="truncate text-sm font-medium">
-                  {v.venue || t("No court")}
-                </span>
-              </div>
-              <p className="truncate text-[13px] text-muted-foreground">
-                {now ? (
-                  `${teamName(now.home_team)} v ${teamName(now.away_team)}`
-                ) : next ? (
-                  <>
-                    <span className="font-tabular text-foreground">
-                      {fmtKickoff(next.scheduled_at, timeZone)}
-                    </span>
-                    {` ${teamName(next.home_team)} v ${teamName(next.away_team)}`}
-                  </>
-                ) : (
-                  t("Idle")
-                )}
-              </p>
-              <div className="flex w-20 shrink-0 items-center gap-2">
-                <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-[width]"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <span className="w-8 text-right font-tabular text-xs text-muted-foreground">
-                  {done}/{total}
-                </span>
-              </div>
-            </div>
-          );
-        })}
+        {venues.map((v) => (
+          <CourtRow
+            key={v.venue || "unassigned"}
+            venue={v}
+            timeZone={timeZone}
+            ctx={ctx}
+          />
+        ))}
       </div>
     </Panel>
   );
