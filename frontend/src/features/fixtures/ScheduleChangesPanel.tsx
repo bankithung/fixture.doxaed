@@ -19,7 +19,6 @@ import "@/components/ui/star-border.css";
 const PAGE = 20;
 /** The embedded tail on the Today board: the latest 15, then "View all". */
 const TAIL = 15;
-const PREVIEW = 3;
 
 /** Localized chip per feed kind (stable codes from the backend map). */
 const KIND_LABELS: Record<string, string> = {
@@ -211,94 +210,20 @@ function Entry({ e }: { e: ScheduleChangeEntry }): React.ReactElement {
   );
 }
 
-interface Burst {
-  key: string;
-  entries: ScheduleChangeEntry[];
-}
-
-/** Collapse bulk operations into one feed item: consecutive entries from the
- * same batch, or from the same person doing the same thing within half an
- * hour, read as ONE action ("Scheduled 102 matches"), not 102 rows. */
-function groupBursts(entries: ScheduleChangeEntry[]): Burst[] {
-  const bursts: Burst[] = [];
+/** Changes split into calendar days, newest first (the feed arrives sorted). */
+function groupDays(
+  entries: ScheduleChangeEntry[],
+): { label: string; entries: ScheduleChangeEntry[] }[] {
+  const days: { label: string; entries: ScheduleChangeEntry[] }[] = [];
   for (const e of entries) {
-    const prev = bursts[bursts.length - 1];
-    const last = prev?.entries[prev.entries.length - 1];
-    const sameBatch = last && e.batch_id && e.batch_id === last.batch_id;
-    const sameSpree =
-      last &&
-      (last.actor?.email ?? "") === (e.actor?.email ?? "") &&
-      effectiveKind(last) === effectiveKind(e) &&
-      Math.abs(
-        new Date(last.changed_at).getTime() - new Date(e.changed_at).getTime(),
-      ) <
-        30 * 60_000;
-    if (prev && (sameBatch || sameSpree)) {
-      prev.entries.push(e);
-    } else {
-      bursts.push({ key: `${e.batch_id}-${e.match_id}`, entries: [e] });
-    }
-  }
-  return bursts;
-}
-
-/** A bulk action: one header (what, how many, who, when), a short preview of
- * the affected matches, and an expander for the rest. */
-function BurstItem({ burst }: { burst: Burst }): React.ReactElement {
-  const [open, setOpen] = useState(false);
-  const head = burst.entries[0];
-  const kind = effectiveKind(head);
-  const shown = open ? burst.entries : burst.entries.slice(0, PREVIEW);
-  const hidden = burst.entries.length - shown.length;
-  return (
-    <li className="relative flex flex-col py-2.5 pl-10 pr-4">
-      <Dot kind={kind} />
-      <div className="flex flex-wrap items-center gap-2">
-        <KindChip kind={kind} />
-        <span className="text-[13px] font-medium">
-          <span className="font-tabular">{burst.entries.length}</span>{" "}
-          {t("matches")}
-        </span>
-        <Actor actor={head.actor} at={head.changed_at} />
-      </div>
-      <ul className="mt-1.5 flex flex-col divide-y divide-border/60 overflow-hidden rounded-md border border-border bg-muted/30">
-        {shown.map((e, i) => (
-          <li
-            key={`${e.batch_id}-${e.match_id}-${i}`}
-            data-testid={`change-${e.batch_id}-${e.match_id}`}
-            className="flex flex-col gap-x-3 gap-y-0.5 px-2.5 py-1.5 sm:flex-row sm:items-baseline"
-          >
-            <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
-              {e.match_label}
-            </span>
-            <SlotLine e={e} />
-          </li>
-        ))}
-      </ul>
-      {hidden > 0 || open ? (
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          className="mt-1.5 w-fit text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {open ? t("Show fewer") : `${t("Show all")} ${burst.entries.length}`}
-        </button>
-      ) : null}
-    </li>
-  );
-}
-
-/** Bursts split into calendar days, newest first (the feed arrives sorted). */
-function groupDays(bursts: Burst[]): { label: string; bursts: Burst[] }[] {
-  const days: { label: string; bursts: Burst[] }[] = [];
-  for (const b of bursts) {
-    const label = dayLabel(b.entries[0].changed_at);
+    const label = dayLabel(e.changed_at);
     const last = days[days.length - 1];
-    if (last && last.label === label) last.bursts.push(b);
-    else days.push({ label, bursts: [b] });
+    if (last && last.label === label) last.entries.push(e);
+    else days.push({ label, entries: [e] });
   }
   return days;
 }
+
 
 /**
  * The change-history feed (trust layer, increment F): reverse-chrono slot
@@ -346,20 +271,14 @@ export function ScheduleChangesPanel({
   const visible = kind
     ? entries.filter((e) => effectiveKind(e) === kind)
     : entries;
-  // Only the Today tab collapses bulk actions — its tail must stay short. The
-  // full page shows every change on its own line, which is the point of it.
-  const bursts = embedded
-    ? groupBursts(visible)
-    : visible.map((e, i) => ({
-        key: `${e.batch_id}-${e.match_id}-${i}`,
-        entries: [e],
-      }));
-  const days = groupDays(bursts);
+  // Nothing collapses, anywhere (owner 2026-07-14). A bulk publish is 15 rows
+  // in the tab and every row on the page; the feed's job is to show changes,
+  // not to hide them behind an expander.
+  const days = groupDays(visible);
   const kinds = [...new Set(entries.map(effectiveKind))].sort();
 
-  // The full page is a TABLE — every change on its own row (owner 2026-07-14:
-  // no collapsing on the page whose whole job is showing the changes). Bulk
-  // collapsing belongs to the small Today tab, where the tail must stay short.
+  // The full page is a TABLE — every change on its own row, scannable down a
+  // column. The tab is the same data as a compact timeline.
   const table = (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-left">
@@ -387,13 +306,12 @@ export function ScheduleChangesPanel({
                 >
                   {d.label}
                   <span className="ml-2 font-tabular font-normal text-muted-foreground">
-                    {d.bursts.reduce((n, b) => n + b.entries.length, 0)}
+                    {d.entries.length}
                   </span>
                 </th>
               </tr>
-              {d.bursts.flatMap((b) =>
-                b.entries.map((e, i) => {
-                  const k = effectiveKind(e);
+              {d.entries.map((e, i) => {
+                const k = effectiveKind(e);
                   const who = actorName(e.actor);
                   return (
                     <tr
@@ -443,8 +361,7 @@ export function ScheduleChangesPanel({
                       </td>
                     </tr>
                   );
-                }),
-              )}
+              })}
             </Fragment>
           ))}
         </tbody>
@@ -459,18 +376,14 @@ export function ScheduleChangesPanel({
           <div className="flex items-center gap-2 border-y border-border bg-muted/40 px-4 py-1.5 first:border-t-0">
             <p className="text-xs font-semibold">{d.label}</p>
             <span className="font-tabular text-xs text-muted-foreground">
-              {d.bursts.reduce((n, b) => n + b.entries.length, 0)}
+              {d.entries.length}
             </span>
           </div>
           {/* The rail: one continuous hairline the dots punch through. */}
           <ul className="relative flex flex-col before:absolute before:bottom-2 before:left-[1.1875rem] before:top-2 before:w-px before:bg-border">
-            {d.bursts.map((b) =>
-              b.entries.length === 1 ? (
-                <Entry key={b.key} e={b.entries[0]} />
-              ) : (
-                <BurstItem key={b.key} burst={b} />
-              ),
-            )}
+            {d.entries.map((e, i) => (
+              <Entry key={`${e.batch_id}-${e.match_id}-${i}`} e={e} />
+            ))}
           </ul>
         </div>
       ))}

@@ -124,20 +124,23 @@ describe("ScheduleChangesPanel", () => {
       total: 5,
     });
 
-  it("the Today tab collapses a publish flood into one burst with an expander", async () => {
+  it("the Today tab lists every change of its tail, collapsing nothing", async () => {
     // 5 first-time placements (old = unscheduled) by one actor in one spree.
     flood();
     mountTab();
+
     // First placements read as "Scheduled", not "Re-scheduled".
-    const chip = await screen.findByText("Scheduled");
-    // The flood collapses into ONE burst item headed by its count.
-    expect(chip.closest("li")).toHaveTextContent("5 matches");
+    await screen.findByTestId("change-b0-m0");
+    expect(screen.getAllByText("Scheduled").length).toBe(5);
     expect(screen.queryByText("Re-scheduled")).not.toBeInTheDocument();
-    // Preview shows 3; the expander reveals the rest.
-    expect(screen.getByTestId("change-b0-m0")).toBeInTheDocument();
-    expect(screen.queryByTestId("change-b4-m4")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Show all 5" }));
-    expect(screen.getByTestId("change-b4-m4")).toBeInTheDocument();
+
+    // All five are on screen; no burst header, no expander to click.
+    for (let i = 0; i < 5; i += 1) {
+      expect(screen.getByTestId(`change-b${i}-m${i}`)).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("button", { name: /Show all/ })).toBeNull();
+    expect(screen.queryByText("5 matches")).toBeNull();
+
     // No user-facing arrows anywhere in the feed.
     expect(document.body.textContent).not.toMatch(/[\u2192]/);
   });
