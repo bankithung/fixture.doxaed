@@ -41,6 +41,7 @@ const COMPETITIONS = [
   { leafKey: "football.u17", label: "Football · U17" },
 ];
 
+/** The full Change history page: a table, one row per change, no collapsing. */
 function mount() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -49,6 +50,25 @@ function mount() {
     <QueryClientProvider client={client}>
       <ScheduleChangesPanel tournamentId="t1" competitions={COMPETITIONS} />
     </QueryClientProvider>,
+  );
+}
+
+/** The Today board's tab: a short tail that collapses bulk actions. */
+function mountTab() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <MemoryRouter>
+      <QueryClientProvider client={client}>
+        <ScheduleChangesPanel
+          tournamentId="t1"
+          competitions={COMPETITIONS}
+          embedded
+          viewAllTo="/tournaments/t1/changes"
+        />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -90,8 +110,7 @@ describe("ScheduleChangesPanel", () => {
     });
   });
 
-  it("collapses a publish flood into one Scheduled burst with an expander", async () => {
-    // 5 first-time placements (old = unscheduled) by one actor in one spree.
+  const flood = () =>
     vi.mocked(tournamentsApi.scheduleChanges).mockResolvedValue({
       results: Array.from({ length: 5 }, (_, i) =>
         entry({
@@ -102,8 +121,13 @@ describe("ScheduleChangesPanel", () => {
           old: null,
         }),
       ),
+      total: 5,
     });
-    mount();
+
+  it("the Today tab collapses a publish flood into one burst with an expander", async () => {
+    // 5 first-time placements (old = unscheduled) by one actor in one spree.
+    flood();
+    mountTab();
     // First placements read as "Scheduled", not "Re-scheduled".
     const chip = await screen.findByText("Scheduled");
     // The flood collapses into ONE burst item headed by its count.
@@ -116,6 +140,25 @@ describe("ScheduleChangesPanel", () => {
     expect(screen.getByTestId("change-b4-m4")).toBeInTheDocument();
     // No user-facing arrows anywhere in the feed.
     expect(document.body.textContent).not.toMatch(/[\u2192]/);
+  });
+
+  it("the full page never collapses: every change is its own table row", async () => {
+    flood();
+    mount();
+
+    // All five rows are on screen at once, no expander to click.
+    await screen.findByTestId("change-b0-m0");
+    for (let i = 0; i < 5; i += 1) {
+      expect(screen.getByTestId(`change-b${i}-m${i}`)).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("button", { name: /Show all/ })).toBeNull();
+
+    // It is a real table: one row per change, under column headers.
+    expect(
+      screen.getByRole("columnheader", { name: "Match" }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("change-b0-m0").tagName).toBe("TR");
+    expect(screen.getAllByRole("row").length).toBeGreaterThanOrEqual(5);
   });
 
   it("filters by competition leaf", async () => {
@@ -169,21 +212,7 @@ describe("ScheduleChangesPanel", () => {
   });
 
   it("the embedded tab shows the latest 15 and links out to the full page", async () => {
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    render(
-      <MemoryRouter>
-        <QueryClientProvider client={client}>
-          <ScheduleChangesPanel
-            tournamentId="t1"
-            competitions={COMPETITIONS}
-            embedded
-            viewAllTo="/tournaments/t1/changes"
-          />
-        </QueryClientProvider>
-      </MemoryRouter>,
-    );
+    mountTab();
 
     expect(await screen.findByTestId("changes-view-all")).toHaveAttribute(
       "href",

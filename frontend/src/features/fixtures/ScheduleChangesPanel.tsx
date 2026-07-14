@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { History } from "lucide-react";
@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/Select";
 import { qk } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { useBreakpoint } from "@/lib/useBreakpoint";
 import "@/components/ui/star-border.css";
 
 /** The full page walks the feed 20 at a time, Prev/Next (owner 2026-07-14). */
@@ -319,6 +320,7 @@ export function ScheduleChangesPanel({
   /** When set: fetch a short tail and link out instead of paging inline. */
   viewAllTo?: string;
 }): React.ReactElement {
+  const { isMobile } = useBreakpoint();
   const [leaf, setLeaf] = useState("");
   const [kind, setKind] = useState("");
   const [page, setPage] = useState(0);
@@ -344,8 +346,111 @@ export function ScheduleChangesPanel({
   const visible = kind
     ? entries.filter((e) => effectiveKind(e) === kind)
     : entries;
-  const days = groupDays(groupBursts(visible));
+  // Only the Today tab collapses bulk actions — its tail must stay short. The
+  // full page shows every change on its own line, which is the point of it.
+  const bursts = embedded
+    ? groupBursts(visible)
+    : visible.map((e, i) => ({
+        key: `${e.batch_id}-${e.match_id}-${i}`,
+        entries: [e],
+      }));
+  const days = groupDays(bursts);
   const kinds = [...new Set(entries.map(effectiveKind))].sort();
+
+  // The full page is a TABLE — every change on its own row (owner 2026-07-14:
+  // no collapsing on the page whose whole job is showing the changes). Bulk
+  // collapsing belongs to the small Today tab, where the tail must stay short.
+  const table = (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-left">
+        <thead>
+          <tr className="border-b border-border bg-muted/50 text-[0.6875rem] uppercase tracking-[0.08em] text-muted-foreground">
+            <th scope="col" className="px-4 py-2 font-medium">{t("Change")}</th>
+            <th scope="col" className="px-4 py-2 font-medium">{t("Match")}</th>
+            <th scope="col" className="px-4 py-2 font-medium">{t("Slot")}</th>
+            <th scope="col" className="px-4 py-2 font-medium">{t("Was")}</th>
+            <th scope="col" className="px-4 py-2 font-medium">{t("Reason")}</th>
+            <th scope="col" className="px-4 py-2 font-medium">{t("By")}</th>
+            <th scope="col" className="whitespace-nowrap px-4 py-2 font-medium">
+              {t("When")}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {days.map((d) => (
+            <Fragment key={d.label}>
+              <tr className="border-y border-border bg-muted/30">
+                <th
+                  scope="colgroup"
+                  colSpan={7}
+                  className="px-4 py-1.5 text-left text-xs font-semibold"
+                >
+                  {d.label}
+                  <span className="ml-2 font-tabular font-normal text-muted-foreground">
+                    {d.bursts.reduce((n, b) => n + b.entries.length, 0)}
+                  </span>
+                </th>
+              </tr>
+              {d.bursts.flatMap((b) =>
+                b.entries.map((e, i) => {
+                  const k = effectiveKind(e);
+                  const who = actorName(e.actor);
+                  return (
+                    <tr
+                      key={`${e.batch_id}-${e.match_id}-${i}`}
+                      data-testid={`change-${e.batch_id}-${e.match_id}`}
+                      className="border-b border-border align-middle text-[13px] transition-colors last:border-b-0 hover:bg-secondary/40"
+                    >
+                      <td className="px-4 py-2">
+                        <KindChip kind={k} />
+                      </td>
+                      <td className="max-w-[18rem] truncate px-4 py-2 font-medium">
+                        {e.match_label}
+                      </td>
+                      {/* Lock/unlock rows carry no slot at all — an empty cell,
+                          not the word "unscheduled" (which means a real slot
+                          was cleared). */}
+                      <td className="whitespace-nowrap px-4 py-2 font-tabular">
+                        {e.new || e.old ? fmtSlot(e.new) : ""}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2 font-tabular text-muted-foreground">
+                        {e.old?.scheduled_at ? fmtSlot(e.old) : ""}
+                      </td>
+                      <td className="max-w-[14rem] truncate px-4 py-2 italic text-muted-foreground">
+                        {e.reason}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">
+                        {who ? (
+                          <span
+                            className="inline-flex items-center gap-1.5"
+                            title={e.actor?.email}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="flex h-4 w-4 items-center justify-center rounded-full bg-muted text-[0.5625rem] font-semibold uppercase"
+                            >
+                              {who.slice(0, 1)}
+                            </span>
+                            {who}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-4 py-2 font-tabular text-muted-foreground"
+                        title={e.changed_at}
+                      >
+                        {relTime(e.changed_at)}
+                      </td>
+                    </tr>
+                  );
+                }),
+              )}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 
   const timeline = (
     <div className="flex flex-col">
@@ -448,8 +553,10 @@ export function ScheduleChangesPanel({
             ? t("No changes of that kind on this page.")
             : t("No changes yet. Any match you move or delay will show up here.")}
         </p>
-      ) : (
+      ) : embedded || isMobile ? (
         timeline
+      ) : (
+        table
       )}
 
       {/* The tab links out; the full page walks the feed 20 at a time. The
