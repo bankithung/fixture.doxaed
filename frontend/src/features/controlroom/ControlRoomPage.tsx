@@ -230,7 +230,7 @@ function OpsHeaderBand({
   );
 }
 
-type BoardTab = "play" | "courts" | "leaders" | "progress" | "changes";
+type BoardTab = "live" | "play" | "courts" | "leaders" | "progress" | "changes";
 type PlayFilter = "next" | "attention" | "results" | "all";
 
 /** Consecutive matches sharing a kickoff become one group under a time header,
@@ -247,6 +247,78 @@ function groupByKickoff(
     else out.push({ label, matches: [m] });
   }
   return out;
+}
+
+/**
+ * The day's matches as one feed: kickoff-time group headers, then the same dense
+ * MatchRow the Matches board uses (every action intact). Shared by the Ongoing
+ * tab and every filter of the run of play, so they cannot drift apart.
+ */
+function MatchFeed({
+  matches,
+  tz,
+  tournamentId,
+  perms,
+  delays,
+  isMobile,
+  siblingsOf,
+  label,
+}: {
+  matches: ControlRoomMatch[];
+  tz: string;
+  tournamentId: string;
+  perms: ControlRoomPerms;
+  delays: Map<string, SlotDelay>;
+  isMobile: boolean;
+  siblingsOf: (m: ControlRoomMatch) => ControlRoomMatch[];
+  label: string;
+}): React.ReactElement {
+  if (isMobile) {
+    return (
+      <div className="flex flex-col gap-2 p-2">
+        {matches.map((m) => (
+          <MatchTile
+            key={m.id}
+            match={m}
+            timeZone={tz}
+            tournamentId={tournamentId}
+            siblings={siblingsOf(m)}
+            perms={perms}
+            delayMinutes={delayFor(delays, m)}
+          />
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div role="table" aria-label={label}>
+      {groupByKickoff(matches, tz).map((g) => (
+        <div key={`${g.label}-${g.matches[0].id}`}>
+          <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5">
+            <span className="font-tabular text-[13px] font-semibold">
+              {g.label}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {g.matches.length}{" "}
+              {g.matches.length === 1 ? t("match") : t("matches")}
+            </span>
+          </div>
+          {g.matches.map((m) => (
+            <MatchRow
+              key={m.id}
+              match={m}
+              timeZone={tz}
+              tournamentId={tournamentId}
+              siblings={siblingsOf(m)}
+              perms={perms}
+              delayMinutes={delayFor(delays, m)}
+              showTime={false}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -303,11 +375,11 @@ function DayBoard({
       .filter((m) => FINAL.has(m.status))
       .sort((a, b) => byTime(b, a));
     const all = [...matches].sort(byTime);
-    return { next, attention, results, all };
+    const live = matches.filter((m) => IN_PLAY.has(m.status)).sort(byTime);
+    return { next, attention, results, all, live };
   }, [matches]);
 
   const feed = buckets[filter];
-  const groups = groupByKickoff(feed, tz);
   const liveCount = matches.filter((m) => IN_PLAY.has(m.status)).length;
 
   const filters: {
@@ -344,6 +416,9 @@ function DayBoard({
   const active = filters.find((f) => f.key === filter)!;
 
   const tabs: { key: BoardTab; label: string; count?: number }[] = [
+    // Ongoing leads the board (owner 2026-07-14): what is being played RIGHT
+    // NOW is its own view, not a filter you have to pick out of the day's 102.
+    { key: "live", label: t("Ongoing"), count: liveCount },
     { key: "play", label: t("Run of play"), count: matches.length },
     { key: "courts", label: t("Courts today"), count: venues.length },
     { key: "leaders", label: t("Leaders") },
@@ -392,7 +467,7 @@ function DayBoard({
                     : "border-b-transparent font-medium text-muted-foreground hover:text-foreground",
                 )}
               >
-                {tb.key === "play" && liveCount > 0 ? (
+                {tb.key === "live" && liveCount > 0 ? (
                   <span
                     className="relative flex h-2 w-2 shrink-0"
                     aria-label={t("Live now")}
@@ -486,50 +561,38 @@ function DayBoard({
               <p className="px-4 py-10 text-center text-sm text-muted-foreground">
                 {active.empty}
               </p>
-            ) : isMobile ? (
-              <div className="flex flex-col gap-2 p-2">
-                {feed.map((m) => (
-                  <MatchTile
-                    key={m.id}
-                    match={m}
-                    timeZone={tz}
-                    tournamentId={tournamentId}
-                    siblings={siblingsOf(m)}
-                    perms={perms}
-                    delayMinutes={delayFor(delays, m)}
-                  />
-                ))}
-              </div>
             ) : (
-              <div role="table" aria-label={active.label}>
-                {groups.map((g) => (
-                  <div key={`${g.label}-${g.matches[0].id}`}>
-                    <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5">
-                      <span className="font-tabular text-[13px] font-semibold">
-                        {g.label}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {g.matches.length}{" "}
-                        {g.matches.length === 1 ? t("match") : t("matches")}
-                      </span>
-                    </div>
-                    {g.matches.map((m) => (
-                      <MatchRow
-                        key={m.id}
-                        match={m}
-                        timeZone={tz}
-                        tournamentId={tournamentId}
-                        siblings={siblingsOf(m)}
-                        perms={perms}
-                        delayMinutes={delayFor(delays, m)}
-                        showTime={false}
-                      />
-                    ))}
-                  </div>
-                ))}
-              </div>
+              <MatchFeed
+                matches={feed}
+                tz={tz}
+                tournamentId={tournamentId}
+                perms={perms}
+                delays={delays}
+                isMobile={isMobile}
+                siblingsOf={siblingsOf}
+                label={active.label}
+              />
             )}
           </>
+        ) : null}
+
+        {tab === "live" ? (
+          buckets.live.length === 0 ? (
+            <p className="px-4 py-12 text-center text-sm text-muted-foreground">
+              {t("Nothing is being played right now.")}
+            </p>
+          ) : (
+            <MatchFeed
+              matches={buckets.live}
+              tz={tz}
+              tournamentId={tournamentId}
+              perms={perms}
+              delays={delays}
+              isMobile={isMobile}
+              siblingsOf={siblingsOf}
+              label={t("Ongoing")}
+            />
+          )
         ) : null}
 
         {tab === "courts" ? (

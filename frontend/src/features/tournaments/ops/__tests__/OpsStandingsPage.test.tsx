@@ -108,7 +108,7 @@ describe("OpsStandingsPage", () => {
     expect(await screen.findByTestId("sport-chip-Football")).toBeInTheDocument();
     const ttChip = screen.getByTestId("sport-chip-Table Tennis");
     await userEvent.click(ttChip);
-    expect(ttChip).toHaveAttribute("aria-pressed", "true");
+    expect(ttChip).toHaveAttribute("aria-selected", "true");
     // TT has no standings group in the mock → the empty-for-competition note.
     expect(
       screen.getByText(/no standings for this competition yet/i),
@@ -165,4 +165,58 @@ describe("OpsStandingsPage", () => {
     expect(within(table).queryByText("GD")).toBeNull();
   });
 
+  it("marks the rows that qualify, using the bracket's own group_position", async () => {
+    // The knockout's pointers say the top 1 of each group advances.
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([
+      match({ id: "m1" }),
+      match({
+        id: "k1",
+        stage: "knockout",
+        group_label: "",
+        status: "scheduled",
+        home_team: null,
+        away_team: null,
+        home_source: { type: "group_position", group_label: "Football U15 Group A", position: 1 },
+        away_source: { type: "group_position", group_label: "Football U15 Group B", position: 1 },
+      }),
+    ]);
+    mount();
+
+    await screen.findByTestId("ops-group-Football U15 Group A");
+    // The legend states the qualification line the bracket implies.
+    expect(screen.getByTestId("standings-board").textContent).toMatch(
+      /top\s*1\s*of each group advances/i,
+    );
+    // Alpha is 1st and qualifies; Bravo is 2nd and does not.
+    expect(screen.getByTestId("ops-standing-th").className).toMatch(/success/);
+    expect(screen.getByTestId("ops-standing-ta").className).not.toMatch(/success/);
+
+    // Tables and bracket sit in ONE sheet, as on the public standings page.
+    const board = screen.getByTestId("standings-board");
+    expect(within(board).getByText("Group standings")).toBeInTheDocument();
+    expect(within(board).getByText("Knockout")).toBeInTheDocument();
+  });
+
+  it("does not print the school twice when it IS the team name", async () => {
+    vi.mocked(tournamentsApi.standings).mockResolvedValue({
+      groups: [
+        {
+          group_label: "Football U15 Group A",
+          rows: [
+            // School-entered team: the school is the name. It rendered twice.
+            { team_id: "th", name: "Bethel School", school: "Bethel School", P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0, GD: 0, Pts: 0 },
+            { team_id: "ta", name: "Bravo B", school: "Bravo School", P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0, GD: 0, Pts: 0 },
+          ],
+        },
+      ],
+    });
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([match({ id: "m1" })]);
+    mount();
+
+    const dupe = await screen.findByTestId("ops-standing-th");
+    expect(within(dupe).getAllByText("Bethel School")).toHaveLength(1);
+    // A school that genuinely differs from the team name still shows.
+    const distinct = screen.getByTestId("ops-standing-ta");
+    expect(within(distinct).getByText("Bravo School")).toBeInTheDocument();
+  });
 });

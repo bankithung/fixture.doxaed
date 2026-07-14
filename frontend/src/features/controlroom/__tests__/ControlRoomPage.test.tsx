@@ -272,6 +272,34 @@ describe("ControlRoomPage", () => {
     expect(within(board).queryByTestId("tile-m3")).toBeNull();
   });
 
+  it("the Ongoing tab shows only what is being played right now", async () => {
+    mount();
+    await userEvent.click(await screen.findByTestId("board-tab-live"));
+
+    const board = screen.getByTestId("day-board");
+    // m1 is live; the scheduled and completed ones are not.
+    expect(within(board).getByTestId("tile-m1")).toBeInTheDocument();
+    expect(within(board).queryByTestId("tile-m2")).toBeNull();
+    expect(within(board).queryByTestId("tile-m3")).toBeNull();
+    // And it keeps its actions, so you can act on a live match from here.
+    expect(within(board).getByTestId("actions-m1")).toBeInTheDocument();
+  });
+
+  it("the Ongoing tab says so when nothing is in play", async () => {
+    vi.mocked(tournamentsApi.controlRoom).mockResolvedValue({
+      ...ROOM,
+      venues: [
+        { venue: "Main Ground", matches: [M2] },
+        { venue: "Side Pitch", matches: [M3, M4] },
+      ],
+    });
+    mount();
+    await userEvent.click(await screen.findByTestId("board-tab-live"));
+    expect(
+      screen.getByText("Nothing is being played right now."),
+    ).toBeInTheDocument();
+  });
+
   it("the courts tab lists every venue, and a court opens its own day", async () => {
     mount();
     await userEvent.click(await screen.findByTestId("board-tab-courts"));
