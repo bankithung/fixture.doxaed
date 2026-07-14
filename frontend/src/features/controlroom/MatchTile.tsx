@@ -89,9 +89,12 @@ export function StatusPill({
         </span>
       ) : null}
       {t(sm.label)}
+      {/* The period of play a live match is in: "game 1" for a set sport,
+          "first half" for football. Divided off, not joined by a middot — the
+          dot read as a typo rather than a separator. */}
       {sm.live && match.current_period ? (
-        <span className="font-normal">
-          · {t(match.current_period.replace(/_/g, " "))}
+        <span className="border-l border-current/30 pl-1.5 font-normal opacity-90">
+          {t(match.current_period.replace(/_/g, " "))}
         </span>
       ) : null}
     </span>
