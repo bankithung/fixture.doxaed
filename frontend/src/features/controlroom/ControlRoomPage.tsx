@@ -357,11 +357,12 @@ function DayBoard({
 
   return (
     <section data-testid="day-board" className="panel flex flex-col">
-      {/* Tab strip: the five views of the day, one card. */}
+      {/* Tab strip: the five views of the day, one card. Counts are badges, not
+          loose numerals — label-then-number ran together into one long line. */}
       <div
         role="tablist"
         aria-label={t("Match day board")}
-        className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-2"
+        className="flex shrink-0 items-center overflow-x-auto border-b border-border px-2"
       >
         {tabs.map((tb) => {
           const on = tb.key === tab;
@@ -376,23 +377,30 @@ function DayBoard({
               data-testid={`board-tab-${tb.key}`}
               onClick={() => setTab(tb.key)}
               className={cn(
-                "-mb-px inline-flex h-10 shrink-0 items-center gap-1.5 border-b-2 px-3 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                "-mb-px inline-flex h-11 shrink-0 items-center gap-2 border-b-2 px-4 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                 on
-                  ? "border-b-primary text-foreground"
-                  : "border-b-transparent text-muted-foreground hover:text-foreground",
+                  ? "border-b-primary font-semibold text-foreground"
+                  : "border-b-transparent font-medium text-muted-foreground hover:text-foreground",
               )}
             >
-              {tb.label}
-              {tb.count != null ? (
-                <span className="font-tabular text-xs text-muted-foreground">
-                  {tb.count}
+              {tb.key === "play" && liveCount > 0 ? (
+                <span className="relative flex h-2 w-2 shrink-0" aria-label={t("Live now")}>
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
                 </span>
               ) : null}
-              {tb.key === "play" && liveCount > 0 ? (
+              {tb.label}
+              {tb.count != null ? (
                 <span
-                  aria-label={t("Live now")}
-                  className="h-1.5 w-1.5 rounded-full bg-primary"
-                />
+                  className={cn(
+                    "rounded-full px-1.5 py-0.5 font-tabular text-[0.6875rem] font-medium leading-none",
+                    on
+                      ? "bg-primary/10 text-primary"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {tb.count}
+                </span>
               ) : null}
             </button>
           );
@@ -407,38 +415,52 @@ function DayBoard({
       >
         {tab === "play" ? (
           <>
-            {/* Filter rail: one feed, four questions. Replaces the separate
-                Now-&-next / Needs-attention / Recent-results panels. */}
-            <div className="flex flex-wrap items-center gap-1 border-b border-border bg-muted/30 px-2 py-1.5">
-              {filters.map((f) => {
-                const on = f.key === filter;
-                const urgent = f.key === "attention" && f.count > 0;
-                return (
-                  <button
-                    key={f.key}
-                    type="button"
-                    aria-pressed={on}
-                    data-testid={`feed-filter-${f.key}`}
-                    onClick={() => setFilter(f.key)}
-                    className={cn(
-                      "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      on
-                        ? "bg-card text-foreground shadow-sm ring-1 ring-border"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {f.label}
-                    <span
+            {/* Filter rail: one feed, four questions. A bounded segmented
+                control with a "Showing" label, so it reads as a control rather
+                than a second row of tabs. */}
+            <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2.5">
+              <span className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                {t("Showing")}
+              </span>
+              <div
+                role="group"
+                aria-label={t("Filter the run of play")}
+                className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5"
+              >
+                {filters.map((f) => {
+                  const on = f.key === filter;
+                  const urgent = f.key === "attention" && f.count > 0;
+                  return (
+                    <button
+                      key={f.key}
+                      type="button"
+                      aria-pressed={on}
+                      data-testid={`feed-filter-${f.key}`}
+                      onClick={() => setFilter(f.key)}
                       className={cn(
-                        "font-tabular",
-                        urgent ? "text-warning" : "text-muted-foreground",
+                        "inline-flex h-7 shrink-0 items-center gap-2 rounded-md px-2.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        on
+                          ? "bg-card text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
                       )}
                     >
-                      {f.count}
-                    </span>
-                  </button>
-                );
-              })}
+                      {f.label}
+                      <span
+                        className={cn(
+                          "rounded px-1 py-0.5 font-tabular text-[0.6875rem] leading-none",
+                          urgent
+                            ? "bg-warning-muted text-warning"
+                            : on
+                              ? "bg-muted text-muted-foreground"
+                              : "text-muted-foreground/70",
+                        )}
+                      >
+                        {f.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
               <Link
                 to={routes.tournamentMatches(tournamentId)}
                 className="ml-auto hidden text-xs font-medium text-primary hover:underline sm:inline"
