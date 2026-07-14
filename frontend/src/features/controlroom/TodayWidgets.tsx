@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, ChevronRight, MapPin, Trophy } from "lucide-react";
+import { MapPin, Trophy } from "lucide-react";
 import {
   tournamentsApi,
   type ControlRoomMatch,
@@ -10,32 +10,40 @@ import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { SportLeaderBoards } from "@/features/live/SportLeaderBoards";
 import { t } from "@/lib/t";
-import {
-  FINAL,
-  IN_PLAY,
-  fmtKickoff,
-  isCalled,
-  isOverdue,
-  urgencyWeight,
-} from "./format";
-import { StatusPill } from "./MatchTile";
+import { FINAL, IN_PLAY, fmtKickoff, isCalled } from "./format";
 
 const teamName = (tm: { name: string } | null): string => tm?.name || t("TBD");
 
-/** Section shell — a titled card so every panel reads consistently. */
+/**
+ * Section shell. `bare` drops the card chrome: on the Today board every widget
+ * is a tab body inside the ONE combined board (redesign 2026-07-14), so its own
+ * title and border would be a box inside a box. Standalone callers keep the card.
+ */
 function Panel({
   title,
   icon: Icon,
   count,
   action,
+  bare = false,
   children,
 }: {
   title: string;
   icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean | "true" }>;
   count?: number;
   action?: React.ReactNode;
+  bare?: boolean;
   children: React.ReactNode;
 }): React.ReactElement {
+  if (bare) {
+    return (
+      <div className="flex flex-col">
+        {action ? (
+          <div className="flex items-center justify-end px-3 pt-2">{action}</div>
+        ) : null}
+        {children}
+      </div>
+    );
+  }
   return (
     <section className="panel flex flex-col">
       <div className="panel-header">
@@ -58,12 +66,14 @@ function Panel({
 export function CourtsPanel({
   venues,
   timeZone,
+  bare = false,
 }: {
   venues: ControlRoomVenue[];
   timeZone: string;
+  bare?: boolean;
 }): React.ReactElement {
   return (
-    <Panel title={t("Courts today")} icon={MapPin} count={venues.length}>
+    <Panel title={t("Courts today")} icon={MapPin} count={venues.length} bare={bare}>
       <div className="flex flex-col divide-y divide-border">
         {venues.map((v) => {
           const now =
@@ -81,7 +91,7 @@ export function CourtsPanel({
           return (
             <div
               key={v.venue || "unassigned"}
-              className="grid grid-cols-[8.5rem_1fr_auto] items-center gap-3 px-3 py-1.5 sm:grid-cols-[10rem_1fr_auto]"
+              className="grid grid-cols-[8.5rem_1fr_auto] items-center gap-3 px-4 py-2.5 sm:grid-cols-[10rem_1fr_auto]"
             >
               <div className="flex min-w-0 items-center gap-1.5">
                 {now && IN_PLAY.has(now.status) ? (
@@ -130,8 +140,10 @@ export function CourtsPanel({
 /** COMPETITION PROGRESS — a completion bar per competition leaf. */
 export function CompetitionProgressPanel({
   matches,
+  bare = false,
 }: {
   matches: ControlRoomMatch[];
+  bare?: boolean;
 }): React.ReactElement {
   const byLeaf = new Map<
     string,
@@ -161,8 +173,20 @@ export function CompetitionProgressPanel({
   const sports = [...groups.keys()].sort((a, b) => a.localeCompare(b));
   const leafCount = byLeaf.size;
   return (
-    <Panel title={t("Competition progress")} icon={Trophy} count={leafCount}>
-      <div className="flex flex-col">
+    <Panel
+      title={t("Competition progress")}
+      icon={Trophy}
+      count={leafCount}
+      bare={bare}
+    >
+      <div
+        className={cn(
+          "flex flex-col",
+          // In the board's tab body the leaves read as a 2-up grid — a single
+          // column of 10 thin bars was the "too stacked" complaint.
+          bare && "lg:grid lg:grid-cols-2 lg:gap-x-px lg:bg-border",
+        )}
+      >
         {sports.map((sport) => {
           const rows = groups
             .get(sport)!
@@ -172,8 +196,14 @@ export function CompetitionProgressPanel({
             { done: 0, total: 0 },
           );
           return (
-            <div key={sport} className="border-b border-border last:border-b-0">
-              <div className="flex items-baseline gap-2 bg-muted/40 px-3 py-1">
+            <div
+              key={sport}
+              className={cn(
+                "border-b border-border last:border-b-0",
+                bare && "bg-card",
+              )}
+            >
+              <div className="flex items-baseline gap-2 bg-muted/40 px-4 py-1.5">
                 <p className="text-[13px] font-semibold text-foreground">{sport}</p>
                 <span className="font-tabular text-xs text-muted-foreground">
                   {agg.done}/{agg.total}
@@ -186,7 +216,7 @@ export function CompetitionProgressPanel({
                   return (
                     <div
                       key={`${sport}-${r.rest.join("-")}`}
-                      className="grid grid-cols-[1fr_auto] items-center gap-3 px-3 py-1"
+                      className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-1.5"
                     >
                       <span className="flex min-w-0 flex-wrap items-center gap-1">
                         {r.rest.length === 0 ? (
@@ -228,121 +258,6 @@ export function CompetitionProgressPanel({
           );
         })}
       </div>
-    </Panel>
-  );
-}
-
-/** RECENT RESULTS — the last handful of finished matches. */
-export function RecentResultsPanel({
-  matches,
-  timeZone,
-}: {
-  matches: ControlRoomMatch[];
-  timeZone: string;
-}): React.ReactElement | null {
-  const done = matches
-    .filter((m) => FINAL.has(m.status) || m.status === "completed")
-    .sort((a, b) => (b.scheduled_at ?? "").localeCompare(a.scheduled_at ?? ""))
-    .slice(0, 7);
-  if (done.length === 0) return null;
-  return (
-    <Panel title={t("Recent results")} icon={CheckCircle2} count={done.length}>
-      {(
-        <div className="flex flex-col divide-y divide-border">
-          {done.map((m) => (
-            <div key={m.id} className="flex items-center gap-3 px-3 py-1.5 text-sm">
-              <span className="w-11 shrink-0 font-tabular text-[13px] text-muted-foreground">
-                {fmtKickoff(m.scheduled_at, timeZone)}
-              </span>
-              <span className="min-w-0 flex-1 truncate">
-                {teamName(m.home_team)}{" "}
-                <span className="text-muted-foreground">{t("v")}</span>{" "}
-                {teamName(m.away_team)}
-              </span>
-              <span className="shrink-0 font-tabular font-semibold">
-                {m.home_score ?? 0} - {m.away_score ?? 0}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </Panel>
-  );
-}
-
-/** One-line reason a match needs attention. */
-function reason(m: ControlRoomMatch): string {
-  if (isOverdue(m)) return t("Awaiting result");
-  if (isCalled(m)) return t("Called, not started");
-  if (!m.venue) return t("No court assigned");
-  return t("Needs attention");
-}
-
-/**
- * NEEDS ATTENTION — the exceptions, ranked; each links straight into the Matches
- * board (where every action lives) so tracking flows into acting. Renders
- * nothing when caught up — the ops strip's "Needs you" cell already says so,
- * and an empty card was dead space (compact pass 2026-07-03).
- */
-export function NeedsAttentionPanel({
-  matches,
-  timeZone,
-  tournamentId,
-}: {
-  matches: ControlRoomMatch[];
-  timeZone: string;
-  tournamentId: string;
-}): React.ReactElement | null {
-  const items = matches
-    .filter((m) => urgencyWeight(m) > 0 && !IN_PLAY.has(m.status))
-    .sort(
-      (a, b) =>
-        urgencyWeight(b) - urgencyWeight(a) ||
-        (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? ""),
-    );
-  if (items.length === 0) return null;
-  return (
-    <Panel
-      title={t("Needs attention")}
-      icon={CheckCircle2}
-      count={items.length}
-      action={
-        <Link
-          to={routes.tournamentMatches(tournamentId)}
-          className="text-xs font-medium text-primary hover:underline"
-        >
-          {t("Open board")}
-        </Link>
-      }
-    >
-      {(
-        <div className="flex flex-col divide-y divide-border">
-          {items.slice(0, 7).map((m) => (
-            <Link
-              key={m.id}
-              to={routes.tournamentMatches(tournamentId)}
-              className={cn(
-                "flex items-center gap-3 border-l-2 px-3 py-1.5 transition-colors hover:bg-secondary/40",
-                isOverdue(m) ? "border-l-destructive" : "border-l-warning-foreground",
-              )}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <StatusPill match={m} idScope="attn-" />
-                  <span className="font-tabular">
-                    {fmtKickoff(m.scheduled_at, timeZone)}
-                  </span>
-                  <span className="truncate">{reason(m)}</span>
-                </div>
-                <p className="truncate text-[13px] font-medium">
-                  {teamName(m.home_team)} {t("v")} {teamName(m.away_team)}
-                </p>
-              </div>
-              <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
-            </Link>
-          ))}
-        </div>
-      )}
     </Panel>
   );
 }
@@ -407,8 +322,10 @@ export function SuspensionsPanel({
  */
 export function LeadersPanel({
   tournamentId,
+  bare = false,
 }: {
   tournamentId: string;
+  bare?: boolean;
 }): React.ReactElement {
   const q = useQuery({
     queryKey: ["t-leaders", tournamentId],
@@ -419,8 +336,17 @@ export function LeadersPanel({
   const empty = !d || d.played === 0;
 
   return (
-    <section data-testid="leaders-panel" className="panel">
-      <div className="panel-header">
+    <section
+      data-testid="leaders-panel"
+      className={cn(!bare && "panel", "flex flex-col")}
+    >
+      <div
+        className={cn(
+          bare
+            ? "flex h-9 shrink-0 items-center gap-2 border-b border-border px-4"
+            : "panel-header",
+        )}
+      >
         <Trophy aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-primary" />
         <h3 className="panel-title">{t("Leaders")}</h3>
         {!empty ? (

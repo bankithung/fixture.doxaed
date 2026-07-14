@@ -24,6 +24,7 @@ export function MatchRow({
   perms,
   delayMinutes = null,
   showCourt = true,
+  showTime = true,
 }: {
   match: ControlRoomMatch;
   timeZone: string;
@@ -32,6 +33,8 @@ export function MatchRow({
   perms: ControlRoomPerms;
   delayMinutes?: number | null;
   showCourt?: boolean;
+  /** `false` under a kickoff-time group header, which already states the time. */
+  showTime?: boolean;
 }): React.ReactElement {
   const showScore = IN_PLAY.has(match.status) || FINAL.has(match.status);
   const live = IN_PLAY.has(match.status);
@@ -51,8 +54,13 @@ export function MatchRow({
         <StatusPill match={match} />
       </div>
 
-      <div className="flex w-16 shrink-0 items-center gap-1 font-tabular text-foreground">
-        {fmtKickoff(match.scheduled_at, timeZone)}
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-1 font-tabular text-foreground",
+          showTime ? "w-16" : "w-auto",
+        )}
+      >
+        {showTime ? fmtKickoff(match.scheduled_at, timeZone) : null}
         {overdue ? (
           <span
             data-testid={`overdue-${match.id}`}

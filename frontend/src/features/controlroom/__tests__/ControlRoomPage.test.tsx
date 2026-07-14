@@ -215,7 +215,7 @@ afterEach(() => {
 });
 
 describe("ControlRoomPage", () => {
-  it("renders the today dashboard: day chips + analytics panels", async () => {
+  it("renders the day board: day chips + one combined tabbed section", async () => {
     mount();
 
     // Day chips with progress counts; the server-defaulted day is selected.
@@ -224,30 +224,63 @@ describe("ControlRoomPage", () => {
     expect(chip).toHaveTextContent("1/4");
     expect(screen.getByTestId("day-chip-2026-06-21")).toBeInTheDocument();
 
-    // The dashboard panels are present.
-    expect(screen.getByText("Now & next")).toBeInTheDocument();
-    expect(screen.getByText("Courts today")).toBeInTheDocument();
-    expect(screen.getByText("Competition progress")).toBeInTheDocument();
-    expect(screen.getByText("Recent results")).toBeInTheDocument();
-    expect(screen.getByText("Needs attention")).toBeInTheDocument();
+    // Everything lives in ONE board with five tabs (redesign 2026-07-14).
+    const board = screen.getByTestId("day-board");
+    for (const tab of [
+      "Run of play",
+      "Courts today",
+      "Leaders",
+      "Competition progress",
+      "Change history",
+    ]) {
+      expect(within(board).getByRole("tab", { name: new RegExp(tab) })).toBeInTheDocument();
+    }
 
-    // The combined Now & next feed carries the in-play match's row (live
-    // first) plus the queue; courts list both venues.
-    const nowNext = screen.getByTestId("now-next-panel");
-    expect(within(nowNext).getByTestId("tile-m1")).toBeInTheDocument();
-    expect(within(nowNext).getAllByText("Alpha FC").length).toBeGreaterThan(0);
-    const courts = screen.getByText("Courts today").closest("section")!;
-    expect(within(courts).getByText("Main Ground")).toBeInTheDocument();
-    expect(within(courts).getByText("Side Pitch")).toBeInTheDocument();
-
-    // The completed match's score shows in recent results.
-    const recent = screen.getByText("Recent results").closest("section")!;
-    expect(within(recent).getByText("2 - 1")).toBeInTheDocument();
+    // Run of play is the default tab, on its "Now & next" filter: the in-play
+    // match's row is there with its actions, the finished one is not.
+    expect(screen.getByTestId("board-tab-play")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(within(board).getByTestId("tile-m1")).toBeInTheDocument();
+    expect(within(board).queryByTestId("tile-m3")).toBeNull();
 
     // And a jump to the full matches board (where every action lives).
     expect(
       screen.getByRole("link", { name: "Matches board" }),
     ).toBeInTheDocument();
+  });
+
+  it("the run-of-play filters swap the feed: results, then needs-attention", async () => {
+    mount();
+    const board = await screen.findByTestId("day-board");
+
+    // Results: only the finished match, with its score.
+    await userEvent.click(screen.getByTestId("feed-filter-results"));
+    expect(within(board).getByTestId("tile-m3")).toBeInTheDocument();
+    expect(within(board).getByText("2 - 1")).toBeInTheDocument();
+    expect(within(board).queryByTestId("tile-m1")).toBeNull();
+
+    // The ops band's "Needs you" cell jumps back to the exceptions filter.
+    await userEvent.click(screen.getByTestId("ops-needs-you"));
+    expect(screen.getByTestId("feed-filter-attention")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    // m2 is called-but-not-started; the live and finished ones are not exceptions.
+    expect(within(board).getByTestId("tile-m2")).toBeInTheDocument();
+    expect(within(board).queryByTestId("tile-m3")).toBeNull();
+  });
+
+  it("the courts tab lists every venue of the day", async () => {
+    mount();
+    await userEvent.click(await screen.findByTestId("board-tab-courts"));
+
+    const board = screen.getByTestId("day-board");
+    expect(within(board).getByText("Main Ground")).toBeInTheDocument();
+    expect(within(board).getByText("Side Pitch")).toBeInTheDocument();
+    // Switching tabs swaps the panel body, so the feed is gone.
+    expect(within(board).queryByTestId("tile-m1")).toBeNull();
   });
 
   it("shows the operations band with the day's live + progress counts", async () => {

@@ -1,9 +1,13 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CloudRainWind, History, ListChecks, Printer, Radio } from "lucide-react";
+import { CloudRainWind, ListChecks, Printer, Radio } from "lucide-react";
 import { ShiftDayDialog } from "@/features/fixtures/ShiftDayDialog";
-import { tournamentsApi, type ControlRoomPayload } from "@/api/tournaments";
+import {
+  tournamentsApi,
+  type ControlRoomMatch,
+  type ControlRoomPayload,
+} from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
@@ -21,6 +25,7 @@ import {
   fmtDayLabel,
   fmtKickoff,
   IN_PLAY,
+  urgencyWeight,
   type SlotDelay,
 } from "./format";
 import type { ControlRoomPerms } from "./MatchActionsMenu";
@@ -30,8 +35,6 @@ import {
   CompetitionProgressPanel,
   CourtsPanel,
   LeadersPanel,
-  NeedsAttentionPanel,
-  RecentResultsPanel,
   SuspensionsPanel,
 } from "./TodayWidgets";
 import { useControlRoom } from "./useControlRoom";
@@ -108,11 +111,15 @@ function OpsHeaderBand({
   selectedDay,
   delays,
   tz,
+  onNeedsYou,
 }: {
   data: ControlRoomPayload;
   selectedDay: string;
   delays: Map<string, SlotDelay>;
   tz: string;
+  /** Jumps the board below to its "Needs you" filter — the band states the
+   * exception count, the board is where you act on it. */
+  onNeedsYou: () => void;
 }): React.ReactElement {
   const all = data.venues.flatMap((v) => v.matches);
   const counts = data.days.find((d) => d.date === selectedDay)?.counts;
@@ -179,9 +186,14 @@ function OpsHeaderBand({
         ) : null}
       </div>
 
-      <div className="flex min-w-0 flex-col justify-center gap-1.5 px-5 py-4">
-        <p className={overline}>{t("Needs you")}</p>
-        <p className="flex min-w-0 items-baseline gap-2">
+      <button
+        type="button"
+        data-testid="ops-needs-you"
+        onClick={onNeedsYou}
+        className="flex min-w-0 flex-col justify-center gap-1.5 px-5 py-4 text-left transition-colors hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <span className={cn(overline, "block")}>{t("Needs you")}</span>
+        <span className="flex min-w-0 items-baseline gap-2">
           <span
             className={cn(
               "font-tabular text-3xl font-semibold leading-none",
@@ -197,8 +209,8 @@ function OpsHeaderBand({
                 ? t("no venue")
                 : t("all caught up")}
           </span>
-        </p>
-      </div>
+        </span>
+      </button>
 
       <div className="flex min-w-0 flex-col justify-center gap-1.5 px-5 py-4">
         <p className={overline}>{t("Up next")}</p>
@@ -219,6 +231,292 @@ function OpsHeaderBand({
   );
 }
 
+type BoardTab = "play" | "courts" | "leaders" | "progress" | "changes";
+type PlayFilter = "next" | "attention" | "results" | "all";
+
+/** Consecutive matches sharing a kickoff become one group under a time header,
+ * so the feed reads as a run of play instead of a wall of repeated clocks. */
+function groupByKickoff(
+  matches: ControlRoomMatch[],
+  tz: string,
+): { label: string; matches: ControlRoomMatch[] }[] {
+  const out: { label: string; matches: ControlRoomMatch[] }[] = [];
+  for (const m of matches) {
+    const label = fmtKickoff(m.scheduled_at, tz);
+    const last = out[out.length - 1];
+    if (last && last.label === label) last.matches.push(m);
+    else out.push({ label, matches: [m] });
+  }
+  return out;
+}
+
+/**
+ * THE DAY BOARD — the one combined section (owner 2026-07-14: "one combined
+ * section, it's too stacked"). Eight panels down the page became a single card
+ * with five tabs. The default tab is the run of play: every match of the day in
+ * kickoff order, filtered by what you're doing right now (what's on, what's
+ * stuck, what's finished), each row keeping its full actions. Courts, leaders,
+ * competition progress and the change log are the other tabs of the same card,
+ * so the page is one screen instead of an endless scroll.
+ */
+function DayBoard({
+  tournamentId,
+  matches,
+  venues,
+  competitions,
+  tz,
+  perms,
+  delays,
+  isMobile,
+  tab,
+  setTab,
+  filter,
+  setFilter,
+}: {
+  tournamentId: string;
+  matches: ControlRoomMatch[];
+  venues: ControlRoomPayload["venues"];
+  competitions: { leafKey: string; label: string }[];
+  tz: string;
+  perms: ControlRoomPerms;
+  delays: Map<string, SlotDelay>;
+  isMobile: boolean;
+  tab: BoardTab;
+  setTab: (v: BoardTab) => void;
+  filter: PlayFilter;
+  setFilter: (v: PlayFilter) => void;
+}): React.ReactElement {
+  const byTime = (a: ControlRoomMatch, b: ControlRoomMatch) =>
+    (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? "");
+
+  const buckets = useMemo(() => {
+    const next = matches
+      .filter((m) => !FINAL.has(m.status))
+      .sort(
+        (a, b) =>
+          Number(IN_PLAY.has(b.status)) - Number(IN_PLAY.has(a.status)) ||
+          byTime(a, b),
+      );
+    const attention = matches
+      .filter((m) => urgencyWeight(m) > 0 && !IN_PLAY.has(m.status))
+      .sort((a, b) => urgencyWeight(b) - urgencyWeight(a) || byTime(a, b));
+    const results = matches
+      .filter((m) => FINAL.has(m.status))
+      .sort((a, b) => byTime(b, a));
+    const all = [...matches].sort(byTime);
+    return { next, attention, results, all };
+  }, [matches]);
+
+  const feed = buckets[filter];
+  const groups = groupByKickoff(feed, tz);
+  const liveCount = matches.filter((m) => IN_PLAY.has(m.status)).length;
+
+  const filters: {
+    key: PlayFilter;
+    label: string;
+    count: number;
+    empty: string;
+  }[] = [
+    {
+      key: "next",
+      label: t("Now & next"),
+      count: buckets.next.length,
+      empty: t("Every match of the day is finished."),
+    },
+    {
+      key: "attention",
+      label: t("Needs attention"),
+      count: buckets.attention.length,
+      empty: t("All caught up. Nothing is waiting on you."),
+    },
+    {
+      key: "results",
+      label: t("Recent results"),
+      count: buckets.results.length,
+      empty: t("No results yet today."),
+    },
+    {
+      key: "all",
+      label: t("All"),
+      count: buckets.all.length,
+      empty: t("Nothing scheduled on this day."),
+    },
+  ];
+  const active = filters.find((f) => f.key === filter)!;
+
+  const tabs: { key: BoardTab; label: string; count?: number }[] = [
+    { key: "play", label: t("Run of play"), count: matches.length },
+    { key: "courts", label: t("Courts today"), count: venues.length },
+    { key: "leaders", label: t("Leaders") },
+    { key: "progress", label: t("Competition progress") },
+    { key: "changes", label: t("Change history") },
+  ];
+
+  const siblingsOf = (m: ControlRoomMatch) =>
+    matches.filter((x) => x.leaf_key === m.leaf_key);
+
+  return (
+    <section data-testid="day-board" className="panel flex flex-col">
+      {/* Tab strip: the five views of the day, one card. */}
+      <div
+        role="tablist"
+        aria-label={t("Match day board")}
+        className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-2"
+      >
+        {tabs.map((tb) => {
+          const on = tb.key === tab;
+          return (
+            <button
+              key={tb.key}
+              type="button"
+              role="tab"
+              id={`board-tab-${tb.key}`}
+              aria-selected={on}
+              aria-controls="board-panel"
+              data-testid={`board-tab-${tb.key}`}
+              onClick={() => setTab(tb.key)}
+              className={cn(
+                "-mb-px inline-flex h-10 shrink-0 items-center gap-1.5 border-b-2 px-3 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                on
+                  ? "border-b-primary text-foreground"
+                  : "border-b-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {tb.label}
+              {tb.count != null ? (
+                <span className="font-tabular text-xs text-muted-foreground">
+                  {tb.count}
+                </span>
+              ) : null}
+              {tb.key === "play" && liveCount > 0 ? (
+                <span
+                  aria-label={t("Live now")}
+                  className="h-1.5 w-1.5 rounded-full bg-primary"
+                />
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        role="tabpanel"
+        id="board-panel"
+        aria-labelledby={`board-tab-${tab}`}
+        className="min-w-0"
+      >
+        {tab === "play" ? (
+          <>
+            {/* Filter rail: one feed, four questions. Replaces the separate
+                Now-&-next / Needs-attention / Recent-results panels. */}
+            <div className="flex flex-wrap items-center gap-1 border-b border-border bg-muted/30 px-2 py-1.5">
+              {filters.map((f) => {
+                const on = f.key === filter;
+                const urgent = f.key === "attention" && f.count > 0;
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    aria-pressed={on}
+                    data-testid={`feed-filter-${f.key}`}
+                    onClick={() => setFilter(f.key)}
+                    className={cn(
+                      "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      on
+                        ? "bg-card text-foreground shadow-sm ring-1 ring-border"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {f.label}
+                    <span
+                      className={cn(
+                        "font-tabular",
+                        urgent ? "text-warning" : "text-muted-foreground",
+                      )}
+                    >
+                      {f.count}
+                    </span>
+                  </button>
+                );
+              })}
+              <Link
+                to={routes.tournamentMatches(tournamentId)}
+                className="ml-auto hidden text-xs font-medium text-primary hover:underline sm:inline"
+              >
+                {t("Open full board")}
+              </Link>
+            </div>
+
+            {feed.length === 0 ? (
+              <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                {active.empty}
+              </p>
+            ) : isMobile ? (
+              <div className="flex flex-col gap-2 p-2">
+                {feed.map((m) => (
+                  <MatchTile
+                    key={m.id}
+                    match={m}
+                    timeZone={tz}
+                    tournamentId={tournamentId}
+                    siblings={siblingsOf(m)}
+                    perms={perms}
+                    delayMinutes={delayFor(delays, m)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div role="table" aria-label={active.label}>
+                {groups.map((g) => (
+                  <div key={`${g.label}-${g.matches[0].id}`}>
+                    <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5">
+                      <span className="font-tabular text-[13px] font-semibold">
+                        {g.label}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {g.matches.length}{" "}
+                        {g.matches.length === 1 ? t("match") : t("matches")}
+                      </span>
+                    </div>
+                    {g.matches.map((m) => (
+                      <MatchRow
+                        key={m.id}
+                        match={m}
+                        timeZone={tz}
+                        tournamentId={tournamentId}
+                        siblings={siblingsOf(m)}
+                        perms={perms}
+                        delayMinutes={delayFor(delays, m)}
+                        showTime={false}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : null}
+
+        {tab === "courts" ? (
+          <CourtsPanel venues={venues} timeZone={tz} bare />
+        ) : null}
+        {tab === "leaders" ? <LeadersPanel tournamentId={tournamentId} bare /> : null}
+        {tab === "progress" ? (
+          <CompetitionProgressPanel matches={matches} bare />
+        ) : null}
+        {tab === "changes" ? (
+          <ScheduleChangesPanel
+            tournamentId={tournamentId}
+            competitions={competitions}
+            embedded
+            viewAllTo={routes.tournamentChanges(tournamentId)}
+          />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 /**
  * The live-ops cockpit (control room spec 2026-06-12 §1/§3.1): a day-by-day,
  * venue-laned view of match day. Day chips select among the days that have
@@ -234,6 +532,8 @@ export function ControlRoomPage(): React.ReactElement {
   const user = useAuthStore((s) => s.user);
   const [day, setDay] = useState<string | null>(null);
   const [shiftOpen, setShiftOpen] = useState(false);
+  const [tab, setTab] = useState<BoardTab>("play");
+  const [filter, setFilter] = useState<PlayFilter>("next");
 
   const stageQ = useQuery({
     queryKey: qk.stage(id),
@@ -265,17 +565,6 @@ export function ControlRoomPage(): React.ReactElement {
 
   const allMatches = useMemo(
     () => (data?.venues ?? []).flatMap((v) => v.matches),
-    [data],
-  );
-  // The combined "Now & next" feed: everything in play, then the head of the
-  // cross-venue queue (owner 2026-07-03: one section, not two).
-  const liveMatches = useMemo(
-    () => allMatches.filter((m) => IN_PLAY.has(m.status)),
-    [allMatches],
-  );
-  const upNext = useMemo(
-    () =>
-      (data?.queue ?? []).filter((m) => m.status === "scheduled").slice(0, 5),
     [data],
   );
   const siblingsOf = (m: { leaf_key: string }) =>
@@ -498,104 +787,35 @@ export function ControlRoomPage(): React.ReactElement {
               </div>
             </section>
           ) : (
-            // The Today dashboard: at-a-glance analytics for the whole day.
+            // The Today dashboard: the day's numbers, then ONE combined board.
             <>
               <OpsHeaderBand
                 data={data}
                 selectedDay={selectedDay}
                 delays={delays}
                 tz={tz}
+                onNeedsYou={() => {
+                  setTab("play");
+                  setFilter("attention");
+                }}
               />
 
-              {/* Now & next — ONE full-width feed (owner 2026-07-03): what is
-                  in play (score live) followed by the head of the queue, as
-                  the same dense rows the Matches board uses. Every row keeps
-                  its actions: open the console, enter a result, call to
-                  court. Mobile falls back to the stacked tiles. */}
-              {liveMatches.length > 0 || upNext.length > 0 ? (
-                <section data-testid="now-next-panel" className="panel">
-                  <div className="panel-header">
-                    <Radio aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-primary" />
-                    <h3 className="panel-title">{t("Now & next")}</h3>
-                    {liveMatches.length > 0 ? (
-                      <span className="rounded-full bg-primary/15 px-2 py-0.5 font-tabular text-[0.6875rem] font-medium text-primary">
-                        {liveMatches.length} {t("live")}
-                      </span>
-                    ) : null}
-                    <span className="font-tabular text-xs text-muted-foreground">
-                      {upNext.length} {t("queued")}
-                    </span>
-                  </div>
-                  {isMobile ? (
-                    <div className="flex flex-col gap-2 p-2">
-                      {[...liveMatches, ...upNext].map((m) => (
-                        <MatchTile
-                          key={m.id}
-                          match={m}
-                          timeZone={tz}
-                          tournamentId={id}
-                          siblings={siblingsOf(m)}
-                          perms={perms}
-                          delayMinutes={delayFor(delays, m)}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div role="table" aria-label={t("Now & next")}>
-                      {[...liveMatches, ...upNext].map((m) => (
-                        <MatchRow
-                          key={m.id}
-                          match={m}
-                          timeZone={tz}
-                          tournamentId={id}
-                          siblings={siblingsOf(m)}
-                          perms={perms}
-                          delayMinutes={delayFor(delays, m)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </section>
-              ) : null}
+              <SuspensionsPanel tournamentId={id} />
 
-              {/* Full-width stack (compact pass 2026-07-03): the old fixed
-                  awareness rail sat mostly empty, so exception panels render
-                  only when they have rows and everything fills the width. */}
-              <NeedsAttentionPanel
-                matches={allMatches}
-                timeZone={tz}
+              <DayBoard
                 tournamentId={id}
+                matches={allMatches}
+                venues={data.venues}
+                competitions={competitions}
+                tz={tz}
+                perms={perms}
+                delays={delays}
+                isMobile={isMobile}
+                tab={tab}
+                setTab={setTab}
+                filter={filter}
+                setFilter={setFilter}
               />
-              <CourtsPanel venues={data.venues} timeZone={tz} />
-              <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
-                <div className="flex min-w-0 flex-col gap-3">
-                  <LeadersPanel tournamentId={id} />
-                  <RecentResultsPanel matches={allMatches} timeZone={tz} />
-                  <SuspensionsPanel tournamentId={id} />
-                  {allMatches.length > 0 ? (
-                    // Always open, no filter here (owner 2026-07-03): the
-                    // dashboard shows the tail; filtering lives on the full
-                    // Change history page.
-                    <section className="panel">
-                      <div className="panel-header">
-                        <History aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
-                        <h3 className="panel-title">
-                          {t("Change history")}
-                        </h3>
-                      </div>
-                      <ScheduleChangesPanel
-                        tournamentId={id}
-                        competitions={competitions}
-                        embedded
-                        viewAllTo={routes.tournamentChanges(id)}
-                      />
-                    </section>
-                  ) : null}
-                </div>
-                <div className="min-w-0">
-                  <CompetitionProgressPanel matches={allMatches} />
-                </div>
-              </div>
             </>
           )}
         </div>
