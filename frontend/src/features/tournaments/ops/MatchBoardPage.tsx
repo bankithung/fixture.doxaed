@@ -80,30 +80,50 @@ const STATUS_GROUP_LABEL: Record<string, string> = {
 };
 const STATUS_GROUP_ORDER = ["live", "upcoming", "done", "other"];
 
-/** A headline count cell in the stats strip. */
+/**
+ * A headline count in the board's stat strip. Each one is a button that filters
+ * the list below to exactly what it counts (redesign 2026-07-14) — the numbers
+ * used to be a dead read-out sitting above an unrelated filter bar.
+ */
 function StatCell({
   label,
   value,
   muted,
+  active = false,
+  testid,
+  onClick,
 }: {
   label: string;
   value: number;
   muted?: boolean;
+  active?: boolean;
+  testid: string;
+  onClick: () => void;
 }): React.ReactElement {
   return (
-    <div className="flex min-w-0 flex-col justify-center gap-1 px-4 py-3">
-      <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+    <button
+      type="button"
+      data-testid={testid}
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "flex min-w-0 flex-col justify-center gap-1 px-4 py-3 text-left transition-colors hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        active && "bg-secondary/60",
+      )}
+    >
+      <span className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
         {label}
-      </p>
-      <p
+      </span>
+      <span
         className={cn(
           "font-tabular text-2xl font-semibold leading-none",
           muted && value > 0 && "text-warning",
+          active && "text-primary",
         )}
       >
         {value}
-      </p>
-    </div>
+      </span>
+    </button>
   );
 }
 
@@ -265,7 +285,7 @@ export function MatchesBoardPage(): React.ReactElement {
 
   const header = (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-      <h2 className="text-xl font-semibold tracking-tight">{t("Matches")}</h2>
+      <h2 className="page-title">{t("Matches")}</h2>
       {matches.length > 0 ? (
         <span className="font-tabular text-xs text-muted-foreground">
           {counts.done}/{counts.total} {t("played")}
@@ -338,125 +358,163 @@ export function MatchesBoardPage(): React.ReactElement {
   );
 
   return (
-    <div className="flex w-full flex-col gap-5">
+    <div className="flex w-full flex-col gap-3">
       {header}
 
-      {/* Headline counts over the whole fixture. */}
-      <div className="grid grid-cols-2 divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm max-sm:divide-y sm:grid-cols-4 sm:divide-x">
-        <StatCell label={t("Matches")} value={counts.total} />
-        <StatCell label={t("Live now")} value={counts.live} />
-        <StatCell label={t("Completed")} value={counts.done} />
-        <StatCell label={t("No scorer")} value={counts.noScorer} muted />
-      </div>
-
-      {/* Filter bar. */}
-      <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-3">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="relative">
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              aria-label={t("Search matches")}
-              data-testid="board-search"
-              placeholder={t("Search team, school or venue…")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8"
-            />
-          </label>
-          <Select
-            aria-label={t("Competition")}
-            value={comp}
-            onChange={setComp}
-            options={[
-              { value: "all", label: t("All competitions") },
-              ...competitions.map(([key, label]) => ({ value: key, label })),
-            ]}
+      {/* ONE board (redesign 2026-07-14): the counts, the filters, the matches
+          and the pager are a single card, not four stacked ones. */}
+      <section data-testid="matches-board" className="panel flex flex-col">
+        {/* Counts over the whole fixture — and the fastest way to filter. */}
+        <div className="grid grid-cols-2 divide-border border-b border-border max-sm:divide-y sm:grid-cols-4 sm:divide-x">
+          <StatCell
+            label={t("Matches")}
+            value={counts.total}
+            testid="stat-all"
+            active={status === "all" && !needsScorer && !needsOfficial}
+            onClick={() => {
+              setStatus("all");
+              setNeedsScorer(false);
+              setNeedsOfficial(false);
+            }}
           />
-          {venues.length > 0 ? (
+          <StatCell
+            label={t("Live now")}
+            value={counts.live}
+            testid="stat-live"
+            active={status === "live"}
+            onClick={() => setStatus(status === "live" ? "all" : "live")}
+          />
+          <StatCell
+            label={t("Completed")}
+            value={counts.done}
+            testid="stat-done"
+            active={status === "done"}
+            onClick={() => setStatus(status === "done" ? "all" : "done")}
+          />
+          <StatCell
+            label={t("No scorer")}
+            value={counts.noScorer}
+            muted
+            testid="stat-no-scorer"
+            active={needsScorer}
+            onClick={() => setNeedsScorer((v) => !v)}
+          />
+        </div>
+
+        {/* Toolbar: search and the three lenses, then the status segments. */}
+        <div className="flex flex-col gap-2.5 border-b border-border p-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="relative">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                aria-label={t("Search matches")}
+                data-testid="board-search"
+                placeholder={t("Search team, school or venue…")}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8"
+              />
+            </label>
             <Select
-              aria-label={t("Venue")}
-              value={venue}
-              onChange={setVenue}
+              aria-label={t("Competition")}
+              value={comp}
+              onChange={setComp}
               options={[
-                { value: "all", label: t("All venues") },
-                ...venues.map((v) => ({ value: v, label: v })),
+                { value: "all", label: t("All competitions") },
+                ...competitions.map(([key, label]) => ({ value: key, label })),
               ]}
             />
-          ) : (
-            <span className="hidden lg:block" />
-          )}
-          <Select
-            aria-label={t("Group by")}
-            value={groupBy}
-            onChange={(v) => setGroupBy(v as GroupBy)}
-            options={(Object.keys(GROUP_LABEL) as GroupBy[]).map((g) => ({
-              value: g,
-              label: t("Group by {x}").replace("{x}", t(GROUP_LABEL[g]).toLowerCase()),
-            }))}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <div
-            role="group"
-            aria-label={t("Status")}
-            className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5"
-          >
-            {STATUS_FILTERS.map((s) => (
-              <button
-                key={s.key}
-                type="button"
-                data-testid={`board-status-${s.key}`}
-                aria-pressed={status === s.key}
-                onClick={() => setStatus(s.key)}
-                className={cn(
-                  "inline-flex h-7 items-center rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  status === s.key
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {t(s.label)}
-              </button>
-            ))}
+            {venues.length > 0 ? (
+              <Select
+                aria-label={t("Venue")}
+                value={venue}
+                onChange={setVenue}
+                options={[
+                  { value: "all", label: t("All venues") },
+                  ...venues.map((v) => ({ value: v, label: v })),
+                ]}
+              />
+            ) : (
+              <span className="hidden lg:block" />
+            )}
+            <Select
+              aria-label={t("Group by")}
+              value={groupBy}
+              onChange={(v) => setGroupBy(v as GroupBy)}
+              options={(Object.keys(GROUP_LABEL) as GroupBy[]).map((g) => ({
+                value: g,
+                label: t("Group by {x}").replace(
+                  "{x}",
+                  t(GROUP_LABEL[g]).toLowerCase(),
+                ),
+              }))}
+            />
           </div>
-          <span className="mx-1 hidden h-4 w-px bg-border sm:block" />
-          {perms.canSchedule
-            ? toggle(needsScorer, "board-needs-scorer", t("Needs scorer"), () =>
-                setNeedsScorer((v) => !v),
-              )
-            : null}
-          {perms.canSchedule
-            ? toggle(needsOfficial, "board-needs-official", t("Needs official"), () =>
-                setNeedsOfficial((v) => !v),
-              )
-            : null}
-          {isPlainMember
-            ? toggle(mine, "board-mine", t("My matches"), () => setMine((v) => !v))
-            : null}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <div
+              role="group"
+              aria-label={t("Status")}
+              className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5"
+            >
+              {STATUS_FILTERS.map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  data-testid={`board-status-${s.key}`}
+                  aria-pressed={status === s.key}
+                  onClick={() => setStatus(s.key)}
+                  className={cn(
+                    "inline-flex h-7 items-center rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    status === s.key
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {t(s.label)}
+                </button>
+              ))}
+            </div>
+            <span className="mx-1 hidden h-4 w-px bg-border sm:block" />
+            {perms.canSchedule
+              ? toggle(needsScorer, "board-needs-scorer", t("Needs scorer"), () =>
+                  setNeedsScorer((v) => !v),
+                )
+              : null}
+            {perms.canSchedule
+              ? toggle(needsOfficial, "board-needs-official", t("Needs official"), () =>
+                  setNeedsOfficial((v) => !v),
+                )
+              : null}
+            {isPlainMember
+              ? toggle(mine, "board-mine", t("My matches"), () => setMine((v) => !v))
+              : null}
+            {/* What the filters actually left, stated plainly. */}
+            <span className="ml-auto font-tabular text-xs text-muted-foreground">
+              {filtered.length === matches.length
+                ? `${matches.length} ${t("matches")}`
+                : `${filtered.length} ${t("of")} ${matches.length} ${t("matches")}`}
+            </span>
+          </div>
         </div>
-      </div>
 
-      {/* Grouped list. */}
-      {filtered.length === 0 ? (
-        <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-          {t("No matches fit these filters.")}
-        </p>
-      ) : (
-        <div className="flex flex-col gap-5">
-          {groups.map((g) => (
-            <section key={g.key} className="flex flex-col gap-2">
-              <div className="flex items-baseline gap-2">
-                <h3 className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                  {g.label}
-                </h3>
-                <span className="font-tabular text-xs text-muted-foreground/70">
-                  {g.matches.length}
-                </span>
-              </div>
-              <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        {/* The matches: group bands inside the same card, not a card each. */}
+        {filtered.length === 0 ? (
+          <p className="px-4 py-12 text-center text-sm text-muted-foreground">
+            {t("No matches fit these filters.")}
+          </p>
+        ) : (
+          <div>
+            {groups.map((g) => (
+              <div key={g.key}>
+                <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5">
+                  <h3 className="text-[13px] font-semibold">{g.label}</h3>
+                  <span className="font-tabular text-xs text-muted-foreground">
+                    {g.matches.length}
+                  </span>
+                </div>
                 {g.matches.map((m) => (
                   <MatchRow
                     key={m.id}
@@ -469,43 +527,45 @@ export function MatchesBoardPage(): React.ReactElement {
                   />
                 ))}
               </div>
-            </section>
-          ))}
-        </div>
-      )}
-      {ordered.length > PAGE_SIZE ? (
-        <div className="flex items-center gap-2">
-          <p className="font-tabular text-xs text-muted-foreground">
-            {curPage * PAGE_SIZE + 1}
-            {" to "}
-            {Math.min((curPage + 1) * PAGE_SIZE, ordered.length)} {t("of")}{" "}
-            {ordered.length}
-          </p>
-          <div className="ml-auto flex items-center gap-1">
-            <button
-              type="button"
-              data-testid="board-prev"
-              disabled={curPage === 0}
-              onClick={() => setPage(curPage - 1)}
-              className="inline-flex h-8 items-center rounded-md border border-border bg-card px-3 text-xs font-medium transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-            >
-              {t("Previous")}
-            </button>
-            <span className="px-1 font-tabular text-xs text-muted-foreground">
-              {curPage + 1}/{pageCount}
-            </span>
-            <button
-              type="button"
-              data-testid="board-next"
-              disabled={curPage >= pageCount - 1}
-              onClick={() => setPage(curPage + 1)}
-              className="inline-flex h-8 items-center rounded-md border border-border bg-card px-3 text-xs font-medium transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-            >
-              {t("Next")}
-            </button>
+            ))}
           </div>
-        </div>
-      ) : null}
+        )}
+
+        {ordered.length > PAGE_SIZE ? (
+          <div className="flex items-center gap-2 border-t border-border px-4 py-2.5">
+            <p className="font-tabular text-xs text-muted-foreground">
+              {curPage * PAGE_SIZE + 1}
+              {t(" to ")}
+              {Math.min((curPage + 1) * PAGE_SIZE, ordered.length)} {t("of")}{" "}
+              {ordered.length}
+            </p>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                data-testid="board-prev"
+                disabled={curPage === 0}
+                onClick={() => setPage(curPage - 1)}
+                className="inline-flex h-8 items-center rounded-md border border-border bg-card px-3 text-xs font-medium transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+              >
+                {t("Previous")}
+              </button>
+              <span className="font-tabular text-xs text-muted-foreground">
+                {curPage + 1}/{pageCount}
+              </span>
+              <button
+                type="button"
+                data-testid="board-next"
+                disabled={curPage >= pageCount - 1}
+                onClick={() => setPage(curPage + 1)}
+                className="inline-flex h-8 items-center rounded-md border border-border bg-card px-3 text-xs font-medium transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+              >
+                {t("Next")}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </section>
+
       {shiftOpen ? (
         <ShiftDayDialog
           tournamentId={id}
