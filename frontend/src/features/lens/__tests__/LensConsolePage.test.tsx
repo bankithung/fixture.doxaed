@@ -159,6 +159,9 @@ describe("LensConsolePage", () => {
   it("saves a per-school category limit from the settings form", async () => {
     mount();
 
+    // Settings is no longer the default tab — a running campaign opens on
+    // Moderate — so open it first.
+    await userEvent.click(await screen.findByTestId("lens-tab-campaign"));
     const limitInput = await screen.findByTestId("limit-Best Action Shot");
     await userEvent.type(limitInput, "10");
     await userEvent.click(screen.getByTestId("save-settings-btn"));
@@ -175,6 +178,7 @@ describe("LensConsolePage", () => {
   it("drops a category's limit when the category is removed", async () => {
     mount();
 
+    await userEvent.click(await screen.findByTestId("lens-tab-campaign"));
     await userEvent.type(
       await screen.findByTestId("limit-Best Action Shot"),
       "10",

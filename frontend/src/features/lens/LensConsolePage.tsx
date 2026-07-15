@@ -283,7 +283,11 @@ export function LensConsolePage(): React.ReactElement {
   const { push } = useToast();
   const { isMobile } = useBreakpoint();
 
-  const [tab, setTab] = useState<TabKey>("campaign");
+  // Land on the operational view, not the settings form: a running campaign
+  // opens on Moderate (the photos actually needing attention); a fresh one with
+  // no cards yet opens on Cards (the setup step). Settings is a tab you visit,
+  // not the front page. `null` = "use the derived default"; a click pins it.
+  const [tabState, setTab] = useState<TabKey | null>(null);
   const [cards, setCards] = useState<LensCard[]>([]);
   const [confirm, setConfirm] = useState<
     | { kind: "close" }
@@ -311,6 +315,10 @@ export function LensConsolePage(): React.ReactElement {
     enabled: Boolean(id),
   });
   const campaign = overviewQ.data?.campaign ?? null;
+  // Derived default landing tab (see the tabState comment above).
+  const defaultTab: TabKey =
+    (overviewQ.data?.stats.passes_active ?? 0) > 0 ? "moderate" : "cards";
+  const tab = tabState ?? defaultTab;
 
   const photosQ = useQuery({
     queryKey: [...qk.lensPhotos(id), campaignId, statusFilter, instFilter, catFilter],
@@ -541,12 +549,13 @@ export function LensConsolePage(): React.ReactElement {
     );
   }
 
-  // ---- Open campaign: tabbed console. ----
+  // ---- Open campaign: tabbed console. Operational tabs lead; Settings is
+  // last (it's configure-once, not the front page). ----
   const TABS: { key: TabKey; label: string }[] = [
-    { key: "campaign", label: t("Campaign") },
-    { key: "cards", label: t("Cards") },
     { key: "moderate", label: t("Moderate") },
+    { key: "cards", label: t("Cards") },
     { key: "awards", label: t("Awards") },
+    { key: "campaign", label: t("Settings") },
   ];
   const statCells: { label: string; value: number }[] = [
     { label: t("Schools"), value: stats.institutions_total },
