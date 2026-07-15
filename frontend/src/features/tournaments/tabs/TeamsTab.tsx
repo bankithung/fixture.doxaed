@@ -731,43 +731,95 @@ function FileChips({ files }: { files: UploadRef[] }): React.ReactElement | null
   );
 }
 
-/** One line per player (jersey · name · captain · DOB); expands to documents
- * when there are any (owner 2026-06-17: "one line per player, details inline"). */
+/** Humanize an ISO date ("2013-03-11" → "11 Mar 2013"); returns the raw input
+ * on a parse miss so bad data never renders blank. */
+function fmtDob(iso: string): string {
+  try {
+    const d = new Date(`${iso}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+/** Whole years from an ISO DOB to today — age matters for u-14/u-17 eligibility,
+ * so it reads next to the date. null on a parse miss / implausible value. */
+function ageFrom(iso: string): number | null {
+  try {
+    const dob = new Date(`${iso}T00:00:00`);
+    if (Number.isNaN(dob.getTime())) return null;
+    const now = new Date();
+    let age = now.getFullYear() - dob.getFullYear();
+    const m = now.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age -= 1;
+    return age >= 0 && age < 130 ? age : null;
+  } catch {
+    return null;
+  }
+}
+
+/** One row per player (jersey/number · name · captain · DOB + age); expands to
+ * documents when there are any (owner 2026-06-17: "one line per player, details
+ * inline"). Rows live inside a single divided list — no border-per-player. */
 function PlayerRow({
   player,
+  index,
 }: {
   player: TeamRegistrationDetail["players"][number];
+  index: number;
 }): React.ReactElement {
   // Open on arrival (owner 2026-07-05: no tap-to-reveal anywhere); the row
   // click folds it away.
   const [open, setOpen] = useState(true);
   const hasDocs = player.documents.length > 0;
+  const hasJersey = player.jersey_no !== null && player.jersey_no !== undefined;
+  const age = player.dob ? ageFrom(player.dob) : null;
   return (
-    <li className="overflow-hidden rounded-md border border-border/70 bg-card">
+    <li>
       <button
         type="button"
         disabled={!hasDocs}
         aria-expanded={hasDocs ? open : undefined}
         onClick={() => hasDocs && setOpen((o) => !o)}
         className={cn(
-          "flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left text-sm",
+          "flex w-full items-center gap-3 px-3 py-2 text-left text-sm",
           hasDocs && "cursor-pointer hover:bg-accent/40",
         )}
       >
-        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/10 font-tabular text-[0.6875rem] font-semibold text-primary">
-          {player.jersey_no ?? "·"}
-        </span>
+        {hasJersey ? (
+          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 font-tabular text-[0.6875rem] font-semibold text-primary">
+            {player.jersey_no}
+          </span>
+        ) : (
+          <span className="w-6 shrink-0 text-center font-tabular text-[0.6875rem] text-muted-foreground/60">
+            {index}
+          </span>
+        )}
         <span className="min-w-0 flex-1 truncate font-medium">
           {player.name || t("Unnamed")}
         </span>
         {player.captain ? (
-          <span className="shrink-0 rounded bg-primary/15 px-1 font-tabular text-[0.6875rem] font-semibold text-primary">
+          <span
+            title={t("Captain")}
+            className="shrink-0 rounded bg-primary/15 px-1 font-tabular text-[0.6875rem] font-semibold text-primary"
+          >
             C
           </span>
         ) : null}
         {player.dob ? (
-          <span className="shrink-0 font-tabular text-xs text-muted-foreground">
-            {player.dob}
+          <span className="shrink-0 whitespace-nowrap font-tabular text-xs text-muted-foreground">
+            {fmtDob(player.dob)}
+            {age !== null ? (
+              <span className="ml-1.5 text-muted-foreground/60">
+                {age}
+                {t("y")}
+              </span>
+            ) : null}
           </span>
         ) : null}
         {hasDocs ? (
@@ -787,7 +839,7 @@ function PlayerRow({
         ) : null}
       </button>
       {open && hasDocs ? (
-        <div className="border-t border-border/60 px-2.5 py-2">
+        <div className="border-t border-border/60 bg-muted/20 px-3 py-2">
           <p className="mb-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
             {t("Documents")}
           </p>
@@ -804,10 +856,12 @@ function PlayerRow({
 function TeamCard({
   tournamentId,
   team,
+  schoolName,
   canManage,
 }: {
   tournamentId: string;
   team: TeamRow;
+  schoolName: string;
   canManage: boolean;
 }): React.ReactElement {
   const detail = useQuery({
@@ -827,37 +881,56 @@ function TeamCard({
       documents: [],
     }));
 
+  // The card leads with the COMPETITION (what tells a school's teams apart),
+  // not the school name it used to repeat verbatim from the panel header.
+  const segs = team.pool ? team.pool.split(/\s+[·—]\s+/) : [];
+  const sport = segs[0] || t("Uncategorized");
+  const facets = segs.slice(1);
+  const coachNames = (d?.coaches ?? []).map((c) => c.name).join(", ");
+  const coachHasDocs = (d?.coaches ?? []).some((c) => c.documents.length > 0);
+  // A distinct team name (rare — most default to the school) still shows.
+  const distinctName = team.name && team.name !== schoolName ? team.name : "";
+
   return (
     <article
       className="overflow-hidden rounded-xl border border-border bg-card"
       data-testid={`team-card-${team.id}`}
     >
-      {/* Team header. */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-border bg-accent/30 px-4 py-2.5">
+      {/* Team header — competition-led. */}
+      <div className="flex items-start gap-3 border-b border-border bg-accent/30 px-4 py-2.5">
         {d?.logo ? (
           <a href={d.logo.url} target="_blank" rel="noreferrer" className="shrink-0">
             <img
               src={d.logo.url}
               alt={t(`${team.name} logo`)}
-              className="h-10 w-10 rounded-lg border border-border object-cover"
+              className="h-9 w-9 rounded-lg border border-border object-cover"
             />
           </a>
         ) : (
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-sm font-semibold text-primary">
-            {team.name.slice(0, 1).toUpperCase()}
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-sm font-semibold text-primary">
+            {sport.slice(0, 1).toUpperCase()}
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold">{team.name}</span>
-            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[0.6875rem] font-medium capitalize text-primary">
-              {t(team.status)}
-            </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <h4 className="text-sm font-semibold">{sport}</h4>
+            {facets.map((f, i) => (
+              <span
+                key={i}
+                className="rounded bg-muted px-1.5 py-0.5 text-[0.6875rem] font-medium text-muted-foreground"
+              >
+                {f}
+              </span>
+            ))}
           </div>
-          <div className="mt-1">
-            <CompetitionLabel label={team.pool} />
-          </div>
+          <p className="mt-0.5 truncate font-tabular text-xs text-muted-foreground">
+            {distinctName ? `${distinctName} · ` : ""}
+            {players.length} {players.length === 1 ? t("player") : t("players")}
+          </p>
         </div>
+        <span className="shrink-0 rounded-full bg-primary/12 px-2 py-0.5 text-[0.6875rem] font-medium capitalize text-primary">
+          {t(team.status)}
+        </span>
         {canManage ? (
           <TeamCalendarLinkButton
             tournamentId={tournamentId}
@@ -867,31 +940,35 @@ function TeamCard({
         ) : null}
       </div>
 
-      {/* Coach strip. */}
+      {/* Coach strip — folds into one line unless a coach carries documents. */}
       {d && d.coaches.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/60 px-4 py-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-border/60 px-4 py-2 text-sm">
           <span className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
             {d.coaches.length === 1 ? t("Coach") : t("Coaches")}
           </span>
-          {d.coaches.map((c, i) => (
-            <span key={i} className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-medium">{c.name}</span>
-              <FileChips files={c.documents} />
-            </span>
-          ))}
+          {coachHasDocs ? (
+            d.coaches.map((c, i) => (
+              <span key={i} className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{c.name}</span>
+                <FileChips files={c.documents} />
+              </span>
+            ))
+          ) : (
+            <span className="font-medium">{coachNames}</span>
+          )}
         </div>
       ) : null}
 
-      {/* Squad. */}
+      {/* Squad — one divided list, not a border per player. */}
       <div className="px-4 py-3">
         <p className="mb-2 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
           {t("Squad")}{" "}
           <span className="font-tabular">({players.length})</span>
         </p>
         {players.length > 0 ? (
-          <ol className="flex flex-col gap-1">
-            {players.map((p) => (
-              <PlayerRow key={p.id} player={p} />
+          <ol className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border/60">
+            {players.map((p, i) => (
+              <PlayerRow key={p.id} player={p} index={i + 1} />
             ))}
           </ol>
         ) : (
@@ -953,39 +1030,12 @@ function SchoolDetail({
             key={tm.id}
             tournamentId={tournamentId}
             team={tm}
+            schoolName={group.name}
             canManage={canManage}
           />
         ))
       )}
     </section>
-  );
-}
-
-/** Render a competition leaf label ("Sport — Age — Gender — Format") as separate
- *  pills instead of a dashed string — the sport tinted, the rest muted (owner:
- *  no dashed strings). Empty label → "Uncategorized". */
-function CompetitionLabel({ label }: { label: string }): React.ReactElement {
-  if (!label) {
-    return (
-      <span className="text-xs text-muted-foreground">{t("Uncategorized")}</span>
-    );
-  }
-  return (
-    <span className="flex flex-wrap items-center gap-1">
-      {label.split(/\s+[\u00b7\u2014]\s+/).map((seg, i) => (
-        <span
-          key={i}
-          className={cn(
-            "rounded px-1.5 py-0.5 text-xs",
-            i === 0
-              ? "bg-primary/10 font-medium text-primary"
-              : "bg-muted text-foreground",
-          )}
-        >
-          {seg}
-        </span>
-      ))}
-    </span>
   );
 }
 
