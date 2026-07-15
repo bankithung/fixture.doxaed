@@ -705,19 +705,6 @@ export function LensConsolePage(): React.ReactElement {
 
       {tab === "cards" ? (
         <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-2 print:hidden">
-            <Button
-              onClick={() => mintM.mutate()}
-              disabled={mintM.isPending}
-              data-testid="mint-btn"
-            >
-              <QrCode aria-hidden="true" className="h-4 w-4" />
-              {t("Generate cards")}
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              {t("Creates a QR pass card for every school that does not have one yet.")}
-            </p>
-          </div>
           {cards.length > 0 ? (
             <PassPrintSheet
               cards={cards}
@@ -727,11 +714,21 @@ export function LensConsolePage(): React.ReactElement {
             />
           ) : null}
           <section className="panel print:hidden">
-            <div className="panel-header">
+            <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
               <h3 className="panel-title">{t("Pass cards")}</h3>
               <span className="font-tabular text-xs text-muted-foreground">
                 {overview.passes.length}
               </span>
+              <Button
+                size="sm"
+                className="ml-auto"
+                onClick={() => mintM.mutate()}
+                disabled={mintM.isPending}
+                data-testid="mint-btn"
+              >
+                <QrCode aria-hidden="true" className="h-4 w-4" />
+                {t("Generate cards")}
+              </Button>
             </div>
             {overview.passes.length === 0 ? (
               <p className="px-4 py-3 text-sm text-muted-foreground">
@@ -985,46 +982,44 @@ export function LensConsolePage(): React.ReactElement {
 
       {tab === "awards" ? (
         <div className="flex flex-col gap-4 print:hidden">
-          {approvedQ.isLoading ? (
-            <div className="h-40 animate-pulse rounded-xl border border-border bg-card" />
-          ) : approvedQ.isError ? (
-            <section className="panel">
-              <p
-                role="alert"
-                className="px-4 py-8 text-center text-sm text-destructive"
-              >
+          <section className="panel">
+            <div className="flex items-center gap-2 border-b border-border p-3">
+              <Award aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
+              <h3 className="panel-title">{t("Award winners")}</h3>
+              {campaign.award_categories.length > 0 ? (
+                <span className="font-tabular text-xs text-muted-foreground">
+                  {campaign.award_categories.length}
+                </span>
+              ) : null}
+            </div>
+            {approvedQ.isLoading ? (
+              <div className="p-4">
+                <div className="h-40 animate-pulse rounded-lg border border-border bg-muted" />
+              </div>
+            ) : approvedQ.isError ? (
+              <p role="alert" className="px-4 py-12 text-center text-sm text-destructive">
                 {t("The approved photos could not be loaded. Refresh to try again.")}
               </p>
-            </section>
-          ) : campaign.award_categories.length === 0 &&
-            orphanAwards.length === 0 ? (
-            <section className="panel">
-              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                {t("No award categories. Add some in Campaign settings.")}
+            ) : campaign.award_categories.length === 0 ? (
+              <p className="px-4 py-12 text-center text-sm text-muted-foreground">
+                {t("No award categories. Add some in Settings.")}
               </p>
-            </section>
-          ) : (
-            <>
-            {campaign.award_categories.length > 0 ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {campaign.award_categories.map((cat) => {
-                const winner = approvedPhotos.find(
-                  (p) => p.award_category === cat,
-                );
-                return (
-                  <section
-                    key={cat}
-                    className="panel"
-                    data-testid={`award-panel-${cat}`}
-                  >
-                    <div className="panel-header">
-                      <Award
-                        aria-hidden="true"
-                        className="h-3.5 w-3.5 text-primary"
-                      />
-                      <h3 className="panel-title">{cat}</h3>
-                    </div>
-                    <div className="flex flex-col gap-2 p-3">
+            ) : (
+              <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
+                {campaign.award_categories.map((cat) => {
+                  const winner = approvedPhotos.find(
+                    (p) => p.award_category === cat,
+                  );
+                  return (
+                    <div
+                      key={cat}
+                      data-testid={`award-panel-${cat}`}
+                      className="flex flex-col gap-2 rounded-lg border border-border/60 bg-card p-3"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <Award aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
+                        <h4 className="text-[13px] font-semibold">{cat}</h4>
+                      </div>
                       {winner ? (
                         <>
                           <img
@@ -1042,7 +1037,7 @@ export function LensConsolePage(): React.ReactElement {
                           {t("No winner yet")}
                         </p>
                       )}
-                      <div className="flex gap-2">
+                      <div className="mt-auto flex gap-2">
                         <Button
                           variant="outline"
                           size="sm"
@@ -1064,59 +1059,57 @@ export function LensConsolePage(): React.ReactElement {
                         ) : null}
                       </div>
                     </div>
-                  </section>
-                );
-              })}
-            </div>
-            ) : null}
-            {orphanAwards.length > 0 ? (
-              <section className="panel" data-testid="orphan-awards">
-                <div className="panel-header">
-                  <Award
-                    aria-hidden="true"
-                    className="h-3.5 w-3.5 text-muted-foreground"
-                  />
-                  <h3 className="panel-title">{t("Removed categories")}</h3>
-                </div>
-                <div className="flex flex-col gap-2 p-3">
-                  <p className="text-xs text-muted-foreground">
-                    {t("These photos still hold a category you removed. Clear each to take it off the album.")}
-                  </p>
-                  <ul className="flex flex-col gap-2">
-                    {orphanAwards.map((p) => (
-                      <li key={p.id} className="flex items-center gap-2">
-                        <img
-                          src={p.thumb_url}
-                          alt={p.caption || p.institution_name}
-                          loading="lazy"
-                          className="h-10 w-10 rounded object-cover"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">
-                            {p.institution_name}
-                          </p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {p.award_category}
-                          </p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          data-testid={`clear-orphan-${p.id}`}
-                          onClick={() =>
-                            awardM.mutate({ photoId: p.id, category: "" })
-                          }
-                        >
-                          {t("Clear")}
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </section>
-            ) : null}
-            </>
-          )}
+                  );
+                })}
+              </div>
+            )}
+          </section>
+          {orphanAwards.length > 0 ? (
+            <section className="panel" data-testid="orphan-awards">
+              <div className="panel-header">
+                <Award
+                  aria-hidden="true"
+                  className="h-3.5 w-3.5 text-muted-foreground"
+                />
+                <h3 className="panel-title">{t("Removed categories")}</h3>
+              </div>
+              <div className="flex flex-col gap-2 p-3">
+                <p className="text-xs text-muted-foreground">
+                  {t("These photos still hold a category you removed. Clear each to take it off the album.")}
+                </p>
+                <ul className="flex flex-col gap-2">
+                  {orphanAwards.map((p) => (
+                    <li key={p.id} className="flex items-center gap-2">
+                      <img
+                        src={p.thumb_url}
+                        alt={p.caption || p.institution_name}
+                        loading="lazy"
+                        className="h-10 w-10 rounded object-cover"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">
+                          {p.institution_name}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {p.award_category}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`clear-orphan-${p.id}`}
+                        onClick={() =>
+                          awardM.mutate({ photoId: p.id, category: "" })
+                        }
+                      >
+                        {t("Clear")}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </section>
+          ) : null}
         </div>
       ) : null}
 
