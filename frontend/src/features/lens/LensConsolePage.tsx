@@ -881,35 +881,40 @@ export function LensConsolePage(): React.ReactElement {
       ) : null}
 
       {tab === "moderate" ? (
-        <div className="flex flex-col gap-4 print:hidden">
-          <div className="flex flex-wrap items-center gap-2">
-            {(
-              [
-                { key: "pending", label: t("Pending"), n: stats.photos_pending },
-                { key: "approved", label: t("Approved"), n: stats.photos_approved },
-                { key: "hidden", label: t("Hidden"), n: stats.photos_hidden },
-              ] as const
-            ).map((chip) => (
-              <button
-                key={chip.key}
-                type="button"
-                aria-pressed={statusFilter === chip.key}
-                data-testid={`filter-${chip.key}`}
-                onClick={() => setStatusFilter(chip.key)}
-                className={cn(
-                  "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors",
-                  statusFilter === chip.key
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border bg-card text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {chip.label}
-                <span className="font-tabular">{chip.n}</span>
-              </button>
-            ))}
+        <section className="panel flex flex-col print:hidden">
+          {/* Filters + the photo grid live in ONE card (redesign 2026-07-15):
+              status segments and the category/school pickers sit on the panel
+              header, the photos fill the body. */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
+            <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5">
+              {(
+                [
+                  { key: "pending", label: t("Pending"), n: stats.photos_pending },
+                  { key: "approved", label: t("Approved"), n: stats.photos_approved },
+                  { key: "hidden", label: t("Hidden"), n: stats.photos_hidden },
+                ] as const
+              ).map((chip) => (
+                <button
+                  key={chip.key}
+                  type="button"
+                  aria-pressed={statusFilter === chip.key}
+                  data-testid={`filter-${chip.key}`}
+                  onClick={() => setStatusFilter(chip.key)}
+                  className={cn(
+                    "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    statusFilter === chip.key
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {chip.label}
+                  <span className="font-tabular">{chip.n}</span>
+                </button>
+              ))}
+            </div>
             <div className="ml-auto flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
               {campaign.award_categories.length > 0 ? (
-                <div className="w-full sm:w-56">
+                <div className="w-full sm:w-52">
                   <Select
                     size="sm"
                     aria-label={t("Filter by category")}
@@ -919,7 +924,7 @@ export function LensConsolePage(): React.ReactElement {
                   />
                 </div>
               ) : null}
-              <div className="w-full sm:w-56">
+              <div className="w-full sm:w-52">
                 <Select
                   size="sm"
                   aria-label={t("Filter by school")}
@@ -931,24 +936,19 @@ export function LensConsolePage(): React.ReactElement {
             </div>
           </div>
           {photosQ.isLoading ? (
-            <div className="h-40 animate-pulse rounded-xl border border-border bg-card" />
+            <div className="p-4">
+              <div className="h-40 animate-pulse rounded-lg border border-border bg-muted" />
+            </div>
           ) : photosQ.isError ? (
-            <section className="panel">
-              <p
-                role="alert"
-                className="px-4 py-8 text-center text-sm text-destructive"
-              >
-                {t("These photos could not be loaded. Refresh to try again.")}
-              </p>
-            </section>
+            <p role="alert" className="px-4 py-12 text-center text-sm text-destructive">
+              {t("These photos could not be loaded. Refresh to try again.")}
+            </p>
           ) : photos.length === 0 ? (
-            <section className="panel">
-              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                {t("No photos here yet.")}
-              </p>
-            </section>
+            <p className="px-4 py-12 text-center text-sm text-muted-foreground">
+              {t("No photos here yet.")}
+            </p>
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-5">
               {photos.map((p) => (
                 <button
                   key={p.id}
@@ -980,7 +980,7 @@ export function LensConsolePage(): React.ReactElement {
               ))}
             </div>
           )}
-        </div>
+        </section>
       ) : null}
 
       {tab === "awards" ? (
