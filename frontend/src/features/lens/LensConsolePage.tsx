@@ -617,9 +617,20 @@ export function LensConsolePage(): React.ReactElement {
         ) : null}
       </div>
 
-      {/* One combined section: the overview stats and the bookmark tabs share
-          a single card, and the stats stay visible on every tab (they used to
-          be a separate panel buried inside Campaign). */}
+      {/* The printable pass sheet lives OUTSIDE the print:hidden board so it
+          can actually print (it only appears right after minting). */}
+      {tab === "cards" && cards.length > 0 ? (
+        <PassPrintSheet
+          cards={cards}
+          tournamentName={tournamentQ.data?.name ?? ""}
+          tagline={campaign.tagline}
+          consentNote={campaign.consent_note}
+        />
+      ) : null}
+
+      {/* ONE board: the stats, the bookmark tabs, and the active tab's toolbar
+          + content are a single card (not a tabs panel stacked over a separate
+          content panel). */}
       <section className="panel print:hidden">
         <div className="grid grid-cols-3 divide-x divide-border border-b border-border sm:grid-cols-6">
           {statCells.map((cell) => (
@@ -634,7 +645,7 @@ export function LensConsolePage(): React.ReactElement {
         <div
           role="tablist"
           aria-label={t("Guest Lens sections")}
-          className="flex gap-0.5 overflow-x-auto px-2"
+          className="flex gap-0.5 overflow-x-auto border-b border-border px-2"
         >
           {TABS.map((tb) => (
             <button
@@ -661,12 +672,10 @@ export function LensConsolePage(): React.ReactElement {
             </button>
           ))}
         </div>
-      </section>
 
-      {tab === "campaign" ? (
-        <div className="flex flex-col gap-4 print:hidden">
-          <section className="panel">
-            <div className="panel-header justify-between">
+        {tab === "campaign" ? (
+          <>
+            <div className="flex items-center justify-between border-b border-border p-3">
               <h3 className="panel-title">{t("Settings")}</h3>
               {campaign.is_open ? (
                 <Button
@@ -699,21 +708,11 @@ export function LensConsolePage(): React.ReactElement {
                 </Button>
               </div>
             </div>
-          </section>
-        </div>
-      ) : null}
+          </>
+        ) : null}
 
-      {tab === "cards" ? (
-        <div className="flex flex-col gap-4">
-          {cards.length > 0 ? (
-            <PassPrintSheet
-              cards={cards}
-              tournamentName={tournamentQ.data?.name ?? ""}
-              tagline={campaign.tagline}
-              consentNote={campaign.consent_note}
-            />
-          ) : null}
-          <section className="panel print:hidden">
+        {tab === "cards" ? (
+          <>
             <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
               <h3 className="panel-title">{t("Pass cards")}</h3>
               <span className="font-tabular text-xs text-muted-foreground">
@@ -873,15 +872,11 @@ export function LensConsolePage(): React.ReactElement {
                 </table>
               </div>
             )}
-          </section>
-        </div>
-      ) : null}
+          </>
+        ) : null}
 
-      {tab === "moderate" ? (
-        <section className="panel flex flex-col print:hidden">
-          {/* Filters + the photo grid live in ONE card (redesign 2026-07-15):
-              status segments and the category/school pickers sit on the panel
-              header, the photos fill the body. */}
+        {tab === "moderate" ? (
+          <>
           <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
             <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5">
               {(
@@ -977,12 +972,11 @@ export function LensConsolePage(): React.ReactElement {
               ))}
             </div>
           )}
-        </section>
-      ) : null}
+          </>
+        ) : null}
 
-      {tab === "awards" ? (
-        <div className="flex flex-col gap-4 print:hidden">
-          <section className="panel">
+        {tab === "awards" ? (
+          <>
             <div className="flex items-center gap-2 border-b border-border p-3">
               <Award aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
               <h3 className="panel-title">{t("Award winners")}</h3>
@@ -1063,10 +1057,13 @@ export function LensConsolePage(): React.ReactElement {
                 })}
               </div>
             )}
-          </section>
-          {orphanAwards.length > 0 ? (
-            <section className="panel" data-testid="orphan-awards">
-              <div className="panel-header">
+          </>
+        ) : null}
+      </section>
+
+      {tab === "awards" && orphanAwards.length > 0 ? (
+        <section className="panel print:hidden" data-testid="orphan-awards">
+          <div className="panel-header">
                 <Award
                   aria-hidden="true"
                   className="h-3.5 w-3.5 text-muted-foreground"
@@ -1110,8 +1107,6 @@ export function LensConsolePage(): React.ReactElement {
               </div>
             </section>
           ) : null}
-        </div>
-      ) : null}
 
       {/* Close / reopen / rotate / revoke confirmations. */}
       <Dialog
