@@ -1006,6 +1006,49 @@ function TeamCard({
 /** The selected school's detail panel (owner 2026-07-05 redesign): a header
  * card with the school's totals + submission state, then one rich card per
  * team — no table chrome, everything open. */
+/** A bookmark tab for one of a school's teams: the sport as the label with the
+ * category beneath, so boys/girls/age variants of the same sport stay distinct. */
+function TeamTab({
+  team,
+  active,
+  onClick,
+}: {
+  team: TeamRow;
+  active: boolean;
+  onClick: () => void;
+}): React.ReactElement {
+  const segs = team.pool ? team.pool.split(/\s+[·—]\s+/) : [];
+  const sport = segs[0] || t("Uncategorized");
+  const rest = segs.slice(1).join(" · ");
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      data-testid={`team-tab-${team.id}`}
+      onClick={onClick}
+      className={cn(
+        "shrink-0 rounded-md px-3 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        active ? "bg-primary/10" : "hover:bg-accent",
+      )}
+    >
+      <span
+        className={cn(
+          "block whitespace-nowrap text-xs font-semibold",
+          active ? "text-primary" : "text-foreground",
+        )}
+      >
+        {sport}
+      </span>
+      {rest ? (
+        <span className="block whitespace-nowrap text-[0.625rem] text-muted-foreground">
+          {rest}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 function SchoolDetail({
   group,
   tournamentId,
@@ -1019,6 +1062,11 @@ function SchoolDetail({
     (n, tm) => n + (tm.player_count ?? 0),
     0,
   );
+  // Which team is showing. Reset is free — the parent keys this by school, so a
+  // school switch remounts and drops back to the first team.
+  const [active, setActive] = useState(0);
+  const activeIdx = active < group.teams.length ? active : 0;
+
   return (
     <section
       className="flex flex-col gap-3"
@@ -1039,20 +1087,44 @@ function SchoolDetail({
         </div>
         <SubmissionBadge submitted={group.submitted} />
       </div>
+
       {group.teams.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-card py-10 text-center text-sm text-muted-foreground">
           {t("No teams registered yet.")}
         </p>
+      ) : group.teams.length === 1 ? (
+        <TeamCard
+          tournamentId={tournamentId}
+          team={group.teams[0]!}
+          schoolName={group.name}
+          canManage={canManage}
+        />
       ) : (
-        group.teams.map((tm) => (
+        <>
+          {/* Team bookmark tabs — switch between a school's teams instead of
+              scrolling a long stack. */}
+          <div
+            role="tablist"
+            aria-label={t("Teams")}
+            className="flex gap-1 overflow-x-auto rounded-lg border border-border bg-card p-1"
+          >
+            {group.teams.map((tm, i) => (
+              <TeamTab
+                key={tm.id}
+                team={tm}
+                active={i === activeIdx}
+                onClick={() => setActive(i)}
+              />
+            ))}
+          </div>
           <TeamCard
-            key={tm.id}
+            key={group.teams[activeIdx]!.id}
             tournamentId={tournamentId}
-            team={tm}
+            team={group.teams[activeIdx]!}
             schoolName={group.name}
             canManage={canManage}
           />
-        ))
+        </>
       )}
     </section>
   );
