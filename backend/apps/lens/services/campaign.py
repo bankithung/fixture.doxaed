@@ -107,18 +107,12 @@ def _snapshot(campaign: LensCampaign) -> dict:
     }
 
 
-def open_campaign(*, tournament, by, settings=None, event_id=None, request=None):
-    """Open (create) the tournament's Guest Lens campaign.
-
-    Gate: fixtures must exist (spec D4 — the canonical non-deleted Match
-    signal). Idempotent both on event_id and on an existing campaign: either
-    returns ``(existing, False)``. Otherwise ``(campaign, True)``.
-    """
+def create_campaign(*, tournament, by, settings=None, event_id=None, request=None):
+    """Create a NEW Guest Lens campaign (multi-campaign — a tournament may run
+    several). Gate: fixtures must exist (spec D4). Idempotent on event_id
+    (returns ``(prior, False)``); otherwise ``(campaign, True)``."""
     from apps.fixtures.services.draw_config import leaf_has_matches
 
-    existing = LensCampaign.objects.filter(tournament=tournament).first()
-    if existing is not None:
-        return existing, False
     if event_id:
         # Scope the replay lookup to THIS tournament (invariant 2): event_id is
         # globally unique, so an unscoped match could return another tenant's
@@ -157,6 +151,23 @@ def open_campaign(*, tournament, by, settings=None, event_id=None, request=None)
             request=request,
         )
     return campaign, True
+
+
+def open_campaign(*, tournament, by, settings=None, event_id=None, request=None):
+    """Legacy single-campaign entry point: return the tournament's existing
+    campaign, or create its first one. Multi-campaign callers use
+    :func:`create_campaign`, which always creates."""
+    existing = (
+        LensCampaign.objects.filter(tournament=tournament)
+        .order_by("created_at")
+        .first()
+    )
+    if existing is not None:
+        return existing, False
+    return create_campaign(
+        tournament=tournament, by=by, settings=settings,
+        event_id=event_id, request=request,
+    )
 
 
 def update_settings(*, campaign, by, changes, event_id=None, request=None):

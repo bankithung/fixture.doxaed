@@ -108,14 +108,18 @@ export const routes = {
   /** Public group standings, every competition's tables (no login). */
   publicStandings: (slug: string, id: string) =>
     `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/standings`,
-  /** Guest Lens campaign console (manager: cards, moderation, awards). */
+  /** Guest Lens campaign list (manager landing: all photo campaigns). */
   tournamentLens: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/lens`,
+  /** One Guest Lens campaign's console (cards, moderation, awards). */
+  tournamentLensCampaign: (id: string, campaignId: string) =>
+    `/tournaments/${encodeURIComponent(id)}/lens/${encodeURIComponent(campaignId)}`,
   /** Public no-login photo upload page a Guest Lens QR card opens. */
   lensUpload: (token: string) => `/lens/${encodeURIComponent(token)}`,
-  /** Public shared event album (approved Guest Lens photos, no login). */
-  publicAlbum: (slug: string, id: string) =>
-    `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/album`,
+  /** Public shared event album (approved Guest Lens photos, no login). One
+   * album per campaign; omit campaignId for the tournament's first. */
+  publicAlbum: (slug: string, id: string, campaignId?: string) =>
+    `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/album${campaignId ? `/${encodeURIComponent(campaignId)}` : ""}`,
   /** Legacy live-scores URL; redirects to the Matches tab (live band). */
   publicLive: (slug: string, id: string) =>
     `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/live`,

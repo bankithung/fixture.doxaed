@@ -23,6 +23,7 @@ from apps.fixtures.views import (
     TournamentVenuesView,
 )
 from apps.lens.views import (
+    LensCampaignsView,
     LensCloseView,
     LensMintPassesView,
     LensOpenView,
@@ -341,6 +342,11 @@ urlpatterns = [
         "<uuid:tournament_id>/lens/",
         LensOverviewView.as_view(),
         name="tournament-lens",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/campaigns/",
+        LensCampaignsView.as_view(),
+        name="tournament-lens-campaigns",
     ),
     path(
         "<uuid:tournament_id>/lens/open/",

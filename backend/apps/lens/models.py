@@ -77,11 +77,10 @@ class LensCampaign(models.Model):
 
     class Meta:
         db_table = "lens_campaign"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["tournament"], name="uniq_lens_campaign_per_tournament"
-            )
-        ]
+        # A tournament may run several Guest Lens campaigns (e.g. one photo
+        # challenge per day / theme). Passes + photos already FK the campaign,
+        # so multi-campaign needed only dropping the old one-per-tournament
+        # unique constraint (migration 0003).
 
     def __str__(self) -> str:  # pragma: no cover - repr aid
         return f"LensCampaign({self.tournament_id})"

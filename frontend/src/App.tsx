@@ -90,6 +90,7 @@ const OrgAuditLogPage = lazy(() => import("@/features/orgs/OrgAuditLogPage").the
 const ModuleMatrixPage = lazy(() => import("@/features/permissions/ModuleMatrixPage").then((m) => ({ default: m.ModuleMatrixPage })));
 // Guest Lens (36 Shots Challenge): manager console + the no-login pass
 // upload page + the public shared album (spec 2026-07-10).
+const LensCampaignListPage = lazy(() => import("@/features/lens/LensCampaignListPage").then((m) => ({ default: m.LensCampaignListPage })));
 const LensConsolePage = lazy(() => import("@/features/lens/LensConsolePage").then((m) => ({ default: m.LensConsolePage })));
 const LensUploadPage = lazy(() => import("@/features/lens/LensUploadPage").then((m) => ({ default: m.LensUploadPage })));
 const PublicAlbumPage = lazy(() => import("@/features/lens/PublicAlbumPage").then((m) => ({ default: m.PublicAlbumPage })));
@@ -198,6 +199,7 @@ export default function App(): React.ReactElement {
               {/* Guest Lens: QR-card upload page + the public shared album. */}
               <Route path="/lens/:token" element={<LensUploadPage />} />
               <Route path="/t/:slug/:id/album" element={<PublicAlbumPage />} />
+              <Route path="/t/:slug/:id/album/:campaignId" element={<PublicAlbumPage />} />
               <Route path="/explore" element={<ExplorePage />} />
               <Route path="/cert/:awardId" element={<CertificatePage />} />
               <Route path="/t/:slug/:id/display" element={<VenueDisplayPage />} />
@@ -234,7 +236,8 @@ export default function App(): React.ReactElement {
                   <Route path="crew" element={<CrewPage />} />
                   <Route path="leaders" element={<LeadersPage />} />
                   <Route path="changes" element={<ChangeHistoryPage />} />
-                  <Route path="lens" element={<LensConsolePage />} />
+                  <Route path="lens" element={<LensCampaignListPage />} />
+                  <Route path="lens/:campaignId" element={<LensConsolePage />} />
                   <Route path="settings" element={<SettingsRoute />} />
                 </Route>
                 <Route

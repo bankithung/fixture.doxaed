@@ -13,7 +13,7 @@ photos only, same status gating as the public badges gallery).
 from __future__ import annotations
 
 from django.conf import settings as django_settings
-from django.db.models import Count
+from django.db.models import Count, Q
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.generics import GenericAPIView
@@ -110,8 +110,24 @@ def _get_managed_tournament(request, tournament_id) -> Tournament:
     return tournament
 
 
-def _get_campaign(tournament) -> LensCampaign:
-    c = LensCampaign.objects.filter(tournament=tournament).first()
+def _campaign_qs(tournament):
+    return LensCampaign.objects.filter(tournament=tournament).order_by("created_at")
+
+
+def _resolve_campaign_or_none(request, tournament) -> LensCampaign | None:
+    """The campaign a request targets: ``?campaign=`` (GET) or ``campaign_id``
+    (body), else the tournament's first campaign (legacy single-campaign
+    callers). None when the tournament has no campaigns."""
+    raw = request.query_params.get("campaign") or request.data.get("campaign_id")
+    cid = photo_service.as_uuid(raw)
+    qs = _campaign_qs(tournament)
+    return qs.filter(id=cid).first() if cid else qs.first()
+
+
+def _resolve_campaign(request, tournament) -> LensCampaign:
+    """Like :func:`_resolve_campaign_or_none` but 404s when none match — for
+    mutations that must target a real campaign."""
+    c = _resolve_campaign_or_none(request, tournament)
     if c is None:
         raise NotFound("campaign_not_found")
     return c
@@ -123,6 +139,64 @@ def _event_id(request):
 
 # --- manager: campaign --------------------------------------------------------
 
+class LensCampaignsView(GenericAPIView):
+    """`GET /api/tournaments/{id}/lens/campaigns/` — list every Guest Lens
+    campaign for the tournament (with light stats for the picker cards).
+    `POST` — create a NEW campaign (title/settings in the body). Both are
+    manager-gated; POST is idempotent on `event_id` and gated on fixtures."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _summary(self, c: LensCampaign, stats: dict) -> dict:
+        s = stats.get(c.id, {})
+        return {
+            **_campaign_payload(c),
+            "photos_total": s.get("total", 0),
+            "photos_pending": s.get("pending", 0),
+            "passes_active": s.get("passes", 0),
+        }
+
+    def get(self, request, tournament_id):
+        t = _get_managed_tournament(request, tournament_id)
+        campaigns = list(_campaign_qs(t))
+        ids = [c.id for c in campaigns]
+        stats: dict = {cid: {"total": 0, "pending": 0, "passes": 0} for cid in ids}
+        if ids:
+            for row in (
+                LensPhoto.objects.filter(campaign_id__in=ids)
+                .values("campaign_id")
+                .annotate(
+                    total=Count("id"),
+                    pending=Count(
+                        "id",
+                        filter=Q(hidden_at__isnull=True, approved_at__isnull=True),
+                    ),
+                )
+            ):
+                stats[row["campaign_id"]].update(
+                    total=row["total"], pending=row["pending"]
+                )
+            for row in (
+                LensPass.objects.filter(campaign_id__in=ids, is_active=True)
+                .values("campaign_id")
+                .annotate(n=Count("id"))
+            ):
+                stats[row["campaign_id"]]["passes"] = row["n"]
+        return Response(
+            {"campaigns": [self._summary(c, stats) for c in campaigns]}
+        )
+
+    def post(self, request, tournament_id):
+        t = _get_managed_tournament(request, tournament_id)
+        c, created = campaign_service.create_campaign(
+            tournament=t, by=request.user, settings=request.data,
+            event_id=_event_id(request), request=request,
+        )
+        return Response(
+            {"campaign": _campaign_payload(c)}, status=201 if created else 200
+        )
+
+
 class LensOverviewView(GenericAPIView):
     """`GET /api/tournaments/{id}/lens/` overview; `PATCH` settings update."""
 
@@ -133,7 +207,7 @@ class LensOverviewView(GenericAPIView):
         from apps.teams.models import Institution
 
         t = _get_managed_tournament(request, tournament_id)
-        c = LensCampaign.objects.filter(tournament=t).first()
+        c = _resolve_campaign_or_none(request, t)
 
         institutions_total = (
             Institution.objects.filter(tournament=t, deleted_at__isnull=True)
@@ -182,7 +256,7 @@ class LensOverviewView(GenericAPIView):
 
     def patch(self, request, tournament_id):
         t = _get_managed_tournament(request, tournament_id)
-        c = _get_campaign(t)
+        c = _resolve_campaign(request, t)
         c = campaign_service.update_settings(
             campaign=c, by=request.user, changes=request.data,
             event_id=_event_id(request), request=request,
@@ -213,7 +287,7 @@ class LensCloseView(GenericAPIView):
     def post(self, request, tournament_id):
         t = _get_managed_tournament(request, tournament_id)
         c = campaign_service.close_campaign(
-            campaign=_get_campaign(t), by=request.user,
+            campaign=_resolve_campaign(request, t), by=request.user,
             event_id=_event_id(request), request=request,
         )
         return Response({"campaign": _campaign_payload(c)})
@@ -225,7 +299,7 @@ class LensReopenView(GenericAPIView):
     def post(self, request, tournament_id):
         t = _get_managed_tournament(request, tournament_id)
         c = campaign_service.reopen_campaign(
-            campaign=_get_campaign(t), by=request.user,
+            campaign=_resolve_campaign(request, t), by=request.user,
             event_id=_event_id(request), request=request,
         )
         return Response({"campaign": _campaign_payload(c)})
@@ -242,7 +316,7 @@ class LensMintPassesView(GenericAPIView):
     def post(self, request, tournament_id):
         t = _get_managed_tournament(request, tournament_id)
         cards, skipped = pass_service.mint_passes(
-            campaign=_get_campaign(t), by=request.user,
+            campaign=_resolve_campaign(request, t), by=request.user,
             event_id=_event_id(request), request=request,
         )
         return Response({"cards": cards, "skipped": skipped})
@@ -295,7 +369,7 @@ class LensPhotoListView(GenericAPIView):
 
     def get(self, request, tournament_id):
         t = _get_managed_tournament(request, tournament_id)
-        c = LensCampaign.objects.filter(tournament=t).first()
+        c = _resolve_campaign_or_none(request, t)
         if c is None:
             return Response({"photos": []})
         qs = (
@@ -475,14 +549,17 @@ class PublicTournamentAlbumView(GenericAPIView):
 
     permission_classes = [AllowAny]
 
-    def get(self, request, slug, tournament_id):
+    def get(self, request, slug, tournament_id, campaign_id=None):
         t = Tournament.objects.filter(
             id=tournament_id, slug=slug, deleted_at__isnull=True,
             status__in=_PUBLIC_STATUSES,
         ).first()
         if t is None:
             raise NotFound("tournament_not_found")
-        c = LensCampaign.objects.filter(tournament=t).first()
+        # One album per campaign: a campaign_id in the URL targets that album;
+        # the legacy no-campaign URL falls back to the tournament's first.
+        qs = LensCampaign.objects.filter(tournament=t).order_by("created_at")
+        c = qs.filter(id=campaign_id).first() if campaign_id else qs.first()
         if c is None:
             return Response({
                 "campaign": None,

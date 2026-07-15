@@ -48,6 +48,14 @@ export interface LensOverview {
   passes: LensPassRow[];
 }
 
+/** A campaign as it appears in the tournament's campaign list (picker cards):
+ * the full campaign plus light per-campaign counts. */
+export interface LensCampaignSummary extends LensCampaign {
+  photos_total: number;
+  photos_pending: number;
+  passes_active: number;
+}
+
 /** Campaign settings a manager can set at open time or PATCH later. */
 export interface LensSettingsBody {
   title?: string;
@@ -144,19 +152,42 @@ const base = (tid: string): string =>
   `/api/tournaments/${encodeURIComponent(tid)}/lens`;
 
 export const lensApi = {
-  overview: (tid: string) => api.get<LensOverview>(`${base(tid)}/`),
+  /** All Guest Lens campaigns for a tournament (the picker landing). */
+  campaigns: (tid: string) =>
+    api.get<{ campaigns: LensCampaignSummary[] }>(`${base(tid)}/campaigns/`),
+  /** Create a NEW campaign (title/settings in the body). */
+  create: (tid: string, body: LensSettingsBody & { event_id: string }) =>
+    api.post<{ campaign: LensCampaign }>(`${base(tid)}/campaigns/`, body),
+  /** Overview for ONE campaign (omit campaignId for the legacy first-campaign). */
+  overview: (tid: string, campaignId?: string) =>
+    api.get<LensOverview>(
+      `${base(tid)}/${campaignId ? `?campaign=${encodeURIComponent(campaignId)}` : ""}`,
+    ),
   open: (tid: string, body: LensSettingsBody & { event_id: string }) =>
     api.post<{ campaign: LensCampaign }>(`${base(tid)}/open/`, body),
-  update: (tid: string, body: LensSettingsBody & { event_id: string }) =>
-    api.patch<{ campaign: LensCampaign }>(`${base(tid)}/`, body),
-  close: (tid: string, body: { event_id: string }) =>
-    api.post<{ campaign: LensCampaign }>(`${base(tid)}/close/`, body),
-  reopen: (tid: string, body: { event_id: string }) =>
-    api.post<{ campaign: LensCampaign }>(`${base(tid)}/reopen/`, body),
-  mint: (tid: string, body: { event_id: string }) =>
+  update: (
+    tid: string,
+    campaignId: string,
+    body: LensSettingsBody & { event_id: string },
+  ) =>
+    api.patch<{ campaign: LensCampaign }>(`${base(tid)}/`, {
+      ...body,
+      campaign_id: campaignId,
+    }),
+  close: (tid: string, campaignId: string, body: { event_id: string }) =>
+    api.post<{ campaign: LensCampaign }>(`${base(tid)}/close/`, {
+      ...body,
+      campaign_id: campaignId,
+    }),
+  reopen: (tid: string, campaignId: string, body: { event_id: string }) =>
+    api.post<{ campaign: LensCampaign }>(`${base(tid)}/reopen/`, {
+      ...body,
+      campaign_id: campaignId,
+    }),
+  mint: (tid: string, campaignId: string, body: { event_id: string }) =>
     api.post<{ cards: LensCard[]; skipped: number }>(
       `${base(tid)}/passes/mint/`,
-      body,
+      { ...body, campaign_id: campaignId },
     ),
   rotate: (tid: string, passId: string, body: { event_id: string }) =>
     api.post<{ card: LensCard }>(
@@ -170,9 +201,11 @@ export const lensApi = {
     ),
   photos: (
     tid: string,
+    campaignId: string,
     params: { status?: string; institution_id?: string; category?: string } = {},
   ) => {
     const qs = new URLSearchParams();
+    if (campaignId) qs.set("campaign", campaignId);
     if (params.status) qs.set("status", params.status);
     if (params.institution_id) qs.set("institution_id", params.institution_id);
     if (params.category) qs.set("category", params.category);
@@ -219,9 +252,10 @@ export const lensApi = {
       `/api/lens/p/${encodeURIComponent(token)}/photos/${encodeURIComponent(uploadRef)}/`,
     ),
 
-  /** Public shared album (approved photos only; slug+UUID pair). */
-  publicAlbum: (slug: string, tid: string) =>
+  /** Public shared album (approved photos only; slug+UUID pair). One album per
+   * campaign — pass the campaignId; omit it for the legacy first-campaign. */
+  publicAlbum: (slug: string, tid: string, campaignId?: string) =>
     api.get<PublicAlbum>(
-      `/api/public/tournaments/${encodeURIComponent(slug)}/${encodeURIComponent(tid)}/album/`,
+      `/api/public/tournaments/${encodeURIComponent(slug)}/${encodeURIComponent(tid)}/album/${campaignId ? `${encodeURIComponent(campaignId)}/` : ""}`,
     ),
 };

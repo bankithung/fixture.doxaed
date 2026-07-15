@@ -92,7 +92,7 @@ describe("PublicAlbumPage", () => {
     expect(screen.getByTestId("album-photo-r1")).toBeInTheDocument();
     expect(
       vi.mocked(lensApi.publicAlbum),
-    ).toHaveBeenCalledWith("nagaland-cup", "t1");
+    ).toHaveBeenCalledWith("nagaland-cup", "t1", undefined);
   });
 
   it("filters the grid by award category", async () => {

@@ -137,6 +137,11 @@ api_v1 = [
         PublicTournamentAlbumView.as_view(),
         name="public-tournament-album",
     ),
+    path(
+        "public/tournaments/<slug:slug>/<uuid:tournament_id>/album/<uuid:campaign_id>/",
+        PublicTournamentAlbumView.as_view(),
+        name="public-tournament-album-campaign",
+    ),
     path("lens/", include("apps.lens.urls")),
     path(
         "public/tournaments/",

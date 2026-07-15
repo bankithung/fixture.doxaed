@@ -20,14 +20,14 @@ import { t } from "@/lib/t";
  * with an accessible lightbox.
  */
 export function PublicAlbumPage(): React.ReactElement {
-  const { slug = "", id = "" } = useParams();
+  const { slug = "", id = "", campaignId = "" } = useParams();
   const [category, setCategory] = useState<string>("");
   const [school, setSchool] = useState<string>("");
   const [openRef, setOpenRef] = useState<string | null>(null);
 
   const q = useQuery({
-    queryKey: qk.publicAlbum(slug, id),
-    queryFn: () => lensApi.publicAlbum(slug, id),
+    queryKey: [...qk.publicAlbum(slug, id), campaignId],
+    queryFn: () => lensApi.publicAlbum(slug, id, campaignId || undefined),
     enabled: Boolean(slug && id),
     retry: false,
   });

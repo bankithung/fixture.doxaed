@@ -33,6 +33,8 @@ export const qk = {
   controlRoom: (id: string) => ["t-control-room", id] as const,
   /** Guest Lens campaign overview (campaign + stats + passes). */
   lens: (id: string) => ["t-lens", id] as const,
+  /** Guest Lens campaign list for a tournament (the picker landing). */
+  lensCampaigns: (id: string) => ["t-lens-campaigns", id] as const,
   /** Guest Lens photo moderation list — extend with filter params. */
   lensPhotos: (id: string) => ["t-lens-photos", id] as const,
   /** Public pass context for the no-login upload page (keyed on the token). */

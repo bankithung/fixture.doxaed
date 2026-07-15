@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowLeft,
   Award,
-  Camera,
   Check,
   EyeOff,
   Link2,
@@ -278,7 +278,7 @@ function statusChip(photo: LensPhoto): React.ReactElement {
  * route under /tournaments/:id/lens.
  */
 export function LensConsolePage(): React.ReactElement {
-  const { id = "" } = useParams();
+  const { id = "", campaignId = "" } = useParams();
   const qc = useQueryClient();
   const { push } = useToast();
   const { isMobile } = useBreakpoint();
@@ -301,9 +301,9 @@ export function LensConsolePage(): React.ReactElement {
   const [pickCategory, setPickCategory] = useState<string | null>(null);
 
   const overviewQ = useQuery({
-    queryKey: qk.lens(id),
-    queryFn: () => lensApi.overview(id),
-    enabled: Boolean(id),
+    queryKey: [...qk.lens(id), campaignId],
+    queryFn: () => lensApi.overview(id, campaignId),
+    enabled: Boolean(id && campaignId),
   });
   const tournamentQ = useQuery({
     queryKey: qk.tournament(id),
@@ -313,19 +313,19 @@ export function LensConsolePage(): React.ReactElement {
   const campaign = overviewQ.data?.campaign ?? null;
 
   const photosQ = useQuery({
-    queryKey: [...qk.lensPhotos(id), statusFilter, instFilter, catFilter],
+    queryKey: [...qk.lensPhotos(id), campaignId, statusFilter, instFilter, catFilter],
     queryFn: () =>
-      lensApi.photos(id, {
+      lensApi.photos(id, campaignId, {
         status: statusFilter || undefined,
         institution_id: instFilter || undefined,
         category: catFilter || undefined,
       }),
-    enabled: Boolean(id) && campaign !== null,
+    enabled: Boolean(id && campaignId) && campaign !== null,
   });
   const approvedQ = useQuery({
-    queryKey: [...qk.lensPhotos(id), "approved", ""],
-    queryFn: () => lensApi.photos(id, { status: "approved" }),
-    enabled: Boolean(id) && campaign !== null && tab === "awards",
+    queryKey: [...qk.lensPhotos(id), campaignId, "approved", ""],
+    queryFn: () => lensApi.photos(id, campaignId, { status: "approved" }),
+    enabled: Boolean(id && campaignId) && campaign !== null && tab === "awards",
   });
   const photos = useMemo(() => photosQ.data?.photos ?? [], [photosQ.data]);
   const approvedPhotos = approvedQ.data?.photos ?? [];
@@ -352,18 +352,9 @@ export function LensConsolePage(): React.ReactElement {
     push({ kind: "error", title: errMsg(e) });
   };
 
-  const openM = useMutation({
-    mutationFn: (body: LensSettingsBody) =>
-      lensApi.open(id, { ...body, event_id: newEventId() }),
-    onSuccess: () => {
-      invalidate();
-      push({ kind: "success", title: t("Campaign opened") });
-    },
-    onError: fail,
-  });
   const updateM = useMutation({
     mutationFn: (body: LensSettingsBody) =>
-      lensApi.update(id, { ...body, event_id: newEventId() }),
+      lensApi.update(id, campaignId, { ...body, event_id: newEventId() }),
     onSuccess: () => {
       invalidate();
       push({ kind: "success", title: t("Settings saved") });
@@ -371,7 +362,7 @@ export function LensConsolePage(): React.ReactElement {
     onError: fail,
   });
   const closeM = useMutation({
-    mutationFn: () => lensApi.close(id, { event_id: newEventId() }),
+    mutationFn: () => lensApi.close(id, campaignId, { event_id: newEventId() }),
     onSuccess: () => {
       invalidate();
       push({ kind: "success", title: t("Campaign closed") });
@@ -379,7 +370,7 @@ export function LensConsolePage(): React.ReactElement {
     onError: fail,
   });
   const reopenM = useMutation({
-    mutationFn: () => lensApi.reopen(id, { event_id: newEventId() }),
+    mutationFn: () => lensApi.reopen(id, campaignId, { event_id: newEventId() }),
     onSuccess: () => {
       invalidate();
       push({ kind: "success", title: t("Campaign reopened") });
@@ -387,7 +378,7 @@ export function LensConsolePage(): React.ReactElement {
     onError: fail,
   });
   const mintM = useMutation({
-    mutationFn: () => lensApi.mint(id, { event_id: newEventId() }),
+    mutationFn: () => lensApi.mint(id, campaignId, { event_id: newEventId() }),
     onSuccess: (res) => {
       invalidate();
       setCards(res.cards);
@@ -505,7 +496,7 @@ export function LensConsolePage(): React.ReactElement {
     if (!slug) return;
     try {
       await navigator.clipboard.writeText(
-        `${window.location.origin}${routes.publicAlbum(slug, id)}`,
+        `${window.location.origin}${routes.publicAlbum(slug, id, campaignId)}`,
       );
       push({ kind: "success", title: t("Album link copied") });
     } catch {
@@ -532,50 +523,19 @@ export function LensConsolePage(): React.ReactElement {
   const overview = overviewQ.data;
   const stats = overview.stats;
 
-  // ---- Pre-open state: the feature pitch + settings + the gated CTA. ----
+  // ---- The campaign in the URL no longer exists (deleted / bad link). ----
   if (!campaign) {
     return (
       <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <h1 className="page-title">{t("Guest Lens")}</h1>
-        <section className="panel">
-          <div className="flex flex-col gap-3 p-4 sm:p-6">
-            <div className="flex items-center gap-2">
-              <Camera aria-hidden="true" className="h-5 w-5 text-primary" />
-              <h2 className="text-base font-semibold tracking-tight">
-                {t("One shared album, captured by your visiting schools")}
-              </h2>
-            </div>
-            <p className="max-w-2xl text-sm text-muted-foreground">
-              {t(
-                "Every participating school gets a printed QR pass card. Scanning it opens a no-login upload page where the teacher in charge adds their best photos of the event. You approve the keepers, pick award winners, and the result is one public album for everyone.",
-              )}
-            </p>
-            {!overview.fixtures_ready ? (
-              <p
-                className="text-xs text-muted-foreground"
-                data-testid="fixtures-hint"
-              >
-                {t("Generate the fixtures first. The campaign opens once the schedule exists.")}
-              </p>
-            ) : null}
-          </div>
-        </section>
-        <section className="panel">
-          <div className="panel-header">
-            <h3 className="panel-title">{t("Campaign settings")}</h3>
-          </div>
-          <div className="p-4">
-            <SettingsFields draft={draft} onChange={setDraft} />
-            <div className="mt-4">
-              <Button
-                data-testid="open-campaign-btn"
-                disabled={!overview.fixtures_ready || openM.isPending}
-                onClick={() => openM.mutate(draft)}
-              >
-                {t("Open campaign")}
-              </Button>
-            </div>
-          </div>
+        <section className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center">
+          <p className="text-sm font-medium">{t("This campaign was not found.")}</p>
+          <Link
+            to={routes.tournamentLens(id)}
+            className="text-sm font-medium text-primary hover:underline"
+          >
+            {t("Back to campaigns")}
+          </Link>
         </section>
       </div>
     );
@@ -611,6 +571,14 @@ export function LensConsolePage(): React.ReactElement {
   return (
     <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-center gap-3 print:hidden">
+        <Link
+          to={routes.tournamentLens(id)}
+          data-testid="lens-back"
+          aria-label={t("Back to campaigns")}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+        </Link>
         <div className="min-w-0">
           <h1 className="page-title">{campaign.title}</h1>
           <p className="text-xs text-muted-foreground">{campaign.tagline}</p>

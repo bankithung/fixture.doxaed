@@ -119,9 +119,12 @@ function mount() {
   return render(
     <QueryClientProvider client={client}>
       <ToastProvider>
-        <MemoryRouter initialEntries={["/tournaments/t1/lens"]}>
+        <MemoryRouter initialEntries={["/tournaments/t1/lens/c1"]}>
           <Routes>
-            <Route path="/tournaments/:id/lens" element={<LensConsolePage />} />
+            <Route
+              path="/tournaments/:id/lens/:campaignId"
+              element={<LensConsolePage />}
+            />
           </Routes>
         </MemoryRouter>
       </ToastProvider>
@@ -153,40 +156,6 @@ beforeEach(() => {
 });
 
 describe("LensConsolePage", () => {
-  it("renders the pre-open pitch with a disabled CTA until fixtures exist", async () => {
-    vi.mocked(lensApi.overview).mockResolvedValue({
-      ...OVERVIEW,
-      campaign: null,
-      fixtures_ready: false,
-    });
-    mount();
-
-    const cta = await screen.findByTestId("open-campaign-btn");
-    expect(cta).toBeDisabled();
-    expect(screen.getByTestId("fixtures-hint")).toBeInTheDocument();
-  });
-
-  it("opens the campaign with the drafted settings and toasts", async () => {
-    vi.mocked(lensApi.overview).mockResolvedValue({
-      ...OVERVIEW,
-      campaign: null,
-      fixtures_ready: true,
-    });
-    mount();
-
-    const cta = await screen.findByTestId("open-campaign-btn");
-    expect(cta).toBeEnabled();
-    await userEvent.click(cta);
-
-    await waitFor(() => expect(lensApi.open).toHaveBeenCalledTimes(1));
-    const [tid, body] = vi.mocked(lensApi.open).mock.calls[0];
-    expect(tid).toBe("t1");
-    expect(body.title).toBe("Guest Lens");
-    expect(body.max_photos_per_institution).toBe(36);
-    expect(body.event_id).toBeTruthy();
-    expect(await screen.findByText("Campaign opened")).toBeInTheDocument();
-  });
-
   it("saves a per-school category limit from the settings form", async () => {
     mount();
 
@@ -195,8 +164,10 @@ describe("LensConsolePage", () => {
     await userEvent.click(screen.getByTestId("save-settings-btn"));
 
     await waitFor(() => expect(lensApi.update).toHaveBeenCalledTimes(1));
-    const [tid, body] = vi.mocked(lensApi.update).mock.calls[0];
+    // Now (tid, campaignId, body) — the console is scoped to a campaign id.
+    const [tid, campaignId, body] = vi.mocked(lensApi.update).mock.calls[0];
     expect(tid).toBe("t1");
+    expect(campaignId).toBe("c1");
     expect(body.category_limits).toEqual({ "Best Action Shot": 10 });
     expect(await screen.findByText("Settings saved")).toBeInTheDocument();
   });
@@ -214,7 +185,7 @@ describe("LensConsolePage", () => {
     await userEvent.click(screen.getByTestId("save-settings-btn"));
 
     await waitFor(() => expect(lensApi.update).toHaveBeenCalledTimes(1));
-    const [, body] = vi.mocked(lensApi.update).mock.calls[0];
+    const [, , body] = vi.mocked(lensApi.update).mock.calls[0];
     expect(body.award_categories).toEqual(["Best Team Spirit"]);
     expect(body.category_limits).toEqual({});
   });
