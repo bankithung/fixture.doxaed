@@ -763,9 +763,8 @@ function ageFrom(iso: string): number | null {
   }
 }
 
-/** One row per player (jersey/number · name · captain · DOB + age); expands to
- * documents when there are any (owner 2026-06-17: "one line per player, details
- * inline"). Rows live inside a single divided list — no border-per-player. */
+/** One roster table row per player (# · name · born · age); the docs toggle
+ * expands a full-width row beneath (owner 2026-06-17: "details inline"). */
 function PlayerRow({
   player,
   index,
@@ -773,80 +772,80 @@ function PlayerRow({
   player: TeamRegistrationDetail["players"][number];
   index: number;
 }): React.ReactElement {
-  // Open on arrival (owner 2026-07-05: no tap-to-reveal anywhere); the row
-  // click folds it away.
+  // Open on arrival (owner 2026-07-05: no tap-to-reveal anywhere).
   const [open, setOpen] = useState(true);
   const hasDocs = player.documents.length > 0;
   const hasJersey = player.jersey_no !== null && player.jersey_no !== undefined;
   const age = player.dob ? ageFrom(player.dob) : null;
   return (
-    <li>
-      <button
-        type="button"
-        disabled={!hasDocs}
-        aria-expanded={hasDocs ? open : undefined}
-        onClick={() => hasDocs && setOpen((o) => !o)}
-        className={cn(
-          "flex w-full items-center gap-3 px-3 py-2 text-left text-sm",
-          hasDocs && "cursor-pointer hover:bg-accent/40",
-        )}
-      >
-        {hasJersey ? (
-          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 font-tabular text-[0.6875rem] font-semibold text-primary">
-            {player.jersey_no}
-          </span>
-        ) : (
-          <span className="w-6 shrink-0 text-center font-tabular text-[0.6875rem] text-muted-foreground/60">
-            {index}
-          </span>
-        )}
-        <span className="min-w-0 flex-1 truncate font-medium">
-          {player.name || t("Unnamed")}
-        </span>
-        {player.captain ? (
-          <span
-            title={t("Captain")}
-            className="shrink-0 rounded bg-primary/15 px-1 font-tabular text-[0.6875rem] font-semibold text-primary"
-          >
-            C
-          </span>
-        ) : null}
-        {player.dob ? (
-          <span className="shrink-0 whitespace-nowrap font-tabular text-xs text-muted-foreground">
-            {fmtDob(player.dob)}
-            {age !== null ? (
-              <span className="ml-1.5 text-muted-foreground/60">
-                {age}
-                {t("y")}
+    <>
+      <tr className="align-middle">
+        <td className="py-1.5 pl-3 pr-2 text-center">
+          {hasJersey ? (
+            <span className="inline-grid h-6 w-6 place-items-center rounded-full bg-primary/10 font-tabular text-[0.6875rem] font-semibold text-primary">
+              {player.jersey_no}
+            </span>
+          ) : (
+            <span className="font-tabular text-xs text-muted-foreground/60">
+              {index}
+            </span>
+          )}
+        </td>
+        <td className="py-1.5 pr-2">
+          <div className="flex items-center gap-1.5">
+            <span className="min-w-0 truncate font-medium">
+              {player.name || t("Unnamed")}
+            </span>
+            {player.captain ? (
+              <span
+                title={t("Captain")}
+                className="shrink-0 rounded bg-primary/15 px-1 font-tabular text-[0.625rem] font-semibold text-primary"
+              >
+                {t("C")}
               </span>
             ) : null}
-          </span>
-        ) : null}
-        {hasDocs ? (
-          <span className="inline-flex shrink-0 items-center gap-0.5 font-tabular text-[0.6875rem] text-muted-foreground">
-            <Paperclip aria-hidden="true" className="h-3 w-3" />
-            {player.documents.length}
-          </span>
-        ) : null}
-        {hasDocs ? (
-          <ChevronRight
-            aria-hidden="true"
-            className={cn(
-              "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
-              open && "rotate-90",
-            )}
-          />
-        ) : null}
-      </button>
+            {hasDocs ? (
+              <button
+                type="button"
+                aria-expanded={open}
+                title={t("Documents")}
+                onClick={() => setOpen((o) => !o)}
+                className="ml-auto inline-flex shrink-0 items-center gap-0.5 rounded px-1 font-tabular text-[0.6875rem] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Paperclip aria-hidden="true" className="h-3 w-3" />
+                {player.documents.length}
+                <ChevronRight
+                  aria-hidden="true"
+                  className={cn(
+                    "h-3.5 w-3.5 transition-transform",
+                    open && "rotate-90",
+                  )}
+                />
+              </button>
+            ) : null}
+          </div>
+        </td>
+        <td className="whitespace-nowrap py-1.5 pr-2 font-tabular text-xs text-muted-foreground">
+          {player.dob ? fmtDob(player.dob) : "—"}
+        </td>
+        <td className="whitespace-nowrap py-1.5 pr-3 text-right font-tabular text-xs text-muted-foreground">
+          {age !== null ? age : ""}
+        </td>
+      </tr>
       {open && hasDocs ? (
-        <div className="border-t border-border/60 bg-muted/20 px-3 py-2">
-          <p className="mb-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
-            {t("Documents")}
-          </p>
-          <FileChips files={player.documents} />
-        </div>
+        <tr>
+          <td
+            colSpan={4}
+            className="border-t border-border/50 bg-muted/20 px-3 py-2"
+          >
+            <p className="mb-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
+              {t("Documents")}
+            </p>
+            <FileChips files={player.documents} />
+          </td>
+        </tr>
       ) : null}
-    </li>
+    </>
   );
 }
 
@@ -928,7 +927,7 @@ function TeamCard({
             {players.length} {players.length === 1 ? t("player") : t("players")}
           </p>
         </div>
-        <span className="shrink-0 rounded-full bg-primary/12 px-2 py-0.5 text-[0.6875rem] font-medium capitalize text-primary">
+        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[0.6875rem] font-medium capitalize text-muted-foreground">
           {t(team.status)}
         </span>
         {canManage ? (
@@ -959,18 +958,38 @@ function TeamCard({
         </div>
       ) : null}
 
-      {/* Squad — one divided list, not a border per player. */}
+      {/* Squad — an aligned roster table (#, player, born, age). */}
       <div className="px-4 py-3">
         <p className="mb-2 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
           {t("Squad")}{" "}
           <span className="font-tabular">({players.length})</span>
         </p>
         {players.length > 0 ? (
-          <ol className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border/60">
-            {players.map((p, i) => (
-              <PlayerRow key={p.id} player={p} index={i + 1} />
-            ))}
-          </ol>
+          <div className="overflow-x-auto rounded-lg border border-border/60">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border/60 bg-muted/40 text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground">
+                  <th scope="col" className="w-10 py-1.5 text-center font-medium">
+                    #
+                  </th>
+                  <th scope="col" className="py-1.5 pr-2 text-left font-medium">
+                    {t("Player")}
+                  </th>
+                  <th scope="col" className="py-1.5 pr-2 text-left font-medium">
+                    {t("Born")}
+                  </th>
+                  <th scope="col" className="py-1.5 pr-3 text-right font-medium">
+                    {t("Age")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {players.map((p, i) => (
+                  <PlayerRow key={p.id} player={p} index={i + 1} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <p className="text-xs text-muted-foreground">{t("No players yet.")}</p>
         )}
