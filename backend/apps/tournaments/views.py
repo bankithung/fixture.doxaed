@@ -920,3 +920,127 @@ class TournamentCompleteView(GenericAPIView):
         except DjangoValidationError as exc:
             return Response({"detail": exc.messages[0]}, status=400)
         return Response(TournamentSerializer(tournament).data)
+
+
+class BulkAssignCrewView(GenericAPIView):
+    """`POST /api/tournaments/{id}/crew/bulk-assign/` — assign one scorer or
+    official to EVERY match in a scope (a court, a competition category/leaf, or
+    a sport) in one action. Body `{scope, key, day?, role, user_id,
+    only_unassigned?, event_id?}`. Loops the audited single-match services, so
+    every per-match guard fires. Gate: `scorer` role needs a tournament manager;
+    an official role needs `match.assign_officials`. Idempotent on `event_id`
+    (invariant 3); one `crew_bulk_assigned` audit event for the batch."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        import datetime as _dt
+
+        from django.contrib.auth import get_user_model
+        from django.db import transaction
+
+        from apps.audit.models import ActorRole, AuditEvent
+        from apps.audit.services import emit_audit
+        from apps.matches.services.bulk_assign import (
+            OFFICIAL_ROLES,
+            VALID_SCOPES,
+            bulk_assign_crew,
+        )
+
+        User = get_user_model()
+
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        tournament = Tournament.objects.get(id=tournament_id)
+
+        scope = str(request.data.get("scope") or "")
+        if scope not in VALID_SCOPES:
+            raise DRFValidationError({"detail": "invalid_scope"})
+        role = str(request.data.get("role") or "")
+        if role != "scorer" and role not in OFFICIAL_ROLES:
+            raise DRFValidationError({"detail": "invalid_role"})
+        key = str(request.data.get("key") or "")
+
+        # Gate per role — a scorer seat is manager-only; officials ride the
+        # assign_officials module (co-organizer / game-coordinator).
+        if role == "scorer":
+            if not can_manage_tournament(request.user, tournament):
+                raise PermissionDenied("not_tournament_manager")
+        elif not can_access_module(
+            request.user, tournament, "match.assign_officials"
+        ):
+            raise PermissionDenied("not_allowed_to_assign_officials")
+
+        event_id = request.data.get("event_id")
+        if event_id:
+            prior = AuditEvent.objects.filter(
+                idempotency_key=event_id, event_type="crew_bulk_assigned"
+            ).first()
+            if prior is not None:  # replay (invariant 3)
+                p = prior.payload_after or {}
+                return Response(
+                    {
+                        "assigned": p.get("assigned", 0),
+                        "skipped": p.get("skipped", 0),
+                        "total": p.get("total", 0),
+                        "warnings": [],  # not persisted; the first run surfaced them
+                        "scope": p.get("scope", ""),
+                        "key": p.get("key", ""),
+                    }
+                )
+
+        raw_uid = request.data.get("user_id")
+        target = User.objects.filter(id=raw_uid).first() if raw_uid else None
+        if target is None:
+            raise DRFValidationError({"detail": "user_not_found"})
+
+        day = None
+        raw_day = request.data.get("day")
+        if raw_day:
+            try:
+                day = _dt.date.fromisoformat(str(raw_day))
+            except ValueError:
+                raise DRFValidationError({"detail": "invalid_day"}) from None
+
+        only_unassigned = bool(request.data.get("only_unassigned", True))
+
+        with transaction.atomic():
+            try:
+                result = bulk_assign_crew(
+                    tournament=tournament,
+                    scope=scope,
+                    key=key,
+                    day=day,
+                    role=role,
+                    user=target,
+                    only_unassigned=only_unassigned,
+                    by=request.user,
+                    request=request,
+                )
+            except DjangoValidationError as exc:
+                raise DRFValidationError(
+                    {"detail": getattr(exc, "message", "invalid_assignment")}
+                ) from None
+            payload = {**result, "scope": scope, "key": key}
+            emit_audit(
+                actor_user=request.user,
+                actor_role=ActorRole.ADMIN,
+                event_type="crew_bulk_assigned",
+                target_type="tournament",
+                target_id=tournament.id,
+                organization_id=tournament.organization_id,
+                tournament_id=tournament.id,
+                idempotency_key=event_id,
+                payload_after={
+                    "scope": scope,
+                    "key": key,
+                    "day": raw_day or None,
+                    "role": role,
+                    "user_id": str(target.id),
+                    "assigned": result["assigned"],
+                    "skipped": result["skipped"],
+                    "total": result["total"],
+                },
+                request=request,
+            )
+        return Response(payload)

@@ -31,8 +31,11 @@ def assign_official(
     by=None,
     event_id: _uuid.UUID | None = None,
     request=None,
+    notify: bool = True,
 ) -> MatchOfficial:
-    """Assign ``user`` to ``match`` in ``role``. Idempotent on event_id."""
+    """Assign ``user`` to ``match`` in ``role``. Idempotent on event_id.
+    ``notify=False`` suppresses the per-match email so a bulk caller can send
+    one summary instead of one notification per match."""
     if event_id is not None:
         prior = AuditEvent.objects.filter(
             idempotency_key=event_id, event_type="match_official_assigned"
@@ -67,7 +70,7 @@ def assign_official(
             request=request,
         )
         # Tell the official (in-app + email) — assignment used to be silent.
-        if by is None or user.id != by.id:
+        if notify and (by is None or user.id != by.id):
             from apps.matches.services.scoring import _notify_assignment
 
             uid, mid, tid = user.id, match.id, match.tournament_id

@@ -764,6 +764,29 @@ export const tournamentsApi = {
   /** Assign (or change) the scorer seat on a match (manager only). */
   assignScorer: (matchId: string, userId: string | null) =>
     api.post<MatchRow>(`/api/matches/${matchId}/scorer/`, { user_id: userId }),
+  /** Bulk-assign one scorer/official to every match in a scope (a court, a
+   * competition category/leaf, or a sport). Reuses the per-match services, so
+   * every guard fires; returns how many landed / were skipped + soft clashes. */
+  bulkAssignCrew: (
+    id: string,
+    payload: {
+      scope: "court" | "category" | "sport";
+      key: string;
+      day: string | null;
+      role: string;
+      user_id: string;
+      only_unassigned: boolean;
+      event_id: string;
+    },
+  ) =>
+    api.post<{
+      assigned: number;
+      skipped: number;
+      total: number;
+      warnings: { match_id: string; code: string; count: number }[];
+      scope: string;
+      key: string;
+    }>(`/api/tournaments/${id}/crew/bulk-assign/`, payload),
 
   // --- Setup-stage workflow (WS4) ---
   stage: (id: string) => api.get<StagePayload>(`/api/tournaments/${id}/stage/`),

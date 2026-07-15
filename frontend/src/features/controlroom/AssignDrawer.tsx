@@ -5,7 +5,6 @@ import {
   tournamentsApi,
   type ControlRoomMatch,
   type RepairViolation,
-  type TournamentMember,
 } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,46 +17,13 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
+import { OFFICIAL_ROLES, candidatesOf, officialRoleLabel } from "@/features/controlroom/crewRoster";
 import { RepairViolationsList } from "@/features/fixtures/MatchRepairControls";
 import { MOVABLE_STATUSES, conflictsOf, errorDetail } from "@/features/fixtures/repair";
 import { venueCourtOptions } from "@/lib/courts";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { t } from "@/lib/t";
-
-const OFFICIAL_ROLES: { value: string; label: string }[] = [
-  { value: "referee", label: "Referee" },
-  { value: "assistant", label: "Assistant referee" },
-  { value: "fourth", label: "Fourth official" },
-  { value: "umpire", label: "Umpire" },
-  { value: "commissioner", label: "Match commissioner" },
-];
-
-function officialRoleLabel(role: string): string {
-  return OFFICIAL_ROLES.find((r) => r.value === role)?.label ?? role;
-}
-
-interface Candidate {
-  userId: string;
-  name: string;
-  roles: string[];
-}
-
-/** Active members deduped by person (one row per role in the API). */
-function candidatesOf(members: TournamentMember[] | undefined): Candidate[] {
-  const by = new Map<string, Candidate>();
-  for (const m of members ?? []) {
-    if (m.status !== "active") continue;
-    const c = by.get(m.user_id) ?? {
-      userId: m.user_id,
-      name: m.full_name || m.email,
-      roles: [],
-    };
-    if (!c.roles.includes(m.role)) c.roles.push(m.role);
-    by.set(m.user_id, c);
-  }
-  return [...by.values()].sort((a, b) => a.name.localeCompare(b.name));
-}
 
 /**
  * Per-match assignment drawer (ops 2026-06-26): set the scorer seat and add /

@@ -63,6 +63,7 @@ from apps.teams.views import (
     TournamentTeamsListView,
 )
 from apps.tournaments.views import (
+    BulkAssignCrewView,
     ConstraintTypesView,
     TournamentAuditView,
     TournamentCompleteView,
@@ -275,6 +276,11 @@ urlpatterns = [
         "<uuid:tournament_id>/control-room/",
         ControlRoomDayView.as_view(),
         name="tournament-control-room",
+    ),
+    path(
+        "<uuid:tournament_id>/crew/bulk-assign/",
+        BulkAssignCrewView.as_view(),
+        name="tournament-crew-bulk-assign",
     ),
     path(
         "<uuid:tournament_id>/advancement:refire/",

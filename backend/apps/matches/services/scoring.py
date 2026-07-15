@@ -31,10 +31,11 @@ def _is_tournament_member(user, match: Match) -> bool:
     ).exists()
 
 
-def assign_scorer(*, match: Match, user, by=None, request=None) -> Match:
+def assign_scorer(*, match: Match, user, by=None, request=None, notify: bool = True) -> Match:
     """Assign (or, with ``user=None``, clear) the scorer seat. The assignee is
     notified with a console deep link — assignment used to be silent, so crew
-    had to hunt for their matches."""
+    had to hunt for their matches. ``notify=False`` suppresses the per-match
+    email so a bulk caller can send one summary instead of one per match."""
     if user is not None and not _is_tournament_member(user, match):
         raise ValidationError("Scorer must be an active member of this tournament.")
     with transaction.atomic():
@@ -52,7 +53,7 @@ def assign_scorer(*, match: Match, user, by=None, request=None) -> Match:
             payload_after={"scorer_id": str(user.id) if user else None},
             request=request,
         )
-        if user is not None and (by is None or user.id != by.id):
+        if notify and user is not None and (by is None or user.id != by.id):
             mid, tid = match.id, match.tournament_id
             uid = user.id
             transaction.on_commit(
