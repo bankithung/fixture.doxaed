@@ -82,6 +82,7 @@ export function Select({
   // scroll or the window resizes.
   useLayoutEffect(() => {
     if (!open) return;
+    let raf = 0;
     const place = (): void => {
       const el = ref.current;
       if (!el) return;
@@ -90,12 +91,20 @@ export function Select({
       // of options — the historical max-h-60.
       const natural =
         Math.min(240, options.length * 32 + 10) + (hasSearch ? 44 : 0);
-      setPos({ ...flipPlacement(r, natural), left: r.left, width: r.width });
+      // Keep the panel on-screen. The listbox grows past the trigger to fit
+      // long labels (up to maxWidth), so a right-edge trigger would push it off
+      // the right. Measure the rendered panel when it exists; before it mounts,
+      // fall back to the trigger width (a second pass fixes it next frame).
+      const menuW = panelRef.current?.offsetWidth || r.width;
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - menuW - 8));
+      setPos({ ...flipPlacement(r, natural), left, width: r.width });
     };
     place();
+    raf = requestAnimationFrame(place); // re-place once the real width is known
     window.addEventListener("scroll", place, true);
     window.addEventListener("resize", place);
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener("scroll", place, true);
       window.removeEventListener("resize", place);
     };
