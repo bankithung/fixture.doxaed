@@ -640,50 +640,54 @@ export function LensConsolePage(): React.ReactElement {
         ) : null}
       </div>
 
-      <nav
-        className="flex gap-1 border-b border-border print:hidden"
-        aria-label={t("Guest Lens sections")}
-      >
-        {TABS.map((tb) => (
-          <button
-            key={tb.key}
-            type="button"
-            data-testid={`lens-tab-${tb.key}`}
-            aria-current={tab === tb.key ? "page" : undefined}
-            onClick={() => setTab(tb.key)}
-            className={cn(
-              "rounded-t-md border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-              tab === tb.key
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {tb.label}
-            {tb.key === "moderate" && stats.photos_pending > 0 ? (
-              <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 font-tabular text-xs text-primary">
-                {stats.photos_pending}
-              </span>
-            ) : null}
-          </button>
-        ))}
-      </nav>
+      {/* One combined section: the overview stats and the bookmark tabs share
+          a single card, and the stats stay visible on every tab (they used to
+          be a separate panel buried inside Campaign). */}
+      <section className="panel print:hidden">
+        <div className="grid grid-cols-3 divide-x divide-border border-b border-border sm:grid-cols-6">
+          {statCells.map((cell) => (
+            <div key={cell.label} className="px-3 py-2.5">
+              <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                {cell.label}
+              </p>
+              <p className="font-tabular text-xl font-semibold">{cell.value}</p>
+            </div>
+          ))}
+        </div>
+        <div
+          role="tablist"
+          aria-label={t("Guest Lens sections")}
+          className="flex gap-0.5 overflow-x-auto px-2"
+        >
+          {TABS.map((tb) => (
+            <button
+              key={tb.key}
+              type="button"
+              role="tab"
+              data-testid={`lens-tab-${tb.key}`}
+              aria-selected={tab === tb.key}
+              aria-current={tab === tb.key ? "page" : undefined}
+              onClick={() => setTab(tb.key)}
+              className={cn(
+                "relative inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                tab === tb.key
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {tb.label}
+              {tb.key === "moderate" && stats.photos_pending > 0 ? (
+                <span className="rounded-full bg-primary/10 px-1.5 font-tabular text-xs text-primary">
+                  {stats.photos_pending}
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      </section>
 
       {tab === "campaign" ? (
         <div className="flex flex-col gap-4 print:hidden">
-          <section className="panel">
-            <div className="grid grid-cols-3 divide-x divide-border sm:grid-cols-6">
-              {statCells.map((cell) => (
-                <div key={cell.label} className="px-3 py-2.5">
-                  <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                    {cell.label}
-                  </p>
-                  <p className="font-tabular text-xl font-semibold">
-                    {cell.value}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </section>
           <section className="panel">
             <div className="panel-header justify-between">
               <h3 className="panel-title">{t("Settings")}</h3>
