@@ -110,6 +110,48 @@ export interface SetProgress {
   leader: 0 | 1 | null;
 }
 
+/** Per-set win parameters, deciding-set aware. */
+export function setTargets(
+  scoring: SetScoring,
+  deciding: boolean,
+): { points: number; winBy: number; cap: number | null } {
+  const d = (deciding ? scoring?.deciding : null) as {
+    points?: number;
+    win_by?: number;
+    cap?: number | null;
+  } | null;
+  return {
+    points: d?.points ?? scoring?.points ?? 0,
+    winBy: d?.win_by ?? scoring?.win_by ?? 2,
+    cap: d?.cap ?? scoring?.cap ?? null,
+  };
+}
+
+/** Side whose NEXT point wins the current set (0 home, 1 away), else null.
+ * Drives the "Game point / Match point" flag. When a win-by-1 rule puts
+ * both sides at set point, the leader is flagged (level = no flag). */
+export function gamePointSide(
+  homePts: number,
+  awayPts: number,
+  scoring: SetScoring,
+  deciding: boolean,
+): 0 | 1 | null {
+  const { points, winBy, cap } = setTargets(scoring, deciding);
+  if (points <= 0) return null;
+  const wins = (mine: number, theirs: number): boolean => {
+    const n = mine + 1;
+    return (n >= points && n - theirs >= winBy) || (cap != null && n >= cap);
+  };
+  const h = wins(homePts, awayPts);
+  const a = wins(awayPts, homePts);
+  if (h && a) {
+    return homePts > awayPts ? 0 : awayPts > homePts ? 1 : null;
+  }
+  if (h) return 0;
+  if (a) return 1;
+  return null;
+}
+
 export function setProgress(
   rows: SetRow[],
   scoring: SetScoring,

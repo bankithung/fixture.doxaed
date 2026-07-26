@@ -210,6 +210,37 @@ describe("TTConsole", () => {
     );
   });
 
+  it("names the game target and flags game point when the next point ends it", async () => {
+    renderTT({ set_scores: [[10, 3]] });
+
+    // The rule line says what finishes a game, up front.
+    expect(
+      screen.getByText(/first to 3 · best of 5 · game to 11/i),
+    ).toBeInTheDocument();
+    // 10-3: Alpha's next point wins game 1 (not yet the match).
+    expect(screen.getByTestId("point-flag")).toHaveTextContent(
+      "Game point · Alpha",
+    );
+
+    // Back below the target the flag goes away (9-3: next point is 10).
+    await userEvent.click(screen.getByTestId("minus-home"));
+    expect(screen.getByTestId("points-home")).toHaveTextContent("9");
+    expect(screen.queryByTestId("point-flag")).toBeNull();
+  });
+
+  it("flags match point when the next point would clinch the match", async () => {
+    renderTT({
+      set_scores: [
+        [11, 5],
+        [11, 5],
+        [10, 3],
+      ],
+    });
+    expect(screen.getByTestId("point-flag")).toHaveTextContent(
+      "Match point · Alpha",
+    );
+  });
+
   it("Record result exists only from the clinch, then completes via confirm", async () => {
     vi.mocked(liveApi.recordSetScores).mockResolvedValue({} as never);
     renderTT({

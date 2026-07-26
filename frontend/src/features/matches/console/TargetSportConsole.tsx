@@ -17,10 +17,18 @@ import { isNetworkError } from "@/api/client";
 import { newEventId } from "@/lib/eventId";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { buzz, setProgress, setsWon, type SetRow } from "./shared";
+import {
+  buzz,
+  gamePointSide,
+  setProgress,
+  setTargets,
+  setsWon,
+  type SetRow,
+} from "./shared";
 import {
   GameTrack,
   NextGamePrompt,
+  PointFlag,
   ScorePad,
   StatusChip,
 } from "./Scoreboard";
@@ -192,6 +200,16 @@ export function TargetSportConsole({
   const awaitingNext = inPlay && rulesKnown && currentRowWon && !decided;
   const canScore = inPlay && !decided && !awaitingNext;
   const winnerName = prog.leader == null ? null : prog.leader === 0 ? homeName : awayName;
+  // What ends the set in play: the target score for the caption, and the
+  // live "Set point / Match point" flag when the next point can finish it.
+  const decidingSet = setNo === bestOf;
+  const targetPts = setTargets(match.scoring ?? null, decidingSet).points;
+  const gpSide = canScore
+    ? gamePointSide(homePts, awayPts, match.scoring ?? null, decidingSet)
+    : null;
+  const gpName = gpSide == null ? null : gpSide === 0 ? homeName : awayName;
+  const gpIsMatch =
+    gpSide != null && (gpSide === 0 ? homeSets : awaySets) + 1 >= prog.need;
 
   // Tap scoring: every edit while LIVE auto-saves (debounced) — no Save
   // button. When the match has not started, edits stay local until the
@@ -235,9 +253,9 @@ export function TargetSportConsole({
           them (P7b). */}
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm print:hidden">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-border px-3 py-2">
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <StatusChip status={match.status} />
-            <span className="font-tabular text-xs text-muted-foreground">
+            <span className="truncate font-tabular text-xs text-muted-foreground">
               {isFinal
                 ? `${periodPlural} ${match.home_score ?? 0}-${match.away_score ?? 0}`
                 : `${periodLabel} ${setNo} ${t("of")} ${bestOf} · ${periodPlural} ${homeSets}-${awaySets}`}
@@ -302,6 +320,16 @@ export function TargetSportConsole({
             onMinus={(s) => bump(setRows.length - 1, s, -step)}
           />
 
+          {gpName ? (
+            <div className="flex items-center justify-center">
+              <PointFlag
+                kind={gpIsMatch ? "match" : "set"}
+                periodLabel={periodLabel}
+                name={gpName}
+              />
+            </div>
+          ) : null}
+
           {awaitingNext ? (
             <NextGamePrompt
               summary={`${periodLabel} ${setNo} ${t("done")} ${homePts}-${awayPts}.`}
@@ -328,6 +356,11 @@ export function TargetSportConsole({
             periodLabel={periodLabel}
             finished={isFinal ? (match.set_scores ?? []) : awaitingNext ? completeSets : finishedSetChips}
             awaitingNext={awaitingNext}
+            targetText={
+              targetPts > 0
+                ? `${periodLabel.toLowerCase()} ${t("to")} ${targetPts}`
+                : undefined
+            }
             winnerName={winnerName}
             isFinal={isFinal}
           />

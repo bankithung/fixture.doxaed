@@ -144,6 +144,34 @@ export function NextGamePrompt({
   );
 }
 
+/** "Game point / Match point" flag: the next point can end the set or the
+ * whole match. */
+export function PointFlag({
+  kind,
+  periodLabel,
+  name,
+}: {
+  kind: "set" | "match";
+  periodLabel: string;
+  name: string;
+}): React.ReactElement {
+  return (
+    <span
+      data-testid="point-flag"
+      className={cn(
+        "inline-flex min-w-0 items-center rounded-full px-2.5 py-1 text-xs font-semibold",
+        kind === "match"
+          ? "bg-primary text-primary-foreground"
+          : "bg-primary/15 text-primary",
+      )}
+    >
+      <span className="truncate">
+        {kind === "match" ? t("Match point") : `${periodLabel} ${t("point")}`} · {name}
+      </span>
+    </span>
+  );
+}
+
 export interface GameTrackProps {
   progress: SetProgress;
   /** Sport's own word for a period ("Game", "Set"). */
@@ -152,6 +180,8 @@ export interface GameTrackProps {
   finished: (number | string)[][];
   /** A game just ended and the next has not started: no live chip. */
   awaitingNext?: boolean;
+  /** The set's own finish rule ("game to 11"), appended to the caption. */
+  targetText?: string;
   /** Name of the clinching side (caption), when decided. */
   winnerName: string | null;
   isFinal: boolean;
@@ -166,6 +196,7 @@ export function GameTrack({
   periodLabel,
   finished,
   awaitingNext = false,
+  targetText,
   winnerName,
   isFinal,
 }: GameTrackProps): React.ReactElement {
@@ -214,10 +245,10 @@ export function GameTrack({
       <div className="flex flex-wrap items-center justify-center gap-1.5">
         {slots}
       </div>
-      <p className="font-tabular text-xs text-muted-foreground">
+      <p className="text-center font-tabular text-xs text-muted-foreground">
         {over && winnerName
           ? `${winnerName} ${t("wins")} ${Math.max(homeSets, awaySets)}-${Math.min(homeSets, awaySets)}`
-          : `${t("First to")} ${need} · ${t("best of")} ${bestOf}`}
+          : `${t("First to")} ${need} · ${t("best of")} ${bestOf}${targetText ? ` · ${targetText}` : ""}`}
       </p>
     </div>
   );

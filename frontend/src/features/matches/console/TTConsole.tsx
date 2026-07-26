@@ -17,12 +17,20 @@ import { isNetworkError } from "@/api/client";
 import { newEventId } from "@/lib/eventId";
 import { t } from "@/lib/t";
 import type { TargetSportConsoleProps } from "./TargetSportConsole";
-import { buzz, setProgress, setsWon, type SetRow } from "./shared";
+import {
+  buzz,
+  gamePointSide,
+  setProgress,
+  setTargets,
+  setsWon,
+  type SetRow,
+} from "./shared";
 import { changeEndsPrompt, serveTurn, type ServeRules } from "./serve";
 import { useAnnotate, useFirstServer } from "./hooks";
 import {
   GameTrack,
   NextGamePrompt,
+  PointFlag,
   ScorePad,
   StatusChip,
 } from "./Scoreboard";
@@ -197,6 +205,16 @@ export function TTConsole({
   const awaitingNext = inPlay && rulesKnown && currentRowWon && !decided;
   const canScore = inPlay && !decided && !awaitingNext;
   const winnerName = prog.leader == null ? null : prog.leader === 0 ? homeName : awayName;
+  // What ends the game in play: the target score for the caption, and the
+  // live "Game point / Match point" flag when the next point can finish it.
+  const decidingGame = setNo === bestOf;
+  const targetPts = setTargets(match.scoring ?? null, decidingGame).points;
+  const gpSide = canScore
+    ? gamePointSide(homePts, awayPts, match.scoring ?? null, decidingGame)
+    : null;
+  const gpName = gpSide == null ? null : gpSide === 0 ? homeName : awayName;
+  const gpIsMatch =
+    gpSide != null && (gpSide === 0 ? homeSets : awaySets) + 1 >= prog.need;
 
   // Deciding-game change-ends nudge: fires once when a side first reaches 5
   // in the last possible game (ITTF 2.14.1); dismissable.
@@ -282,9 +300,9 @@ export function TTConsole({
       {/* ONE board: everything the umpire needs, in one section. */}
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm print:hidden">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-border px-3 py-2">
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <StatusChip status={match.status} />
-            <span className="font-tabular text-xs text-muted-foreground">
+            <span className="truncate font-tabular text-xs text-muted-foreground">
               {isFinal
                 ? `${periodPlural} ${match.home_score ?? 0}-${match.away_score ?? 0}`
                 : `${periodLabel} ${setNo} ${t("of")} ${bestOf} · ${periodPlural} ${homeSets}-${awaySets}`}
@@ -295,9 +313,11 @@ export function TTConsole({
               type="button"
               aria-label={t("First server")}
               onClick={toggleFirstServer}
-              className="inline-flex h-7 items-center rounded-md border border-border px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex h-7 min-w-0 items-center rounded-md border border-border px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {t("First serve")}: {firstServer === 0 ? homeName : awayName}
+              <span className="truncate">
+                {t("First serve")}: {firstServer === 0 ? homeName : awayName}
+              </span>
             </button>
           ) : null}
         </div>
@@ -337,16 +357,23 @@ export function TTConsole({
           ) : null}
 
           {!isFinal && canScore ? (
-            <div className="flex items-center justify-center">
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5">
               <span
                 data-testid="serve-indicator"
-                className="inline-flex items-center gap-1.5 text-sm"
+                className="inline-flex min-w-0 items-center gap-1.5 text-sm"
               >
-                <span aria-hidden="true" className="h-2 w-2 rounded-full bg-primary" />
-                <span className="font-medium">
+                <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-primary" />
+                <span className="truncate font-medium">
                   {t("Service")}: {server === 0 ? homeName : awayName}
                 </span>
               </span>
+              {gpName ? (
+                <PointFlag
+                  kind={gpIsMatch ? "match" : "set"}
+                  periodLabel={periodLabel}
+                  name={gpName}
+                />
+              ) : null}
             </div>
           ) : null}
 
@@ -382,6 +409,11 @@ export function TTConsole({
             periodLabel={periodLabel}
             finished={isFinal ? (match.set_scores ?? []) : awaitingNext ? completeSets : finishedSetChips}
             awaitingNext={awaitingNext}
+            targetText={
+              targetPts > 0
+                ? `${periodLabel.toLowerCase()} ${t("to")} ${targetPts}`
+                : undefined
+            }
             winnerName={winnerName}
             isFinal={isFinal}
           />

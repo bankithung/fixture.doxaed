@@ -157,6 +157,9 @@ function fmtClock(totalSeconds: number): string {
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
+  // A days-old "live" match (forgotten or seeded) gets a compact figure
+  // instead of a wall of digits.
+  if (h >= 100) return `${h}h`;
   return h > 0
     ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
     : `${m}:${String(s).padStart(2, "0")}`;
