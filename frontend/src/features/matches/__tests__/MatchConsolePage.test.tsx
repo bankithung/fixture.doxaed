@@ -283,6 +283,8 @@ describe("MatchConsolePage", () => {
     expect(screen.getByTestId("point-home")).toBeInTheDocument();
 
     // Undecided sets keep the completion gate shut (best of 3 needs 2).
+    // Typed corrections live behind the rail's explicit door.
+    await userEvent.click(screen.getByText(/adjust sets/i));
     await userEvent.type(screen.getByLabelText("Set 1 Alpha"), "11");
     await userEvent.type(screen.getByLabelText("Set 1 Beta"), "7");
     expect(screen.queryByTestId("record-result")).toBeNull();
@@ -319,10 +321,14 @@ describe("MatchConsolePage", () => {
 
     // One tap adds 1 by default, and the BIG scoreboard tracks the current
     // set's points instantly (sets-won stays 0-0 mid-set).
+    await userEvent.click(screen.getByText(/adjust sets/i));
     await userEvent.click(screen.getByTestId("set-0-home-plus"));
     expect(screen.getByLabelText("Set 1 Alpha")).toHaveValue("1");
     expect(screen.getByTestId("points-home")).toHaveTextContent("1");
-    expect(screen.getByText(/set 1 of 3 · sets 0-0/i)).toBeInTheDocument();
+    // The telemetry strip reads the set in play and the match score.
+    const strip = screen.getByTestId("console-strip");
+    expect(strip).toHaveTextContent("1 of 3");
+    expect(strip).toHaveTextContent("0-0");
 
     // Choose +5: the next tap adds 5; minus steps the same amount back.
     await userEvent.click(screen.getByTestId("tap-step-5"));
@@ -353,6 +359,7 @@ describe("MatchConsolePage", () => {
     renderConsole();
     await screen.findAllByText("Alpha");
 
+    await userEvent.click(screen.getByText(/adjust sets/i));
     await userEvent.click(screen.getByTestId("set-0-home-plus"));
     expect(screen.getByLabelText("Set 1 Alpha")).toHaveValue("1");
     // No live push before kickoff: the result is recorded at the end.

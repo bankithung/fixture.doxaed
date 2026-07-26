@@ -94,8 +94,11 @@ describe("TTConsole", () => {
     expect(screen.getByTestId("points-home")).toHaveTextContent("1");
     expect(screen.getByTestId("points-away")).toHaveTextContent("0");
     // Game vocabulary from sport_meta.terms.period, with the best-of rule
-    // always on the board.
-    expect(screen.getByText(/game 1 of 5 · games 0-0/i)).toBeInTheDocument();
+    // and the match score always on the strip.
+    const strip = screen.getByTestId("console-strip");
+    expect(strip).toHaveTextContent("Game");
+    expect(strip).toHaveTextContent("1 of 5");
+    expect(strip).toHaveTextContent("0-0");
 
     // A TT point is just a point: the tap itself logs the annotation.
     await waitFor(() => expect(liveApi.recordEvent).toHaveBeenCalled());
@@ -116,18 +119,23 @@ describe("TTConsole", () => {
     expect(liveApi.recordSetScores).not.toHaveBeenCalled();
   });
 
-  it("service alternates every two points and honors the first-server toggle", async () => {
+  it("tracks no service at all — the umpire calls it (owner 2026-07-26)", async () => {
     renderTT();
 
-    expect(screen.getByTestId("serve-indicator")).toHaveTextContent("Service: Alpha");
+    expect(screen.queryByTestId("serve-indicator")).toBeNull();
+    expect(screen.queryByRole("button", { name: /first server/i })).toBeNull();
+    // Scoring is unaffected by the removal.
     await userEvent.click(screen.getByTestId("point-home"));
-    expect(screen.getByTestId("serve-indicator")).toHaveTextContent("Service: Alpha");
-    await userEvent.click(screen.getByTestId("point-away"));
-    expect(screen.getByTestId("serve-indicator")).toHaveTextContent("Service: Beta");
+    expect(screen.getByTestId("points-home")).toHaveTextContent("1");
+  });
 
-    await userEvent.click(screen.getByRole("button", { name: /first server/i }));
-    expect(screen.getByTestId("serve-indicator")).toHaveTextContent("Service: Alpha");
-    expect(localStorage.getItem("fixture.first-server.m1")).toBe("1");
+  it("keyboard keys score each side for a scorer on a laptop", async () => {
+    renderTT();
+
+    await userEvent.keyboard("q");
+    expect(screen.getByTestId("points-home")).toHaveTextContent("1");
+    await userEvent.keyboard("p");
+    expect(screen.getByTestId("points-away")).toHaveTextContent("1");
   });
 
   it("timeout is once per MATCH per side and survives a new game", async () => {
@@ -143,7 +151,7 @@ describe("TTConsole", () => {
     // Start another game via the corrections editor: the timeout stays spent.
     await userEvent.click(screen.getByText(/adjust games/i));
     await userEvent.click(screen.getByRole("button", { name: /add game/i }));
-    expect(screen.getByText(/game 2 of 5 · games 0-0/i)).toBeInTheDocument();
+    expect(screen.getByTestId("console-strip")).toHaveTextContent("2 of 5");
     expect(screen.getByTestId("timeout-home")).toBeDisabled();
     expect(screen.getByTestId("timeout-away")).toBeEnabled();
   });
@@ -187,7 +195,9 @@ describe("TTConsole", () => {
     expect(screen.queryByTestId("next-game")).toBeNull();
     expect(screen.getByTestId("points-home")).toHaveTextContent("0");
     expect(screen.getByTestId("point-home")).toBeEnabled();
-    expect(screen.getByText(/game 2 of 5 · games 1-0/i)).toBeInTheDocument();
+    const strip = screen.getByTestId("console-strip");
+    expect(strip).toHaveTextContent("2 of 5");
+    expect(strip).toHaveTextContent("1-0");
   });
 
   it("scoring continues into the started game and auto-saves the rows", async () => {

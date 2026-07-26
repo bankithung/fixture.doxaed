@@ -1,7 +1,7 @@
 // Hooks shared by the native set-sport console modules (SepakConsole,
 // TTConsole). Not part of the chassis contract — modules only.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, type UseMutationResult } from "@tanstack/react-query";
 import { liveApi } from "@/api/live";
 import { useToast } from "@/components/ui/toast";
@@ -49,6 +49,44 @@ export function useAnnotate(
       onError(e);
     },
   });
+}
+
+/** Keyboard scoring for a scorer on a laptop: one key per side, no modifier,
+ * ignored while a field or a dialog has focus so corrections never score by
+ * accident. The pad buttons stay the primary (and only) touch interaction. */
+export function usePointKeys(
+  enabled: boolean,
+  onPoint: (side: 0 | 1) => void,
+  homeKey = "q",
+  awayKey = "p",
+): void {
+  const cb = useRef(onPoint);
+  useEffect(() => {
+    cb.current = onPoint;
+  }, [onPoint]);
+  useEffect(() => {
+    if (!enabled) return;
+    const handler = (e: KeyboardEvent): void => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        el?.isContentEditable ||
+        el?.closest("[role='dialog']") != null
+      ) {
+        return;
+      }
+      const k = e.key.toLowerCase();
+      if (k !== homeKey && k !== awayKey) return;
+      e.preventDefault();
+      cb.current(k === homeKey ? 0 : 1);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [enabled, homeKey, awayKey]);
 }
 
 const firstServerKey = (matchId: string): string =>

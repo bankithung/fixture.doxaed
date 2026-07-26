@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Minus, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { liveApi } from "@/api/live";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,23 +25,31 @@ import {
   setsWon,
   type SetRow,
 } from "./shared";
-import { changeEndsPrompt, serveTurn, type ServeRules } from "./serve";
-import { useAnnotate, useFirstServer } from "./hooks";
+import { changeEndsPrompt } from "./serve";
+import { useAnnotate, usePointKeys } from "./hooks";
 import {
-  GameTrack,
+  ConsoleActionBar,
+  ConsoleRail,
+  ConsoleStrip,
+  GameHistory,
   NextGamePrompt,
   PointFlag,
+  ScoreEditor,
   ScorePad,
-  StatusChip,
+  SyncBadge,
+  TargetRule,
+  type StripCell,
+  type SyncState,
 } from "./Scoreboard";
 
-/** Native table tennis console (P2). ONE board, top to bottom: score pad
- * with explicit Point buttons, the between-games step ("Game 1 done. Start
- * game 2"), the result gate that opens exactly at the clinch (the server's
- * own rule), the game track, timeouts, and collapsed rows for corrections,
- * discipline and the event log. ITTF-shaped: Game vocabulary, service
- * alternating every two points (every point from deuce), the deciding-game
- * change-ends nudge, the toweling nudge, one timeout per match per side. */
+/** Native table tennis console (P2). ONE board, laid out as an instrument
+ * panel: a telemetry strip (status, game of best-of, match score, stopwatch,
+ * sync), the two score cards with the stage's winning rule between them,
+ * timeouts, the full game history (every game the rule allows, played and
+ * still to play), a state rail, and a sticky action bar. ITTF-shaped: Game
+ * vocabulary, the deciding-game change-ends nudge, the toweling nudge, one
+ * timeout per match per side. Service is deliberately not tracked here
+ * (owner 2026-07-26) — the umpire calls it. */
 export function TTConsole({
   matchId,
   match,
@@ -53,6 +61,8 @@ export function TTConsole({
   onError,
   actions,
   extras,
+  clock,
+  back,
 }: TargetSportConsoleProps): React.ReactElement {
   const toast = useToast();
   const [setRows, setSetRows] = useState<SetRow[]>([["", ""]]);
@@ -162,7 +172,9 @@ export function TTConsole({
   // Scoresheet annotations: non-scoring events (invariant 4 — the score of
   // record stays set_scores; a logged point never moves it).
   const annotate = useAnnotate(matchId, onError, refresh);
-  const [firstServer, toggleFirstServer] = useFirstServer(matchId);
+  // Corrections live in a panel the scorer opens on purpose (rail button or
+  // "Edit scores" on the history), never a stray tap away from the pads.
+  const [editOpen, setEditOpen] = useState(false);
 
   const periodLabel = t(match.sport_meta?.terms?.period ?? "Game");
   const periodPlural = `${periodLabel}s`;
@@ -174,27 +186,11 @@ export function TTConsole({
   const currentSetRow = setRows[setRows.length - 1] ?? ["", ""];
   const homePts = Number(currentSetRow[0] || 0);
   const awayPts = Number(currentSetRow[1] || 0);
-  const finishedSetChips = setRows
-    .slice(0, -1)
-    .filter(([h, a]) => h !== "" && a !== "");
 
-  // ITTF service config (2 serves a turn, every point from 10 all; ends
-  // switch in the deciding game when a side first reaches 5).
-  const scoringServe = match.scoring?.serve;
-  const scoringPoints = match.scoring?.points;
-  const serveRules: ServeRules = useMemo(
-    () => ({
-      serves_per_turn: scoringServe?.serves_per_turn ?? 2,
-      alternate_every_point: scoringServe?.alternate_every_point ?? true,
-      points: scoringPoints ?? 11,
-      change_ends_at: {
-        regular: scoringServe?.change_ends_at?.regular,
-        deciding: scoringServe?.change_ends_at?.deciding ?? 5,
-      },
-    }),
-    [scoringServe, scoringPoints],
-  );
-  const server = serveTurn(homePts, awayPts, serveRules, firstServer);
+  // ITTF change-ends config: ends switch in the deciding game when a side
+  // first reaches 5.
+  const changeEndsRegular = match.scoring?.serve?.change_ends_at?.regular;
+  const changeEndsDeciding = match.scoring?.serve?.change_ends_at?.deciding ?? 5;
   // Whether the game in play just finished (legally won under the rules).
   const prevWon = setsWon(setRows.slice(0, -1), match.scoring ?? null);
   const currentRowWon = homeSets + awaySets > prevWon[0] + prevWon[1];
@@ -208,7 +204,8 @@ export function TTConsole({
   // What ends the game in play: the target score for the caption, and the
   // live "Game point / Match point" flag when the next point can finish it.
   const decidingGame = setNo === bestOf;
-  const targetPts = setTargets(match.scoring ?? null, decidingGame).points;
+  const stageRule = setTargets(match.scoring ?? null, decidingGame);
+  const targetPts = stageRule.points;
   const gpSide = canScore
     ? gamePointSide(homePts, awayPts, match.scoring ?? null, decidingGame)
     : null;
@@ -224,12 +221,26 @@ export function TTConsole({
     if (!live || decidingFired.current) return;
     if (
       setNo === bestOf &&
-      changeEndsPrompt(setNo, bestOf, homePts, awayPts, serveRules)
+      changeEndsPrompt(setNo, bestOf, homePts, awayPts, {
+        change_ends_at: {
+          regular: changeEndsRegular,
+          deciding: changeEndsDeciding,
+        },
+      })
     ) {
       decidingFired.current = true;
       setNudge(`${t("Change ends in the deciding")} ${periodLabel.toLowerCase()}.`);
     }
-  }, [live, setNo, bestOf, homePts, awayPts, serveRules, periodLabel]);
+  }, [
+    live,
+    setNo,
+    bestOf,
+    homePts,
+    awayPts,
+    changeEndsRegular,
+    changeEndsDeciding,
+    periodLabel,
+  ]);
 
   // Toweling nudge: every 6 total points in the game in play (ITTF 3.4.4.1.2),
   // gone again on the next point.
@@ -295,296 +306,307 @@ export function TTConsole({
     setSetRows((rows) => [...rows, ["", ""]]);
   };
 
+
+  // Keyboard scoring for a scorer on a laptop; the pads stay the touch path.
+  usePointKeys(canScore, tapPoint);
+
+  const syncState: SyncState =
+    match.status !== "live"
+      ? "local"
+      : progress.isPending
+        ? "saving"
+        : syncFailed
+          ? "offline"
+          : "saved";
+
+  // The strip: every reading the umpire glances at, as label/value cells.
+  const stripCells: StripCell[] = [
+    {
+      key: "period",
+      label: periodLabel,
+      value: isFinal ? periodPlural : `${setNo} ${t("of")} ${bestOf}`,
+    },
+    {
+      key: "match",
+      label: t("Match score"),
+      value: isFinal
+        ? `${match.home_score ?? 0}-${match.away_score ?? 0}`
+        : `${homeSets}-${awaySets}`,
+      emphasis: true,
+    },
+  ];
+  if (targetPts > 0) {
+    stripCells.push({
+      key: "target",
+      label: t("Winning points"),
+      value:
+        stageRule.winBy > 1
+          ? `${targetPts} · ${t("by")} ${stageRule.winBy}`
+          : String(targetPts),
+    });
+  }
+  if (clock) {
+    stripCells.push({ key: "clock", label: t("Elapsed"), value: clock });
+  }
+
+  const railRows: { key: string; label: string; value: React.ReactNode }[] = [
+    { key: "games", label: periodPlural, value: `${homeSets}-${awaySets}` },
+    {
+      key: "inplay",
+      label: `${periodLabel} ${t("in play")}`,
+      value: isFinal ? "—" : `${setNo}/${bestOf}`,
+    },
+    { key: "points", label: t("Points"), value: `${homePts}-${awayPts}` },
+    {
+      key: "towin",
+      label: t("To win"),
+      value: `${prog.need} ${periodPlural.toLowerCase()}`,
+    },
+  ];
+  if (live) {
+    railRows.push({
+      key: "timeouts",
+      label: t("Timeouts"),
+      value: `${timeouts.home}/1 · ${timeouts.away}/1`,
+    });
+  }
+
+  // Timeouts sit in the pad's own columns so each stays under its card. The
+  // team name is only spelled out where there is room for it.
+  const timeoutButton = (side: "home" | "away"): React.ReactElement => (
+    <Button
+      variant="outline"
+      data-testid={`timeout-${side}`}
+      aria-label={`${t("Timeout")} ${side === "home" ? homeName : awayName}`}
+      disabled={timeouts[side] >= 1}
+      onClick={() => spendTimeout(side)}
+      className="h-11 w-full justify-between gap-2 px-2.5 text-xs sm:px-3 sm:text-sm"
+    >
+      <span className="min-w-0 truncate">
+        {t("Timeout")}
+        <span className="hidden sm:inline">
+          {" · "}
+          {side === "home" ? homeName : awayName}
+        </span>
+      </span>
+      <span className="shrink-0 font-tabular text-xs text-muted-foreground">
+        {timeouts[side]}/1
+      </span>
+    </Button>
+  );
+
   return (
     <>
       {/* ONE board: everything the umpire needs, in one section. */}
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm print:hidden">
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-border px-3 py-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <StatusChip status={match.status} />
-            <span className="truncate font-tabular text-xs text-muted-foreground">
-              {isFinal
-                ? `${periodPlural} ${match.home_score ?? 0}-${match.away_score ?? 0}`
-                : `${periodLabel} ${setNo} ${t("of")} ${bestOf} · ${periodPlural} ${homeSets}-${awaySets}`}
-            </span>
-          </div>
-          {!isFinal ? (
-            <button
-              type="button"
-              aria-label={t("First server")}
-              onClick={toggleFirstServer}
-              className="inline-flex h-7 min-w-0 items-center rounded-md border border-border px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <span className="truncate">
-                {t("First serve")}: {firstServer === 0 ? homeName : awayName}
-              </span>
-            </button>
-          ) : null}
-        </div>
+        <ConsoleStrip
+          status={match.status}
+          cells={stripCells}
+          trailing={inPlay ? <SyncBadge state={syncState} live={live} /> : null}
+        />
 
-        <div className="flex flex-col gap-3 p-3">
-          <ScorePad
-            homeName={homeName}
-            awayName={awayName}
-            homeValue={isFinal ? (match.home_score ?? 0) : homePts}
-            awayValue={isFinal ? (match.away_score ?? 0) : awayPts}
-            server={isFinal || awaitingNext ? null : server}
-            canScore={canScore}
-            canEdit={inPlay}
-            onPoint={tapPoint}
-            onMinus={(s) => bump(setRows.length - 1, s, -1)}
-          />
-
-          {awaitingNext ? (
-            <NextGamePrompt
-              summary={`${periodLabel} ${setNo} ${t("done")} ${homePts}-${awayPts}. ${t("Change ends.")}`}
-              startLabel={`${t("Start")} ${periodLabel.toLowerCase()} ${setNo + 1}`}
-              onStart={startNextGame}
+        <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-start lg:gap-4">
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            <ScorePad
+              homeName={homeName}
+              awayName={awayName}
+              homeValue={isFinal ? (match.home_score ?? 0) : homePts}
+              awayValue={isFinal ? (match.away_score ?? 0) : awayPts}
+              canScore={canScore}
+              canEdit={inPlay}
+              onPoint={tapPoint}
+              onMinus={(s) => bump(setRows.length - 1, s, -1)}
+              shortcuts={canScore ? ["q", "p"] : null}
+              footers={
+                live ? [timeoutButton("home"), timeoutButton("away")] : undefined
+              }
+              rule={
+                <TargetRule
+                  points={targetPts}
+                  winBy={stageRule.winBy}
+                  cap={stageRule.cap}
+                  bestOf={bestOf}
+                  periodLabel={periodLabel}
+                  periodNo={isFinal ? bestOf : setNo}
+                />
+              }
             />
-          ) : null}
 
-          {decided && !isFinal ? (
-            // The clinch is the completion gate: the server rejects a result
-            // before it, so the button exists only from this moment.
-            <Button
-              data-testid="record-result"
-              className="h-12 w-full text-base"
-              disabled={submitSets.isPending}
-              onClick={() => setConfirmSets(true)}
-            >
-              {t("Record result")}
-            </Button>
-          ) : null}
+            {awaitingNext ? (
+              <NextGamePrompt
+                summary={`${periodLabel} ${setNo} ${t("done")} ${homePts}-${awayPts}. ${t("Change ends.")}`}
+                startLabel={`${t("Start")} ${periodLabel.toLowerCase()} ${setNo + 1}`}
+                onStart={startNextGame}
+              />
+            ) : null}
 
-          {!isFinal && canScore ? (
-            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5">
-              <span
-                data-testid="serve-indicator"
-                className="inline-flex min-w-0 items-center gap-1.5 text-sm"
-              >
-                <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-primary" />
-                <span className="truncate font-medium">
-                  {t("Service")}: {server === 0 ? homeName : awayName}
-                </span>
-              </span>
-              {gpName ? (
+            {!isFinal && gpName ? (
+              <div className="flex justify-center">
                 <PointFlag
                   kind={gpIsMatch ? "match" : "set"}
                   periodLabel={periodLabel}
                   name={gpName}
                 />
-              ) : null}
-            </div>
-          ) : null}
-
-          {nudge ? (
-            <div
-              data-testid="change-ends"
-              role="status"
-              className="flex items-center justify-between gap-2 rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground"
-            >
-              <span>{nudge}</span>
-              <button
-                type="button"
-                aria-label={t("Dismiss")}
-                onClick={() => setNudge(null)}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <X aria-hidden="true" className="h-4 w-4" />
-              </button>
-            </div>
-          ) : null}
-
-          {towelDue ? (
-            <p
-              data-testid="towel-break"
-              className="text-center text-xs text-muted-foreground"
-            >
-              {t("Towel break")}
-            </p>
-          ) : null}
-
-          <GameTrack
-            progress={prog}
-            periodLabel={periodLabel}
-            finished={isFinal ? (match.set_scores ?? []) : awaitingNext ? completeSets : finishedSetChips}
-            awaitingNext={awaitingNext}
-            targetText={
-              targetPts > 0
-                ? `${periodLabel.toLowerCase()} ${t("to")} ${targetPts}`
-                : undefined
-            }
-            winnerName={winnerName}
-            isFinal={isFinal}
-          />
-
-          {live ? (
-            // Timeouts: one per match per side (ITTF 3.4.4.1.1).
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
-              {(["home", "away"] as const).map((side) => (
-                <Button
-                  key={side}
-                  type="button"
-                  variant="outline"
-                  data-testid={`timeout-${side}`}
-                  disabled={timeouts[side] >= 1}
-                  onClick={() => spendTimeout(side)}
-                  className="h-10 justify-between px-3"
-                >
-                  <span className="truncate">
-                    {t("Timeout")} · {side === "home" ? homeName : awayName}
-                  </span>
-                  <span className="font-tabular text-xs text-muted-foreground">
-                    {timeouts[side]}/1
-                  </span>
-                </Button>
-              ))}
-            </div>
-          ) : null}
-
-          {actions}
-
-          {isFinal ? (
-            <Button
-              variant="outline"
-              size="sm"
-              data-testid="amend-result"
-              className="self-center"
-              onClick={() => {
-                setAmendRows(
-                  (match.set_scores ?? []).map(
-                    (sc) => [String(sc[0]), String(sc[1])] as SetRow,
-                  ),
-                );
-                setAmendOpen(true);
-              }}
-            >
-              {t("Amend result")}
-            </Button>
-          ) : null}
-        </div>
-
-        {inPlay ? (
-          // Corrections: the classic stepper editor, a collapsed row.
-          <details className="border-t border-border">
-            <summary className="cursor-pointer select-none px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
-              {t("Adjust")} {periodPlural.toLowerCase()}
-            </summary>
-            <div className="flex flex-col gap-3 px-3 pb-3">
-              <div className="hidden grid-cols-[2.25rem_1fr_1fr_2rem] items-center gap-2 text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground sm:grid">
-                <span />
-                <span className="truncate text-center">{homeName}</span>
-                <span className="truncate text-center">{awayName}</span>
-                <span />
               </div>
-              {setRows.map((row, i) => (
-                <div
-                  key={i}
-                  className="grid grid-cols-[2.25rem_minmax(0,1fr)_2rem] items-center gap-x-2 gap-y-1.5 sm:grid-cols-[2.25rem_1fr_1fr_2rem]"
+            ) : null}
+
+            {nudge ? (
+              <div
+                data-testid="change-ends"
+                role="status"
+                className="flex items-center justify-between gap-2 rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground"
+              >
+                <span>{nudge}</span>
+                <button
+                  type="button"
+                  aria-label={t("Dismiss")}
+                  onClick={() => setNudge(null)}
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {periodLabel} {i + 1}
-                  </span>
-                  {([0, 1] as const).map((sideIdx) => {
-                    const teamLabel = sideIdx === 0 ? homeName : awayName;
-                    const sideKey = sideIdx === 0 ? "home" : "away";
-                    return (
-                      <div
-                        key={sideIdx}
-                        className={
-                          sideIdx === 1
-                            ? "col-start-2 row-start-2 flex min-w-0 items-center gap-1 sm:col-auto sm:row-auto"
-                            : "flex min-w-0 items-center gap-1"
-                        }
-                      >
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          aria-label={`${periodLabel} ${i + 1} ${teamLabel} ${t("minus")} 1`}
-                          data-testid={`set-${i}-${sideKey}-minus`}
-                          className="h-11 w-10 shrink-0 p-0"
-                          onClick={() => bump(i, sideIdx, -1)}
-                        >
-                          <Minus aria-hidden="true" className="h-4 w-4" />
-                        </Button>
-                        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                          <span className="truncate text-center text-[0.6875rem] text-muted-foreground sm:hidden">
-                            {teamLabel}
-                          </span>
-                          <Input
-                            inputMode="numeric"
-                            aria-label={`${periodLabel} ${i + 1} ${teamLabel}`}
-                            value={row[sideIdx]}
-                            onChange={(e) => setSide(i, sideIdx, e.target.value)}
-                            className="h-11 w-full text-center font-tabular text-lg font-semibold"
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          aria-label={`${periodLabel} ${i + 1} ${teamLabel} ${t("plus")} 1`}
-                          data-testid={`set-${i}-${sideKey}-plus`}
-                          className="h-11 w-14 shrink-0 p-0"
-                          onClick={() => bump(i, sideIdx, 1)}
-                        >
-                          <Plus aria-hidden="true" className="h-5 w-5" />
-                        </Button>
-                      </div>
-                    );
-                  })}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`${t("Remove")} ${periodLabel.toLowerCase()} ${i + 1}`}
-                    disabled={setRows.length === 1}
-                    className="col-start-3 row-start-1 h-8 w-8 p-0 sm:col-auto sm:row-auto"
-                    onClick={() => {
-                      const next = setRows.filter((_, j) => j !== i);
-                      setSetRows(next);
-                      schedulePush(next);
-                    }}
+                  <X aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </div>
+            ) : null}
+
+            {towelDue ? (
+              <p
+                data-testid="towel-break"
+                className="text-center text-xs text-muted-foreground"
+              >
+                {t("Towel break")}
+              </p>
+            ) : null}
+
+            <GameHistory
+              progress={prog}
+              periodLabel={periodLabel}
+              entered={
+                isFinal
+                  ? (match.set_scores ?? []).map(
+                      ([h, a]) => [String(h), String(a)] as SetRow,
+                    )
+                  : setRows
+              }
+              homeName={homeName}
+              awayName={awayName}
+              awaitingNext={awaitingNext}
+              targetText={
+                targetPts > 0
+                  ? `${periodLabel.toLowerCase()} ${t("to")} ${targetPts}`
+                  : undefined
+              }
+              winnerName={winnerName}
+              isFinal={isFinal}
+              onEdit={inPlay ? () => setEditOpen(true) : undefined}
+            />
+
+            {inPlay && editOpen ? (
+              <section
+                data-testid="corrections"
+                className="rounded-xl border border-border bg-muted/20 p-3"
+              >
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="text-[0.625rem] font-semibold uppercase leading-none tracking-[0.16em] text-muted-foreground">
+                    {t("Corrections")}
+                  </h3>
+                  <button
+                    type="button"
+                    aria-label={t("Close corrections")}
+                    onClick={() => setEditOpen(false)}
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <X aria-hidden="true" className="h-4 w-4" />
-                  </Button>
+                  </button>
                 </div>
-              ))}
+                <ScoreEditor
+                  rows={setRows}
+                  periodLabel={periodLabel}
+                  homeName={homeName}
+                  awayName={awayName}
+                  onBump={bump}
+                  onSet={setSide}
+                  onRemove={(i) => {
+                    const next = setRows.filter((_, j) => j !== i);
+                    setSetRows(next);
+                    schedulePush(next);
+                  }}
+                  onAdd={() => setSetRows((rows) => [...rows, ["", ""]])}
+                />
+              </section>
+            ) : null}
+          </div>
+
+          <ConsoleRail title={t("Match state")} rows={railRows}>
+            {inPlay ? (
               <Button
-                size="sm"
                 variant="outline"
-                className="w-fit"
-                onClick={() => setSetRows((rows) => [...rows, ["", ""]])}
+                size="sm"
+                className="w-full"
+                onClick={() => setEditOpen((o) => !o)}
               >
-                <Plus aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
-                {t("Add")} {periodLabel.toLowerCase()}
+                {t("Adjust")} {periodPlural.toLowerCase()}
               </Button>
-            </div>
-          </details>
-        ) : null}
+            ) : null}
+            {isFinal ? (
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid="amend-result"
+                className="w-full"
+                onClick={() => {
+                  setAmendRows(
+                    (match.set_scores ?? []).map(
+                      (sc) => [String(sc[0]), String(sc[1])] as SetRow,
+                    ),
+                  );
+                  setAmendOpen(true);
+                }}
+              >
+                {t("Amend result")}
+              </Button>
+            ) : null}
+          </ConsoleRail>
+        </div>
 
         {extras}
 
-        {inPlay ? (
-          <div className="border-t border-border px-3 py-2">
-            {match.status === "live" ? (
+        <ConsoleActionBar
+          back={back}
+          sync={
+            inPlay ? (
               <span
                 data-testid="tap-sync-state"
-                className="text-xs text-muted-foreground"
+                className="font-tabular text-xs text-muted-foreground"
                 aria-live="polite"
               >
-                {progress.isPending
-                  ? t("Saving")
-                  : syncFailed
-                    ? t("Offline. Points are safe on this phone.")
-                    : t("Saves as you tap. Viewers see it live.")}
+                {match.status === "live"
+                  ? progress.isPending
+                    ? t("Saving")
+                    : syncFailed
+                      ? t("Offline. Points are safe on this phone.")
+                      : t("All changes saved")
+                  : t("Recording the result completes the match.")}
               </span>
-            ) : (
-              <span className="text-xs text-muted-foreground">
-                {t("Recording the result completes the match.")}
-              </span>
-            )}
-          </div>
-        ) : null}
+            ) : null
+          }
+          actions={
+            <>
+              {actions}
+              {decided && !isFinal ? (
+                // The clinch is the completion gate: the server rejects a
+                // result before it, so the button exists only from here.
+                <Button
+                  data-testid="record-result"
+                  className="h-11 min-w-36 flex-1 text-base sm:flex-none"
+                  disabled={submitSets.isPending}
+                  onClick={() => setConfirmSets(true)}
+                >
+                  {t("Record result")}
+                </Button>
+              ) : null}
+            </>
+          }
+        />
       </div>
 
       {/* Confirm the result (completes the match). */}

@@ -570,8 +570,11 @@ export function MatchConsolePage(): React.ReactElement {
     </>
   ) : null;
 
+  // The console is a working surface, not a reading column: it fills the
+  // shell on a phone/tablet and settles at 90% of the available width from
+  // `lg` up (owner 2026-07-26), where the 5% gutters replace page padding.
   return (
-    <div className="flex w-full flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
+    <div className="mx-auto flex w-full flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4 lg:w-[90%] lg:px-0">
       {/* One-line header: back, what is being played, the clock. The teams
           are named on the board itself. */}
       <div className="flex items-center gap-2 print:hidden">
@@ -603,8 +606,9 @@ export function MatchConsolePage(): React.ReactElement {
             {queued} {t("will sync")}
           </span>
         ) : null}
-        {live && elapsedSec != null ? (
-          // Stopwatch: runs from the moment the scorer started the match.
+        {live && elapsedSec != null && !module ? (
+          // Stopwatch: runs from the moment the scorer started the match. A
+          // sport module carries it in its own telemetry strip instead.
           <div
             data-testid="match-clock"
             className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 shadow-sm"
@@ -692,6 +696,16 @@ export function MatchConsolePage(): React.ReactElement {
           onError={onError}
           actions={actionButtons}
           extras={extras}
+          clock={live && elapsedSec != null ? fmtClock(elapsedSec) : null}
+          back={
+            <Link
+              to={routes.tournamentMatches(id)}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
+              {t("Back to matches")}
+            </Link>
+          }
         />
       ) : (
         <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm print:hidden">
