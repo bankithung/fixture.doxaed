@@ -31,7 +31,7 @@ import { t } from "@/lib/t";
 import { ApiError } from "@/types/api";
 import { LineupPanel } from "./LineupPanel";
 import { resolveConsole } from "./console/registry";
-import { statusMeta } from "./console/shared";
+import { competitionLabel, statusMeta } from "./console/shared";
 
 const STATE_ACTIONS: Record<string, { label: string; to: string }[]> = {
   scheduled: [{ label: "Start match", to: "live" }],
@@ -104,6 +104,17 @@ function errorMessage(e: unknown): string {
     amend_reason_required: t("Enter the reason for the correction."),
     only_completed_results_can_be_amended: t("Only a completed result can be amended."),
     amend_is_for_set_sports: t("Goal-based matches are corrected by undoing events."),
+    // Set-result validation (services/set_scoring.py) in scorer words.
+    no_sets: t("Enter the game scores first."),
+    bad_set: t("Check the game scores."),
+    bad_set_score: t("Check the game scores."),
+    set_above_cap: t("A game is above the points cap."),
+    set_below_target: t("A game has not reached the winning score."),
+    set_not_won_by_margin: t("A game is missing the winning margin."),
+    set_after_match_decided: t("Remove the extra games after the match was decided."),
+    match_not_decided: t("The games do not decide the match yet."),
+    wrong_set_count: t("The games do not match the best-of rule."),
+    too_many_sets: t("Too many games for the best-of rule."),
   };
   if (detail.startsWith("match_not_accepting_events")) {
     return t("The match is not accepting events in its current state.");
@@ -143,9 +154,12 @@ function useElapsedSeconds(
 }
 
 function fmtClock(totalSeconds: number): string {
-  const m = Math.floor(totalSeconds / 60);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    : `${m}:${String(s).padStart(2, "0")}`;
 }
 
 type Side = "home" | "away";
@@ -315,10 +329,11 @@ export function MatchConsolePage(): React.ReactElement {
     (match.scoring?.type === "sets" ? "target" : "timed");
   const module = resolveConsole(match.sport ?? "", family);
   const timed = family === "timed";
-  // Half time is a football notion; a set sport pauses between sets on its
-  // own, so its live console offers Complete only.
+  // Half time is a football notion, and a set sport completes through
+  // Record result (gated on the clinch) — its live console gets neither
+  // transition button, only Start match while scheduled.
   const actions = (STATE_ACTIONS[match.status] ?? []).filter(
-    (a) => !(family === "target" && a.to === "half_time"),
+    (a) => !(family === "target" && (a.to === "half_time" || a.to === "completed")),
   );
   const sm = statusMeta(match.status);
   // The header says what the console body says: the running game comes from
@@ -351,12 +366,12 @@ export function MatchConsolePage(): React.ReactElement {
   // surface: the chassis's football card below, or the sport module's card.
   const actionButtons =
     actions.length > 0 ? (
-      <div className="flex flex-wrap justify-center gap-2">
+      <div className="flex w-full flex-wrap justify-center gap-2">
         {actions.map((a) => (
           <Button
             key={a.to}
             variant={a.to === "live" || a.to === "completed" ? "default" : "outline"}
-            size="sm"
+            className="h-10 min-w-32 flex-1 sm:flex-none"
             disabled={tr.isPending}
             onClick={() => fireTransition(a.to)}
           >
@@ -375,11 +390,20 @@ export function MatchConsolePage(): React.ReactElement {
         <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
         {t("Back to matches")}
       </Link>
-      {/* Page header */}
+      {/* Page header: what is being played, then who. */}
       <div className="flex flex-wrap items-end justify-between gap-2 print:hidden">
-        <div className="flex flex-col gap-1">
-          <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            {t("Scoring console")}
+        <div className="flex min-w-0 flex-col gap-1">
+          <p
+            data-testid="match-context"
+            className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground"
+          >
+            {[
+              match.sport_meta?.name,
+              competitionLabel(match.leaf_key, match.sport_meta?.key ?? match.sport),
+              match.venue,
+            ]
+              .filter(Boolean)
+              .join(" · ") || t("Scoring console")}
           </p>
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
             {homeName} <span className="text-muted-foreground">{t("vs")}</span> {awayName}
@@ -556,32 +580,11 @@ export function MatchConsolePage(): React.ReactElement {
         />
       ) : null}
 
-      {/* Record event */}
+      {/* Record event: football's full palette stays open; a set sport's
+          discipline log is rare courtside, so it collapses out of the way. */}
       {live ? (
-        <div className="rounded-xl border border-border bg-card shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
-            <div className="flex items-center gap-2">
-              <Radio aria-hidden="true" className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">
-                {timed ? t("Record event") : t("Record discipline")}
-              </h2>
-            </div>
-            {timed ? (
-              <div className="flex items-center gap-2">
-                <Label htmlFor="minute" className="text-xs text-muted-foreground">
-                  {t("Minute")}
-                </Label>
-                <Input
-                  id="minute"
-                  inputMode="numeric"
-                  placeholder={autoMinute != null ? String(autoMinute) : ""}
-                  value={minute}
-                  onChange={(e) => setMinute(e.target.value)}
-                  className="h-9 w-16 text-center font-tabular"
-                />
-              </div>
-            ) : null}
-          </div>
+        (() => {
+          const grid = (
           <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
             {(["home", "away"] as Side[]).map((side) => {
               const team: LiveTeam | null = side === "home" ? match.home_team : match.away_team;
@@ -669,7 +672,43 @@ export function MatchConsolePage(): React.ReactElement {
               );
             })}
           </div>
-        </div>
+          );
+          return timed ? (
+            <div className="rounded-xl border border-border bg-card shadow-sm print:hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <Radio aria-hidden="true" className="h-4 w-4 text-primary" />
+                  <h2 className="text-sm font-semibold">{t("Record event")}</h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="minute" className="text-xs text-muted-foreground">
+                    {t("Minute")}
+                  </Label>
+                  <Input
+                    id="minute"
+                    inputMode="numeric"
+                    placeholder={autoMinute != null ? String(autoMinute) : ""}
+                    value={minute}
+                    onChange={(e) => setMinute(e.target.value)}
+                    className="h-9 w-16 text-center font-tabular"
+                  />
+                </div>
+              </div>
+              {grid}
+            </div>
+          ) : (
+            <details className="rounded-xl border border-border bg-card shadow-sm print:hidden">
+              <summary className="flex cursor-pointer select-none items-center gap-2 px-5 py-3 text-sm font-semibold">
+                <Radio aria-hidden="true" className="h-4 w-4 text-primary" />
+                {t("Record discipline")}
+                <span className="ml-auto text-xs font-medium text-muted-foreground">
+                  {t("Fouls and cards")}
+                </span>
+              </summary>
+              <div className="border-t border-border">{grid}</div>
+            </details>
+          );
+        })()
       ) : null}
 
       {/* Event log / timeline */}

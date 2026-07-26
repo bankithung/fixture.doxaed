@@ -91,9 +91,11 @@ describe("TTConsole", () => {
     renderTT();
 
     await userEvent.click(screen.getByTestId("point-home"));
-    expect(screen.getByTestId("set-scoreboard")).toHaveTextContent("1-0");
-    // Game vocabulary from sport_meta.terms.period.
-    expect(screen.getByText(/game 1 · games 0-0/i)).toBeInTheDocument();
+    expect(screen.getByTestId("points-home")).toHaveTextContent("1");
+    expect(screen.getByTestId("points-away")).toHaveTextContent("0");
+    // Game vocabulary from sport_meta.terms.period, with the best-of rule
+    // always on the board.
+    expect(screen.getByText(/game 1 of 5 · games 0-0/i)).toBeInTheDocument();
 
     // A TT point is just a point: the tap itself logs the annotation.
     await waitFor(() => expect(liveApi.recordEvent).toHaveBeenCalled());
@@ -141,7 +143,7 @@ describe("TTConsole", () => {
     // Start another game via the corrections editor: the timeout stays spent.
     await userEvent.click(screen.getByText(/adjust games/i));
     await userEvent.click(screen.getByRole("button", { name: /add game/i }));
-    expect(screen.getByText(/game 2 · games 0-0/i)).toBeInTheDocument();
+    expect(screen.getByText(/game 2 of 5 · games 0-0/i)).toBeInTheDocument();
     expect(screen.getByTestId("timeout-home")).toBeDisabled();
     expect(screen.getByTestId("timeout-away")).toBeEnabled();
   });
@@ -181,7 +183,61 @@ describe("TTConsole", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /start game 2/i }));
     expect(screen.queryByTestId("change-ends")).toBeNull();
-    expect(screen.getByTestId("set-scoreboard")).toHaveTextContent("0-0");
-    expect(screen.getByText(/game 2 · games 1-0/i)).toBeInTheDocument();
+    expect(screen.getByTestId("points-home")).toHaveTextContent("0");
+    expect(screen.getByText(/game 2 of 5 · games 1-0/i)).toBeInTheDocument();
+  });
+
+  it("a tap after the game is won rolls into the next game (no stray 12-5s)", async () => {
+    renderTT({ set_scores: [[10, 7]] });
+
+    // 11-7 wins game 1; the next tap belongs to game 2.
+    await userEvent.click(screen.getByTestId("point-home"));
+    await userEvent.click(screen.getByTestId("point-home"));
+
+    expect(screen.getByText(/game 2 of 5 · games 1-0/i)).toBeInTheDocument();
+    expect(screen.getByTestId("points-home")).toHaveTextContent("1");
+    expect(screen.getByTestId("points-away")).toHaveTextContent("0");
+    // Moving on consumes the change-ends prompt.
+    expect(screen.queryByTestId("change-ends")).toBeNull();
+    await waitFor(() =>
+      expect(liveApi.recordSetProgress).toHaveBeenLastCalledWith("m1", {
+        set_scores: [
+          [11, 7],
+          [1, 0],
+        ],
+        event_id: expect.any(String),
+      }),
+    );
+  });
+
+  it("Record result exists only from the clinch, then completes via confirm", async () => {
+    vi.mocked(liveApi.recordSetScores).mockResolvedValue({} as never);
+    renderTT({
+      set_scores: [
+        [11, 5],
+        [11, 5],
+        [10, 3],
+      ],
+    });
+    // 2-0 up, game 3 at 10-3: not decided, so no completion button yet.
+    expect(screen.queryByTestId("record-result")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("point-home"));
+    expect(await screen.findByText(/alpha wins 3-0/i)).toBeInTheDocument();
+    // The clinch closes the tap zones (extra points would be illegal).
+    expect(screen.getByTestId("point-home")).toBeDisabled();
+
+    await userEvent.click(screen.getByTestId("record-result"));
+    await userEvent.click(screen.getByTestId("confirm-sets"));
+    await waitFor(() =>
+      expect(liveApi.recordSetScores).toHaveBeenCalledWith("m1", {
+        set_scores: [
+          [11, 5],
+          [11, 5],
+          [11, 3],
+        ],
+        event_id: expect.any(String),
+      }),
+    );
   });
 });

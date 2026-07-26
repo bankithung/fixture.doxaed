@@ -251,11 +251,20 @@ describe("MatchConsolePage", () => {
     );
   });
 
-  it("shows set entry instead of the goal palette for set sports", async () => {
+  it("shows the tap board instead of the goal palette for set sports", async () => {
     vi.mocked(liveApi.snapshot).mockResolvedValue(
       snap("live", {
         sport: "badminton",
-        scoring: { type: "sets", best_of: 5, points: 11, win_by: 2 },
+        sport_meta: {
+          key: "badminton",
+          name: "Badminton",
+          family: "target",
+          terms: { period: "Set", score_unit: "Points" },
+          version: 1,
+        },
+        leaf_key: "badminton.u19.boys.1v1",
+        venue: "Court 1",
+        scoring: { type: "sets", best_of: 3, points: 11, win_by: 2 },
         set_scores: [],
       }),
     );
@@ -263,18 +272,34 @@ describe("MatchConsolePage", () => {
     renderConsole();
     await screen.findAllByText("Alpha");
 
-    // No goal button for a set sport (the server would reject it).
+    // The header names what is being played, where.
+    expect(screen.getByTestId("match-context")).toHaveTextContent(
+      "Badminton · U19 · Boys · 1v1 · Court 1",
+    );
+    // No goal palette and no bare Complete transition for a set sport (the
+    // server would reject both); completion goes through Record result.
     expect(screen.queryByRole("button", { name: /^goal$/i })).toBeNull();
-    expect(screen.getByText(/set scores/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^complete$/i })).toBeNull();
+    expect(screen.getByTestId("point-home")).toBeInTheDocument();
 
+    // Undecided sets keep the completion gate shut (best of 3 needs 2).
     await userEvent.type(screen.getByLabelText("Set 1 Alpha"), "11");
     await userEvent.type(screen.getByLabelText("Set 1 Beta"), "7");
-    await userEvent.click(screen.getByRole("button", { name: /record result/i }));
+    expect(screen.queryByTestId("record-result")).toBeNull();
+
+    // The clinch opens it.
+    await userEvent.click(screen.getByRole("button", { name: /add set/i }));
+    await userEvent.type(screen.getByLabelText("Set 2 Alpha"), "11");
+    await userEvent.type(screen.getByLabelText("Set 2 Beta"), "5");
+    await userEvent.click(screen.getByTestId("record-result"));
     await userEvent.click(screen.getByTestId("confirm-sets"));
 
     await waitFor(() =>
       expect(liveApi.recordSetScores).toHaveBeenCalledWith("m1", {
-        set_scores: [[11, 7]],
+        set_scores: [
+          [11, 7],
+          [11, 5],
+        ],
         event_id: expect.any(String),
       }),
     );
@@ -296,8 +321,8 @@ describe("MatchConsolePage", () => {
     // set's points instantly (sets-won stays 0-0 mid-set).
     await userEvent.click(screen.getByTestId("set-0-home-plus"));
     expect(screen.getByLabelText("Set 1 Alpha")).toHaveValue("1");
-    expect(screen.getByTestId("set-scoreboard")).toHaveTextContent("1-0");
-    expect(screen.getByText(/set 1 · sets 0-0/i)).toBeInTheDocument();
+    expect(screen.getByTestId("points-home")).toHaveTextContent("1");
+    expect(screen.getByText(/set 1 of 3 · sets 0-0/i)).toBeInTheDocument();
 
     // Choose +5: the next tap adds 5; minus steps the same amount back.
     await userEvent.click(screen.getByTestId("tap-step-5"));

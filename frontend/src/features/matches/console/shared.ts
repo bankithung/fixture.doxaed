@@ -16,6 +16,40 @@ export function statusMeta(s: string): { label: string; badge: string; dot: stri
 
 export type SetRow = [string, string];
 
+/** One segment of a competition leaf key, humanized ("u_14" -> "U14",
+ * "boys" -> "Boys", "1v1" stays "1v1"). */
+function humanizeSegment(seg: string): string {
+  const u = seg.match(/^u[ _-]?(\d+)$/i);
+  if (u) return `U${u[1]}`;
+  return seg
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** "table_tennis.u19.boys.1v1" -> "U19 · Boys · 1v1" (the sport prefix is
+ * dropped because the header names the sport separately). */
+export function competitionLabel(
+  leafKey: string | null | undefined,
+  sportKey: string | null | undefined,
+): string {
+  if (!leafKey) return "";
+  let segs = leafKey.split(".").filter(Boolean);
+  if (sportKey && segs[0] === sportKey) segs = segs.slice(1);
+  return segs.map(humanizeSegment).join(" · ");
+}
+
+/** Tiny tap feedback on phones that support it; silently does nothing
+ * elsewhere (jsdom, desktop). */
+export function buzz(ms = 12): void {
+  try {
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate(ms);
+    }
+  } catch {
+    // vibration blocked: the tap still lands
+  }
+}
+
 export type SetScoring = {
   best_of?: number;
   points?: number;
@@ -57,4 +91,41 @@ export function setsWon(rows: SetRow[], scoring: SetScoring): [number, number] {
     else a += 1;
   }
   return [h, a];
+}
+
+/** Where the match stands against its best-of rule — drives the game track,
+ * the "first to N" hint and the completion gate (the server rejects a
+ * recorded result until the match is decided, so the console must too). */
+export interface SetProgress {
+  homeSets: number;
+  awaySets: number;
+  bestOf: number;
+  /** Sets/games a side must win to take the match. */
+  need: number;
+  /** 1-based number of the set in play (the last editor row). */
+  setNo: number;
+  /** A side has clinched: the result is recordable, extra points are not. */
+  decided: boolean;
+  /** 0 home, 1 away once decided. */
+  leader: 0 | 1 | null;
+}
+
+export function setProgress(
+  rows: SetRow[],
+  scoring: SetScoring,
+  fallbackBestOf = 3,
+): SetProgress {
+  const [homeSets, awaySets] = setsWon(rows, scoring);
+  const bestOf = scoring?.best_of ?? fallbackBestOf;
+  const need = Math.floor(bestOf / 2) + 1;
+  const decided = homeSets >= need || awaySets >= need;
+  return {
+    homeSets,
+    awaySets,
+    bestOf,
+    need,
+    setNo: Math.max(rows.length, 1),
+    decided,
+    leader: decided ? (homeSets > awaySets ? 0 : 1) : null,
+  };
 }

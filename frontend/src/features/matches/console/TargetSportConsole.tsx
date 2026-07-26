@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Minus, Plus, Radio, X } from "lucide-react";
+import { Minus, Plus, X } from "lucide-react";
 import { liveApi, type LiveSnapshot } from "@/api/live";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +17,8 @@ import { isNetworkError } from "@/api/client";
 import { newEventId } from "@/lib/eventId";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { setsWon, statusMeta, type SetRow } from "./shared";
+import { buzz, setProgress, setsWon, type SetRow } from "./shared";
+import { GameTrack, StatusChip, TapZones } from "./Scoreboard";
 
 export interface TargetSportConsoleProps {
   matchId: string;
@@ -33,10 +34,12 @@ export interface TargetSportConsoleProps {
   actions: React.ReactNode;
 }
 
-/** The whole scoring surface for target-family (set) sports: the scoreboard
- * card, the tap-scored set editor with live auto-save, result recording and
- * the audited amend flow (H3). The chassis mounts it via the console
- * registry; per-sport native consoles can replace it there. */
+/** The whole scoring surface for target-family (set) sports without a native
+ * console: one board where the score zones ARE the point buttons (each tap
+ * adds the chosen step), the set track shows the best-of rule and the sets
+ * still ahead, and the result becomes recordable exactly when a side
+ * clinches — the same gate the server enforces. The stepper editor stays
+ * collapsed below for corrections; the audited amend flow (H3) is kept. */
 export function TargetSportConsole({
   matchId,
   match,
@@ -51,8 +54,8 @@ export function TargetSportConsole({
   const toast = useToast();
   const [setRows, setSetRows] = useState<SetRow[]>([["", ""]]);
   const [confirmSets, setConfirmSets] = useState(false);
-  // Tap scoring: how many points one +/- tap moves (owner 2026-07-03), and
-  // the debounce plumbing that auto-saves the running points while live.
+  // Tap scoring: how many points one tap moves (owner 2026-07-03), and the
+  // debounce plumbing that auto-saves the running points while live.
   const [step, setStep] = useState(1);
   const [stepText, setStepText] = useState("1");
   const seeded = useRef(false);
@@ -80,9 +83,9 @@ export function TargetSportConsole({
   );
 
   // Live tap scoring: the running points save themselves (no Save button).
-  // The steppers hold the truth locally, so a push lost to a dead connection
-  // is never lost data: syncFailed flips on and the retry loop below re-sends
-  // the LATEST rows until the network returns.
+  // The zones hold the truth locally, so a push lost to a dead connection
+  // is never lost data: syncFailed flips on and the retry loop below
+  // re-sends the LATEST rows until the network returns.
   const [syncFailed, setSyncFailed] = useState(false);
   const progress = useMutation({
     mutationFn: (p: { rows: SetRow[]; event_id: string }) =>
@@ -157,19 +160,26 @@ export function TargetSportConsole({
     onError,
   });
 
-  const sm = statusMeta(match.status);
-  const [homeSets, awaySets] = setsWon(setRows, match.scoring ?? null);
+  const periodLabel = t(match.sport_meta?.terms?.period ?? "Set");
+  const periodPlural = `${periodLabel}s`;
+  const prog = setProgress(setRows, match.scoring ?? null, 3);
+  const { homeSets, awaySets, bestOf, setNo, decided } = prog;
   const completeSets = setRows.filter(([h, a]) => h !== "" && a !== "");
   // The set in play = the last editor row; its points are the BIG score for
   // set sports while the match runs (taps show up instantly, owner 2026-07-03).
   const currentSetRow = setRows[setRows.length - 1] ?? ["", ""];
-  const currentSetPoints: [number, number] = [
-    Number(currentSetRow[0] || 0),
-    Number(currentSetRow[1] || 0),
-  ];
+  const homePts = Number(currentSetRow[0] || 0);
+  const awayPts = Number(currentSetRow[1] || 0);
   const finishedSetChips = setRows
     .slice(0, -1)
     .filter(([h, a]) => h !== "" && a !== "");
+  // Whether the set in play just finished (legally won under the rules).
+  const prevWon = setsWon(setRows.slice(0, -1), match.scoring ?? null);
+  const currentRowWon = homeSets + awaySets > prevWon[0] + prevWon[1];
+  const rulesKnown = (match.scoring?.points ?? 0) > 0;
+  const inPlay = live || match.status === "scheduled";
+  const canScore = inPlay && !decided;
+  const winnerName = prog.leader == null ? null : prog.leader === 0 ? homeName : awayName;
 
   // Tap scoring: every edit while LIVE auto-saves (debounced) — no Save
   // button. When the match has not started, edits stay local until the
@@ -198,135 +208,47 @@ export function TargetSportConsole({
     setSide(i, sideIdx, String(Math.max(0, cur + delta)));
   };
 
+  // The PRIMARY interaction: a tap on a team's half adds the chosen step.
+  // Once the running set is legally won, the next tap opens the following
+  // set with that step (rules permitting).
+  const tapPoint = (sideIdx: 0 | 1) => {
+    buzz();
+    if (rulesKnown && currentRowWon && !decided) {
+      const fresh: SetRow =
+        sideIdx === 0 ? [String(step), "0"] : ["0", String(step)];
+      const next = [...setRows, fresh];
+      setSetRows(next);
+      schedulePush(next);
+    } else {
+      bump(setRows.length - 1, sideIdx, step);
+    }
+  };
+
   return (
     <>
-      {/* Scoreboard */}
+      {/* The board: status + rule, tap zones, set track, and the result
+          gate — one surface, phone-first. The server rejects goal events
+          for set sports, so the console never offers them (P7b). */}
       <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm print:hidden">
         <span
           aria-hidden="true"
           className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-primary/10 blur-3xl"
         />
-        <div className="relative flex flex-col items-center gap-4 px-6 py-8">
-          <span
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
-              sm.badge,
-            )}
-          >
-            {sm.live ? (
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-              </span>
-            ) : (
-              <span className={cn("h-1.5 w-1.5 rounded-full", sm.dot)} />
-            )}
-            {t(sm.label)}
-            {/* Football periods and the running minute mean nothing to a set
-                sport; its pill relies on the Set N line under the score. */}
-          </span>
-
-          <div className="grid w-full max-w-xl grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
-            <div className="min-w-0 text-right">
-              <div className="truncate text-sm font-medium sm:text-base">{homeName}</div>
-              <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
-                {t("Home")}
-              </div>
-            </div>
-            {!isFinal ? (
-              // Set sport in play: the BIG number is the CURRENT SET's points,
-              // straight from the editor rows so a tap shows up instantly.
-              <div className="text-center">
-                <div
-                  data-testid="set-scoreboard"
-                  className="font-tabular text-4xl font-semibold tabular-nums sm:text-6xl"
-                >
-                  {currentSetPoints[0]}
-                  <span className="px-2 text-muted-foreground">-</span>
-                  {currentSetPoints[1]}
-                </div>
-                <p className="mt-1 font-tabular text-sm text-muted-foreground">
-                  {t("Set")} {setRows.length} · {t("Sets")} {homeSets}-{awaySets}
-                </p>
-              </div>
-            ) : (
-              <div className="font-tabular text-4xl font-semibold tabular-nums sm:text-6xl">
-                {match.home_score ?? 0}
-                <span className="px-2 text-muted-foreground">-</span>
-                {match.away_score ?? 0}
-              </div>
-            )}
-            <div className="min-w-0 text-left">
-              <div className="truncate text-sm font-medium sm:text-base">{awayName}</div>
-              <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
-                {t("Away")}
-              </div>
-            </div>
-          </div>
-
-          {(() => {
-            // In play: finished sets from the local editor (instant); once
-            // final, the server's recorded sets.
-            const chips = isFinal ? (match.set_scores ?? []) : finishedSetChips;
-            return chips.length > 0 ? (
-              <div className="flex flex-wrap justify-center gap-1.5">
-                {chips.map((s, i) => (
-                  <span
-                    key={i}
-                    className="rounded-md bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground"
-                  >
-                    {s[0]}-{s[1]}
-                  </span>
-                ))}
-              </div>
-            ) : null;
-          })()}
-
-          {match.home_pens != null && match.away_pens != null ? (
-            <p className="font-tabular text-xs text-muted-foreground">
-              {t("Pens")} {match.home_pens}-{match.away_pens}
-            </p>
-          ) : null}
-
-          {actions}
-          {isFinal ? (
-            <Button
-              variant="outline"
-              size="sm"
-              data-testid="amend-result"
-              onClick={() => {
-                setAmendRows(
-                  (match.set_scores ?? []).map(
-                    (sc) => [String(sc[0]), String(sc[1])] as SetRow,
-                  ),
-                );
-                setAmendOpen(true);
-              }}
-            >
-              {t("Amend result")}
-            </Button>
-          ) : null}
-        </div>
-      </div>
-
-      {/* Set-sport result entry — the server rejects goal events for set
-          sports, so the console never offers them (P7b). */}
-      {live || match.status === "scheduled" ? (
-        <div className="rounded-xl border border-border bg-card shadow-sm">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-2">
-            <div className="flex items-center gap-2">
-              <Radio aria-hidden="true" className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">{t("Set scores")}</h2>
-            </div>
+        <div className="relative flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-border px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <StatusChip status={match.status} />
             <span className="font-tabular text-xs text-muted-foreground">
-              {t("Sets")} {homeSets}-{awaySets}
-              {match.scoring?.best_of ? ` · ${t("best of")} ${match.scoring.best_of}` : ""}
+              {isFinal
+                ? `${periodPlural} ${match.home_score ?? 0}-${match.away_score ?? 0}`
+                : `${periodLabel} ${setNo} ${t("of")} ${bestOf} · ${periodPlural} ${homeSets}-${awaySets}`}
             </span>
-            {/* Points per tap: what one +/- press adds (any number works). */}
+          </div>
+          {canScore ? (
+            // Points per tap: what one zone press adds (any number works).
             <div
               role="group"
               aria-label={t("Points per tap")}
-              className="ml-auto flex items-center gap-1"
+              className="flex items-center gap-1"
             >
               <span className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
                 {t("Per tap")}
@@ -363,98 +285,172 @@ export function TargetSportConsole({
                 className="h-7 w-12 px-1 text-center font-tabular text-xs"
               />
             </div>
-          </div>
-          <div className="flex flex-col gap-3 p-4">
-            {/* Desktop column headers; mobile shows the name inside each
-                stepper instead (the sides stack there). */}
-            <div className="hidden grid-cols-[2.25rem_1fr_1fr_2rem] items-center gap-2 text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground sm:grid">
-              <span />
-              <span className="truncate text-center">{homeName}</span>
-              <span className="truncate text-center">{awayName}</span>
-              <span />
-            </div>
-            {setRows.map((row, i) => (
-              <div
-                key={i}
-                className="grid grid-cols-[2.25rem_minmax(0,1fr)_2rem] items-center gap-x-2 gap-y-1.5 sm:grid-cols-[2.25rem_1fr_1fr_2rem]"
-              >
-                <span className="text-xs font-medium text-muted-foreground">
-                  {t("Set")} {i + 1}
-                </span>
-                {([0, 1] as const).map((sideIdx) => {
-                  const teamLabel = sideIdx === 0 ? homeName : awayName;
-                  const sideKey = sideIdx === 0 ? "home" : "away";
-                  return (
+          ) : null}
+        </div>
+
+        <div className="relative flex flex-col gap-3 p-4">
+          <TapZones
+            homeName={homeName}
+            awayName={awayName}
+            homeValue={isFinal ? (match.home_score ?? 0) : homePts}
+            awayValue={isFinal ? (match.away_score ?? 0) : awayPts}
+            server={null}
+            canScore={canScore}
+            canEdit={inPlay}
+            step={step}
+            onPoint={tapPoint}
+            onMinus={(s) => bump(setRows.length - 1, s, -step)}
+          />
+
+          <GameTrack
+            progress={prog}
+            periodLabel={periodLabel}
+            finished={isFinal ? (match.set_scores ?? []) : finishedSetChips}
+            winnerName={winnerName}
+            isFinal={isFinal}
+          />
+
+          {match.home_pens != null && match.away_pens != null ? (
+            <p className="text-center font-tabular text-xs text-muted-foreground">
+              {t("Pens")} {match.home_pens}-{match.away_pens}
+            </p>
+          ) : null}
+
+          {actions}
+
+          {decided && !isFinal ? (
+            // The clinch is the completion gate: the server rejects a result
+            // before it, so the button exists only from this moment.
+            <Button
+              data-testid="record-result"
+              className="h-12 w-full text-base"
+              disabled={submitSets.isPending}
+              onClick={() => setConfirmSets(true)}
+            >
+              {t("Record result")}
+            </Button>
+          ) : null}
+
+          {isFinal ? (
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="amend-result"
+              className="self-center"
+              onClick={() => {
+                setAmendRows(
+                  (match.set_scores ?? []).map(
+                    (sc) => [String(sc[0]), String(sc[1])] as SetRow,
+                  ),
+                );
+                setAmendOpen(true);
+              }}
+            >
+              {t("Amend result")}
+            </Button>
+          ) : null}
+
+          {inPlay ? (
+            <>
+              {/* Corrections: the classic stepper editor, collapsed. */}
+              <details className="rounded-lg border border-border">
+                <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+                  {t("Adjust")} {periodPlural.toLowerCase()}
+                </summary>
+                <div className="flex flex-col gap-3 border-t border-border p-3">
+                  {/* Desktop column headers; mobile shows the name inside
+                      each stepper instead (the sides stack there). */}
+                  <div className="hidden grid-cols-[2.25rem_1fr_1fr_2rem] items-center gap-2 text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground sm:grid">
+                    <span />
+                    <span className="truncate text-center">{homeName}</span>
+                    <span className="truncate text-center">{awayName}</span>
+                    <span />
+                  </div>
+                  {setRows.map((row, i) => (
                     <div
-                      key={sideIdx}
-                      className={cn(
-                        "flex min-w-0 items-center gap-1",
-                        sideIdx === 1 &&
-                          "col-start-2 row-start-2 sm:col-auto sm:row-auto",
-                      )}
+                      key={i}
+                      className="grid grid-cols-[2.25rem_minmax(0,1fr)_2rem] items-center gap-x-2 gap-y-1.5 sm:grid-cols-[2.25rem_1fr_1fr_2rem]"
                     >
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {periodLabel} {i + 1}
+                      </span>
+                      {([0, 1] as const).map((sideIdx) => {
+                        const teamLabel = sideIdx === 0 ? homeName : awayName;
+                        const sideKey = sideIdx === 0 ? "home" : "away";
+                        return (
+                          <div
+                            key={sideIdx}
+                            className={cn(
+                              "flex min-w-0 items-center gap-1",
+                              sideIdx === 1 &&
+                                "col-start-2 row-start-2 sm:col-auto sm:row-auto",
+                            )}
+                          >
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              aria-label={`${periodLabel} ${i + 1} ${teamLabel} ${t("minus")} ${step}`}
+                              data-testid={`set-${i}-${sideKey}-minus`}
+                              className="h-11 w-10 shrink-0 p-0"
+                              onClick={() => bump(i, sideIdx, -step)}
+                            >
+                              <Minus aria-hidden="true" className="h-4 w-4" />
+                            </Button>
+                            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                              <span className="truncate text-center text-[0.6875rem] text-muted-foreground sm:hidden">
+                                {teamLabel}
+                              </span>
+                              <Input
+                                inputMode="numeric"
+                                aria-label={`${periodLabel} ${i + 1} ${teamLabel}`}
+                                value={row[sideIdx]}
+                                onChange={(e) => setSide(i, sideIdx, e.target.value)}
+                                className="h-11 w-full text-center font-tabular text-lg font-semibold"
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              aria-label={`${periodLabel} ${i + 1} ${teamLabel} ${t("plus")} ${step}`}
+                              data-testid={`set-${i}-${sideKey}-plus`}
+                              className="h-11 w-14 shrink-0 p-0"
+                              onClick={() => bump(i, sideIdx, step)}
+                            >
+                              <Plus aria-hidden="true" className="h-5 w-5" />
+                            </Button>
+                          </div>
+                        );
+                      })}
                       <Button
-                        type="button"
                         size="sm"
-                        variant="outline"
-                        aria-label={`${t("Set")} ${i + 1} ${teamLabel} ${t("minus")} ${step}`}
-                        data-testid={`set-${i}-${sideKey}-minus`}
-                        className="h-11 w-10 shrink-0 p-0"
-                        onClick={() => bump(i, sideIdx, -step)}
+                        variant="ghost"
+                        aria-label={`${t("Remove set")} ${i + 1}`}
+                        disabled={setRows.length === 1}
+                        className="col-start-3 row-start-1 h-8 w-8 p-0 sm:col-auto sm:row-auto"
+                        onClick={() => {
+                          const next = setRows.filter((_, j) => j !== i);
+                          setSetRows(next);
+                          schedulePush(next);
+                        }}
                       >
-                        <Minus aria-hidden="true" className="h-4 w-4" />
-                      </Button>
-                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <span className="truncate text-center text-[0.6875rem] text-muted-foreground sm:hidden">
-                          {teamLabel}
-                        </span>
-                        <Input
-                          inputMode="numeric"
-                          aria-label={`${t("Set")} ${i + 1} ${teamLabel}`}
-                          value={row[sideIdx]}
-                          onChange={(e) => setSide(i, sideIdx, e.target.value)}
-                          className="h-11 w-full text-center font-tabular text-lg font-semibold"
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        aria-label={`${t("Set")} ${i + 1} ${teamLabel} ${t("plus")} ${step}`}
-                        data-testid={`set-${i}-${sideKey}-plus`}
-                        className="h-11 w-14 shrink-0 p-0"
-                        onClick={() => bump(i, sideIdx, step)}
-                      >
-                        <Plus aria-hidden="true" className="h-5 w-5" />
+                        <X aria-hidden="true" className="h-4 w-4" />
                       </Button>
                     </div>
-                  );
-                })}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  aria-label={`${t("Remove set")} ${i + 1}`}
-                  disabled={setRows.length === 1}
-                  className="col-start-3 row-start-1 h-8 w-8 p-0 sm:col-auto sm:row-auto"
-                  onClick={() => {
-                    const next = setRows.filter((_, j) => j !== i);
-                    setSetRows(next);
-                    schedulePush(next);
-                  }}
-                >
-                  <X aria-hidden="true" className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setSetRows((rows) => [...rows, ["", ""]])}
-              >
-                <Plus aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
-                {t("Add set")}
-              </Button>
-              <div className="flex items-center gap-3">
+                  ))}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-fit"
+                    onClick={() => setSetRows((rows) => [...rows, ["", ""]])}
+                  >
+                    <Plus aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+                    {t("Add set")}
+                  </Button>
+                </div>
+              </details>
+
+              <div className="flex items-center justify-between gap-3">
                 {match.status === "live" ? (
                   <span
                     data-testid="tap-sync-state"
@@ -465,26 +461,18 @@ export function TargetSportConsole({
                       ? t("Saving")
                       : syncFailed
                         ? t("Offline. Points are safe on this phone.")
-                        : t("Saves as you tap")}
+                        : t("Saves as you tap. Viewers see it live.")}
                   </span>
-                ) : null}
-                <Button
-                  size="sm"
-                  disabled={submitSets.isPending || completeSets.length === 0}
-                  onClick={() => setConfirmSets(true)}
-                >
-                  {t("Record result")}
-                </Button>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    {t("Recording the result completes the match.")}
+                  </span>
+                )}
               </div>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {match.status === "live"
-                ? t("Points update live for viewers. Record result finishes the match.")
-                : t("Recording the result completes the match.")}
-            </p>
-          </div>
+            </>
+          ) : null}
         </div>
-      ) : null}
+      </div>
 
       {/* Confirm the set result (completes the match). */}
       <Dialog
@@ -536,7 +524,7 @@ export function TargetSportConsole({
               className="grid grid-cols-[2.5rem_1fr_1fr_2rem] items-center gap-2"
             >
               <span className="text-xs font-medium text-muted-foreground">
-                {t("Set")} {i + 1}
+                {periodLabel} {i + 1}
               </span>
               {([0, 1] as const).map((si) => (
                 <Input

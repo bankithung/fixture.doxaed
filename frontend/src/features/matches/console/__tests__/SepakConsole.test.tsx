@@ -92,7 +92,8 @@ describe("SepakConsole", () => {
 
     await userEvent.click(screen.getByTestId("point-home"));
     // The tap shows up instantly on the big scoreboard...
-    expect(screen.getByTestId("set-scoreboard")).toHaveTextContent("1-0");
+    expect(screen.getByTestId("points-home")).toHaveTextContent("1");
+    expect(screen.getByTestId("points-away")).toHaveTextContent("0");
 
     // ...and opens the transient reason chips; picking one logs the
     // scoresheet annotation with its detail.
@@ -122,7 +123,7 @@ describe("SepakConsole", () => {
     renderSepak();
 
     await userEvent.click(screen.getByTestId("point-away"));
-    expect(screen.getByTestId("set-scoreboard")).toHaveTextContent("0-1");
+    expect(screen.getByTestId("points-away")).toHaveTextContent("1");
     await userEvent.click(screen.getByRole("button", { name: /skip reason/i }));
 
     expect(screen.queryByTestId("reason-net")).toBeNull();
