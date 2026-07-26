@@ -2,8 +2,14 @@
 # ============================================================================
 # Auto-deploy for fixture.doxaed.com
 #
-# Polls origin/main every minute (fixture-deploy.timer). When new commits land:
-#   1. fast-forwards (or merges) them into the local checkout
+# Polls origin/main every minute (fixture-deploy.timer). Deploys whenever the
+# last SUCCESSFULLY deployed commit (deployed.rev state file) is behind:
+#   - new commits on origin/main       -> merged in and deployed
+#   - commits made on this box, pushed -> deployed (the push is the go-signal;
+#     unpushed local commits never deploy on their own)
+#   - a failed deploy                  -> retried every tick until green
+# Pipeline per deploy:
+#   1. fast-forwards (or merges) origin into the local checkout
 #   2. installs backend deps if requirements.txt changed
 #   3. runs migrations if any are pending (as the fixture_owner DB role;
 #      ABORTS the whole deploy if the live-tournament migrate guard blocks —
@@ -11,6 +17,7 @@
 #   4. rebuilds the frontend if frontend/ changed (tsc + vite gate the deploy)
 #   5. restarts the fixture backend if backend/ changed
 #   6. verifies: backend answers on /api/ and the served bundle hash changed
+#   7. records the deployed commit in deployed.rev (only on success)
 #
 # This checkout doubles as the dev working tree: the merge step lets git
 # protect dirty files (a conflicting pull aborts cleanly and is retried once
@@ -49,7 +56,7 @@ fi
 
 cd "$REPO" || { log "FATAL: repo $REPO missing"; exit 1; }
 
-# ---- detect new upstream commits --------------------------------------------
+# ---- detect undeployed commits ----------------------------------------------
 if ! git fetch --quiet origin "$BRANCH"; then
   log "git fetch failed (network?); will retry next tick"
   exit 1
@@ -58,16 +65,36 @@ fi
 FORCE=0
 [ "${1:-}" = "--force" ] && FORCE=1
 
-if git merge-base --is-ancestor "origin/$BRANCH" HEAD; then
-  if [ "$FORCE" -ne 1 ]; then
-    exit 0            # up to date; stay quiet on the timer
-  fi
-  log "no new commits, but --force given — running full pipeline"
+STATE="$LOGDIR/deployed.rev"   # last successfully deployed commit
+DEPLOYED=$(cat "$STATE" 2>/dev/null || true)
+if [ -z "$DEPLOYED" ] || ! git cat-file -e "$DEPLOYED^{commit}" 2>/dev/null; then
+  # Bootstrap: whatever is serving right now was built from HEAD.
+  DEPLOYED=$(git rev-parse HEAD)
+  echo "$DEPLOYED" > "$STATE"
+  log "seeded $STATE with ${DEPLOYED:0:9}"
+  [ "$FORCE" -ne 1 ] && exit 0
 fi
 
-OLDREV=$(git rev-parse HEAD)
+if git merge-base --is-ancestor "origin/$BRANCH" HEAD; then
+  # origin brings nothing new; deploy only a pushed local advance
+  if [ "$(git rev-parse HEAD)" = "$DEPLOYED" ]; then
+    if [ "$FORCE" -ne 1 ]; then
+      exit 0          # everything deployed; stay quiet on the timer
+    fi
+    log "nothing new, but --force given — running full pipeline"
+  elif ! git merge-base --is-ancestor HEAD "origin/$BRANCH"; then
+    # local commits exist but are not on origin yet: the push is the
+    # go-signal, so wait (a --force overrides for manual runs)
+    if [ "$FORCE" -ne 1 ]; then
+      exit 0
+    fi
+    log "HEAD is ahead of origin (unpushed), but --force given — deploying it"
+  fi
+fi
+
+OLDREV=$DEPLOYED
 NEWREV=$(git rev-parse "origin/$BRANCH")
-log "================ deploying origin/$BRANCH ${NEWREV:0:9} (from ${OLDREV:0:9}) ================"
+log "================ deploying ${NEWREV:0:9} (last deployed ${OLDREV:0:9}) ================"
 
 STEP=""
 run(){                         # run <step-name> <command...>
@@ -81,7 +108,7 @@ run(){                         # run <step-name> <command...>
 fail(){ log "================ DEPLOY FAILED (step: $STEP) ================"; exit 1; }
 
 # ---- 1. bring the checkout up to date ---------------------------------------
-if [ "$OLDREV" != "$NEWREV" ]; then
+if ! git merge-base --is-ancestor "origin/$BRANCH" HEAD; then
   if ! run "git merge (ff)" git merge --ff-only "origin/$BRANCH"; then
     # local commits diverge from origin; try a real merge, abort cleanly on conflict
     if ! run "git merge" git merge --no-edit "origin/$BRANCH"; then
@@ -151,5 +178,6 @@ if changed "^backend/\|^deploy/gunicorn"; then
   esac
 fi
 
-log "================ DEPLOY OK @ ${NEWREV:0:9} ================"
+git rev-parse HEAD > "$STATE"
+log "================ DEPLOY OK @ $(git rev-parse --short HEAD) ================"
 exit 0
