@@ -323,6 +323,7 @@ export function TargetSportConsole({
           status={match.status}
           cells={stripCells}
           trailing={inPlay ? <SyncBadge state={syncState} live={live} /> : null}
+          winnerName={decided || isFinal ? winnerName : null}
           title={title}
           titleActions={titleActions}
         />
@@ -335,6 +336,7 @@ export function TargetSportConsole({
               awayValue={isFinal ? (match.away_score ?? 0) : awayPts}
               canScore={canScore}
               canEdit={inPlay}
+              winner={decided || isFinal ? prog.leader : null}
               step={step}
               onPoint={tapPoint}
               onMinus={(s) => bump(setRows.length - 1, s, -step)}

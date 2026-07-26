@@ -427,6 +427,7 @@ export function SepakConsole({
           status={match.status}
           cells={stripCells}
           trailing={inPlay ? <SyncBadge state={syncState} live={live} /> : null}
+          winnerName={decided || isFinal ? winnerName : null}
           title={title}
           titleActions={titleActions}
         />
@@ -440,6 +441,7 @@ export function SepakConsole({
               server={isFinal || awaitingNext ? null : server}
               canScore={canScore}
               canEdit={inPlay}
+              winner={decided || isFinal ? prog.leader : null}
               onPoint={tapPoint}
               onMinus={(s) => bump(setRows.length - 1, s, -1)}
               shortcuts={canScore ? ["q", "p"] : null}

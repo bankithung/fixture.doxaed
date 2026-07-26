@@ -1,4 +1,4 @@
-import { Check, Minus, Plus, Undo2, X } from "lucide-react";
+import { Check, Minus, Plus, Trophy, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useBreakpoint } from "@/lib/useBreakpoint";
@@ -56,12 +56,16 @@ export function ConsoleStrip({
   status,
   cells,
   trailing,
+  winnerName,
   title,
   titleActions,
 }: {
   status: string;
   cells: StripCell[];
   trailing?: React.ReactNode;
+  /** Name of the side that has won, once there is one. Called out at the top
+   * of the board so the result is readable at a glance. */
+  winnerName?: string | null;
   /** Competition context, e.g. "Table tennis · U19 · Boys · 1v1 · Court 2". */
   title?: React.ReactNode;
   /** Right-hand slot on the title row (offline count, print). */
@@ -101,6 +105,17 @@ export function ConsoleStrip({
         ) : null}
       </div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:flex sm:min-w-0 sm:flex-1 sm:flex-wrap sm:items-center sm:gap-x-0">
+        {winnerName ? (
+          <span
+            data-testid="winner-chip"
+            className="col-span-2 inline-flex min-w-0 items-center gap-1.5 self-center rounded-full bg-success-muted px-2.5 py-1 text-xs font-bold uppercase tracking-[0.08em] text-success sm:col-span-1 sm:mr-1"
+          >
+            <Trophy aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              {winnerName} {t("won")}
+            </span>
+          </span>
+        ) : null}
         {cells.map((c) => (
           <div
             key={c.key}
@@ -188,6 +203,9 @@ export interface ScorePadProps {
   /** Per-side slot under each card (the timeout button), kept in the card's
    * own grid column so it stays aligned with it at every width. */
   footers?: [React.ReactNode, React.ReactNode];
+  /** The side that has WON the match (0 home, 1 away). Its whole card is
+   * highlighted and badged; the other is dimmed back. */
+  winner?: 0 | 1 | null;
 }
 
 /** Two score cards, one per side, with the stage rule between them: name,
@@ -208,9 +226,20 @@ export function ScorePad({
   rule,
   shortcuts = null,
   footers,
+  winner = null,
 }: ScorePadProps): React.ReactElement {
   return (
-    <div className="grid grid-cols-2 items-stretch gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-3 lg:gap-4">
+    <div
+      className={cn(
+        "grid grid-cols-2 items-stretch gap-2 sm:gap-3 lg:gap-4",
+        // Without a rule between them the pads must still split the row
+        // evenly — a 3-column template would leave the third column empty
+        // and squeeze the away card.
+        rule
+          ? "sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
+          : "sm:grid-cols-2",
+      )}
+    >
       {([0, 1] as const).map((side) => {
         const name = side === 0 ? homeName : awayName;
         const value = side === 0 ? homeValue : awayValue;
@@ -224,12 +253,43 @@ export function ScorePad({
               side === 1 && "sm:order-3",
             )}
           >
-          <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          <div
+            data-testid={home ? "card-home" : "card-away"}
+            data-winner={winner === side ? "true" : undefined}
+            className={cn(
+              "flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card shadow-sm transition-colors",
+              winner === side
+                ? home
+                  ? "border-primary bg-primary/5 ring-2 ring-primary/35"
+                  : "border-info bg-info/5 ring-2 ring-info/35"
+                : "border-border",
+              // The beaten side steps back so the eye lands on the winner.
+              winner != null && winner !== side && "opacity-60",
+            )}
+          >
             <span
               aria-hidden="true"
-              className={cn("h-1 w-full shrink-0", home ? "bg-primary" : "bg-info")}
+              className={cn(
+                "w-full shrink-0",
+                winner === side ? "h-1.5" : "h-1",
+                home ? "bg-primary" : "bg-info",
+              )}
             />
             <div className="flex min-w-0 flex-1 flex-col gap-2 p-2.5 sm:p-4">
+              {winner === side ? (
+                <span
+                  data-testid={home ? "winner-home" : "winner-away"}
+                  className={cn(
+                    "mx-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.625rem] font-bold uppercase tracking-[0.12em]",
+                    home
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-info text-info-foreground",
+                  )}
+                >
+                  <Trophy aria-hidden="true" className="h-3 w-3 shrink-0" />
+                  {t("Winner")}
+                </span>
+              ) : null}
               <div className="flex min-w-0 items-center justify-center gap-1.5">
                 {server === side ? (
                   <span
@@ -541,12 +601,19 @@ export function GameHistory({
           : over
             ? "skipped"
             : "pending";
-    return {
-      no: i + 1,
-      home: row?.[0] === "" || row?.[0] == null ? null : row[0],
-      away: row?.[1] === "" || row?.[1] == null ? null : row[1],
-      state,
-    };
+    const home = row?.[0] === "" || row?.[0] == null ? null : row[0];
+    const away = row?.[1] === "" || row?.[1] == null ? null : row[1];
+    // Who took this period — bolds the winning figure, mutes the other, so a
+    // glance down the column reads the run of the match.
+    const took: 0 | 1 | null =
+      state === "complete" && home != null && away != null
+        ? Number(home) > Number(away)
+          ? 0
+          : Number(away) > Number(home)
+            ? 1
+            : null
+        : null;
+    return { no: i + 1, home, away, state, took };
   });
   // The winner belongs here only once the result is RECORDED; between the
   // clinch and recording, MatchDecidedPrompt states it (and states it once).
@@ -596,9 +663,29 @@ export function GameHistory({
                   <span className="text-muted-foreground">–</span>
                 ) : (
                   <>
-                    <span className="text-primary">{r.home ?? "–"}</span>
+                    <span
+                      className={cn(
+                        r.took === 0
+                          ? "text-primary"
+                          : r.took === 1
+                            ? "font-normal text-muted-foreground"
+                            : "text-primary",
+                      )}
+                    >
+                      {r.home ?? "–"}
+                    </span>
                     <span className="text-muted-foreground">-</span>
-                    <span className="text-info">{r.away ?? "–"}</span>
+                    <span
+                      className={cn(
+                        r.took === 1
+                          ? "text-info"
+                          : r.took === 0
+                            ? "font-normal text-muted-foreground"
+                            : "text-info",
+                      )}
+                    >
+                      {r.away ?? "–"}
+                    </span>
                   </>
                 )}
               </span>
@@ -642,11 +729,25 @@ export function GameHistory({
                   >
                     {periodLabel} {r.no}
                   </td>
-                  <td className="px-3 py-2 text-center font-tabular text-base font-semibold tabular-nums text-primary">
-                    {r.home ?? <span className="text-muted-foreground">–</span>}
+                  <td
+                    className={cn(
+                      "px-3 py-2 text-center font-tabular text-base tabular-nums",
+                      r.took === 1
+                        ? "font-normal text-muted-foreground"
+                        : "font-semibold text-primary",
+                    )}
+                  >
+                    {r.home ?? <span className="font-normal text-muted-foreground">–</span>}
                   </td>
-                  <td className="px-3 py-2 text-center font-tabular text-base font-semibold tabular-nums text-info">
-                    {r.away ?? <span className="text-muted-foreground">–</span>}
+                  <td
+                    className={cn(
+                      "px-3 py-2 text-center font-tabular text-base tabular-nums",
+                      r.took === 0
+                        ? "font-normal text-muted-foreground"
+                        : "font-semibold text-info",
+                    )}
+                  >
+                    {r.away ?? <span className="font-normal text-muted-foreground">–</span>}
                   </td>
                   <td className="px-3 py-2 text-right">
                     <StateBadge state={r.state} />

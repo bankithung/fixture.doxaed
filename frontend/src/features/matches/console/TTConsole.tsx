@@ -384,6 +384,7 @@ export function TTConsole({
           status={match.status}
           cells={stripCells}
           trailing={inPlay ? <SyncBadge state={syncState} live={live} /> : null}
+          winnerName={decided || isFinal ? winnerName : null}
           title={title}
           titleActions={titleActions}
         />
@@ -396,6 +397,7 @@ export function TTConsole({
               awayValue={isFinal ? (match.away_score ?? 0) : awayPts}
               canScore={canScore}
               canEdit={inPlay}
+              winner={decided || isFinal ? prog.leader : null}
               onPoint={tapPoint}
               onMinus={(s) => bump(setRows.length - 1, s, -1)}
               shortcuts={canScore ? ["q", "p"] : null}

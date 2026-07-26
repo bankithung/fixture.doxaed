@@ -274,6 +274,23 @@ describe("TTConsole", () => {
     expect(screen.getByTestId("console-strip")).toHaveTextContent(/games played/i);
     // Game 3 is unplayable, not merely pending.
     expect(screen.getByTestId("game-history")).toHaveTextContent(/not needed/i);
+
+    // The winner is unmistakable: called out at the top of the board AND the
+    // whole winning card is badged, while the beaten card is not.
+    expect(screen.getByTestId("winner-chip")).toHaveTextContent(/alpha won/i);
+    expect(screen.getByTestId("winner-home")).toHaveTextContent(/winner/i);
+    expect(screen.queryByTestId("winner-away")).toBeNull();
+    expect(screen.getByTestId("card-home")).toHaveAttribute("data-winner", "true");
+    expect(screen.getByTestId("card-away")).not.toHaveAttribute("data-winner");
+  });
+
+  it("shows no winner treatment while the match is still undecided", async () => {
+    renderTT({ set_scores: [[5, 3]] });
+
+    expect(screen.queryByTestId("winner-chip")).toBeNull();
+    expect(screen.queryByTestId("winner-home")).toBeNull();
+    expect(screen.queryByTestId("winner-away")).toBeNull();
+    expect(screen.getByTestId("card-home")).not.toHaveAttribute("data-winner");
   });
 
   it("Record result exists only from the clinch, then completes via confirm", async () => {
