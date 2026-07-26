@@ -47,23 +47,49 @@ export interface StripCell {
   emphasis?: boolean;
 }
 
-/** Top telemetry strip: status, then one label/value cell per reading. Cells
- * are divided from `sm` up and simply space out on a phone, so nothing ever
- * needs sideways scrolling. */
+/** The board's masthead + telemetry strip. The title is the console's own
+ * heading (what is being played, where) — it belongs INSIDE the panel, set
+ * as a heading, not floated above it as muted body text. Below it, one
+ * label/value cell per reading; cells are divided from `sm` up and simply
+ * space out on a phone, so nothing ever needs sideways scrolling. */
 export function ConsoleStrip({
   status,
   cells,
   trailing,
+  title,
+  titleActions,
 }: {
   status: string;
   cells: StripCell[];
   trailing?: React.ReactNode;
+  /** Competition context, e.g. "Table tennis · U19 · Boys · 1v1 · Court 2". */
+  title?: React.ReactNode;
+  /** Right-hand slot on the title row (offline count, print). */
+  titleActions?: React.ReactNode;
 }): React.ReactElement {
   return (
-    <div
-      data-testid="console-strip"
-      className="flex flex-col gap-2 border-b border-border px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3"
-    >
+    <div className="flex flex-col border-b border-border">
+      {title ? (
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
+          <h1
+            // The chassis test reads the console's context from here; the
+            // football surface carries the same testid in its page header.
+            data-testid="match-context"
+            // Wraps to a second line on a phone rather than cutting the venue
+            // off; capped at two lines so a long venue can't push the board.
+            className="line-clamp-2 min-w-0 flex-1 text-base font-semibold leading-tight tracking-tight text-foreground sm:text-lg"
+          >
+            {title}
+          </h1>
+          {titleActions ? (
+            <div className="flex shrink-0 items-center gap-2">{titleActions}</div>
+          ) : null}
+        </div>
+      ) : null}
+      <div
+        data-testid="console-strip"
+        className="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3"
+      >
       {/* `sm:contents` lifts these two out of their phone row so the chip and
           the sync badge become ends of the desktop strip. */}
       <div className="flex items-center justify-between gap-2 sm:contents">
@@ -91,6 +117,7 @@ export function ConsoleStrip({
             </span>
           </div>
         ))}
+        </div>
       </div>
     </div>
   );
@@ -590,45 +617,6 @@ export function GameHistory({
   );
 }
 
-/** The state rail (right of the pads on a desk, last panel on a phone): what
- * the match currently reads, plus the corrections door. */
-export function ConsoleRail({
-  title,
-  rows,
-  children,
-}: {
-  title: string;
-  rows: { key: string; label: string; value: React.ReactNode }[];
-  children?: React.ReactNode;
-}): React.ReactElement {
-  return (
-    <aside
-      data-testid="console-rail"
-      className="flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-card p-3 lg:w-56 lg:shrink-0"
-    >
-      <h3 className={cn(EYEBROW, "border-b border-border pb-2")}>{title}</h3>
-      <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 lg:grid-cols-1">
-        {rows.map((r) => (
-          <div
-            key={r.key}
-            className="flex min-w-0 items-baseline justify-between gap-2"
-          >
-            <dt className="truncate text-xs text-muted-foreground">{r.label}</dt>
-            <dd className="shrink-0 font-tabular text-xs font-semibold tabular-nums">
-              {r.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
-      {children ? (
-        <div className="flex flex-col gap-2 border-t border-border pt-2">
-          {children}
-        </div>
-      ) : null}
-    </aside>
-  );
-}
-
 /** Sticky action bar: leave, sync state, and the one big forward action. */
 export function ConsoleActionBar({
   back,
@@ -657,8 +645,10 @@ export function ConsoleActionBar({
   );
 }
 
-/** The classic stepper editor for corrections — one row per period, each
- * side with minus / value / plus, plus row add & remove. */
+/** Corrections: one editable row per period. On a desk it is a compact grid
+ * (period · home stepper · away stepper · remove); on a phone each period
+ * becomes its own card with a labelled `-  value  +` row per side, so the
+ * team a number belongs to is never in doubt. */
 export function ScoreEditor({
   rows,
   periodLabel,
@@ -681,88 +671,125 @@ export function ScoreEditor({
   onRemove: (i: number) => void;
   onAdd: () => void;
 }): React.ReactElement {
+  const { isMobile } = useBreakpoint();
+
+  /** The `- value +` control for one side of one period. */
+  const stepper = (i: number, side: 0 | 1): React.ReactElement => {
+    const teamLabel = side === 0 ? homeName : awayName;
+    const sideKey = side === 0 ? "home" : "away";
+    return (
+      <div className="flex min-w-0 items-center gap-1.5">
+        <Button
+          size="sm"
+          variant="outline"
+          aria-label={`${periodLabel} ${i + 1} ${teamLabel} ${t("minus")} ${step}`}
+          data-testid={`set-${i}-${sideKey}-minus`}
+          className="h-11 w-11 shrink-0 p-0"
+          onClick={() => onBump(i, side, -1)}
+        >
+          <Minus aria-hidden="true" className="h-4 w-4" />
+        </Button>
+        <Input
+          inputMode="numeric"
+          aria-label={`${periodLabel} ${i + 1} ${teamLabel}`}
+          value={rows[i]?.[side] ?? ""}
+          onChange={(e) => onSet(i, side, e.target.value)}
+          className="h-11 w-16 shrink-0 text-center font-tabular text-lg font-semibold tabular-nums sm:w-full sm:min-w-0 sm:flex-1"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          aria-label={`${periodLabel} ${i + 1} ${teamLabel} ${t("plus")} ${step}`}
+          data-testid={`set-${i}-${sideKey}-plus`}
+          className="h-11 w-11 shrink-0 p-0"
+          onClick={() => onBump(i, side, 1)}
+        >
+          <Plus aria-hidden="true" className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  };
+
+  const removeButton = (i: number): React.ReactElement => (
+    <Button
+      size="sm"
+      variant="ghost"
+      aria-label={`${t("Remove")} ${periodLabel.toLowerCase()} ${i + 1}`}
+      disabled={rows.length === 1}
+      className="h-8 w-8 shrink-0 p-0 text-muted-foreground"
+      onClick={() => onRemove(i)}
+    >
+      <X aria-hidden="true" className="h-4 w-4" />
+    </Button>
+  );
+
+  const addButton = (
+    <Button size="sm" variant="outline" className="w-full sm:w-fit" onClick={onAdd}>
+      <Plus aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+      {t("Add")} {periodLabel.toLowerCase()}
+    </Button>
+  );
+
+  if (isMobile) {
+    return (
+      <div className="flex flex-col gap-2">
+        {rows.map((_, i) => (
+          <div
+            key={i}
+            className="flex flex-col gap-2 rounded-lg border border-border bg-card p-2.5"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold">
+                {periodLabel} {i + 1}
+              </span>
+              {removeButton(i)}
+            </div>
+            {([0, 1] as const).map((side) => (
+              <div key={side} className="flex items-center justify-between gap-2">
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-xs font-medium",
+                    side === 0 ? "text-primary" : "text-info",
+                  )}
+                >
+                  {side === 0 ? homeName : awayName}
+                </span>
+                {stepper(i, side)}
+              </div>
+            ))}
+          </div>
+        ))}
+        {addButton}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      {/* Desktop column headers; on a phone the sides stack and each stepper
-          names its own team instead. */}
-      <div className="hidden grid-cols-[2.75rem_1fr_1fr_2rem] items-center gap-2 sm:grid">
+      <div className="grid grid-cols-[3.5rem_1fr_1fr_2rem] items-center gap-3">
         <span />
-        <span className={cn(EYEBROW, "truncate text-center")}>{homeName}</span>
-        <span className={cn(EYEBROW, "truncate text-center")}>{awayName}</span>
+        <span className={cn(EYEBROW, "truncate text-center text-primary")}>
+          {homeName}
+        </span>
+        <span className={cn(EYEBROW, "truncate text-center text-info")}>
+          {awayName}
+        </span>
         <span />
       </div>
-      {rows.map((row, i) => (
+      {rows.map((_, i) => (
         <div
           key={i}
-          className="grid grid-cols-[2.75rem_minmax(0,1fr)_2rem] items-center gap-x-2 gap-y-1.5 sm:grid-cols-[2.75rem_1fr_1fr_2rem]"
+          className="grid grid-cols-[3.5rem_1fr_1fr_2rem] items-center gap-3"
         >
           <span className="text-xs font-medium text-muted-foreground">
             {periodLabel} {i + 1}
           </span>
-          {([0, 1] as const).map((side) => {
-            const teamLabel = side === 0 ? homeName : awayName;
-            const sideKey = side === 0 ? "home" : "away";
-            return (
-              <div
-                key={side}
-                className={cn(
-                  "flex min-w-0 items-center gap-1",
-                  side === 1 && "col-start-2 row-start-2 sm:col-auto sm:row-auto",
-                )}
-              >
-                <Button
-                  size="sm"
-                  variant="outline"
-                  aria-label={`${periodLabel} ${i + 1} ${teamLabel} ${t("minus")} ${step}`}
-                  data-testid={`set-${i}-${sideKey}-minus`}
-                  className="h-11 w-10 shrink-0 p-0"
-                  onClick={() => onBump(i, side, -1)}
-                >
-                  <Minus aria-hidden="true" className="h-4 w-4" />
-                </Button>
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate text-center text-[0.6875rem] text-muted-foreground sm:hidden">
-                    {teamLabel}
-                  </span>
-                  <Input
-                    inputMode="numeric"
-                    aria-label={`${periodLabel} ${i + 1} ${teamLabel}`}
-                    value={row[side]}
-                    onChange={(e) => onSet(i, side, e.target.value)}
-                    className="h-11 w-full text-center font-tabular text-lg font-semibold tabular-nums"
-                  />
-                </div>
-                <Button
-                  size="sm"
-                  aria-label={`${periodLabel} ${i + 1} ${teamLabel} ${t("plus")} ${step}`}
-                  data-testid={`set-${i}-${sideKey}-plus`}
-                  className={cn(
-                    "h-11 w-14 shrink-0 p-0",
-                    side === 1 && "bg-info text-info-foreground hover:bg-info/90",
-                  )}
-                  onClick={() => onBump(i, side, 1)}
-                >
-                  <Plus aria-hidden="true" className="h-5 w-5" />
-                </Button>
-              </div>
-            );
-          })}
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-label={`${t("Remove")} ${periodLabel.toLowerCase()} ${i + 1}`}
-            disabled={rows.length === 1}
-            className="col-start-3 row-start-1 h-8 w-8 p-0 sm:col-auto sm:row-auto"
-            onClick={() => onRemove(i)}
-          >
-            <X aria-hidden="true" className="h-4 w-4" />
-          </Button>
+          {stepper(i, 0)}
+          {stepper(i, 1)}
+          {removeButton(i)}
         </div>
       ))}
-      <Button size="sm" variant="outline" className="w-fit" onClick={onAdd}>
-        <Plus aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
-        {t("Add")} {periodLabel.toLowerCase()}
-      </Button>
+      {addButton}
     </div>
   );
 }

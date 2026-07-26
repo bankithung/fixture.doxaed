@@ -149,7 +149,7 @@ describe("TTConsole", () => {
     expect(screen.getByTestId("timeout-home")).toBeDisabled();
 
     // Start another game via the corrections editor: the timeout stays spent.
-    await userEvent.click(screen.getByText(/adjust games/i));
+    await userEvent.click(screen.getByTestId("edit-scores"));
     await userEvent.click(screen.getByRole("button", { name: /add game/i }));
     expect(screen.getByTestId("console-strip")).toHaveTextContent("2 of 5");
     expect(screen.getByTestId("timeout-home")).toBeDisabled();

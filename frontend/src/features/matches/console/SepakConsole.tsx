@@ -31,7 +31,6 @@ import { changeEndsPrompt, serveOfTurn, serveTurn, type ServeRules } from "./ser
 import { useAnnotate, useFirstServer, usePointKeys } from "./hooks";
 import {
   ConsoleActionBar,
-  ConsoleRail,
   ConsoleStrip,
   GameHistory,
   NextGamePrompt,
@@ -78,6 +77,8 @@ export function SepakConsole({
   extras,
   clock,
   back,
+  title,
+  titleActions,
 }: TargetSportConsoleProps): React.ReactElement {
   const toast = useToast();
   const [setRows, setSetRows] = useState<SetRow[]>([["", ""]]);
@@ -392,27 +393,6 @@ export function SepakConsole({
     stripCells.push({ key: "clock", label: t("Elapsed"), value: clock });
   }
 
-  const railRows: { key: string; label: string; value: React.ReactNode }[] = [
-    { key: "sets", label: periodPlural, value: `${homeSets}-${awaySets}` },
-    {
-      key: "inplay",
-      label: `${periodLabel} ${t("in play")}`,
-      value: isFinal ? "—" : `${setNo}/${bestOf}`,
-    },
-    { key: "points", label: t("Points"), value: `${homePts}-${awayPts}` },
-    {
-      key: "towin",
-      label: t("To win"),
-      value: `${prog.need} ${periodPlural.toLowerCase()}`,
-    },
-  ];
-  if (live) {
-    railRows.push({
-      key: "timeouts",
-      label: t("Timeouts"),
-      value: `${timeouts.home}/1 · ${timeouts.away}/1`,
-    });
-  }
 
   // Timeouts sit in the pad's own columns so each stays under its card. The
   // team name is only spelled out where there is room for it.
@@ -446,10 +426,11 @@ export function SepakConsole({
           status={match.status}
           cells={stripCells}
           trailing={inPlay ? <SyncBadge state={syncState} live={live} /> : null}
+          title={title}
+          titleActions={titleActions}
         />
 
-        <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-start lg:gap-4">
-          <div className="flex min-w-0 flex-1 flex-col gap-3">
+        <div className="flex flex-col gap-3 p-3">
             <ScorePad
               homeName={homeName}
               awayName={awayName}
@@ -494,6 +475,16 @@ export function SepakConsole({
                     </span>
                   ) : null}
                 </span>
+                <button
+                  type="button"
+                  aria-label={t("First server")}
+                  onClick={toggleFirstServer}
+                  className="inline-flex h-8 min-w-0 items-center rounded-md border border-border px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="truncate">
+                    {t("First serve")}: {firstServer === 0 ? homeName : awayName}
+                  </span>
+                </button>
                 {gpName ? (
                   <PointFlag
                     kind={gpIsMatch ? "match" : "set"}
@@ -680,50 +671,6 @@ export function SepakConsole({
                 />
               </section>
             ) : null}
-          </div>
-
-          <ConsoleRail title={t("Match state")} rows={railRows}>
-            {!isFinal ? (
-              <button
-                type="button"
-                aria-label={t("First server")}
-                onClick={toggleFirstServer}
-                className="inline-flex h-8 min-w-0 items-center justify-center rounded-md border border-border px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span className="truncate">
-                  {t("First serve")}: {firstServer === 0 ? homeName : awayName}
-                </span>
-              </button>
-            ) : null}
-            {inPlay ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => setEditOpen((o) => !o)}
-              >
-                {t("Adjust")} {periodPlural.toLowerCase()}
-              </Button>
-            ) : null}
-            {isFinal ? (
-              <Button
-                variant="outline"
-                size="sm"
-                data-testid="amend-result"
-                className="w-full"
-                onClick={() => {
-                  setAmendRows(
-                    (match.set_scores ?? []).map(
-                      (sc) => [String(sc[0]), String(sc[1])] as SetRow,
-                    ),
-                  );
-                  setAmendOpen(true);
-                }}
-              >
-                {t("Amend result")}
-              </Button>
-            ) : null}
-          </ConsoleRail>
         </div>
 
         {extras}
@@ -749,6 +696,23 @@ export function SepakConsole({
           }
           actions={
             <>
+              {isFinal ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="amend-result"
+                  onClick={() => {
+                    setAmendRows(
+                      (match.set_scores ?? []).map(
+                        (sc) => [String(sc[0]), String(sc[1])] as SetRow,
+                      ),
+                    );
+                    setAmendOpen(true);
+                  }}
+                >
+                  {t("Amend result")}
+                </Button>
+              ) : null}
               {actions}
               {decided && !isFinal ? (
                 // The clinch is the completion gate: the server rejects a

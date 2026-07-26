@@ -29,7 +29,6 @@ import { changeEndsPrompt } from "./serve";
 import { useAnnotate, usePointKeys } from "./hooks";
 import {
   ConsoleActionBar,
-  ConsoleRail,
   ConsoleStrip,
   GameHistory,
   NextGamePrompt,
@@ -63,6 +62,8 @@ export function TTConsole({
   extras,
   clock,
   back,
+  title,
+  titleActions,
 }: TargetSportConsoleProps): React.ReactElement {
   const toast = useToast();
   const [setRows, setSetRows] = useState<SetRow[]>([["", ""]]);
@@ -349,27 +350,6 @@ export function TTConsole({
     stripCells.push({ key: "clock", label: t("Elapsed"), value: clock });
   }
 
-  const railRows: { key: string; label: string; value: React.ReactNode }[] = [
-    { key: "games", label: periodPlural, value: `${homeSets}-${awaySets}` },
-    {
-      key: "inplay",
-      label: `${periodLabel} ${t("in play")}`,
-      value: isFinal ? "—" : `${setNo}/${bestOf}`,
-    },
-    { key: "points", label: t("Points"), value: `${homePts}-${awayPts}` },
-    {
-      key: "towin",
-      label: t("To win"),
-      value: `${prog.need} ${periodPlural.toLowerCase()}`,
-    },
-  ];
-  if (live) {
-    railRows.push({
-      key: "timeouts",
-      label: t("Timeouts"),
-      value: `${timeouts.home}/1 · ${timeouts.away}/1`,
-    });
-  }
 
   // Timeouts sit in the pad's own columns so each stays under its card. The
   // team name is only spelled out where there is room for it.
@@ -403,10 +383,11 @@ export function TTConsole({
           status={match.status}
           cells={stripCells}
           trailing={inPlay ? <SyncBadge state={syncState} live={live} /> : null}
+          title={title}
+          titleActions={titleActions}
         />
 
-        <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-start lg:gap-4">
-          <div className="flex min-w-0 flex-1 flex-col gap-3">
+        <div className="flex flex-col gap-3 p-3">
             <ScorePad
               homeName={homeName}
               awayName={awayName}
@@ -534,38 +515,6 @@ export function TTConsole({
                 />
               </section>
             ) : null}
-          </div>
-
-          <ConsoleRail title={t("Match state")} rows={railRows}>
-            {inPlay ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => setEditOpen((o) => !o)}
-              >
-                {t("Adjust")} {periodPlural.toLowerCase()}
-              </Button>
-            ) : null}
-            {isFinal ? (
-              <Button
-                variant="outline"
-                size="sm"
-                data-testid="amend-result"
-                className="w-full"
-                onClick={() => {
-                  setAmendRows(
-                    (match.set_scores ?? []).map(
-                      (sc) => [String(sc[0]), String(sc[1])] as SetRow,
-                    ),
-                  );
-                  setAmendOpen(true);
-                }}
-              >
-                {t("Amend result")}
-              </Button>
-            ) : null}
-          </ConsoleRail>
         </div>
 
         {extras}
@@ -591,6 +540,23 @@ export function TTConsole({
           }
           actions={
             <>
+              {isFinal ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="amend-result"
+                  onClick={() => {
+                    setAmendRows(
+                      (match.set_scores ?? []).map(
+                        (sc) => [String(sc[0]), String(sc[1])] as SetRow,
+                      ),
+                    );
+                    setAmendOpen(true);
+                  }}
+                >
+                  {t("Amend result")}
+                </Button>
+              ) : null}
               {actions}
               {decided && !isFinal ? (
                 // The clinch is the completion gate: the server rejects a

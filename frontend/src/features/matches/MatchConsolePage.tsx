@@ -365,6 +365,38 @@ export function MatchConsolePage(): React.ReactElement {
     tr.mutate(to);
   };
 
+  // What is being played, and where — the console's heading. A sport module
+  // sets it inside its own panel; football keeps it in the page header.
+  const matchContext =
+    [
+      match.sport_meta?.name,
+      competitionLabel(match.leaf_key, match.sport_meta?.key ?? match.sport),
+      match.venue,
+    ]
+      .filter(Boolean)
+      .join(" · ") || `${homeName} ${t("vs")} ${awayName}`;
+  const queuedBadge =
+    queued > 0 ? (
+      <span
+        data-testid="offline-queued"
+        className="inline-flex shrink-0 items-center rounded-md bg-warning-muted px-2 py-1 font-tabular text-xs font-medium text-warning"
+      >
+        {queued} {t("will sync")}
+      </span>
+    ) : null;
+  const printButton = isFinal ? (
+    <Button
+      size="sm"
+      variant="outline"
+      data-testid="print-match-report"
+      className="shrink-0"
+      onClick={() => window.print()}
+    >
+      <Printer aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+      {t("Print match report")}
+    </Button>
+  ) : null;
+
   // The state-transition buttons render inside whichever scoreboard owns the
   // surface: the chassis's football card below, or the sport module's board.
   const actionButtons =
@@ -575,65 +607,45 @@ export function MatchConsolePage(): React.ReactElement {
   // `lg` up (owner 2026-07-26), where the 5% gutters replace page padding.
   return (
     <div className="mx-auto flex w-full flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4 lg:w-[90%] lg:px-0">
-      {/* One-line header: back, what is being played, the clock. The teams
-          are named on the board itself. */}
-      <div className="flex items-center gap-2 print:hidden">
-        <Link
-          to={routes.tournamentMatches(id)}
-          aria-label={t("Back to matches")}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-        </Link>
-        <p
-          data-testid="match-context"
-          title={`${homeName} ${t("vs")} ${awayName}`}
-          className="min-w-0 flex-1 truncate text-sm font-medium text-muted-foreground"
-        >
-          {[
-            match.sport_meta?.name,
-            competitionLabel(match.leaf_key, match.sport_meta?.key ?? match.sport),
-            match.venue,
-          ]
-            .filter(Boolean)
-            .join(" · ") || `${homeName} ${t("vs")} ${awayName}`}
-        </p>
-        {queued > 0 ? (
-          <span
-            data-testid="offline-queued"
-            className="inline-flex shrink-0 items-center rounded-md bg-warning-muted px-2 py-1 font-tabular text-xs font-medium text-warning"
+      {/* A sport module carries this context as its OWN heading inside the
+          board (owner 2026-07-26), so the chassis renders this floating
+          header only for the football surface. */}
+      {module ? null : (
+        <div className="flex items-center gap-2 print:hidden">
+          <Link
+            to={routes.tournamentMatches(id)}
+            aria-label={t("Back to matches")}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
-            {queued} {t("will sync")}
-          </span>
-        ) : null}
-        {live && elapsedSec != null && !module ? (
-          // Stopwatch: runs from the moment the scorer started the match. A
-          // sport module carries it in its own telemetry strip instead.
-          <div
-            data-testid="match-clock"
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 shadow-sm"
+            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+          </Link>
+          <h1
+            data-testid="match-context"
+            title={`${homeName} ${t("vs")} ${awayName}`}
+            className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight sm:text-lg"
           >
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-            </span>
-            <span className="font-tabular text-lg font-semibold leading-none tabular-nums">
-              {fmtClock(elapsedSec)}
-            </span>
-          </div>
-        ) : isFinal ? (
-          <Button
-            size="sm"
-            variant="outline"
-            data-testid="print-match-report"
-            className="shrink-0"
-            onClick={() => window.print()}
-          >
-            <Printer aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
-            {t("Print match report")}
-          </Button>
-        ) : null}
-      </div>
+            {matchContext}
+          </h1>
+          {queuedBadge}
+          {live && elapsedSec != null ? (
+            // Stopwatch: runs from the moment the scorer started the match.
+            <div
+              data-testid="match-clock"
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 shadow-sm"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+              </span>
+              <span className="font-tabular text-lg font-semibold leading-none tabular-nums">
+                {fmtClock(elapsedSec)}
+              </span>
+            </div>
+          ) : (
+            printButton
+          )}
+        </div>
+      )}
 
       {/* Print-only official match report. */}
       <div data-testid="match-report" className="hidden print:block">
@@ -697,6 +709,15 @@ export function MatchConsolePage(): React.ReactElement {
           actions={actionButtons}
           extras={extras}
           clock={live && elapsedSec != null ? fmtClock(elapsedSec) : null}
+          title={matchContext}
+          titleActions={
+            queuedBadge || printButton ? (
+              <>
+                {queuedBadge}
+                {printButton}
+              </>
+            ) : null
+          }
           back={
             <Link
               to={routes.tournamentMatches(id)}

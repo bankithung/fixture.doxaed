@@ -28,7 +28,6 @@ import {
 import { usePointKeys } from "./hooks";
 import {
   ConsoleActionBar,
-  ConsoleRail,
   ConsoleStrip,
   GameHistory,
   NextGamePrompt,
@@ -62,6 +61,11 @@ export interface TargetSportConsoleProps {
   /** Chassis-owned "back to matches" link, rendered in the action bar where
    * a thumb can reach it. */
   back?: React.ReactNode;
+  /** Competition context ("Table tennis · U19 · Boys · 1v1 · Court 2") — the
+   * board's own heading, set inside the panel, not above it. */
+  title?: React.ReactNode;
+  /** Right-hand slot on the title row (offline queue count, print report). */
+  titleActions?: React.ReactNode;
 }
 
 /** The scoring surface for target-family (set) sports without a native
@@ -83,6 +87,8 @@ export function TargetSportConsole({
   extras,
   clock,
   back,
+  title,
+  titleActions,
 }: TargetSportConsoleProps): React.ReactElement {
   const toast = useToast();
   const [setRows, setSetRows] = useState<SetRow[]>([["", ""]]);
@@ -305,20 +311,6 @@ export function TargetSportConsole({
     stripCells.push({ key: "clock", label: t("Elapsed"), value: clock });
   }
 
-  const railRows: { key: string; label: string; value: React.ReactNode }[] = [
-    { key: "sets", label: periodPlural, value: `${homeSets}-${awaySets}` },
-    {
-      key: "inplay",
-      label: `${periodLabel} ${t("in play")}`,
-      value: isFinal ? "—" : `${setNo}/${bestOf}`,
-    },
-    { key: "points", label: t("Points"), value: `${homePts}-${awayPts}` },
-    {
-      key: "towin",
-      label: t("To win"),
-      value: `${prog.need} ${periodPlural.toLowerCase()}`,
-    },
-  ];
 
   return (
     <>
@@ -330,10 +322,11 @@ export function TargetSportConsole({
           status={match.status}
           cells={stripCells}
           trailing={inPlay ? <SyncBadge state={syncState} live={live} /> : null}
+          title={title}
+          titleActions={titleActions}
         />
 
-        <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-start lg:gap-4">
-          <div className="flex min-w-0 flex-1 flex-col gap-3">
+        <div className="flex flex-col gap-3 p-3">
             <ScorePad
               homeName={homeName}
               awayName={awayName}
@@ -356,6 +349,51 @@ export function TargetSportConsole({
                 />
               }
             />
+
+            {canScore ? (
+              // Points per press: what one Point press adds (any number works).
+              // It governs the pads, so it sits directly beneath them.
+              <div
+                role="group"
+                aria-label={t("Points per tap")}
+                className="flex flex-wrap items-center justify-center gap-1.5"
+              >
+                <span className="text-[0.625rem] font-semibold uppercase leading-none tracking-[0.16em] text-muted-foreground">
+                  {t("Per tap")}
+                </span>
+                {[1, 2, 3, 5].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    aria-pressed={step === n}
+                    data-testid={`tap-step-${n}`}
+                    onClick={() => {
+                      setStep(n);
+                      setStepText(String(n));
+                    }}
+                    className={cn(
+                      "inline-flex h-8 min-w-9 items-center justify-center rounded-md border px-1.5 font-tabular text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      step === n
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
+                    )}
+                  >
+                    +{n}
+                  </button>
+                ))}
+                <Input
+                  inputMode="numeric"
+                  aria-label={t("Custom points per tap")}
+                  value={stepText}
+                  onChange={(e) => {
+                    setStepText(e.target.value);
+                    const n = Math.floor(Number(e.target.value));
+                    if (Number.isFinite(n) && n >= 1) setStep(n);
+                  }}
+                  className="h-8 w-12 px-1 text-center font-tabular text-xs"
+                />
+              </div>
+            ) : null}
 
             {awaitingNext ? (
               <NextGamePrompt
@@ -439,81 +477,6 @@ export function TargetSportConsole({
                 />
               </section>
             ) : null}
-          </div>
-
-          <ConsoleRail title={t("Match state")} rows={railRows}>
-            {canScore ? (
-              // Points per press: what one Point press adds (any number works).
-              <div
-                role="group"
-                aria-label={t("Points per tap")}
-                className="flex flex-wrap items-center gap-1"
-              >
-                <span className="mr-auto text-[0.625rem] font-semibold uppercase leading-none tracking-[0.16em] text-muted-foreground">
-                  {t("Per tap")}
-                </span>
-                {[1, 2, 3, 5].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    aria-pressed={step === n}
-                    data-testid={`tap-step-${n}`}
-                    onClick={() => {
-                      setStep(n);
-                      setStepText(String(n));
-                    }}
-                    className={cn(
-                      "inline-flex h-7 min-w-8 items-center justify-center rounded-md border px-1.5 font-tabular text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      step === n
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
-                    )}
-                  >
-                    +{n}
-                  </button>
-                ))}
-                <Input
-                  inputMode="numeric"
-                  aria-label={t("Custom points per tap")}
-                  value={stepText}
-                  onChange={(e) => {
-                    setStepText(e.target.value);
-                    const n = Math.floor(Number(e.target.value));
-                    if (Number.isFinite(n) && n >= 1) setStep(n);
-                  }}
-                  className="h-7 w-12 px-1 text-center font-tabular text-xs"
-                />
-              </div>
-            ) : null}
-            {inPlay ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => setEditOpen((o) => !o)}
-              >
-                {t("Adjust")} {periodPlural.toLowerCase()}
-              </Button>
-            ) : null}
-            {isFinal ? (
-              <Button
-                variant="outline"
-                size="sm"
-                data-testid="amend-result"
-                className="w-full"
-                onClick={() => {
-                  setAmendRows(
-                    (match.set_scores ?? []).map(
-                      (sc) => [String(sc[0]), String(sc[1])] as SetRow,
-                    ),
-                  );
-                  setAmendOpen(true);
-                }}
-              >
-                {t("Amend result")}
-              </Button>
-            ) : null}
-          </ConsoleRail>
         </div>
 
         {extras}
@@ -539,6 +502,23 @@ export function TargetSportConsole({
           }
           actions={
             <>
+              {isFinal ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="amend-result"
+                  onClick={() => {
+                    setAmendRows(
+                      (match.set_scores ?? []).map(
+                        (sc) => [String(sc[0]), String(sc[1])] as SetRow,
+                      ),
+                    );
+                    setAmendOpen(true);
+                  }}
+                >
+                  {t("Amend result")}
+                </Button>
+              ) : null}
               {actions}
               {decided && !isFinal ? (
                 // The clinch is the completion gate: the server rejects a
