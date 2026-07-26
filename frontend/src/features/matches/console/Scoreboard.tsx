@@ -376,6 +376,54 @@ export function NextGamePrompt({
   );
 }
 
+/** The mirror of the between-periods step, for the end of the MATCH: a side
+ * has clinched, so there is no next period to start and the only thing left
+ * is to record it. Without this the board looks like the period in play is
+ * still live and the scorer hunts for a "start next" button that correctly
+ * does not exist (owner 2026-07-26). */
+export function MatchDecidedPrompt({
+  winnerName,
+  periodsWon,
+  periodPlural,
+  recordLabel,
+  onRecord,
+  pending = false,
+}: {
+  winnerName: string | null;
+  /** Periods won, winner first ("2-0"). */
+  periodsWon: string;
+  periodPlural: string;
+  recordLabel: string;
+  onRecord: () => void;
+  pending?: boolean;
+}): React.ReactElement {
+  return (
+    <div
+      data-testid="match-decided"
+      role="status"
+      className="flex flex-col gap-2 rounded-xl border border-success/40 bg-success-muted p-3"
+    >
+      <p className="text-center text-sm font-semibold">
+        {winnerName
+          ? `${winnerName} ${t("wins")} ${periodsWon}`
+          : t("The match is decided")}
+        <span className="font-normal text-muted-foreground">
+          {" · "}
+          {t("no further")} {periodPlural.toLowerCase()} {t("to play")}
+        </span>
+      </p>
+      <Button
+        data-testid="record-result"
+        className="h-12 w-full text-base"
+        disabled={pending}
+        onClick={onRecord}
+      >
+        {recordLabel}
+      </Button>
+    </div>
+  );
+}
+
 /** "Game point / Match point" flag: the next point can end the period or the
  * whole match. */
 export function PointFlag({
@@ -500,9 +548,12 @@ export function GameHistory({
       state,
     };
   });
-  const caption = over && winnerName
-    ? `${winnerName} ${t("wins")} ${Math.max(homeSets, awaySets)}-${Math.min(homeSets, awaySets)}`
-    : `${t("First to")} ${need} · ${t("best of")} ${bestOf}${targetText ? ` · ${targetText}` : ""}`;
+  // The winner belongs here only once the result is RECORDED; between the
+  // clinch and recording, MatchDecidedPrompt states it (and states it once).
+  const caption =
+    isFinal && winnerName
+      ? `${winnerName} ${t("wins")} ${Math.max(homeSets, awaySets)}-${Math.min(homeSets, awaySets)}`
+      : `${t("First to")} ${need} · ${t("best of")} ${bestOf}${targetText ? ` · ${targetText}` : ""}`;
 
   return (
     <section

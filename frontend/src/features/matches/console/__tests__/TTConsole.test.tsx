@@ -251,6 +251,31 @@ describe("TTConsole", () => {
     );
   });
 
+  it("a clinching game offers Record result, NOT a start-next step", async () => {
+    // The owner's live state: best of 3, game 1 11-2, game 2 taken 14-12 in
+    // deuce. That is 2-0 = the match; there is no game 3 to start, so the
+    // board must say so instead of looking like game 2 is still running.
+    renderTT({
+      scoring: { type: "sets", best_of: 3, points: 11, win_by: 2, cap: null, deciding: null },
+      set_scores: [
+        [11, 2],
+        [14, 12],
+      ],
+    });
+
+    const decided = screen.getByTestId("match-decided");
+    expect(decided).toHaveTextContent("Alpha wins 2-0");
+    expect(decided).toHaveTextContent(/no further games to play/i);
+    // No start-next step, and exactly ONE Record result control.
+    expect(screen.queryByTestId("next-game")).toBeNull();
+    expect(screen.queryByTestId("start-next")).toBeNull();
+    expect(screen.getAllByTestId("record-result")).toHaveLength(1);
+    // The strip stops claiming a game is in play.
+    expect(screen.getByTestId("console-strip")).toHaveTextContent(/games played/i);
+    // Game 3 is unplayable, not merely pending.
+    expect(screen.getByTestId("game-history")).toHaveTextContent(/not needed/i);
+  });
+
   it("Record result exists only from the clinch, then completes via confirm", async () => {
     vi.mocked(liveApi.recordSetScores).mockResolvedValue({} as never);
     renderTT({

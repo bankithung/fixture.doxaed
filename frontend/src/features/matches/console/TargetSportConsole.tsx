@@ -30,6 +30,7 @@ import {
   ConsoleActionBar,
   ConsoleStrip,
   GameHistory,
+  MatchDecidedPrompt,
   NextGamePrompt,
   PointFlag,
   ScoreEditor,
@@ -285,7 +286,7 @@ export function TargetSportConsole({
   const stripCells: StripCell[] = [
     {
       key: "period",
-      label: periodLabel,
+      label: decided && !isFinal ? `${periodPlural} ${t("played")}` : periodLabel,
       value: isFinal ? periodPlural : `${setNo} ${t("of")} ${bestOf}`,
     },
     {
@@ -339,14 +340,18 @@ export function TargetSportConsole({
               onMinus={(s) => bump(setRows.length - 1, s, -step)}
               shortcuts={canScore ? ["q", "p"] : null}
               rule={
+                // Once a side has clinched there is no stage left for the
+                // rule to describe; the history caption keeps the record.
+                decided || isFinal ? undefined : (
                 <TargetRule
                   points={targetPts}
                   winBy={stageRule.winBy}
                   cap={stageRule.cap}
                   bestOf={bestOf}
                   periodLabel={periodLabel}
-                  periodNo={isFinal ? bestOf : setNo}
+                  periodNo={setNo}
                 />
+                )
               }
             />
 
@@ -411,6 +416,20 @@ export function TargetSportConsole({
                   name={gpName}
                 />
               </div>
+            ) : null}
+
+            {decided && !isFinal ? (
+              // The clinch is the completion gate: the server rejects a
+              // result before it, so this step exists only from here — and it
+              // is the ONE Record result control (no bottom-bar twin).
+              <MatchDecidedPrompt
+                winnerName={winnerName}
+                periodsWon={`${Math.max(homeSets, awaySets)}-${Math.min(homeSets, awaySets)}`}
+                periodPlural={periodPlural}
+                recordLabel={t("Record result")}
+                pending={submitSets.isPending}
+                onRecord={() => setConfirmSets(true)}
+              />
             ) : null}
 
             <GameHistory
@@ -520,18 +539,6 @@ export function TargetSportConsole({
                 </Button>
               ) : null}
               {actions}
-              {decided && !isFinal ? (
-                // The clinch is the completion gate: the server rejects a
-                // result before it, so the button exists only from here.
-                <Button
-                  data-testid="record-result"
-                  className="h-11 min-w-36 flex-1 text-base sm:flex-none"
-                  disabled={submitSets.isPending}
-                  onClick={() => setConfirmSets(true)}
-                >
-                  {t("Record result")}
-                </Button>
-              ) : null}
             </>
           }
         />
