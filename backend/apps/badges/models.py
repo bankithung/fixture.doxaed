@@ -36,7 +36,10 @@ class BadgeAward(models.Model):
     # computed in ("" / 0 = whole-tournament or single-stage draws).
     leaf_key = models.CharField(max_length=200, blank=True)
     stage_no = models.IntegerField(default=0)
-    group_label = models.CharField(max_length=40, blank=True)
+    # Mirrors Match.group_label, so it MUST be as wide as that column: group
+    # labels carry the competition prefix ("Table Tennis — u-14 — boys — 1v1
+    # — Group A"), which sailed past the old 40 and killed the recompute.
+    group_label = models.CharField(max_length=80, blank=True)
     subject_type = models.CharField(
         max_length=12, choices=BadgeSubject.choices, default=BadgeSubject.TEAM
     )
@@ -59,7 +62,10 @@ class BadgeAward(models.Model):
     awarded_at = models.DateTimeField(auto_now_add=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
     # Reconciler identity: badge_key:leaf:stage:group:subject:match-or-scope.
-    dedupe_key = models.CharField(max_length=350)
+    # Worst case is badge_key(64) + leaf_key(200) + stage + group_label(80) +
+    # a UUID subject + suffix + separators, which overflowed 350; 500 keeps
+    # headroom so the reconciler can never fail on a long competition name.
+    dedupe_key = models.CharField(max_length=500)
 
     class Meta:
         constraints = [

@@ -138,6 +138,52 @@ def test_group_badges_wait_for_group_completion():
     assert [d.team_id for d in pd] == [a.id]
 
 
+def test_long_group_label_and_leaf_key_survive_the_reconciler():
+    """Regression (prod 2026-07-26): a group label carrying the competition
+    prefix ("Table Tennis - u-14 - boys - 1v1 - Group A") is 43+ chars, and
+    BadgeAward.group_label was varchar(40) — every recompute for such a
+    competition died with DataError, so the whole competition silently earned
+    no badges. Both mirrored columns must now take the widest real value:
+    Match.group_label is 80, and dedupe_key has to fit leaf_key + group_label
+    + a UUID subject without truncating (64+160+80+36+separators = 351 > the
+    old 350, so it overflowed by a single character)."""
+    _admin, t, (a, b, c) = _setup(n_teams=3)
+    # The widest values the writers can actually produce.
+    label = ("Table Tennis - u-14 - boys - 1v1 - Group A" * 3)[:80]
+    # Match.leaf_key is varchar(160) — that is the widest a real award can see.
+    leaf = ("table_tennis.u_14.boys.1v1." * 12)[:160]
+    assert len(label) == 80 and len(leaf) == 160
+    ms = [
+        _match(t, a, b, 1, group_label=label, stage="group"),
+        _match(t, a, c, 2, group_label=label, stage="group"),
+        _match(t, b, c, 3, group_label=label, stage="group"),
+    ]
+    for m in ms:
+        Match.objects.filter(pk=m.pk).update(leaf_key=leaf)
+        m.leaf_key = leaf
+    _complete_sets(ms[0], [[15, 4], [15, 5]], sport="sepaktakraw")
+    _complete_sets(ms[1], [[15, 7], [15, 9]], sport="sepaktakraw")
+    _complete_sets(ms[2], [[15, 11], [11, 15], [15, 12]], sport="sepaktakraw")
+
+    # This is the call that raised DataError in production.
+    out = recompute_badges(t, leaf_key=leaf)
+    assert out["created"] > 0
+
+    awards = BadgeAward.objects.filter(tournament=t, revoked_at__isnull=True)
+    assert awards.exists()
+    # Nothing was silently clipped on the way in.
+    for aw in awards:
+        assert aw.group_label in ("", label)
+        assert aw.leaf_key == leaf
+        assert len(aw.dedupe_key) <= 500
+    # And the group badges still land, so the widening did not change meaning.
+    assert [d.team_id for d in _keys(t, "group_dominator")] == [a.id]
+
+    # Idempotent on a second pass (the unique constraint still holds).
+    again = recompute_badges(t, leaf_key=leaf)
+    assert again["created"] == 0 and again["revoked"] == 0
+
+
 def test_golden_boot_and_football_comeback():
     admin, t, (a, b) = _setup(players=True)
     m = _match(t, a, b, 1, leaf="football.u15")
