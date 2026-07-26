@@ -1,11 +1,13 @@
-import { Minus } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { statusMeta, type SetProgress } from "./shared";
 
-/** Shared visual core of the set-sport consoles: the tappable score zones,
- * the best-of game track and the status chip. Pure presentation — taps,
- * rules and persistence stay in the owning console module. */
+/** Shared visual core of the set-sport consoles: the score pad (score plus
+ * an explicit Point button per side), the best-of game track, the
+ * next-game prompt and the status chip. Pure presentation — taps, rules
+ * and persistence stay in the owning console module. */
 
 export function StatusChip({ status }: { status: string }): React.ReactElement {
   const sm = statusMeta(status);
@@ -29,28 +31,27 @@ export function StatusChip({ status }: { status: string }): React.ReactElement {
   );
 }
 
-export interface TapZonesProps {
+export interface ScorePadProps {
   homeName: string;
   awayName: string;
   /** The big numerals: current-game points in play, games won once final. */
   homeValue: number;
   awayValue: number;
-  /** Side whose panel carries the serve dot (null hides it). */
+  /** Side whose name carries the serve dot (null hides it). */
   server: 0 | 1 | null;
-  /** Taps score points. Off while final or once the match is decided. */
+  /** The Point buttons work. Off while final, decided, or between games. */
   canScore: boolean;
-  /** The per-side minus row (mis-tap undo). Off once final. */
+  /** The per-side Undo button (mis-tap fix). Off once final. */
   canEdit: boolean;
-  /** What one tap adds (the generic console taps by its chosen step). */
+  /** What one press adds (the generic console scores by its step). */
   step?: number;
   onPoint: (side: 0 | 1) => void;
   onMinus: (side: 0 | 1) => void;
 }
 
-/** Two giant tap zones: the scoreboard IS the point button. A tap on a
- * team's half scores for that team; the small minus row below undoes a
- * mis-tap without opening the corrections editor. */
-export function TapZones({
+/** Two columns, one per side: name, big score, an unmissable Point button
+ * and a small Undo. The button is the interaction — the score is display. */
+export function ScorePad({
   homeName,
   awayName,
   homeValue,
@@ -61,81 +62,84 @@ export function TapZones({
   step = 1,
   onPoint,
   onMinus,
-}: TapZonesProps): React.ReactElement {
+}: ScorePadProps): React.ReactElement {
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="grid grid-cols-2 gap-1.5 sm:gap-3">
-        {([0, 1] as const).map((side) => {
-          const name = side === 0 ? homeName : awayName;
-          const value = side === 0 ? homeValue : awayValue;
-          const serving = server === side;
-          return (
-            <button
-              key={side}
-              type="button"
+    <div className="grid grid-cols-2 gap-2 sm:gap-3">
+      {([0, 1] as const).map((side) => {
+        const name = side === 0 ? homeName : awayName;
+        const value = side === 0 ? homeValue : awayValue;
+        return (
+          <div key={side} className="flex min-w-0 flex-col gap-1.5">
+            <div className="flex min-w-0 items-center justify-center gap-1.5">
+              {server === side ? (
+                <span
+                  aria-hidden="true"
+                  className="h-2 w-2 shrink-0 rounded-full bg-primary"
+                />
+              ) : null}
+              <span className="truncate text-sm font-medium">{name}</span>
+            </div>
+            <div
+              data-testid={side === 0 ? "points-home" : "points-away"}
+              className="rounded-lg bg-muted/50 py-2.5 text-center font-tabular text-6xl font-semibold leading-none tabular-nums sm:text-7xl"
+            >
+              {value}
+            </div>
+            <Button
               data-testid={side === 0 ? "point-home" : "point-away"}
               disabled={!canScore}
               onClick={() => onPoint(side)}
-              aria-label={
-                canScore ? `${t("Point")} ${name}` : `${name} ${value}`
-              }
-              className={cn(
-                "group relative flex min-h-[8.5rem] select-none flex-col items-center justify-center gap-1 rounded-lg border bg-background px-2 py-4 transition-[transform,border-color,background-color] [touch-action:manipulation] sm:min-h-[10rem]",
-                serving ? "border-primary/50" : "border-border",
-                canScore &&
-                  "cursor-pointer hover:bg-accent/40 active:scale-[0.98] active:bg-accent/60",
-              )}
+              aria-label={`${t("Point")} ${name}`}
+              className="h-14 w-full select-none text-base font-semibold [touch-action:manipulation]"
             >
-              {canScore ? (
-                <span
-                  aria-hidden="true"
-                  className="absolute right-2 top-2 rounded-md bg-primary/10 px-1.5 py-0.5 font-tabular text-[0.6875rem] font-medium text-primary opacity-70 transition-opacity group-active:opacity-100"
-                >
-                  +{step}
-                </span>
-              ) : null}
-              <span className="flex w-full min-w-0 items-center justify-center gap-1.5">
-                {serving ? (
-                  <span
-                    aria-hidden="true"
-                    className="h-2 w-2 shrink-0 rounded-full bg-primary"
-                  />
-                ) : null}
-                <span className="truncate text-xs font-medium sm:text-sm">
-                  {name}
-                </span>
-              </span>
-              <span
-                data-testid={side === 0 ? "points-home" : "points-away"}
-                className="font-tabular text-6xl font-semibold leading-none tabular-nums sm:text-7xl"
+              <Plus aria-hidden="true" className="h-5 w-5" />
+              {step === 1 ? t("Point") : `${step} ${t("points")}`}
+            </Button>
+            {canEdit ? (
+              <button
+                type="button"
+                data-testid={side === 0 ? "minus-home" : "minus-away"}
+                aria-label={`${t("Undo point")} ${name}`}
+                disabled={value <= 0}
+                onClick={() => onMinus(side)}
+                className="inline-flex h-9 select-none items-center justify-center gap-1 rounded-lg border border-border text-xs font-medium text-muted-foreground transition-colors [touch-action:manipulation] hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
               >
-                {value}
-              </span>
-              <span className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
-                {side === 0 ? t("Home") : t("Away")}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      {canEdit ? (
-        <div className="grid grid-cols-2 gap-1.5 sm:gap-3">
-          {([0, 1] as const).map((side) => (
-            <button
-              key={side}
-              type="button"
-              data-testid={side === 0 ? "minus-home" : "minus-away"}
-              aria-label={`${side === 0 ? homeName : awayName} ${t("minus")} ${step}`}
-              disabled={(side === 0 ? homeValue : awayValue) <= 0}
-              onClick={() => onMinus(side)}
-              className="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-border text-xs font-medium text-muted-foreground transition-colors [touch-action:manipulation] hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
-            >
-              <Minus aria-hidden="true" className="h-3.5 w-3.5" />
-              {step === 1 ? t("Point") : step}
-            </button>
-          ))}
-        </div>
-      ) : null}
+                <Minus aria-hidden="true" className="h-3.5 w-3.5" />
+                {t("Undo")}
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The explicit step between games: says what just happened and offers ONE
+ * clear action. Point buttons stay locked until it is taken. */
+export function NextGamePrompt({
+  summary,
+  startLabel,
+  onStart,
+}: {
+  summary: string;
+  startLabel: string;
+  onStart: () => void;
+}): React.ReactElement {
+  return (
+    <div
+      data-testid="next-game"
+      role="status"
+      className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary/10 p-3"
+    >
+      <p className="text-center text-sm font-medium">{summary}</p>
+      <Button
+        data-testid="start-next"
+        className="h-12 w-full text-base"
+        onClick={onStart}
+      >
+        {startLabel}
+      </Button>
     </div>
   );
 }
@@ -146,19 +150,22 @@ export interface GameTrackProps {
   periodLabel: string;
   /** Finished periods as score pairs, in order. */
   finished: (number | string)[][];
+  /** A game just ended and the next has not started: no live chip. */
+  awaitingNext?: boolean;
   /** Name of the clinching side (caption), when decided. */
   winnerName: string | null;
   isFinal: boolean;
 }
 
-/** The best-of strip: every game the rule allows, as done chips, the game in
- * play, and the games still ahead — so the scorer always sees how many
- * stages are left. The caption carries the rule ("first to 2 · best of 3")
+/** The best-of strip: every game the rule allows, as done chips, the game
+ * in play, and the games still ahead — so the scorer always sees how many
+ * stages are left. The caption carries the rule ("First to 2 · best of 3")
  * or the clinched result. */
 export function GameTrack({
   progress,
   periodLabel,
   finished,
+  awaitingNext = false,
   winnerName,
   isFinal,
 }: GameTrackProps): React.ReactElement {
@@ -176,15 +183,17 @@ export function GameTrack({
     );
   });
   if (!over) {
-    slots.push(
-      <span
-        key="current"
-        className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
-      >
-        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-primary" />
-        {periodLabel} {setNo}
-      </span>,
-    );
+    if (!awaitingNext) {
+      slots.push(
+        <span
+          key="current"
+          className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+        >
+          <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-primary" />
+          {periodLabel} {setNo}
+        </span>,
+      );
+    }
     for (let i = setNo + 1; i <= bestOf; i += 1) {
       slots.push(
         <span
@@ -199,7 +208,7 @@ export function GameTrack({
   return (
     <div
       data-testid="game-track"
-      className="flex flex-col items-center gap-1.5"
+      className="flex flex-col items-center gap-1"
       aria-label={`${periodLabel}s ${homeSets}-${awaySets}, ${t("best of")} ${bestOf}`}
     >
       <div className="flex flex-wrap items-center justify-center gap-1.5">

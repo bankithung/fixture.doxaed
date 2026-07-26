@@ -174,31 +174,31 @@ describe("TTConsole", () => {
     expect(banner).toHaveTextContent(/change ends/i);
   });
 
-  it("prompts a change of ends when a game completes and can start the next", async () => {
+  it("a finished game shows the next-game step and starting it resets the pad", async () => {
     renderTT({ set_scores: [[10, 7]] });
 
     await userEvent.click(screen.getByTestId("point-home"));
-    const banner = await screen.findByTestId("change-ends");
-    expect(banner).toHaveTextContent(/game 1 done/i);
+    const prompt = await screen.findByTestId("next-game");
+    expect(prompt).toHaveTextContent(/game 1 done 11-7/i);
+    // Points lock while the step is pending (no stray 12-5s).
+    expect(screen.getByTestId("point-home")).toBeDisabled();
 
     await userEvent.click(screen.getByRole("button", { name: /start game 2/i }));
-    expect(screen.queryByTestId("change-ends")).toBeNull();
+    expect(screen.queryByTestId("next-game")).toBeNull();
     expect(screen.getByTestId("points-home")).toHaveTextContent("0");
+    expect(screen.getByTestId("point-home")).toBeEnabled();
     expect(screen.getByText(/game 2 of 5 · games 1-0/i)).toBeInTheDocument();
   });
 
-  it("a tap after the game is won rolls into the next game (no stray 12-5s)", async () => {
+  it("scoring continues into the started game and auto-saves the rows", async () => {
     renderTT({ set_scores: [[10, 7]] });
 
-    // 11-7 wins game 1; the next tap belongs to game 2.
     await userEvent.click(screen.getByTestId("point-home"));
+    await userEvent.click(screen.getByTestId("start-next"));
     await userEvent.click(screen.getByTestId("point-home"));
 
-    expect(screen.getByText(/game 2 of 5 · games 1-0/i)).toBeInTheDocument();
     expect(screen.getByTestId("points-home")).toHaveTextContent("1");
     expect(screen.getByTestId("points-away")).toHaveTextContent("0");
-    // Moving on consumes the change-ends prompt.
-    expect(screen.queryByTestId("change-ends")).toBeNull();
     await waitFor(() =>
       expect(liveApi.recordSetProgress).toHaveBeenLastCalledWith("m1", {
         set_scores: [

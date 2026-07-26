@@ -20,15 +20,20 @@ import type { TargetSportConsoleProps } from "./TargetSportConsole";
 import { buzz, setProgress, setsWon, type SetRow } from "./shared";
 import { changeEndsPrompt, serveTurn, type ServeRules } from "./serve";
 import { useAnnotate, useFirstServer } from "./hooks";
-import { GameTrack, StatusChip, TapZones } from "./Scoreboard";
+import {
+  GameTrack,
+  NextGamePrompt,
+  ScorePad,
+  StatusChip,
+} from "./Scoreboard";
 
-/** Native table tennis console (P2). One board: the score zones ARE the
- * point buttons (a tap scores the rally and logs it on the scoresheet), the
- * game track shows the best-of rule and the games still ahead, and the
- * result becomes recordable exactly when a side clinches — the same gate the
- * server enforces. ITTF-shaped: Game vocabulary, service alternating every
- * two points (every point from deuce), change-ends and deciding-game
- * prompts, the toweling nudge, one timeout per match per side. */
+/** Native table tennis console (P2). ONE board, top to bottom: score pad
+ * with explicit Point buttons, the between-games step ("Game 1 done. Start
+ * game 2"), the result gate that opens exactly at the clinch (the server's
+ * own rule), the game track, timeouts, and collapsed rows for corrections,
+ * discipline and the event log. ITTF-shaped: Game vocabulary, service
+ * alternating every two points (every point from deuce), the deciding-game
+ * change-ends nudge, the toweling nudge, one timeout per match per side. */
 export function TTConsole({
   matchId,
   match,
@@ -39,6 +44,7 @@ export function TTConsole({
   refresh,
   onError,
   actions,
+  extras,
 }: TargetSportConsoleProps): React.ReactElement {
   const toast = useToast();
   const [setRows, setSetRows] = useState<SetRow[]>([["", ""]]);
@@ -68,9 +74,9 @@ export function TTConsole({
   );
 
   // Live tap scoring: the running points save themselves (no Save button).
-  // The tap zones hold the truth locally, so a push lost to a dead
-  // connection is never lost data: syncFailed flips on and the retry loop
-  // re-sends the LATEST rows until the network returns.
+  // The pad holds the truth locally, so a push lost to a dead connection is
+  // never lost data: syncFailed flips on and the retry loop re-sends the
+  // LATEST rows until the network returns.
   const [syncFailed, setSyncFailed] = useState(false);
   const progress = useMutation({
     mutationFn: (p: { rows: SetRow[]; event_id: string }) =>
@@ -186,46 +192,26 @@ export function TTConsole({
   const currentRowWon = homeSets + awaySets > prevWon[0] + prevWon[1];
   const rulesKnown = (match.scoring?.points ?? 0) > 0;
   const inPlay = live || match.status === "scheduled";
-  const canScore = inPlay && !decided;
+  // The explicit between-games step: the finished game locks the Point
+  // buttons until "Start game N+1" is pressed (no stray 12-5s, no magic).
+  const awaitingNext = inPlay && rulesKnown && currentRowWon && !decided;
+  const canScore = inPlay && !decided && !awaitingNext;
   const winnerName = prog.leader == null ? null : prog.leader === 0 ? homeName : awayName;
 
-  // Prompt banner: ends change between games, and the deciding-game switch
-  // the moment a side first reaches 5. One slot; each trigger latches once.
-  const [banner, setBanner] = useState<{ text: string; startNext: boolean } | null>(null);
+  // Deciding-game change-ends nudge: fires once when a side first reaches 5
+  // in the last possible game (ITTF 2.14.1); dismissable.
+  const [nudge, setNudge] = useState<string | null>(null);
   const decidingFired = useRef(false);
-  const gameEndFired = useRef(0);
   useEffect(() => {
-    if (!live) return;
+    if (!live || decidingFired.current) return;
     if (
       setNo === bestOf &&
-      !decidingFired.current &&
       changeEndsPrompt(setNo, bestOf, homePts, awayPts, serveRules)
     ) {
       decidingFired.current = true;
-      setBanner({
-        text: `${t("Change ends in the deciding")} ${periodLabel.toLowerCase()}.`,
-        startNext: false,
-      });
-      return;
+      setNudge(`${t("Change ends in the deciding")} ${periodLabel.toLowerCase()}.`);
     }
-    if (currentRowWon && !decided && gameEndFired.current !== setNo) {
-      gameEndFired.current = setNo;
-      setBanner({
-        text: `${periodLabel} ${setNo} ${t("done. Change ends.")}`,
-        startNext: true,
-      });
-    }
-  }, [
-    live,
-    setNo,
-    bestOf,
-    homePts,
-    awayPts,
-    serveRules,
-    currentRowWon,
-    decided,
-    periodLabel,
-  ]);
+  }, [live, setNo, bestOf, homePts, awayPts, serveRules, periodLabel]);
 
   // Toweling nudge: every 6 total points in the game in play (ITTF 3.4.4.1.2),
   // gone again on the next point.
@@ -262,20 +248,11 @@ export function TTConsole({
     setSide(i, sideIdx, String(Math.max(0, cur + delta)));
   };
 
-  // The PRIMARY interaction: a tap on a team's half scores its rally and
-  // logs it on the scoresheet. Once the running game is legally won, the
-  // next tap opens the following game with that point (no stray 12-5s).
+  // The PRIMARY interaction: the Point button scores the rally and logs it
+  // on the scoresheet.
   const tapPoint = (sideIdx: 0 | 1) => {
     buzz();
-    if (rulesKnown && currentRowWon && !decided) {
-      const fresh: SetRow = sideIdx === 0 ? ["1", "0"] : ["0", "1"];
-      const next = [...setRows, fresh];
-      setSetRows(next);
-      schedulePush(next);
-      setBanner(null);
-    } else {
-      bump(setRows.length - 1, sideIdx, 1);
-    }
+    bump(setRows.length - 1, sideIdx, 1);
     if (live) {
       const side = sideIdx === 0 ? "home" : "away";
       annotate.mutate({
@@ -296,20 +273,15 @@ export function TTConsole({
     });
   };
   const startNextGame = () => {
+    buzz();
     setSetRows((rows) => [...rows, ["", ""]]);
-    setBanner(null);
   };
 
   return (
     <>
-      {/* The board: status + rule, tap zones, game track, timeouts, and the
-          result gate — one surface, phone-first. */}
-      <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm print:hidden">
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-primary/10 blur-3xl"
-        />
-        <div className="relative flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-border px-4 py-2.5">
+      {/* ONE board: everything the umpire needs, in one section. */}
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm print:hidden">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-border px-3 py-2">
           <div className="flex items-center gap-2">
             <StatusChip status={match.status} />
             <span className="font-tabular text-xs text-muted-foreground">
@@ -330,20 +302,41 @@ export function TTConsole({
           ) : null}
         </div>
 
-        <div className="relative flex flex-col gap-3 p-4">
-          <TapZones
+        <div className="flex flex-col gap-3 p-3">
+          <ScorePad
             homeName={homeName}
             awayName={awayName}
             homeValue={isFinal ? (match.home_score ?? 0) : homePts}
             awayValue={isFinal ? (match.away_score ?? 0) : awayPts}
-            server={isFinal ? null : server}
+            server={isFinal || awaitingNext ? null : server}
             canScore={canScore}
             canEdit={inPlay}
             onPoint={tapPoint}
             onMinus={(s) => bump(setRows.length - 1, s, -1)}
           />
 
-          {!isFinal ? (
+          {awaitingNext ? (
+            <NextGamePrompt
+              summary={`${periodLabel} ${setNo} ${t("done")} ${homePts}-${awayPts}. ${t("Change ends.")}`}
+              startLabel={`${t("Start")} ${periodLabel.toLowerCase()} ${setNo + 1}`}
+              onStart={startNextGame}
+            />
+          ) : null}
+
+          {decided && !isFinal ? (
+            // The clinch is the completion gate: the server rejects a result
+            // before it, so the button exists only from this moment.
+            <Button
+              data-testid="record-result"
+              className="h-12 w-full text-base"
+              disabled={submitSets.isPending}
+              onClick={() => setConfirmSets(true)}
+            >
+              {t("Record result")}
+            </Button>
+          ) : null}
+
+          {!isFinal && canScore ? (
             <div className="flex items-center justify-center">
               <span
                 data-testid="serve-indicator"
@@ -354,6 +347,24 @@ export function TTConsole({
                   {t("Service")}: {server === 0 ? homeName : awayName}
                 </span>
               </span>
+            </div>
+          ) : null}
+
+          {nudge ? (
+            <div
+              data-testid="change-ends"
+              role="status"
+              className="flex items-center justify-between gap-2 rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground"
+            >
+              <span>{nudge}</span>
+              <button
+                type="button"
+                aria-label={t("Dismiss")}
+                onClick={() => setNudge(null)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <X aria-hidden="true" className="h-4 w-4" />
+              </button>
             </div>
           ) : null}
 
@@ -369,14 +380,15 @@ export function TTConsole({
           <GameTrack
             progress={prog}
             periodLabel={periodLabel}
-            finished={isFinal ? (match.set_scores ?? []) : finishedSetChips}
+            finished={isFinal ? (match.set_scores ?? []) : awaitingNext ? completeSets : finishedSetChips}
+            awaitingNext={awaitingNext}
             winnerName={winnerName}
             isFinal={isFinal}
           />
 
           {live ? (
             // Timeouts: one per match per side (ITTF 3.4.4.1.1).
-            <div className="grid grid-cols-2 gap-1.5 sm:gap-3">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
               {(["home", "away"] as const).map((side) => (
                 <Button
                   key={side}
@@ -400,19 +412,6 @@ export function TTConsole({
 
           {actions}
 
-          {decided && !isFinal ? (
-            // The clinch is the completion gate: the server rejects a result
-            // before it, so the button exists only from this moment.
-            <Button
-              data-testid="record-result"
-              className="h-12 w-full text-base"
-              disabled={submitSets.isPending}
-              onClick={() => setConfirmSets(true)}
-            >
-              {t("Record result")}
-            </Button>
-          ) : null}
-
           {isFinal ? (
             <Button
               variant="outline"
@@ -431,149 +430,130 @@ export function TTConsole({
               {t("Amend result")}
             </Button>
           ) : null}
+        </div>
 
-          {inPlay ? (
-            <>
-              {/* Corrections: the classic stepper editor, collapsed. */}
-              <details className="rounded-lg border border-border">
-                <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
-                  {t("Adjust")} {periodPlural.toLowerCase()}
-                </summary>
-                <div className="flex flex-col gap-3 border-t border-border p-3">
-                  <div className="hidden grid-cols-[2.25rem_1fr_1fr_2rem] items-center gap-2 text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground sm:grid">
-                    <span />
-                    <span className="truncate text-center">{homeName}</span>
-                    <span className="truncate text-center">{awayName}</span>
-                    <span />
-                  </div>
-                  {setRows.map((row, i) => (
-                    <div
-                      key={i}
-                      className="grid grid-cols-[2.25rem_minmax(0,1fr)_2rem] items-center gap-x-2 gap-y-1.5 sm:grid-cols-[2.25rem_1fr_1fr_2rem]"
-                    >
-                      <span className="text-xs font-medium text-muted-foreground">
-                        {periodLabel} {i + 1}
-                      </span>
-                      {([0, 1] as const).map((sideIdx) => {
-                        const teamLabel = sideIdx === 0 ? homeName : awayName;
-                        const sideKey = sideIdx === 0 ? "home" : "away";
-                        return (
-                          <div
-                            key={sideIdx}
-                            className={
-                              sideIdx === 1
-                                ? "col-start-2 row-start-2 flex min-w-0 items-center gap-1 sm:col-auto sm:row-auto"
-                                : "flex min-w-0 items-center gap-1"
-                            }
-                          >
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              aria-label={`${periodLabel} ${i + 1} ${teamLabel} ${t("minus")} 1`}
-                              data-testid={`set-${i}-${sideKey}-minus`}
-                              className="h-11 w-10 shrink-0 p-0"
-                              onClick={() => bump(i, sideIdx, -1)}
-                            >
-                              <Minus aria-hidden="true" className="h-4 w-4" />
-                            </Button>
-                            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                              <span className="truncate text-center text-[0.6875rem] text-muted-foreground sm:hidden">
-                                {teamLabel}
-                              </span>
-                              <Input
-                                inputMode="numeric"
-                                aria-label={`${periodLabel} ${i + 1} ${teamLabel}`}
-                                value={row[sideIdx]}
-                                onChange={(e) => setSide(i, sideIdx, e.target.value)}
-                                className="h-11 w-full text-center font-tabular text-lg font-semibold"
-                              />
-                            </div>
-                            <Button
-                              type="button"
-                              size="sm"
-                              aria-label={`${periodLabel} ${i + 1} ${teamLabel} ${t("plus")} 1`}
-                              data-testid={`set-${i}-${sideKey}-plus`}
-                              className="h-11 w-14 shrink-0 p-0"
-                              onClick={() => bump(i, sideIdx, 1)}
-                            >
-                              <Plus aria-hidden="true" className="h-5 w-5" />
-                            </Button>
-                          </div>
-                        );
-                      })}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`${t("Remove")} ${periodLabel.toLowerCase()} ${i + 1}`}
-                        disabled={setRows.length === 1}
-                        className="col-start-3 row-start-1 h-8 w-8 p-0 sm:col-auto sm:row-auto"
-                        onClick={() => {
-                          const next = setRows.filter((_, j) => j !== i);
-                          setSetRows(next);
-                          schedulePush(next);
-                        }}
+        {inPlay ? (
+          // Corrections: the classic stepper editor, a collapsed row.
+          <details className="border-t border-border">
+            <summary className="cursor-pointer select-none px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+              {t("Adjust")} {periodPlural.toLowerCase()}
+            </summary>
+            <div className="flex flex-col gap-3 px-3 pb-3">
+              <div className="hidden grid-cols-[2.25rem_1fr_1fr_2rem] items-center gap-2 text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground sm:grid">
+                <span />
+                <span className="truncate text-center">{homeName}</span>
+                <span className="truncate text-center">{awayName}</span>
+                <span />
+              </div>
+              {setRows.map((row, i) => (
+                <div
+                  key={i}
+                  className="grid grid-cols-[2.25rem_minmax(0,1fr)_2rem] items-center gap-x-2 gap-y-1.5 sm:grid-cols-[2.25rem_1fr_1fr_2rem]"
+                >
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {periodLabel} {i + 1}
+                  </span>
+                  {([0, 1] as const).map((sideIdx) => {
+                    const teamLabel = sideIdx === 0 ? homeName : awayName;
+                    const sideKey = sideIdx === 0 ? "home" : "away";
+                    return (
+                      <div
+                        key={sideIdx}
+                        className={
+                          sideIdx === 1
+                            ? "col-start-2 row-start-2 flex min-w-0 items-center gap-1 sm:col-auto sm:row-auto"
+                            : "flex min-w-0 items-center gap-1"
+                        }
                       >
-                        <X aria-hidden="true" className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          aria-label={`${periodLabel} ${i + 1} ${teamLabel} ${t("minus")} 1`}
+                          data-testid={`set-${i}-${sideKey}-minus`}
+                          className="h-11 w-10 shrink-0 p-0"
+                          onClick={() => bump(i, sideIdx, -1)}
+                        >
+                          <Minus aria-hidden="true" className="h-4 w-4" />
+                        </Button>
+                        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span className="truncate text-center text-[0.6875rem] text-muted-foreground sm:hidden">
+                            {teamLabel}
+                          </span>
+                          <Input
+                            inputMode="numeric"
+                            aria-label={`${periodLabel} ${i + 1} ${teamLabel}`}
+                            value={row[sideIdx]}
+                            onChange={(e) => setSide(i, sideIdx, e.target.value)}
+                            className="h-11 w-full text-center font-tabular text-lg font-semibold"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          aria-label={`${periodLabel} ${i + 1} ${teamLabel} ${t("plus")} 1`}
+                          data-testid={`set-${i}-${sideKey}-plus`}
+                          className="h-11 w-14 shrink-0 p-0"
+                          onClick={() => bump(i, sideIdx, 1)}
+                        >
+                          <Plus aria-hidden="true" className="h-5 w-5" />
+                        </Button>
+                      </div>
+                    );
+                  })}
                   <Button
                     size="sm"
-                    variant="outline"
-                    className="w-fit"
-                    onClick={() => setSetRows((rows) => [...rows, ["", ""]])}
+                    variant="ghost"
+                    aria-label={`${t("Remove")} ${periodLabel.toLowerCase()} ${i + 1}`}
+                    disabled={setRows.length === 1}
+                    className="col-start-3 row-start-1 h-8 w-8 p-0 sm:col-auto sm:row-auto"
+                    onClick={() => {
+                      const next = setRows.filter((_, j) => j !== i);
+                      setSetRows(next);
+                      schedulePush(next);
+                    }}
                   >
-                    <Plus aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
-                    {t("Add")} {periodLabel.toLowerCase()}
+                    <X aria-hidden="true" className="h-4 w-4" />
                   </Button>
                 </div>
-              </details>
-
-              <div className="flex items-center justify-between gap-3">
-                {match.status === "live" ? (
-                  <span
-                    data-testid="tap-sync-state"
-                    className="text-xs text-muted-foreground"
-                    aria-live="polite"
-                  >
-                    {progress.isPending
-                      ? t("Saving")
-                      : syncFailed
-                        ? t("Offline. Points are safe on this phone.")
-                        : t("Saves as you tap. Viewers see it live.")}
-                  </span>
-                ) : (
-                  <span className="text-xs text-muted-foreground">
-                    {t("Recording the result completes the match.")}
-                  </span>
-                )}
-              </div>
-            </>
-          ) : null}
-        </div>
-      </div>
-
-      {/* Ends prompts: between games, and the deciding-game switch at 5. */}
-      {banner ? (
-        <div
-          data-testid="change-ends"
-          role="status"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-secondary-foreground print:hidden"
-        >
-          <span>{banner.text}</span>
-          <div className="flex items-center gap-2">
-            {banner.startNext && !decided ? (
-              <Button size="sm" onClick={startNextGame}>
-                {t("Start")} {periodLabel.toLowerCase()} {setNo + 1}
+              ))}
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-fit"
+                onClick={() => setSetRows((rows) => [...rows, ["", ""]])}
+              >
+                <Plus aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+                {t("Add")} {periodLabel.toLowerCase()}
               </Button>
-            ) : null}
-            <Button size="sm" variant="outline" onClick={() => setBanner(null)}>
-              {t("Done")}
-            </Button>
+            </div>
+          </details>
+        ) : null}
+
+        {extras}
+
+        {inPlay ? (
+          <div className="border-t border-border px-3 py-2">
+            {match.status === "live" ? (
+              <span
+                data-testid="tap-sync-state"
+                className="text-xs text-muted-foreground"
+                aria-live="polite"
+              >
+                {progress.isPending
+                  ? t("Saving")
+                  : syncFailed
+                    ? t("Offline. Points are safe on this phone.")
+                    : t("Saves as you tap. Viewers see it live.")}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                {t("Recording the result completes the match.")}
+              </span>
+            )}
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {/* Confirm the result (completes the match). */}
       <Dialog

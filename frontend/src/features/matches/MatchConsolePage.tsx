@@ -300,7 +300,7 @@ export function MatchConsolePage(): React.ReactElement {
 
   if (query.isLoading) {
     return (
-      <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="flex w-full flex-col gap-3 px-3 py-3 sm:px-6 sm:py-4 lg:px-8">
         <div className="h-40 animate-pulse rounded-xl border border-border bg-card" />
         <div className="h-64 animate-pulse rounded-xl border border-border bg-card" />
       </div>
@@ -308,7 +308,7 @@ export function MatchConsolePage(): React.ReactElement {
   }
   if (query.isError || !query.data) {
     return (
-      <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="flex w-full flex-col gap-3 px-3 py-3 sm:px-6 sm:py-4 lg:px-8">
         <p role="alert" className="text-sm text-destructive">
           {t("Could not load the match.")}
         </p>
@@ -363,7 +363,7 @@ export function MatchConsolePage(): React.ReactElement {
   };
 
   // The state-transition buttons render inside whichever scoreboard owns the
-  // surface: the chassis's football card below, or the sport module's card.
+  // surface: the chassis's football card below, or the sport module's board.
   const actionButtons =
     actions.length > 0 ? (
       <div className="flex w-full flex-wrap justify-center gap-2">
@@ -381,53 +381,236 @@ export function MatchConsolePage(): React.ReactElement {
       </div>
     ) : null;
 
-  return (
-    <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-      <Link
-        to={routes.tournamentMatches(id)}
-        className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground print:hidden"
+  // The per-side recorder grid (player select + event palette). Football
+  // shows it in its own card; set sports get it as a collapsed row inside
+  // the board (via `extras`), so the console stays ONE section.
+  const recorderGrid = live ? (
+    <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+      {(["home", "away"] as Side[]).map((side) => {
+        const team: LiveTeam | null = side === "home" ? match.home_team : match.away_team;
+        const players = team?.players ?? [];
+        const fire = (event_type: string) =>
+          fireEvent({ event_type, side, player_id: sel[side] });
+        const playerLabel = side === "home" ? t("Home player") : t("Away player");
+        const subLabel = side === "home" ? t("Home sub on") : t("Away sub on");
+        const palette = timed ? EVENT_BUTTONS : SET_EVENT_BUTTONS;
+        return (
+          <div key={side} className="flex flex-col gap-3 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold">
+                {team?.name ?? (side === "home" ? t("Home") : t("Away"))}
+              </span>
+              <span className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
+                {side === "home" ? t("Home") : t("Away")}
+              </span>
+            </div>
+
+            <Select
+              aria-label={playerLabel}
+              value={sel[side] ?? ""}
+              onChange={(v) => setSel((s) => ({ ...s, [side]: v || undefined }))}
+              options={[
+                { value: "", label: t("Team (no player)") },
+                ...playerOptions(players),
+              ]}
+              placeholder={t("Team (no player)")}
+            />
+
+            <div className="grid grid-cols-3 gap-1.5">
+              {palette.map((b) => (
+                <button
+                  key={b.type}
+                  type="button"
+                  disabled={ev.isPending}
+                  onClick={() => fire(b.type)}
+                  className={cn(
+                    "inline-flex items-center justify-center rounded-lg px-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+                    b.type === "goal" ? "h-12 text-base" : "h-9",
+                    TONE_CLS[b.tone],
+                  )}
+                >
+                  {t(b.label)}
+                </button>
+              ))}
+            </div>
+
+            {timed ? (
+              <div className="flex items-end gap-2 border-t border-border pt-3">
+                <div className="flex flex-1 flex-col gap-1">
+                  <span className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
+                    {t("Substitution")}
+                  </span>
+                  <Select
+                    aria-label={subLabel}
+                    value={subOn[side] ?? ""}
+                    onChange={(v) => setSubOn((s) => ({ ...s, [side]: v || undefined }))}
+                    options={[
+                      { value: "", label: t("Sub on…") },
+                      ...playerOptions(players),
+                    ]}
+                    placeholder={t("Sub on…")}
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={ev.isPending || !sel[side] || !subOn[side]}
+                  onClick={() =>
+                    fireEvent({
+                      event_type: "substitution",
+                      side,
+                      player_id: sel[side],
+                      related_player_id: subOn[side],
+                    })
+                  }
+                >
+                  {t("Sub")}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  ) : null;
+
+  // Event log pieces, shared by the football card and the set-sport
+  // collapsed row.
+  const eventLogActions = (
+    <div className="flex items-center gap-1.5">
+      {canUndo ? (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={ev.isPending}
+          onClick={() =>
+            fireEvent({ event_type: "void", voids_seq: lastEvent.sequence_no })
+          }
+        >
+          <Undo2 aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+          {t("Undo last event")}
+        </Button>
+      ) : null}
+      <a
+        href={liveApi.exportUrl(matchId)}
+        className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
-        <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
-        {t("Back to matches")}
-      </Link>
-      {/* Page header: what is being played, then who. */}
-      <div className="flex flex-wrap items-end justify-between gap-2 print:hidden">
-        <div className="flex min-w-0 flex-col gap-1">
-          <p
-            data-testid="match-context"
-            className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground"
+        <Download aria-hidden="true" className="h-3.5 w-3.5" />
+        {t("Export CSV")}
+      </a>
+    </div>
+  );
+  const eventLogList =
+    events.length === 0 ? (
+      <p className="text-sm text-muted-foreground">{t("No events yet.")}</p>
+    ) : (
+      <ol className="flex flex-col">
+        {events.map((e, i) => (
+          <li
+            key={e.sequence_no}
+            className={cn(
+              "group flex items-baseline gap-3 py-2 text-sm",
+              i > 0 && "border-t border-border",
+            )}
           >
-            {[
-              match.sport_meta?.name,
-              competitionLabel(match.leaf_key, match.sport_meta?.key ?? match.sport),
-              match.venue,
-            ]
-              .filter(Boolean)
-              .join(" · ") || t("Scoring console")}
-          </p>
-          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-            {homeName} <span className="text-muted-foreground">{t("vs")}</span> {awayName}
-          </h1>
+            <span className="w-12 shrink-0 text-right font-tabular tabular-nums text-muted-foreground">
+              {e.minute != null ? `${e.minute}'` : `#${e.sequence_no}`}
+            </span>
+            <span className="flex-1 text-foreground">
+              {t(e.type.replace(/_/g, " "))}
+              {e.player ? (
+                <span className="text-muted-foreground"> · {e.player}</span>
+              ) : null}
+            </span>
+            {live ? (
+              <button
+                type="button"
+                aria-label={`${t("Undo")} ${t(e.type.replace(/_/g, " "))} #${e.sequence_no}`}
+                disabled={ev.isPending}
+                onClick={() =>
+                  fireEvent({ event_type: "void", voids_seq: e.sequence_no })
+                }
+                className="rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
+              >
+                {t("Undo")}
+              </button>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+    );
+
+  // Set sports: the whole console is ONE board — the module renders these
+  // as collapsed rows under its own sections.
+  const extras = !timed ? (
+    <>
+      {live ? (
+        <details className="border-t border-border print:hidden">
+          <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+            <Radio aria-hidden="true" className="h-4 w-4 text-primary" />
+            {t("Discipline")}
+            <span className="ml-auto text-xs">{t("fouls and cards")}</span>
+          </summary>
+          {recorderGrid}
+        </details>
+      ) : null}
+      <details className="border-t border-border print:hidden">
+        <summary className="cursor-pointer select-none px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+          {t("Event log")}
+          {events.length > 0 ? ` (${events.length})` : ""}
+        </summary>
+        <div className="flex flex-col gap-2 px-3 pb-3">
+          <div className="flex justify-end">{eventLogActions}</div>
+          {eventLogList}
         </div>
+      </details>
+    </>
+  ) : null;
+
+  return (
+    <div className="flex w-full flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
+      {/* One-line header: back, what is being played, the clock. The teams
+          are named on the board itself. */}
+      <div className="flex items-center gap-2 print:hidden">
+        <Link
+          to={routes.tournamentMatches(id)}
+          aria-label={t("Back to matches")}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+        </Link>
+        <p
+          data-testid="match-context"
+          title={`${homeName} ${t("vs")} ${awayName}`}
+          className="min-w-0 flex-1 truncate text-sm font-medium text-muted-foreground"
+        >
+          {[
+            match.sport_meta?.name,
+            competitionLabel(match.leaf_key, match.sport_meta?.key ?? match.sport),
+            match.venue,
+          ]
+            .filter(Boolean)
+            .join(" · ") || `${homeName} ${t("vs")} ${awayName}`}
+        </p>
         {queued > 0 ? (
           <span
             data-testid="offline-queued"
-            className="inline-flex items-center gap-1.5 rounded-md bg-warning-muted px-2 py-1 font-tabular text-xs font-medium text-warning"
+            className="inline-flex shrink-0 items-center rounded-md bg-warning-muted px-2 py-1 font-tabular text-xs font-medium text-warning"
           >
-            {queued} {t("saved on this phone, will sync")}
+            {queued} {t("will sync")}
           </span>
         ) : null}
         {live && elapsedSec != null ? (
           // Stopwatch: runs from the moment the scorer started the match.
           <div
             data-testid="match-clock"
-            className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 shadow-sm"
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 shadow-sm"
           >
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
             </span>
-            <span className="font-tabular text-2xl font-semibold leading-none tabular-nums">
+            <span className="font-tabular text-lg font-semibold leading-none tabular-nums">
               {fmtClock(elapsedSec)}
             </span>
           </div>
@@ -436,6 +619,7 @@ export function MatchConsolePage(): React.ReactElement {
             size="sm"
             variant="outline"
             data-testid="print-match-report"
+            className="shrink-0"
             onClick={() => window.print()}
           >
             <Printer aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
@@ -491,8 +675,8 @@ export function MatchConsolePage(): React.ReactElement {
       </div>
 
       {/* Scoreboard: a registered sport module owns the whole scoring
-          surface (scoreboard + score entry); otherwise the chassis renders
-          its own football surface. */}
+          surface (board + score entry + fused extras); otherwise the chassis
+          renders its own football surface. */}
       {module ? (
         <module.Console
           matchId={matchId}
@@ -504,6 +688,7 @@ export function MatchConsolePage(): React.ReactElement {
           refresh={refresh}
           onError={onError}
           actions={actionButtons}
+          extras={extras}
         />
       ) : (
         <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm print:hidden">
@@ -580,205 +765,44 @@ export function MatchConsolePage(): React.ReactElement {
         />
       ) : null}
 
-      {/* Record event: football's full palette stays open; a set sport's
-          discipline log is rare courtside, so it collapses out of the way. */}
-      {live ? (
-        (() => {
-          const grid = (
-          <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-            {(["home", "away"] as Side[]).map((side) => {
-              const team: LiveTeam | null = side === "home" ? match.home_team : match.away_team;
-              const players = team?.players ?? [];
-              const fire = (event_type: string) =>
-                fireEvent({ event_type, side, player_id: sel[side] });
-              const playerLabel = side === "home" ? t("Home player") : t("Away player");
-              const subLabel = side === "home" ? t("Home sub on") : t("Away sub on");
-              const palette = timed ? EVENT_BUTTONS : SET_EVENT_BUTTONS;
-              return (
-                <div key={side} className="flex flex-col gap-3 p-5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold">
-                      {team?.name ?? (side === "home" ? t("Home") : t("Away"))}
-                    </span>
-                    <span className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
-                      {side === "home" ? t("Home") : t("Away")}
-                    </span>
-                  </div>
-
-                  <Select
-                    aria-label={playerLabel}
-                    value={sel[side] ?? ""}
-                    onChange={(v) => setSel((s) => ({ ...s, [side]: v || undefined }))}
-                    options={[
-                      { value: "", label: t("Team (no player)") },
-                      ...playerOptions(players),
-                    ]}
-                    placeholder={t("Team (no player)")}
-                  />
-
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {palette.map((b) => (
-                      <button
-                        key={b.type}
-                        type="button"
-                        disabled={ev.isPending}
-                        onClick={() => fire(b.type)}
-                        className={cn(
-                          "inline-flex items-center justify-center rounded-lg px-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-                          b.type === "goal" ? "h-12 text-base" : "h-9",
-                          TONE_CLS[b.tone],
-                        )}
-                      >
-                        {t(b.label)}
-                      </button>
-                    ))}
-                  </div>
-
-                  {timed ? (
-                    <div className="flex items-end gap-2 border-t border-border pt-3">
-                      <div className="flex flex-1 flex-col gap-1">
-                        <span className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
-                          {t("Substitution")}
-                        </span>
-                        <Select
-                          aria-label={subLabel}
-                          value={subOn[side] ?? ""}
-                          onChange={(v) => setSubOn((s) => ({ ...s, [side]: v || undefined }))}
-                          options={[
-                            { value: "", label: t("Sub on…") },
-                            ...playerOptions(players),
-                          ]}
-                          placeholder={t("Sub on…")}
-                        />
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={ev.isPending || !sel[side] || !subOn[side]}
-                        onClick={() =>
-                          fireEvent({
-                            event_type: "substitution",
-                            side,
-                            player_id: sel[side],
-                            related_player_id: subOn[side],
-                          })
-                        }
-                      >
-                        {t("Sub")}
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-          );
-          return timed ? (
-            <div className="rounded-xl border border-border bg-card shadow-sm print:hidden">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
-                <div className="flex items-center gap-2">
-                  <Radio aria-hidden="true" className="h-4 w-4 text-primary" />
-                  <h2 className="text-sm font-semibold">{t("Record event")}</h2>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="minute" className="text-xs text-muted-foreground">
-                    {t("Minute")}
-                  </Label>
-                  <Input
-                    id="minute"
-                    inputMode="numeric"
-                    placeholder={autoMinute != null ? String(autoMinute) : ""}
-                    value={minute}
-                    onChange={(e) => setMinute(e.target.value)}
-                    className="h-9 w-16 text-center font-tabular"
-                  />
-                </div>
-              </div>
-              {grid}
+      {/* Record event (football only; set sports carry the recorder inside
+          the board via extras). */}
+      {live && timed ? (
+        <div className="rounded-xl border border-border bg-card shadow-sm print:hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Radio aria-hidden="true" className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">{t("Record event")}</h2>
             </div>
-          ) : (
-            <details className="rounded-xl border border-border bg-card shadow-sm print:hidden">
-              <summary className="flex cursor-pointer select-none items-center gap-2 px-5 py-3 text-sm font-semibold">
-                <Radio aria-hidden="true" className="h-4 w-4 text-primary" />
-                {t("Record discipline")}
-                <span className="ml-auto text-xs font-medium text-muted-foreground">
-                  {t("Fouls and cards")}
-                </span>
-              </summary>
-              <div className="border-t border-border">{grid}</div>
-            </details>
-          );
-        })()
+            <div className="flex items-center gap-2">
+              <Label htmlFor="minute" className="text-xs text-muted-foreground">
+                {t("Minute")}
+              </Label>
+              <Input
+                id="minute"
+                inputMode="numeric"
+                placeholder={autoMinute != null ? String(autoMinute) : ""}
+                value={minute}
+                onChange={(e) => setMinute(e.target.value)}
+                className="h-9 w-16 text-center font-tabular"
+              />
+            </div>
+          </div>
+          {recorderGrid}
+        </div>
       ) : null}
 
-      {/* Event log / timeline */}
-      <div className="rounded-xl border border-border bg-card shadow-sm print:hidden">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
-          <h2 className="text-sm font-semibold">{t("Event log")}</h2>
-          <div className="flex items-center gap-1.5">
-            {canUndo ? (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={ev.isPending}
-                onClick={() =>
-                  fireEvent({ event_type: "void", voids_seq: lastEvent.sequence_no })
-                }
-              >
-                <Undo2 aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
-                {t("Undo last event")}
-              </Button>
-            ) : null}
-            <a
-              href={liveApi.exportUrl(matchId)}
-              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <Download aria-hidden="true" className="h-3.5 w-3.5" />
-              {t("Export timeline (CSV)")}
-            </a>
+      {/* Event log / timeline (football only; set sports fold it into the
+          board via extras). */}
+      {timed ? (
+        <div className="rounded-xl border border-border bg-card shadow-sm print:hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
+            <h2 className="text-sm font-semibold">{t("Event log")}</h2>
+            {eventLogActions}
           </div>
+          <div className="px-5 py-4">{eventLogList}</div>
         </div>
-        <div className="px-5 py-4">
-          {events.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t("No events yet.")}</p>
-          ) : (
-            <ol className="flex flex-col">
-              {events.map((e, i) => (
-                <li
-                  key={e.sequence_no}
-                  className={cn(
-                    "group flex items-baseline gap-3 py-2 text-sm",
-                    i > 0 && "border-t border-border",
-                  )}
-                >
-                  <span className="w-12 shrink-0 text-right font-tabular tabular-nums text-muted-foreground">
-                    {e.minute != null ? `${e.minute}'` : `#${e.sequence_no}`}
-                  </span>
-                  <span className="flex-1 text-foreground">
-                    {t(e.type.replace(/_/g, " "))}
-                    {e.player ? (
-                      <span className="text-muted-foreground"> · {e.player}</span>
-                    ) : null}
-                  </span>
-                  {live ? (
-                    <button
-                      type="button"
-                      aria-label={`${t("Undo")} ${t(e.type.replace(/_/g, " "))} #${e.sequence_no}`}
-                      disabled={ev.isPending}
-                      onClick={() =>
-                        fireEvent({ event_type: "void", voids_seq: e.sequence_no })
-                      }
-                      className="rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
-                    >
-                      {t("Undo")}
-                    </button>
-                  ) : null}
-                </li>
-              ))}
-            </ol>
-          )}
-        </div>
-      </div>
+      ) : null}
 
       {/* Confirm a terminal transition — completing locks the result and
           fires bracket advancement; a mis-tap must be catchable (P7a). */}
