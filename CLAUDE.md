@@ -107,6 +107,13 @@ Up-front PRD decisions that shape the codebase. Do not relitigate; do not deviat
 - **Global screen detector:** `lib/useBreakpoint.ts` (`useSyncExternalStore`-backed) for JS-level responsive decisions; Tailwind responsive utilities otherwise. Tables → stacked cards on mobile via `useBreakpoint().isMobile`.
 - Cards/panels: `rounded-xl border border-border bg-card shadow-sm`. State as TanStack Query (server) + Zustand (client). `cn()` is `lib/tailwind`; routes via `lib/routes.ts` helpers.
 
+## Operations pages (frontend)
+
+- **`MatchRow`** (`features/controlroom/MatchRow.tsx`) is the shared dense match row: it is a **desktop table row** and overflows below `md`, so any page that lists matches on a phone needs its own card layout (see `MyTasksPage`'s `MyTaskCard`). It takes an optional `badges` slot for caller-owned chips. Finished matches carry `data-done` + a `success-muted` tint.
+- **`features/controlroom/format.ts`** owns the list helpers shared by every match list — `tzDate`, `statusBucket`, `leafLabelOf`, `humanizeLeaf`, `fmtDayLabel`, `IN_PLAY`/`FINAL`. Import them; don't re-declare them per page.
+- **"Assigned to me" means EITHER seat**: `Match.scorer` (one per match) *or* a `MatchOfficial` row (many per match, one role each). Filtering on `scorer` alone silently hides every official's work — that was the bug `MyTasksPage` was created to fix, and the board's own "My matches" toggle had it too.
+- **`MyTasksPage`** (`/tournaments/:id/my-tasks`) is self-scoped, so its nav item is ungated — every member sees it, and it can only ever show their own matches.
+
 ## Working with the PRD & specs
 
 - PRD is **versioned in-document** (Draft v3): on meaningful design changes, bump the draft + update §14 "Decisions log" rather than silently editing. §13 "Open questions" is the deferred list — when implementation forces a decision, move it §13→§14.

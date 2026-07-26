@@ -61,6 +61,7 @@ const TournamentAuditPage = lazy(() => import("@/features/tournaments/Tournament
 const MatchConsolePage = lazy(() => import("@/features/matches/MatchConsolePage").then((m) => ({ default: m.MatchConsolePage })));
 const ControlRoomPage = lazy(() => import("@/features/controlroom/ControlRoomPage").then((m) => ({ default: m.ControlRoomPage })));
 const MatchesBoardPage = lazy(() => import("@/features/tournaments/ops/MatchBoardPage").then((m) => ({ default: m.MatchesBoardPage })));
+const MyTasksPage = lazy(() => import("@/features/tournaments/ops/MyTasksPage").then((m) => ({ default: m.MyTasksPage })));
 const OpsStandingsPage = lazy(() => import("@/features/tournaments/ops/OpsStandingsPage").then((m) => ({ default: m.OpsStandingsPage })));
 const LeadersPage = lazy(() => import("@/features/tournaments/ops/LeadersPage").then((m) => ({ default: m.LeadersPage })));
 const ChangeHistoryPage = lazy(() => import("@/features/tournaments/ops/ChangeHistoryPage").then((m) => ({ default: m.ChangeHistoryPage })));
@@ -232,6 +233,7 @@ export default function App(): React.ReactElement {
                       post-generation home + the rest of the Operations group. */}
                   <Route path="control" element={<ControlRoomPage />} />
                   <Route path="matches" element={<MatchesBoardPage />} />
+                  <Route path="my-tasks" element={<MyTasksPage />} />
                   <Route path="standings" element={<OpsStandingsPage />} />
                   <Route path="crew" element={<CrewPage />} />
                   <Route path="leaders" element={<LeadersPage />} />

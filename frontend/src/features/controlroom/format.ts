@@ -1,4 +1,5 @@
 import type { ControlRoomMatch, ScheduleChangeEntry } from "@/api/tournaments";
+import { t } from "@/lib/t";
 
 /** Statuses that count as in-play (live pulse + running score). */
 export const IN_PLAY = new Set(["live", "half_time"]);
@@ -100,4 +101,44 @@ export function delayFor(
   return new Date(d.at).getTime() === new Date(m.scheduled_at).getTime()
     ? d.minutes
     : null;
+}
+
+/** The tournament-local calendar date ("YYYY-MM-DD") a match falls on, or ""
+ * (unscheduled). Tournament TZ, never the viewer's (invariant 14). */
+export function tzDate(iso: string | null, tz: string): string {
+  if (!iso) return "";
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(iso));
+  } catch {
+    return iso.slice(0, 10);
+  }
+}
+
+/** Coarse lifecycle bucket the status filters and sort keys work off. */
+export function statusBucket(
+  status: string,
+): "live" | "upcoming" | "done" | "other" {
+  if (IN_PLAY.has(status)) return "live";
+  if (FINAL.has(status)) return "done";
+  if (status === "scheduled") return "upcoming";
+  return "other";
+}
+
+/** Humanize a leaf key as a last resort when a row carries no `leaf_label`. */
+export function humanizeLeaf(key: string): string {
+  if (!key) return t("Tournament");
+  return key
+    .split(".")
+    .map((seg) => seg.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()))
+    .join(" · ");
+}
+
+/** A match's competition label, falling back to a humanized leaf key. */
+export function leafLabelOf(m: ControlRoomMatch): string {
+  return m.leaf_label || humanizeLeaf(m.leaf_key);
 }

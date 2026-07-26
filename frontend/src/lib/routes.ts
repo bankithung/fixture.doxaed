@@ -84,6 +84,10 @@ export const routes = {
   /** Operations: flat, filterable tournament-wide matches board. */
   tournamentMatches: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/matches`,
+  /** Operations: an invited member's own assigned matches (scoring seat or any
+   * officiating slot). Visible to every member — it only ever shows theirs. */
+  tournamentMyTasks: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/my-tasks`,
   /** Operations: admin-context live standings & bracket per competition. */
   tournamentStandings: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/standings`,

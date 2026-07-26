@@ -273,6 +273,7 @@ describe("computeTournamentNav", () => {
     expect(groupKeys(groups)).toEqual(["operations", "manage"]);
     const ops = groups.find((g) => g.key === "operations")!;
     expect(ops.items.map((i) => i.key)).toEqual([
+      "my-tasks",
       "control",
       "matches",
       "standings",
@@ -314,6 +315,9 @@ describe("computeTournamentNav", () => {
       }),
     });
     const keys = flatKeys(groups);
+    // Every member gets their own work list — it is scoped to them, so it is
+    // never permission-gated (owner 2026-07-26).
+    expect(keys).toContain("my-tasks");
     expect(keys).toContain("control");
     expect(keys).toContain("matches");
     expect(keys).toContain("standings");
@@ -345,6 +349,7 @@ describe("computeTournamentNav", () => {
       stage: readyStage({ can_manage: true }),
     }).flatMap((g) => g.items);
     const byKey = Object.fromEntries(items.map((i) => [i.key, i]));
+    expect(byKey["my-tasks"].href).toBe(routes.tournamentMyTasks(TID));
     expect(byKey.control.href).toBe(routes.tournamentControl(TID));
     expect(byKey.matches.href).toBe(routes.tournamentMatches(TID));
     expect(byKey.standings.href).toBe(routes.tournamentStandings(TID));

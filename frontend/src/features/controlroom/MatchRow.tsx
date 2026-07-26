@@ -25,6 +25,7 @@ export function MatchRow({
   delayMinutes = null,
   showCourt = true,
   showTime = true,
+  badges,
 }: {
   match: ControlRoomMatch;
   timeZone: string;
@@ -35,6 +36,9 @@ export function MatchRow({
   showCourt?: boolean;
   /** `false` under a kickoff-time group header, which already states the time. */
   showTime?: boolean;
+  /** Caller-owned chips rendered inline in the row (My tasks puts the viewer's
+   * own seat here — "Scoring", "Referee" — which only the caller can know). */
+  badges?: React.ReactNode;
 }): React.ReactElement {
   const showScore = IN_PLAY.has(match.status) || FINAL.has(match.status);
   const live = IN_PLAY.has(match.status);
@@ -111,6 +115,10 @@ export function MatchRow({
           {match.away_team?.name ?? t("TBD")}
         </span>
       </div>
+
+      {badges ? (
+        <div className="flex shrink-0 items-center gap-1">{badges}</div>
+      ) : null}
 
       <div className="w-16 shrink-0 text-right font-tabular">
         {showScore ? (

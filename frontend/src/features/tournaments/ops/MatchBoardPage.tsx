@@ -10,48 +10,16 @@ import { Select } from "@/components/ui/Select";
 import type { ControlRoomPerms } from "@/features/controlroom/MatchActionsMenu";
 import { MatchRow } from "@/features/controlroom/MatchRow";
 import { ShiftDayDialog } from "@/features/fixtures/ShiftDayDialog";
-import { FINAL, IN_PLAY, fmtDayLabel } from "@/features/controlroom/format";
+import {
+  fmtDayLabel,
+  leafLabelOf,
+  statusBucket,
+  tzDate,
+} from "@/features/controlroom/format";
 import { qk } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { useEventStream } from "@/lib/useEventStream";
-
-/** The tournament-local calendar date ("YYYY-MM-DD") a match falls on, or ""
- * (unscheduled). Tournament TZ, never the viewer's (invariant 14). */
-function tzDate(iso: string | null, tz: string): string {
-  if (!iso) return "";
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: tz,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date(iso));
-  } catch {
-    return iso.slice(0, 10);
-  }
-}
-
-/** Coarse lifecycle bucket the status filter + sort key off. */
-function statusBucket(status: string): "live" | "upcoming" | "done" | "other" {
-  if (IN_PLAY.has(status)) return "live";
-  if (FINAL.has(status)) return "done";
-  if (status === "scheduled") return "upcoming";
-  return "other";
-}
-
-/** Humanize a leaf key as a last resort when the row carries no `leaf_label`. */
-function humanizeLeaf(key: string): string {
-  if (!key) return t("Tournament");
-  return key
-    .split(".")
-    .map((seg) => seg.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()))
-    .join(" · ");
-}
-
-function leafLabelOf(m: ControlRoomMatch): string {
-  return m.leaf_label || humanizeLeaf(m.leaf_key);
-}
 
 const PAGE_SIZE = 20;
 
@@ -224,7 +192,15 @@ export function MatchesBoardPage(): React.ReactElement {
       if (status !== "all" && statusBucket(m.status) !== status) return false;
       if (needsScorer && m.scorer) return false;
       if (needsOfficial && (m.officials ?? []).length > 0) return false;
-      if (mine && m.scorer?.id !== perms.userId) return false;
+      // "Mine" is EITHER seat — the scoring seat or any officiating slot.
+      // Checking only `scorer` left officials with no way to find their day.
+      if (
+        mine &&
+        m.scorer?.id !== perms.userId &&
+        !(m.officials ?? []).some((o) => o.user_id === perms.userId)
+      ) {
+        return false;
+      }
       if (needle) {
         const hay = `${m.home_team?.name ?? ""} ${m.away_team?.name ?? ""} ${leafLabelOf(m)} ${m.venue}`.toLowerCase();
         if (!hay.includes(needle)) return false;

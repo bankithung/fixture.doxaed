@@ -1,6 +1,7 @@
 import {
   ExternalLink,
   BarChart3,
+  ClipboardCheck,
   Building2,
   CalendarClock,
   Camera,
@@ -187,6 +188,14 @@ export function computeTournamentNav(
   const opsMode = readyIdx >= 0 && curIdx >= readyIdx;
   if (opsMode) {
     const operations: (NavItem | null)[] = [
+      // Every invited member's own work list. Deliberately UNGATED: it shows
+      // only the viewer's own assignments, so there is nothing to authorize.
+      {
+        key: "my-tasks",
+        label: t("My tasks"),
+        href: routes.tournamentMyTasks(tournamentId),
+        icon: ClipboardCheck,
+      },
       // Today = the live control room; the post-generation default landing.
       allowed("match.center_admin_view")
         ? {
