@@ -242,6 +242,79 @@ describe("MyTasksPage", () => {
     ).toBeInTheDocument();
   });
 
+  describe("on a phone", () => {
+    // useBreakpoint reads window.innerWidth through useSyncExternalStore, so a
+    // narrow viewport is all it takes to get the mobile shell under test.
+    beforeEach(() => {
+      vi.stubGlobal("innerWidth", 390);
+    });
+
+    it("puts the filters behind a bottom bar, not an inline bar", async () => {
+      mount();
+      await screen.findByTestId("mytasks-list");
+
+      expect(screen.getByTestId("mytasks-bottom-bar")).toBeInTheDocument();
+      // The controls are NOT on the page until the drawer is opened.
+      expect(screen.queryByTestId("mytasks-search")).toBeNull();
+      expect(screen.queryByTestId("mytasks-role")).toBeNull();
+      expect(screen.queryByTestId("mytasks-filter-sheet")).toBeNull();
+    });
+
+    it("opens the drawer, filters from it, and closes on apply", async () => {
+      mount();
+      await screen.findByTestId("mytasks-list");
+
+      await userEvent.click(screen.getByTestId("mytasks-filters-open"));
+      const sheet = await screen.findByTestId("mytasks-filter-sheet");
+      expect(sheet).toBeInTheDocument();
+      // A real dialog: focus-trapped and Escape-dismissable.
+      expect(screen.getByRole("dialog")).toHaveAttribute("aria-modal", "true");
+
+      await userEvent.click(screen.getByTestId("mytasks-status-live"));
+      await userEvent.click(screen.getByTestId("mytasks-sheet-apply"));
+      expect(screen.queryByTestId("mytasks-filter-sheet")).toBeNull();
+      expect(screen.getByTestId("tile-m2")).toBeInTheDocument();
+      expect(screen.queryByTestId("tile-m1")).toBeNull();
+    });
+
+    it("surfaces what is applied as removable chips + a count badge", async () => {
+      mount();
+      await screen.findByTestId("mytasks-list");
+      // Nothing applied yet: no chip row, no badge.
+      expect(screen.queryByTestId("mytasks-active-filters")).toBeNull();
+      expect(screen.queryByTestId("mytasks-filter-count")).toBeNull();
+
+      await userEvent.click(screen.getByTestId("mytasks-stat-live"));
+      expect(await screen.findByTestId("mytasks-active-filters")).toHaveTextContent(
+        /live/i,
+      );
+      expect(screen.getByTestId("mytasks-filter-count")).toHaveTextContent("1");
+
+      // The chip clears its own filter without opening the drawer.
+      await userEvent.click(screen.getByTestId("mytasks-clear-status"));
+      expect(screen.queryByTestId("mytasks-active-filters")).toBeNull();
+      expect(screen.getByTestId("tile-m1")).toBeInTheDocument();
+    });
+
+    it("Clear drops every filter at once", async () => {
+      mount();
+      await screen.findByTestId("mytasks-list");
+
+      await userEvent.click(screen.getByTestId("mytasks-stat-done"));
+      await userEvent.click(screen.getByTestId("mytasks-filters-open"));
+      await userEvent.click(screen.getByRole("button", { name: /my role/i }));
+      await userEvent.click(screen.getByRole("option", { name: /i am scoring/i }));
+      await userEvent.click(screen.getByTestId("mytasks-sheet-apply"));
+      expect(screen.getByTestId("mytasks-filter-count")).toHaveTextContent("2");
+
+      await userEvent.click(screen.getByTestId("mytasks-reset"));
+      expect(screen.queryByTestId("mytasks-active-filters")).toBeNull();
+      expect(screen.getByTestId("tile-m1")).toBeInTheDocument();
+      expect(screen.getByTestId("tile-m2")).toBeInTheDocument();
+      expect(screen.getByTestId("tile-m3")).toBeInTheDocument();
+    });
+  });
+
   it("says so plainly when nothing is assigned to me", async () => {
     vi.mocked(tournamentsApi.matchesEnriched).mockResolvedValue([NOT_MINE]);
     mount();

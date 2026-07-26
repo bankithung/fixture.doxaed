@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardCheck, Search } from "lucide-react";
+import { ClipboardCheck, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
 import { liveApi } from "@/api/live";
 import { tournamentsApi, type ControlRoomMatch } from "@/api/tournaments";
 import { useAuthStore } from "@/features/auth/authStore";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import type { ControlRoomPerms } from "@/features/controlroom/MatchActionsMenu";
 import { MatchRow } from "@/features/controlroom/MatchRow";
 import { RowActions } from "@/features/controlroom/MatchActionsMenu";
@@ -226,6 +228,9 @@ export function MyTasksPage(): React.ReactElement {
   const [groupBy, setGroupBy] = useState<GroupBy>("day");
   const [search, setSearch] = useState("");
   const { isMobile } = useBreakpoint();
+  // Mobile: the filters live in a bottom drawer, native-app style, instead of a
+  // bar that would eat half the first screen (owner 2026-07-26).
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const tournamentQ = useQuery({
     queryKey: qk.tournament(id),
@@ -385,9 +390,183 @@ export function MyTasksPage(): React.ReactElement {
   const pill =
     "inline-flex h-7 items-center rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
+  // What is actively narrowing the list. Drives the drawer's badge and the
+  // removable chips, so a phone user never has to open the drawer to find out
+  // why they are looking at 1 match instead of 12.
+  const activeFilters: { key: string; label: string; clear: () => void }[] = [];
+  if (role !== "all") {
+    activeFilters.push({
+      key: "role",
+      label: t(ROLE_FILTERS.find((r) => r.key === role)?.label ?? role),
+      clear: () => setRole("all"),
+    });
+  }
+  if (status !== "all") {
+    activeFilters.push({
+      key: "status",
+      label: t(STATUS_FILTERS.find((f) => f.key === status)?.label ?? status),
+      clear: () => setStatus("all"),
+    });
+  }
+  if (effDay !== "all") {
+    activeFilters.push({
+      key: "day",
+      label: fmtDayLabel(effDay),
+      clear: () => setDay("all"),
+    });
+  }
+  if (effComp !== "all") {
+    activeFilters.push({
+      key: "comp",
+      label: competitions.find(([k]) => k === effComp)?.[1] ?? effComp,
+      clear: () => setComp("all"),
+    });
+  }
+  if (effVenue !== "all") {
+    activeFilters.push({
+      key: "venue",
+      label: effVenue,
+      clear: () => setVenue("all"),
+    });
+  }
+  if (search.trim()) {
+    activeFilters.push({
+      key: "search",
+      label: `"${search.trim()}"`,
+      clear: () => setSearch(""),
+    });
+  }
+  const resetAll = (): void => {
+    setRole("all");
+    setStatus("all");
+    setDay("all");
+    setComp("all");
+    setVenue("all");
+    setSearch("");
+  };
+
+  /** The search box, reused by the desktop bar and the mobile drawer. */
+  const searchField = (
+    <div className="relative w-full min-w-0 sm:flex-1 sm:max-w-xs">
+      <Search
+        aria-hidden="true"
+        className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+      />
+      <Input
+        aria-label={t("Search my matches")}
+        data-testid="mytasks-search"
+        placeholder={t("Search team, school or court…")}
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className={cn("min-w-0 pl-8", isMobile ? "h-11 text-sm" : "h-8 text-xs")}
+      />
+    </div>
+  );
+
+  /** Every select, reused by the desktop bar and the mobile drawer. */
+  const selects = (
+    <>
+      <Select
+        aria-label={t("My role")}
+        data-testid="mytasks-role"
+        value={role}
+        onChange={(v) => setRole(v as RoleFilter)}
+        options={ROLE_FILTERS.map((r) => ({ value: r.key, label: t(r.label) }))}
+      />
+      {days.length > 1 ? (
+        <Select
+          aria-label={t("Day")}
+          data-testid="mytasks-day"
+          value={effDay}
+          onChange={setDay}
+          options={[
+            { value: "all", label: t("All days") },
+            ...days.map((d) => ({ value: d, label: fmtDayLabel(d) })),
+          ]}
+        />
+      ) : null}
+      {competitions.length > 1 ? (
+        <Select
+          aria-label={t("Competition")}
+          data-testid="mytasks-comp"
+          value={effComp}
+          onChange={setComp}
+          options={[
+            { value: "all", label: t("All competitions") },
+            ...competitions.map(([k, label]) => ({ value: k, label })),
+          ]}
+        />
+      ) : null}
+      {venues.length > 1 ? (
+        <Select
+          aria-label={t("Court")}
+          data-testid="mytasks-venue"
+          value={effVenue}
+          onChange={setVenue}
+          options={[
+            { value: "all", label: t("All courts") },
+            ...venues.map((v) => ({ value: v, label: v })),
+          ]}
+        />
+      ) : null}
+      <Select
+        aria-label={t("Group by")}
+        data-testid="mytasks-group"
+        value={groupBy}
+        onChange={(v) => setGroupBy(v as GroupBy)}
+        options={(Object.keys(GROUP_LABEL) as GroupBy[]).map((g) => ({
+          value: g,
+          label: `${t("Group by")} ${t(GROUP_LABEL[g]).toLowerCase()}`,
+        }))}
+      />
+    </>
+  );
+
+  /** The status segment, reused by both. */
+  const statusSegment = (
+    <div
+      className={cn(
+        "inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5",
+        isMobile && "w-full",
+      )}
+    >
+      {STATUS_FILTERS.map((f) => (
+        <button
+          key={f.key}
+          type="button"
+          data-testid={`mytasks-status-${f.key}`}
+          aria-pressed={status === f.key}
+          onClick={() => setStatus(f.key)}
+          className={cn(
+            pill,
+            isMobile && "h-10 flex-1 justify-center text-sm",
+            status === f.key
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {t(f.label)}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="flex flex-wrap items-end justify-between gap-2">
+    <div
+      className={cn(
+        "flex w-full flex-col",
+        isMobile
+          ? // Edge-to-edge list + clearance for the sticky filter bar.
+            "gap-3 px-0 pb-24 pt-4"
+          : "gap-4 px-4 py-6 sm:px-6 lg:px-8",
+      )}
+    >
+      <div
+        className={cn(
+          "flex flex-wrap items-end justify-between gap-2",
+          isMobile && "px-3",
+        )}
+      >
         <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
             <ClipboardCheck aria-hidden="true" className="h-5 w-5 text-primary" />
@@ -401,146 +580,147 @@ export function MyTasksPage(): React.ReactElement {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        {/* Stat strip — each cell filters the list to exactly what it counts. */}
-        <div
-          data-testid="mytasks-stats"
-          className="grid grid-cols-2 divide-x divide-y divide-border border-b border-border sm:grid-cols-4 sm:divide-y-0"
-        >
-          <StatCell
-            label={t("Assigned to me")}
-            value={counts.total}
-            testid="mytasks-stat-all"
-            active={status === "all" && role === "all"}
-            onClick={() => {
-              setStatus("all");
-              setRole("all");
-            }}
-          />
-          <StatCell
-            label={t("Live now")}
-            value={counts.live}
-            testid="mytasks-stat-live"
-            active={status === "live"}
-            onClick={() => setStatus(status === "live" ? "all" : "live")}
-          />
-          <StatCell
-            label={t("Upcoming")}
-            value={counts.upcoming}
-            testid="mytasks-stat-upcoming"
-            active={status === "upcoming"}
-            onClick={() => setStatus(status === "upcoming" ? "all" : "upcoming")}
-          />
-          <StatCell
-            label={t("Done")}
-            value={counts.done}
-            testid="mytasks-stat-done"
-            active={status === "done"}
-            onClick={() => setStatus(status === "done" ? "all" : "done")}
-          />
-        </div>
-
-        {/* Filters. */}
-        <div className="flex flex-col gap-2 border-b border-border px-4 py-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-full min-w-0 sm:flex-1 sm:max-w-xs">
-              <Search
-                aria-hidden="true"
-                className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                aria-label={t("Search my matches")}
-                data-testid="mytasks-search"
-                placeholder={t("Search team, school or court…")}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="h-8 pl-8 text-xs"
-              />
-            </div>
-            <Select
-              aria-label={t("My role")}
-              data-testid="mytasks-role"
-              value={role}
-              onChange={(v) => setRole(v as RoleFilter)}
-              options={ROLE_FILTERS.map((r) => ({
-                value: r.key,
-                label: t(r.label),
-              }))}
-            />
-            {days.length > 1 ? (
-              <Select
-                aria-label={t("Day")}
-                data-testid="mytasks-day"
-                value={effDay}
-                onChange={setDay}
-                options={[
-                  { value: "all", label: t("All days") },
-                  ...days.map((d) => ({ value: d, label: fmtDayLabel(d) })),
-                ]}
-              />
-            ) : null}
-            {competitions.length > 1 ? (
-              <Select
-                aria-label={t("Competition")}
-                data-testid="mytasks-comp"
-                value={effComp}
-                onChange={setComp}
-                options={[
-                  { value: "all", label: t("All competitions") },
-                  ...competitions.map(([k, label]) => ({ value: k, label })),
-                ]}
-              />
-            ) : null}
-            {venues.length > 1 ? (
-              <Select
-                aria-label={t("Court")}
-                data-testid="mytasks-venue"
-                value={effVenue}
-                onChange={setVenue}
-                options={[
-                  { value: "all", label: t("All courts") },
-                  ...venues.map((v) => ({ value: v, label: v })),
-                ]}
-              />
-            ) : null}
-            <Select
-              aria-label={t("Group by")}
-              data-testid="mytasks-group"
-              value={groupBy}
-              onChange={(v) => setGroupBy(v as GroupBy)}
-              options={(Object.keys(GROUP_LABEL) as GroupBy[]).map((g) => ({
-                value: g,
-                label: `${t("Group by")} ${t(GROUP_LABEL[g]).toLowerCase()}`,
-              }))}
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-1">
-            <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
-              {STATUS_FILTERS.map((s) => (
+      <div
+        className={cn(
+          "overflow-hidden bg-card",
+          isMobile
+            ? "border-y border-border"
+            : "rounded-xl border border-border shadow-sm",
+        )}
+      >
+        {/* Stat strip. A phone gets a horizontally scrollable chip rail —
+            native-app shaped, and it never wraps to four stacked rows. */}
+        {isMobile ? (
+          <div
+            data-testid="mytasks-stats"
+            className="flex snap-x gap-2 overflow-x-auto border-b border-border px-3 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]{display:none}"
+          >
+            {(
+              [
+                { k: "all" as StatusFilter, label: t("All mine"), v: counts.total, tid: "mytasks-stat-all" },
+                { k: "live" as StatusFilter, label: t("Live"), v: counts.live, tid: "mytasks-stat-live" },
+                { k: "upcoming" as StatusFilter, label: t("Upcoming"), v: counts.upcoming, tid: "mytasks-stat-upcoming" },
+                { k: "done" as StatusFilter, label: t("Done"), v: counts.done, tid: "mytasks-stat-done" },
+              ]
+            ).map((c) => {
+              const on = c.k === "all" ? status === "all" && role === "all" : status === c.k;
+              return (
                 <button
-                  key={s.key}
+                  key={c.k}
                   type="button"
-                  data-testid={`mytasks-status-${s.key}`}
-                  aria-pressed={status === s.key}
-                  onClick={() => setStatus(s.key)}
+                  data-testid={c.tid}
+                  aria-pressed={on}
+                  onClick={() => {
+                    if (c.k === "all") {
+                      setStatus("all");
+                      setRole("all");
+                    } else {
+                      setStatus(status === c.k ? "all" : c.k);
+                    }
+                  }}
                   className={cn(
-                    pill,
-                    status === s.key
-                      ? "bg-card text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
+                    "flex shrink-0 snap-start items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    on
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground",
                   )}
                 >
-                  {t(s.label)}
+                  {c.label}
+                  <span className="font-tabular font-semibold tabular-nums">{c.v}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div
+            data-testid="mytasks-stats"
+            className="grid grid-cols-2 divide-x divide-y divide-border border-b border-border sm:grid-cols-4 sm:divide-y-0"
+          >
+            <StatCell
+              label={t("Assigned to me")}
+              value={counts.total}
+              testid="mytasks-stat-all"
+              active={status === "all" && role === "all"}
+              onClick={() => {
+                setStatus("all");
+                setRole("all");
+              }}
+            />
+            <StatCell
+              label={t("Live now")}
+              value={counts.live}
+              testid="mytasks-stat-live"
+              active={status === "live"}
+              onClick={() => setStatus(status === "live" ? "all" : "live")}
+            />
+            <StatCell
+              label={t("Upcoming")}
+              value={counts.upcoming}
+              testid="mytasks-stat-upcoming"
+              active={status === "upcoming"}
+              onClick={() => setStatus(status === "upcoming" ? "all" : "upcoming")}
+            />
+            <StatCell
+              label={t("Done")}
+              value={counts.done}
+              testid="mytasks-stat-done"
+              active={status === "done"}
+              onClick={() => setStatus(status === "done" ? "all" : "done")}
+            />
+          </div>
+        )}
+
+        {/* Filters. Desktop keeps the inline bar; a phone shows only what is
+            currently applied, as removable chips — the controls themselves
+            live in the bottom drawer. */}
+        {isMobile ? (
+          activeFilters.length > 0 ? (
+            <div
+              data-testid="mytasks-active-filters"
+              className="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-2"
+            >
+              {activeFilters.map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  data-testid={`mytasks-clear-${f.key}`}
+                  aria-label={`${t("Remove filter")}: ${f.label}`}
+                  onClick={f.clear}
+                  className="inline-flex max-w-full items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground"
+                >
+                  <span className="truncate">{f.label}</span>
+                  <span aria-hidden="true" className="text-muted-foreground">
+                    ×
+                  </span>
                 </button>
               ))}
+              <button
+                type="button"
+                data-testid="mytasks-reset"
+                onClick={resetAll}
+                className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-primary"
+              >
+                <RotateCcw aria-hidden="true" className="h-3 w-3" />
+                {t("Clear")}
+              </button>
             </div>
-            <span className="ml-auto font-tabular text-xs text-muted-foreground">
-              {filtered.length === mine.length
-                ? `${mine.length} ${t("matches")}`
-                : `${filtered.length} ${t("of")} ${mine.length} ${t("matches")}`}
-            </span>
+          ) : null
+        ) : (
+          <div className="flex flex-col gap-2 border-b border-border px-4 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {searchField}
+              {selects}
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              {statusSegment}
+              <span className="ml-auto font-tabular text-xs text-muted-foreground">
+                {filtered.length === mine.length
+                  ? `${mine.length} ${t("matches")}`
+                  : `${filtered.length} ${t("of")} ${mine.length} ${t("matches")}`}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* The work list. */}
         {mine.length === 0 ? (
@@ -619,6 +799,94 @@ export function MyTasksPage(): React.ReactElement {
           </div>
         )}
       </div>
+
+      {/* Mobile: a sticky bottom bar is the one door to the filters, the way a
+          native app does it — thumb-reachable, always visible while scrolling,
+          and it states the current result count so the drawer is only opened
+          on purpose. */}
+      {isMobile ? (
+        <div
+          data-testid="mytasks-bottom-bar"
+          className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card/95 px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur supports-[backdrop-filter]:bg-card/85"
+        >
+          <span className="min-w-0 flex-1 truncate font-tabular text-xs text-muted-foreground">
+            {filtered.length === mine.length
+              ? `${mine.length} ${t("matches")}`
+              : `${filtered.length} ${t("of")} ${mine.length} ${t("matches")}`}
+          </span>
+          <Button
+            data-testid="mytasks-filters-open"
+            className="h-11 shrink-0 px-4 text-sm"
+            onClick={() => setSheetOpen(true)}
+          >
+            <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
+            {t("Filters")}
+            {activeFilters.length > 0 ? (
+              <span
+                data-testid="mytasks-filter-count"
+                className="ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-foreground px-1 font-tabular text-[0.6875rem] font-bold text-primary"
+              >
+                {activeFilters.length}
+              </span>
+            ) : null}
+          </Button>
+        </div>
+      ) : null}
+
+      {/* The drawer. `variant="sheet"` docks it to the bottom edge and brings
+          the focus trap + Escape + backdrop dismiss with it. */}
+      <Dialog
+        open={isMobile && sheetOpen}
+        onOpenChange={setSheetOpen}
+        variant="sheet"
+        ariaLabel={t("Filter my matches")}
+      >
+        <div data-testid="mytasks-filter-sheet" className="flex flex-col gap-4">
+          {/* Grab handle — a plain flex child, not absolute: the sheet panel
+              is not a positioning context, so `absolute` escaped to the
+              overlay and pinned it to the top of the screen. */}
+          <span
+            aria-hidden="true"
+            className="mx-auto h-1 w-10 shrink-0 rounded-full bg-border"
+          />
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold">{t("Filters")}</h2>
+            {activeFilters.length > 0 ? (
+              <button
+                type="button"
+                data-testid="mytasks-sheet-reset"
+                onClick={resetAll}
+                className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary"
+              >
+                <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
+                {t("Reset")}
+              </button>
+            ) : null}
+          </div>
+
+          {searchField}
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              {t("Status")}
+            </span>
+            {statusSegment}
+          </div>
+
+          {/* One control per row: a 44px-tall list, not a cramped inline bar. */}
+          <div className="flex flex-col gap-2 [&>*]:w-full">{selects}</div>
+
+          <Button
+            data-testid="mytasks-sheet-apply"
+            className="h-12 w-full text-base"
+            onClick={() => setSheetOpen(false)}
+          >
+            {filtered.length === mine.length
+              ? t("Show all my matches")
+              : `${t("Show")} ${filtered.length} ${filtered.length === 1 ? t("match") : t("matches")}`}
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }
