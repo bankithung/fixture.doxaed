@@ -38,6 +38,7 @@ export function MatchRow({
 }): React.ReactElement {
   const showScore = IN_PLAY.has(match.status) || FINAL.has(match.status);
   const live = IN_PLAY.has(match.status);
+  const done = FINAL.has(match.status);
   const overdue = isOverdue(match);
   const grp = groupSuffix(match.leaf_label, match.group_label);
 
@@ -45,8 +46,15 @@ export function MatchRow({
     <div
       role="row"
       data-testid={`tile-${match.id}`}
+      data-done={done ? "true" : undefined}
       className={cn(
-        "group flex items-center gap-3 border-b border-border px-4 py-2.5 text-xs transition-colors last:border-b-0 hover:bg-secondary/40",
+        "group flex items-center gap-3 border-b border-border px-4 py-2.5 text-xs transition-colors last:border-b-0",
+        // A settled match reads green down the whole row, so a long day's
+        // board shows at a glance what is finished (owner 2026-07-26). Its
+        // own hover tint, or the generic one would win on specificity.
+        done
+          ? "bg-success-muted/50 hover:bg-success-muted/80"
+          : "hover:bg-secondary/40",
         live && "border-l-2 border-l-primary",
       )}
     >

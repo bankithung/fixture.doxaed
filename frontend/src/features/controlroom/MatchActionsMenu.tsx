@@ -16,7 +16,6 @@ import {
   Plus,
   Radio,
   RotateCcw,
-  SquarePen,
   TimerReset,
   TriangleAlert,
   UserCog,
@@ -27,7 +26,7 @@ import {
   type ControlRoomMatch,
   type MatchRow,
 } from "@/api/tournaments";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogDescription,
@@ -768,7 +767,6 @@ export function MatchActionsMenu({
   const qc = useQueryClient();
   const toast = useToast();
   const [walkover, setWalkover] = useState(false);
-  const [quick, setQuick] = useState(false);
   const [assign, setAssign] = useState(false);
   const [stateVerb, setStateVerb] = useState<StateVerbKey | null>(null);
   const [incident, setIncident] = useState(false);
@@ -798,10 +796,6 @@ export function MatchActionsMenu({
   const showConsole =
     perms.canScore ||
     (match.scorer !== null && match.scorer.id === perms.userId);
-  // Quick result writes a terminal score; the engine only accepts it on a
-  // scheduled or live match (record_score guard). Same audience as the console.
-  const showQuick =
-    showConsole && (match.status === "scheduled" || match.status === "live");
   const showWalkover =
     perms.canManage &&
     ["scheduled", "live", "half_time"].includes(match.status) &&
@@ -832,17 +826,20 @@ export function MatchActionsMenu({
     "inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
   return (
     <div className="flex flex-wrap items-center gap-1 border-t border-border pt-2">
-      {showQuick ? (
-        <Button
-          size="sm"
-          variant="outline"
-          data-testid={`quick-result-${match.id}`}
-          className="h-8 border-primary/40 text-primary hover:bg-primary/10"
-          onClick={() => setQuick(true)}
+      {/* The console IS the scoring surface (owner 2026-07-26): it leads, and
+          there is no separate "Enter result" shortcut to compete with it. */}
+      {showConsole ? (
+        <Link
+          to={routes.matchConsole(tournamentId, match.id)}
+          data-testid={`console-${match.id}`}
+          className={cn(
+            buttonVariants({ size: "sm", variant: "outline" }),
+            "h-8 border-primary/40 text-primary hover:bg-primary/10",
+          )}
         >
-          <SquarePen aria-hidden="true" className="h-3.5 w-3.5" />
-          {t("Enter result")}
-        </Button>
+          <Radio aria-hidden="true" className="h-3.5 w-3.5" />
+          {t("Open console")}
+        </Link>
       ) : null}
       {showCall ? (
         <Button
@@ -860,17 +857,6 @@ export function MatchActionsMenu({
       {/* Secondary verbs collapse to labelled icon buttons — the ops board runs
           20+ tiles a lane, so a five-button row per tile was the clutter. */}
       <span className="ml-auto flex items-center gap-0.5">
-        {showConsole ? (
-          <Link
-            to={routes.matchConsole(tournamentId, match.id)}
-            data-testid={`console-${match.id}`}
-            aria-label={t("Open console")}
-            title={t("Open console")}
-            className={`${iconBtn} text-primary`}
-          >
-            <Radio aria-hidden="true" className="h-4 w-4" />
-          </Link>
-        ) : null}
         {showAssign ? (
           <button
             type="button"
@@ -965,13 +951,6 @@ export function MatchActionsMenu({
           onClose={() => setWalkover(false)}
         />
       ) : null}
-      {quick ? (
-        <QuickResultDialog
-          tournamentId={tournamentId}
-          match={match}
-          onClose={() => setQuick(false)}
-        />
-      ) : null}
       {assign ? (
         <AssignDrawer
           tournamentId={tournamentId}
@@ -1022,7 +1001,6 @@ export function RowActions({
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [walkover, setWalkover] = useState(false);
-  const [quick, setQuick] = useState(false);
   const [assign, setAssign] = useState(false);
   const [stateVerb, setStateVerb] = useState<StateVerbKey | null>(null);
   const [incident, setIncident] = useState(false);
@@ -1082,8 +1060,6 @@ export function RowActions({
   const showConsole =
     perms.canScore ||
     (match.scorer !== null && match.scorer.id === perms.userId);
-  const showQuick =
-    showConsole && (match.status === "scheduled" || match.status === "live");
   const showWalkover =
     perms.canManage &&
     ["scheduled", "live", "half_time"].includes(match.status) &&
@@ -1097,22 +1073,24 @@ export function RowActions({
   const showRepairItems =
     showRepair && perms.canSchedule && MOVABLE_STATUSES.has(match.status);
   const anyItem =
-    showQuick || showCall || showConsole || showAssign || showWalkover ||
+    showCall || showConsole || showAssign || showWalkover ||
     verbs.length > 0 || showIncident || showRepairItems;
 
   if (!anyItem && !perms.canSchedule) return null; // read-only member
 
   // The single verb the Needs-you strip promotes to a filled button.
-  const verb: "result" | "call" | "assign" | null = !primary
+  // The console is the scoring surface, so it is what gets promoted out of the
+  // menu (owner 2026-07-26). "Enter result" no longer exists as a shortcut.
+  const verb: "console" | "call" | "assign" | null = !primary
     ? null
-    : showQuick && (IN_PLAY.has(match.status) || isOverdue(match))
-      ? "result"
+    : showConsole && (IN_PLAY.has(match.status) || isOverdue(match))
+      ? "console"
       : showCall && !called
         ? "call"
         : showAssign && (!match.venue || !match.scorer)
           ? "assign"
-          : showQuick
-            ? "result"
+          : showConsole
+            ? "console"
             : null;
 
   const tid = (name: string): string => `${idScope}${name}-${match.id}`;
@@ -1121,17 +1099,18 @@ export function RowActions({
 
   return (
     <div ref={ref} className="relative flex shrink-0 items-center gap-1">
-      {verb === "result" ? (
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 border-primary/40 text-primary hover:bg-primary/10"
-          data-testid={tid("quick-result")}
-          onClick={() => setQuick(true)}
+      {verb === "console" ? (
+        <Link
+          to={routes.matchConsole(tournamentId, match.id)}
+          data-testid={tid("console")}
+          className={cn(
+            buttonVariants({ size: "sm", variant: "outline" }),
+            "h-8 border-primary/40 text-primary hover:bg-primary/10",
+          )}
         >
-          <SquarePen aria-hidden="true" className="h-3.5 w-3.5" />
-          {t("Enter result")}
-        </Button>
+          <Radio aria-hidden="true" className="h-3.5 w-3.5" />
+          {t("Open console")}
+        </Link>
       ) : null}
       {verb === "call" ? (
         <Button
@@ -1177,20 +1156,17 @@ export function RowActions({
           aria-label={t("Match actions")}
           className="absolute right-0 top-full z-40 mt-1 w-52 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg"
         >
-          {showQuick && verb !== "result" ? (
-            <button
-              type="button"
+          {showConsole && verb !== "console" ? (
+            <Link
+              to={routes.matchConsole(tournamentId, match.id)}
               role="menuitem"
-              data-testid={tid("quick-result")}
-              className={cn(item, "text-primary")}
-              onClick={() => {
-                setQuick(true);
-                setOpen(false);
-              }}
+              data-testid={tid("console")}
+              className={cn(item, "font-medium text-primary")}
+              onClick={() => setOpen(false)}
             >
-              <SquarePen aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-              {t("Enter result")}
-            </button>
+              <Radio aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+              {t("Open console")}
+            </Link>
           ) : null}
           {showCall && verb !== "call" ? (
             <button
@@ -1207,18 +1183,6 @@ export function RowActions({
               <Megaphone aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               {called ? t("Clear call") : t("Call to court")}
             </button>
-          ) : null}
-          {showConsole ? (
-            <Link
-              to={routes.matchConsole(tournamentId, match.id)}
-              role="menuitem"
-              data-testid={tid("console")}
-              className={item}
-              onClick={() => setOpen(false)}
-            >
-              <Radio aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              {t("Open console")}
-            </Link>
           ) : null}
           {showAssign && verb !== "assign" ? (
             <button
@@ -1399,13 +1363,6 @@ export function RowActions({
           tournamentId={tournamentId}
           match={match}
           onClose={() => setWalkover(false)}
-        />
-      ) : null}
-      {quick ? (
-        <QuickResultDialog
-          tournamentId={tournamentId}
-          match={match}
-          onClose={() => setQuick(false)}
         />
       ) : null}
       {assign ? (

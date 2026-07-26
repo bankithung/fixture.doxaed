@@ -375,8 +375,8 @@ describe("ControlRoomPage", () => {
     // The full venue board + ops band are replaced by the focused lane.
     expect(screen.queryByTestId("lane-Side Pitch")).toBeNull();
     expect(screen.queryByTestId("ops-band")).toBeNull();
-    // And the member can enter that match's result.
-    expect(screen.getByTestId("quick-result-mine")).toBeInTheDocument();
+    // And the member can score it — the console is the promoted action.
+    expect(screen.getByTestId("console-mine")).toBeInTheDocument();
   });
 
   it("subscribes to the public SSE stream and refetches on a tick", async () => {

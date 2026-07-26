@@ -145,13 +145,15 @@ describe("MatchesBoardPage", () => {
     expect(screen.getByText("Completed").parentElement).toHaveTextContent("1");
     expect(screen.getByText("No scorer").parentElement).toHaveTextContent("2");
 
-    // Manager: the row's action menu offers assign + inline result on a
-    // scheduled match; the completed match offers no result entry.
+    // Manager: a scheduled row offers assign + the console (the promoted
+    // action); "Enter result" no longer exists anywhere (owner 2026-07-26).
     await userEvent.click(screen.getByTestId("actions-m1"));
     expect(screen.getByTestId("assign-m1")).toBeInTheDocument();
-    expect(screen.getByTestId("quick-result-m1")).toBeInTheDocument();
-    await userEvent.click(screen.getByTestId("actions-m3"));
-    expect(screen.queryByTestId("quick-result-m3")).toBeNull();
+    expect(screen.getByTestId("console-m1")).toBeInTheDocument();
+    expect(screen.queryByText(/enter result/i)).toBeNull();
+    // A finished match is tinted green down the whole row.
+    expect(screen.getByTestId("tile-m3")).toHaveAttribute("data-done", "true");
+    expect(screen.getByTestId("tile-m1")).not.toHaveAttribute("data-done");
   });
 
   it("filters to matches needing a scorer", async () => {
