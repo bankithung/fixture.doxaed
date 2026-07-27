@@ -107,6 +107,16 @@ Up-front PRD decisions that shape the codebase. Do not relitigate; do not deviat
 - **Global screen detector:** `lib/useBreakpoint.ts` (`useSyncExternalStore`-backed) for JS-level responsive decisions; Tailwind responsive utilities otherwise. Tables → stacked cards on mobile via `useBreakpoint().isMobile`.
 - Cards/panels: `rounded-xl border border-border bg-card shadow-sm`. State as TanStack Query (server) + Zustand (client). `cn()` is `lib/tailwind`; routes via `lib/routes.ts` helpers.
 
+## Album universe (public Guest Lens album)
+
+`features/lens/universe/` is the album's 3D surface — DomeGallery (React Bits) re-cut token-native, same as `StarBorder`. **Pure CSS 3D, no new dependency** (no `@use-gesture`, no three.js): `geometry.ts` is the pure, unit-tested maths; the components only write CSS custom properties.
+
+- **`geometry.ts`** — `planDome(photoCount)` lays photos over a sphere (5/7/9 latitude bands, columns thinned by `cos(lat)` so spacing stays even, explicit pole-cap tiles, ~2 tiles per photo, capped at ~161 tiles, big albums sampled evenly). `planOrbit(count)` places one planet per school on 1–3 rings. Two rules learned the hard way: **do not stagger bands by half a column** (square tiles then open a diamond hole between every four neighbours) and **do not keep the equator's column count at the poles** (they pile into shingles).
+- **`DomeGallery.tsx`** — rotation NEVER touches React state: pointer handlers and one rAF loop write `--dome-rx`/`--dome-ry` onto the sphere element. Radius is solved **backwards from how big one photo should look** (`short * 0.22 / chord`, clamped to `[0.55, 0.74·fit] × short`) — deriving it from the container instead blows an 8-photo school up to two tiles filling a phone, because the column count falls with the album size. The ball's on-screen silhouette is ~`1.375r` (perspective is `2.2r`). Tiles are `tabIndex={-1}`: the ball is ONE tab stop and the Grid view is the keyboard/AT route through every photo.
+- **`AlbumStage.tsx`** owns the camera (orbit ↔ sphere, the warp between them) and the pause switch; the page owns filters and the lightbox, so lightbox prev/next always walks the list the sphere is showing.
+- **Below `lg` the orbit is replaced by `PlanetRail`** — twelve planets inside 390px collapse into overlapping labels. On a desktop a planet **pauses on hover/focus** (`.orbit__lane:has(.orbit__planet:hover)`), because aiming at a moving target is miserable (Playwright refuses to click one — that is the tell).
+- `--stage`/`--stage-2`/`--stage-ink` (in `index.css`, `:root` only) are the cinematic tokens for surfaces that stay dark in **both** themes. `universe.css` loads after the Tailwind layer, so a plain-class rule there beats a utility — put chip/tile backgrounds and `display` in the CSS file, not in `className`.
+
 ## Operations pages (frontend)
 
 - **`MatchRow`** (`features/controlroom/MatchRow.tsx`) is the shared dense match row: it is a **desktop table row** and overflows below `md`, so any page that lists matches on a phone needs its own card layout (see `MyTasksPage`'s `MyTaskCard`). It takes an optional `badges` slot for caller-owned chips. Finished matches carry `data-done` + a `success-muted` tint.

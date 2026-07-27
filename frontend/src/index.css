@@ -42,6 +42,13 @@
     --info-foreground: 0 0% 100%;
     --info-muted: 215 60% 95%;
 
+    /* Cinematic stage. Media surfaces that stay dark in BOTH themes — the
+       album universe — so photos sit on the neutral ground a gallery gives
+       them. Declared only here: :root vars still reach inside .dark. */
+    --stage: 224 46% 7%;
+    --stage-2: 250 40% 13%;
+    --stage-ink: 210 40% 96%;
+
     /* Lines + focus */
     --border: 214 30% 89%;
     --input: 214 32% 91%;
