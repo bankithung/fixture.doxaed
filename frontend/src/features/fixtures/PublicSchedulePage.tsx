@@ -521,7 +521,7 @@ function CompetitionRail({
       // straight through and the rail read as transparent (owner 2026-07-26).
       // The column is a solid full-height surface (`self-stretch`); the nav
       // content inside it is what scrolls and sticks.
-      className="hidden w-72 shrink-0 self-stretch border-r border-border bg-card lg:block"
+      className="hidden w-72 shrink-0 self-stretch border-r border-border lg:block"
     >
       <div className="sticky top-0 max-h-screen overflow-y-auto pb-4">
       <div className="sticky top-0 z-10 border-b border-border bg-card px-4 py-2.5">
@@ -1003,28 +1003,34 @@ export function PublicSchedulePage(): React.ReactElement {
       </div>
 
       {query.isLoading ? (
-        <main className="flex w-full flex-1 flex-col gap-3 px-4 py-6 sm:px-6" aria-busy="true">
-          {[0, 1].map((i) => (
-            <div
-              key={i}
-              className="h-36 animate-pulse rounded-xl border border-border bg-card"
-            />
-          ))}
+        <main
+          className="flex w-full flex-1 flex-col p-0 sm:px-6 sm:py-4 lg:px-8"
+          aria-busy="true"
+        >
+          <div className="flex min-w-0 flex-1 flex-col gap-px overflow-hidden border-y border-border bg-card sm:rounded-xl sm:border sm:shadow-sm">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-28 animate-pulse border-b border-border bg-muted/40" />
+            ))}
+          </div>
         </main>
       ) : query.isError || !query.data ? (
-        <main className="flex w-full flex-1 px-4 py-6 sm:px-6">
+        <main className="flex w-full flex-1 p-0 sm:px-6 sm:py-4 lg:px-8">
           <p
             role="alert"
-            className="w-full rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground"
+            className="w-full border-y border-border bg-card p-8 text-center text-sm text-muted-foreground sm:rounded-xl sm:border sm:shadow-sm"
           >
             {t("This schedule is not available.")}
           </p>
         </main>
       ) : (
-        <main className="flex w-full flex-1 flex-col print:p-0">
-          {/* Title + connection state */}
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 pt-4 print:hidden sm:px-6 lg:px-8">
-            <h1 className="text-xl font-semibold tracking-tight">
+        <main className="flex w-full flex-1 flex-col p-0 print:p-0 sm:px-6 sm:py-4 lg:px-8">
+          {/* ONE section, nothing outside it (owner 2026-07-26): the tournament
+              name, the competition rail and the whole panel live on a single
+              surface, divided by hairlines. */}
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden border-y border-border bg-card print:border-0 sm:rounded-xl sm:border sm:shadow-sm">
+          {/* Title + connection state — the section's own header band. */}
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-3 py-3 print:hidden sm:px-4">
+            <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
               {query.data.tournament.name}
             </h1>
             <span
@@ -1046,16 +1052,14 @@ export function PublicSchedulePage(): React.ReactElement {
           </div>
 
           {allMatches.length === 0 ? (
-            <div className="px-4 py-6 sm:px-6 lg:px-8">
-              <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-                {t("No matches scheduled yet. Check back soon.")}
-              </p>
-            </div>
+            <p className="p-8 text-center text-sm text-muted-foreground">
+              {t("No matches scheduled yet. Check back soon.")}
+            </p>
           ) : (
             <>
               {/* Mobile pill nav, pinned under the tabs */}
               {!wideRail ? (
-                <div className="px-4 print:hidden sm:px-6">
+                <div className="border-b border-border px-3 py-2 print:hidden">
                   <CompetitionRail
                     sports={railSports}
                     selected={selected}
@@ -1084,13 +1088,7 @@ export function PublicSchedulePage(): React.ReactElement {
                 ) : null}
 
                 {/* Panel */}
-                {/* ONE combined panel (owner 2026-07-26): the control bar,
-                    the live band, the leader board and the day list used to
-                    float as separate cards with page background between them,
-                    which read as a pile of disconnected blocks. They are now
-                    hairline-divided bands on a single surface. */}
-                <section className="flex min-w-0 flex-1 flex-col p-0 print:p-0 sm:px-6 sm:py-4 lg:px-8">
-                  <div className="flex min-w-0 flex-col overflow-hidden border-y border-border bg-card sm:rounded-xl sm:border sm:shadow-sm">
+                <section className="flex min-w-0 flex-1 flex-col print:p-0">
                   {/* Control bar. Two clear rows on a phone (context, then
                       the controls) collapsing to one on a desk — the old
                       single crowded row squeezed the day selector to an
@@ -1219,11 +1217,11 @@ export function PublicSchedulePage(): React.ReactElement {
                       />
                     )
                   ) : null}
-                  </div>
                 </section>
               </div>
             </>
           )}
+          </div>
         </main>
       )}
     </div>
