@@ -1,13 +1,19 @@
 import { useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardCheck, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
+import {
+  ClipboardCheck,
+  ListChecks,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
 import { liveApi } from "@/api/live";
 import { tournamentsApi, type ControlRoomMatch } from "@/api/tournaments";
 import { useAuthStore } from "@/features/auth/authStore";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import type { ControlRoomPerms } from "@/features/controlroom/MatchActionsMenu";
 import { MatchRow } from "@/features/controlroom/MatchRow";
@@ -26,6 +32,7 @@ import {
   tzDate,
 } from "@/features/controlroom/format";
 import { qk } from "@/lib/queryKeys";
+import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { useEventStream } from "@/lib/useEventStream";
@@ -253,6 +260,11 @@ export function MyTasksPage(): React.ReactElement {
     canScore: canManage || modules.includes("match.scoring_console"),
     userId,
   };
+
+  // The empty state's onward links only make sense if the member can open the
+  // wider board at all.
+  const canBrowseAll =
+    canManage || modules.includes("match.center_admin_view");
 
   const tz = tournamentQ.data?.time_zone ?? "UTC";
   const slug = tournamentQ.data?.slug || null;
@@ -566,8 +578,9 @@ export function MyTasksPage(): React.ReactElement {
       className={cn(
         "flex w-full flex-col",
         isMobile
-          ? // Edge-to-edge list + clearance for the sticky filter bar.
-            "px-0 pb-24 pt-3"
+          ? // Edge-to-edge list; the bottom bar only earns its clearance when
+            // there is something to filter.
+            cn("px-0 pt-3", mine.length > 0 ? "pb-24" : "pb-6")
           : "px-4 py-6 sm:px-6 lg:px-8",
       )}
     >
@@ -598,6 +611,11 @@ export function MyTasksPage(): React.ReactElement {
           </div>
         </div>
 
+        {/* With nothing assigned there is nothing to count or filter, so the
+            stat strip and the controls stay out of the way entirely and the
+            empty state gets the whole panel. */}
+        {mine.length > 0 ? (
+          <>
         {/* Stat strip. A phone gets a horizontally scrollable chip rail —
             native-app shaped, and it never wraps to four stacked rows. */}
         {isMobile ? (
@@ -731,19 +749,86 @@ export function MyTasksPage(): React.ReactElement {
             </div>
           </div>
         )}
+          </>
+        ) : null}
 
         {/* The work list. */}
         {mine.length === 0 ? (
-          <p
+          // NOTHING assigned: an illustrated state that says who assigns work
+          // and offers the one useful way onward, instead of a bare sentence
+          // under four zeroes (owner 2026-07-26).
+          <div
             data-testid="mytasks-empty"
-            className="px-4 py-12 text-center text-sm text-muted-foreground"
+            className="flex flex-col items-center gap-3 px-6 py-14 text-center"
           >
-            {t("You have no assigned matches in this tournament yet. An organizer assigns scorers and officials — you will see your matches here as soon as they do.")}
-          </p>
+            <span
+              aria-hidden="true"
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10"
+            >
+              <ClipboardCheck className="h-7 w-7 text-primary" />
+            </span>
+            <h2 className="text-base font-semibold">
+              {t("No matches assigned to you yet")}
+            </h2>
+            <p className="max-w-md text-sm text-muted-foreground">
+              {t("An organizer assigns the scoring seat and the officiating roles. As soon as you are put on a match it appears here — with its court, time and what you are on it.")}
+            </p>
+            {canBrowseAll ? (
+              <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+                <Link
+                  to={routes.tournamentMatches(id)}
+                  className={cn(
+                    buttonVariants({ size: "sm", variant: "outline" }),
+                    "h-9",
+                  )}
+                >
+                  <ListChecks aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t("Browse the full schedule")}
+                </Link>
+                <Link
+                  to={routes.tournamentControl(id)}
+                  className={cn(
+                    buttonVariants({ size: "sm", variant: "ghost" }),
+                    "h-9",
+                  )}
+                >
+                  {t("See today's play")}
+                </Link>
+              </div>
+            ) : null}
+            <p className="text-xs text-muted-foreground">
+              {t("This page updates live — no need to refresh.")}
+            </p>
+          </div>
         ) : filtered.length === 0 ? (
-          <p className="px-4 py-12 text-center text-sm text-muted-foreground">
-            {t("None of your matches fit these filters.")}
-          </p>
+          // Assigned work exists, the FILTERS hid it: name the way back.
+          <div
+            data-testid="mytasks-no-results"
+            className="flex flex-col items-center gap-3 px-6 py-12 text-center"
+          >
+            <span
+              aria-hidden="true"
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-muted"
+            >
+              <Search className="h-6 w-6 text-muted-foreground" />
+            </span>
+            <h2 className="text-sm font-semibold">
+              {t("No matches fit these filters")}
+            </h2>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              {`${t("You have")} ${mine.length} ${mine.length === 1 ? t("assigned match") : t("assigned matches")} ${t("in total.")}`}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="mytasks-no-results-reset"
+              className="mt-1 h-9"
+              onClick={resetAll}
+            >
+              <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
+              {t("Clear filters")}
+            </Button>
+          </div>
         ) : (
           <div data-testid="mytasks-list">
             {groups.map((g) => (
@@ -814,7 +899,7 @@ export function MyTasksPage(): React.ReactElement {
           native app does it — thumb-reachable, always visible while scrolling,
           and it states the current result count so the drawer is only opened
           on purpose. */}
-      {isMobile ? (
+      {isMobile && mine.length > 0 ? (
         <div
           data-testid="mytasks-bottom-bar"
           className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card/95 px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur supports-[backdrop-filter]:bg-card/85"

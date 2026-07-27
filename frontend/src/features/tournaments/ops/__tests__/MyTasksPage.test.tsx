@@ -315,14 +315,40 @@ describe("MyTasksPage", () => {
     });
   });
 
-  it("says so plainly when nothing is assigned to me", async () => {
+  it("nothing assigned: a real empty state, with the noise stripped out", async () => {
     vi.mocked(tournamentsApi.matchesEnriched).mockResolvedValue([NOT_MINE]);
     mount();
 
-    expect(await screen.findByTestId("mytasks-empty")).toHaveTextContent(
-      /no assigned matches/i,
-    );
+    const empty = await screen.findByTestId("mytasks-empty");
+    expect(empty).toHaveTextContent(/no matches assigned to you yet/i);
+    // It says WHO assigns the work, not just that there is none.
+    expect(empty).toHaveTextContent(/an organizer assigns/i);
+    // And offers the one useful way onward.
+    expect(
+      screen.getByRole("link", { name: /browse the full schedule/i }),
+    ).toBeInTheDocument();
+
+    // No list, and none of the all-zero furniture above it.
     expect(screen.queryByTestId("mytasks-list")).toBeNull();
-    expect(screen.getByTestId("mytasks-stat-all")).toHaveTextContent("0");
+    expect(screen.queryByTestId("mytasks-stats")).toBeNull();
+    expect(screen.queryByTestId("mytasks-search")).toBeNull();
+    expect(screen.queryByTestId("mytasks-status-all")).toBeNull();
+  });
+
+  it("filters hiding everything is a DIFFERENT state, with a way back", async () => {
+    mount();
+    await screen.findByTestId("mytasks-list");
+
+    await userEvent.type(screen.getByTestId("mytasks-search"), "nothing matches this");
+    const none = screen.getByTestId("mytasks-no-results");
+    expect(none).toHaveTextContent(/no matches fit these filters/i);
+    // It states the real total so the scope is never in doubt.
+    expect(none).toHaveTextContent(/you have 3 assigned matches/i);
+    // Not the "nothing assigned" state — the controls stay put.
+    expect(screen.queryByTestId("mytasks-empty")).toBeNull();
+    expect(screen.getByTestId("mytasks-stats")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("mytasks-no-results-reset"));
+    expect(screen.getByTestId("tile-m1")).toBeInTheDocument();
   });
 });
