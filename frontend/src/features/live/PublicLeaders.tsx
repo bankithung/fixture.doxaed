@@ -6,6 +6,7 @@ import {
   SportLeaderBoards,
   type SportLeaders,
 } from "@/features/live/SportLeaderBoards";
+import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
 interface LeadersPayload {
@@ -24,9 +25,13 @@ interface LeadersPayload {
 export function PublicLeaders({
   slug,
   id,
+  flat = false,
 }: {
   slug: string;
   id: string;
+  /** Render as a band on an existing surface (no card chrome) — the public
+   * schedule panel is one combined section, not a stack of cards. */
+  flat?: boolean;
 }): React.ReactElement {
   const q = useQuery({
     queryKey: ["public-leaders", id],
@@ -47,7 +52,10 @@ export function PublicLeaders({
     <section
       data-testid="public-leaders"
       aria-label={t("Leader board")}
-      className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+      className={cn(
+        "overflow-hidden bg-card",
+        flat ? "border-b border-border" : "rounded-xl border border-border shadow-sm",
+      )}
     >
       <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
         <Trophy aria-hidden="true" className="h-4 w-4 text-primary" />

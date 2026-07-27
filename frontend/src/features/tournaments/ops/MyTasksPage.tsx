@@ -445,6 +445,10 @@ export function MyTasksPage(): React.ReactElement {
     setSearch("");
   };
 
+  // One control height per surface — an h-9 input beside an h-10 select read
+  // as a mistake (owner 2026-07-26).
+  const selectSize = isMobile ? "lg" : "sm";
+
   /** The search box, reused by the desktop bar and the mobile drawer. */
   const searchField = (
     <div className="relative w-full min-w-0 sm:flex-1 sm:max-w-xs">
@@ -458,7 +462,8 @@ export function MyTasksPage(): React.ReactElement {
         placeholder={t("Search team, school or court…")}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className={cn("min-w-0 pl-8", isMobile ? "h-11 text-sm" : "h-8 text-xs")}
+        // Must match the Selects beside it: h-9 desk / h-11 phone.
+        className={cn("min-w-0 pl-8 text-sm", isMobile && "h-11")}
       />
     </div>
   );
@@ -467,6 +472,7 @@ export function MyTasksPage(): React.ReactElement {
   const selects = (
     <>
       <Select
+        size={selectSize}
         aria-label={t("My role")}
         data-testid="mytasks-role"
         value={role}
@@ -475,6 +481,7 @@ export function MyTasksPage(): React.ReactElement {
       />
       {days.length > 1 ? (
         <Select
+          size={selectSize}
           aria-label={t("Day")}
           data-testid="mytasks-day"
           value={effDay}
@@ -487,6 +494,7 @@ export function MyTasksPage(): React.ReactElement {
       ) : null}
       {competitions.length > 1 ? (
         <Select
+          size={selectSize}
           aria-label={t("Competition")}
           data-testid="mytasks-comp"
           value={effComp}
@@ -499,6 +507,7 @@ export function MyTasksPage(): React.ReactElement {
       ) : null}
       {venues.length > 1 ? (
         <Select
+          size={selectSize}
           aria-label={t("Court")}
           data-testid="mytasks-venue"
           value={effVenue}
@@ -510,6 +519,7 @@ export function MyTasksPage(): React.ReactElement {
         />
       ) : null}
       <Select
+        size={selectSize}
         aria-label={t("Group by")}
         data-testid="mytasks-group"
         value={groupBy}

@@ -395,6 +395,7 @@ export function MatchesBoardPage(): React.ReactElement {
               />
             </label>
             <Select
+              size="sm"
               aria-label={t("Competition")}
               value={comp}
               onChange={setComp}
@@ -405,6 +406,7 @@ export function MatchesBoardPage(): React.ReactElement {
             />
             {venues.length > 0 ? (
               <Select
+                size="sm"
                 aria-label={t("Venue")}
                 value={venue}
                 onChange={setVenue}
@@ -417,6 +419,7 @@ export function MatchesBoardPage(): React.ReactElement {
               <span className="hidden lg:block" />
             )}
             <Select
+              size="sm"
               aria-label={t("Group by")}
               value={groupBy}
               onChange={(v) => setGroupBy(v as GroupBy)}

@@ -273,7 +273,7 @@ function FollowedBand({
   return (
     <section
       data-testid="followed-band"
-      className="overflow-hidden rounded-xl border border-primary/30 bg-card shadow-sm"
+      className="border-b border-border bg-card"
     >
       <p className="flex items-center gap-1.5 border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
         <Star aria-hidden="true" className="h-3.5 w-3.5 fill-current" />
@@ -559,7 +559,7 @@ function CompetitionStandings({
     .filter((g) => g.shown.length > 0 || (g.standing?.rows.length ?? 0) > 0);
   if (groups.length === 0) {
     return (
-      <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+      <p className="p-6 text-center text-sm text-muted-foreground">
         {t("No matches match these filters.")}
       </p>
     );
@@ -567,7 +567,7 @@ function CompetitionStandings({
   return (
     <div
       data-testid={`public-competition-${comp.key}`}
-      className="grid grid-cols-1 gap-x-8 gap-y-6 xl:grid-cols-2"
+      className="grid grid-cols-1 gap-x-6 gap-y-4 p-3 sm:p-4 xl:grid-cols-2"
     >
       {groups.map((g) => (
         <div
@@ -828,7 +828,7 @@ function TodayOverview({
 
   if (slots.length === 0) {
     return (
-      <p className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+      <p className="p-6 text-center text-sm text-muted-foreground">
         {t("No matches on this day.")}
       </p>
     );
@@ -837,7 +837,7 @@ function TodayOverview({
   return (
     <div
       data-testid={`public-day-${day}`}
-      className="overflow-hidden rounded-lg border border-border bg-card"
+      className="overflow-hidden bg-card"
     >
       {slots.map(([time, ms]) => (
         <div key={time} data-testid={`slot-${time}`}>
@@ -1084,13 +1084,19 @@ export function PublicSchedulePage(): React.ReactElement {
                 ) : null}
 
                 {/* Panel */}
-                <section className="flex min-w-0 flex-1 flex-col gap-4 px-4 py-4 print:p-0 sm:px-6 lg:px-8">
+                {/* ONE combined panel (owner 2026-07-26): the control bar,
+                    the live band, the leader board and the day list used to
+                    float as separate cards with page background between them,
+                    which read as a pile of disconnected blocks. They are now
+                    hairline-divided bands on a single surface. */}
+                <section className="flex min-w-0 flex-1 flex-col p-0 print:p-0 sm:px-6 sm:py-4 lg:px-8">
+                  <div className="flex min-w-0 flex-col overflow-hidden border-y border-border bg-card sm:rounded-xl sm:border sm:shadow-sm">
                   {/* Control bar. Two clear rows on a phone (context, then
                       the controls) collapsing to one on a desk — the old
                       single crowded row squeezed the day selector to an
                       unreadable stub (owner 2026-07-26). Solid `bg-card`, not
                       a translucent wash over the page background. */}
-                  <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-2 border-b border-border bg-card px-4 py-2.5 shadow-sm print:hidden sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 xl:flex-row xl:items-center xl:gap-3">
+                  <div className="sticky top-0 z-20 flex flex-col gap-2 border-b border-border bg-card px-3 py-2.5 print:hidden sm:px-4 xl:flex-row xl:items-center xl:gap-3">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       {selected === "today" ? (
                         <span className="flex shrink-0 items-center gap-2 text-sm font-semibold">
@@ -1177,13 +1183,13 @@ export function PublicSchedulePage(): React.ReactElement {
                   {/* The one earned card: live, pinned across any selection */}
                   <LiveBand matches={liveMatches} timeZone={tz} />
                   <FollowedBand matches={allMatches} timeZone={tz} />
-                  <PublicLeaders slug={slug} id={id} />
+                  <PublicLeaders slug={slug} id={id} flat />
 
                   {/* Body */}
                   {selected === "today" ? (
                     isPreTournament && effectiveOverviewDay ? (
                       <>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="border-b border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground sm:px-4">
                           {t("The tournament starts")} {fmtDay(effectiveOverviewDay)}.
                         </p>
                         <TodayOverview
@@ -1213,6 +1219,7 @@ export function PublicSchedulePage(): React.ReactElement {
                       />
                     )
                   ) : null}
+                  </div>
                 </section>
               </div>
             </>

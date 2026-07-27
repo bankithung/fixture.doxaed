@@ -21,7 +21,9 @@ export interface SelectProps {
   className?: string;
   disabled?: boolean;
   /** `sm` = compact h-9 trigger (filter bars); `md` (default) matches Input. */
-  size?: "sm" | "md";
+  /** `sm` (h-9) pairs with the default Input; `lg` (h-11) is the 44px touch
+   * size for phone surfaces. Keep a row's Selects and Inputs on ONE size. */
+  size?: "sm" | "md" | "lg";
   /** Accessible name (paired with an external <Label htmlFor={id}>). */
   "aria-label"?: string;
   /** Show a search box inside the list. Default: automatic when the list has
@@ -173,7 +175,7 @@ export function Select({
         onKeyDown={onKeyDown}
         className={cn(
           "flex w-full items-center justify-between gap-2 rounded-lg border border-input bg-background text-sm transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
-          size === "sm" ? "h-9 px-2.5" : "h-10 px-3",
+          size === "sm" ? "h-9 px-2.5" : size === "lg" ? "h-11 px-3" : "h-10 px-3",
         )}
       >
         <span
