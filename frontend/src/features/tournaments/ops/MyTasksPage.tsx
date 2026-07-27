@@ -557,29 +557,10 @@ export function MyTasksPage(): React.ReactElement {
         "flex w-full flex-col",
         isMobile
           ? // Edge-to-edge list + clearance for the sticky filter bar.
-            "gap-3 px-0 pb-24 pt-4"
-          : "gap-4 px-4 py-6 sm:px-6 lg:px-8",
+            "px-0 pb-24 pt-3"
+          : "px-4 py-6 sm:px-6 lg:px-8",
       )}
     >
-      <div
-        className={cn(
-          "flex flex-wrap items-end justify-between gap-2",
-          isMobile && "px-3",
-        )}
-      >
-        <div className="min-w-0">
-          <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
-            <ClipboardCheck aria-hidden="true" className="h-5 w-5 text-primary" />
-            {t("My tasks")}
-          </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {counts.total > 0
-              ? `${t("You are assigned to")} ${counts.total} ${counts.total === 1 ? t("match") : t("matches")}`
-              : t("Matches you are assigned to appear here.")}
-          </p>
-        </div>
-      </div>
-
       <div
         className={cn(
           "overflow-hidden bg-card",
@@ -588,6 +569,25 @@ export function MyTasksPage(): React.ReactElement {
             : "rounded-xl border border-border shadow-sm",
         )}
       >
+        {/* The page heading lives INSIDE the panel: floated above it, an empty
+            work list read as one huge gap (owner 2026-07-26). */}
+        <div className="flex min-w-0 items-start gap-2 border-b border-border px-3 py-3 sm:px-4">
+          <ClipboardCheck
+            aria-hidden="true"
+            className="mt-0.5 h-5 w-5 shrink-0 text-primary"
+          />
+          <div className="min-w-0">
+            <h1 className="text-base font-semibold tracking-tight sm:text-lg">
+              {t("My tasks")}
+            </h1>
+            <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
+              {counts.total > 0
+                ? `${t("You are assigned to")} ${counts.total} ${counts.total === 1 ? t("match") : t("matches")}`
+                : t("Matches you are assigned to appear here.")}
+            </p>
+          </div>
+        </div>
+
         {/* Stat strip. A phone gets a horizontally scrollable chip rail —
             native-app shaped, and it never wraps to four stacked rows. */}
         {isMobile ? (

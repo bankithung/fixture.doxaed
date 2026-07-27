@@ -343,8 +343,10 @@ function LiveBand({
                   ) : null}
                 </span>
 
-                <div className="grid w-full max-w-xl grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
-                  <div className="min-w-0 text-right">
+                {/* One column on a phone (a 4xl score between two shrinking
+                    name cells collided at 390px), three from `sm` up. */}
+                <div className="grid w-full max-w-xl grid-cols-1 items-center gap-2 sm:grid-cols-[1fr_auto_1fr] sm:gap-6">
+                  <div className="min-w-0 text-center sm:text-right">
                     <TeamName
                       side={m.home}
                       className="block truncate text-sm font-medium sm:text-base"
@@ -372,7 +374,7 @@ function LiveBand({
                       </p>
                     ) : null}
                   </div>
-                  <div className="min-w-0 text-left">
+                  <div className="min-w-0 text-center sm:text-left">
                     <TeamName
                       side={m.away}
                       className="block truncate text-sm font-medium sm:text-base"
@@ -515,17 +517,28 @@ function CompetitionRail({
   return (
     <nav
       aria-label={t("Competitions")}
-      className="sticky top-0 hidden max-h-screen w-72 shrink-0 flex-col overflow-y-auto border-r border-border py-2 lg:flex"
+      // A solid surface: with only a right border the page background showed
+      // straight through and the rail read as transparent (owner 2026-07-26).
+      // The column is a solid full-height surface (`self-stretch`); the nav
+      // content inside it is what scrolls and sticks.
+      className="hidden w-72 shrink-0 self-stretch border-r border-border bg-card lg:block"
     >
-      {todayBtn}
+      <div className="sticky top-0 max-h-screen overflow-y-auto pb-4">
+      <div className="sticky top-0 z-10 border-b border-border bg-card px-4 py-2.5">
+        <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          {t("Competitions")}
+        </span>
+      </div>
+      <div className="pt-2">{todayBtn}</div>
       {sports.map((s) => (
-        <div key={s.sport} className="mt-2 flex flex-col">
-          <span className="px-4 pb-1 pt-2 text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground">
+        <div key={s.sport} className="mt-1 flex flex-col">
+          <span className="px-4 pb-1 pt-2.5 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             {s.sport}
           </span>
           {s.comps.map(compBtn)}
         </div>
       ))}
+      </div>
     </nav>
   );
 }
@@ -1056,7 +1069,7 @@ export function PublicSchedulePage(): React.ReactElement {
                 </div>
               ) : null}
 
-              <div className="flex w-full flex-1 items-start">
+              <div className="flex w-full flex-1 items-stretch">
                 {wideRail ? (
                   <CompetitionRail
                     sports={railSports}
@@ -1072,75 +1085,92 @@ export function PublicSchedulePage(): React.ReactElement {
 
                 {/* Panel */}
                 <section className="flex min-w-0 flex-1 flex-col gap-4 px-4 py-4 print:p-0 sm:px-6 lg:px-8">
-                  {/* Sub-bar: context title + controls */}
-                  <div className="sticky top-0 z-10 -mx-4 flex flex-wrap items-center gap-2 border-b border-border bg-background/85 px-4 py-2.5 backdrop-blur print:hidden sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-                    {selected === "today" ? (
-                      <span className="flex items-center gap-2 text-sm font-semibold">
-                        <Trophy aria-hidden className="h-4 w-4 text-muted-foreground" />
-                        {isPreTournament ? t("Next match day") : t("Today")}
-                      </span>
-                    ) : selectedComp ? (
-                      <LabelChips label={selectedComp.label} />
-                    ) : null}
-
-                    {selected === "today" && allDays.length > 1 ? (
-                      <Select
-                        size="sm"
-                        className="w-44"
-                        aria-label={t("Day")}
-                        value={effectiveOverviewDay}
-                        onChange={setOverviewDay}
-                        options={allDays.map((d) => ({ value: d, label: fmtDay(d) }))}
-                      />
-                    ) : null}
-
-                    {selectedComp ? (
-                      <div className="inline-flex rounded-lg bg-muted p-0.5">
-                        {segBtn("standings", t("Standings"), "panel-standings")}
-                        {segBtn("day", t("Order of play"), "view-day")}
-                      </div>
-                    ) : null}
-
-                    <span
-                      data-testid="filter-count"
-                      className="ml-auto font-tabular text-xs text-muted-foreground"
-                    >
-                      {q
-                        ? `${visibleCount} ${t("of")} ${scopeMatches.length}`
-                        : `${scopeMatches.length}`}{" "}
-                      {t("matches")}
-                    </span>
-
-                    {/* Search + clear: a full-width row on mobile, bounded on
-                        desktop (w-full makes it wrap to its own line). */}
-                    <div className="flex w-full items-center gap-2 sm:w-auto sm:flex-1 sm:basis-48 sm:min-w-[11rem] sm:max-w-xs">
-                      <div className="relative flex-1">
-                        <Search
-                          aria-hidden
-                          className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                        />
-                        <input
-                          type="search"
-                          data-testid="filter-team"
-                          aria-label={t("Search teams")}
-                          placeholder={t("Search teams…")}
-                          value={teamQ}
-                          onChange={(e) => setTeamQ(e.target.value)}
-                          className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                        />
-                      </div>
-                      {q ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          data-testid="filter-clear"
-                          className="shrink-0"
-                          onClick={() => setTeamQ("")}
-                        >
-                          <X aria-hidden className="h-3.5 w-3.5" />
-                          {t("Clear")}
-                        </Button>
+                  {/* Control bar. Two clear rows on a phone (context, then
+                      the controls) collapsing to one on a desk — the old
+                      single crowded row squeezed the day selector to an
+                      unreadable stub (owner 2026-07-26). Solid `bg-card`, not
+                      a translucent wash over the page background. */}
+                  <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-2 border-b border-border bg-card px-4 py-2.5 shadow-sm print:hidden sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 xl:flex-row xl:items-center xl:gap-3">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      {selected === "today" ? (
+                        <span className="flex shrink-0 items-center gap-2 text-sm font-semibold">
+                          <Trophy aria-hidden className="h-4 w-4 text-primary" />
+                          {isPreTournament ? t("Next match day") : t("Today")}
+                        </span>
+                      ) : selectedComp ? (
+                        <LabelChips label={selectedComp.label} />
                       ) : null}
+
+                      {selectedComp ? (
+                        <div className="inline-flex shrink-0 rounded-lg bg-muted p-0.5">
+                          {segBtn("standings", t("Standings"), "panel-standings")}
+                          {segBtn("day", t("Order of play"), "view-day")}
+                        </div>
+                      ) : null}
+
+                      <span
+                        data-testid="filter-count"
+                        className="shrink-0 rounded-full bg-secondary px-2 py-0.5 font-tabular text-xs font-medium text-secondary-foreground"
+                      >
+                        {q
+                          ? `${visibleCount} ${t("of")} ${scopeMatches.length}`
+                          : `${scopeMatches.length}`}{" "}
+                        {t("matches")}
+                      </span>
+                    </div>
+
+                    <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center xl:ml-auto xl:w-auto">
+                      {/* The day picker gets room to show a whole date, and a
+                          calendar affordance so it reads as a control. */}
+                      {selected === "today" && allDays.length > 1 ? (
+                        <div className="flex min-w-0 items-center gap-2">
+                          <CalendarDays
+                            aria-hidden
+                            className="hidden h-4 w-4 shrink-0 text-muted-foreground sm:block"
+                          />
+                          <Select
+                            size="sm"
+                            className="w-full min-w-0 sm:w-56"
+                            aria-label={t("Match day")}
+                            value={effectiveOverviewDay}
+                            onChange={setOverviewDay}
+                            options={allDays.map((d) => ({
+                              value: d,
+                              label: fmtDay(d),
+                            }))}
+                          />
+                        </div>
+                      ) : null}
+
+                      <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:min-w-[13rem]">
+                        <div className="relative min-w-0 flex-1">
+                          <Search
+                            aria-hidden
+                            className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                          />
+                          <input
+                            type="search"
+                            data-testid="filter-team"
+                            aria-label={t("Search teams")}
+                            placeholder={t("Search teams…")}
+                            value={teamQ}
+                            onChange={(e) => setTeamQ(e.target.value)}
+                            className="h-9 w-full min-w-0 rounded-md border border-border bg-background pl-8 pr-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                          />
+                        </div>
+                        {q ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            data-testid="filter-clear"
+                            className="shrink-0"
+                            onClick={() => setTeamQ("")}
+                          >
+                            <X aria-hidden className="h-3.5 w-3.5" />
+                            {t("Clear")}
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
 

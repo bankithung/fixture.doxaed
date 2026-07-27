@@ -38,6 +38,10 @@ export function PublicLeaders({
   });
   const d = q.data;
   const empty = !d || d.played === 0;
+  // The payload is untrusted at runtime: a response without `latest_badges`
+  // (an older backend, a cached body) used to crash the whole public page on
+  // `.length`, not just hide the strip.
+  const badges = d?.latest_badges ?? [];
 
   return (
     <section
@@ -69,14 +73,14 @@ export function PublicLeaders({
         </p>
       ) : null}
 
-      {d && d.latest_badges.length > 0 ? (
+      {badges.length > 0 ? (
         <div className="border-t border-border p-3">
           <p className="flex items-center gap-1.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
             <Award aria-hidden="true" className="h-3 w-3" />
             {t("Latest badges")}
           </p>
           <div className="mt-1 flex flex-wrap gap-1">
-            {d.latest_badges.slice(0, 4).map((b) => (
+            {badges.slice(0, 4).map((b) => (
               <Link
                 key={b.id}
                 to={`/cert/${b.id}`}
