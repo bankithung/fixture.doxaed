@@ -534,6 +534,16 @@ export interface LeadersPayload {
   }[];
 }
 
+/**
+ * Bulk crew assignment writes one match row + one audit row per match, serially
+ * and without batching, so a big scope legitimately runs far past the 20 s
+ * default `apiFetch` timeout (a 14-match scope timed out in production while the
+ * server went on to commit every row — nginx logged the 499, the organiser saw
+ * "could not assign"). Give the call a budget that fits the work instead of
+ * raising the global default, which every fast call relies on.
+ */
+export const BULK_ASSIGN_TIMEOUT_MS = 120_000;
+
 export const tournamentsApi = {
   /** Tournaments the user can access (isolation-scoped on the server). */
   list: () => api.get<Tournament[]>("/api/tournaments/"),
@@ -761,9 +771,16 @@ export const tournamentsApi = {
       `/api/matches/${matchId}/officials/`,
       { body: { official_id: officialId } },
     ),
-  /** Assign (or change) the scorer seat on a match (manager only). */
-  assignScorer: (matchId: string, userId: string | null) =>
-    api.post<MatchRow>(`/api/matches/${matchId}/scorer/`, { user_id: userId }),
+  /** Assign (or change) the scorer seat on a match (manager only).
+   * `eventId` is the invariant-3 idempotency key: the caller generates it ONCE
+   * per intent so a retry of the same seat change replays instead of re-running.
+   * (Server-side replay support for this endpoint is landing separately; until
+   * it does the field is simply ignored, which is harmless.) */
+  assignScorer: (matchId: string, userId: string | null, eventId?: string) =>
+    api.post<MatchRow>(`/api/matches/${matchId}/scorer/`, {
+      user_id: userId,
+      ...(eventId ? { event_id: eventId } : {}),
+    }),
   /** Bulk-assign one scorer/official to every match in a scope (a court, a
    * competition category/leaf, or a sport). Reuses the per-match services, so
    * every guard fires; returns how many landed / were skipped + soft clashes. */
@@ -786,7 +803,9 @@ export const tournamentsApi = {
       warnings: { match_id: string; code: string; count: number }[];
       scope: string;
       key: string;
-    }>(`/api/tournaments/${id}/crew/bulk-assign/`, payload),
+    }>(`/api/tournaments/${id}/crew/bulk-assign/`, payload, {
+      timeoutMs: BULK_ASSIGN_TIMEOUT_MS,
+    }),
 
   // --- Setup-stage workflow (WS4) ---
   stage: (id: string) => api.get<StagePayload>(`/api/tournaments/${id}/stage/`),

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MapPin, Plus, Radio, UserCog, X } from "lucide-react";
 import {
@@ -19,7 +19,13 @@ import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
 import { OFFICIAL_ROLES, candidatesOf, officialRoleLabel } from "@/features/controlroom/crewRoster";
 import { RepairViolationsList } from "@/features/fixtures/MatchRepairControls";
-import { MOVABLE_STATUSES, conflictsOf, errorDetail } from "@/features/fixtures/repair";
+import {
+  MOVABLE_STATUSES,
+  conflictsOf,
+  errorDetail,
+  stillRunningToast,
+  writeMayHaveLanded,
+} from "@/features/fixtures/repair";
 import { venueCourtOptions } from "@/lib/courts";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
@@ -45,7 +51,7 @@ export function AssignDrawer({
   const toast = useToast();
 
   const membersQ = useQuery({
-    queryKey: ["t-members", tournamentId],
+    queryKey: qk.members(tournamentId),
     queryFn: () => tournamentsApi.members(tournamentId),
   });
   const people = useMemo(() => candidatesOf(membersQ.data), [membersQ.data]);
@@ -60,6 +66,33 @@ export function AssignDrawer({
   const [pick, setPick] = useState("");
 
   const refresh = (): void => invalidateTournament(qc, tournamentId);
+
+  /**
+   * One idempotency key per *intent* (invariant 3). Minting the key inside a
+   * `mutationFn` means every retry is a brand-new write server-side, which is
+   * exactly wrong after a client timeout — the first attempt very likely
+   * committed. Keyed by the intent string, so "same request again" replays and
+   * "different request" gets a fresh key.
+   */
+  const attempts = useRef(
+    new Map<string, { intent: string; eventId: string }>(),
+  );
+  const eventIdFor = (kind: string, intent: string): string => {
+    const prev = attempts.current.get(kind);
+    if (prev?.intent === intent) return prev.eventId;
+    const eventId = newEventId();
+    attempts.current.set(kind, { intent, eventId });
+    return eventId;
+  };
+
+  /** Timeout/abort → the write may already have landed. Never call that a
+   * failure; refresh and tell the truth. Returns true when it handled `e`. */
+  const handledAsStillRunning = (e: unknown, title?: string): boolean => {
+    if (!writeMayHaveLanded(e)) return false;
+    refresh();
+    toast.push({ kind: "info", ...stillRunningToast(title) });
+    return true;
+  };
 
   // --- Court assignment (the court is encoded in Match.venue; assigning one is
   // a venue change through the same audited repair path, so it inherits the
@@ -107,6 +140,7 @@ export function AssignDrawer({
         setCourtConflicts(v);
         return;
       }
+      if (handledAsStillRunning(e)) return;
       toast.push({
         kind: "error",
         title: t("Could not assign the court"),
@@ -117,9 +151,10 @@ export function AssignDrawer({
 
   const chooseCourt = (venue: string): void => {
     if (!venue || venue === match.venue) return;
-    // Fresh idempotency key per court attempt; the force retry reuses it (the
-    // 409 path persisted nothing, so the same key safely replays — invariant 3).
-    const eventId = newEventId();
+    // One idempotency key per court intent; the force retry AND a retry after a
+    // timeout both reuse it, so the server replays instead of writing twice
+    // (invariant 3). Picking a different court mints a fresh key.
+    const eventId = eventIdFor("court", venue);
     setPendingCourt(venue);
     setCourtEventId(eventId);
     setCourtConflicts(null);
@@ -127,29 +162,31 @@ export function AssignDrawer({
   };
 
   const setScorer = useMutation({
-    mutationFn: (userId: string) =>
-      tournamentsApi.assignScorer(match.id, userId || null),
-    onSuccess: (_res, userId) => {
+    mutationFn: (vars: { userId: string; eventId: string }) =>
+      tournamentsApi.assignScorer(match.id, vars.userId || null, vars.eventId),
+    onSuccess: (_res, vars) => {
       refresh();
       toast.push({
         kind: "success",
-        title: userId ? t("Scorer assigned") : t("Scorer cleared"),
+        title: vars.userId ? t("Scorer assigned") : t("Scorer cleared"),
       });
     },
-    onError: (e) =>
+    onError: (e) => {
+      if (handledAsStillRunning(e)) return;
       toast.push({
         kind: "error",
         title: t("Could not assign the scorer"),
         description: errorDetail(e),
-      }),
+      });
+    },
   });
 
   const addOfficial = useMutation({
-    mutationFn: () =>
+    mutationFn: (eventId: string) =>
       tournamentsApi.assignOfficial(match.id, {
         user_id: pick,
         role,
-        event_id: newEventId(),
+        event_id: eventId,
       }),
     onSuccess: (res) => {
       refresh();
@@ -163,24 +200,35 @@ export function AssignDrawer({
         toast.push({ kind: "success", title: t("Official assigned") });
       }
     },
-    onError: (e) =>
+    onError: (e) => {
+      if (handledAsStillRunning(e)) return;
       toast.push({
         kind: "error",
         title: t("Could not assign the official"),
         description: errorDetail(e),
-      }),
+      });
+    },
   });
 
   const removeOfficial = useMutation({
     mutationFn: (officialId: string) =>
       tournamentsApi.removeOfficial(match.id, officialId),
     onSuccess: () => refresh(),
-    onError: (e) =>
+    onError: (e) => {
+      if (
+        handledAsStillRunning(
+          e,
+          t("Still working — this is taking longer than expected."),
+        )
+      ) {
+        return;
+      }
       toast.push({
         kind: "error",
         title: t("Could not remove the official"),
         description: errorDetail(e),
-      }),
+      });
+    },
   });
 
   const officials = match.officials ?? [];
@@ -252,7 +300,9 @@ export function AssignDrawer({
             id={`scorer-${match.id}`}
             aria-label={t("Scorer")}
             value={match.scorer?.id ?? ""}
-            onChange={(v) => setScorer.mutate(v)}
+            onChange={(v) =>
+              setScorer.mutate({ userId: v, eventId: eventIdFor("scorer", v) })
+            }
             options={
               match.scorer
                 ? [{ value: "", label: t("No scorer (clear the seat)") }, ...memberOptions]
@@ -330,7 +380,9 @@ export function AssignDrawer({
               size="sm"
               data-testid="add-official"
               disabled={!pick || addOfficial.isPending}
-              onClick={() => addOfficial.mutate()}
+              onClick={() =>
+                addOfficial.mutate(eventIdFor("official", `${role}|${pick}`))
+              }
             >
               <Plus aria-hidden="true" className="h-4 w-4" />
               {t("Add")}

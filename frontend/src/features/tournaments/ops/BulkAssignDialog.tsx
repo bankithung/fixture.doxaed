@@ -14,9 +14,13 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
 import { OFFICIAL_ROLES, candidatesOf } from "@/features/controlroom/crewRoster";
-import { errorDetail } from "@/features/fixtures/repair";
+import {
+  errorDetail,
+  stillRunningToast,
+  writeMayHaveLanded,
+} from "@/features/fixtures/repair";
 import { newEventId } from "@/lib/eventId";
-import { invalidateTournament } from "@/lib/queryKeys";
+import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { t } from "@/lib/t";
 
 type Scope = "court" | "category" | "sport";
@@ -100,7 +104,7 @@ export function BulkAssignDialog({
   const toast = useToast();
 
   const membersQ = useQuery({
-    queryKey: ["t-members", tournamentId],
+    queryKey: qk.members(tournamentId),
     queryFn: () => tournamentsApi.members(tournamentId),
   });
   const memberOptions = useMemo(
@@ -143,6 +147,30 @@ export function BulkAssignDialog({
   const willAssign = onlyUnassigned ? needing.length : scoped.length;
   const willSkip = onlyUnassigned ? scoped.length - needing.length : 0;
 
+  // --- Idempotency key (invariant 3). ONE `event_id` per *intent*, minted
+  // outside `mutationFn` and reset only when the user changes what they are
+  // asking for. Minting it inside `mutationFn` (the production bug) meant a
+  // retry after a client-side timeout carried a NEW key, missed the server's
+  // replay, and — with `only_unassigned` on — re-ran against already-staffed
+  // matches to report "assigned: 0". Retrying the same intent must replay.
+  const intent = JSON.stringify([
+    scope,
+    effectiveKey,
+    day,
+    role,
+    pick,
+    onlyUnassigned,
+  ]);
+  const [attempt, setAttempt] = useState(() => ({
+    intent,
+    eventId: newEventId(),
+  }));
+  if (attempt.intent !== intent) setAttempt({ intent, eventId: newEventId() });
+
+  // Set when a submit's response never arrived: the server is probably still
+  // working (or already finished), so we reconcile instead of crying failure.
+  const [stillRunning, setStillRunning] = useState(false);
+
   const submit = useMutation({
     mutationFn: () =>
       tournamentsApi.bulkAssignCrew(tournamentId, {
@@ -152,9 +180,10 @@ export function BulkAssignDialog({
         role,
         user_id: pick,
         only_unassigned: onlyUnassigned,
-        event_id: newEventId(),
+        event_id: attempt.eventId,
       }),
     onSuccess: (res) => {
+      setStillRunning(false);
       invalidateTournament(qc, tournamentId);
       const clashes = res.warnings.length;
       toast.push({
@@ -171,12 +200,24 @@ export function BulkAssignDialog({
       });
       onClose();
     },
-    onError: (e) =>
+    onError: (e) => {
+      // A timeout/abort is NOT a failed write: Django shields sync views, so
+      // the server finishes and commits even after the client gives up. Say so,
+      // pull the truth back down, and leave the dialog open on the reconciled
+      // preview instead of pointing the organiser at the button again.
+      if (writeMayHaveLanded(e)) {
+        setStillRunning(true);
+        invalidateTournament(qc, tournamentId);
+        toast.push({ kind: "info", ...stillRunningToast() });
+        return;
+      }
+      setStillRunning(false);
       toast.push({
         kind: "error",
         title: t("Could not assign the crew"),
         description: errorDetail(e),
-      }),
+      });
+    },
   });
 
   const roleWord = isScorer ? t("scorer") : t("official");
@@ -289,6 +330,23 @@ export function BulkAssignDialog({
             />
             {t("Only matches without a {role}").replace("{role}", roleWord)}
           </label>
+
+          {/* Still-running notice (the response never arrived; the write may
+              already have landed — the preview below refreshes to show it). */}
+          {stillRunning ? (
+            <div
+              data-testid="bulk-still-running"
+              role="status"
+              className="rounded-lg border border-border bg-muted px-3 py-2 text-sm"
+            >
+              <p className="font-medium">{stillRunningToast().title}</p>
+              <p className="text-muted-foreground">
+                {t(
+                  "The assignment may already have gone through — check the count below before assigning again.",
+                )}
+              </p>
+            </div>
+          ) : null}
 
           {/* Preview */}
           <div

@@ -13,6 +13,8 @@ export const qk = {
   teams: (id: string) => ["t-teams", id] as const,
   institutions: (id: string) => ["t-institutions", id] as const,
   matches: (id: string) => ["t-matches", id] as const,
+  /** Tournament roster used by the crew/assign surfaces. */
+  members: (id: string) => ["t-members", id] as const,
   standings: (id: string) => ["t-standings", id] as const,
   /** Form LIST for a tournament (the canonical key the forms feature uses). */
   forms: (tournamentId: string) => ["forms", tournamentId] as const,
@@ -56,6 +58,7 @@ export function invalidateTournament(qc: QueryClient, id: string): void {
     qk.teams(id),
     qk.institutions(id),
     qk.matches(id),
+    qk.members(id),
     qk.standings(id),
     qk.forms(id),
     qk.disputes(id),
