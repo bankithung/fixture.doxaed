@@ -50,10 +50,14 @@ def _make_scorer(t, email="scorer@test.local"):
     return scorer
 
 
-def test_invited_match_scorer_can_score():
+def test_invited_match_scorer_can_score_their_own_match():
+    """The original regression (an invited match_scorer must be able to score)
+    now requires the per-match seat — owner decision 2026-08-03."""
     admin = _verified("admin@test.local")
     t, m = _tournament_with_match(admin)
     scorer = _make_scorer(t)
+    m.scorer = scorer
+    m.save(update_fields=["scorer"])
     client = APIClient()
     client.force_authenticate(user=scorer)
 

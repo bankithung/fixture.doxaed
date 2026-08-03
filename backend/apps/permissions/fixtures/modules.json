@@ -122,7 +122,7 @@
     "code": "match.assign_officials",
     "name": "Assign Officials",
     "category": "match_scoped",
-    "description": "Assign referees, assistants, scorers and courts to matches.",
+    "description": "Staff a match's crew — assign or remove referees, assistants, umpires, commissioners, linesmen and the scoring seat. Court/slot changes are NOT here; they ride tournament.schedule_editor.",
     "default_for_roles": ["admin", "co_organizer", "game_coordinator"]
   },
   {

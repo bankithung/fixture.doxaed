@@ -145,17 +145,22 @@ def _lock(c, m):
     return c.post(f"/api/matches/{m.id}/lock/", {}, format="json")
 
 
-_SCORING_ROLES = {R.ADMIN, R.CO_ORGANIZER, R.GAME_COORDINATOR, R.MATCH_SCORER}
 _MANAGERS = {R.ADMIN, R.CO_ORGANIZER}
 _SCHEDULE_EDITORS = {R.ADMIN, R.CO_ORGANIZER, R.GAME_COORDINATOR}
+# Owner decision 2026-08-03 — strict per-match scoping. The member in this
+# harness is NOT assigned to the match (no Match.scorer seat, no MatchOfficial
+# row), so ONLY the unscoped actors (admin / co-organizer) may touch it.
+# `match_scorer` and `game_coordinator` used to pass here through a blanket
+# tournament-wide grant; see test_match_gates.py for the scoped grants.
+_UNSCOPED = _MANAGERS
 
 _MATRIX = [
-    ("start", _start, _SCORING_ROLES),
+    ("start", _start, _UNSCOPED),
     ("walkover", _walkover, _MANAGERS),  # tightened §2.e
     ("replay", _replay, _MANAGERS),  # tightened §2.e
-    ("event", _event, _SCORING_ROLES),
-    ("void", _void, _SCORING_ROLES),  # referees: NO voids (owner decision)
-    ("shootout", _shootout, _SCORING_ROLES),  # stays scorer-recordable
+    ("event", _event, _UNSCOPED),
+    ("void", _void, _UNSCOPED),  # referees: NO voids (owner decision)
+    ("shootout", _shootout, _UNSCOPED),
     ("call", _call, _SCHEDULE_EDITORS),
     ("lock", _lock, _SCHEDULE_EDITORS),
 ]
@@ -182,11 +187,36 @@ def test_walkover_and_replay_still_work_for_org_admin():
     assert _replay(c, m).status_code == 200
 
 
-def test_scorer_blocked_from_walkover_gets_explicit_code():
+def test_scorer_assigned_to_the_match_keeps_the_scoring_verbs():
+    """The other half of the tightening: once the scorer actually holds the
+    match's scoring seat, every scoring verb comes back."""
     _admin, _t, m, scorer = _setup(role=R.MATCH_SCORER)
+    m.scorer = scorer
+    m.save(update_fields=["scorer"])
+    c = _client(scorer)
+    assert _start(c, m).status_code == 200
+    assert _event(c, m).status_code == 201
+    assert _void(c, m).status_code == 201
+
+
+def test_scorer_blocked_from_walkover_gets_explicit_code():
+    """The scorer holds the match's seat (so the generic transition gate lets
+    them through) — walkover still bounces with the specific manager code."""
+    _admin, _t, m, scorer = _setup(role=R.MATCH_SCORER)
+    m.scorer = scorer
+    m.save(update_fields=["scorer"])
     r = _walkover(_client(scorer), m)
     assert r.status_code == 403
     assert "manager_only_transition" in r.content.decode()
+
+
+def test_unassigned_scorer_is_blocked_before_the_walkover_check():
+    """Off their own match a scorer never reaches the verb check at all —
+    strict per-match scoping bounces them at the door (2026-08-03)."""
+    _admin, _t, m, scorer = _setup(role=R.MATCH_SCORER)
+    r = _walkover(_client(scorer), m)
+    assert r.status_code == 403
+    assert "not_allowed_to_transition" in r.content.decode()
 
 
 # ----------------------------------------------------- assigned-referee rules

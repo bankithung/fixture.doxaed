@@ -5,16 +5,20 @@ Loops the audited single-match services (`assign_scorer` / `assign_official`),
 so every per-match guard still fires — membership check, append-only audit, the
 soft double-booking warning. Per-match notifications are suppressed (``notify=
 False``); the caller sends ONE summary instead of one email per match (prod SMTP
-is real). Scoping columns already exist on ``Match`` (venue / leaf_key / sport),
-so no migration is needed.
+is real).
+
+Scoping columns already exist on ``Match``: the ``court`` FK (2026-08-03 — the
+court scope now keys on it, with a ``venue`` fallback for legacy NULL-court
+rows), ``leaf_key`` and ``sport``. No migration is needed.
 """
 from __future__ import annotations
 
 import datetime as _dt
 import logging
+import uuid as _uuid
 
 from django.core.exceptions import ValidationError
-from django.db.models import F
+from django.db.models import F, Q
 
 from apps.matches.models import Match
 from apps.matches.services.officials import assign_official, official_clashes
@@ -23,7 +27,38 @@ from apps.matches.services.scoring import assign_scorer
 _log = logging.getLogger(__name__)
 
 VALID_SCOPES = ("court", "category", "sport")
-OFFICIAL_ROLES = ("referee", "assistant", "fourth", "umpire", "commissioner")
+# Mirrors MatchOfficialRole. `linesman` was missing, so sepak takraw crews
+# (two linesmen at the diagonal corners) could not be bulk-assigned at all —
+# added 2026-08-03. It is a read-only seat under the scoring gates, so it
+# carries no permission risk.
+OFFICIAL_ROLES = (
+    "referee", "assistant", "fourth", "umpire", "commissioner", "linesman",
+)
+
+
+def _court_scope_q(key: str):
+    """Court scope, keyed on the ``Match.court`` FK (indexed on
+    ``("court","scheduled_at")``) rather than the denormalised ``venue``
+    string.
+
+    ``key`` is normally a Court UUID. Legacy rows written before the FK existed
+    (and off-grid venue strings that have no Court row) still carry only
+    ``venue``, so a UUID key ALSO matches ``court IS NULL AND venue ==
+    <court.name>``. A non-UUID key is treated as the old venue string, which
+    keeps every pre-FK caller working."""
+    from apps.fixtures.models import Court
+
+    try:
+        court_id = _uuid.UUID(str(key))
+    except (ValueError, AttributeError, TypeError):
+        return Q(venue=key)  # legacy: the key IS the venue display string
+    cond = Q(court_id=court_id)
+    name = (
+        Court.objects.filter(id=court_id).values_list("name", flat=True).first()
+    )
+    if name:
+        cond |= Q(court__isnull=True, venue=name)
+    return cond
 
 
 def _matches_for(*, tournament, scope: str, key: str, day: _dt.date | None) -> list[Match]:
@@ -31,14 +66,14 @@ def _matches_for(*, tournament, scope: str, key: str, day: _dt.date | None) -> l
     tournament-TZ ``day`` (invariant 14), in kickoff order."""
     qs = Match.objects.filter(tournament=tournament, deleted_at__isnull=True)
     if scope == "court":
-        qs = qs.filter(venue=key)
+        qs = qs.filter(_court_scope_q(key))
     elif scope == "category":
         qs = qs.filter(leaf_key=key)
     elif scope == "sport":
         qs = qs.filter(sport=key)
     else:  # pragma: no cover - guarded at the view
         raise ValidationError("invalid_scope")
-    qs = qs.select_related("scorer").prefetch_related("officials").order_by(
+    qs = qs.select_related("scorer", "court").prefetch_related("officials").order_by(
         F("scheduled_at").asc(nulls_last=True), "match_no"
     )
     matches = list(qs)

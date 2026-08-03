@@ -31,11 +31,29 @@ def _is_tournament_member(user, match: Match) -> bool:
     ).exists()
 
 
-def assign_scorer(*, match: Match, user, by=None, request=None, notify: bool = True) -> Match:
+def assign_scorer(
+    *,
+    match: Match,
+    user,
+    by=None,
+    event_id: _uuid.UUID | None = None,
+    request=None,
+    notify: bool = True,
+) -> Match:
     """Assign (or, with ``user=None``, clear) the scorer seat. The assignee is
     notified with a console deep link — assignment used to be silent, so crew
     had to hunt for their matches. ``notify=False`` suppresses the per-match
-    email so a bulk caller can send one summary instead of one per match."""
+    email so a bulk caller can send one summary instead of one per match.
+
+    Idempotent on ``event_id`` (invariant 3), same replay semantics as
+    ``officials.assign_official``: a replayed key returns the match as it
+    already stands without re-writing the seat or re-notifying."""
+    if event_id is not None:
+        prior = AuditEvent.objects.filter(
+            idempotency_key=event_id, event_type="match_scorer_assigned"
+        ).first()
+        if prior is not None:  # replay (invariant 3)
+            return Match.objects.get(pk=match.pk)
     if user is not None and not _is_tournament_member(user, match):
         raise ValidationError("Scorer must be an active member of this tournament.")
     with transaction.atomic():
@@ -50,6 +68,7 @@ def assign_scorer(*, match: Match, user, by=None, request=None, notify: bool = T
             organization_id=match.organization_id,
             tournament_id=match.tournament_id,
             match_id=match.id,
+            idempotency_key=event_id,
             payload_after={"scorer_id": str(user.id) if user else None},
             request=request,
         )

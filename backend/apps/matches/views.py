@@ -17,6 +17,8 @@ from apps.matches.models import (
     MatchEvent,
     MatchEventType,
     MatchIncident,
+    MatchOfficial,
+    MatchOfficialStatus,
     MatchStatus,
 )
 from apps.matches.serializers import (
@@ -87,30 +89,123 @@ def _match_or_404(user, match_id) -> Match:
     return match
 
 
+# ---------------------------------------------------------------- match gates
+# Owner decision 2026-08-03 — STRICT PER-MATCH SCOPING, no per-tournament
+# opt-out and no feature flag. Two orthogonal scopes decide every write:
+#
+#   * MATCH scope  ("which match may I touch?") — the scoring seat
+#     (``Match.scorer``) or a ``MatchOfficial`` row on that match. Tournament
+#     managers (admin / co-organizer / org admin) are the only unscoped actors.
+#   * VERB scope   ("what may I do there?")     — the officials-board seat plus
+#     the member's tournament role.
+#
+# Seats that run the scoreboard. Linesman / assistant / fourth official are
+# deliberately absent: those seats are read-only.
+_SCORING_OFFICIAL_ROLES = ("referee", "umpire", "commissioner")
+# Seat states that actually confer anything. A DECLINED official turned the
+# job down, so the row must not keep granting them the match (owner decision
+# 2026-08-03). `assigned` and `accepted` both grant — today every row sits at
+# `assigned` because `assign_official` always writes ``accepted_at=None`` and
+# the accept flow is not built yet, so this filter is defensive: it lands
+# BEFORE that flow ships rather than being remembered afterwards.
+_ACTIVE_OFFICIAL_STATUSES = (
+    MatchOfficialStatus.ASSIGNED,
+    MatchOfficialStatus.ACCEPTED,
+)
+_CONSOLE_MODULE = "match.scoring_console"
+
+
+def _is_scoring_official(user, match: Match) -> bool:
+    """True if ``user`` sits on THIS match's officials board, in a seat that
+    runs the scoreboard (umpire / referee / match commissioner) and has not
+    declined it.
+
+    ``MatchOfficial`` previously conferred nothing — it was a roster row no
+    gate ever read. It is now the per-match grant for the crew who are
+    physically at the court."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    return MatchOfficial.objects.filter(
+        match=match,
+        user=user,
+        role__in=_SCORING_OFFICIAL_ROLES,
+        status__in=_ACTIVE_OFFICIAL_STATUSES,
+    ).exists()
+
+
+def _is_match_official(user, match: Match) -> bool:
+    """True if ``user`` holds ANY undeclined seat on this match's officials
+    board (including the read-only linesman / assistant / fourth seats).
+
+    Used only where the seat GRANTS something (``_can_transition``), so it
+    carries the same declined-is-not-a-seat filter as ``_is_scoring_official``.
+    """
+    if not getattr(user, "is_authenticated", False):
+        return False
+    return MatchOfficial.objects.filter(
+        match=match, user=user, status__in=_ACTIVE_OFFICIAL_STATUSES
+    ).exists()
+
+
+def _has_explicit_console_grant(user, tournament) -> bool:
+    """The module-layer escape hatch: an EXPLICIT per-member ``grant``
+    override of ``match.scoring_console`` (tournament-scoped first, then the
+    org-scoped twin).
+
+    A catalog ROLE DEFAULT is deliberately not enough. ``match.scoring_console``
+    defaults on for ``match_scorer`` and ``game_coordinator``, so resolving the
+    effective module set here would silently re-open the tournament-wide
+    scoring hole this gate exists to close."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    from apps.permissions.models import (
+        GrantState,
+        MembershipModuleGrant,
+        TournamentModuleGrant,
+    )
+
+    state = (
+        TournamentModuleGrant.objects.filter(
+            user=user, tournament=tournament, module__code=_CONSOLE_MODULE
+        )
+        .values_list("state", flat=True)
+        .first()
+    )
+    if state is not None and state != GrantState.DEFAULT:
+        return state == GrantState.GRANT
+    return MembershipModuleGrant.objects.filter(
+        user=user,
+        organization_id=tournament.organization_id,
+        module__code=_CONSOLE_MODULE,
+        state=GrantState.GRANT,
+    ).exists()
+
+
 def _can_score(user, match: Match) -> bool:
-    """A match can be scored by a tournament manager, the per-match assigned
-    scorer, or any active match_scorer member of the tournament."""
+    """Who may put numbers on THIS match (owner decision 2026-08-03):
+
+    * a tournament manager (admin / co-organizer / org admin) — unscoped;
+    * the person in the match's scoring seat (``Match.scorer``);
+    * an umpire / referee / commissioner on THIS match's officials board;
+    * a member holding an EXPLICIT ``match.scoring_console`` grant override.
+
+    Holding the tournament-wide ``match_scorer`` ROLE is no longer enough:
+    with six courts and volunteer scorers, Court 1's volunteer could edit
+    Court 4's score."""
+    if not getattr(user, "is_authenticated", False):
+        return False
     if can_manage_tournament(user, match.tournament):
         return True
     if match.scorer_id == user.id:
         return True
-    if TournamentMembership.objects.filter(
-        user=user,
-        tournament=match.tournament,
-        role=TournamentMembershipRole.MATCH_SCORER,
-        status=TournamentMembershipStatus.ACTIVE,
-    ).exists():
+    if _is_scoring_official(user, match):
         return True
-    # Module layer: a per-member grant of the scoring console also qualifies
-    # (spec 2026-06-10 P5).
-    from apps.permissions.services.resolver import effective_tournament_modules
-
-    return "match.scoring_console" in effective_tournament_modules(
-        user, match.tournament
-    )
+    return _has_explicit_console_grant(user, match.tournament)
 
 
 def _is_active_referee(user, tournament) -> bool:
+    """Active holder of the tournament-wide ``referee`` ROLE (distinct from a
+    ``MatchOfficial`` seat on one match)."""
     return TournamentMembership.objects.filter(
         user=user,
         tournament=tournament,
@@ -120,37 +215,53 @@ def _is_active_referee(user, tournament) -> bool:
 
 
 def _can_transition(user, match: Match) -> bool:
-    """State-machine gate (control room spec 2026-06-12 §2.e, owner decision
-    2026-06-12): the scoring gate, plus an active REFEREE may transition the
-    matches they are ASSIGNED to (Match.scorer) — start/half-time/complete
-    from the touchline. Walkover/replay are additionally manager-gated in
+    """State-machine gate (control room spec 2026-06-12 §2.e; owner decisions
+    2026-06-12 + 2026-08-03): the scoring gate, PLUS an active tournament-role
+    REFEREE who sits on THIS match's officials board in a non-scoring seat
+    (assistant / fourth / linesman) may still run the clock — a qualified
+    referee working the touchline starts, half-times and completes the match
+    they are on, even when the scoreboard is someone else's job.
+
+    (The old second clause — ``match.scorer_id == user.id and
+    _is_active_referee(...)`` — was dead code: ``_can_score`` already returns
+    True for the scoring seat, so it could never change the outcome.)
+
+    Walkover / replay / postpone / cancel are additionally manager-gated in
     the view."""
     if _can_score(user, match):
         return True
-    return match.scorer_id == user.id and _is_active_referee(
+    return _is_match_official(user, match) and _is_active_referee(
         user, match.tournament
     )
 
 
 def _can_record_events(user, match: Match) -> bool:
-    """Event/VOID gate (owner decision 2026-06-12): the scoring gate, except
-    an active REFEREE never qualifies through assignment alone — referees
-    run the state machine on their matches (see _can_transition) but do not
-    write or void the event log. An explicit per-member scoring-console
-    grant (module layer) stays the escape hatch."""
+    """Event/VOID gate. THE RULE (owner decision 2026-08-03): the distinction
+    is the SEAT, not the person.
+
+    * a tournament manager → yes;
+    * a MATCH-LEVEL scoring official (umpire / referee / commissioner on this
+      match's officials board) → yes. They are the person with the whiteboard,
+      so they write and void the log of the match they are working;
+    * an explicit ``match.scoring_console`` grant → yes (escape hatch);
+    * the blanket TOURNAMENT-ROLE referee carve-out stays (2026-06-12): an
+      active ``referee`` member who qualifies only through the scoring seat
+      (``Match.scorer``) runs the state machine but never writes or voids the
+      event log;
+    * anyone else who passes the scoring gate → yes.
+
+    Checking the match-level seat BEFORE the tournament-role carve-out is what
+    reconciles the two: a person who is both a tournament-role referee and the
+    board's appointed referee/umpire on this match is allowed."""
     if not _can_score(user, match):
         return False
     if can_manage_tournament(user, match.tournament):
         return True
+    if _is_scoring_official(user, match):
+        return True
     if not _is_active_referee(user, match.tournament):
         return True
-    from apps.permissions.services.resolver import effective_tournament_modules
-
-    return "match.scoring_console" in effective_tournament_modules(
-        user, match.tournament
-    )
-
-
+    return _has_explicit_console_grant(user, match.tournament)
 
 
 class TournamentMatchListView(GenericAPIView):
@@ -245,23 +356,47 @@ class TournamentStandingsView(GenericAPIView):
 
 
 class AssignScorerView(GenericAPIView):
-    """`POST /api/matches/{id}/scorer/` — a manager assigns a scorer to a match.
-    Body: {"user_id": "<uuid>"}. The target must be a tournament member."""
+    """`POST /api/matches/{id}/scorer/` — staff the scoring seat of a match.
+    Body: {"user_id": "<uuid>", "event_id": "<uuid>"?}. The target must be a
+    tournament member; a null/empty ``user_id`` vacates the seat.
+
+    Gate: the `match.assign_officials` module (manager / co-organizer /
+    game-coordinator), matching AssignOfficialsView and the catalog, which has
+    always advertised this module as covering scorers. Idempotent on
+    ``event_id`` (invariant 3) — a replay returns 200 with the seat as it was
+    recorded and does NOT reassign."""
 
     permission_classes = [IsAuthenticated]
 
     def post(self, request, match_id):
+        import uuid as _uuid
+
         match = _match_or_404(request.user, match_id)
-        if not can_manage_tournament(request.user, match.tournament):
-            raise PermissionDenied("not_tournament_manager")
+        if not can_access_module(
+            request.user, match.tournament, "match.assign_officials"
+        ):
+            raise PermissionDenied("not_allowed_to_assign_officials")
         raw = request.data.get("user_id")
         target = None
         if raw:  # null/empty clears the seat (a seat could not be vacated before)
             target = User.objects.filter(id=raw).first()
             if target is None:
                 raise DRFValidationError({"detail": "user_not_found"})
+        raw_event_id = request.data.get("event_id")
+        event_id = None
+        if raw_event_id:
+            try:
+                event_id = _uuid.UUID(str(raw_event_id))
+            except (ValueError, AttributeError, TypeError):
+                raise DRFValidationError({"detail": "invalid_event_id"}) from None
         try:
-            assign_scorer(match=match, user=target, by=request.user, request=request)
+            assign_scorer(
+                match=match,
+                user=target,
+                by=request.user,
+                event_id=event_id,
+                request=request,
+            )
         except ValidationError as e:
             raise DRFValidationError({"detail": getattr(e, "message", "invalid_assignment")})
         match.refresh_from_db()
