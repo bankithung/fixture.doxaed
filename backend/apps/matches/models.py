@@ -181,6 +181,19 @@ class Match(models.Model):
     rubber_kind = models.CharField(max_length=16, blank=True, default="")
 
     scheduled_at = models.DateTimeField(null=True, blank=True)
+    # `venue` is the DENORMALISED display string for the court this match is
+    # played on ("MP Hall · T2", produced by scheduler.court_venue_name) and
+    # stays the read path for the ~40 existing readers (control room, public
+    # schedule, bulk crew assignment, every scheduler/repair validation).
+    # `court` is the first-class row the same slot points at; the four writers
+    # of `venue` (repair.reschedule_match / repair.swap_slots /
+    # matches reschedule endpoint / scheduler.apply_schedule) set both and keep
+    # `venue == court.name`. `court` stays NULL for off-grid venue strings that
+    # have no Venue row — the string is then still authoritative.
+    court = models.ForeignKey(
+        "fixtures.Court", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="matches",
+    )
     venue = models.CharField(max_length=120, blank=True)
     # Slot lock (repair seam): a locked match is never reassigned by a
     # scheduler re-run — its (venue, time, teams) stays on the calendar as a
@@ -217,6 +230,8 @@ class Match(models.Model):
         indexes = [
             models.Index(fields=["tournament", "status"], name="match_trn_status_idx"),
             models.Index(fields=["tournament", "group_label"], name="match_trn_group_idx"),
+            # Per-court day queries (a court's order of play, stream overlays).
+            models.Index(fields=["court", "scheduled_at"], name="match_court_time_idx"),
         ]
 
     def __str__(self) -> str:  # pragma: no cover

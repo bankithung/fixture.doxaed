@@ -66,3 +66,48 @@ class Venue(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover
         return self.name
+
+
+class Court(models.Model):
+    """ONE playing surface at a :class:`Venue` — the thing a match is actually
+    played on ("MP Hall · T2"), promoted to a first-class row so per-court
+    facts (stream URL, overlay key, a court-wide scorer assignment) have
+    somewhere to hang.
+
+    ``name`` MUST be exactly what
+    ``apps.fixtures.services.scheduler.court_venue_name`` produces, because
+    ``Match.venue`` keeps storing that same string as a denormalised display
+    value (~40 readers key off it) — ``Match.court`` is the new FK and
+    ``Match.venue`` is kept in sync with ``court.name``. A ``count=1`` venue
+    has ONE court whose name is the venue's own name (no ``" · T1"`` suffix),
+    matching what ``expand_venues`` emits.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="courts",
+    )
+    venue = models.ForeignKey(
+        Venue, on_delete=models.CASCADE, related_name="courts",
+    )
+    name = models.CharField(max_length=120)
+    # 1-based T-number within the venue ("Hall · T3" -> 3). A single-court
+    # venue is index 1 even though its name carries no suffix.
+    index = models.PositiveSmallIntegerField(default=1)
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "fixtures_court"
+        constraints = [
+            UniqueConstraint(
+                fields=["venue", "name"],
+                condition=Q(deleted_at__isnull=True),
+                name="unique_court_name_per_venue",
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return self.name

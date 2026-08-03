@@ -19,6 +19,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone as dj_tz
 
+from apps.fixtures.services.courts import resolve_court
 from apps.fixtures.services.schedule_changes import (
     queue_slot_change_notifications,
 )
@@ -219,7 +220,13 @@ def reschedule_match(
     with transaction.atomic():
         match.scheduled_at = new_dt
         match.venue = new_venue
-        match.save(update_fields=["scheduled_at", "venue", "updated_at"])
+        # Court FK + display string move together (venue stays the read path
+        # for the ~40 string readers). None when the base venue has no Venue
+        # row — the free-text string is then authoritative on its own.
+        match.court = resolve_court(match.organization, new_venue)
+        match.save(
+            update_fields=["scheduled_at", "venue", "court", "updated_at"]
+        )
         audit = emit_audit(
             actor_user=by,
             actor_role=ActorRole.ADMIN,
@@ -858,8 +865,17 @@ def swap_slots(
     with transaction.atomic():
         a.scheduled_at, b.scheduled_at = b.scheduled_at, a.scheduled_at
         a.venue, b.venue = b.venue, a.venue
-        a.save(update_fields=["scheduled_at", "venue", "updated_at"])
-        b.save(update_fields=["scheduled_at", "venue", "updated_at"])
+        # The court FK rides along with the string it denormalises.
+        a.court, b.court = b.court, a.court
+        # A slot that predates the backfill (or was written by an older
+        # client) can still carry a null FK — resolve it while we are here so
+        # the swap never leaves `venue` and `court` disagreeing.
+        if a.court is None:
+            a.court = resolve_court(a.organization, a.venue)
+        if b.court is None:
+            b.court = resolve_court(b.organization, b.venue)
+        a.save(update_fields=["scheduled_at", "venue", "court", "updated_at"])
+        b.save(update_fields=["scheduled_at", "venue", "court", "updated_at"])
         after = [_slot_payload(a), _slot_payload(b)]
         audit = emit_audit(
             actor_user=by,

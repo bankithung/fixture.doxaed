@@ -2082,6 +2082,7 @@ def apply_schedule(
 
     from apps.audit.models import ActorRole
     from apps.audit.services import emit_audit
+    from apps.fixtures.services.courts import CourtResolver
     from apps.matches.models import Match
 
     tz = _tournament_tz(tournament)
@@ -2118,6 +2119,9 @@ def apply_schedule(
     # schedule-change feed (kind "engine_rerun") and the change notifier
     # both read this off the audit row (trust layer, increments F/G).
     changes: list[dict[str, Any]] = []
+    # ONE resolver for the whole run: the org's venue list and each distinct
+    # court are looked up once, not once per assigned match.
+    courts = CourtResolver(tournament.organization)
     with transaction.atomic():
         for mid, (dt, venue) in result.assignments.items():
             m = by_id[mid]
@@ -2140,7 +2144,12 @@ def apply_schedule(
                 })
             m.scheduled_at = new_dt
             m.venue = new_venue
-            m.save(update_fields=["scheduled_at", "venue", "updated_at"])
+            # Court FK written alongside the denormalised display string it
+            # mirrors; null when the run names a venue with no Venue row.
+            m.court = courts.resolve(new_venue)
+            m.save(
+                update_fields=["scheduled_at", "venue", "court", "updated_at"]
+            )
         stored_cfg = dict(config or {})
         if cfg.activated_reserve_days:
             stored_cfg["activated_reserve_days"] = sorted(

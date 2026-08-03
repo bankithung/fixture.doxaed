@@ -453,3 +453,39 @@ def test_clean_move_far_from_everything_has_no_violations():
     )
     assert r.status_code == 200, r.content
     assert r.json()["violations"] == []
+
+
+# ------------------------------------------------------------------ court FK
+def test_reslot_writes_the_court_fk_alongside_the_venue_string():
+    """`Match.venue` stays the denormalised display string, but the reslot now
+    also points `Match.court` at the Court row it names (2026-08-03)."""
+    from apps.fixtures.models import Venue
+    from apps.fixtures.services.scheduler import court_venue_name
+
+    admin, t, disjoint = _setup_courts()
+    Venue.objects.create(organization=t.organization, name="Hall", count=2)
+    m = disjoint[2]
+    r = _client(admin).patch(
+        f"/api/matches/{m.id}/schedule/",
+        {"scheduled_at": "2026-08-02T09:00", "venue": court_venue_name("Hall", 2)},
+        format="json",
+    )
+    assert r.status_code == 200, r.content
+    m.refresh_from_db()
+    assert m.court is not None
+    assert m.venue == m.court.name == "Hall · T2"
+    assert (m.court.venue.name, m.court.index) == ("Hall", 2)
+
+
+def test_reslot_onto_an_unregistered_venue_keeps_the_string_and_a_null_court():
+    """Back-compat: `_setup()`'s config names venues that have no Venue row —
+    the move still applies, the FK simply stays null."""
+    admin, _t, matches = _setup()
+    m = matches[0]
+    r = _client(admin).patch(
+        f"/api/matches/{m.id}/schedule/", {"venue": "G2"}, format="json"
+    )
+    assert r.status_code == 200, r.content
+    m.refresh_from_db()
+    assert m.venue == "G2"
+    assert m.court_id is None
