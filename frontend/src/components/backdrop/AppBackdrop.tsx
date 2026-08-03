@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 
 /** The app-wide PixelBlast backdrop: fixed behind the shell, brand-colored
@@ -19,10 +20,15 @@ function readPrimary(): string {
 
 export function AppBackdrop(): React.ReactElement | null {
   const { isMobile } = useBreakpoint();
+  const { pathname } = useLocation();
   const [color, setColor] = useState<string | null>(null);
 
   const enabled =
     !isMobile &&
+    // The OBS broadcast overlay must composite over live video: a tinted
+    // WebGL backdrop behind a "transparent" page would be burned into the
+    // stream. Skip the surface entirely so three.js never even loads there.
+    !pathname.startsWith("/overlay/") &&
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
     !window.matchMedia("(prefers-reduced-motion: reduce)").matches;

@@ -62,6 +62,11 @@ export interface LiveH2HRow {
 }
 
 export interface LiveSnapshot {
+  /** Server wall clock when this snapshot was built. Pair it with the local
+   * receive time to measure clock skew — a broadcast/volunteer machine is
+   * routinely minutes off, so a running match clock must never be derived
+   * from the viewer's own clock alone. */
+  server_time?: string;
   match: {
     id: string;
     status: string;

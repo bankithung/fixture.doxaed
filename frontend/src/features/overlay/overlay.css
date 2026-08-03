@@ -1,0 +1,536 @@
+/* OBS broadcast scoreboard overlay — deliberately NOT the app design system.
+ *
+ * This page is composited over a live camera feed and burned into a YouTube
+ * stream. It therefore opts OUT of two house rules on purpose:
+ *
+ *  1. Design tokens (`bg-card`, `text-muted-foreground`, …) and the
+ *     light/dark theme. A broadcast graphic has exactly one look, tuned for
+ *     legibility over a bright indoor court, and must not flip with a
+ *     viewer's OS theme. Colours here are fixed literals by design.
+ *  2. WCAG focus rings / selection / cursors. Nothing here is interactive and
+ *     no human reads this DOM — see the comment in OverlayPage.tsx.
+ *
+ * GEOMETRY IS AUTHORED AT 1920x1080 IN ABSOLUTE PIXELS (EBU R 95).
+ * Graphics-safe inset = 5% = 96 px horizontal, 54 px vertical, so everything
+ * anchors at (96, 54) and the usable box is 1728x972. `?scale` multiplies the
+ * whole coordinate system, offsets included — 1280x720 is `?scale=0.667`.
+ *
+ * The `html[data-obs-overlay]` block is the only global reach: the overlay
+ * route sets that attribute on mount and removes it on unmount, so the rest
+ * of the SPA is untouched. OBS Browser Sources are transparent by default; we
+ * are only undoing the SPA's own opaque body background.
+ */
+
+/* --- Broadcast page reset: transparent, inert, chrome-free --------------- */
+
+html[data-obs-overlay],
+html[data-obs-overlay] body,
+html[data-obs-overlay] #root {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+html[data-obs-overlay] body {
+  margin: 0;
+  overflow: hidden;
+  cursor: none;
+  caret-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html[data-obs-overlay] *,
+html[data-obs-overlay] *::before,
+html[data-obs-overlay] *::after {
+  cursor: none !important;
+}
+
+html[data-obs-overlay] *:focus,
+html[data-obs-overlay] *:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+html[data-obs-overlay] ::selection {
+  background: transparent;
+}
+
+html[data-obs-overlay] ::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* --- Palette ------------------------------------------------------------- */
+
+.ov {
+  /* Primary ink is NOT pure white: it holds luma near 235 and stops the
+     ringing pure white shows on a 2-4 Mbps encode. */
+  --ov-ink: #f2f4f7;
+  --ov-ink-2: #9aa4b2;
+  /* Amber, not red: yellow survives 4:2:0 chroma subsampling. */
+  --ov-accent: #ffc53d;
+  --ov-panel: rgba(14, 17, 23, 0.88);
+  --ov-hairline: rgba(255, 255, 255, 0.12);
+  --ov-divider: rgba(255, 255, 255, 0.1);
+  --ov-fill: rgba(255, 255, 255, 0.08);
+  --ov-home: #8b6cff;
+  --ov-away: #2ed3a0;
+}
+
+/* --- Anchor -------------------------------------------------------------- */
+
+.ov {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483000;
+  transform-origin: top left;
+  transform: scale(var(--ov-scale, 1));
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ov-ink);
+  pointer-events: none;
+}
+
+.ov--right {
+  left: auto;
+  right: 0;
+  transform-origin: top right;
+}
+
+/* Football's bug is top-CENTRE: a centred clock is near-universal. */
+.ov--center {
+  left: 50%;
+  transform-origin: top center;
+  transform: translateX(-50%) scale(var(--ov-scale, 1));
+}
+
+/* The 5% graphics-safe inset lives here so `?scale` scales it too. */
+.ov-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 54px 0 0 96px;
+}
+
+.ov--right .ov-stack {
+  align-items: flex-end;
+  margin: 54px 96px 0 0;
+}
+
+.ov--center .ov-stack {
+  align-items: center;
+  margin: 54px 0 0 0;
+}
+
+/* --- Shared panel chrome ------------------------------------------------- */
+
+.ov-panel {
+  overflow: hidden;
+  border-radius: 10px;
+  /* >=85% opacity: a glassy bug disappears against a blown-out gym floor. */
+  background: var(--ov-panel);
+  box-shadow:
+    inset 0 0 0 1px var(--ov-hairline),
+    0 4px 24px rgba(0, 0, 0, 0.45);
+  animation: ov-enter 480ms ease-out;
+}
+
+.ov-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 30px;
+  padding: 0 12px;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 30px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ov-ink-2);
+  white-space: nowrap;
+}
+
+.ov-head__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ov-head__spacer {
+  flex: 1 1 auto;
+}
+
+.ov-dot {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff4d4f;
+}
+
+/* Amber, hollow-cored: "this feed is old" reads without a second moving
+   element on screen. */
+.ov-dot--stale {
+  background: var(--ov-accent);
+  box-shadow: inset 0 0 0 3px rgba(14, 17, 23, 0.9);
+}
+
+/* --- FAMILY A: target sports (TT, sepak takraw, badminton, volleyball) ---- */
+
+.ovA {
+  /* 820 x 162 at best-of-5: header 30 + two rows of 66. Width follows the
+     game-history slot count, which is read off `best_of`. */
+  width: var(--ovA-w, 820px);
+}
+
+.ovA__row {
+  display: grid;
+  grid-template-columns:
+    30px 12px 12px minmax(0, 1fr)
+    var(--ovA-hist, 240px) 72px var(--ovA-pts, 94px);
+  align-items: center;
+  height: 66px;
+}
+
+.ovA__row + .ovA__row {
+  border-top: 2px solid var(--ov-divider);
+}
+
+/* Redundant encoding: the serving row carries BOTH the dot and a 3 px left
+   accent edge, so serve survives compression and a colour-blind viewer. */
+.ovA__row--serving {
+  box-shadow: inset 3px 0 0 var(--ov-accent);
+}
+
+.ovA__serve {
+  justify-self: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ov-accent);
+  animation: ov-fade 200ms ease-out;
+}
+
+.ovA__bar {
+  width: 12px;
+  height: 66px;
+  background: var(--ov-side, var(--ov-home));
+}
+
+.ovA__row--home {
+  --ov-side: var(--ov-home);
+}
+
+.ovA__row--away {
+  --ov-side: var(--ov-away);
+}
+
+.ovA__name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Up to `slots` per-game numbers for THIS row, right-aligned. */
+.ovA__hist {
+  display: grid;
+  grid-auto-flow: column;
+  justify-content: end;
+  align-items: center;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ov-ink);
+}
+
+.ovA__histCell {
+  width: 48px;
+  text-align: center;
+}
+
+.ovA__histCell--lost {
+  opacity: 0.55;
+}
+
+.ovA__won {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ov-fill);
+  font-size: 38px;
+  font-weight: 700;
+}
+
+.ovA__pts {
+  padding-right: 12px;
+  font-size: 58px;
+  font-weight: 800;
+  text-align: right;
+}
+
+/* The loser of a completed match recedes; the winner keeps full ink. */
+.ovA__row--lost .ovA__name,
+.ovA__row--lost .ovA__pts,
+.ovA__row--lost .ovA__won {
+  opacity: 0.55;
+}
+
+/* --- FAMILY B: timed sports (football) ----------------------------------- */
+
+.ovB {
+  display: grid;
+  grid-template-columns: 330px 240px 330px;
+  align-items: center;
+  width: 900px;
+  height: 96px;
+}
+
+.ovB__side {
+  display: grid;
+  align-items: center;
+  height: 96px;
+}
+
+.ovB__side--home {
+  grid-template-columns: 8px 16px minmax(0, 1fr) 90px;
+}
+
+.ovB__side--away {
+  grid-template-columns: 90px minmax(0, 1fr) 16px 8px;
+}
+
+.ovB__bar {
+  width: 8px;
+  height: 96px;
+  background: var(--ov-side, var(--ov-home));
+}
+
+.ovB__side--home {
+  --ov-side: var(--ov-home);
+}
+
+.ovB__side--away {
+  --ov-side: var(--ov-away);
+}
+
+.ovB__code {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ovB__side--away .ovB__code {
+  text-align: right;
+}
+
+.ovB__score {
+  padding-right: 12px;
+  font-size: 52px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.ovB__side--away .ovB__score {
+  padding: 0 0 0 12px;
+  text-align: left;
+}
+
+.ovB__centre {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 96px;
+  border-left: 2px solid var(--ov-divider);
+  border-right: 2px solid var(--ov-divider);
+}
+
+.ovB__period {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 13px;
+  background: var(--ov-fill);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ov-ink-2);
+}
+
+.ovB__period .ov-dot {
+  width: 10px;
+  height: 10px;
+}
+
+.ovB__clock {
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* A stopped clock at 70% removes most "is the stream frozen?" doubt. */
+.ovB__clock--stopped {
+  opacity: 0.7;
+}
+
+/* --- Flag pill ----------------------------------------------------------- */
+
+.ov-flag {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 6px;
+  background: var(--ov-accent);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #101319;
+  animation: ov-enter 240ms ease-out;
+}
+
+/* --- Quiet boards (idle / up next) --------------------------------------- */
+
+.ovQ {
+  width: 640px;
+}
+
+.ovQ__row {
+  display: grid;
+  grid-template-columns: 12px 12px minmax(0, 1fr);
+  align-items: center;
+  height: 54px;
+}
+
+.ovQ__row + .ovQ__row {
+  border-top: 2px solid var(--ov-divider);
+}
+
+.ovQ__bar {
+  width: 12px;
+  height: 54px;
+  background: var(--ov-side, var(--ov-home));
+}
+
+.ovQ__row--home {
+  --ov-side: var(--ov-home);
+}
+
+.ovQ__row--away {
+  --ov-side: var(--ov-away);
+}
+
+.ovQ__text {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 30px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Numbers ------------------------------------------------------------- */
+
+/* Every figure is tabular: proportional digits make the panel jitter on
+   every point. */
+.ov-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A point change is 160 ms: the old digit rises 8 px out, the new rises in.
+   No colour flash, no bounce, nothing that pulls the eye off play. */
+.ov-digit {
+  position: relative;
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-digit__in {
+  display: inline-block;
+  animation: ov-digit-in 160ms ease-out;
+}
+
+.ov-digit__out {
+  position: absolute;
+  inset: 0;
+  display: inline-block;
+  animation: ov-digit-out 160ms ease-out forwards;
+  pointer-events: none;
+}
+
+/* Winning a game is the bigger beat — still well inside the 800 ms ceiling. */
+.ov-digit--slow .ov-digit__in,
+.ov-digit--slow .ov-digit__out {
+  animation-duration: 600ms;
+}
+
+@keyframes ov-digit-in {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes ov-digit-out {
+  from {
+    transform: none;
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+}
+
+@keyframes ov-enter {
+  from {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes ov-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* No looping motion anywhere, and none at all for a viewer who asked for
+   less. */
+@media (prefers-reduced-motion: reduce) {
+  .ov-panel,
+  .ov-flag,
+  .ovA__serve,
+  .ov-digit__in,
+  .ov-digit__out {
+    animation: none;
+  }
+  .ov-digit__out {
+    display: none;
+  }
+}

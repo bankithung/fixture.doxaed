@@ -174,6 +174,11 @@ api_v1 = [
         PublicTournamentStandingsView.as_view(),
         name="public-tournament-standings",
     ),
+    # Per-court streaming (spec 2026-08-03): OUR stable "Watch live" links,
+    # which 302 to whatever the court is actually showing. A YouTube
+    # channel-level /live URL cannot be used — with several courts live on one
+    # channel it resolves to an arbitrary broadcast.
+    path("public/", include("apps.streaming.urls")),
     # Control room (spec 2026-06-12 §2.c): public one-way SSE tick stream —
     # UUIDs only, zero PII; same slug+status gating as the public schedule.
     path(

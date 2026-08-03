@@ -63,6 +63,7 @@ LOCAL_APPS = [
     "apps.assistant",
     "apps.badges",
     "apps.lens",
+    "apps.streaming",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -227,6 +228,16 @@ DEFAULT_ORG_TIMEZONE = env("TIME_ZONE", default="Asia/Kolkata")
 GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
 GEMINI_MODEL = env("GEMINI_MODEL", default="gemini-2.5-flash")
 INVITE_TOKEN_TTL_DAYS = 7
+# Bulk invite / resend tunables (spec: bulk member invitation).
+# 50 is a LATENCY bound, not just a mail-bomb cap. Invitation mail is sent
+# inline on the request thread (post-commit, one shared SMTP connection), so
+# the batch costs roughly 0.05-0.3 s per recipient: 50 rows ≈ 15 s worst case,
+# which stays under the SPA client's 20 s abort (frontend/src/api/client.ts)
+# with margin. Raising this WILL push a full batch past that timeout — the
+# write still commits and the UI reports a failure on a successful write.
+# Move `send_invitation_emails` onto a worker/thread before raising it.
+INVITE_BULK_MAX = 50  # rows accepted per bulk-invite request
+INVITE_RESEND_COOLDOWN_SECONDS = 300  # per-invitation resend rate limit
 PENDING_ARCHIVE_DAYS = 30
 OWNER_2FA_GRACE_DAYS = 7  # v1Users.md B.12
 

@@ -83,6 +83,7 @@ const PublicSchoolPage = lazy(() => import("@/features/live/PublicSchoolPage").t
 const ExplorePage = lazy(() => import("@/features/live/ExplorePage").then((m) => ({ default: m.ExplorePage })));
 const CertificatePage = lazy(() => import("@/features/live/CertificatePage").then((m) => ({ default: m.CertificatePage })));
 const VenueDisplayPage = lazy(() => import("@/features/live/VenueDisplayPage").then((m) => ({ default: m.VenueDisplayPage })));
+const OverlayPage = lazy(() => import("@/features/overlay/OverlayPage").then((m) => ({ default: m.OverlayPage })));
 const MemberDirectoryPage = lazy(() => import("@/features/orgs/MemberDirectoryPage").then((m) => ({ default: m.MemberDirectoryPage })));
 const OrgSettingsPage = lazy(() => import("@/features/orgs/OrgSettingsPage").then((m) => ({ default: m.OrgSettingsPage })));
 const HousePointsPage = lazy(() => import("@/features/orgs/HousePointsPage").then((m) => ({ default: m.HousePointsPage })));
@@ -204,6 +205,14 @@ export default function App(): React.ReactElement {
               <Route path="/explore" element={<ExplorePage />} />
               <Route path="/cert/:awardId" element={<CertificatePage />} />
               <Route path="/t/:slug/:id/display" element={<VenueDisplayPage />} />
+              {/* OBS broadcast scoreboard overlay: one URL per court, pasted
+                  into a Browser Source once for the whole tournament. Public
+                  and outside the shell — it is a video graphic, not a page.
+                  `:court` is the URL-encoded venue string. */}
+              <Route
+                path="/overlay/t/:slug/:id/court/:court"
+                element={<OverlayPage />}
+              />
 
               {/* Protected surfaces — share the AppShell chrome. */}
               <Route

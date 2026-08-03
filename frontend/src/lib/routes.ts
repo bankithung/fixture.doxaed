@@ -130,6 +130,26 @@ export const routes = {
   /** Public, read-only knockout bracket per competition (no login). */
   publicBracket: (slug: string, id: string) =>
     `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/bracket`,
+  /**
+   * OBS broadcast scoreboard overlay for ONE court — the URL an operator
+   * pastes into a Browser Source once for the whole tournament. `court` is the
+   * fixture's venue string; `opts.scale` matches the canvas (1280x720 is
+   * 0.667), `opts.side` picks the anchor corner and `opts.server` says which
+   * side opened the match for the serve indicator. See docs/obs-overlay.md.
+   */
+  overlayCourt: (
+    slug: string,
+    id: string,
+    court: string,
+    opts: { scale?: number; side?: "left" | "right"; server?: "home" | "away" } = {},
+  ) => {
+    const q = new URLSearchParams();
+    if (opts.scale && opts.scale !== 1) q.set("scale", String(opts.scale));
+    if (opts.side) q.set("side", opts.side);
+    if (opts.server === "away") q.set("server", "away");
+    const qs = q.toString();
+    return `/overlay/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/court/${encodeURIComponent(court)}${qs ? `?${qs}` : ""}`;
+  },
   /** Live scorer console for a match. */
   matchConsole: (tournamentId: string, matchId: string) =>
     `/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}`,

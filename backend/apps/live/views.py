@@ -3,6 +3,7 @@ exposure is limited: rosters are only shown once the match is live/completed,
 public-safe display names are preferred, and voided events are dropped."""
 from __future__ import annotations
 
+from django.utils import timezone
 from rest_framework.exceptions import NotFound
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny
@@ -215,6 +216,13 @@ class LiveMatchSnapshotView(GenericAPIView):
 
         return Response(
             {
+                # Server wall clock at the moment this snapshot was built.
+                # A running match clock must NOT be derived from the viewer's
+                # own clock: a broadcast machine (or a volunteer's laptop) is
+                # routinely minutes off, which would put a wrong minute on air.
+                # Clients pair this with `started_at` to measure their skew and
+                # re-sync it on every refetch. Read-only, additive.
+                "server_time": timezone.now().isoformat(),
                 "match": {
                     "id": str(m.id),
                     "status": m.status,

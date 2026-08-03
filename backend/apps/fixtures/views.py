@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import uuid as _uuid
+
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from apps.fixtures.models import Venue
+from apps.fixtures.models import Court, Venue
 from apps.fixtures.services.draw_config import (
     DEFAULT_DRAW_CONFIG,
     effective_draw_config,
@@ -25,6 +27,7 @@ from apps.fixtures.services.preview import (
 )
 from apps.fixtures.services.readiness import fixture_readiness
 from apps.fixtures.services.scheduler import apply_schedule
+from apps.streaming.services.links import CourtLinkResolver
 from apps.tournaments.models import Tournament
 from apps.tournaments.permissions import can_access_module
 from apps.tournaments.scope import accessible_tournaments
@@ -1097,6 +1100,75 @@ class TournamentVenueDetailView(GenericAPIView):
         return Response(status=204)
 
 
+def _court_payload(c: Court) -> dict:
+    return {
+        "id": str(c.id),
+        "venue_id": str(c.venue.id),
+        "venue_name": c.venue.name,
+        "name": c.name,
+        "index": c.index,
+    }
+
+
+class TournamentCourtsView(GenericAPIView):
+    """`GET /api/tournaments/{id}/courts/` — the workspace's court rows (one
+    per playing surface, "MP Hall · T2"), the first-class entity behind the
+    ``Match.venue`` display string. Read access follows the venue pool: any
+    member of a tournament in the workspace. Optional ``?venue=<uuid>``
+    narrows to one facility.
+
+    Read-only for now: courts are derived identity, materialised by the
+    scheduler / ``backfill_courts`` when a slot first lands on them, so there
+    is no create/edit verb to manager-gate yet."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _tournament(self, request, tournament_id):
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        return Tournament.objects.select_related("organization").get(id=tournament_id)
+
+    def get(self, request, tournament_id):
+        t = self._tournament(request, tournament_id)
+        courts = (
+            Court.objects.filter(
+                organization=t.organization, deleted_at__isnull=True
+            )
+            .select_related("venue")
+            .order_by("venue__name", "index", "name")
+        )
+        venue_id = str(request.query_params.get("venue") or "").strip()
+        if venue_id:
+            try:
+                courts = courts.filter(venue_id=_uuid.UUID(venue_id))
+            except ValueError as e:
+                raise DRFValidationError({"detail": "invalid_venue"}) from e
+        return Response({"courts": [_court_payload(c) for c in courts]})
+
+
+class TournamentCourtDetailView(GenericAPIView):
+    """`GET /api/tournaments/{id}/courts/{court_id}/` — one court. Same read
+    rule as the listing; 404 (never 403) for a court outside the caller's
+    workspace, so nothing leaks across tenants (invariant 2)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id, court_id):
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        c = (
+            Court.objects.select_related("venue")
+            .filter(
+                id=court_id, organization=t.organization, deleted_at__isnull=True
+            )
+            .first()
+        )
+        if c is None:
+            raise NotFound("court_not_found")
+        return Response(_court_payload(c))
+
+
 class PublicTournamentScheduleView(GenericAPIView):
     """`GET /api/public/tournaments/{slug}/{id}/schedule/` — public read-only
     schedule (trust layer, increment H). AllowAny; resolves the (slug, UUID)
@@ -1148,11 +1220,25 @@ class PublicTournamentScheduleView(GenericAPIView):
 
         labels: dict[str, str] = {}
         matches = []
-        for m in (
+        rows = list(
             Match.objects.filter(tournament=t, deleted_at__isnull=True)
             .select_related("home_team", "away_team")
             .order_by(_F("scheduled_at").asc(nulls_last=True), "match_no")
-        ):
+        )
+        # Per-court streaming (spec 2026-08-03). THIS ENDPOINT IS REFETCHED BY
+        # EVERY SPECTATOR, so the watch links must cost a bounded number of
+        # queries, never one per match: resolve the tournament's courts once
+        # (1 query) and hand them to a CourtLinkResolver, which loads every
+        # stream row and broadcast in 2 more. Do not move link resolution
+        # inside the loop.
+        court_ids = {m.court_id for m in rows if m.court_id}
+        courts = (
+            list(Court.objects.filter(id__in=court_ids, deleted_at__isnull=True))
+            if court_ids
+            else []
+        )
+        links = CourtLinkResolver(courts, tz=tz)
+        for m in rows:
             if m.leaf_key and m.leaf_key not in labels:
                 labels[m.leaf_key] = leaf_label(t.sports, m.leaf_key)
             local = (
@@ -1173,6 +1259,12 @@ class PublicTournamentScheduleView(GenericAPIView):
                     m.scheduled_at.isoformat() if m.scheduled_at else None
                 ),
                 "venue": m.venue,
+                # The court FK behind the `venue` display string, plus the
+                # link a spectator can actually click: the court's live URL
+                # while the match is on, and the day's archive at `&t=<offset>`
+                # once it has finished. Null when the court has no stream.
+                "court_id": str(m.court_id) if m.court_id else None,
+                "watch_url": links.watch_url_for_match(m),
                 "home": side(m.home_team),
                 "away": side(m.away_team),
                 # Typed dependency pointers so an unresolved bracket slot shows
@@ -1200,6 +1292,10 @@ class PublicTournamentScheduleView(GenericAPIView):
                 "time_zone": t.time_zone,
             },
             "matches": matches,
+            # [{id, name, watch_url, is_streaming}] for the courts this
+            # tournament plays on, so the display page and the spectator grid
+            # can render per-court state without a query per court.
+            "courts": links.court_payload(),
         })
 
 

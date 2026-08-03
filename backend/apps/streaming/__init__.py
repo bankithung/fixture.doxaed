@@ -1,8 +1,13 @@
 """Live-streaming integration (YouTube Live).
 
-Currently service-layer only: no models, no views, no migrations — so this app
-is deliberately NOT in ``INSTALLED_APPS`` yet. Everything under
-``apps.streaming.services`` is pure and injectable (plain ids/strings/datetimes
-in, dataclasses out) so it can be unit-tested without a database and wired to
-domain models later.
+Two layers, deliberately separated:
+
+* ``apps.streaming.services`` is pure and injectable (plain ids/strings/
+  datetimes in, dataclasses out) — the YouTube API client, its error taxonomy,
+  OAuth refresh credentials, and the pure planning helpers (VOD offsets,
+  chapter lists, session rollover). None of it imports a Django model.
+* ``models`` / ``views`` / ``services.links`` wire that to the domain: a
+  permanent ``CourtStream`` per court, one ``CourtBroadcast`` per court per
+  DAY, and the public "Watch live" redirects that resolve a court (or a match)
+  to whatever it is actually showing right now.
 """
