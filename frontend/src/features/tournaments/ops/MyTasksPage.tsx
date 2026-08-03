@@ -383,7 +383,10 @@ export function MyTasksPage(): React.ReactElement {
 
   if (matchesQ.isLoading || stageQ.isLoading) {
     return (
-      <div className="flex w-full flex-col gap-3 px-4 py-6 sm:px-6 lg:px-8" aria-busy="true">
+      <div
+        className="mx-auto flex w-full flex-col gap-3 px-4 py-6 sm:px-6 lg:w-[90%] lg:px-0"
+        aria-busy="true"
+      >
         <div className="h-24 animate-pulse rounded-xl border border-border bg-card" />
         <div className="h-64 animate-pulse rounded-xl border border-border bg-card" />
       </div>
@@ -391,7 +394,7 @@ export function MyTasksPage(): React.ReactElement {
   }
   if (matchesQ.isError) {
     return (
-      <div className="flex w-full flex-col gap-3 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full flex-col gap-3 px-4 py-6 sm:px-6 lg:w-[90%] lg:px-0">
         <p role="alert" className="text-sm text-destructive">
           {t("Could not load your matches.")}
         </p>
@@ -576,12 +579,16 @@ export function MyTasksPage(): React.ReactElement {
   return (
     <div
       className={cn(
-        "flex w-full flex-col",
+        "mx-auto flex w-full flex-col",
         isMobile
           ? // Edge-to-edge list; the bottom bar only earns its clearance when
             // there is something to filter.
             cn("px-0 pt-3", mine.length > 0 ? "pb-24" : "pb-6")
-          : "px-4 py-6 sm:px-6 lg:px-8",
+          : // 90% of the shell with the gutters replacing page padding — the
+            // same measure the match console uses (PRD decision 78). A member's
+            // own task list is read at the same distance as the board it came
+            // from, so it gets the same width rather than the full bleed.
+            "px-4 py-6 sm:px-6 lg:w-[90%] lg:px-0",
       )}
     >
       <div
