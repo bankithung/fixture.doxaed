@@ -352,6 +352,174 @@ class TournamentInvitationCreateView(GenericAPIView):
         )
 
 
+class TournamentBulkInvitationView(GenericAPIView):
+    """`POST /api/tournaments/{id}/invitations/bulk/` — invite a whole crew in
+    one request.
+
+    Body: ``{"invitations": [{"email": ..., "role": ...}, ...],
+    "role": "<default for rows without one>", "event_id": "<uuid>"}``.
+
+    Always ``200`` with a PER-ROW outcome — one bad address must not discard
+    the good ones (see ``services/bulk_invite``). Manager-gated (404 if the
+    tournament doesn't resolve for this user, 403 if it does but they don't
+    manage it), capped at ``INVITE_BULK_MAX`` rows so it cannot become a
+    mail-bomb vector, and idempotent on ``event_id`` (invariant 3): a replay
+    returns the original result and sends no further mail.
+
+    Mail goes out from a ``transaction.on_commit`` hook over ONE connection,
+    so SMTP never holds the write transaction open and a bounce can never
+    fail a request whose invitations are already committed.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        import uuid as _uuid
+
+        from django.conf import settings as dj_settings
+        from django.db import transaction
+
+        from apps.audit.models import ActorRole, AuditEvent
+        from apps.audit.services import emit_audit
+        from apps.organizations.services.invitation import send_invitation_emails
+        from apps.tournaments.services.bulk_invite import bulk_invite, normalize_rows
+
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        # House pattern, same as the single-invite view: 404 when the
+        # tournament doesn't resolve for this user (no existence leak), 403
+        # when it does but they aren't a manager.
+        if not can_manage_tournament(request.user, tournament):
+            raise PermissionDenied("not_tournament_manager")
+
+        raw_rows = request.data.get("invitations")
+        if not isinstance(raw_rows, (list, tuple)) or len(raw_rows) == 0:
+            raise DRFValidationError({"detail": "invitations_required"})
+        max_rows = getattr(dj_settings, "INVITE_BULK_MAX", 100)
+        if len(raw_rows) > max_rows:
+            # Explicit Response, not DRFValidationError: the latter stringifies
+            # every value, and the UI wants `max` as a number.
+            return Response(
+                {"detail": "too_many_invitations", "max": max_rows}, status=400
+            )
+
+        event_id = request.data.get("event_id") or None
+        if event_id is not None:
+            try:
+                event_id = _uuid.UUID(str(event_id))
+            except (ValueError, TypeError):
+                raise DRFValidationError({"detail": "invalid_event_id"}) from None
+            prior = AuditEvent.objects.filter(
+                idempotency_key=event_id, event_type="invitations_bulk_created"
+            ).first()
+            if prior is not None:  # replay (invariant 3) — no second mailing
+                payload = prior.payload_after or {}
+                return Response(
+                    {
+                        "results": payload.get("results", []),
+                        "summary": payload.get("summary", {}),
+                        "replayed": True,
+                    }
+                )
+
+        rows = normalize_rows(raw_rows, default_role=request.data.get("role"))
+        outcome = bulk_invite(
+            tournament=tournament,
+            rows=rows,
+            invited_by=request.user,
+            request=request,
+        )
+
+        emit_audit(
+            actor_user=request.user,
+            actor_role=ActorRole.ADMIN,
+            event_type="invitations_bulk_created",
+            target_type="tournament",
+            target_id=tournament.id,
+            organization_id=tournament.organization_id,
+            tournament_id=tournament.id,
+            idempotency_key=event_id,
+            payload_after={
+                "results": outcome.results,
+                "summary": outcome.summary,
+            },
+        )
+
+        # Deliver after commit: the rows are safe, the response body is already
+        # decided, and a slow/failing SMTP can no longer roll anything back.
+        pairs = list(outcome.pending_mail)
+        if pairs:
+            transaction.on_commit(lambda: send_invitation_emails(pairs))
+
+        return Response(
+            {
+                "results": outcome.results,
+                "summary": outcome.summary,
+                "replayed": False,
+            }
+        )
+
+
+class TournamentInvitationResendView(GenericAPIView):
+    """`POST /api/tournaments/{id}/invitations/{invitation_id}/resend/`.
+
+    Mints a FRESH token, re-stamps the 7-day expiry and mails it again —
+    resending the stale one would not help the usual case (an invite that
+    aged out). Manager-gated, pending-only, rate-limited per invitation
+    (``INVITE_RESEND_COOLDOWN_SECONDS``), audited as ``member_invite_resent``.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id, invitation_id):
+        from apps.organizations.models import AdminInvitation
+        from apps.organizations.services.invitation import (
+            ResendTooSoon,
+            resend_invitation,
+        )
+
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        if not can_manage_tournament(request.user, tournament):
+            raise PermissionDenied("not_tournament_manager")
+
+        # Scoped to THIS tournament: an invitation id from anywhere else 404s.
+        invitation = get_object_or_404(
+            AdminInvitation.objects.select_related("organization", "tournament"),
+            id=invitation_id,
+            tournament=tournament,
+        )
+
+        try:
+            invitation, delivered = resend_invitation(
+                invitation=invitation, resent_by=request.user, request=request
+            )
+        except ResendTooSoon as exc:
+            return Response(
+                {
+                    "detail": "resend_too_soon",
+                    "retry_after_seconds": exc.retry_after_seconds,
+                },
+                status=429,
+            )
+        except DjangoValidationError as exc:
+            raise DRFValidationError(
+                {
+                    "detail": "invitation_not_pending",
+                    "message": "; ".join(getattr(exc, "messages", None) or [str(exc)]),
+                }
+            ) from None
+
+        return Response(
+            {
+                "id": str(invitation.id),
+                "email": invitation.email,
+                "role": invitation.role,
+                "status": invitation.status,
+                "expires_at": invitation.expires_at.isoformat(),
+                "email_sent": delivered,
+            }
+        )
+
+
 def _scoring_defaults(tournament) -> dict:
     """Per-sport scoring baseline (per-tournament sport override → researched
     profile) so the format board can show what each game INHERITS before a
@@ -927,9 +1095,11 @@ class BulkAssignCrewView(GenericAPIView):
     official to EVERY match in a scope (a court, a competition category/leaf, or
     a sport) in one action. Body `{scope, key, day?, role, user_id,
     only_unassigned?, event_id?}`. Loops the audited single-match services, so
-    every per-match guard fires. Gate: `scorer` role needs a tournament manager;
-    an official role needs `match.assign_officials`. Idempotent on `event_id`
-    (invariant 3); one `crew_bulk_assigned` audit event for the batch."""
+    every per-match guard fires. Gate: `match.assign_officials` for EVERY crew
+    role, scorer included (owner decision 2026-08-03 — staffing a match is the
+    game coordinator's job and the catalog always said so). Idempotent on
+    `event_id` (invariant 3); one `crew_bulk_assigned` audit event for the
+    batch."""
 
     permission_classes = [IsAuthenticated]
 
@@ -961,12 +1131,12 @@ class BulkAssignCrewView(GenericAPIView):
             raise DRFValidationError({"detail": "invalid_role"})
         key = str(request.data.get("key") or "")
 
-        # Gate per role — a scorer seat is manager-only; officials ride the
-        # assign_officials module (co-organizer / game-coordinator).
-        if role == "scorer":
-            if not can_manage_tournament(request.user, tournament):
-                raise PermissionDenied("not_tournament_manager")
-        elif not can_access_module(
+        # One gate for the whole crew board (owner decision 2026-08-03): the
+        # scorer seat used to be manager-only while the catalog advertised
+        # `match.assign_officials` as covering scorers — a game coordinator
+        # holding the module could not do the job it names. Now both ride the
+        # module (managers still pass through can_access_module's escape hatch).
+        if not can_access_module(
             request.user, tournament, "match.assign_officials"
         ):
             raise PermissionDenied("not_allowed_to_assign_officials")

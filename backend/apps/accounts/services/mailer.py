@@ -25,12 +25,17 @@ def send_branded_email(
     context: Mapping[str, Any],
     reply_to: list[str] | None = None,
     fail_silently: bool = True,
+    connection: Any | None = None,
 ) -> bool:
     """Render ``emails/<template>.{html,txt}`` and send as multipart.
 
     Returns True on success. When ``fail_silently`` (the default for the
     user-facing auth flows, which must never break on a mail hiccup), a send
     failure is logged and swallowed.
+
+    ``connection`` lets a batch caller (e.g. bulk invitations) reuse ONE open
+    SMTP connection for many messages instead of paying a fresh TCP+TLS
+    handshake per recipient. Omit it and Django's default connection is used.
     """
     ctx = {"frontend_base_url": settings.FRONTEND_BASE_URL, **dict(context)}
     try:
@@ -38,7 +43,11 @@ def send_branded_email(
         html_body = render_to_string(f"emails/{template}.html", ctx)
         recipients = [to] if isinstance(to, str) else list(to)
         msg = EmailMultiAlternatives(
-            subject=subject, body=text_body, to=recipients, reply_to=reply_to
+            subject=subject,
+            body=text_body,
+            to=recipients,
+            reply_to=reply_to,
+            connection=connection,
         )
         msg.attach_alternative(html_body, "text/html")
         msg.send(fail_silently=False)

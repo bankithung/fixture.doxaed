@@ -15,6 +15,8 @@ from apps.fixtures.views import (
     ShiftFixturesDayView,
     SwapFixtureSlotsView,
     SwissNextRoundView,
+    TournamentCourtDetailView,
+    TournamentCourtsView,
     TournamentDrawConfigView,
     TournamentFixtureReadinessView,
     TournamentFixturesView,
@@ -51,6 +53,10 @@ from apps.permissions.views import (
     TournamentGrantView,
     TournamentPermissionMatrixView,
 )
+from apps.streaming.views import (
+    TournamentCourtStreamDetailView,
+    TournamentCourtStreamsView,
+)
 from apps.teams.views import (
     InstitutionDetailView,
     InstitutionEditLinkView,
@@ -67,9 +73,11 @@ from apps.tournaments.views import (
     BulkAssignCrewView,
     ConstraintTypesView,
     TournamentAuditView,
+    TournamentBulkInvitationView,
     TournamentCompleteView,
     TournamentDetailView,
     TournamentInvitationCreateView,
+    TournamentInvitationResendView,
     TournamentListCreateView,
     TournamentMemberDetailView,
     TournamentMembersView,
@@ -122,6 +130,16 @@ urlpatterns = [
         "<uuid:tournament_id>/invitations/",
         TournamentInvitationCreateView.as_view(),
         name="tournament-invitation-create",
+    ),
+    path(
+        "<uuid:tournament_id>/invitations/bulk/",
+        TournamentBulkInvitationView.as_view(),
+        name="tournament-invitation-bulk",
+    ),
+    path(
+        "<uuid:tournament_id>/invitations/<uuid:invitation_id>/resend/",
+        TournamentInvitationResendView.as_view(),
+        name="tournament-invitation-resend",
     ),
     path(
         "<uuid:tournament_id>/members/",
@@ -307,6 +325,28 @@ urlpatterns = [
         "<uuid:tournament_id>/venues/<uuid:venue_id>/",
         TournamentVenueDetailView.as_view(),
         name="tournament-venue-detail",
+    ),
+    path(
+        "<uuid:tournament_id>/courts/",
+        TournamentCourtsView.as_view(),
+        name="tournament-courts",
+    ),
+    path(
+        "<uuid:tournament_id>/courts/<uuid:court_id>/",
+        TournamentCourtDetailView.as_view(),
+        name="tournament-court-detail",
+    ),
+    # Per-court streaming bindings (spec 2026-08-03). Phase 1 is a pasted
+    # YouTube watch URL per court; the public "Watch live" link stays OURS.
+    path(
+        "<uuid:tournament_id>/court-streams/",
+        TournamentCourtStreamsView.as_view(),
+        name="tournament-court-streams",
+    ),
+    path(
+        "<uuid:tournament_id>/court-streams/<uuid:court_id>/",
+        TournamentCourtStreamDetailView.as_view(),
+        name="tournament-court-stream-detail",
     ),
     path(
         "<uuid:tournament_id>/institutions/",

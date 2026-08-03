@@ -15,7 +15,9 @@ is importable.
 """
 from __future__ import annotations
 
+import datetime as _dt
 import hashlib
+import logging
 import secrets
 import uuid as _uuid
 from collections.abc import Sequence
@@ -36,6 +38,8 @@ from apps.organizations.models import (
     OrganizationMembership,
     OrgStatus,
 )
+
+logger = logging.getLogger(__name__)
 
 # Role tier order for picking highest-tier role when a list of roles is
 # given. Frontend sends an array; v1 backend stores one role per
@@ -102,6 +106,76 @@ def _pick_highest_role(roles: Sequence[str]) -> str:
     return max(roles, key=lambda r: _ROLE_RANK.get(r, -1))
 
 
+def send_invitation_email(
+    inv: AdminInvitation, plaintext: str, *, connection=None
+) -> bool:
+    """Send ONE invitation email (branded template; console backend in dev).
+
+    Never raises — a mail hiccup must not undo an invitation that is already
+    in the database. ``connection`` lets a batch caller reuse a single open
+    SMTP connection across many recipients.
+    """
+    from apps.accounts.services.mailer import send_branded_email
+
+    org = inv.organization
+    return send_branded_email(
+        subject=f"You've been invited to {org.name}",
+        to=inv.email,
+        template="invitation",
+        context={
+            "org_name": org.name,
+            "tournament_name": inv.tournament.name if inv.tournament_id else "",
+            "role_label": inv.role.replace("_", " "),
+            "accept_url": f"{settings.FRONTEND_BASE_URL}/accept?token={plaintext}",
+            "token": plaintext,
+            "expires_at": inv.expires_at,
+        },
+        fail_silently=True,
+        connection=connection,
+    )
+
+
+def send_invitation_emails(pairs: Sequence[tuple[AdminInvitation, str]]) -> int:
+    """Send a batch of invitation emails over ONE mail connection.
+
+    Returns the number delivered. Never raises: this is designed to be run
+    from a ``transaction.on_commit`` hook, where the rows are already
+    committed and the HTTP response body is already decided — an exception
+    there would 500 a request whose writes have landed.
+
+    THIS IS THE ONE CALL SITE to hand to a worker/thread if the batch cap
+    (``settings.INVITE_BULK_MAX``) ever needs to rise. Sending is inline on
+    the request thread, so the cap is what keeps a full batch inside the SPA
+    client's abort timeout; nothing else about the flow assumes it is
+    synchronous, because delivery already happens after commit.
+    """
+    if not pairs:
+        return 0
+    from django.core.mail import get_connection
+
+    sent = 0
+    connection = None
+    try:
+        connection = get_connection(fail_silently=True)
+        connection.open()
+    except Exception:  # pragma: no cover - backend-specific
+        connection = None
+    try:
+        for inv, plaintext in pairs:
+            try:
+                if send_invitation_email(inv, plaintext, connection=connection):
+                    sent += 1
+            except Exception:  # pragma: no cover - send_* already swallows
+                logger.exception("Bulk invitation email failed for %s", inv.email)
+    finally:
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:  # pragma: no cover - closing must never raise
+                logger.debug("Closing the bulk-invite mail connection failed.")
+    return sent
+
+
 def create_invitation(
     *,
     org: Organization,
@@ -112,6 +186,7 @@ def create_invitation(
     request: HttpRequest | None = None,
     event_id: str | _uuid.UUID | None = None,
     tournament=None,
+    send_email: bool = True,
 ) -> tuple[AdminInvitation, str]:
     """Create an invitation row + return (invitation, plaintext_token).
 
@@ -126,6 +201,11 @@ def create_invitation(
     given, it's forwarded to the audit row; replays with the same
     event_id return the existing invitation rather than creating a
     duplicate.
+
+    ``send_email=False`` creates the row and returns the plaintext token
+    WITHOUT mailing it — for batch callers that want to send every message
+    outside the write transaction (see ``send_invitation_emails``). The
+    caller then owns delivery; forget it and the invitee never hears.
     """
     email = (email or "").strip().lower()
     if not email:
@@ -221,22 +301,8 @@ def create_invitation(
             idempotency_key=idempotency_key,
         )
         # Send token to the invitee (branded template; console backend in dev).
-        from apps.accounts.services.mailer import send_branded_email
-
-        send_branded_email(
-            subject=f"You've been invited to {org.name}",
-            to=email,
-            template="invitation",
-            context={
-                "org_name": org.name,
-                "tournament_name": tournament.name if tournament else "",
-                "role_label": effective_role.replace("_", " "),
-                "accept_url": f"{settings.FRONTEND_BASE_URL}/accept?token={plaintext}",
-                "token": plaintext,
-                "expires_at": inv.expires_at,
-            },
-            fail_silently=True,
-        )
+        if send_email:
+            send_invitation_email(inv, plaintext)
 
     return inv, plaintext
 
@@ -547,6 +613,107 @@ def revoke_invitation(
             request=request,
         )
     return invitation
+
+
+class ResendTooSoon(Exception):
+    """Raised when an invitation was (re)sent too recently to send again.
+
+    Carries ``retry_after_seconds`` so the view can tell the organiser
+    exactly how long to wait instead of a bare refusal.
+    """
+
+    def __init__(self, retry_after_seconds: int) -> None:
+        self.retry_after_seconds = max(1, int(retry_after_seconds))
+        super().__init__(f"Try again in {self.retry_after_seconds}s.")
+
+
+def _last_invitation_send_at(invitation: AdminInvitation):
+    """When this invitation was last mailed, per the audit log.
+
+    The audit log is the system of record here (invariant 5, append-only), so
+    the rate limit needs no extra column and survives a process restart —
+    unlike a cache-backed limiter, which would be per-worker.
+    """
+    from apps.audit.models import AuditEvent
+
+    row = (
+        AuditEvent.objects.filter(
+            target_type="admin_invitation",
+            target_id=invitation.id,
+            event_type__in=("member_invite_sent", "member_invite_resent"),
+        )
+        .order_by("-created_at")
+        .values_list("created_at", flat=True)
+        .first()
+    )
+    return row
+
+
+def resend_invitation(
+    *,
+    invitation: AdminInvitation,
+    resent_by,
+    request: HttpRequest | None = None,
+    cooldown_seconds: int | None = None,
+) -> tuple[AdminInvitation, bool]:
+    """Mint a FRESH token for a pending invitation, re-stamp its expiry and
+    email it again. Returns ``(invitation, email_delivered)``.
+
+    The old token stops working immediately (the row stores only one hash) —
+    resending a stale token would be pointless for the common case, which is
+    an invite that has already aged out.
+
+    Raises:
+      - ``ValidationError`` if the invitation is not PENDING.
+      - ``ResendTooSoon`` if it was mailed within the cooldown window.
+    """
+    if invitation.status != InviteStatus.PENDING:
+        raise ValidationError(
+            f"Cannot resend an invitation in status '{invitation.status}'."
+        )
+
+    window = (
+        cooldown_seconds
+        if cooldown_seconds is not None
+        else getattr(settings, "INVITE_RESEND_COOLDOWN_SECONDS", 300)
+    )
+    if window > 0:
+        last = _last_invitation_send_at(invitation)
+        if last is not None:
+            elapsed = (timezone.now() - last).total_seconds()
+            if elapsed < window:
+                raise ResendTooSoon(window - elapsed)
+
+    plaintext = _generate_token()
+    ttl_days = getattr(settings, "INVITE_TOKEN_TTL_DAYS", 7)
+
+    with transaction.atomic():
+        before = {"expires_at": invitation.expires_at.isoformat()}
+        invitation.token_hash = _hash_token(plaintext)
+        invitation.expires_at = timezone.now() + _dt.timedelta(days=ttl_days)
+        invitation.save(update_fields=["token_hash", "expires_at"])
+
+        emit_audit(
+            actor_user=resent_by,
+            actor_role=ActorRole.ADMIN,
+            event_type="member_invite_resent",
+            target_type="admin_invitation",
+            target_id=invitation.id,
+            payload_before=before,
+            payload_after={
+                "email": invitation.email,
+                "role": invitation.role,
+                "expires_at": invitation.expires_at.isoformat(),
+            },
+            organization_id=invitation.organization_id,
+            tournament_id=invitation.tournament_id,
+            request=request,
+        )
+
+    # One recipient, outside the write: a mail hiccup must not undo the
+    # fresh token (which is already the only valid one).
+    delivered = send_invitation_email(invitation, plaintext)
+    return invitation, delivered
 
 
 def get_invitation_by_token(token_plaintext: str) -> AdminInvitation | None:
