@@ -323,17 +323,20 @@ def test_resolver_is_streaming_needs_more_than_a_url():
     assert r2.is_streaming(courts[0].id) is True
 
 
-def test_resolver_costs_two_queries_regardless_of_court_count(
+def test_resolver_costs_three_queries_regardless_of_court_count(
     django_assert_num_queries,
 ):
+    """Streams, broadcasts, manual scoped links — three, whatever the court
+    count. The links query covers all three manual scopes at once (it was 2
+    before those existed); if it ever splits per scope, this is what fails."""
     _admin, t, courts = make_tournament(
         court_names=("Hall · T1", "Hall · T2", "Hall · T3", "Hall · T4")
     )
     for c in courts:
         make_stream(c)
         make_broadcast(c, local_day(tz=tz_of(t)))
-    with django_assert_num_queries(2):
-        r = CourtLinkResolver(courts, tz=tz_of(t))
+    with django_assert_num_queries(3):
+        r = CourtLinkResolver(courts, tz=tz_of(t), tournament=t)
     with django_assert_num_queries(0):
         assert all(r.watch_url(c.id) for c in courts)
 

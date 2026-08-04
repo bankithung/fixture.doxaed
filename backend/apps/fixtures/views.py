@@ -1229,15 +1229,20 @@ class PublicTournamentScheduleView(GenericAPIView):
         # EVERY SPECTATOR, so the watch links must cost a bounded number of
         # queries, never one per match: resolve the tournament's courts once
         # (1 query) and hand them to a CourtLinkResolver, which loads every
-        # stream row and broadcast in 2 more. Do not move link resolution
-        # inside the loop.
+        # stream row, broadcast and manual scoped link in 3 more. Do not move
+        # link resolution inside the loop.
+        #
+        # `tournament=t` is load-bearing, not decoration: the match- and
+        # category-scoped levels of the precedence rule are keyed by tournament,
+        # so without it every row silently falls through its own link to the
+        # court default (see apps.streaming.services.links).
         court_ids = {m.court_id for m in rows if m.court_id}
         courts = (
             list(Court.objects.filter(id__in=court_ids, deleted_at__isnull=True))
             if court_ids
             else []
         )
-        links = CourtLinkResolver(courts, tz=tz)
+        links = CourtLinkResolver(courts, tz=tz, tournament=t)
         for m in rows:
             if m.leaf_key and m.leaf_key not in labels:
                 labels[m.leaf_key] = leaf_label(t.sports, m.leaf_key)

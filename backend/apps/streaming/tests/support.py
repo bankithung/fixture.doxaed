@@ -17,11 +17,18 @@ from rest_framework.test import APIClient
 from apps.fixtures.models import Venue
 from apps.fixtures.services.courts import resolve_court
 from apps.matches.models import Match, MatchStatus
-from apps.streaming.models import BroadcastLifecycle, CourtBroadcast, CourtStream
+from apps.streaming.models import (
+    BroadcastLifecycle,
+    CourtBroadcast,
+    CourtStream,
+    StreamLink,
+    StreamLinkScope,
+)
 from apps.teams.models import Team
 from apps.teams.services.registration import register_school
 from apps.tournaments.models import TournamentStatus
 from apps.tournaments.services.create import create_tournament
+from apps.tournaments.services.sports import normalize_sports
 
 User = get_user_model()
 
@@ -32,6 +39,19 @@ WATCH_URL = f"https://www.youtube.com/watch?v={VIDEO_ID}"
 SHORT_URL = f"https://youtu.be/{VIDEO_ID}"
 #: The URL an organiser reaches for first, and the one that cannot work.
 CHANNEL_LIVE_URL = "https://www.youtube.com/@nagalandschoolscup/live"
+
+#: One distinguishable video per PRECEDENCE LEVEL, so a test that asserts which
+#: level won reads as the answer itself rather than as "the second constant".
+#: Level 3 (broadcast) uses VIDEO_ID and level 5 (CourtStream) OTHER_VIDEO_ID.
+MATCH_LINK_URL = "https://www.youtube.com/watch?v=M1atchLink1"
+COURT_DAY_LINK_URL = "https://www.youtube.com/watch?v=C0urtDayLnk"
+CATEGORY_LINK_URL = "https://www.youtube.com/watch?v=Categ0ryLnk"
+BROADCAST_URL = WATCH_URL
+COURT_STREAM_URL = f"https://www.youtube.com/watch?v={OTHER_VIDEO_ID}"
+
+#: Leaf keys minted by ``with_categories`` below (sport key + node key).
+FOOTBALL_U15 = "football.u15"
+FOOTBALL_U17 = "football.u17"
 
 
 def verified(prefix: str = "stream") -> User:
@@ -82,6 +102,21 @@ def tz_of(t) -> ZoneInfo:
     return ZoneInfo(t.time_zone)
 
 
+def with_categories(t) -> tuple[str, str]:
+    """Give ``t`` a two-leaf category tree and return its leaf keys.
+
+    The category scope is keyed on ``Match.leaf_key`` — the competition leaf
+    minted from ``Tournament.sports`` — so a category test needs a tournament
+    that actually runs those competitions (the manager API refuses a leaf the
+    tournament does not have).
+    """
+    t.sports = normalize_sports([
+        {"name": "Football", "nodes": [{"name": "U15"}, {"name": "U17"}]},
+    ])
+    t.save(update_fields=["sports"])
+    return FOOTBALL_U15, FOOTBALL_U17
+
+
 def make_match(
     t,
     court,
@@ -91,6 +126,7 @@ def make_match(
     scheduled_at: datetime | None = None,
     started_at: datetime | None = None,
     teams: tuple | None = None,
+    leaf_key: str = "",
 ) -> Match:
     """One match pinned to ``court`` — both the FK and the denormalised
     ``venue`` string, exactly as the four real writers keep them."""
@@ -111,6 +147,7 @@ def make_match(
         started_at=started_at,
         court=court,
         venue=court.name if court else "",
+        leaf_key=leaf_key,
     )
 
 
@@ -139,4 +176,47 @@ def make_broadcast(
         yt_video_id=video_id,
         actual_start_utc=actual_start_utc,
         lifecycle=lifecycle,
+    )
+
+
+# ------------------------------------------------------ scoped manual links
+def make_match_link(match, *, watch_url: str = MATCH_LINK_URL, enabled: bool = True):
+    """Precedence level 1."""
+    return StreamLink.objects.create(
+        scope=StreamLinkScope.MATCH,
+        organization_id=match.organization_id,
+        match=match,
+        watch_url=watch_url,
+        enabled=enabled,
+    )
+
+
+def make_court_day_link(
+    court, day, *, watch_url: str = COURT_DAY_LINK_URL, enabled: bool = True
+):
+    """Precedence level 2. ``day`` is a LOCAL tournament day — always derive it
+    from the match under test (``local_day(kickoff, tz)``), never from
+    ``local_day()``: a link filed under "today" only lines up with a fixed-date
+    match on one calendar day of the year."""
+    return StreamLink.objects.create(
+        scope=StreamLinkScope.COURT_DAY,
+        organization_id=court.organization_id,
+        court=court,
+        day=day,
+        watch_url=watch_url,
+        enabled=enabled,
+    )
+
+
+def make_category_link(
+    t, leaf_key: str, *, watch_url: str = CATEGORY_LINK_URL, enabled: bool = True
+):
+    """Precedence level 4."""
+    return StreamLink.objects.create(
+        scope=StreamLinkScope.CATEGORY,
+        organization_id=t.organization_id,
+        tournament=t,
+        leaf_key=leaf_key,
+        watch_url=watch_url,
+        enabled=enabled,
     )

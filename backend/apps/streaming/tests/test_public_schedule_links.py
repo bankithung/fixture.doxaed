@@ -34,11 +34,16 @@ from apps.streaming.tests.support import (
 
 pytestmark = pytest.mark.django_db
 
-#: Tournament lookup, matches, courts, court streams, court broadcasts — plus
-#: the savepoint pair ATOMIC_REQUESTS opens inside the test's own transaction.
-#: The NUMBER matters less than the fact that it does not move with the match
-#: count (see ``test_query_count_does_not_grow_with_the_match_count``).
-SCHEDULE_QUERIES = 7
+#: Tournament lookup, matches, courts, court streams, court broadcasts, the
+#: manual scoped links — plus the savepoint pair ATOMIC_REQUESTS opens inside
+#: the test's own transaction. The NUMBER matters less than the fact that it
+#: does not move with the match count (see
+#: ``test_query_count_does_not_grow_with_the_match_count``).
+#:
+#: Went 7 → 8 when the scoped stream links landed (2026-08-04): all three manual
+#: scopes — match, court+day, category — are preloaded in ONE ORed query, so the
+#: whole precedence rule costs one more query for the payload and none per row.
+SCHEDULE_QUERIES = 8
 
 
 def _schedule(t):
