@@ -55,12 +55,18 @@ def _reset_throttle():
 def test_each_match_row_carries_court_id_and_watch_url():
     _admin, t, courts = make_tournament()
     tz = tz_of(t)
-    make_broadcast(courts[0], local_day(tz=tz), video_id=VIDEO_ID)
+    # The broadcast day comes from the MATCH, never from ``local_day()``: a row
+    # resolves against the day of its own ``started_at``/``scheduled_at``, so a
+    # broadcast filed under "today" plus a match pinned to a fixed date only line
+    # up on that one calendar day — the test passed on 2026-08-03 and asserted
+    # ``watch_url is None`` against ``WATCH_URL`` on every other.
+    kickoff = datetime(2026, 8, 3, 9, 0, tzinfo=tz)
+    make_broadcast(courts[0], local_day(kickoff, tz), video_id=VIDEO_ID)
     make_stream(courts[1], watch_url=SHORT_URL)
-    m0 = make_match(t, courts[0], match_no=1, scheduled_at=datetime(
-        2026, 8, 3, 9, 0, tzinfo=tz))
-    m1 = make_match(t, courts[1], match_no=2, scheduled_at=datetime(
-        2026, 8, 3, 10, 0, tzinfo=tz))
+    m0 = make_match(t, courts[0], match_no=1, scheduled_at=kickoff)
+    m1 = make_match(
+        t, courts[1], match_no=2, scheduled_at=kickoff + timedelta(hours=1)
+    )
 
     body = _schedule(t).json()
     rows = {r["id"]: r for r in body["matches"]}
@@ -155,7 +161,13 @@ def test_a_second_days_broadcast_does_not_bleed_into_day_one_rows():
         actual_start_utc=day1 - timedelta(minutes=10),
         lifecycle=BroadcastLifecycle.COMPLETE,
     )
-    make_broadcast(courts[0], local_day(tz=tz), video_id=VIDEO_ID)
+    # Day TWO's broadcast, counted off day one rather than off ``local_day()``:
+    # filed under "today" it would land on the same (court, day) key as day one's
+    # own row whenever the suite runs on 2026-08-01, and being the newer row it
+    # would win — the exact bleed this test exists to catch.
+    make_broadcast(
+        courts[0], local_day(day1 + timedelta(days=1), tz), video_id=VIDEO_ID
+    )
     m = make_match(
         t,
         courts[0],
@@ -172,15 +184,20 @@ def test_a_second_days_broadcast_does_not_bleed_into_day_one_rows():
 # ------------------------------------------------------------- performance
 def _populate(t, courts, n: int):
     tz = tz_of(t)
+    # Same rule as above: the broadcasts belong to the day the matches are
+    # played on, so the resolver takes the broadcast branch every day of the
+    # year and not just on 2026-08-03 (under "today" it fell through to the
+    # pasted stream URL, quietly measuring a cheaper path than production's).
+    first = datetime(2026, 8, 3, 8, 0, tzinfo=tz)
     for c in courts:
         make_stream(c, watch_url=WATCH_URL)
-        make_broadcast(c, local_day(tz=tz), video_id=VIDEO_ID)
+        make_broadcast(c, local_day(first, tz), video_id=VIDEO_ID)
     for i in range(n):
         make_match(
             t,
             courts[i % len(courts)],
             match_no=i + 1,
-            scheduled_at=datetime(2026, 8, 3, 8, 0, tzinfo=tz) + timedelta(minutes=i),
+            scheduled_at=first + timedelta(minutes=i),
         )
 
 

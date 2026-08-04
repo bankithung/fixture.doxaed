@@ -252,7 +252,13 @@ def test_finished_match_links_into_ITS_OWN_day_not_today():
         actual_start=day1 - timedelta(minutes=20),
         video_id=OTHER_VIDEO_ID,
     )
-    make_broadcast(courts[0], local_day(tz=tz), video_id=VIDEO_ID)  # today's court
+    # A LATER day's broadcast for the same court, counted off day one instead of
+    # off ``local_day()``: filed under "today" it shares day one's (court, day)
+    # key whenever the suite runs on 2026-08-01, and ``_broadcast_for`` takes the
+    # newest row — so on that one date the test would assert the bug it forbids.
+    make_broadcast(
+        courts[0], local_day(day1 + timedelta(days=2), tz), video_id=VIDEO_ID
+    )
     url = watch_url_for_match(m, tz=tz)
     assert url == f"https://www.youtube.com/watch?v={OTHER_VIDEO_ID}&t={1200 - 15}"
 
