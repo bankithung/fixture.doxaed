@@ -56,6 +56,8 @@ from apps.permissions.views import (
 from apps.streaming.views import (
     TournamentCourtStreamDetailView,
     TournamentCourtStreamsView,
+    TournamentStreamLinkDetailView,
+    TournamentStreamLinksView,
 )
 from apps.teams.views import (
     InstitutionDetailView,
@@ -347,6 +349,19 @@ urlpatterns = [
         "<uuid:tournament_id>/court-streams/<uuid:court_id>/",
         TournamentCourtStreamDetailView.as_view(),
         name="tournament-court-stream-detail",
+    ),
+    # Hand-pasted watch links at whichever scope the organiser works at — one
+    # match, one court for one day, one competition category. Most specific
+    # wins; the full precedence rule lives in apps.streaming.services.links.
+    path(
+        "<uuid:tournament_id>/stream-links/",
+        TournamentStreamLinksView.as_view(),
+        name="tournament-stream-links",
+    ),
+    path(
+        "<uuid:tournament_id>/stream-links/<uuid:link_id>/",
+        TournamentStreamLinkDetailView.as_view(),
+        name="tournament-stream-link-detail",
     ),
     path(
         "<uuid:tournament_id>/institutions/",
