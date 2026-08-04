@@ -100,9 +100,17 @@ STEP=""
 run(){                         # run <step-name> <command...>
   STEP="$1"; shift
   log ">>> $STEP"
-  if "$@" >>"$LOG" 2>&1; then return 0; fi
-  local rc=$?
-  log "!!! FAILED ($rc) at step: $STEP"
+  # The status MUST be captured on the same line that runs the command. Reading
+  # $? after `if "$@"; then return 0; fi` reads the exit status of the *if
+  # statement* — which is 0 when the condition failed and there is no else — not
+  # the command's. That is how this helper used to log "FAILED (0)" and then
+  # `return 0`, which made every `run … || fail` guard below dead code: a blocked
+  # migrate carried on to the backend restart with an unmigrated schema.
+  local rc=0
+  "$@" >>"$LOG" 2>&1 || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    log "!!! FAILED ($rc) at step: $STEP"
+  fi
   return "$rc"
 }
 fail(){ log "================ DEPLOY FAILED (step: $STEP) ================"; exit 1; }
