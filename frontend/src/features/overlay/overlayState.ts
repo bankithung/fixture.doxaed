@@ -664,6 +664,30 @@ export function parseScale(raw: string | null): number {
   return Math.min(4, Math.max(0.4, n));
 }
 
+/** `?side=left|right` — the anchor corner the operator asked for, or null for
+ * "let the sport decide". Anything unrecognised is null, never an error: this
+ * is a URL somebody may have retyped. */
+export function parseSide(raw: string | null): "left" | "right" | null {
+  return raw === "left" || raw === "right" ? raw : null;
+}
+
+/** `?server=away` — which side opened the match, for the rules-derived serve
+ * indicator. Home (0) is the default because the board cannot know the toss. */
+export function parseFirstServer(raw: string | null): 0 | 1 {
+  return raw === "away" ? 1 : 0;
+}
+
+/** Where the panel sits. Football's bug is centred unless the operator says
+ * otherwise; a target board defaults to the top-left corner. Shared by every
+ * broadcast surface so a court looks the same however it is being filmed. */
+export function boardAnchor(
+  side: "left" | "right" | null,
+  family: "timed" | "target",
+): "left" | "right" | "center" {
+  if (side) return side;
+  return family === "timed" ? "center" : "left";
+}
+
 // ---------------------------------------------------------------------------
 // Cold-start cache
 // ---------------------------------------------------------------------------

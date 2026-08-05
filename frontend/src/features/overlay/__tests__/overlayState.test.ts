@@ -5,11 +5,14 @@ import {
   flagFor,
   gameView,
   isBetweenGames,
+  boardAnchor,
   matchesOnCourt,
   maxScoreDigits,
   nextRallyServe,
   panelGeometry,
+  parseFirstServer,
   parseScale,
+  parseSide,
   pickCourtMatches,
   selectOverlayState,
   serveView,
@@ -458,5 +461,29 @@ describe("display helpers", () => {
     expect(parseScale("-3")).toBe(1);
     expect(parseScale("900")).toBe(4);
     expect(parseScale("0.01")).toBe(0.4);
+  });
+
+  it("reads ?side and ?server the same way for every broadcast surface", () => {
+    // Shared by the OBS overlay and the phone camera page, so a court's URL
+    // means the same thing whichever route is filming it.
+    expect(parseSide("left")).toBe("left");
+    expect(parseSide("right")).toBe("right");
+    expect(parseSide("RIGHT")).toBeNull();
+    expect(parseSide(null)).toBeNull();
+    expect(parseSide("centre")).toBeNull();
+
+    expect(parseFirstServer("away")).toBe(1);
+    expect(parseFirstServer("home")).toBe(0);
+    // The board cannot know the toss, so home is the default.
+    expect(parseFirstServer(null)).toBe(0);
+    expect(parseFirstServer("nonsense")).toBe(0);
+  });
+
+  it("anchors the panel by sport, unless the operator said where", () => {
+    expect(boardAnchor(null, "timed")).toBe("center");
+    expect(boardAnchor(null, "target")).toBe("left");
+    // An explicit ?side always wins over the sport's default.
+    expect(boardAnchor("right", "timed")).toBe("right");
+    expect(boardAnchor("left", "target")).toBe("left");
   });
 });
