@@ -158,9 +158,14 @@ function mount() {
   );
 }
 
-/** The first court opens by itself; this opens the second one. */
+/** The first court is chosen by itself; this switches to the second one. */
 async function openCourtB(): Promise<void> {
   await userEvent.click(await screen.findByTestId(`setup-toggle-${COURT_B}`));
+}
+
+/** Switch the chosen court to the OBS route. */
+async function openObs(): Promise<void> {
+  await userEvent.click(await screen.findByTestId("setup-method-obs"));
 }
 
 beforeEach(() => {
@@ -173,29 +178,47 @@ beforeEach(() => {
 });
 
 describe("StreamSetupPage", () => {
-  it("renders one setup block per court, and says which already has a link", async () => {
+  it("offers every court as a chip and sets up exactly the chosen one", async () => {
     mount();
 
     expect(await screen.findByTestId(`setup-court-${COURT_A}`)).toBeInTheDocument();
     expect(screen.getAllByTestId(/^setup-court-/)).toHaveLength(2);
 
-    // Court B is already live for the day; Court A has nothing anywhere. A
-    // walk-up has to be able to see what still needs doing.
-    expect(screen.getByTestId(`setup-source-${COURT_B}`)).toHaveTextContent(
-      "This day",
-    );
-    expect(screen.getByTestId(`setup-source-${COURT_A}`)).toHaveTextContent(
-      "No link",
-    );
-
-    // The first court is already open — a setup page that opens on a list of
-    // closed rows is the disclosure problem again.
+    // The first court is chosen on arrival — a setup page that opens on a list
+    // of closed rows is the disclosure problem again — and only its setup is
+    // on the page, so six courts is one court's worth of instructions.
     expect(screen.getByTestId(`setup-toggle-${COURT_A}`)).toHaveAttribute(
-      "aria-expanded",
+      "aria-pressed",
       "true",
     );
     expect(screen.getByTestId(`setup-body-${COURT_A}`)).toBeInTheDocument();
     expect(screen.queryByTestId(`setup-body-${COURT_B}`)).not.toBeInTheDocument();
+    // Court A has nothing anywhere; a walk-up has to see what still needs doing.
+    expect(screen.getByTestId(`setup-source-${COURT_A}`)).toHaveTextContent(
+      "No link",
+    );
+
+    await openCourtB();
+    expect(screen.getByTestId(`setup-body-${COURT_B}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`setup-body-${COURT_A}`)).not.toBeInTheDocument();
+    // Court B is already live for the day.
+    expect(screen.getByTestId(`setup-source-${COURT_B}`)).toHaveTextContent(
+      "This day",
+    );
+  });
+
+  it("shows one route at a time: the phone leads, OBS is a tab away", async () => {
+    mount();
+
+    // The phone needs no equipment, so it is what the page opens on.
+    expect(await screen.findByTestId(`setup-phone-${COURT_A}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`setup-obs-${COURT_A}`)).not.toBeInTheDocument();
+
+    await openObs();
+    expect(screen.getByTestId(`setup-obs-${COURT_A}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`setup-phone-${COURT_A}`)).not.toBeInTheDocument();
+    // The paste box belongs to both routes — it is how either one finishes.
+    expect(screen.getByTestId(`setup-link-${COURT_A}-input`)).toBeInTheDocument();
   });
 
   it("leads with a QR code requested for THAT court, with a text alternative", async () => {
@@ -241,23 +264,23 @@ describe("StreamSetupPage", () => {
     expect(await screen.findByTestId(`camera-url-${COURT_A}`)).toHaveTextContent(
       PHONE_URL_A,
     );
-    expect(screen.getByTestId(`overlay-url-${COURT_A}`)).toHaveTextContent(
-      OBS_URL_A,
-    );
 
     await userEvent.click(screen.getByTestId(`camera-copy-${COURT_A}`));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(PHONE_URL_A));
     expect(await screen.findByText("Phone broadcast URL copied")).toBeInTheDocument();
-
-    await userEvent.click(screen.getByTestId(`overlay-copy-${COURT_A}`));
-    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(OBS_URL_A));
-
     // Named by their court, reachable by name and not by icon alone.
     expect(
       screen.getByRole("button", {
         name: "Copy the phone broadcast URL for Court2 · T3",
       }),
     ).toBeInTheDocument();
+
+    await openObs();
+    expect(screen.getByTestId(`overlay-url-${COURT_A}`)).toHaveTextContent(
+      OBS_URL_A,
+    );
+    await userEvent.click(screen.getByTestId(`overlay-copy-${COURT_A}`));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(OBS_URL_A));
     expect(
       screen.getByRole("button", { name: "Copy the OBS overlay URL for Court2 · T3" }),
     ).toBeInTheDocument();
@@ -267,18 +290,27 @@ describe("StreamSetupPage", () => {
     mount();
     const phone = await screen.findByTestId(`setup-phone-${COURT_A}`);
 
-    expect(phone).toHaveTextContent(/tap Start camera/);
+    expect(phone).toHaveTextContent(/Tap Start camera/);
     expect(phone).toHaveTextContent(/Tap Full screen/);
-    expect(phone).toHaveTextContent(/YouTube app → Create → Go live → Screen/);
-    expect(phone).toHaveTextContent(/paste it into the box below/);
-    expect(phone).toHaveTextContent(/Watch live/);
-    expect(phone).toHaveTextContent(/never touches the microphone/);
+    expect(phone).toHaveTextContent(/In YouTube: Create, Go live, Screen/);
+    expect(phone).toHaveTextContent(/Paste the YouTube link below/);
+    expect(phone).toHaveTextContent(/mic is untouched/);
   });
 
-  it("carries the OBS settings that are load-bearing, unchanged", async () => {
+  it("keeps the load-bearing OBS settings, one lookup away", async () => {
     mount();
-    const table = await screen.findByTestId(`setup-obs-settings-${COURT_A}`);
+    await openObs();
 
+    // Two tables and four warnings under every court was the wall of text the
+    // page got rebuilt to kill. They are a reference: opened, not read.
+    expect(
+      screen.queryByTestId(`setup-obs-settings-${COURT_A}`),
+    ).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByTestId(`setup-obs-settings-open-${COURT_A}`),
+    );
+
+    const table = await screen.findByTestId(`setup-obs-settings-${COURT_A}`);
     expect(within(table).getByText("1920")).toBeInTheDocument();
     expect(within(table).getByText("1080")).toBeInTheDocument();
     // The two OFFs whose defaults must not be "improved".
@@ -292,14 +324,13 @@ describe("StreamSetupPage", () => {
         name: "Shutdown source when not visible",
       }),
     ).toBeInTheDocument();
-    expect(table).toHaveTextContent(/OFF \(this is the default/);
 
-    const obs = screen.getByTestId(`setup-obs-${COURT_A}`);
-    expect(obs).toHaveTextContent(/above the camera source/);
-    expect(obs).toHaveTextContent(/throws away the overlay's live state mid-rally/);
-    expect(obs).toHaveTextContent(/Do not resize the source by dragging/);
+    const dialog = screen.getByTestId("setup-obs-dialog");
+    expect(dialog).toHaveTextContent(/above the camera source/);
+    expect(dialog).toHaveTextContent(/live state mid-rally/);
+    expect(dialog).toHaveTextContent(/Do not drag to resize/);
     expect(screen.getByTestId(`setup-obs-options-${COURT_A}`)).toHaveTextContent(
-      "?scale=0.667",
+      "0.667",
     );
   });
 
@@ -369,9 +400,9 @@ describe("StreamSetupPage", () => {
 
   it("keeps the troubleshooting notes to hand without leading with them", async () => {
     mount();
-    const toggle = await screen.findByTestId("setup-help-toggle");
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("setup-help-body")).not.toBeInTheDocument();
 
+    const toggle = await screen.findByTestId("setup-help-toggle");
     toggle.focus();
     await userEvent.keyboard("{Enter}");
     const body = screen.getByTestId("setup-help-body");

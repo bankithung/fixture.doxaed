@@ -43,6 +43,7 @@ import {
   findMatchLink,
   sourceHint,
 } from "./streamLinks";
+import { FolderTabs } from "./FolderTabs";
 import { LinkEditor, SourceChip } from "./StreamLinkEditor";
 
 const PAGE_SIZE = 20;
@@ -168,70 +169,6 @@ function LinkRow({
           {actionLabel}
         </Button>
       </div>
-    </div>
-  );
-}
-
-/** The tab strip: three scopes, each with its own size, so the page never
- * pretends a 100-row list and a 6-row list are the same thing. */
-function TabStrip({
-  tab,
-  onTab,
-  counts,
-}: {
-  tab: Tab;
-  onTab: (t: Tab) => void;
-  counts: Record<Tab, number>;
-}): React.ReactElement {
-  const defs: { key: Tab; label: string }[] = [
-    { key: "courts", label: t("Courts") },
-    { key: "categories", label: t("Competitions") },
-    { key: "matches", label: t("Matches") },
-  ];
-  return (
-    // Folder tabs: the active one is cut out of the panel below it (its bottom
-    // edge is the card, not a border), so the strip reads as three tabs on a
-    // file rather than three buttons in a row.
-    <div
-      role="tablist"
-      aria-label={t("Link scope")}
-      className="flex items-end gap-1 overflow-x-auto border-b border-border bg-muted/30 px-3 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-    >
-      {defs.map((d) => {
-        const active = d.key === tab;
-        return (
-          <button
-            key={d.key}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            data-testid={`stream-tab-${d.key}`}
-            onClick={() => onTab(d.key)}
-            className={cn(
-              "-mb-px inline-flex shrink-0 items-center gap-2 rounded-t-lg border px-3.5 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-              active
-                ? // The open file: taller, card-coloured, and its bottom edge
-                  // removed so it runs into the list below.
-                  "h-9 border-border border-b-card bg-card font-semibold text-foreground"
-                : // The ones behind it: same bookmark shape, a shade back and a
-                  // notch shorter, rising to meet the active one on hover.
-                  "h-8 border-border/60 bg-secondary/50 text-muted-foreground hover:h-9 hover:bg-card hover:text-foreground",
-            )}
-          >
-            {d.label}
-            <span
-              className={cn(
-                "inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 font-tabular text-[0.625rem] font-semibold tabular-nums",
-                active
-                  ? "bg-primary/12 text-primary"
-                  : "bg-muted text-muted-foreground",
-              )}
-            >
-              {counts[d.key]}
-            </span>
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -501,17 +438,19 @@ export function StreamLinksPage(): React.ReactElement {
           ) : null}
         </div>
 
-        <TabStrip
-          tab={tab}
-          onTab={(next) => {
+        <FolderTabs
+          ariaLabel={t("Link scope")}
+          testidPrefix="stream-tab"
+          value={tab}
+          onChange={(next) => {
             setTab(next);
             setPage(0);
           }}
-          counts={{
-            courts: courts.length,
-            categories: categories.length,
-            matches: dayMatches.length,
-          }}
+          tabs={[
+            { key: "courts", label: t("Courts"), count: courts.length },
+            { key: "categories", label: t("Competitions"), count: categories.length },
+            { key: "matches", label: t("Matches"), count: dayMatches.length },
+          ]}
         />
 
         {tab === "courts" ? (
