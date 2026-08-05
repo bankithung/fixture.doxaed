@@ -380,6 +380,27 @@ describe("StreamLinksPage", () => {
     });
   });
 
+  it("carries the OBS guide, with this tournament's own per-court overlay URLs", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    mount();
+    await openDay();
+
+    // Collapsed by default — the day's work stays at the top of the page.
+    const toggle = screen.getByTestId("overlay-guide-toggle");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(toggle);
+
+    // Built from the tournament's slug/id and the court's VENUE string, with
+    // the middle dot encoded (the overlay matches on `Match.venue`).
+    const expected = `${window.location.origin}/overlay/t/cup/t1/court/MP%20Hall%20%C2%B7%20T1`;
+    expect(screen.getByTestId(`overlay-url-${COURT_A}`)).toHaveTextContent(
+      expected,
+    );
+    await userEvent.click(screen.getByTestId(`overlay-copy-${COURT_A}`));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(expected));
+  });
+
   it("a non-manager gets the board read-only", async () => {
     vi.mocked(tournamentsApi.stage).mockResolvedValue({
       ...MANAGER,

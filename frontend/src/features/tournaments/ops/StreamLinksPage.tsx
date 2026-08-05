@@ -44,6 +44,7 @@ import {
   watchUrlWarning,
   type LinkSource,
 } from "./streamLinks";
+import { StreamOverlayGuide } from "./StreamOverlayGuide";
 
 /** What a save/toggle/clear press asks for. Every one carries its own
  * `event_id` (invariant 3). */
@@ -572,6 +573,14 @@ export function StreamLinksPage(): React.ReactElement {
   return (
     <div className="flex w-full flex-col gap-3">
       {header}
+
+      {/* How the score gets INTO the video, one disclosure above the boxes that
+          publish the video back OUT. Collapsed, so the day's work stays first. */}
+      <StreamOverlayGuide
+        slug={tournamentQ.data?.slug ?? ""}
+        tournamentId={id}
+        courts={courts}
+      />
 
       <section data-testid="stream-board" className="panel flex flex-col">
         {/* The precedence rule, in one line — an organiser has to be able to
