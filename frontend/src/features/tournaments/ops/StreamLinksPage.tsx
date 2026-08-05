@@ -4,8 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ChevronRight,
   ExternalLink,
+  HelpCircle,
   MonitorPlay,
+  Radio,
   Search,
+  X,
 } from "lucide-react";
 import {
   streamingApi,
@@ -186,10 +189,13 @@ function TabStrip({
     { key: "matches", label: t("Matches") },
   ];
   return (
+    // Folder tabs: the active one is cut out of the panel below it (its bottom
+    // edge is the card, not a border), so the strip reads as three tabs on a
+    // file rather than three buttons in a row.
     <div
       role="tablist"
       aria-label={t("Link scope")}
-      className="flex gap-1 overflow-x-auto border-b border-border px-3 py-2 [scrollbar-width:none]"
+      className="flex items-end gap-1 overflow-x-auto border-b border-border bg-muted/30 px-3 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {defs.map((d) => {
         const active = d.key === tab;
@@ -202,14 +208,25 @@ function TabStrip({
             data-testid={`stream-tab-${d.key}`}
             onClick={() => onTab(d.key)}
             className={cn(
-              "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "-mb-px inline-flex shrink-0 items-center gap-2 rounded-t-lg border px-3.5 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
               active
-                ? "bg-primary/12 text-primary"
-                : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+                ? // The open file: taller, card-coloured, and its bottom edge
+                  // removed so it runs into the list below.
+                  "h-9 border-border border-b-card bg-card font-semibold text-foreground"
+                : // The ones behind it: same bookmark shape, a shade back and a
+                  // notch shorter, rising to meet the active one on hover.
+                  "h-8 border-border/60 bg-secondary/50 text-muted-foreground hover:h-9 hover:bg-card hover:text-foreground",
             )}
           >
             {d.label}
-            <span className="font-tabular tabular-nums opacity-70">
+            <span
+              className={cn(
+                "inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 font-tabular text-[0.625rem] font-semibold tabular-nums",
+                active
+                  ? "bg-primary/12 text-primary"
+                  : "bg-muted text-muted-foreground",
+              )}
+            >
               {counts[d.key]}
             </span>
           </button>
@@ -247,6 +264,7 @@ export function StreamLinksPage(): React.ReactElement {
   const [day, setDay] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("courts");
   const [editing, setEditing] = useState<Editing>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [linkFilter, setLinkFilter] = useState<"all" | "with" | "without">("all");
   const [courtFilter, setCourtFilter] = useState("all");
@@ -353,34 +371,55 @@ export function StreamLinksPage(): React.ReactElement {
 
   const loading = courtsQ.isLoading || linksQ.isLoading || matchesQ.isLoading;
 
+  // The page's own heading lives INSIDE the panel, with everything else
+  // (owner 2026-08-05): a title and two paragraphs floating above the board
+  // were three things to scroll past before the work began. The long version
+  // of the explanation moved behind the help icon.
   const header = (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-      <h2 className="page-title">{t("Live streams")}</h2>
-      <span className="font-tabular text-xs text-muted-foreground">
-        {courts.length} {courts.length === 1 ? t("court") : t("courts")} ·{" "}
-        {links.length} {links.length === 1 ? t("link") : t("links")}
-      </span>
-      {/* The way IN to filming a court. It was a collapsed disclosure on this
-          page and the tournament owner could not find it twice — so it is a
-          primary action now, and the instructions live on a page of their own
-          that a volunteer can be sent to. */}
-      <Link
-        to={routes.tournamentStreamSetup(id)}
-        data-testid="stream-setup-link"
-        className="ml-auto inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      >
-        <MonitorPlay aria-hidden="true" className="h-4 w-4" />
-        {t("Set up a camera on a court")}
-        <ChevronRight aria-hidden="true" className="h-4 w-4" />
-      </Link>
+    <div className="flex flex-col gap-1 border-b border-border px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+        <Radio aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+        <h2 className="page-title">{t("Live streams")}</h2>
+        <span className="font-tabular text-xs text-muted-foreground">
+          {courts.length} {courts.length === 1 ? t("court") : t("courts")} ·{" "}
+          {links.length} {links.length === 1 ? t("link") : t("links")}
+        </span>
+        <button
+          type="button"
+          data-testid="stream-help"
+          aria-label={t("How live links work")}
+          onClick={() => setHelpOpen(true)}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <HelpCircle aria-hidden="true" className="h-4 w-4" />
+        </button>
+        {/* The way IN to filming a court. It was a collapsed disclosure on this
+            page and the tournament owner could not find it twice — so it is a
+            primary action now, and the instructions live on a page of their own
+            that a volunteer can be sent to. */}
+        <Link
+          to={routes.tournamentStreamSetup(id)}
+          data-testid="stream-setup-link"
+          className="ml-auto inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <MonitorPlay aria-hidden="true" className="h-4 w-4" />
+          {t("Set up a camera on a court")}
+          <ChevronRight aria-hidden="true" className="h-4 w-4" />
+        </Link>
+      </div>
+      <p data-testid="stream-setup-hint" className="text-xs text-muted-foreground">
+        {t("One YouTube link per court, per day. The most specific link wins.")}
+      </p>
     </div>
   );
 
   if (loading) {
     return (
       <div className="flex w-full flex-col gap-3">
-        {header}
-        <div className="h-48 animate-pulse rounded-xl border border-border bg-card" />
+        <section className="panel flex flex-col">
+          {header}
+          <div className="h-48 animate-pulse bg-muted/40" />
+        </section>
       </div>
     );
   }
@@ -388,53 +427,20 @@ export function StreamLinksPage(): React.ReactElement {
   if (courtsQ.isError) {
     return (
       <div className="flex w-full flex-col gap-3">
-        {header}
-        <p
-          role="alert"
-          className="rounded-xl border border-dashed border-border bg-card p-6 text-center text-sm text-muted-foreground"
-        >
-          {t("Live streams are managed by the tournament's organisers.")}
-        </p>
+        <section className="panel flex flex-col">
+          {header}
+          <p role="alert" className="px-4 py-12 text-center text-sm text-muted-foreground">
+            {t("Live streams are managed by the tournament's organisers.")}
+          </p>
+        </section>
       </div>
     );
   }
 
   return (
     <div className="flex w-full flex-col gap-3">
-      {header}
-
-      {/* One line saying what the other half of the job is, and where it is.
-          The instructions themselves are on the setup page — two copies of them
-          is exactly how the pair drifts apart. */}
-      <p data-testid="stream-setup-hint" className="text-xs text-muted-foreground">
-        {t(
-          "Filming a court? Set up a camera on a court has the QR code that opens the phone broadcast page, the OBS overlay URL, and the steps. This page is where the finished YouTube link gets pasted.",
-        )}
-      </p>
-
       <section data-testid="stream-board" className="panel flex flex-col">
-        {/* The precedence rule as a numbered ladder — an organiser has to be
-            able to predict which of their links a spectator will get. */}
-        <div
-          data-testid="stream-precedence"
-          className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground"
-        >
-          <span className="font-medium">{t("Most specific wins:")}</span>
-          {[
-            t("one match"),
-            t("a court on a day"),
-            t("the day's auto broadcast"),
-            t("a sport category"),
-            t("the court's default"),
-          ].map((label, i) => (
-            <span key={label} className="inline-flex items-center gap-1">
-              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-card font-tabular text-[0.625rem] font-semibold text-muted-foreground">
-                {i + 1}
-              </span>
-              <span className="font-medium text-foreground">{label}</span>
-            </span>
-          ))}
-        </div>
+        {header}
 
         {/* Day picker — the link is per court PER DAY, so the day is the first
             thing chosen, not a filter tucked away. */}
@@ -738,6 +744,8 @@ export function StreamLinksPage(): React.ReactElement {
         ) : null}
       </section>
 
+      {helpOpen ? <HelpDialog onClose={() => setHelpOpen(false)} /> : null}
+
       {editing ? (
         <EditDialog
           tournamentId={id}
@@ -751,6 +759,74 @@ export function StreamLinksPage(): React.ReactElement {
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The detail, on demand. Everything here used to be printed on the page —
+ * two paragraphs and a five-rung ladder above the first row of work. It is
+ * reference material: read once, then never again, so it lives behind the
+ * help icon next to the heading.
+ */
+function HelpDialog({ onClose }: { onClose: () => void }): React.ReactElement {
+  const rungs = [
+    t("one match"),
+    t("a court on a day"),
+    t("the day's auto broadcast"),
+    t("a sport category"),
+    t("the court's default"),
+  ];
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} ariaLabel={t("How live links work")} variant="sheet">
+      <div data-testid="stream-help-dialog" className="flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="text-base">
+            {t("How live links work")}
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            {t(
+              "A link published here gives spectators a Watch live button on the public schedule.",
+            )}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-4">
+          <div data-testid="stream-precedence" className="flex flex-col gap-1.5">
+            <h4 className="text-xs font-semibold">{t("Most specific wins")}</h4>
+            <ol className="flex flex-col gap-1">
+              {rungs.map((label, i) => (
+                <li key={label} className="flex items-center gap-2 text-xs">
+                  <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-muted font-tabular text-[0.625rem] font-semibold text-muted-foreground">
+                    {i + 1}
+                  </span>
+                  <span className="font-medium">{label}</span>
+                </li>
+              ))}
+            </ol>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "A match with its own link ignores everything below it. Anything with nothing set falls to the next rung.",
+              )}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+            <h4 className="text-xs font-semibold">{t("Filming a court?")}</h4>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "Set up a camera on a court has the QR code for the phone broadcast page, the OBS overlay URL, and the steps. This page is where the finished YouTube link gets pasted.",
+              )}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <Button size="sm" variant="ghost" data-testid="stream-help-close" onClick={onClose}>
+            {t("Close")}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 
@@ -995,28 +1071,32 @@ function EditDialog({
         if (!o) onClose();
       }}
       ariaLabel={title}
-      variant="sheet"
+      // A right-hand drawer, half the screen: the list it was opened from stays
+      // visible beside it, so an organiser can see which row they are editing
+      // and step down the courts without the page jumping (owner 2026-08-05).
+      variant="side"
     >
       <div data-testid="stream-edit-dialog" className="flex flex-col">
-        <DialogHeader>
-          {/* Team names run long; a clipped title hides which match is being
-              edited, which is the one thing this dialog has to say. */}
-          <DialogTitle className="text-base leading-snug">{title}</DialogTitle>
-          <DialogDescription className="text-xs">
-            {description}
-          </DialogDescription>
-        </DialogHeader>
-        {body}
-        <div className="mt-4 flex justify-end">
-          <Button
-            size="sm"
-            variant="ghost"
+        <div className="flex items-start gap-3 pb-4">
+          <div className="min-w-0 flex-1">
+            {/* Team names run long; a clipped title hides which match is being
+                edited, which is the one thing this drawer has to say. */}
+            <DialogTitle className="text-base leading-snug">{title}</DialogTitle>
+            <DialogDescription className="mt-1 text-xs">
+              {description}
+            </DialogDescription>
+          </div>
+          <button
+            type="button"
             data-testid="stream-edit-close"
+            aria-label={t("Close")}
             onClick={onClose}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            {t("Close")}
-          </Button>
+            <X aria-hidden="true" className="h-4 w-4" />
+          </button>
         </div>
+        {body}
       </div>
     </Dialog>
   );

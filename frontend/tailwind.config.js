@@ -135,12 +135,20 @@ export default {
           to: { opacity: "1", transform: "scale(1)" },
         },
         shimmer: { "100%": { transform: "translateX(100%)" } },
+        // The side drawer: off the right edge, in. Paired with `fade-in` on the
+        // scrim so the page behind it dims at the same time.
+        "slide-in-right": {
+          from: { transform: "translateX(100%)" },
+          to: { transform: "translateX(0)" },
+        },
       },
       animation: {
         "fade-in": "fade-in 180ms ease-out both",
         "fade-up": "fade-up 200ms ease-out both",
         "scale-in": "scale-in 150ms ease-out both",
         shimmer: "shimmer 1.6s infinite",
+        "slide-in-right":
+          "slide-in-right 260ms cubic-bezier(0.25,0.46,0.45,0.94) both",
       },
     },
   },

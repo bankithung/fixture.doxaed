@@ -15,8 +15,11 @@ export interface DialogProps {
   onOpenChange: (open: boolean) => void;
   ariaLabel: string;
   /** "sheet" docks the panel to the bottom edge on small screens (a mobile
-   *  drawer); on sm+ it centers exactly like the default. */
-  variant?: "center" | "sheet";
+   *  drawer); on sm+ it centers exactly like the default.
+   *  "side" is the right-hand drawer: full height, half the viewport from sm
+   *  up, full width on a phone, sliding in from the edge. Use it when the work
+   *  inside wants room and the list behind it is worth keeping in view. */
+  variant?: "center" | "sheet" | "side";
   children: React.ReactNode;
 }
 
@@ -98,10 +101,10 @@ export function Dialog({
       aria-modal="true"
       aria-label={ariaLabel}
       className={cn(
-        "fixed inset-0 z-50 flex bg-black/50",
-        variant === "sheet"
-          ? "items-end justify-center sm:items-center sm:p-4"
-          : "items-center justify-center p-4",
+        "fixed inset-0 z-50 flex bg-black/50 motion-safe:animate-fade-in",
+        variant === "sheet" && "items-end justify-center sm:items-center sm:p-4",
+        variant === "side" && "items-stretch justify-end",
+        variant === "center" && "items-center justify-center p-4",
       )}
       onClick={(e) => {
         if (e.target === e.currentTarget) onOpenChange(false);
@@ -111,10 +114,12 @@ export function Dialog({
         ref={panelRef}
         tabIndex={-1}
         className={cn(
-          "w-full max-w-md border bg-card shadow-lg focus:outline-none",
-          variant === "sheet"
-            ? "max-h-[85vh] overflow-y-auto rounded-t-2xl p-4 pb-6 sm:rounded-lg sm:p-6"
-            : "rounded-lg p-6",
+          "w-full border bg-card shadow-lg focus:outline-none",
+          variant === "sheet" &&
+            "max-w-md max-h-[85vh] overflow-y-auto rounded-t-2xl p-4 pb-6 sm:rounded-lg sm:p-6",
+          variant === "center" && "max-w-md rounded-lg p-6",
+          variant === "side" &&
+            "h-full overflow-y-auto border-y-0 border-r-0 p-5 sm:w-1/2 sm:p-6 motion-safe:animate-slide-in-right",
         )}
       >
         {children}
