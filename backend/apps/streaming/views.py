@@ -214,6 +214,42 @@ def _public_court_link(tournament: Tournament, court: Court) -> str:
     )
 
 
+def _publish_stream_tick(tournament_id, match_id=None) -> None:
+    """Post-commit ``"stream"`` tick, so a pasted link reaches the pages that
+    are ALREADY OPEN.
+
+    Production, 2026-08-05: the public pages stop polling entirely while their
+    SSE stream is connected (``refetchInterval: connected ? false : 60_000`` in
+    ``frontend/src/features/fixtures/publicTournament.ts``) and refetch only when
+    a tick arrives. Score writes publish one; stream-link and court-stream writes
+    published *nothing* — so an organiser pasted a link for a live court and
+    every already-open spectator page went on showing no "Watch live" button
+    until someone reloaded by hand. Nobody reloads a page that is already showing
+    the live score, so the feature read as broken. A watch link is part of the
+    public schedule payload; writing one has to tick like any other change to it.
+
+    ``match_id=None`` is ``publish.py``'s "batch change": a court-day, category
+    or court-stream write flips the button on every match under that scope, so
+    clients refetch the whole day rather than one row. Only a match-scoped link
+    names a match.
+
+    ``transaction.on_commit`` (invariant #4) because a tick that overtakes its
+    own write makes the reader refetch the OLD payload — indistinguishable from
+    never ticking at all, and unrecoverable until the next tick.
+
+    KNOWN LIMIT: the fan-out is to the tournament in the URL. A court belongs to
+    the *workspace*, so a court-stream write also changes what a second
+    tournament sharing that hall resolves — that tournament's open pages will
+    not learn about it until they reconnect. Ticking every tournament in the org
+    would need a query on a write path that has none; the organiser is working
+    in one tournament and that is the one that gets told.
+    """
+    from apps.live.publish import publish_tournament_tick
+
+    tid, mid = tournament_id, match_id
+    transaction.on_commit(lambda: publish_tournament_tick(tid, mid, "stream"))
+
+
 def _as_uuid(raw) -> _uuid.UUID | None:
     try:
         return _uuid.UUID(str(raw))
@@ -369,6 +405,10 @@ class _CourtStreamBase(_StreamingManagerBase):
                 idempotency_key=event_id,
                 request=request,
             )
+            # Both callers (POST upsert, PATCH) come through here AFTER their
+            # replay check, so a retried event_id never re-ticks a write it did
+            # not make.
+            _publish_stream_tick(t.id)
         return stream, created
 
     def _one(self, t: Tournament, court: Court, stream: CourtStream | None) -> dict:
@@ -478,6 +518,11 @@ class TournamentCourtStreamDetailView(_CourtStreamBase):
             idempotency_key=_event_id(request),
             request=request,
         )
+        # Unbinding a court takes the button AWAY; a page still offering a link
+        # to a stream the organiser has just retired is the same bug pointing
+        # the other way. (The idempotent no-op above returns before this — it
+        # changed nothing, so there is nothing to tell anyone about.)
+        _publish_stream_tick(t.id)
         return Response(status=204)
 
 
@@ -715,6 +760,10 @@ class TournamentStreamLinksView(_StreamLinkBase):
                 idempotency_key=event_id,
                 request=request,
             )
+            # THE paste. Everything downstream of this — the "Watch live"
+            # button on every open schedule, live viewer and venue display —
+            # only moves when a tick says so.
+            _publish_stream_tick(t.id, link.match_id)
         return Response(_link_payload(link), status=201 if created else 200)
 
 
@@ -774,6 +823,9 @@ class TournamentStreamLinkDetailView(_StreamLinkBase):
                 idempotency_key=event_id,
                 request=request,
             )
+            # Correcting a wrong URL, or switching a link off, is as urgent as
+            # pasting one: spectators are on the wrong video until they hear.
+            _publish_stream_tick(t.id, link.match_id)
         return Response(_link_payload(link), status=200)
 
     def delete(self, request, tournament_id, link_id):
@@ -801,6 +853,10 @@ class TournamentStreamLinkDetailView(_StreamLinkBase):
             idempotency_key=_event_id(request),
             request=request,
         )
+        # Clearing a link hands the match back to the next level down, which is
+        # a different URL (or none) — the open pages have to be told to look
+        # again. The idempotent no-op above returns before this.
+        _publish_stream_tick(t.id, link.match_id)
         return Response(status=204)
 
 

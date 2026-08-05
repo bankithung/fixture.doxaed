@@ -20,7 +20,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 #: Tick kinds (spec §2.c): what changed, so clients can invalidate narrowly.
-TICK_KINDS = ("state", "score", "event", "schedule", "called")
+#: ``"stream"`` joined the set on 2026-08-05: a watch link is part of the public
+#: schedule payload, and writing one used to publish nothing at all — see
+#: ``apps.streaming.views._publish_stream_tick`` for the incident.
+TICK_KINDS = ("state", "score", "event", "schedule", "called", "stream")
 
 
 def tournament_group(tournament_id) -> str:

@@ -230,6 +230,170 @@ def test_delay_cascade_ticks_every_moved_match(django_capture_on_commit_callback
     assert all(tk["kind"] == "schedule" for tk in ticks)
 
 
+# ------------------------------------------- stream links (production 2026-08-05)
+#: The fixed instant the streaming fixtures play at. Every day below is derived
+#: from it, never from "today": a link filed under ``local_day()`` plus a match
+#: on a fixed date agree on one calendar day of the year, and this is the fourth
+#: time that has been said out loud in this codebase.
+STREAM_KICKOFF = datetime(2026, 8, 3, 11, 0)
+
+
+def _stream_setup():
+    """A tournament with courts and one match, built with the STREAMING suite's
+    fixtures — the ticks below are published by the streaming manager API, so
+    the setup has to be the one that API expects (a venue, real courts, a match
+    pinned to one). Returns ``(admin, tournament, courts, match, day)``."""
+    from apps.streaming.services.links import local_day
+    from apps.streaming.tests.support import make_match, make_tournament, tz_of
+
+    admin, t, courts = make_tournament()
+    kickoff = STREAM_KICKOFF.replace(tzinfo=tz_of(t))
+    m = make_match(t, courts[0], scheduled_at=kickoff)
+    return admin, t, courts, m, local_day(kickoff, tz_of(t))
+
+
+def _links_url(t) -> str:
+    return f"/api/tournaments/{t.id}/stream-links/"
+
+
+def _paste(client, t, court, day, url=None, **extra):
+    from apps.streaming.tests.support import COURT_DAY_LINK_URL
+
+    return client.post(
+        _links_url(t),
+        {
+            "scope": "court_day",
+            "court_id": str(court.id),
+            "day": day.isoformat(),
+            "watch_url": url or COURT_DAY_LINK_URL,
+            **extra,
+        },
+        format="json",
+    )
+
+
+def test_pasting_a_stream_link_publishes_a_stream_tick(
+    django_capture_on_commit_callbacks,
+):
+    """THE 2026-08-05 gap. Public pages stop polling while their SSE stream is
+    connected (``refetchInterval: connected ? false : 60_000``) and refetch only
+    on a tick; stream-link writes published none, so an organiser's paste never
+    reached a single already-open page and the feature read as broken."""
+    from apps.live.publish import TICK_KINDS
+
+    admin, t, courts, _m, day = _stream_setup()
+    layer, chan = _subscribe(f"tournament_{t.id}")
+    with django_capture_on_commit_callbacks(execute=True):
+        r = _paste(_client(admin), t, courts[0], day)
+    assert r.status_code == 201, r.content
+    # match_id=None is publish.py's "batch change": a court-day link flips the
+    # button on every match on that court that day, so clients refetch the day.
+    assert _ticks(layer, chan) == [
+        {"tournament_id": str(t.id), "match_id": None, "kind": "stream"}
+    ]
+    assert "stream" in TICK_KINDS
+
+
+def test_editing_and_clearing_a_stream_link_publish_stream_ticks(
+    django_capture_on_commit_callbacks,
+):
+    """A wrong URL corrected, or a link switched off, is as urgent as the paste:
+    until the tick lands, spectators are on the wrong video."""
+    admin, t, courts, _m, day = _stream_setup()
+    c = _client(admin)
+    with django_capture_on_commit_callbacks(execute=True):
+        r = _paste(c, t, courts[0], day)
+    link_id = r.json()["id"]
+    layer, chan = _subscribe(f"tournament_{t.id}")
+
+    with django_capture_on_commit_callbacks(execute=True):
+        patched = c.patch(
+            f"{_links_url(t)}{link_id}/", {"enabled": False}, format="json"
+        )
+    assert patched.status_code == 200, patched.content
+    with django_capture_on_commit_callbacks(execute=True):
+        deleted = c.delete(f"{_links_url(t)}{link_id}/")
+    assert deleted.status_code == 204
+    assert [tk["kind"] for tk in _ticks(layer, chan)] == ["stream", "stream"]
+
+
+def test_a_match_scoped_link_ticks_its_own_match(
+    django_capture_on_commit_callbacks,
+):
+    """Only the match scope can name a match — the other two are day-wide."""
+    from apps.streaming.tests.support import MATCH_LINK_URL
+
+    admin, t, _courts, m, _day = _stream_setup()
+    layer, chan = _subscribe(f"tournament_{t.id}")
+    with django_capture_on_commit_callbacks(execute=True):
+        r = _client(admin).post(
+            _links_url(t),
+            {"scope": "match", "match_id": str(m.id), "watch_url": MATCH_LINK_URL},
+            format="json",
+        )
+    assert r.status_code == 201, r.content
+    assert _ticks(layer, chan) == [
+        {"tournament_id": str(t.id), "match_id": str(m.id), "kind": "stream"}
+    ]
+
+
+def test_a_replayed_paste_does_not_publish_a_second_tick(
+    django_capture_on_commit_callbacks,
+):
+    """Invariant 3: a retry from a flaky phone wrote nothing the second time, so
+    it has nothing to announce."""
+    admin, t, courts, _m, day = _stream_setup()
+    c = _client(admin)
+    event_id = str(uuid.uuid4())
+    with django_capture_on_commit_callbacks(execute=True):
+        first = _paste(c, t, courts[0], day, event_id=event_id)
+    assert first.status_code == 201, first.content
+    layer, chan = _subscribe(f"tournament_{t.id}")
+    with django_capture_on_commit_callbacks(execute=True):
+        replay = _paste(c, t, courts[0], day, event_id=event_id)
+    assert replay.status_code == 200, replay.content
+    assert _ticks(layer, chan) == []
+
+
+def test_the_court_stream_default_endpoints_tick_too(
+    django_capture_on_commit_callbacks,
+):
+    """The standing per-court link (precedence level 5) has exactly the same
+    problem: it is in the public payload, so writing it has to tick."""
+    from apps.streaming.tests.support import COURT_STREAM_URL
+
+    admin, t, courts, _m, _day = _stream_setup()
+    c = _client(admin)
+    url = f"/api/tournaments/{t.id}/court-streams/"
+    layer, chan = _subscribe(f"tournament_{t.id}")
+    with django_capture_on_commit_callbacks(execute=True):
+        created = c.post(
+            url,
+            {"court_id": str(courts[0].id), "watch_url": COURT_STREAM_URL},
+            format="json",
+        )
+    assert created.status_code == 201, created.content
+    with django_capture_on_commit_callbacks(execute=True):
+        # Unbinding takes the button AWAY — the same bug pointing the other way.
+        assert c.delete(f"{url}{courts[0].id}/").status_code == 204
+    ticks = _ticks(layer, chan)
+    assert [tk["kind"] for tk in ticks] == ["stream", "stream"]
+    assert {tk["match_id"] for tk in ticks} == {None}
+
+
+def test_an_idempotent_court_stream_delete_says_nothing(
+    django_capture_on_commit_callbacks,
+):
+    admin, t, courts, _m, _day = _stream_setup()
+    layer, chan = _subscribe(f"tournament_{t.id}")
+    with django_capture_on_commit_callbacks(execute=True):
+        r = _client(admin).delete(
+            f"/api/tournaments/{t.id}/court-streams/{courts[0].id}/"
+        )
+    assert r.status_code == 204
+    assert _ticks(layer, chan) == []  # nothing changed; nobody to tell
+
+
 def test_batch_cap_collapses_to_one_null_tick(django_capture_on_commit_callbacks):
     """A cascade past 10 moves collapses to ONE batch tick (match_id=None) —
     clients refetch the whole day instead of 11+ refetches."""
