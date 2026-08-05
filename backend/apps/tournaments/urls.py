@@ -54,6 +54,7 @@ from apps.permissions.views import (
     TournamentPermissionMatrixView,
 )
 from apps.streaming.views import (
+    TournamentCourtBroadcastQrView,
     TournamentCourtStreamDetailView,
     TournamentCourtStreamsView,
     TournamentStreamLinkDetailView,
@@ -349,6 +350,14 @@ urlpatterns = [
         "<uuid:tournament_id>/court-streams/<uuid:court_id>/",
         TournamentCourtStreamDetailView.as_view(),
         name="tournament-court-stream-detail",
+    ),
+    # The QR code of a court's phone broadcast page. A copy button can only
+    # ever move that URL around the laptop it is displayed on; the phone that
+    # films the match reads it off the screen with its camera.
+    path(
+        "<uuid:tournament_id>/court-streams/<uuid:court_id>/broadcast-qr/",
+        TournamentCourtBroadcastQrView.as_view(),
+        name="tournament-court-broadcast-qr",
     ),
     # Hand-pasted watch links at whichever scope the organiser works at — one
     # match, one court for one day, one competition category. Most specific

@@ -526,6 +526,51 @@ class TournamentCourtStreamDetailView(_CourtStreamBase):
         return Response(status=204)
 
 
+class TournamentCourtBroadcastQrView(_StreamingManagerBase):
+    """``GET /api/tournaments/{id}/court-streams/{court_id}/broadcast-qr/``
+
+    A PNG QR code of this court's phone broadcast page, and the only control on
+    the whole feature that actually works at a court.
+
+    The URL it encodes —
+    ``/broadcast/t/<slug>/<id>/court/Court%20%C2%B7%20T1`` — is *copyable* on a
+    laptop and *unusable* there: the phone that films the match is a different
+    device, and nobody types a percent-encoded venue string on a handset. The
+    organiser points the phone's camera at this image and the broadcast page
+    opens on the phone. That is the whole point of the endpoint.
+
+    Manager-gated like every other streaming surface (``can_manage_tournament``
+    via :class:`_StreamingManagerBase`), and served as an image rather than a
+    JSON data URI so it is an ``<img src>`` the browser can cache, and a file
+    an organiser can save and print for the court's clipboard.
+    """
+
+    def get(self, request, tournament_id, court_id):
+        from django.http import HttpResponse
+        from django.utils.text import slugify
+
+        from apps.streaming.services.qr import (
+            broadcast_court_url,
+            public_base_url,
+            qr_png,
+        )
+
+        t = self._tournament(request, tournament_id)
+        court = self._court(t, court_id)
+        url = broadcast_court_url(public_base_url(request), t, court)
+        response = HttpResponse(qr_png(url), content_type="image/png")
+        # Private: the image is behind a manager gate, so no shared cache may
+        # keep it. Short-lived because renaming a court changes the payload.
+        response["Cache-Control"] = "private, max-age=300"
+        name = slugify(court.name) or "court"
+        response["Content-Disposition"] = f'inline; filename="{name}-broadcast-qr.png"'
+        # The URL is echoed in a header so a caller that wants the string (and
+        # not the picture) does not have to rebuild it — and so a test can pin
+        # the payload without decoding a PNG.
+        response["X-Broadcast-Url"] = url
+        return response
+
+
 # ------------------------------------------------- scoped stream links (API)
 def _link_payload(link: StreamLink) -> dict:
     """One scoped link, in the shape the manager UI edits it.
