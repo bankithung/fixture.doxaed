@@ -1,13 +1,14 @@
 import { useId, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   ChevronDown,
+  ChevronRight,
   ExternalLink,
   Layers,
   MapPin,
+  MonitorPlay,
   Radio,
-  Trash2,
   Video,
 } from "lucide-react";
 import {
@@ -16,78 +17,26 @@ import {
   type StreamLink,
 } from "@/api/streaming";
 import { tournamentsApi, type ControlRoomMatch } from "@/api/tournaments";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
-import { useToast } from "@/components/ui/toast";
 import {
   fmtDayLabel,
   fmtKickoff,
   leafLabelOf,
   tzDate,
 } from "@/features/controlroom/format";
-import { errorDetail, writeMayHaveLanded } from "@/features/fixtures/repair";
-import { newEventId } from "@/lib/eventId";
 import { qk } from "@/lib/queryKeys";
+import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { useBreakpoint } from "@/lib/useBreakpoint";
-import { ApiError } from "@/types/api";
 import {
   effectiveCourtLink,
   findCategoryLink,
   findCourtDayLink,
   findMatchLink,
   sourceHint,
-  sourceLabel,
-  watchUrlWarning,
-  type LinkSource,
 } from "./streamLinks";
-import { StreamOverlayGuide } from "./StreamOverlayGuide";
-
-/** What a save/toggle/clear press asks for. Every one carries its own
- * `event_id` (invariant 3). */
-type EditorAction =
-  | { kind: "save"; url: string; eventId: string }
-  | { kind: "toggle"; enabled: boolean; eventId: string }
-  | { kind: "clear"; eventId: string };
-
-/** The server's own explanation of a refusal, never one we invented. */
-function serverMessage(e: unknown): string {
-  if (e instanceof ApiError && typeof e.payload.message === "string") {
-    return e.payload.message;
-  }
-  return errorDetail(e);
-}
-
-/** The level chip: which rung of the precedence rule a court is running on. */
-function SourceChip({
-  source,
-  testid,
-}: {
-  source: LinkSource;
-  testid?: string;
-}): React.ReactElement {
-  const tone: Record<LinkSource, string> = {
-    day: "bg-primary/12 text-primary",
-    broadcast: "bg-info-muted text-info",
-    court_default: "bg-muted text-muted-foreground",
-    none: "bg-warning-muted text-warning",
-  };
-  return (
-    <span
-      data-testid={testid}
-      data-source={source}
-      className={cn(
-        "inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-[0.6875rem] font-medium",
-        tone[source],
-      )}
-    >
-      {sourceLabel(source)}
-    </span>
-  );
-}
+import { LinkEditor, SourceChip } from "./StreamLinkEditor";
 
 /** A resolved URL as an opens-in-YouTube link (truncated, never wrapped). */
 function WatchUrl({ url }: { url: string }): React.ReactElement {
@@ -101,196 +50,6 @@ function WatchUrl({ url }: { url: string }): React.ReactElement {
       <span className="truncate">{url}</span>
       <ExternalLink aria-hidden="true" className="h-3 w-3 shrink-0" />
     </a>
-  );
-}
-
-/**
- * The one paste-a-link control, reused at every scope.
- *
- * Three verbs that mean three different things, which is why they are three
- * controls and not one:
- *
- * - **Save** writes the URL for this target.
- * - **Turn off** keeps the row but stops it applying, so the next level down
- *   takes over — reversible with one press.
- * - **Clear** deletes the binding outright.
- *
- * The client-side check is advisory: it flags the two mistakes organisers
- * actually make (a channel `/live` URL, something that is not a YouTube video)
- * without blocking a save, because `validate_watch_url` on the server is the
- * authority and its message is what gets shown when a write is refused.
- */
-function LinkEditor({
-  tournamentId,
-  inputId,
-  label,
-  placeholder,
-  currentUrl,
-  exists,
-  enabled,
-  disabled,
-  testid,
-  run,
-}: {
-  tournamentId: string;
-  inputId: string;
-  /** Accessible name of the field (rendered as its <label>). */
-  label: string;
-  placeholder: string;
-  /** The URL currently stored for this target ("" = nothing stored). */
-  currentUrl: string;
-  /** Whether a row exists to clear. */
-  exists: boolean;
-  /** The row's on/off state; `null` on targets that have no off switch. */
-  enabled: boolean | null;
-  disabled?: boolean;
-  testid: string;
-  run: (action: EditorAction) => Promise<unknown>;
-}): React.ReactElement {
-  const qc = useQueryClient();
-  const toast = useToast();
-  const [draft, setDraft] = useState(currentUrl);
-  // Re-seed when the server's value changes under us (a save landing, a day
-  // switch): render-phase sync, no effect, no flash of the stale value.
-  const [seed, setSeed] = useState(currentUrl);
-  if (seed !== currentUrl) {
-    setSeed(currentUrl);
-    setDraft(currentUrl);
-  }
-
-  // ONE `event_id` per *intent* (invariant 3), minted outside `mutationFn` and
-  // reset only when the URL being written changes — a retry after a client-side
-  // timeout must REPLAY the same write, not run a second one.
-  const [attempt, setAttempt] = useState(() => ({
-    intent: draft,
-    eventId: newEventId(),
-  }));
-  if (attempt.intent !== draft) setAttempt({ intent: draft, eventId: newEventId() });
-
-  const write = useMutation({
-    mutationFn: (action: EditorAction) => run(action),
-    onSuccess: (_data, action) => {
-      qc.invalidateQueries({ queryKey: qk.streamLinks(tournamentId) });
-      qc.invalidateQueries({ queryKey: qk.courtStreams(tournamentId) });
-      toast.push({
-        kind: "success",
-        title:
-          action.kind === "clear"
-            ? t("Link cleared")
-            : action.kind === "toggle"
-              ? action.enabled
-                ? t("Link switched on")
-                : t("Link switched off")
-              : t("Link saved"),
-      });
-    },
-    onError: (e) => {
-      // A timeout/abort is not a failed write — the server may well have
-      // committed. Pull the truth back down instead of crying failure.
-      if (writeMayHaveLanded(e)) {
-        qc.invalidateQueries({ queryKey: qk.streamLinks(tournamentId) });
-        qc.invalidateQueries({ queryKey: qk.courtStreams(tournamentId) });
-        return;
-      }
-      toast.push({
-        kind: "error",
-        title: t("Could not save that link"),
-        description: serverMessage(e),
-      });
-    },
-  });
-
-  const warning = watchUrlWarning(draft);
-  const dirty = draft.trim() !== currentUrl;
-  const busy = write.isPending;
-  const failure =
-    write.isError && !writeMayHaveLanded(write.error)
-      ? serverMessage(write.error)
-      : null;
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label htmlFor={inputId} className="sr-only">
-        {label}
-      </Label>
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          id={inputId}
-          type="url"
-          inputMode="url"
-          spellCheck={false}
-          data-testid={`${testid}-input`}
-          className="h-9 min-w-0 flex-1 sm:min-w-[18rem]"
-          placeholder={placeholder}
-          value={draft}
-          disabled={disabled || busy}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <Button
-          size="sm"
-          data-testid={`${testid}-save`}
-          disabled={disabled || busy || !dirty}
-          onClick={() =>
-            write.mutate({
-              kind: "save",
-              url: draft.trim(),
-              eventId: attempt.eventId,
-            })
-          }
-        >
-          {t("Save")}
-        </Button>
-        {enabled !== null && exists ? (
-          <Button
-            size="sm"
-            variant="outline"
-            data-testid={`${testid}-toggle`}
-            disabled={disabled || busy}
-            onClick={() =>
-              write.mutate({
-                kind: "toggle",
-                enabled: !enabled,
-                // Flipping a switch is idempotent in its end state, so a fresh
-                // token per press is safe here (unlike a save).
-                eventId: newEventId(),
-              })
-            }
-          >
-            {enabled ? t("Turn off") : t("Turn on")}
-          </Button>
-        ) : null}
-        {exists ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            data-testid={`${testid}-clear`}
-            disabled={disabled || busy}
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => write.mutate({ kind: "clear", eventId: newEventId() })}
-          >
-            <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("Clear")}
-          </Button>
-        ) : null}
-      </div>
-      {failure ? (
-        <p
-          role="alert"
-          data-testid={`${testid}-error`}
-          className="text-xs text-destructive"
-        >
-          {failure}
-        </p>
-      ) : warning ? (
-        <p
-          role="status"
-          data-testid={`${testid}-warning`}
-          className="text-xs text-warning"
-        >
-          {warning}
-        </p>
-      ) : null}
-    </div>
   );
 }
 
@@ -544,6 +303,19 @@ export function StreamLinksPage(): React.ReactElement {
         {courts.length} {courts.length === 1 ? t("court") : t("courts")} ·{" "}
         {links.length} {links.length === 1 ? t("link") : t("links")}
       </span>
+      {/* The way IN to filming a court. It was a collapsed disclosure on this
+          page and the tournament owner could not find it twice — so it is a
+          primary action now, and the instructions live on a page of their own
+          that a volunteer can be sent to. */}
+      <Link
+        to={routes.tournamentStreamSetup(id)}
+        data-testid="stream-setup-link"
+        className="ml-auto inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      >
+        <MonitorPlay aria-hidden="true" className="h-4 w-4" />
+        {t("Set up a camera on a court")}
+        <ChevronRight aria-hidden="true" className="h-4 w-4" />
+      </Link>
     </div>
   );
 
@@ -574,13 +346,17 @@ export function StreamLinksPage(): React.ReactElement {
     <div className="flex w-full flex-col gap-3">
       {header}
 
-      {/* How the score gets INTO the video, one disclosure above the boxes that
-          publish the video back OUT. Collapsed, so the day's work stays first. */}
-      <StreamOverlayGuide
-        slug={tournamentQ.data?.slug ?? ""}
-        tournamentId={id}
-        courts={courts}
-      />
+      {/* One line saying what the other half of the job is, and where it is.
+          The instructions themselves are on the setup page — two copies of them
+          is exactly how the pair drifts apart. */}
+      <p
+        data-testid="stream-setup-hint"
+        className="text-xs text-muted-foreground"
+      >
+        {t(
+          "Filming a court? Set up a camera on a court has the QR code that opens the phone broadcast page, the OBS overlay URL, and the steps — one court at a time. This page is where the finished YouTube link gets pasted.",
+        )}
+      </p>
 
       <section data-testid="stream-board" className="panel flex flex-col">
         {/* The precedence rule, in one line — an organiser has to be able to

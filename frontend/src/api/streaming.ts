@@ -90,6 +90,19 @@ export const streamingApi = {
       `/api/tournaments/${tournamentId}/court-streams/`,
       body,
     ),
+  /**
+   * `<img src>` for the QR code of a court's phone broadcast page — a URL to
+   * put in an element, NOT a call to make.
+   *
+   * It is a plain same-origin GET so the browser carries the session cookie
+   * and can cache the image; fetching it as a blob would buy nothing and cost
+   * the cache. The QR is generated server-side (`apps/streaming/services/qr.py`)
+   * because the point of it is to move the URL onto a *different device* —
+   * a phone camera reads it off the screen, which no copy button can do.
+   */
+  broadcastQrUrl: (tournamentId: string, courtId: string) =>
+    `/api/tournaments/${tournamentId}/court-streams/${courtId}/broadcast-qr/`,
+
   /** Drop a court's standing default (idempotent; 204). */
   deleteCourtStream: (tournamentId: string, courtId: string) =>
     api.delete<void>(

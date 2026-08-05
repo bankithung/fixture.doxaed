@@ -97,6 +97,10 @@ export const routes = {
    * per-category and per-match overrides (manager-only). */
   tournamentStreams: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/streams`,
+  /** Operations: how to film one court — the QR code that carries the phone
+   * broadcast URL to a handset, the OBS overlay URL, and the steps. */
+  tournamentStreamSetup: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/streams/setup`,
   /** Operations: full leader board (all scorers, team stats, badges). */
   tournamentLeaders: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/leaders`,
