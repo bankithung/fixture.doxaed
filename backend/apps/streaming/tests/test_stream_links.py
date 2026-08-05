@@ -308,6 +308,187 @@ def test_the_vod_offset_is_still_appended_when_the_broadcast_wins():
     assert watch_url_for_match(m, tz=tz_of(t)) == f"{WATCH_URL}&t={3600 - 15}"
 
 
+# ------------------------------ the day a match belongs to (production case)
+#: A second court-day URL, so a test asserting WHICH day's link won reads as the
+#: answer rather than as "the same constant twice".
+OTHER_DAY_LINK_URL = "https://www.youtube.com/watch?v=0therDayLnk"
+
+
+def _delayed(t, court, *, status=MatchStatus.LIVE, match_no: int = 1):
+    """A match SCHEDULED for one day and STARTED on another — the shape 27 of
+    "Dimapur Tourni"'s 122 matches were in on 2026-08-05, including the one that
+    was live on the public page with no "Watch live" button::
+
+        Court · T1   scheduled 2026-08-29 05:20+00   started 2026-08-05 05:05+00
+
+    Returns ``(match, started_day, scheduled_day)``. Both days come off
+    ``KICKOFF``, 26 days apart and in production's direction (started BEFORE the
+    day the fixture list was published under). Deriving either from
+    ``local_day()`` would make the test agree with the calendar on one day of
+    the year — this suite has been bitten by exactly that four times.
+    """
+    tz = tz_of(t)
+    started = _kickoff(t)
+    scheduled = started + timedelta(days=26)
+    m = make_match(
+        t,
+        court,
+        match_no=match_no,
+        status=status,
+        scheduled_at=scheduled,
+        started_at=started,
+    )
+    return m, local_day(started, tz), local_day(scheduled, tz)
+
+
+def test_a_match_started_off_its_scheduled_day_takes_the_scheduled_days_link():
+    """THE production bug. The organiser pasted one ``court_day`` link per court
+    for the published day; every match started on some other date resolved to
+    nothing at all, and the live one showed no button."""
+    _admin, t, courts = make_tournament()
+    m, _started_day, scheduled_day = _delayed(t, courts[0])
+    make_court_day_link(courts[0], scheduled_day)
+    assert watch_url_for_match(m, tz=tz_of(t)) == COURT_DAY_LINK_URL
+
+
+def test_the_started_days_link_wins_when_both_days_have_one():
+    """The fallback is a fallback: a genuinely delayed match belongs to the day
+    it really ran on, and that day's link is the one the organiser is watching."""
+    _admin, t, courts = make_tournament()
+    m, started_day, scheduled_day = _delayed(t, courts[0])
+    make_court_day_link(courts[0], started_day, watch_url=COURT_DAY_LINK_URL)
+    make_court_day_link(courts[0], scheduled_day, watch_url=OTHER_DAY_LINK_URL)
+    assert watch_url_for_match(m, tz=tz_of(t)) == COURT_DAY_LINK_URL
+
+
+def test_the_scheduled_days_link_still_outranks_the_started_days_broadcast():
+    """Level before day: the day fallback refines WHICH key level 2 is looked up
+    under, it does not demote level 2 below level 3. A human who pasted a link
+    for the published day still overrules the automation."""
+    _admin, t, courts = make_tournament()
+    m, started_day, scheduled_day = _delayed(t, courts[0])
+    make_court_day_link(courts[0], scheduled_day)
+    make_broadcast(courts[0], started_day, video_id=VIDEO_ID)
+    assert watch_url_for_match(m, tz=tz_of(t)) == COURT_DAY_LINK_URL
+
+
+def test_the_started_days_broadcast_beats_the_scheduled_days():
+    _admin, t, courts = make_tournament()
+    m, started_day, scheduled_day = _delayed(t, courts[0])
+    make_broadcast(courts[0], started_day, video_id=VIDEO_ID)
+    make_broadcast(courts[0], scheduled_day, video_id="Sched0uledB")
+    assert watch_url_for_match(m, tz=tz_of(t)) == WATCH_URL
+
+
+def test_no_vod_offset_when_the_broadcast_came_from_the_fallback_day():
+    """``&t=`` is seconds into THIS recording. A broadcast reached through the
+    scheduled-day fallback is not the recording the match ran inside: here the
+    subtraction is negative by 26 days, which ``vod_offset_seconds`` clamps to
+    ``&t=0`` — a link that claims the match is at the very top of an archive it
+    does not appear in. No offset at all is the honest answer."""
+    _admin, t, courts = make_tournament()
+    m, _started_day, scheduled_day = _delayed(t, courts[0], status=MatchStatus.COMPLETED)
+    make_broadcast(
+        courts[0],
+        scheduled_day,
+        video_id=VIDEO_ID,
+        actual_start_utc=_kickoff(t) + timedelta(days=26, hours=-1),
+        lifecycle=BroadcastLifecycle.COMPLETE,
+    )
+    url = watch_url_for_match(m, tz=tz_of(t))
+    assert url == WATCH_URL
+    assert "&t=" not in url
+
+
+def test_the_offset_is_still_appended_on_the_day_the_match_really_ran():
+    """The other half of the rule: the guard must not cost a delayed match the
+    deep link into the archive it IS in."""
+    _admin, t, courts = make_tournament()
+    m, started_day, scheduled_day = _delayed(t, courts[0], status=MatchStatus.COMPLETED)
+    make_broadcast(
+        courts[0],
+        started_day,
+        video_id=VIDEO_ID,
+        actual_start_utc=_kickoff(t) - timedelta(hours=1),
+        lifecycle=BroadcastLifecycle.COMPLETE,
+    )
+    make_broadcast(courts[0], scheduled_day, video_id="Sched0uledB")
+    assert watch_url_for_match(m, tz=tz_of(t)) == f"{WATCH_URL}&t={3600 - 15}"
+
+
+def test_a_link_on_neither_of_the_matchs_days_still_does_not_apply():
+    """The fallback adds ONE day, it does not make court-day links global — a
+    link for some third day must stay where it was pasted."""
+    _admin, t, courts = make_tournament()
+    m, started_day, _scheduled_day = _delayed(t, courts[0])
+    make_court_day_link(courts[0], started_day + timedelta(days=1))
+    make_stream(courts[0], watch_url=COURT_STREAM_URL)
+    assert watch_url_for_match(m, tz=tz_of(t)) == COURT_STREAM_URL
+
+
+@pytest.mark.parametrize(
+    "setup",
+    [
+        # (which day gets a link, which day gets a broadcast) — every
+        # combination the fallback can reach, so the two implementations are
+        # compared on the fallback itself and not only on the happy path.
+        ("scheduled", None),
+        ("started", None),
+        ("both", None),
+        (None, "scheduled"),
+        (None, "started"),
+        (None, "both"),
+        ("scheduled", "started"),
+        ("started", "scheduled"),
+    ],
+)
+def test_the_bulk_resolver_agrees_with_the_single_row_helper_on_the_fallback(setup):
+    link_day, broadcast_day = setup
+    _admin, t, courts = make_tournament()
+    court = courts[0]
+    m, started_day, scheduled_day = _delayed(t, court, status=MatchStatus.COMPLETED)
+    days = {"started": [started_day], "scheduled": [scheduled_day],
+            "both": [started_day, scheduled_day]}
+    for day in days.get(link_day, []):
+        make_court_day_link(
+            court,
+            day,
+            watch_url=(
+                COURT_DAY_LINK_URL if day == started_day else OTHER_DAY_LINK_URL
+            ),
+        )
+    for day in days.get(broadcast_day, []):
+        make_broadcast(
+            court,
+            day,
+            video_id=VIDEO_ID if day == started_day else "Sched0uledB",
+            actual_start_utc=_kickoff(t) - timedelta(hours=1),
+            lifecycle=BroadcastLifecycle.COMPLETE,
+        )
+    single = watch_url_for_match(m, tz=tz_of(t))
+    r = CourtLinkResolver([court], tz=tz_of(t), tournament=t)
+    assert r.watch_url_for_match(m) == single
+    assert single is not None  # every combination resolves to SOMETHING
+
+
+def test_the_fallback_costs_the_bulk_resolver_no_extra_query(
+    django_assert_num_queries,
+):
+    """Still three queries, and still zero per match: broadcasts and court-day
+    links are preloaded for every day, so the second day is a dict lookup."""
+    _admin, t, courts = make_tournament()
+    matches = []
+    for i, court in enumerate(courts):
+        m, _started, scheduled_day = _delayed(t, court, match_no=i + 1)
+        make_court_day_link(court, scheduled_day)
+        matches.append(m)
+    with django_assert_num_queries(3):
+        r = CourtLinkResolver(courts, tz=tz_of(t), tournament=t)
+    with django_assert_num_queries(0):
+        urls = [r.watch_url_for_match(m) for m in matches]
+    assert urls == [COURT_DAY_LINK_URL] * len(matches)
+
+
 # ------------------------------------------------------------ court resolution
 def test_watch_url_for_court_walks_levels_2_3_5():
     _admin, t, courts = make_tournament()

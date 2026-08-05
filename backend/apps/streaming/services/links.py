@@ -35,6 +35,32 @@ default, not a statement about today.
 Resolving a **court** (no match in hand) walks the same list minus the levels
 that need one: court-day link → broadcast → CourtStream.
 
+**WHICH DAY IS "THAT MATCH'S DAY"** (production, 2026-08-05, "Dimapur Tourni").
+Levels 2 and 3 are keyed by ``(court, day)``, and a match has *two* candidate
+days whenever it did not run when it was meant to::
+
+    Court · T1   scheduled 2026-08-29 05:20+00   started 2026-08-05 05:05+00
+
+The owner had pasted a ``court_day`` link for every court on **2026-08-29**, the
+scheduled day. 95 of that tournament's 122 matches resolved; the 27 that did not
+were exactly the ones started on some other calendar day — including the one
+that was live on the public page at that moment, which showed no "Watch live"
+button at all. This module keyed the lookup off ``started_at or scheduled_at``,
+so as soon as a match was started off its scheduled day it looked for a feed
+under a day the organiser had never pasted anything for.
+
+So levels 2 and 3 each try **the started day first, then the scheduled day**
+(:func:`_match_days`). Started first because a genuinely delayed match belongs
+to the day it really ran on; scheduled as the fallback because — owner-confirmed
+— a match scheduled for a day still belongs to that day's court feed even when
+it was actually started on another date. The *level* ordering is untouched: a
+hand-pasted link for either day still beats the automation's broadcast for
+either day (2 over 3), which is what "most-specific-wins" has always meant here.
+
+The fallback has one sharp edge, handled in :func:`_apply_offset`: a broadcast
+found on the SCHEDULED day is not the recording the match ran inside, so its
+``&t=`` offset would be nonsense (weeks of seconds, or clamped to 0).
+
 Once a match is finished the link becomes a deep link into that day's archive
 (``&t=<offset>``), computed by the existing
 :func:`apps.streaming.services.planning.vod_offset_seconds`. That offset is
@@ -98,6 +124,32 @@ def local_day(when: datetime | None = None, tz: tzinfo | None = None) -> _date:
     if timezone.is_naive(moment):
         moment = timezone.make_aware(moment, timezone.get_current_timezone())
     return timezone.localtime(moment, tz).date()
+
+
+def _match_days(match: Any, tz: tzinfo | None) -> tuple[_date, ...]:
+    """The days a match's court feed may be filed under, best first.
+
+    ``(started day, scheduled day)`` — de-duplicated, so the overwhelmingly
+    common "started when it was meant to" match yields ONE day and costs exactly
+    what it always did. See the module docstring: a match started off its
+    scheduled day used to look for a feed under the started day only, and found
+    nothing, because the organiser pastes links against the published schedule.
+
+    Never empty: a match carrying neither timestamp keeps the pre-existing
+    behaviour of asking about *today*, which is what ``local_day(None)`` has
+    always answered for it.
+    """
+    days: list[_date] = []
+    for when in (
+        getattr(match, "started_at", None),
+        getattr(match, "scheduled_at", None),
+    ):
+        if when is None:
+            continue
+        day = local_day(when, tz)
+        if day not in days:
+            days.append(day)
+    return tuple(days) or (local_day(None, tz),)
 
 
 # ------------------------------------------------------------------ lookups
@@ -237,13 +289,19 @@ def watch_url_for_match(match: Any, *, tz: tzinfo | None = None) -> str | None:
     5 the court's ``CourtStream`` → 6 ``None``. See the module docstring for why
     that is the order.
 
+    Levels 2 and 3 are asked about the match's **started day first, then its
+    scheduled day** — a match started off the day it was published under still
+    belongs to that published day's court feed, which is the only day the
+    organiser ever pasted a link for (module docstring, production 2026-08-05).
+
     While the match is live (or still to come) level 3 is simply its court's
-    live URL. Once it is ``completed``/``walkover`` **and** the day's broadcast
-    carries an ``actual_start_utc`` **and** the match carries a ``started_at``,
-    a ``&t=<seconds>`` offset is appended so the link opens at the first serve
+    live URL. Once it is ``completed``/``walkover`` **and** the broadcast is the
+    one for the day the match actually started on **and** it carries an
+    ``actual_start_utc`` **and** the match carries a ``started_at``, a
+    ``&t=<seconds>`` offset is appended so the link opens at the first serve
     instead of at the top of a nine-hour archive.
 
-    The offset is only ever appended to a URL derived from the day's broadcast:
+    The offset is only ever appended to a URL derived from that day's broadcast:
     a hand-pasted URL may be a ``youtu.be/…`` short link (where the separator
     would have to be ``?t=``) or point at something that is not that day's
     archive at all, so deep-linking it would be wrong.
@@ -266,20 +324,16 @@ def watch_url_for_match(match: Any, *, tz: tzinfo | None = None) -> str | None:
 
     court_id = getattr(match, "court_id", None)
     if court_id is not None:
-        # A finished match links into ITS OWN day's archive, not today's: on day
-        # 3 of a tournament, day 1's results must still deep-link into day 1's
-        # video — and day 1's court link, not today's.
-        when = getattr(match, "started_at", None) or getattr(
-            match, "scheduled_at", None
+        # LEVELS 2 → 3, over this match's OWN days (started, then scheduled) —
+        # never over "today": on day 3 of a tournament, day 1's results must
+        # still deep-link into day 1's video, and day 1's court link.
+        url = _court_day_levels(
+            match,
+            _match_days(match, tz),
+            link_of=lambda day: _link_for_court_day(court_id, day),
+            broadcast_of=lambda day: _broadcast_for(court_id, day),
+            tz=tz,
         )
-        day = local_day(when, tz)
-        # LEVEL 2 — what a human pasted for this court, this day.
-        url = url_from_link(_link_for_court_day(court_id, day))
-        if url:
-            return url
-        # LEVEL 3 — the automation's broadcast for the same court and day.
-        broadcast = _broadcast_for(court_id, day)
-        url = _apply_offset(match, broadcast, url_from_broadcast(broadcast))
         if url:
             return url
 
@@ -298,11 +352,69 @@ def watch_url_for_match(match: Any, *, tz: tzinfo | None = None) -> str | None:
     return url_from_stream(_stream_for(court_id))
 
 
+def _court_day_levels(
+    match: Any,
+    days: tuple[_date, ...],
+    *,
+    link_of: Any,
+    broadcast_of: Any,
+    tz: tzinfo | None,
+) -> str | None:
+    """Precedence levels 2 and 3 for one match, walked over its candidate
+    ``days`` (see :func:`_match_days`).
+
+    **Level before day.** Every day's hand-pasted link is tried before ANY day's
+    broadcast, because "a link a human pasted beats the automation" (2 over 3)
+    is the rule the ladder is built on and the day fallback refines the *key*,
+    not the ordering. Inverting it — taking the started day's broadcast over the
+    scheduled day's pasted link — would let the automation quietly overrule the
+    organiser whenever a match slipped a day, which is precisely the situation
+    in which the organiser is the one who knows what is on air.
+
+    Both implementations of the ladder (:func:`watch_url_for_match` and
+    :meth:`CourtLinkResolver.watch_url_for_match`) call this with their own
+    lookups — one hitting the database, one a preloaded dict — so the day
+    fallback cannot drift between the redirect view and the schedule payload.
+    ``test_the_bulk_resolver_agrees_with_the_single_row_helpers_at_every_level``
+    is what notices if it does.
+    """
+    for day in days:  # LEVEL 2 — what a human pasted for this court, this day.
+        url = url_from_link(link_of(day))
+        if url:
+            return url
+    for day in days:  # LEVEL 3 — the automation's broadcast for court + day.
+        broadcast = broadcast_of(day)
+        url = _apply_offset(match, broadcast, url_from_broadcast(broadcast), tz=tz)
+        if url:
+            return url
+    return None
+
+
 def _apply_offset(
-    match: Any, broadcast: CourtBroadcast | None, base: str | None
+    match: Any,
+    broadcast: CourtBroadcast | None,
+    base: str | None,
+    *,
+    tz: tzinfo | None = None,
 ) -> str | None:
     """Append ``&t=<offset>`` when (and only when) the match is finished, the
-    base URL came from the broadcast, and both timestamps exist."""
+    base URL came from the broadcast, both timestamps exist, **and the broadcast
+    is the recording the match actually ran inside**.
+
+    That last condition is what the scheduled-day fallback made necessary. The
+    offset is ``started_at - broadcast.actual_start_utc``: seconds into *this*
+    recording. When the fallback reaches a broadcast filed under the match's
+    SCHEDULED day while the match was started on another date, that subtraction
+    crosses days — in the production case (scheduled 2026-08-29, started
+    2026-08-05) it is negative by three and a half weeks, which
+    ``vod_offset_seconds`` clamps to ``&t=0``: a link that silently claims the
+    match is at the very top of an archive it is not in. A plain URL is honest;
+    a wrong deep link is not, so the rule is the strict one — the broadcast's
+    own ``day`` must BE the day the match started on.
+
+    Checked against ``broadcast.day`` rather than against "which day did we look
+    this up under", so it stays right no matter how the broadcast was found.
+    """
     if base is None or broadcast is None:
         return base
     if getattr(match, "status", None) not in FINISHED_STATUSES:
@@ -311,6 +423,8 @@ def _apply_offset(
     if started_at is None or broadcast.actual_start_utc is None:
         return base
     try:
+        if broadcast.day != local_day(started_at, tz):
+            return base
         offset = vod_offset_seconds(started_at, broadcast.actual_start_utc)
     except ValueError:
         # Naive datetime somewhere (should be impossible under USE_TZ=True).
@@ -358,7 +472,10 @@ class CourtLinkResolver:
     exists to keep the two implementations agreeing.
 
     Broadcasts and links are loaded for **every** day, not just today, because a
-    finished match deep-links into its own day's archive.
+    finished match deep-links into its own day's archive — and because one match
+    can resolve against either of two days (started, then scheduled), so a
+    day-filtered preload would reintroduce the bug the fallback exists to fix
+    while still reporting three queries.
 
     Pass ``tournament`` when the payload is a tournament's (the public
     schedule): the match- and category-scoped levels are keyed by tournament, so
@@ -471,17 +588,17 @@ class CourtLinkResolver:
 
         court_id = getattr(match, "court_id", None)
         if court_id is not None:
-            when = getattr(match, "started_at", None) or getattr(
-                match, "scheduled_at", None
+            # LEVELS 2 → 3, over the match's started day then its scheduled day.
+            # Free in queries: broadcasts and court-day links are already
+            # preloaded for EVERY day (the ``__init__`` filters never mention
+            # one), so a second day is a second dict lookup, not a second query.
+            url = _court_day_levels(
+                match,
+                _match_days(match, self.tz),
+                link_of=lambda day: self.court_day_link(court_id, day),
+                broadcast_of=lambda day: self.broadcast(court_id, day),
+                tz=self.tz,
             )
-            day = local_day(when, self.tz)
-            # LEVEL 2 — the court's link for THIS match's day…
-            url = url_from_link(self.court_day_link(court_id, day))
-            if url:
-                return url
-            # …LEVEL 3 — else that day's broadcast, deep-linked once finished.
-            broadcast = self.broadcast(court_id, day)
-            url = _apply_offset(match, broadcast, url_from_broadcast(broadcast))
             if url:
                 return url
 
