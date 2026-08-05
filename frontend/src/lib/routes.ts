@@ -154,6 +154,26 @@ export const routes = {
     const qs = q.toString();
     return `/overlay/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/court/${encodeURIComponent(court)}${qs ? `?${qs}` : ""}`;
   },
+  /**
+   * Phone camera + live scoreboard for ONE court — the URL an operator opens
+   * on the phone that will film the match, then broadcasts with the YouTube
+   * app's "Go live → Screen". Same `court` addressing (the fixture's venue
+   * string) and the same `scale`/`side`/`server` options as the OBS overlay,
+   * so the two routes stay interchangeable.
+   */
+  broadcastCourt: (
+    slug: string,
+    id: string,
+    court: string,
+    opts: { scale?: number; side?: "left" | "right"; server?: "home" | "away" } = {},
+  ) => {
+    const q = new URLSearchParams();
+    if (opts.scale && opts.scale !== 1) q.set("scale", String(opts.scale));
+    if (opts.side) q.set("side", opts.side);
+    if (opts.server === "away") q.set("server", "away");
+    const qs = q.toString();
+    return `/broadcast/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/court/${encodeURIComponent(court)}${qs ? `?${qs}` : ""}`;
+  },
   /** Live scorer console for a match. */
   matchConsole: (tournamentId: string, matchId: string) =>
     `/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}`,

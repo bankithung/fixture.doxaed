@@ -85,6 +85,7 @@ const ExplorePage = lazy(() => import("@/features/live/ExplorePage").then((m) =>
 const CertificatePage = lazy(() => import("@/features/live/CertificatePage").then((m) => ({ default: m.CertificatePage })));
 const VenueDisplayPage = lazy(() => import("@/features/live/VenueDisplayPage").then((m) => ({ default: m.VenueDisplayPage })));
 const OverlayPage = lazy(() => import("@/features/overlay/OverlayPage").then((m) => ({ default: m.OverlayPage })));
+const CameraBroadcastPage = lazy(() => import("@/features/overlay/CameraBroadcastPage").then((m) => ({ default: m.CameraBroadcastPage })));
 const MemberDirectoryPage = lazy(() => import("@/features/orgs/MemberDirectoryPage").then((m) => ({ default: m.MemberDirectoryPage })));
 const OrgSettingsPage = lazy(() => import("@/features/orgs/OrgSettingsPage").then((m) => ({ default: m.OrgSettingsPage })));
 const HousePointsPage = lazy(() => import("@/features/orgs/HousePointsPage").then((m) => ({ default: m.HousePointsPage })));
@@ -213,6 +214,15 @@ export default function App(): React.ReactElement {
               <Route
                 path="/overlay/t/:slug/:id/court/:court"
                 element={<OverlayPage />}
+              />
+              {/* The same scoreboard over the PHONE's own rear camera, for an
+                  operator with no laptop: they screen-broadcast this page from
+                  the YouTube app. Public and outside the shell for the same
+                  reason the overlay is — and because whoever is holding the
+                  phone is very often not signed in. */}
+              <Route
+                path="/broadcast/t/:slug/:id/court/:court"
+                element={<CameraBroadcastPage />}
               />
 
               {/* Protected surfaces — share the AppShell chrome. */}
