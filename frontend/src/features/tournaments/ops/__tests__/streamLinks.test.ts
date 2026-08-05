@@ -6,6 +6,7 @@ import {
   findCourtDayLink,
   findMatchLink,
   isChannelLiveUrl,
+  cameraBroadcastUrl,
   overlayCourtUrl,
   videoIdFromUrl,
   watchUrlWarning,
@@ -196,6 +197,34 @@ describe("overlayCourtUrl", () => {
   it("encodes the slug and the id as well, and degrades to a path with no origin", () => {
     expect(overlayCourtUrl("", "a b", "t 1", "Court 1")).toBe(
       "/overlay/t/a%20b/t%201/court/Court%201",
+    );
+  });
+});
+
+describe("cameraBroadcastUrl", () => {
+  it("percent-encodes the venue string exactly as the overlay URL does", () => {
+    // This URL is WhatsApped to a volunteer and opened on a phone — there is
+    // even less chance of it being hand-typed correctly than the OBS one.
+    expect(
+      cameraBroadcastUrl("https://fixture.doxaed.com", "cup", "t1", "Court2 · T3"),
+    ).toBe(
+      "https://fixture.doxaed.com/broadcast/t/cup/t1/court/Court2%20%C2%B7%20T3",
+    );
+  });
+
+  it("addresses the same court as the overlay, differing only in the route", () => {
+    const court = "Hall A & B";
+    expect(cameraBroadcastUrl("https://x.test", "cup", "t1", court)).toBe(
+      overlayCourtUrl("https://x.test", "cup", "t1", court).replace(
+        "/overlay/",
+        "/broadcast/",
+      ),
+    );
+  });
+
+  it("degrades to a path with no origin", () => {
+    expect(cameraBroadcastUrl("", "a b", "t 1", "Court 1")).toBe(
+      "/broadcast/t/a%20b/t%201/court/Court%201",
     );
   });
 });

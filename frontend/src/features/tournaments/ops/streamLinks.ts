@@ -150,6 +150,22 @@ export function overlayCourtUrl(
   return `${origin}${routes.overlayCourt(slug, tournamentId, courtName)}`;
 }
 
+/**
+ * The absolute phone camera + scoreboard URL for ONE court.
+ *
+ * Same court addressing and the same encoding argument as `overlayCourtUrl`
+ * above — and it matters more here, because this URL gets sent to a volunteer
+ * over WhatsApp and typed by nobody.
+ */
+export function cameraBroadcastUrl(
+  origin: string,
+  slug: string,
+  tournamentId: string,
+  courtName: string,
+): string {
+  return `${origin}${routes.broadcastCourt(slug, tournamentId, courtName)}`;
+}
+
 /** The browser's origin, or "" where there is no window (tests, SSR). */
 export function currentOrigin(): string {
   return typeof window === "undefined" ? "" : window.location.origin;

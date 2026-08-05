@@ -11,22 +11,53 @@ import type { CourtStreamRow } from "@/api/streaming";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { currentOrigin, overlayCourtUrl } from "./streamLinks";
+import { cameraBroadcastUrl, currentOrigin, overlayCourtUrl } from "./streamLinks";
+
+/** Copy that differs between the two broadcast routes. Keeping it in one place
+ * means the OBS rows and the phone rows are the same component with different
+ * words, not two components that will drift. */
+interface UrlRowCopy {
+  /** Prefix for this row's test ids — `overlay-…` or `camera-…`. */
+  idPrefix: string;
+  copyLabel: string;
+  openLabel: string;
+  copiedToast: string;
+  failedToast: string;
+}
+
+const OVERLAY_COPY: UrlRowCopy = {
+  idPrefix: "overlay",
+  copyLabel: t("Copy the overlay URL for {court}"),
+  openLabel: t("Open the overlay for {court} in a new tab"),
+  copiedToast: t("Overlay URL copied"),
+  failedToast: t("Could not copy the overlay URL"),
+};
+
+const CAMERA_COPY: UrlRowCopy = {
+  idPrefix: "camera",
+  copyLabel: t("Copy the phone camera URL for {court}"),
+  openLabel: t("Open the phone camera page for {court} in a new tab"),
+  copiedToast: t("Phone camera URL copied"),
+  failedToast: t("Could not copy the phone camera URL"),
+};
 
 /**
- * One court's ready-to-paste Browser Source URL: the string as text (so it can
- * be selected and copied by hand, or read by a screen reader character by
+ * One court's ready-to-use broadcast URL: the string as text (so it can be
+ * selected and copied by hand, or read by a screen reader character by
  * character) plus a real Copy button and a preview link.
  *
  * The URL is built by the app on purpose — see `overlayCourtUrl`. A venue like
  * `Court2 · T3` has to reach OBS as `Court2%20%C2%B7%20T3`, and nobody types
- * `%C2%B7` correctly twice.
+ * `%C2%B7` correctly twice. The phone URL addresses the court exactly the same
+ * way, so it gets exactly the same treatment.
  */
-function OverlayUrlRow({
+function CourtUrlRow({
+  copy: words,
   courtId,
   courtName,
   url,
 }: {
+  copy: UrlRowCopy;
   courtId: string;
   courtName: string;
   url: string;
@@ -34,20 +65,20 @@ function OverlayUrlRow({
   const toast = useToast();
   const [copied, setCopied] = useState(false);
 
-  const copy = async (): Promise<void> => {
+  const doCopy = async (): Promise<void> => {
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
       toast.push({
         kind: "success",
-        title: t("Overlay URL copied"),
+        title: words.copiedToast,
         description: courtName,
       });
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
       toast.push({
         kind: "error",
-        title: t("Could not copy the overlay URL"),
+        title: words.failedToast,
         description: t("Select the URL below and copy it by hand."),
       });
     }
@@ -55,7 +86,7 @@ function OverlayUrlRow({
 
   return (
     <div
-      data-testid={`overlay-url-row-${courtId}`}
+      data-testid={`${words.idPrefix}-url-row-${courtId}`}
       className="flex items-start gap-2 rounded-lg border border-border bg-background px-3 py-2"
     >
       <span className="min-w-0 flex-1">
@@ -63,7 +94,7 @@ function OverlayUrlRow({
         {/* Selectable text, never truncated: the copy button is the shortcut,
             not the only way through. */}
         <code
-          data-testid={`overlay-url-${courtId}`}
+          data-testid={`${words.idPrefix}-url-${courtId}`}
           className="block select-all break-all font-mono text-[0.6875rem] text-muted-foreground"
         >
           {url}
@@ -71,12 +102,9 @@ function OverlayUrlRow({
       </span>
       <button
         type="button"
-        data-testid={`overlay-copy-${courtId}`}
-        aria-label={t("Copy the overlay URL for {court}").replace(
-          "{court}",
-          courtName,
-        )}
-        onClick={() => void copy()}
+        data-testid={`${words.idPrefix}-copy-${courtId}`}
+        aria-label={words.copyLabel.replace("{court}", courtName)}
+        onClick={() => void doCopy()}
         className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {copied ? (
@@ -89,10 +117,7 @@ function OverlayUrlRow({
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        aria-label={t("Open the overlay for {court} in a new tab").replace(
-          "{court}",
-          courtName,
-        )}
+        aria-label={words.openLabel.replace("{court}", courtName)}
         className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ExternalLink aria-hidden="true" className="h-4 w-4" />
@@ -209,10 +234,10 @@ export function StreamOverlayGuide({
         >
           <MonitorPlay aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="panel-title">
-            {t("Put the live score on your stream (OBS)")}
+            {t("Put the live score on your stream")}
           </span>
           <span className="hidden text-xs text-muted-foreground sm:inline">
-            {t("Copy one URL per court, paste it into OBS once.")}
+            {t("One URL per court — for OBS on a laptop, or a phone on its own.")}
           </span>
           <ChevronDown
             aria-hidden="true"
@@ -235,6 +260,11 @@ export function StreamOverlayGuide({
               "The overlay is a web page that draws the scorebug over your camera. It follows whatever match is live on that court by itself — set it up once at the start of the tournament and never touch it again.",
             )}
           </p>
+          <p className="pb-3 text-xs text-muted-foreground">
+            {t(
+              "Steps 1–5 are the OBS route, for a laptop. With no laptop, skip to “No laptop?” at the bottom: the phone can do the whole job on its own.",
+            )}
+          </p>
 
           <ol className="flex list-none flex-col gap-5">
             <Step title={t("1. Copy this court's overlay URL")}>
@@ -253,8 +283,9 @@ export function StreamOverlayGuide({
               ) : (
                 <div className="flex flex-col gap-1.5">
                   {courts.map((c) => (
-                    <OverlayUrlRow
+                    <CourtUrlRow
                       key={c.court_id}
+                      copy={OVERLAY_COPY}
                       courtId={c.court_id}
                       courtName={c.court_name}
                       url={overlayCourtUrl(
@@ -429,40 +460,97 @@ export function StreamOverlayGuide({
             </Step>
           </ol>
 
-          {/* The question every organiser asks, answered honestly. */}
+          {/* The question every organiser asks. It used to be answered with
+              "you can't" — the phone camera page is the answer now. */}
           <div
             data-testid="overlay-guide-phone"
             className="mt-5 flex flex-col gap-2 rounded-lg border border-border bg-muted/40 p-3"
           >
             <h4 className="flex items-center gap-2 text-[13px] font-semibold">
               <Smartphone aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" />
-              {t("Can we just stream from a phone instead?")}
+              {t("No laptop? Stream from a phone, score included")}
             </h4>
             <p className="text-xs text-muted-foreground">
               {t(
-                "You can — but you will not get the score burned into the picture. Going live straight from the YouTube app captures the phone's camera and nothing else; there is no way to composite our overlay into it, because burning a graphic into video needs a compositor and the phone app has none.",
+                "Open this court's phone page on the phone that will film the match. It shows the phone's rear camera with the same live scoreboard drawn on top — then you broadcast that screen from the YouTube app. The score goes out inside the picture, with no OBS and no other app.",
               )}
             </p>
-            <p className="text-xs text-muted-foreground">
-              {t("So there are two honest options:")}
-            </p>
+
+            {courts.length === 0 || !slug ? (
+              <p
+                data-testid="camera-guide-no-courts"
+                className="text-xs text-muted-foreground"
+              >
+                {t("The URLs appear here once the fixtures have courts.")}
+              </p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {courts.map((c) => (
+                  <CourtUrlRow
+                    key={c.court_id}
+                    copy={CAMERA_COPY}
+                    courtId={c.court_id}
+                    courtName={c.court_name}
+                    url={cameraBroadcastUrl(
+                      origin,
+                      slug,
+                      tournamentId,
+                      c.court_name,
+                    )}
+                  />
+                ))}
+              </div>
+            )}
+
+            <ol className="flex list-decimal flex-col gap-1 pl-4 text-xs text-muted-foreground">
+              <li>
+                {t(
+                  "Send this court's URL to the phone that will film (WhatsApp it to the volunteer — don't retype it) and open it there.",
+                )}
+              </li>
+              <li>
+                {t(
+                  "Tap Start camera, and allow the camera when the phone asks.",
+                )}
+              </li>
+              <li>
+                {t(
+                  "Tap Full screen, so the address bar is not in the picture, and hold the phone sideways.",
+                )}
+              </li>
+              <li>
+                {t(
+                  "Open the YouTube app → Create → Go live → Screen, choose this browser, and start the broadcast.",
+                )}
+              </li>
+              <li>
+                {t(
+                  "Copy the YouTube watch link and paste it into this court's box below — that is what gives spectators the “Watch live” button.",
+                )}
+              </li>
+            </ol>
             <ul className="flex list-disc flex-col gap-1 pl-4 text-xs text-muted-foreground">
               <li>
                 {t(
-                  "Stream from the phone anyway, and paste that YouTube link into this page. Viewers get the video and read the live score on the public page right next to the “Watch live” button. This works today with no setup at all.",
+                  "The page never touches the microphone, so YouTube gets the sound of the venue as normal.",
                 )}
               </li>
               <li>
                 {t(
-                  "Run OBS on a laptop and use the phone as the camera. This is the only way to get the score inside the video itself.",
+                  "It keeps the screen awake by itself, but plug the phone in: a screen broadcast on full brightness drains a battery fast.",
+                )}
+              </li>
+              <li>
+                {t(
+                  "It takes the same ?scale=, ?side= and ?server= options as the OBS URL, and it follows the court's fixtures the same way.",
+                )}
+              </li>
+              <li>
+                {t(
+                  "If a laptop is available, OBS is still the better picture — it has scenes, a proper encoder and no phone to babysit. This is the route for when there isn't one.",
                 )}
               </li>
             </ul>
-            <p className="text-xs text-muted-foreground">
-              {t(
-                "Some third-party mobile streaming apps claim they can show a web overlay. We have not tested any of them, so we cannot say one works.",
-              )}
-            </p>
           </div>
         </div>
       ) : null}

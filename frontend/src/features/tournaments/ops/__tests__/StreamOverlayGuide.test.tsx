@@ -33,6 +33,8 @@ const COURTS: CourtStreamRow[] = [
 const ORIGIN = window.location.origin;
 const URL_A = `${ORIGIN}/overlay/t/cup/t1/court/Court2%20%C2%B7%20T3`;
 const URL_B = `${ORIGIN}/overlay/t/cup/t1/court/Court%201`;
+const CAMERA_URL_A = `${ORIGIN}/broadcast/t/cup/t1/court/Court2%20%C2%B7%20T3`;
+const CAMERA_URL_B = `${ORIGIN}/broadcast/t/cup/t1/court/Court%201`;
 
 function mount(courts: CourtStreamRow[] = COURTS, slug = "cup") {
   return render(
@@ -153,27 +155,78 @@ describe("StreamOverlayGuide", () => {
     );
   });
 
-  it("answers the phone question honestly: no compositor, no burned-in score", async () => {
+  it("offers the phone route as a first-class option, with its own per-court URLs", async () => {
+    // This used to answer "you can't" — the phone camera page is the answer
+    // now, and the old copy would send an organiser to buy a laptop.
     mount();
     await open();
     const phone = screen.getByTestId("overlay-guide-phone");
-    expect(phone).toHaveTextContent(/will not get the score burned into/);
-    expect(phone).toHaveTextContent(/read the live score on the public page/);
-    expect(phone).toHaveTextContent(/OBS on a laptop and use the phone as the camera/);
-    // No third-party app is claimed to work.
-    expect(phone).toHaveTextContent(/We have not tested any of them/);
+    expect(phone).toHaveTextContent(/rear camera with the same live scoreboard/);
+    expect(phone).toHaveTextContent(/no OBS and no other app/);
+
+    expect(screen.getByTestId(`camera-url-${COURT_A}`)).toHaveTextContent(
+      CAMERA_URL_A,
+    );
+    expect(screen.getByTestId(`camera-url-${COURT_B}`)).toHaveTextContent(
+      CAMERA_URL_B,
+    );
+    expect(screen.getAllByTestId(/^camera-url-row-/)).toHaveLength(2);
   });
 
-  it("says so plainly when there are no courts yet", async () => {
+  it("spells out the phone steps, ending at the paste box on this page", async () => {
+    mount();
+    await open();
+    const phone = screen.getByTestId("overlay-guide-phone");
+    expect(phone).toHaveTextContent(/Tap Start camera/);
+    expect(phone).toHaveTextContent(/Tap Full screen/);
+    expect(phone).toHaveTextContent(/YouTube app → Create → Go live → Screen/);
+    expect(phone).toHaveTextContent(/paste it into this court's box below/);
+    expect(phone).toHaveTextContent(/Watch live/);
+    // The mic promise, and the honest ranking against OBS.
+    expect(phone).toHaveTextContent(/never touches the microphone/);
+    expect(phone).toHaveTextContent(/OBS is still the better picture/);
+  });
+
+  it("copies the phone URL exactly as encoded — it gets sent to a volunteer", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    mount();
+    await open();
+
+    await userEvent.click(screen.getByTestId(`camera-copy-${COURT_A}`));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(CAMERA_URL_A));
+    expect(await screen.findByText("Phone camera URL copied")).toBeInTheDocument();
+    // Named by its court, like the OBS row.
+    expect(
+      screen.getByRole("button", {
+        name: "Copy the phone camera URL for Court2 · T3",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the OBS path intact — it is still the better option with a laptop", async () => {
+    mount();
+    await open();
+    // Both routes are offered, one row per court each, and neither replaced
+    // the other.
+    expect(screen.getAllByTestId(/^overlay-url-row-/)).toHaveLength(2);
+    expect(screen.getAllByTestId(/^camera-url-row-/)).toHaveLength(2);
+    expect(screen.getByTestId("overlay-guide-obs-settings")).toBeInTheDocument();
+  });
+
+  it("says so plainly when there are no courts yet, on both routes", async () => {
     mount([]);
     await open();
     expect(screen.getByTestId("overlay-guide-no-courts")).toBeInTheDocument();
+    expect(screen.getByTestId("camera-guide-no-courts")).toBeInTheDocument();
     expect(screen.queryAllByTestId(/^overlay-url-row-/)).toHaveLength(0);
+    expect(screen.queryAllByTestId(/^camera-url-row-/)).toHaveLength(0);
   });
 
   it("shows no half-built URL before the tournament's slug has loaded", async () => {
     mount(COURTS, "");
     await open();
     expect(screen.getByTestId("overlay-guide-no-courts")).toBeInTheDocument();
+    expect(screen.getByTestId("camera-guide-no-courts")).toBeInTheDocument();
   });
 });
