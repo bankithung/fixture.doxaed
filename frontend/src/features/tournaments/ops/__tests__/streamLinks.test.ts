@@ -6,6 +6,7 @@ import {
   findCourtDayLink,
   findMatchLink,
   isChannelLiveUrl,
+  overlayCourtUrl,
   videoIdFromUrl,
   watchUrlWarning,
 } from "../streamLinks";
@@ -168,5 +169,33 @@ describe("watchUrlWarning", () => {
   it("flags anything that is not a YouTube video link", () => {
     expect(watchUrlWarning("https://example.com/stream")).toMatch(/YouTube/);
     expect(watchUrlWarning("not a url at all")).toMatch(/YouTube/);
+  });
+});
+
+describe("overlayCourtUrl", () => {
+  it("percent-encodes the venue string OBS has to address the court by", () => {
+    // `Court2 · T3` is a real venue shape: a space and a middle dot. The
+    // overlay compares this segment with `Match.venue`, so a hand-typed URL
+    // that gets the encoding wrong finds no match and shows an empty court.
+    expect(
+      overlayCourtUrl("https://fixture.doxaed.com", "cup", "t1", "Court2 · T3"),
+    ).toBe(
+      "https://fixture.doxaed.com/overlay/t/cup/t1/court/Court2%20%C2%B7%20T3",
+    );
+  });
+
+  it("encodes an ampersand too, and leaves a plain name alone", () => {
+    expect(overlayCourtUrl("https://x.test", "cup", "t1", "Court 1")).toBe(
+      "https://x.test/overlay/t/cup/t1/court/Court%201",
+    );
+    expect(overlayCourtUrl("https://x.test", "cup", "t1", "Hall A & B")).toBe(
+      "https://x.test/overlay/t/cup/t1/court/Hall%20A%20%26%20B",
+    );
+  });
+
+  it("encodes the slug and the id as well, and degrades to a path with no origin", () => {
+    expect(overlayCourtUrl("", "a b", "t 1", "Court 1")).toBe(
+      "/overlay/t/a%20b/t%201/court/Court%201",
+    );
   });
 });

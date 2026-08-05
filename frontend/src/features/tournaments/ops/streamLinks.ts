@@ -1,4 +1,5 @@
 import type { CourtStreamRow, StreamLink } from "@/api/streaming";
+import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 
 /**
@@ -123,6 +124,35 @@ export function sourceHint(source: LinkSource): string {
     return t("This court's standing link, used on every day with nothing of its own.");
   }
   return t("Nothing resolves — spectators see no Watch live button.");
+}
+
+// ------------------------------------------------------- OBS overlay address
+
+/**
+ * The absolute OBS Browser Source URL for ONE court.
+ *
+ * The overlay addresses a court by the fixture's **venue display string**, not
+ * by the court's UUID — `matchesOnCourt` compares `normalizeCourt(m.venue)`
+ * against the `:court` segment. That string routinely contains spaces and a
+ * middle dot (`Court2 · T3` → `Court2%20%C2%B7%20T3`), so the app encodes it:
+ * asking an operator to hand-encode `%C2%B7` is a bug factory, and a wrong
+ * encoding silently produces an overlay that never finds a match.
+ *
+ * `origin` is passed in rather than read here so the helper stays pure (and so
+ * a server-rendered/empty origin degrades to a path instead of throwing).
+ */
+export function overlayCourtUrl(
+  origin: string,
+  slug: string,
+  tournamentId: string,
+  courtName: string,
+): string {
+  return `${origin}${routes.overlayCourt(slug, tournamentId, courtName)}`;
+}
+
+/** The browser's origin, or "" where there is no window (tests, SSR). */
+export function currentOrigin(): string {
+  return typeof window === "undefined" ? "" : window.location.origin;
 }
 
 // ---------------------------------------------------------- URL sanity check
