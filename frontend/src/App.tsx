@@ -66,6 +66,7 @@ const OpsStandingsPage = lazy(() => import("@/features/tournaments/ops/OpsStandi
 const LeadersPage = lazy(() => import("@/features/tournaments/ops/LeadersPage").then((m) => ({ default: m.LeadersPage })));
 const ChangeHistoryPage = lazy(() => import("@/features/tournaments/ops/ChangeHistoryPage").then((m) => ({ default: m.ChangeHistoryPage })));
 const CrewPage = lazy(() => import("@/features/tournaments/ops/CrewPage").then((m) => ({ default: m.CrewPage })));
+const StreamLinksPage = lazy(() => import("@/features/tournaments/ops/StreamLinksPage").then((m) => ({ default: m.StreamLinksPage })));
 const BracketPage = lazy(() => import("@/features/tournaments/BracketPage").then((m) => ({ default: m.BracketPage })));
 const DryRunPreviewPage = lazy(() => import("@/features/fixtures/DryRunPreviewPage").then((m) => ({ default: m.DryRunPreviewPage })));
 const PublicSchedulePage = lazy(() => import("@/features/fixtures/PublicSchedulePage").then((m) => ({ default: m.PublicSchedulePage })));
@@ -245,6 +246,7 @@ export default function App(): React.ReactElement {
                   <Route path="my-tasks" element={<MyTasksPage />} />
                   <Route path="standings" element={<OpsStandingsPage />} />
                   <Route path="crew" element={<CrewPage />} />
+                  <Route path="streams" element={<StreamLinksPage />} />
                   <Route path="leaders" element={<LeadersPage />} />
                   <Route path="changes" element={<ChangeHistoryPage />} />
                   <Route path="lens" element={<LensCampaignListPage />} />

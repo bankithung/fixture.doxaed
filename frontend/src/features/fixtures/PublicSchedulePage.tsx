@@ -6,6 +6,7 @@ import { type PublicScheduleMatch } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/Select";
 import { PublicLeaders } from "@/features/live/PublicLeaders";
+import { WatchLiveLink } from "@/features/live/WatchLiveLink";
 import { ThemeToggle } from "@/features/theme/ThemeToggle";
 import { routes } from "@/lib/routes";
 import { liveSetView } from "@/lib/setDisplay";
@@ -186,6 +187,15 @@ function MatchCard({
           </span>
         ) : null}
         <span className="ml-auto flex items-center gap-1.5">
+          {/* Above the row's stretched match link (which covers the row), so
+              this opens YouTube instead of the match centre. */}
+          <WatchLiveLink
+            url={match.watch_url}
+            variant="ghost"
+            className="pointer-events-auto relative z-10 h-6 px-1.5 text-[0.6875rem] text-primary hover:bg-primary/10"
+            testid={`watch-live-${match.id}`}
+            label={t("Watch this match live on YouTube")}
+          />
           {live && (setView || match.current_period) ? (
             <span
               data-testid={`period-${match.id}`}
@@ -403,6 +413,13 @@ function LiveBand({
                     {t("Pens")} {m.home_pens}-{m.away_pens}
                   </p>
                 ) : null}
+
+                {/* The score keeps ticking behind it — this opens a new tab. */}
+                <WatchLiveLink
+                  url={m.watch_url}
+                  testid={`watch-live-tile-${m.id}`}
+                  label={t("Watch this match live on YouTube")}
+                />
 
                 <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                   <LabelChips label={m.leaf_label} />

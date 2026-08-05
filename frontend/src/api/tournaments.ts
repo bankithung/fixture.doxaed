@@ -398,6 +398,23 @@ export interface PublicScheduleMatch {
   sport: string;
   set_scores: number[][];
   current_period: string;
+  /** The court FK behind the `venue` display string (null = no court). */
+  court_id?: string | null;
+  /** Server-resolved "Watch live" target for THIS match — the court's live
+   * stream while it is on, the day's archive at `&t=<offset>` once it has
+   * finished. Null when nothing resolves at any level, in which case no Watch
+   * live control is shown (streaming spec 2026-08-04). */
+  watch_url?: string | null;
+}
+
+/** One court of the public payload with the link currently applying to it. */
+export interface PublicCourtLink {
+  id: string;
+  /** Exactly the `venue` display string carried by the match rows. */
+  name: string;
+  watch_url: string | null;
+  /** Narrower than "has a URL": the court is on air right now. */
+  is_streaming: boolean;
 }
 
 export interface PublicSchedulePayload {
@@ -409,6 +426,8 @@ export interface PublicSchedulePayload {
     time_zone: string;
   };
   matches: PublicScheduleMatch[];
+  /** The courts this tournament plays on, each with its resolved link. */
+  courts?: PublicCourtLink[];
 }
 
 /** A slot in the schedule-change feed (null on lock/unlock entries). */

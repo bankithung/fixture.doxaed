@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveApi } from "@/api/live";
 import { tournamentsApi } from "@/api/tournaments";
+import { WatchLiveLink } from "./WatchLiveLink";
 import { useEventStream } from "@/lib/useEventStream";
 import { liveSetView } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
@@ -32,6 +33,16 @@ export function VenueDisplayPage(): React.ReactElement {
   });
   useEffect(() => {
     if (q.data) document.title = `${q.data.tournament.name} · ${t("Display")}`;
+  }, [q.data]);
+
+  // The link currently applying to each court, keyed by the SAME display
+  // string the match rows carry (`Court.name` is `Match.venue`).
+  const courtLinks = useMemo(() => {
+    const by = new Map<string, string>();
+    for (const c of q.data?.courts ?? []) {
+      if (c.watch_url) by.set(c.name, c.watch_url);
+    }
+    return by;
   }, [q.data]);
 
   const courts = useMemo(() => {
@@ -81,10 +92,22 @@ export function VenueDisplayPage(): React.ReactElement {
             key={venue}
             className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
           >
-            <div className="flex items-center justify-between border-b border-border px-6 py-3">
-              <h2 className="text-2xl font-semibold">{venue}</h2>
+            <div className="flex items-center gap-3 border-b border-border px-6 py-3">
+              <h2 className="truncate text-2xl font-semibold">{venue}</h2>
+              {/* Only rendered when this court actually resolves to a stream. */}
+              <WatchLiveLink
+                url={courtLinks.get(venue)}
+                className="ml-auto shrink-0"
+                testid={`watch-live-court-${venue}`}
+                label={t("Watch {court} live on YouTube").replace("{court}", venue)}
+              />
               {slot.on ? (
-                <span className="flex items-center gap-2 text-lg font-medium text-primary">
+                <span
+                  className={cn(
+                    "flex shrink-0 items-center gap-2 text-lg font-medium text-primary",
+                    !courtLinks.get(venue) && "ml-auto",
+                  )}
+                >
                   <span className="relative flex h-3 w-3">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
                     <span className="relative inline-flex h-3 w-3 rounded-full bg-primary" />

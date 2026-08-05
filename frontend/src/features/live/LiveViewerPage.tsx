@@ -7,6 +7,8 @@ import {
   type LiveSnapshot,
   type LiveStatRow,
 } from "@/api/live";
+import { tournamentsApi } from "@/api/tournaments";
+import { WatchLiveLink } from "./WatchLiveLink";
 import { ThemeToggle } from "@/features/theme/ThemeToggle";
 import { routes } from "@/lib/routes";
 import { isSetSport, liveSetView } from "@/lib/setDisplay";
@@ -456,6 +458,22 @@ export function LiveViewerPage(): React.ReactElement {
     connectedRef.current = connected;
   }, [connected]);
 
+  // The "Watch live" target. The live snapshot does not carry one, so it comes
+  // from the public schedule — deliberately on the SAME query key (and stale
+  // time) the public schedule page uses, so a viewer who tapped through from
+  // the schedule pays nothing at all for it. Never rendered when the resolver
+  // returned null; the score below keeps ticking on its own SSE stream either
+  // way. (A `watch_url` on `/api/live/match/{id}/` would remove this fetch.)
+  const watchQ = useQuery({
+    queryKey: ["public-schedule", tournament?.slug ?? "", tournament?.id ?? ""],
+    queryFn: () => tournamentsApi.publicSchedule(tournament!.slug, tournament!.id),
+    enabled: Boolean(tournament?.slug && tournament?.id),
+    staleTime: 30_000,
+    retry: false,
+  });
+  const watchUrl =
+    watchQ.data?.matches.find((m) => m.id === matchId)?.watch_url ?? null;
+
   useEffect(() => {
     if (!snap) return;
     const m = snap.match;
@@ -533,6 +551,11 @@ export function LiveViewerPage(): React.ReactElement {
       ) : (
         <span className="ml-auto" />
       )}
+      <WatchLiveLink
+        url={watchUrl}
+        className="shrink-0"
+        label={t("Watch this match live on YouTube")}
+      />
       <ShareButton
         title={
           match

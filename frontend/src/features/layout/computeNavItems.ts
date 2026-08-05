@@ -12,6 +12,7 @@ import {
   Radio,
   Settings,
   Trophy,
+  Tv,
   UserCog,
   Users,
 } from "lucide-react";
@@ -235,6 +236,19 @@ export function computeTournamentNav(
             label: t("Officials & assignments"),
             href: routes.tournamentCrew(tournamentId),
             icon: UserCog,
+          }
+        : null,
+      // The day's "Watch live" links — one per court, plus the per-category
+      // and per-match overrides. Sits next to the other prepare-the-day
+      // cockpit (Officials & assignments) because it is the same job: a
+      // manager arriving in the morning setting the day up. Manager-gated to
+      // match the server — pasting a link publishes it on the public page.
+      canManage
+        ? {
+            key: "streams",
+            label: t("Live streams"),
+            href: routes.tournamentStreams(tournamentId),
+            icon: Tv,
           }
         : null,
       // Participant directory, fixture-centric — every member (read).

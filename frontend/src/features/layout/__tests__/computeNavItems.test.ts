@@ -279,6 +279,7 @@ describe("computeTournamentNav", () => {
       "standings",
       "leaders",
       "crew",
+      "streams",
       "directory",
       "lens",
       "public",
@@ -325,6 +326,9 @@ describe("computeTournamentNav", () => {
     expect(keys).toContain("directory");
     // No schedule_editor → no assignment cockpit; no manage → no admin tabs.
     expect(keys).not.toContain("crew");
+    // Pasting a stream link publishes it on the public page — manager-only,
+    // exactly like the server's own gate.
+    expect(keys).not.toContain("streams");
     expect(keys).not.toContain("members");
     expect(keys).not.toContain("sports");
     expect(keys).not.toContain("settings");
@@ -340,6 +344,8 @@ describe("computeTournamentNav", () => {
       }),
     }).flatMap((g) => g.items);
     expect(items.map((i) => i.key)).toContain("crew");
+    // …but not the stream links: those are a manager verb on the server.
+    expect(items.map((i) => i.key)).not.toContain("streams");
   });
 
   it("ops items link to their operations routes", () => {
@@ -354,6 +360,7 @@ describe("computeTournamentNav", () => {
     expect(byKey.matches.href).toBe(routes.tournamentMatches(TID));
     expect(byKey.standings.href).toBe(routes.tournamentStandings(TID));
     expect(byKey.crew.href).toBe(routes.tournamentCrew(TID));
+    expect(byKey.streams.href).toBe(routes.tournamentStreams(TID));
     expect(byKey.directory.href).toBe(routes.tournamentTeams(TID));
   });
 

@@ -33,6 +33,10 @@ export const qk = {
   scheduleChanges: (id: string) => ["t-schedule-changes", id] as const,
   /** Control-room day aggregate (control room spec §2.a) — extend with the day. */
   controlRoom: (id: string) => ["t-control-room", id] as const,
+  /** Every court in the workspace with its standing stream binding. */
+  courtStreams: (id: string) => ["t-court-streams", id] as const,
+  /** Hand-pasted "Watch live" links at every scope (match/court-day/category). */
+  streamLinks: (id: string) => ["t-stream-links", id] as const,
   /** Guest Lens campaign overview (campaign + stats + passes). */
   lens: (id: string) => ["t-lens", id] as const,
   /** Guest Lens campaign list for a tournament (the picker landing). */
@@ -69,6 +73,8 @@ export function invalidateTournament(qc: QueryClient, id: string): void {
     qk.fixtureReadiness(id),
     qk.scheduleChanges(id),
     qk.controlRoom(id),
+    qk.courtStreams(id),
+    qk.streamLinks(id),
     qk.lens(id),
     qk.lensPhotos(id),
   ];

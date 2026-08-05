@@ -93,6 +93,10 @@ export const routes = {
     `/tournaments/${encodeURIComponent(id)}/standings`,
   /** Operations: officials, scorer & task assignment cockpit. */
   tournamentCrew: (id: string) => `/tournaments/${encodeURIComponent(id)}/crew`,
+  /** Operations: the day's "Watch live" links — one per court, plus the
+   * per-category and per-match overrides (manager-only). */
+  tournamentStreams: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/streams`,
   /** Operations: full leader board (all scorers, team stats, badges). */
   tournamentLeaders: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/leaders`,
