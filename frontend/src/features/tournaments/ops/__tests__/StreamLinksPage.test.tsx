@@ -170,6 +170,16 @@ async function openDay(): Promise<void> {
   await userEvent.click(chip);
 }
 
+/** Open a row's editor. Editing is a dialog now: rows are read-only. */
+async function openEditor(rowTestid: string): Promise<void> {
+  await userEvent.click(await screen.findByTestId(`${rowTestid}-edit`));
+  await screen.findByTestId("stream-edit-dialog");
+}
+
+async function openTab(tab: "courts" | "categories" | "matches"): Promise<void> {
+  await userEvent.click(await screen.findByTestId(`stream-tab-${tab}`));
+}
+
 describe("StreamLinksPage", () => {
   it("shows, per court, the link in effect AND which level it came from", async () => {
     mount();
@@ -203,6 +213,50 @@ describe("StreamLinksPage", () => {
     expect(within(b).getByTestId(`stream-none-${COURT_B}`)).toBeInTheDocument();
   });
 
+  it("no editor is open until a row asks for one", async () => {
+    // The page used to render an input per court, per competition and per
+    // match — a hundred open forms on a real day. Rows are readable; exactly
+    // one editor exists at a time, and only after a press.
+    mount();
+    await openDay();
+
+    expect(screen.queryByTestId("stream-edit-dialog")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId(`stream-day-${COURT_A}-input`),
+    ).not.toBeInTheDocument();
+
+    await openEditor(`stream-court-${COURT_A}`);
+    expect(screen.getByTestId(`stream-day-${COURT_A}-input`)).toBeInTheDocument();
+    // Only the one that was asked for.
+    expect(
+      screen.queryByTestId(`stream-day-${COURT_B}-input`),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("stream-edit-close"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("stream-edit-dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows one scope at a time, and each tab carries its own size", async () => {
+    mount();
+    await openDay();
+
+    expect(screen.getByTestId("stream-tab-courts")).toHaveTextContent("2");
+    expect(screen.getByTestId("stream-tab-categories")).toHaveTextContent("1");
+    expect(screen.getByTestId("stream-tab-matches")).toHaveTextContent("2");
+
+    // Courts is the landing tab; the other two lists are not in the page.
+    expect(screen.getByTestId(`stream-court-${COURT_A}`)).toBeInTheDocument();
+    expect(screen.queryByTestId("stream-match-m1")).not.toBeInTheDocument();
+
+    await openTab("matches");
+    expect(screen.getByTestId("stream-match-m1")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId(`stream-court-${COURT_A}`),
+    ).not.toBeInTheDocument();
+  });
+
   it("pasting a link for a court+day writes it and the board reflects it", async () => {
     vi.mocked(streamingApi.links).mockResolvedValue({ stream_links: [] });
     vi.mocked(streamingApi.saveLink).mockImplementation(async () => {
@@ -215,6 +269,7 @@ describe("StreamLinksPage", () => {
 
     mount();
     await openDay();
+    await openEditor(`stream-court-${COURT_A}`);
 
     await userEvent.type(
       screen.getByTestId(`stream-day-${COURT_A}-input`),
@@ -236,6 +291,11 @@ describe("StreamLinksPage", () => {
     // Every write carries a client event_id (invariant 3).
     expect(vi.mocked(streamingApi.saveLink).mock.calls[0][1].event_id).toBeTruthy();
 
+    // A landed save is the end of that job, so the dialog gets out of the way
+    // and the row behind it tells the new truth.
+    await waitFor(() => {
+      expect(screen.queryByTestId("stream-edit-dialog")).not.toBeInTheDocument();
+    });
     const a = await screen.findByTestId(`stream-court-${COURT_A}`);
     await waitFor(() => {
       expect(within(a).getByTestId(`stream-source-${COURT_A}`)).toHaveTextContent(
@@ -259,6 +319,7 @@ describe("StreamLinksPage", () => {
       "This day",
     );
 
+    await openEditor(`stream-court-${COURT_A}`);
     await userEvent.click(screen.getByTestId(`stream-day-${COURT_A}-clear`));
 
     await waitFor(() => {
@@ -271,8 +332,10 @@ describe("StreamLinksPage", () => {
         ),
       ).toHaveTextContent("Court default");
     });
+
     // Clearing is NOT disabling: the row is gone, so there is nothing to
-    // switch back on.
+    // switch back on next time the editor is opened.
+    await openEditor(`stream-court-${COURT_A}`);
     expect(
       screen.queryByTestId(`stream-day-${COURT_A}-toggle`),
     ).not.toBeInTheDocument();
@@ -288,6 +351,7 @@ describe("StreamLinksPage", () => {
 
     mount();
     await openDay();
+    await openEditor(`stream-court-${COURT_B}`);
     await userEvent.click(screen.getByTestId(`stream-day-${COURT_B}-toggle`));
 
     await waitFor(() => {
@@ -298,19 +362,25 @@ describe("StreamLinksPage", () => {
       );
     });
     await waitFor(() => {
-      // Still there to switch back on, but no longer applying.
+      // Still there to switch back on — a toggle leaves the editor open,
+      // because it is the one verb an organiser flips back.
       expect(screen.getByTestId(`stream-day-${COURT_B}-toggle`)).toHaveTextContent(
         "Turn on",
       );
     });
-    expect(screen.getByTestId(`stream-court-${COURT_B}`)).toHaveTextContent(
-      "Saved but not applying",
-    );
+
+    await userEvent.click(screen.getByTestId("stream-edit-close"));
+    await waitFor(() => {
+      expect(screen.getByTestId(`stream-court-${COURT_B}`)).toHaveTextContent(
+        "Saved but not applying",
+      );
+    });
   });
 
   it("warns about a channel /live paste before spending a round trip", async () => {
     mount();
     await openDay();
+    await openEditor(`stream-court-${COURT_A}`);
     await userEvent.type(
       screen.getByTestId(`stream-day-${COURT_A}-input`),
       "https://www.youtube.com/@school/live",
@@ -331,12 +401,14 @@ describe("StreamLinksPage", () => {
     );
     mount();
     await openDay();
+    await openEditor(`stream-court-${COURT_A}`);
     await userEvent.type(
       screen.getByTestId(`stream-day-${COURT_A}-input`),
       YT_DAY,
     );
     await userEvent.click(screen.getByTestId(`stream-day-${COURT_A}-save`));
 
+    // A refused write keeps the editor open, with the server's own words in it.
     expect(await screen.findByTestId(`stream-day-${COURT_A}-error`)).toHaveTextContent(
       "cannot identify a court",
     );
@@ -350,6 +422,8 @@ describe("StreamLinksPage", () => {
     mount();
     await openDay();
 
+    await openTab("categories");
+    await openEditor("stream-category-football.u15.girls");
     await userEvent.type(
       screen.getByTestId("stream-cat-football.u15.girls-input"),
       YT_DAY,
@@ -366,6 +440,8 @@ describe("StreamLinksPage", () => {
       );
     });
 
+    await openTab("matches");
+    await openEditor("stream-match-m1");
     await userEvent.type(screen.getByTestId("stream-m-m1-input"), YT_DEFAULT);
     await userEvent.click(screen.getByTestId("stream-m-m1-save"));
     await waitFor(() => {
@@ -378,6 +454,38 @@ describe("StreamLinksPage", () => {
         }),
       );
     });
+  });
+
+  it("the match list is searchable and paged, not a wall of rows", async () => {
+    // A real day is ~100 matches; the page shows 20 and says so.
+    const many = Array.from({ length: 25 }, (_, i) =>
+      match({
+        id: `x${i}`,
+        match_no: i + 1,
+        home_team: { id: `h${i}`, name: `Home ${i}`, short_name: "H" },
+        away_team: { id: `a${i}`, name: `Away ${i}`, short_name: "A" },
+        venue: i % 2 === 0 ? "MP Hall · T1" : "MP Hall · T2",
+      }),
+    );
+    vi.mocked(tournamentsApi.matchesEnriched).mockResolvedValue(many);
+
+    mount();
+    await openDay();
+    await openTab("matches");
+
+    expect(screen.getByTestId("stream-match-x0")).toBeInTheDocument();
+    expect(screen.queryByTestId("stream-match-x24")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("stream-next"));
+    expect(await screen.findByTestId("stream-match-x24")).toBeInTheDocument();
+    expect(screen.queryByTestId("stream-match-x0")).not.toBeInTheDocument();
+
+    // Search narrows the whole day, not just the page in view.
+    await userEvent.type(screen.getByTestId("stream-match-search"), "Home 24");
+    expect(await screen.findByTestId("stream-match-x24")).toBeInTheDocument();
+    expect(screen.queryByTestId("stream-match-x1")).not.toBeInTheDocument();
+    // Narrowing to one page retires the pager.
+    expect(screen.queryByTestId("stream-next")).not.toBeInTheDocument();
   });
 
   it("points at the setup page with a primary action, not a disclosure", async () => {
@@ -402,7 +510,8 @@ describe("StreamLinksPage", () => {
     });
     mount();
     await openDay();
+    await openEditor(`stream-court-${COURT_A}`);
     expect(screen.getByTestId(`stream-day-${COURT_A}-input`)).toBeDisabled();
-    expect(screen.getByTestId(`stream-day-${COURT_B}-clear`)).toBeDisabled();
+    expect(screen.getByTestId(`stream-standing-${COURT_A}-clear`)).toBeDisabled();
   });
 });

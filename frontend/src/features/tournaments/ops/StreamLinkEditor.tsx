@@ -94,6 +94,7 @@ export function LinkEditor({
   disabled,
   testid,
   run,
+  onDone,
 }: {
   tournamentId: string;
   inputId: string;
@@ -109,6 +110,9 @@ export function LinkEditor({
   disabled?: boolean;
   testid: string;
   run: (action: EditorAction) => Promise<unknown>;
+  /** Called after a write lands, with the verb that landed — lets a host close
+   * itself on the finishing moves (save/clear) and stay put on a toggle. */
+  onDone?: (kind: EditorAction["kind"]) => void;
 }): React.ReactElement {
   const qc = useQueryClient();
   const toast = useToast();
@@ -146,6 +150,7 @@ export function LinkEditor({
                 : t("Link switched off")
               : t("Link saved"),
       });
+      onDone?.(action.kind);
     },
     onError: (e) => {
       // A timeout/abort is not a failed write — the server may well have
