@@ -384,7 +384,7 @@ export function MyTasksPage(): React.ReactElement {
   if (matchesQ.isLoading || stageQ.isLoading) {
     return (
       <div
-        className="mx-auto flex w-full flex-col gap-3 px-4 py-6 sm:px-6 md:w-[90%] md:px-0"
+        className="flex w-full flex-col gap-3"
         aria-busy="true"
       >
         <div className="h-24 animate-pulse rounded-xl border border-border bg-card" />
@@ -394,7 +394,7 @@ export function MyTasksPage(): React.ReactElement {
   }
   if (matchesQ.isError) {
     return (
-      <div className="mx-auto flex w-full flex-col gap-3 px-4 py-6 sm:px-6 md:w-[90%] md:px-0">
+      <div className="flex w-full flex-col gap-3">
         <p role="alert" className="text-sm text-destructive">
           {t("Could not load your matches.")}
         </p>
@@ -579,18 +579,15 @@ export function MyTasksPage(): React.ReactElement {
   return (
     <div
       className={cn(
-        "mx-auto flex w-full flex-col",
+        "flex w-full flex-col",
         isMobile
           ? // Edge-to-edge list; the bottom bar only earns its clearance when
             // there is something to filter.
             cn("px-0 pt-3", mine.length > 0 ? "pb-24" : "pb-6")
-          : // 90% of the shell with the gutters replacing page padding — the
-            // same measure the match console uses (PRD decision 78). A member's
-            // own task list is read at the same distance as the board it came
-            // from, so it gets the same width rather than the full bleed. Keyed
-            // to md, where the desktop layout starts: at lg a half-screen window
-            // or an open devtools panel fell back to full bleed.
-            "px-4 py-6 sm:px-6 md:w-[90%] md:px-0",
+          : // The same measure as Today (ControlRoomPage): the full width of the
+            // workspace column, whose own px/py gutters are the page padding.
+            // No clamp and no second layer of padding (owner 2026-08-05).
+            "",
       )}
     >
       <div
