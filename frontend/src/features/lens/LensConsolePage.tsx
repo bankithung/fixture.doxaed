@@ -9,6 +9,7 @@ import {
   EyeOff,
   KeyRound,
   Link2,
+  ListOrdered,
   Plus,
   RefreshCw,
   X,
@@ -41,6 +42,7 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { ApiError } from "@/types/api";
+import { AwardRankBoard } from "./AwardRankBoard";
 import { PassPrintSheet } from "./PassPrintSheet";
 
 type TabKey = "campaign" | "cards" | "moderate" | "awards";
@@ -343,6 +345,8 @@ export function LensConsolePage(): React.ReactElement {
   const [hideTarget, setHideTarget] = useState<LensPhoto | null>(null);
   const [hideReason, setHideReason] = useState("");
   const [pickCategory, setPickCategory] = useState<string | null>(null);
+  /** Judging one prize by ranking; null = the awards overview. */
+  const [rankCategory, setRankCategory] = useState<string | null>(null);
 
   const overviewQ = useQuery({
     queryKey: [...qk.lens(id), campaignId],
@@ -1114,7 +1118,30 @@ export function LensConsolePage(): React.ReactElement {
                 </span>
               ) : null}
             </div>
-            {approvedQ.isLoading ? (
+            {rankCategory ? (
+              <AwardRankBoard
+                campaignId={campaignId}
+                category={rankCategory}
+                // Photos the school filed under this category lead the field;
+                // with none filed, every approved photo is fair game, or a
+                // category nobody tagged could never be judged.
+                candidates={(() => {
+                  const filed = approvedPhotos.filter(
+                    (p) => p.category === rankCategory,
+                  );
+                  return filed.length > 0 ? filed : approvedPhotos;
+                })()}
+                winnerId={
+                  approvedPhotos.find((p) => p.award_category === rankCategory)
+                    ?.id ?? null
+                }
+                onBack={() => setRankCategory(null)}
+                saving={awardM.isPending}
+                onAward={(photoId) =>
+                  awardM.mutate({ photoId, category: rankCategory })
+                }
+              />
+            ) : approvedQ.isLoading ? (
               <div className="p-4">
                 <div className="h-40 animate-pulse rounded-lg border border-border bg-muted" />
               </div>
@@ -1161,12 +1188,20 @@ export function LensConsolePage(): React.ReactElement {
                       )}
                       <div className="mt-auto flex gap-2">
                         <Button
+                          size="sm"
+                          onClick={() => setRankCategory(cat)}
+                          data-testid={`rank-category-${cat}`}
+                        >
+                          <ListOrdered aria-hidden="true" className="h-3.5 w-3.5" />
+                          {t("Rank")}
+                        </Button>
+                        <Button
                           variant="outline"
                           size="sm"
                           onClick={() => setPickCategory(cat)}
                           data-testid={`choose-winner-${cat}`}
                         >
-                          {winner ? t("Change winner") : t("Choose winner")}
+                          {winner ? t("Change") : t("Pick")}
                         </Button>
                         {winner ? (
                           <Button

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -144,6 +144,7 @@ function mount() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   vi.mocked(lensApi.overview).mockResolvedValue(OVERVIEW);
   vi.mocked(lensApi.photos).mockResolvedValue({ photos: [] });
   vi.mocked(lensApi.open).mockResolvedValue({ campaign: CAMPAIGN });
@@ -342,6 +343,70 @@ describe("LensConsolePage", () => {
     expect(vi.mocked(lensApi.issueCodes).mock.calls[0][2]).toMatchObject({
       institution_ids: ["i1"],
     });
+  });
+
+  it("judges a prize by ranking: shortlist, reorder, first place wins", async () => {
+    vi.mocked(lensApi.photos).mockResolvedValue({
+      photos: [
+        photo({ id: "ph1", status: "approved", category: "Best Action Shot" }),
+        photo({
+          id: "ph2",
+          status: "approved",
+          category: "Best Action Shot",
+          institution_name: "Pine Academy",
+        }),
+      ],
+    });
+    mount();
+    await userEvent.click(await screen.findByTestId("lens-tab-awards"));
+    await userEvent.click(
+      await screen.findByTestId("rank-category-Best Action Shot"),
+    );
+
+    // Nothing is on the shortlist, so there is nothing to award yet.
+    expect(await screen.findByTestId("rank-empty")).toBeInTheDocument();
+    expect(screen.getByTestId("rank-save")).toBeDisabled();
+
+    await userEvent.click(screen.getByTestId("rank-add-ph1"));
+    await userEvent.click(screen.getByTestId("rank-add-ph2"));
+
+    // First place carries the winner mark and names the school on the button.
+    expect(within(screen.getByTestId("rank-slot-1")).getByText("Grace School"))
+      .toBeInTheDocument();
+    expect(screen.getByTestId("rank-save")).toHaveTextContent("Grace School");
+
+    // Move the second past the first: the decision is made by comparing.
+    await userEvent.click(screen.getByTestId("rank-up-ph2"));
+    expect(within(screen.getByTestId("rank-slot-1")).getByText("Pine Academy"))
+      .toBeInTheDocument();
+    expect(screen.getByTestId("rank-save")).toHaveTextContent("Pine Academy");
+
+    await userEvent.click(screen.getByTestId("rank-save"));
+    await waitFor(() => expect(lensApi.award).toHaveBeenCalledTimes(1));
+    const [, photoId, body] = vi.mocked(lensApi.award).mock.calls[0];
+    expect(photoId).toBe("ph2");
+    expect(body.category).toBe("Best Action Shot");
+  });
+
+  it("keeps a shortlist across a reload, and drops photos that went away", async () => {
+    localStorage.setItem(
+      "lens:rank:c1:Best Action Shot",
+      JSON.stringify(["gone", "ph1"]),
+    );
+    vi.mocked(lensApi.photos).mockResolvedValue({
+      photos: [photo({ id: "ph1", status: "approved", category: "Best Action Shot" })],
+    });
+    mount();
+    await userEvent.click(await screen.findByTestId("lens-tab-awards"));
+    await userEvent.click(
+      await screen.findByTestId("rank-category-Best Action Shot"),
+    );
+
+    // The order survives, minus the photo that no longer exists — no hole
+    // where a deleted or hidden candidate used to sit.
+    const first = await screen.findByTestId("rank-slot-1");
+    expect(within(first).getByText("Grace School")).toBeInTheDocument();
+    expect(screen.queryByTestId("rank-slot-2")).toBeNull();
   });
 
   it("assigns an award winner from the approved picker", async () => {
