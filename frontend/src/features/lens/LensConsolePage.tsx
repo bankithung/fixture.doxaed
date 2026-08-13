@@ -333,6 +333,7 @@ export function LensConsolePage(): React.ReactElement {
     | { kind: "rotate"; passId: string; name: string }
     | { kind: "revoke"; passId: string; name: string }
     | { kind: "reissue-all"; count: number }
+    | { kind: "new-card" }
     | null
   >(null);
   const [statusFilter, setStatusFilter] = useState<string>("pending");
@@ -699,9 +700,15 @@ export function LensConsolePage(): React.ReactElement {
         <PassPrintSheet
           card={shareCard}
           codes={codes}
-          onMint={() => shareCardM.mutate()}
+          // Replacing a card retires the poster already on the wall, so it
+          // asks first; the first mint has nothing to lose and just runs.
+          onMint={() =>
+            campaign.share_minted_at
+              ? setConfirm({ kind: "new-card" })
+              : shareCardM.mutate()
+          }
           minting={shareCardM.isPending}
-          hasCard={Boolean(campaign.share_minted_at)}
+          mintedAt={campaign.share_minted_at}
           tournamentName={tournamentQ.data?.name ?? ""}
           title={campaign.title}
           tagline={campaign.tagline}
@@ -1245,22 +1252,26 @@ export function LensConsolePage(): React.ReactElement {
                   ? t("Close the campaign?")
                   : confirm.kind === "reopen"
                     ? t("Reopen the campaign?")
-                    : confirm.kind === "reissue-all"
-                      ? t("New codes for every school?")
+                    : confirm.kind === "new-card"
+                      ? t("Replace the card on the wall?")
+                      : confirm.kind === "reissue-all"
+                        ? t("New codes for every school?")
                       : confirm.kind === "rotate"
-                        ? t("Regenerate this school's code?")
-                        : t("Remove this school from the album?")}
+                          ? t("Regenerate this school's code?")
+                          : t("Remove this school from the album?")}
               </DialogTitle>
               <DialogDescription>
                 {confirm.kind === "close"
                   ? t("Uploading stops for every school. The album stays public.")
                   : confirm.kind === "reopen"
                     ? t("Schools can upload photos again.")
-                    : confirm.kind === "reissue-all"
-                      ? `${confirm.count} ${t("schools get a fresh code, shown once. Every code already handed out stops working, so only do this if you need the whole list back.")}`
+                    : confirm.kind === "new-card"
+                      ? t("The printed poster stops working the moment this is done. Only replace the card if it was lost, and print the new one before the event.")
+                      : confirm.kind === "reissue-all"
+                        ? `${confirm.count} ${t("schools get a fresh code, shown once. Every code already handed out stops working, so only do this if you need the whole list back.")}`
                       : confirm.kind === "rotate"
-                        ? `${confirm.name}. ${t("Its old code stops working. The shared card is unchanged.")}`
-                        : `${confirm.name}. ${t("The school can no longer upload photos.")}`}
+                          ? `${confirm.name}. ${t("Its old code stops working. The shared card is unchanged.")}`
+                          : `${confirm.name}. ${t("The school can no longer upload photos.")}`}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -1270,13 +1281,16 @@ export function LensConsolePage(): React.ReactElement {
               <Button
                 data-testid="confirm-action-btn"
                 variant={
-                  confirm.kind === "revoke" || confirm.kind === "reissue-all"
+                  confirm.kind === "revoke" ||
+                  confirm.kind === "reissue-all" ||
+                  confirm.kind === "new-card"
                     ? "destructive"
                     : "default"
                 }
                 onClick={() => {
                   if (confirm.kind === "close") closeM.mutate();
                   else if (confirm.kind === "reopen") reopenM.mutate();
+                  else if (confirm.kind === "new-card") shareCardM.mutate();
                   else if (confirm.kind === "reissue-all")
                     issueM.mutate(
                       (overviewQ.data?.passes ?? []).map((p) => p.institution_id),

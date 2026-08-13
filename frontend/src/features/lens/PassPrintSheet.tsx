@@ -1,8 +1,33 @@
-import { Copy, KeyRound, Printer, QrCode } from "lucide-react";
+import { Copy, KeyRound, Lock, Printer, QrCode } from "lucide-react";
 import type { LensCode, LensShareCard } from "@/api/lens";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+
+/** What a school does with the card, in the order it happens. Shown next to
+ * the QR so the manager can check the poster says the same thing. */
+const STEPS = [
+  "Scan the code with any phone camera.",
+  "Pick your school and enter your code.",
+  "Upload your best photos of the event.",
+  "Approved photos join the shared album.",
+];
+
+function Steps({ ink }: { ink?: boolean }): React.ReactElement {
+  return (
+    <ol
+      className={cn(
+        "list-decimal space-y-1 pl-5 text-left text-sm",
+        ink ? "text-muted-foreground print:text-black" : "text-muted-foreground",
+      )}
+    >
+      {STEPS.map((s) => (
+        <li key={s}>{t(s)}</li>
+      ))}
+    </ol>
+  );
+}
 
 /**
  * The event's ONE printable card, plus the code slips that go with it.
@@ -12,31 +37,33 @@ import { t } from "@/lib/t";
  * everyone — print it once, put it where people can see it — and what each
  * school gets is a line of text: its name and its code.
  *
- * The QR and the codes exist ONLY in the response of the call that made them
- * (hash at rest, spec D12), so this sheet renders what is held in React state
- * and says so. On screen it is a preview; `window.print()` turns it into the
- * poster followed by one slip per school. The print side uses fixed ink-safe
- * styles on purpose; the screen side stays on tokens.
+ * Three states, because the QR exists only in the response that created it
+ * (hash at rest, spec D12) and the panel has to be honest about which one it
+ * is in: nothing minted yet, a card in use whose QR is gone, and the one
+ * moment the QR is on screen and printable. `window.print()` gives the poster
+ * followed by one slip per school; the print side uses fixed ink-safe styles
+ * on purpose while the screen side stays on tokens.
  */
 export function PassPrintSheet({
   card,
   codes,
   onMint,
   minting,
-  hasCard,
+  mintedAt,
   tournamentName,
   title,
   tagline,
   consentNote,
 }: {
-  /** Held only while the mint response is on screen; null = nothing to print. */
+  /** Held only while the mint response is on screen; null = QR not available. */
   card: LensShareCard | null;
   /** Codes generated in this session, printed as slips under the poster. */
   codes: LensCode[];
+  /** Mint or replace. The console confirms first when a card is already out. */
   onMint: () => void;
   minting: boolean;
-  /** Whether a card has ever been minted (from the campaign, not the token). */
-  hasCard: boolean;
+  /** When the card in use was created; null = none has ever been made. */
+  mintedAt: string | null;
   tournamentName: string;
   title: string;
   tagline: string;
@@ -58,44 +85,33 @@ export function PassPrintSheet({
       <div className="panel-header justify-between print:hidden">
         <h3 className="panel-title">{t("The card everyone scans")}</h3>
         <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant={card ? "outline" : "default"}
-            onClick={onMint}
-            disabled={minting}
-            data-testid="mint-share-card-btn"
-          >
-            <QrCode aria-hidden="true" className="h-4 w-4" />
-            {hasCard ? t("New card") : t("Create the card")}
-          </Button>
           {card ? (
             <Button size="sm" onClick={() => window.print()} data-testid="print-cards-btn">
               <Printer aria-hidden="true" className="h-4 w-4" />
               {t("Print")}
             </Button>
           ) : null}
+          <Button
+            size="sm"
+            variant={mintedAt ? "outline" : "default"}
+            onClick={onMint}
+            disabled={minting}
+            data-testid="mint-share-card-btn"
+          >
+            <QrCode aria-hidden="true" className="h-4 w-4" />
+            {mintedAt ? t("Replace card") : t("Create the card")}
+          </Button>
         </div>
       </div>
 
-      {!card ? (
-        <p className="px-4 py-3 text-sm text-muted-foreground print:hidden">
-          {hasCard
-            ? t(
-                "A card is already in use. Its QR is shown once, so print a new one only if the old poster is lost. Creating a new card stops the old one working.",
-              )
-            : t(
-                "Create the card, print it once, and put it where visitors can see it. Each school signs in on it with its own code.",
-              )}
-        </p>
-      ) : (
+      {card ? (
+        /* The one moment the QR exists. Say so, then get out of the way. */
         <>
-          <p className="border-b border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground print:hidden">
+          <p className="border-b border-border bg-warning-muted px-4 py-2 text-xs font-medium text-warning print:hidden">
             {t(
-              "This QR is shown once. Print or copy it now; creating a new card stops this one working.",
+              "This is the only time the QR is shown. Print it now, or copy the link and keep it somewhere safe.",
             )}
           </p>
-
-          {/* The poster */}
           <div className="p-3 print:p-0">
             <div
               data-testid="share-card"
@@ -115,12 +131,9 @@ export function PassPrintSheet({
                 alt={t("QR code opening the photo upload page")}
                 className="mt-4 h-56 w-56 rounded-md border border-border bg-white p-2 print:border-black"
               />
-              <ol className="mt-4 list-decimal space-y-1 pl-5 text-left text-sm text-muted-foreground print:text-black">
-                <li>{t("Scan the code with any phone camera.")}</li>
-                <li>{t("Pick your school and enter your code.")}</li>
-                <li>{t("Upload your best photos of the event.")}</li>
-                <li>{t("Approved photos join the shared album.")}</li>
-              </ol>
+              <div className="mt-4">
+                <Steps ink />
+              </div>
               <p className="mt-4 max-w-md text-[0.6875rem] leading-snug text-muted-foreground print:text-black">
                 {consentNote}
               </p>
@@ -138,6 +151,54 @@ export function PassPrintSheet({
             </div>
           </div>
         </>
+      ) : (
+        /* No QR in hand: a state to read at a glance, not a paragraph. The
+           placeholder keeps the panel the same shape either way. */
+        <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start print:hidden">
+          <div
+            aria-hidden="true"
+            className="flex h-40 w-40 shrink-0 flex-col items-center justify-center gap-2 self-center rounded-lg border border-dashed border-border bg-muted/40 text-muted-foreground sm:self-start"
+          >
+            {mintedAt ? (
+              <>
+                <Lock className="h-6 w-6" />
+                <span className="px-3 text-center text-[0.6875rem] leading-snug">
+                  {t("QR shown once")}
+                </span>
+              </>
+            ) : (
+              <QrCode className="h-8 w-8" />
+            )}
+          </div>
+          <div className="flex min-w-0 flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-medium">
+                {mintedAt ? t("A card is in use") : t("No card yet")}
+              </p>
+              {mintedAt ? (
+                <span
+                  data-testid="card-active-since"
+                  className="rounded-full bg-success-muted px-2 py-0.5 text-[0.6875rem] font-medium text-success"
+                >
+                  {t("Created")}{" "}
+                  {new Date(mintedAt).toLocaleDateString([], {
+                    dateStyle: "medium",
+                  })}
+                </span>
+              ) : null}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {mintedAt
+                ? t(
+                    "The printed poster keeps working. Replace the card only if it was lost, which stops the old poster.",
+                  )
+                : t(
+                    "One card for the whole event. Print it once and put it where visitors can see it.",
+                  )}
+            </p>
+            <Steps />
+          </div>
+        </div>
       )}
 
       {/* The slips: one per school, handed out with the poster on the wall. */}
@@ -149,6 +210,23 @@ export function PassPrintSheet({
             <span className="font-tabular text-xs text-muted-foreground">
               {codes.length}
             </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto"
+              data-testid="copy-all-codes"
+              onClick={() =>
+                void copy(
+                  codes
+                    .map((c) => `${c.institution_name}\t${c.code}`)
+                    .join("\n"),
+                  t("All codes copied"),
+                )
+              }
+            >
+              <Copy aria-hidden="true" className="h-3.5 w-3.5" />
+              {t("Copy all")}
+            </Button>
           </div>
           <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 print:grid-cols-2 print:gap-0 print:p-0">
             {codes.map((c) => (

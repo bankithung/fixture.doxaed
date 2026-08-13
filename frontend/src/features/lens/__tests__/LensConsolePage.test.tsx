@@ -261,6 +261,34 @@ describe("LensConsolePage", () => {
     expect(screen.getAllByAltText(/QR code/)).toHaveLength(1);
   });
 
+  it("will not retire the poster on the wall without asking", async () => {
+    vi.mocked(lensApi.overview).mockResolvedValue({
+      ...OVERVIEW,
+      campaign: { ...CAMPAIGN, share_minted_at: "2026-08-13T18:23:00Z" },
+    });
+    mount();
+    await userEvent.click(await screen.findByTestId("lens-tab-cards"));
+
+    // A card is out: the panel says so and dates it, instead of a paragraph.
+    expect(await screen.findByTestId("card-active-since")).toHaveTextContent(
+      /Created/,
+    );
+    expect(screen.getByTestId("mint-share-card-btn")).toHaveTextContent(
+      "Replace card",
+    );
+    // Nothing to print when the QR is not in hand.
+    expect(screen.queryByTestId("print-cards-btn")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("mint-share-card-btn"));
+    expect(lensApi.shareCard).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText(/Replace the card on the wall\?/i),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("confirm-action-btn"));
+    await waitFor(() => expect(lensApi.shareCard).toHaveBeenCalledTimes(1));
+  });
+
   it("issues codes only for the schools that lack one, and shows each once", async () => {
     mount();
 
