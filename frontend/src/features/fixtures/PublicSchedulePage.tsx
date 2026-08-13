@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { CalendarDays, Printer, Search, Star, Trophy, X } from "lucide-react";
+import {
+  CalendarDays,
+  Clock,
+  ListOrdered,
+  Printer,
+  Search,
+  Star,
+  Trophy,
+  X,
+} from "lucide-react";
 import { useFollows } from "@/lib/follows";
 import { type PublicScheduleMatch } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
@@ -309,7 +318,10 @@ function LiveBand({
   if (matches.length === 0) return null;
   const single = matches.length === 1;
   return (
-    <section data-testid="live-band" className="flex flex-col gap-2">
+    <section
+      data-testid="live-band"
+      className="flex flex-col gap-2 border-b border-border bg-card p-3 sm:p-4"
+    >
       <div className="flex items-center gap-2">
         <LivePulse />
         <h2 className="text-sm font-semibold">{t("Now playing")}</h2>
@@ -432,6 +444,87 @@ function LiveBand({
             </div>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+/** What follows the live game (owner 2026-08-13). A finished match empties the
+ * live band on the next tick, and the question a viewer has at that moment is
+ * "what's on now?" — so the answer sits directly under it. Scoped like every
+ * other band: the open category's next matches, or the tournament's on Today.
+ * Matches whose slot has already passed but never started fall back in below
+ * the genuinely upcoming ones rather than posing as next. */
+function UpNextBand({
+  matches,
+  timeZone,
+}: {
+  matches: PublicScheduleMatch[];
+  timeZone: string;
+}): React.ReactElement | null {
+  const next = useMemo(() => {
+    const now = new Date().toISOString();
+    const waiting = matches
+      .filter(
+        (m) =>
+          m.scheduled_at &&
+          !FINAL_STATUSES.has(m.status) &&
+          !LIVE_STATUSES.has(m.status),
+      )
+      .sort((a, b) => ((a.scheduled_at ?? "") < (b.scheduled_at ?? "") ? -1 : 1));
+    const upcoming = waiting.filter((m) => (m.scheduled_at ?? "") >= now);
+    return (upcoming.length > 0 ? upcoming : waiting).slice(0, 3);
+  }, [matches]);
+
+  if (next.length === 0) return null;
+  return (
+    <section data-testid="upnext-band" className="border-b border-border bg-card">
+      <p className="flex items-center gap-1.5 border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        <Clock aria-hidden="true" className="h-3.5 w-3.5" />
+        {t("Up next")}
+      </p>
+      <ul className="divide-y divide-border">
+        {next.map((m) => (
+          <MatchCard key={m.id} match={m} timeZone={timeZone} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** Every group table of one competition, side by side and directly under the
+ * live band (owner 2026-08-13): the whole category's standings read in one
+ * glance instead of one table per screen with a fixture list between them.
+ * The fixtures still live under their own group heading further down. */
+function CompetitionTables({
+  comp,
+}: {
+  comp: Competition;
+}): React.ReactElement | null {
+  const tables = comp.groups.filter((g) => (g.standing?.rows.length ?? 0) > 0);
+  if (tables.length === 0) return null;
+  return (
+    <section
+      data-testid={`public-tables-${comp.key}`}
+      className="border-b border-border bg-card"
+    >
+      <p className="flex items-center gap-1.5 border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        <ListOrdered aria-hidden="true" className="h-3.5 w-3.5" />
+        {t("Standings")}
+      </p>
+      <div className="grid grid-cols-1 gap-3 p-3 sm:p-4 md:grid-cols-2 2xl:grid-cols-3">
+        {tables.map((g) => (
+          <div
+            key={g.key}
+            data-testid={`public-table-${comp.key}-${g.key}`}
+            className="flex flex-col overflow-hidden rounded-lg border border-border"
+          >
+            <h3 className="border-b border-border px-4 py-2 text-sm font-semibold">
+              {g.label}
+            </h3>
+            <GroupTable rows={g.standing!.rows} family={comp.family} />
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -560,8 +653,10 @@ function CompetitionRail({
   );
 }
 
-/** The standings hero: every group of one competition as a table + its
- * fixtures, un-collapsed. The panel is one surface; groups are hairline units. */
+/** One competition's fixtures, un-collapsed, under their group heading. The
+ * tables themselves sit above in `CompetitionTables` (all of them together);
+ * repeating each one over its own fixture list only pushed the next group off
+ * the screen. The panel is one surface; groups are hairline units. */
 function CompetitionStandings({
   comp,
   timeZone,
@@ -573,7 +668,9 @@ function CompetitionStandings({
 }): React.ReactElement {
   const groups = comp.groups
     .map((g) => ({ ...g, shown: q ? g.matches.filter((m) => teamHit(m, q)) : g.matches }))
-    .filter((g) => g.shown.length > 0 || (g.standing?.rows.length ?? 0) > 0);
+    // A group with no fixture left to show is now an empty card: its table
+    // already stands above, so there is nothing here to render.
+    .filter((g) => g.shown.length > 0);
   if (groups.length === 0) {
     return (
       <p className="p-6 text-center text-sm text-muted-foreground">
@@ -598,10 +695,7 @@ function CompetitionStandings({
               {g.shown.length}
             </span>
           </h3>
-          {g.standing && g.standing.rows.length > 0 ? (
-            <GroupTable rows={g.standing.rows} family={comp.family} />
-          ) : null}
-          <ul className="divide-y divide-border border-t border-border">
+          <ul className="divide-y divide-border">
             {g.shown.map((m) => (
               <MatchCard key={m.id} match={m} timeZone={timeZone} labels="none" />
             ))}
@@ -960,6 +1054,17 @@ export function PublicSchedulePage(): React.ReactElement {
   const selectedComp =
     selected === "today" ? null : competitions.find((c) => c.key === selected);
 
+  /** Everything below the control bar obeys the selection (owner 2026-08-13).
+   * Open a category and the bands are that category's — a "Now playing" tile
+   * for another game, or a leader board pooling every sport, reads as part of
+   * the category you opened and is simply wrong. Today stays the whole
+   * tournament. Both bands already render null when they have nothing. */
+  const bandMatches = selectedComp?.matches ?? allMatches;
+  const bandLive = useMemo(
+    () => bandMatches.filter((m) => LIVE_STATUSES.has(m.status)),
+    [bandMatches],
+  );
+
   const q = teamQ.trim().toLowerCase();
   // Scope of the active view (for the count chip).
   const scopeMatches =
@@ -1195,10 +1300,20 @@ export function PublicSchedulePage(): React.ReactElement {
                     </div>
                   </div>
 
-                  {/* The one earned card: live, pinned across any selection */}
-                  <LiveBand matches={liveMatches} timeZone={tz} />
-                  <FollowedBand matches={allMatches} timeZone={tz} />
-                  <PublicLeaders slug={slug} id={id} flat />
+                  {/* The one earned card: live, pinned inside the selection,
+                      then what follows it, then the tables it feeds. */}
+                  <LiveBand matches={bandLive} timeZone={tz} />
+                  <UpNextBand matches={bandMatches} timeZone={tz} />
+                  <FollowedBand matches={bandMatches} timeZone={tz} />
+                  {selectedComp && panelMode === "standings" ? (
+                    <CompetitionTables comp={selectedComp} />
+                  ) : null}
+                  <PublicLeaders
+                    slug={slug}
+                    id={id}
+                    flat
+                    leafKey={selectedComp?.key}
+                  />
 
                   {/* Body */}
                   {selected === "today" ? (

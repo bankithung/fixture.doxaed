@@ -199,6 +199,30 @@ describe("PublicSchedulePage", () => {
     expect(m2).toHaveTextContent("Live");
   });
 
+  it("scopes the Now-playing band to the open competition, and hides it when that competition has nothing live", async () => {
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+    // Today = the whole tournament: both live games.
+    expect(within(screen.getByTestId("live-band")).getByTestId("live-tile-m5"))
+      .toBeInTheDocument();
+
+    // Football U-15 is live (m2); Table Tennis' live game (m5) belongs to a
+    // competition the viewer did not open and must not appear.
+    await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
+    const band = await screen.findByTestId("live-band");
+    expect(within(band).getByTestId("live-tile-m2")).toBeInTheDocument();
+    expect(within(band).queryByTestId("live-tile-m5")).toBeNull();
+
+    // Football U-17 has no live match: no band at all, not an empty one.
+    await userEvent.click(screen.getByTestId("rail-comp-football.u17"));
+    await waitFor(() => expect(screen.queryByTestId("live-band")).toBeNull());
+
+    // Back to Today and everything returns.
+    await userEvent.click(screen.getByTestId("rail-today"));
+    const back = await screen.findByTestId("live-band");
+    expect(within(back).getByTestId("live-tile-m5")).toBeInTheDocument();
+  });
+
   it("shows live points: period chip, set scores, shootout result (ASCII)", async () => {
     mount();
     const m2 = await screen.findByTestId("public-match-m2");
@@ -217,13 +241,42 @@ describe("PublicSchedulePage", () => {
     await screen.findByTestId("public-day-2026-06-20");
     await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
 
-    const panel = await screen.findByTestId("public-competition-football.u15");
-    // inline FIFA-style group table
-    expect(within(panel).getByTestId("group-standing-tm1")).toHaveTextContent("Alpha FC");
-    expect(within(panel).getByTestId("group-standing-tm1")).toHaveTextContent("3");
-    // its fixtures sit under the table
+    // every table of the competition sits together, above the fixtures, so a
+    // multi-group category reads in one glance
+    const tables = await screen.findByTestId("public-tables-football.u15");
+    const row = within(tables).getByTestId("group-standing-tm1");
+    expect(row).toHaveTextContent("Alpha FC");
+    expect(row).toHaveTextContent("3");
+
+    // the fixtures follow under their group heading, with no second copy of
+    // the table wrapped around them
+    const panel = screen.getByTestId("public-competition-football.u15");
     expect(within(panel).getByTestId("public-match-m1")).toBeInTheDocument();
     expect(within(panel).getByTestId("public-match-m2")).toBeInTheDocument();
+    expect(within(panel).queryByTestId("group-standing-tm1")).toBeNull();
+  });
+
+  it("keeps Up next under the live band, scoped, and moves on when a match ends", async () => {
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+
+    // Today: the tournament's next unplayed matches, live ones excluded
+    const band = screen.getByTestId("upnext-band");
+    expect(within(band).getByTestId("public-match-m3")).toBeInTheDocument();
+    expect(within(band).queryByTestId("public-match-m2")).toBeNull(); // live
+    expect(within(band).queryByTestId("public-match-m1")).toBeNull(); // played
+
+    // a competition shows only its own next match
+    await userEvent.click(screen.getByTestId("rail-comp-football.u17"));
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId("upnext-band")).getByTestId("public-match-m3"),
+      ).toBeInTheDocument(),
+    );
+    await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("upnext-band")).toBeNull(),
+    );
   });
 
   it("filters the active scope by a team search and clears", async () => {

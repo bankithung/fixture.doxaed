@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Award, Trophy } from "lucide-react";
@@ -26,13 +27,18 @@ export function PublicLeaders({
   slug,
   id,
   flat = false,
+  leafKey,
 }: {
   slug: string;
   id: string;
   /** Render as a band on an existing surface (no card chrome) — the public
    * schedule panel is one combined section, not a stack of cards. */
   flat?: boolean;
-}): React.ReactElement {
+  /** Scope to ONE competition leaf (owner 2026-08-13): while a viewer has a
+   * category open, a tournament-wide board answers a question they didn't
+   * ask. Nothing played in that leaf yet renders nothing at all. */
+  leafKey?: string;
+}): React.ReactElement | null {
   const q = useQuery({
     queryKey: ["public-leaders", id],
     queryFn: () =>
@@ -41,8 +47,34 @@ export function PublicLeaders({
       ),
     staleTime: 30_000,
   });
-  const d = q.data;
+  const raw = q.data;
+
+  // The payload already carries per-leaf boards (services/leaders.py) — the
+  // scoped view is a projection of it, so no extra request.
+  const scoped = useMemo((): LeadersPayload | undefined => {
+    if (!raw || !leafKey) return raw;
+    for (const s of raw.sports) {
+      const cat = (s.categories ?? []).find(
+        // "_" is the schedule page's stand-in for a match with no leaf key.
+        (c) => c.leaf_key === leafKey || (leafKey === "_" && !c.leaf_key),
+      );
+      if (!cat) continue;
+      return {
+        played: cat.played,
+        // One sport, one category: SportLeaderBoards collapses its sport
+        // chrome at length 1, which is exactly right here.
+        sports: [{ ...s, played: cat.played, boards: cat.boards, categories: [] }],
+        latest_badges: [],
+      };
+    }
+    return { played: 0, sports: [], latest_badges: [] };
+  }, [raw, leafKey]);
+
+  const d = scoped;
   const empty = !d || d.played === 0;
+  // Scoped and nothing played: show nothing rather than an empty promise on
+  // top of the category the viewer actually opened.
+  if (leafKey && empty) return null;
   // The payload is untrusted at runtime: a response without `latest_badges`
   // (an older backend, a cached body) used to crash the whole public page on
   // `.length`, not just hide the strip.
