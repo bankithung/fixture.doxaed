@@ -512,7 +512,9 @@ function CompetitionTables({
         <ListOrdered aria-hidden="true" className="h-3.5 w-3.5" />
         {t("Standings")}
       </p>
-      <div className="grid grid-cols-1 gap-3 p-3 sm:p-4 md:grid-cols-2 2xl:grid-cols-3">
+      {/* Two per row and no more (owner 2026-08-13): a third column squeezes
+          "Dimapur Government Higher Secondary School" into an ellipsis. */}
+      <div className="grid grid-cols-1 gap-3 p-3 sm:p-4 md:grid-cols-2">
         {tables.map((g) => (
           <div
             key={g.key}
