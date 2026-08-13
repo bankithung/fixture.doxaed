@@ -7,7 +7,10 @@ import {
   type LiveSnapshot,
   type LiveStatRow,
 } from "@/api/live";
-import { tournamentsApi } from "@/api/tournaments";
+import {
+  tournamentsApi,
+  type PublicScheduleMatch,
+} from "@/api/tournaments";
 import { WatchLiveLink } from "./WatchLiveLink";
 import { ThemeToggle } from "@/features/theme/ThemeToggle";
 import { routes } from "@/lib/routes";
@@ -39,6 +42,72 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "stats", label: "Stats" },
   { key: "h2h", label: "Head to head" },
 ];
+
+/**
+ * What this court does next (owner 2026-08-13). Once a match is over its score
+ * is the answer to a question the viewer already has; the one they don't is
+ * "what's on now?" — and on a stream the camera has not moved, so the same
+ * court is about to start another game. Same venue wins, then the same
+ * competition. Slots that passed without ever starting sort in behind the
+ * genuinely upcoming ones rather than posing as next.
+ */
+function pickNextMatch(
+  all: PublicScheduleMatch[],
+  match: SnapMatch,
+  nowIso: string,
+): PublicScheduleMatch | null {
+  const waiting = all
+    .filter(
+      (m) =>
+        m.id !== match.id &&
+        m.scheduled_at &&
+        !FINAL_STATUSES.has(m.status) &&
+        !LIVE_STATUSES.has(m.status),
+    )
+    .sort((a, b) => ((a.scheduled_at ?? "") < (b.scheduled_at ?? "") ? -1 : 1));
+  const upcoming = waiting.filter((m) => (m.scheduled_at ?? "") >= nowIso);
+  const pool = upcoming.length > 0 ? upcoming : waiting;
+  const sameVenue = match.venue
+    ? pool.find((m) => m.venue === match.venue)
+    : undefined;
+  return sameVenue ?? pool.find((m) => m.leaf_key === match.leaf_key) ?? null;
+}
+
+function UpNextCard({
+  next,
+  timeZone,
+}: {
+  next: PublicScheduleMatch;
+  timeZone: string;
+}): React.ReactElement {
+  return (
+    <section
+      data-testid="up-next-card"
+      className="rounded-xl border border-border bg-card shadow-sm"
+    >
+      <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+        <h2 className={OVERLINE}>{t("Up next")}</h2>
+        <span className="ml-auto text-xs text-muted-foreground">
+          {fmtTime(next.scheduled_at, timeZone) ?? ""}
+          {next.venue ? ` · ${next.venue}` : ""}
+        </span>
+      </div>
+      <Link
+        to={routes.liveViewer(next.id)}
+        data-testid="up-next-link"
+        className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-4 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <span className="min-w-0 truncate text-right text-sm font-semibold">
+          {next.home?.name ?? t("TBD")}
+        </span>
+        <span className="text-xs text-muted-foreground">{t("vs")}</span>
+        <span className="min-w-0 truncate text-left text-sm font-semibold">
+          {next.away?.name ?? t("TBD")}
+        </span>
+      </Link>
+    </section>
+  );
+}
 
 function statusMeta(status: string): { label: string; cls: string; live: boolean } {
   if (LIVE_STATUSES.has(status)) {
@@ -495,6 +564,17 @@ export function LiveViewerPage(): React.ReactElement {
   const isLive = match ? LIVE_STATUSES.has(match.status) : false;
   const isFinal = match ? FINAL_STATUSES.has(match.status) : false;
 
+  // Off the schedule this page already fetched for the Watch live link, so
+  // pointing at the next match costs no extra request.
+  const nextMatch =
+    match && isFinal
+      ? pickNextMatch(
+          watchQ.data?.matches ?? [],
+          match,
+          new Date().toISOString(),
+        )
+      : null;
+
   const visibleTabs = TABS.filter((tab) => {
     if (tab.key === "stats") return stats.length > 0 || isLive || isFinal;
     if (tab.key === "h2h") return h2h.length > 0;
@@ -857,6 +937,9 @@ export function LiveViewerPage(): React.ReactElement {
         data-testid={`hub-panel-${active}`}
         className="flex w-full flex-1 flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8"
       >
+        {/* Directly under the scoreline, above the tab's own content: the
+            match is done, so the next thing on this court leads. */}
+        {nextMatch ? <UpNextCard next={nextMatch} timeZone={tz} /> : null}
         {panels[active]}
         {isLive || isFinal ? (
           <p className="text-center text-xs text-muted-foreground">

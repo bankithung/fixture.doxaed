@@ -4,6 +4,11 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LiveViewerPage } from "../LiveViewerPage";
 import { liveApi, type LiveSnapshot } from "@/api/live";
+import {
+  tournamentsApi,
+  type PublicScheduleMatch,
+  type PublicSchedulePayload,
+} from "@/api/tournaments";
 
 vi.mock("@/api/live", async () => {
   const actual = await vi.importActual<typeof import("@/api/live")>("@/api/live");
@@ -14,6 +19,15 @@ vi.mock("@/api/live", async () => {
       streamUrl: (slug: string, id: string) =>
         `/api/public/tournaments/${slug}/${id}/stream/`,
     },
+  };
+});
+
+vi.mock("@/api/tournaments", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/api/tournaments")>("@/api/tournaments");
+  return {
+    ...actual,
+    tournamentsApi: { ...actual.tournamentsApi, publicSchedule: vi.fn() },
   };
 });
 
@@ -244,5 +258,90 @@ describe("LiveViewerPage", () => {
     expect(row).toHaveTextContent("Beta");
     expect(row).toHaveTextContent("0 - 3");
     expect(row).toHaveTextContent("Alpha");
+  });
+
+  describe("up next", () => {
+    const sched = (
+      rows: Partial<PublicScheduleMatch>[],
+    ): PublicSchedulePayload => ({
+      tournament: { ...TOURNAMENT, status: "live" },
+      matches: rows.map((r, i) => ({
+        id: `x${i}`,
+        leaf_key: "football.u15.boys",
+        leaf_label: "Football",
+        stage: "group",
+        group_label: "Group A",
+        round_no: 1,
+        match_no: i,
+        status: "scheduled",
+        day: "2026-07-04",
+        scheduled_at: "2026-07-04T12:00:00Z",
+        venue: "Local Ground",
+        home: { id: "h", name: "Home Side", short_name: "H", school: "H" },
+        away: { id: "a", name: "Away Side", short_name: "A", school: "A" },
+        home_score: null,
+        away_score: null,
+        home_pens: null,
+        away_pens: null,
+        sport: "",
+        set_scores: [],
+        current_period: "",
+        ...r,
+      })) as PublicScheduleMatch[],
+    });
+
+    it("points a finished match at the next game on the same court", async () => {
+      vi.mocked(liveApi.snapshot).mockResolvedValue(
+        footballSnapshot({
+          match: { ...footballSnapshot().match, status: "completed" },
+        }),
+      );
+      vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(
+        sched([
+          // another court, sooner: the stream has not moved, so it loses
+          { id: "other", venue: "Far Field", scheduled_at: "2026-07-04T11:00:00Z",
+            home: { id: "c", name: "Far Home", short_name: "F", school: "F" } },
+          { id: "next", venue: "Local Ground", scheduled_at: "2026-07-04T12:00:00Z",
+            home: { id: "d", name: "Court Next", short_name: "C", school: "C" } },
+          { id: "later", venue: "Local Ground", scheduled_at: "2026-07-04T14:00:00Z" },
+        ]),
+      );
+      renderAt();
+
+      const card = await screen.findByTestId("up-next-card");
+      expect(within(card).getByText("Court Next")).toBeInTheDocument();
+      expect(within(card).getByTestId("up-next-link")).toHaveAttribute(
+        "href",
+        "/m/next",
+      );
+      expect(within(card).queryByText("Far Home")).toBeNull();
+    });
+
+    it("stays out of the way while the match is still being played", async () => {
+      vi.mocked(liveApi.snapshot).mockResolvedValue(footballSnapshot());
+      vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(
+        sched([{ id: "next" }]),
+      );
+      renderAt();
+      await screen.findByText("Alpha");
+      expect(screen.queryByTestId("up-next-card")).toBeNull();
+    });
+
+    it("shows nothing when the court has nothing left to play", async () => {
+      vi.mocked(liveApi.snapshot).mockResolvedValue(
+        footballSnapshot({
+          match: { ...footballSnapshot().match, status: "completed" },
+        }),
+      );
+      vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(
+        sched([
+          { id: "done", status: "completed" },
+          { id: "elsewhere", venue: "Far Field", leaf_key: "tt.open" },
+        ]),
+      );
+      renderAt();
+      await screen.findByText("Alpha");
+      expect(screen.queryByTestId("up-next-card")).toBeNull();
+    });
   });
 });
