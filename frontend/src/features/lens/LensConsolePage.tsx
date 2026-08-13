@@ -10,6 +10,7 @@ import {
   KeyRound,
   Link2,
   Plus,
+  RefreshCw,
   X,
 } from "lucide-react";
 import {
@@ -331,6 +332,7 @@ export function LensConsolePage(): React.ReactElement {
     | { kind: "reopen" }
     | { kind: "rotate"; passId: string; name: string }
     | { kind: "revoke"; passId: string; name: string }
+    | { kind: "reissue-all"; count: number }
     | null
   >(null);
   const [statusFilter, setStatusFilter] = useState<string>("pending");
@@ -364,6 +366,7 @@ export function LensConsolePage(): React.ReactElement {
   const codedCount = (overviewQ.data?.passes ?? []).filter(
     (p) => p.has_code,
   ).length;
+  const missingCodes = (overviewQ.data?.passes ?? []).length - codedCount;
   const copyCode = async (code: string): Promise<void> => {
     try {
       await navigator.clipboard.writeText(code);
@@ -796,17 +799,53 @@ export function LensConsolePage(): React.ReactElement {
               <span className="font-tabular text-xs text-muted-foreground">
                 {codedCount}/{overview.passes.length}
               </span>
-              <Button
-                size="sm"
-                className="ml-auto"
-                onClick={() => issueM.mutate(undefined)}
-                disabled={issueM.isPending}
-                data-testid="issue-codes-btn"
-              >
-                <KeyRound aria-hidden="true" className="h-4 w-4" />
-                {t("Generate codes")}
-              </Button>
+              <div className="ml-auto flex items-center gap-2">
+                {/* Two actions, because they are two different decisions: fill
+                    the gaps (safe, keeps codes already handed out) or start
+                    over (shows all of them again, breaks the old ones). */}
+                <Button
+                  size="sm"
+                  variant={missingCodes > 0 ? "default" : "outline"}
+                  onClick={() => issueM.mutate(undefined)}
+                  disabled={issueM.isPending || missingCodes === 0}
+                  title={
+                    missingCodes === 0
+                      ? t("Every school already has a code")
+                      : undefined
+                  }
+                  data-testid="issue-codes-btn"
+                >
+                  <KeyRound aria-hidden="true" className="h-4 w-4" />
+                  {missingCodes > 0
+                    ? `${t("Generate codes")} (${missingCodes})`
+                    : t("Generate codes")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant={missingCodes > 0 ? "outline" : "default"}
+                  onClick={() =>
+                    setConfirm({
+                      kind: "reissue-all",
+                      count: overview.passes.length,
+                    })
+                  }
+                  disabled={issueM.isPending || overview.passes.length === 0}
+                  data-testid="reissue-all-btn"
+                >
+                  <RefreshCw aria-hidden="true" className="h-4 w-4" />
+                  {t("New codes for all")}
+                </Button>
+              </div>
             </div>
+            {/* A code is only ever readable once, so say where the list went
+                rather than leaving a table of "Set" with no way forward. */}
+            <p className="border-b border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
+              {missingCodes > 0
+                ? `${missingCodes} ${t("of these schools have no code yet. Generate codes gives one to each of them and leaves the rest alone.")}`
+                : t(
+                    "Every school has a code. Codes are stored hashed and can never be read back, so a school that lost its code needs Regenerate, and getting the whole list again means new codes for all.",
+                  )}
+            </p>
             {overview.passes.length === 0 ? (
               <p className="px-4 py-3 text-sm text-muted-foreground">
                 {t("No schools yet. Generate codes to let each school sign in.")}
@@ -1206,18 +1245,22 @@ export function LensConsolePage(): React.ReactElement {
                   ? t("Close the campaign?")
                   : confirm.kind === "reopen"
                     ? t("Reopen the campaign?")
-                    : confirm.kind === "rotate"
-                      ? t("Regenerate this card?")
-                      : t("Revoke this card?")}
+                    : confirm.kind === "reissue-all"
+                      ? t("New codes for every school?")
+                      : confirm.kind === "rotate"
+                        ? t("Regenerate this school's code?")
+                        : t("Remove this school from the album?")}
               </DialogTitle>
               <DialogDescription>
                 {confirm.kind === "close"
                   ? t("Uploading stops for every school. The album stays public.")
                   : confirm.kind === "reopen"
                     ? t("Schools can upload photos again.")
-                    : confirm.kind === "rotate"
-                      ? `${confirm.name}. ${t("The old QR card stops working and a new one prints.")}`
-                      : `${confirm.name}. ${t("The school can no longer upload photos.")}`}
+                    : confirm.kind === "reissue-all"
+                      ? `${confirm.count} ${t("schools get a fresh code, shown once. Every code already handed out stops working, so only do this if you need the whole list back.")}`
+                      : confirm.kind === "rotate"
+                        ? `${confirm.name}. ${t("Its old code stops working. The shared card is unchanged.")}`
+                        : `${confirm.name}. ${t("The school can no longer upload photos.")}`}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -1226,10 +1269,18 @@ export function LensConsolePage(): React.ReactElement {
               </Button>
               <Button
                 data-testid="confirm-action-btn"
-                variant={confirm.kind === "revoke" ? "destructive" : "default"}
+                variant={
+                  confirm.kind === "revoke" || confirm.kind === "reissue-all"
+                    ? "destructive"
+                    : "default"
+                }
                 onClick={() => {
                   if (confirm.kind === "close") closeM.mutate();
                   else if (confirm.kind === "reopen") reopenM.mutate();
+                  else if (confirm.kind === "reissue-all")
+                    issueM.mutate(
+                      (overviewQ.data?.passes ?? []).map((p) => p.institution_id),
+                    );
                   else if (confirm.kind === "rotate")
                     rotateM.mutate(confirm.passId);
                   else revokeM.mutate(confirm.passId);

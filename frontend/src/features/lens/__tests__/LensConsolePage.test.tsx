@@ -261,23 +261,59 @@ describe("LensConsolePage", () => {
     expect(screen.getAllByAltText(/QR code/)).toHaveLength(1);
   });
 
-  it("issues per-school codes and shows each one exactly once", async () => {
+  it("issues codes only for the schools that lack one, and shows each once", async () => {
     mount();
 
     await userEvent.click(await screen.findByTestId("lens-tab-cards"));
-    await userEvent.click(await screen.findByTestId("issue-codes-btn"));
+    // The school in OVERVIEW has no code, so the gap-filling action is live
+    // and says how many it will cover.
+    const fill = await screen.findByTestId("issue-codes-btn");
+    expect(fill).toHaveTextContent("(1)");
+    await userEvent.click(fill);
 
     await waitFor(() => expect(lensApi.issueCodes).toHaveBeenCalledTimes(1));
+    // Fill-the-gaps sends no id list: the server keeps existing codes.
+    expect(vi.mocked(lensApi.issueCodes).mock.calls[0][2]).not.toHaveProperty(
+      "institution_ids",
+    );
     // The slip a school gets handed, and the same code in its table row.
     expect(await screen.findByTestId("code-slip-p1")).toHaveTextContent(
       "MK4TQ9RB",
     );
     expect(screen.getByTestId("copy-code-MK4TQ9RB")).toBeInTheDocument();
+
     // A re-run for newcomers must not wipe the codes already on screen.
     vi.mocked(lensApi.issueCodes).mockResolvedValue({ codes: [], skipped: 1 });
     await userEvent.click(screen.getByTestId("issue-codes-btn"));
     await waitFor(() => expect(lensApi.issueCodes).toHaveBeenCalledTimes(2));
     expect(screen.getByTestId("code-slip-p1")).toBeInTheDocument();
+  });
+
+  it("cannot fill gaps when there are none, and offers a full re-issue instead", async () => {
+    vi.mocked(lensApi.overview).mockResolvedValue({
+      ...OVERVIEW,
+      passes: [{ ...OVERVIEW.passes[0], has_code: true }],
+    });
+    mount();
+    await userEvent.click(await screen.findByTestId("lens-tab-cards"));
+
+    // Nothing to fill: the button is inert rather than a dead end that
+    // answers "every school already has a code".
+    expect(await screen.findByTestId("issue-codes-btn")).toBeDisabled();
+    // And the panel says why the codes are not readable any more.
+    expect(screen.getByText(/can never be read back/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("reissue-all-btn"));
+    // Destructive, so it confirms: every code already handed out will break.
+    expect(
+      await screen.findByText(/New codes for every school\?/i),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("confirm-action-btn"));
+
+    await waitFor(() => expect(lensApi.issueCodes).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(lensApi.issueCodes).mock.calls[0][2]).toMatchObject({
+      institution_ids: ["i1"],
+    });
   });
 
   it("assigns an award winner from the approved picker", async () => {
