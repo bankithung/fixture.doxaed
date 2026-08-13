@@ -107,15 +107,13 @@ Up-front PRD decisions that shape the codebase. Do not relitigate; do not deviat
 - **Global screen detector:** `lib/useBreakpoint.ts` (`useSyncExternalStore`-backed) for JS-level responsive decisions; Tailwind responsive utilities otherwise. Tables → stacked cards on mobile via `useBreakpoint().isMobile`.
 - Cards/panels: `rounded-xl border border-border bg-card shadow-sm`. State as TanStack Query (server) + Zustand (client). `cn()` is `lib/tailwind`; routes via `lib/routes.ts` helpers.
 
-## Album universe (public Guest Lens album)
+## Public album (Guest Lens)
 
-`features/lens/universe/` is the album's 3D surface — DomeGallery (React Bits) re-cut token-native, same as `StarBorder`. **Pure CSS 3D, no new dependency** (no `@use-gesture`, no three.js): `geometry.ts` is the pure, unit-tested maths; the components only write CSS custom properties.
+`features/lens/PublicAlbumPage.tsx` is ONE view: a vertical wall of photographs that keeps loading as you scroll (owner 2026-08-13). It replaced `features/lens/universe/` — a CSS-3D sphere of school "planets" (DomeGallery + orbit + `geometry.ts`), deleted in full — because it answered "whose photos are these?" when a visitor asks "show me the photos", and could only ever show one school at a time. Don't reintroduce a 3D surface here without asking.
 
-- **`geometry.ts`** — `planDome(photoCount)` lays photos over a sphere (5/7/9 latitude bands, columns thinned by `cos(lat)` so spacing stays even, explicit pole-cap tiles, ~2 tiles per photo, capped at ~161 tiles, big albums sampled evenly). `planOrbit(count)` places one planet per school on 1–3 rings. Two rules learned the hard way: **do not stagger bands by half a column** (square tiles then open a diamond hole between every four neighbours) and **do not keep the equator's column count at the poles** (they pile into shingles).
-- **`DomeGallery.tsx`** — rotation NEVER touches React state: pointer handlers and one rAF loop write `--dome-rx`/`--dome-ry` onto the sphere element. Radius is solved **backwards from how big one photo should look** (`short * 0.22 / chord`, clamped to `[0.55, 0.74·fit] × short`) — deriving it from the container instead blows an 8-photo school up to two tiles filling a phone, because the column count falls with the album size. The ball's on-screen silhouette is ~`1.375r` (perspective is `2.2r`). Tiles are `tabIndex={-1}`: the ball is ONE tab stop and the Grid view is the keyboard/AT route through every photo.
-- **`AlbumStage.tsx`** owns the camera (orbit ↔ sphere, the warp between them) and the pause switch; the page owns filters and the lightbox, so lightbox prev/next always walks the list the sphere is showing.
-- **Below `lg` the orbit is replaced by `PlanetRail`** — twelve planets inside 390px collapse into overlapping labels. On a desktop a planet **pauses on hover/focus** (`.orbit__lane:has(.orbit__planet:hover)`), because aiming at a moving target is miserable (Playwright refuses to click one — that is the tell).
-- `--stage`/`--stage-2`/`--stage-ink` (in `index.css`, `:root` only) are the cinematic tokens for surfaces that stay dark in **both** themes. `universe.css` loads after the Tailwind layer, so a plain-class rule there beats a utility — put chip/tile backgrounds and `display` in the CSS file, not in `className`.
+- **Category is a way through the album, not just a filter.** With no chip selected the wall renders a section per award category (campaign order, `__other` last for unfiled photos); a chip narrows to that one category and the section headers collapse away. Chips match a photo by the category it was **uploaded** to *or* the award it holds.
+- **Infinite scroll is a reveal window**, not pagination: `PAGE = 24` more tiles per `IntersectionObserver` step with a 600px `rootMargin`, sliced AFTER grouping so a section header never appears above nothing. The window resets whenever a filter changes. jsdom has no `IntersectionObserver` — tests stub it and rely on the first batch drawing without it.
+- One lightbox walks `photos`, the same filtered list the page draws, so prev/next always matches what is on screen.
 
 ## Operations pages (frontend)
 

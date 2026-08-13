@@ -1,23 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Award,
-  Camera,
-  ChevronLeft,
-  ChevronRight,
-  Globe,
-  LayoutGrid,
-} from "lucide-react";
+import { Award, Camera, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { lensApi, type PublicAlbumPhoto } from "@/api/lens";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import { Dialog } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/Select";
 import { ShareButton } from "@/features/live/ShareButton";
 import { ThemeToggle } from "@/features/theme/ThemeToggle";
-import { AlbumStage } from "@/features/lens/universe/AlbumStage";
-import type { OrbitSchool } from "@/features/lens/universe/SchoolOrbit";
-import type { DomeItem } from "@/features/lens/universe/DomeGallery";
 import { qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
@@ -26,38 +16,69 @@ import { t } from "@/lib/t";
 /**
  * The public shared event album ("20 schools. 2 days. 1 shared album."):
  * approved Guest Lens photos as a sports-product gallery, no login
- * (spec 2026-07-10 §4.4). One combined section — award winners lead, then the
- * album itself in either of two views:
+ * (spec 2026-07-10 §4.4).
  *
- *  - **Sphere** (default, owner 2026-07-27): a solar system with one planet per
- *    school, orbiting by itself; pick a school and the camera flies into a
- *    rotatable sphere of that school's photos.
- *  - **Grid**: the filterable masonry, which stays the exhaustive, low-power,
- *    keyboard-complete route through every photo.
+ * ONE view: a vertical wall of photographs that keeps loading as you scroll
+ * (owner 2026-08-13). It replaced a 3D sphere of school "planets" — pretty,
+ * but it answered "whose photos are these?" when what a visitor actually asks
+ * is "show me the photos", and it could only ever show one school at a time.
  *
- * Both views share one filter pair and one lightbox, so prev/next always walks
- * whatever list is on screen.
+ * Category is a first-class way through the album, not just a filter: with no
+ * chip selected the wall is grouped into a section per category, so the whole
+ * album can be read category-wise in one scroll. Pick a chip and it narrows to
+ * that one. Both paths share one lightbox, so prev/next always walks exactly
+ * what is on screen.
  */
 
-const VIEW_KEY = "album:view";
+/** How many photos enter the DOM per step. An event album runs to hundreds of
+ * images; rendering them all costs a school phone its scroll. */
+const PAGE = 24;
 
-type View = "sphere" | "grid";
+/** Sentinel key for photos filed under no category. Double underscore so
+ * it can never collide with a category a manager typed. */
+const UNCATEGORISED = "__other";
 
-function storedView(): View {
-  try {
-    return localStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "sphere";
-  } catch {
-    return "sphere";
-  }
+function PhotoTile({
+  photo,
+  awarded,
+  onOpen,
+}: {
+  photo: PublicAlbumPhoto;
+  awarded: boolean;
+  onOpen: () => void;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      data-testid={`album-photo-${photo.upload_ref}`}
+      onClick={onOpen}
+      className="group relative mb-3 block w-full break-inside-avoid overflow-hidden rounded-lg border border-border bg-card shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <img
+        src={photo.thumb_url}
+        alt={photo.caption || photo.institution_name}
+        loading="lazy"
+        className="w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+      />
+      {awarded ? (
+        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[0.625rem] font-medium text-primary-foreground">
+          <Award aria-hidden="true" className="h-3 w-3" />
+          {photo.award_category}
+        </span>
+      ) : null}
+      <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-5 text-left text-[0.6875rem] font-medium text-white">
+        {photo.institution_name}
+      </span>
+    </button>
+  );
 }
 
 export function PublicAlbumPage(): React.ReactElement {
   const { slug = "", id = "", campaignId = "" } = useParams();
   const [category, setCategory] = useState<string>("");
-  /** null = no school chosen (the orbit); "" = every photo; else one school. */
-  const [focus, setFocus] = useState<string | null>(null);
-  const [view, setView] = useState<View>(storedView);
+  const [school, setSchool] = useState<string>("");
   const [openRef, setOpenRef] = useState<string | null>(null);
+  const [shown, setShown] = useState(PAGE);
 
   const q = useQuery({
     queryKey: [...qk.publicAlbum(slug, id), campaignId],
@@ -70,14 +91,6 @@ export function PublicAlbumPage(): React.ReactElement {
     if (q.data?.campaign) document.title = q.data.campaign.title;
   }, [q.data]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(VIEW_KEY, view);
-    } catch {
-      /* private mode: the view is simply not remembered */
-    }
-  }, [view]);
-
   // Only surface awards for categories that still exist on the campaign: a
   // manager can remove a category that already had a winner, and neither the
   // backend nor award_photo reconciles the photo's stale award_category, so an
@@ -86,65 +99,69 @@ export function PublicAlbumPage(): React.ReactElement {
     () => new Set(q.data?.award_categories ?? []),
     [q.data],
   );
+  const awarded = useCallback(
+    (p: PublicAlbumPhoto) =>
+      Boolean(p.award_category && liveCategories.has(p.award_category)),
+    [liveCategories],
+  );
 
-  // A chip matches photos filed under the category by the uploading school as
-  // well as the photo holding that category's award.
-  const byCategory = useMemo(() => {
+  /** Everything the filters allow, in album order. This is the list the
+   * lightbox walks, so it must match what the page draws. */
+  const photos = useMemo(() => {
     const all = q.data?.photos ?? [];
     return all.filter(
       (p) =>
-        !category || p.category === category || p.award_category === category,
+        (!category || p.category === category || p.award_category === category) &&
+        (!school || p.institution_name === school),
     );
-  }, [q.data, category]);
+  }, [q.data, category, school]);
 
-  /** Schools present in the current category, busiest first — the planets. */
-  const schools = useMemo<OrbitSchool[]>(() => {
-    const m = new Map<string, OrbitSchool>();
-    for (const p of byCategory) {
-      const seen = m.get(p.institution_name);
-      if (!seen) {
-        m.set(p.institution_name, {
-          name: p.institution_name,
-          count: 1,
-          cover: p.thumb_url,
-        });
-      } else {
-        seen.count += 1;
-        // A prize shot represents its school better than whatever landed first.
-        if (p.award_category && liveCategories.has(p.award_category)) {
-          seen.cover = p.thumb_url;
-        }
-      }
+  /** With no category chosen the wall reads category-wise: one section each,
+   * in the campaign's own order, with everything unfiled last. */
+  const sections = useMemo(() => {
+    if (category) return null;
+    const cats = q.data?.award_categories ?? [];
+    const order = [...cats, UNCATEGORISED];
+    const by = new Map<string, PublicAlbumPhoto[]>();
+    for (const p of photos) {
+      const key = p.category && cats.includes(p.category) ? p.category : UNCATEGORISED;
+      const slot = by.get(key);
+      if (slot) slot.push(p);
+      else by.set(key, [p]);
     }
-    return [...m.values()].sort((a, b) => b.count - a.count);
-  }, [byCategory, liveCategories]);
+    return order
+      .filter((c) => (by.get(c)?.length ?? 0) > 0)
+      .map((c) => ({ key: c, label: c === UNCATEGORISED ? t("More photos") : c, items: by.get(c)! }));
+  }, [photos, category, q.data]);
 
-  // A one-school album has no system worth orbiting: fly straight in.
-  const effFocus = schools.length <= 1 && focus === null ? "" : focus;
+  // Reset the reveal window whenever the list underneath it changes, or a
+  // narrow filter would inherit a scroll position it never earned.
+  useEffect(() => {
+    setShown(PAGE);
+  }, [category, school]);
 
-  const photos = useMemo(
-    () =>
-      effFocus ? byCategory.filter((p) => p.institution_name === effFocus) : byCategory,
-    [byCategory, effFocus],
-  );
-
-  const domeItems = useMemo<DomeItem[]>(
-    () =>
-      photos.map((p) => ({
-        key: p.upload_ref,
-        thumb: p.thumb_url,
-        alt: p.caption || p.institution_name,
-        awarded: Boolean(p.award_category && liveCategories.has(p.award_category)),
-      })),
-    [photos, liveCategories],
-  );
+  const hasMore = shown < photos.length;
+  const sentinel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || !hasMore) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setShown((n) => n + PAGE);
+        }
+      },
+      // Start the next batch before the visitor reaches the end, so the wall
+      // reads as continuous rather than as pages that stall.
+      { rootMargin: "600px" },
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [hasMore, photos.length]);
 
   const winners = useMemo(
-    () =>
-      (q.data?.photos ?? []).filter(
-        (p) => p.award_category && liveCategories.has(p.award_category),
-      ),
-    [q.data, liveCategories],
+    () => (q.data?.photos ?? []).filter(awarded),
+    [q.data, awarded],
   );
 
   const openIdx = photos.findIndex((p) => p.upload_ref === openRef);
@@ -175,30 +192,35 @@ export function PublicAlbumPage(): React.ReactElement {
     })),
   ];
 
-  const viewButton = (
-    kind: View,
-    Icon: typeof Globe,
-    labelText: string,
-  ): React.ReactElement => (
+  const chip = (value: string, label: string, count?: number): React.ReactElement => (
     <button
+      key={value || "all"}
       type="button"
-      aria-pressed={view === kind}
-      data-testid={`album-view-${kind}`}
-      onClick={() => setView(kind)}
+      aria-pressed={category === value}
+      data-testid={value ? `album-filter-${value}` : "album-filter-all"}
+      onClick={() => setCategory(category === value ? "" : value)}
       className={cn(
-        "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors",
-        view === kind
-          ? "bg-primary text-primary-foreground"
-          : "text-muted-foreground hover:text-foreground",
+        "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
+        category === value
+          ? "border-primary bg-primary/10 text-primary"
+          : "border-border bg-card text-muted-foreground hover:text-foreground",
       )}
     >
-      <Icon aria-hidden="true" className="h-3.5 w-3.5" />
-      {/* Icon-only on a phone: the label wrapped the toggle onto its own line
-          and pushed the sphere under the fold. */}
-      <span className="hidden sm:inline">{labelText}</span>
-      <span className="sr-only sm:hidden">{labelText}</span>
+      {label}
+      {count != null ? (
+        <span className="font-tabular text-[0.6875rem] opacity-70">{count}</span>
+      ) : null}
     </button>
   );
+
+  // Slice AFTER grouping so a section's tail is revealed with the wall, never
+  // a section whose header appears with nothing under it.
+  let budget = shown;
+  const drawn = (sections ?? []).map((s) => {
+    const take = Math.max(0, Math.min(budget, s.items.length));
+    budget -= take;
+    return { ...s, items: s.items.slice(0, take) };
+  });
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -245,139 +267,24 @@ export function PublicAlbumPage(): React.ReactElement {
             </div>
           ) : (
             <>
-              {/* Title band. Everything above the stage is on a budget: on a
-                  390px phone the chrome had the sphere starting below the
-                  fold, so the toggle stays on this line at every width. */}
-              <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5 sm:py-4">
-                <div className="min-w-0">
-                  <p className="text-[0.625rem] font-medium uppercase tracking-[0.2em] text-primary sm:text-[0.6875rem]">
-                    {campaign.tagline}
-                  </p>
-                  <h1 className="truncate text-lg font-semibold tracking-tight sm:text-2xl">
-                    {campaign.title}
-                  </h1>
-                  <p className="font-tabular text-xs text-muted-foreground">
-                    {total} {t("photos")} · {q.data?.institutions.length}{" "}
-                    {t("schools")}
-                  </p>
-                </div>
-                <div
-                  role="group"
-                  aria-label={t("Album view")}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-secondary/60 p-1"
-                >
-                  {viewButton("sphere", Globe, t("Sphere"))}
-                  {viewButton("grid", LayoutGrid, t("Grid"))}
-                </div>
-              </div>
-
-              {/* Filters — one control height per row (owner 2026-07-26).
-                  Categories scroll rather than wrap on a phone. */}
-              <div className="flex flex-col gap-2 border-b border-border px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-5">
-                <div className="flex items-center gap-2 overflow-x-auto sm:contents">
-                  <button
-                    type="button"
-                    aria-pressed={category === ""}
-                    onClick={() => setCategory("")}
-                    className={cn(
-                      "inline-flex h-9 shrink-0 items-center rounded-full border px-3 text-xs font-medium transition-colors",
-                      category === ""
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border bg-card text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {t("All")}
-                  </button>
-                  {(q.data?.award_categories ?? []).map((cat) => (
-                    <button
-                      key={cat}
-                      type="button"
-                      aria-pressed={category === cat}
-                      data-testid={`album-filter-${cat}`}
-                      onClick={() => setCategory(category === cat ? "" : cat)}
-                      className={cn(
-                        "inline-flex h-9 shrink-0 items-center rounded-full border px-3 text-xs font-medium transition-colors",
-                        category === cat
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border bg-card text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-                {/* In sphere view below lg the planet rail IS the school
-                    picker, so this would be a second door to one job. */}
-                <div
-                  className={cn(
-                    "w-full sm:ml-auto sm:w-56",
-                    view === "sphere" && "hidden lg:block",
-                  )}
-                >
-                  <Select
-                    aria-label={t("Filter by school")}
-                    value={effFocus ?? ""}
-                    onChange={(v) => setFocus(v || null)}
-                    options={schoolOptions}
-                  />
-                </div>
-              </div>
-
-              {/* The album. */}
-              {photos.length === 0 ? (
-                <p className="px-4 py-14 text-center text-sm text-muted-foreground">
-                  {t("No photos match this filter.")}
+              <div className="border-b border-border px-4 py-3 sm:px-5 sm:py-4">
+                <p className="text-[0.625rem] font-medium uppercase tracking-[0.2em] text-primary sm:text-[0.6875rem]">
+                  {campaign.tagline}
                 </p>
-              ) : view === "sphere" ? (
-                <AlbumStage
-                  photos={domeItems}
-                  schools={schools}
-                  total={total}
-                  focus={effFocus}
-                  onFocus={setFocus}
-                  onOpen={setOpenRef}
-                  paused={openPhoto !== null}
-                />
-              ) : (
-                <div
-                  className="columns-2 gap-3 px-4 py-4 sm:columns-3 sm:px-5 lg:columns-4"
-                  data-testid="album-grid"
-                >
-                  {photos.map((p) => (
-                    <button
-                      key={p.upload_ref}
-                      type="button"
-                      data-testid={`album-photo-${p.upload_ref}`}
-                      onClick={() => setOpenRef(p.upload_ref)}
-                      className="group relative mb-3 block w-full break-inside-avoid overflow-hidden rounded-lg border border-border bg-card shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <img
-                        src={p.thumb_url}
-                        alt={p.caption || p.institution_name}
-                        loading="lazy"
-                        className="w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
-                      />
-                      {p.award_category && liveCategories.has(p.award_category) ? (
-                        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[0.625rem] font-medium text-primary-foreground">
-                          <Award aria-hidden="true" className="h-3 w-3" />
-                          {p.award_category}
-                        </span>
-                      ) : null}
-                      <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-5 text-left text-[0.6875rem] font-medium text-white">
-                        {p.institution_name}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
+                <h1 className="truncate text-lg font-semibold tracking-tight sm:text-2xl">
+                  {campaign.title}
+                </h1>
+                <p className="font-tabular text-xs text-muted-foreground">
+                  {total} {t("photos")} · {q.data?.institutions.length}{" "}
+                  {t("schools")}
+                </p>
+              </div>
 
-              {/* Prize winners close the section. They lead editorially, but
-                  the sphere is what the page is for — 260px of strip above it
-                  pushed the stage under the fold. */}
+              {/* Prize winners lead: they are the editorial top of the album. */}
               {winners.length > 0 ? (
                 <div
                   aria-label={t("Award winners")}
-                  className="border-t border-border px-4 py-3 sm:px-5"
+                  className="border-b border-border px-4 py-3 sm:px-5"
                   data-testid="winners-strip"
                 >
                   <p className="pb-2 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
@@ -390,7 +297,7 @@ export function PublicAlbumPage(): React.ReactElement {
                         type="button"
                         onClick={() => {
                           setCategory("");
-                          setFocus("");
+                          setSchool("");
                           setOpenRef(w.upload_ref);
                         }}
                         className="flex w-40 shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-card text-left shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -415,6 +322,95 @@ export function PublicAlbumPage(): React.ReactElement {
                   </div>
                 </div>
               ) : null}
+
+              {/* Filters — one control height per row (owner 2026-07-26).
+                  Categories scroll rather than wrap on a phone. */}
+              <div className="sticky top-[57px] z-10 flex flex-col gap-2 border-b border-border bg-card px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-5">
+                <div className="flex items-center gap-2 overflow-x-auto sm:contents">
+                  {chip("", t("All"), total)}
+                  {(q.data?.award_categories ?? []).map((cat) =>
+                    chip(
+                      cat,
+                      cat,
+                      (q.data?.photos ?? []).filter(
+                        (p) => p.category === cat || p.award_category === cat,
+                      ).length,
+                    ),
+                  )}
+                </div>
+                <div className="w-full sm:ml-auto sm:w-56">
+                  <Select
+                    aria-label={t("Filter by school")}
+                    value={school}
+                    onChange={setSchool}
+                    options={schoolOptions}
+                  />
+                </div>
+              </div>
+
+              {/* The wall. */}
+              {photos.length === 0 ? (
+                <p className="px-4 py-14 text-center text-sm text-muted-foreground">
+                  {t("No photos match this filter.")}
+                </p>
+              ) : (
+                <div className="px-4 py-4 sm:px-5" data-testid="album-grid">
+                  {sections ? (
+                    drawn.map((s) =>
+                      s.items.length === 0 ? null : (
+                        <section
+                          key={s.key}
+                          data-testid={`album-section-${s.key}`}
+                          className="mb-2"
+                        >
+                          <div className="sticky top-[125px] z-[5] -mx-4 mb-2 flex items-baseline gap-2 bg-card px-4 py-1.5 sm:-mx-5 sm:px-5">
+                            <h2 className="text-sm font-semibold">{s.label}</h2>
+                            <span className="font-tabular text-xs text-muted-foreground">
+                              {s.items.length}
+                            </span>
+                          </div>
+                          <div className="columns-2 gap-3 sm:columns-3 lg:columns-4">
+                            {s.items.map((p) => (
+                              <PhotoTile
+                                key={p.upload_ref}
+                                photo={p}
+                                awarded={awarded(p)}
+                                onOpen={() => setOpenRef(p.upload_ref)}
+                              />
+                            ))}
+                          </div>
+                        </section>
+                      ),
+                    )
+                  ) : (
+                    <div className="columns-2 gap-3 sm:columns-3 lg:columns-4">
+                      {photos.slice(0, shown).map((p) => (
+                        <PhotoTile
+                          key={p.upload_ref}
+                          photo={p}
+                          awarded={awarded(p)}
+                          onOpen={() => setOpenRef(p.upload_ref)}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {hasMore ? (
+                    <div
+                      ref={sentinel}
+                      data-testid="album-sentinel"
+                      className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground"
+                    >
+                      <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+                      {t("Loading more photos")}
+                    </div>
+                  ) : (
+                    <p className="py-6 text-center text-xs text-muted-foreground">
+                      {photos.length} {t("photos")}
+                    </p>
+                  )}
+                </div>
+              )}
             </>
           )}
         </section>
@@ -446,8 +442,7 @@ export function PublicAlbumPage(): React.ReactElement {
                   </p>
                 ) : null}
               </div>
-              {openPhoto.award_category &&
-              liveCategories.has(openPhoto.award_category) ? (
+              {awarded(openPhoto) ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
                   <Award aria-hidden="true" className="h-3 w-3" />
                   {openPhoto.award_category}
