@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Award, Camera, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Award, Camera, ChevronLeft, ChevronRight } from "lucide-react";
 import { lensApi, type PublicAlbumPhoto } from "@/api/lens";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import { Dialog } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/Select";
 import { ShareButton } from "@/features/live/ShareButton";
 import { ThemeToggle } from "@/features/theme/ThemeToggle";
+import { InfiniteWall } from "./InfiniteWall";
 import { qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
@@ -18,67 +19,23 @@ import { t } from "@/lib/t";
  * approved Guest Lens photos as a sports-product gallery, no login
  * (spec 2026-07-10 §4.4).
  *
- * ONE view: a vertical wall of photographs that keeps loading as you scroll
- * (owner 2026-08-13). It replaced a 3D sphere of school "planets" — pretty,
- * but it answered "whose photos are these?" when what a visitor actually asks
- * is "show me the photos", and it could only ever show one school at a time.
+ * ONE view: an endless wall of photographs that drifts on its own and wraps
+ * forever (owner 2026-08-13, see `InfiniteWall`). It replaced a 3D sphere of
+ * school "planets" — pretty, but it answered "whose photos are these?" when
+ * what a visitor actually asks is "show me the photos", and it could only ever
+ * show one school at a time.
  *
- * Category is a first-class way through the album, not just a filter: with no
- * chip selected the wall is grouped into a section per category, so the whole
- * album can be read category-wise in one scroll. Pick a chip and it narrows to
- * that one. Both paths share one lightbox, so prev/next always walks exactly
- * what is on screen.
+ * Category is a way through the album rather than a hidden property: every
+ * chip carries its count, every tile names the category it was filed under,
+ * and picking a chip runs the wall on that category alone. The lightbox walks
+ * exactly the list the wall is showing.
  */
-
-/** How many photos enter the DOM per step. An event album runs to hundreds of
- * images; rendering them all costs a school phone its scroll. */
-const PAGE = 24;
-
-/** Sentinel key for photos filed under no category. Double underscore so
- * it can never collide with a category a manager typed. */
-const UNCATEGORISED = "__other";
-
-function PhotoTile({
-  photo,
-  awarded,
-  onOpen,
-}: {
-  photo: PublicAlbumPhoto;
-  awarded: boolean;
-  onOpen: () => void;
-}): React.ReactElement {
-  return (
-    <button
-      type="button"
-      data-testid={`album-photo-${photo.upload_ref}`}
-      onClick={onOpen}
-      className="group relative mb-3 block w-full break-inside-avoid overflow-hidden rounded-lg border border-border bg-card shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <img
-        src={photo.thumb_url}
-        alt={photo.caption || photo.institution_name}
-        loading="lazy"
-        className="w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
-      />
-      {awarded ? (
-        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[0.625rem] font-medium text-primary-foreground">
-          <Award aria-hidden="true" className="h-3 w-3" />
-          {photo.award_category}
-        </span>
-      ) : null}
-      <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-5 text-left text-[0.6875rem] font-medium text-white">
-        {photo.institution_name}
-      </span>
-    </button>
-  );
-}
 
 export function PublicAlbumPage(): React.ReactElement {
   const { slug = "", id = "", campaignId = "" } = useParams();
   const [category, setCategory] = useState<string>("");
   const [school, setSchool] = useState<string>("");
   const [openRef, setOpenRef] = useState<string | null>(null);
-  const [shown, setShown] = useState(PAGE);
 
   const q = useQuery({
     queryKey: [...qk.publicAlbum(slug, id), campaignId],
@@ -115,49 +72,6 @@ export function PublicAlbumPage(): React.ReactElement {
         (!school || p.institution_name === school),
     );
   }, [q.data, category, school]);
-
-  /** With no category chosen the wall reads category-wise: one section each,
-   * in the campaign's own order, with everything unfiled last. */
-  const sections = useMemo(() => {
-    if (category) return null;
-    const cats = q.data?.award_categories ?? [];
-    const order = [...cats, UNCATEGORISED];
-    const by = new Map<string, PublicAlbumPhoto[]>();
-    for (const p of photos) {
-      const key = p.category && cats.includes(p.category) ? p.category : UNCATEGORISED;
-      const slot = by.get(key);
-      if (slot) slot.push(p);
-      else by.set(key, [p]);
-    }
-    return order
-      .filter((c) => (by.get(c)?.length ?? 0) > 0)
-      .map((c) => ({ key: c, label: c === UNCATEGORISED ? t("More photos") : c, items: by.get(c)! }));
-  }, [photos, category, q.data]);
-
-  // Reset the reveal window whenever the list underneath it changes, or a
-  // narrow filter would inherit a scroll position it never earned.
-  useEffect(() => {
-    setShown(PAGE);
-  }, [category, school]);
-
-  const hasMore = shown < photos.length;
-  const sentinel = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const node = sentinel.current;
-    if (!node || !hasMore) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setShown((n) => n + PAGE);
-        }
-      },
-      // Start the next batch before the visitor reaches the end, so the wall
-      // reads as continuous rather than as pages that stall.
-      { rootMargin: "600px" },
-    );
-    io.observe(node);
-    return () => io.disconnect();
-  }, [hasMore, photos.length]);
 
   const winners = useMemo(
     () => (q.data?.photos ?? []).filter(awarded),
@@ -212,15 +126,6 @@ export function PublicAlbumPage(): React.ReactElement {
       ) : null}
     </button>
   );
-
-  // Slice AFTER grouping so a section's tail is revealed with the wall, never
-  // a section whose header appears with nothing under it.
-  let budget = shown;
-  const drawn = (sections ?? []).map((s) => {
-    const take = Math.max(0, Math.min(budget, s.items.length));
-    budget -= take;
-    return { ...s, items: s.items.slice(0, take) };
-  });
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -354,61 +259,13 @@ export function PublicAlbumPage(): React.ReactElement {
                   {t("No photos match this filter.")}
                 </p>
               ) : (
-                <div className="px-4 py-4 sm:px-5" data-testid="album-grid">
-                  {sections ? (
-                    drawn.map((s) =>
-                      s.items.length === 0 ? null : (
-                        <section
-                          key={s.key}
-                          data-testid={`album-section-${s.key}`}
-                          className="mb-2"
-                        >
-                          <div className="sticky top-[125px] z-[5] -mx-4 mb-2 flex items-baseline gap-2 bg-card px-4 py-1.5 sm:-mx-5 sm:px-5">
-                            <h2 className="text-sm font-semibold">{s.label}</h2>
-                            <span className="font-tabular text-xs text-muted-foreground">
-                              {s.items.length}
-                            </span>
-                          </div>
-                          <div className="columns-2 gap-3 sm:columns-3 lg:columns-4">
-                            {s.items.map((p) => (
-                              <PhotoTile
-                                key={p.upload_ref}
-                                photo={p}
-                                awarded={awarded(p)}
-                                onOpen={() => setOpenRef(p.upload_ref)}
-                              />
-                            ))}
-                          </div>
-                        </section>
-                      ),
-                    )
-                  ) : (
-                    <div className="columns-2 gap-3 sm:columns-3 lg:columns-4">
-                      {photos.slice(0, shown).map((p) => (
-                        <PhotoTile
-                          key={p.upload_ref}
-                          photo={p}
-                          awarded={awarded(p)}
-                          onOpen={() => setOpenRef(p.upload_ref)}
-                        />
-                      ))}
-                    </div>
-                  )}
-
-                  {hasMore ? (
-                    <div
-                      ref={sentinel}
-                      data-testid="album-sentinel"
-                      className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground"
-                    >
-                      <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
-                      {t("Loading more photos")}
-                    </div>
-                  ) : (
-                    <p className="py-6 text-center text-xs text-muted-foreground">
-                      {photos.length} {t("photos")}
-                    </p>
-                  )}
+                <div className="py-4" data-testid="album-grid">
+                  <InfiniteWall
+                    photos={photos}
+                    isAwarded={awarded}
+                    onOpen={setOpenRef}
+                    paused={openPhoto !== null}
+                  />
                 </div>
               )}
             </>

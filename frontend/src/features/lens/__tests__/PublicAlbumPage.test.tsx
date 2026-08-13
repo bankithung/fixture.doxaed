@@ -80,103 +80,105 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(lensApi.publicAlbum).mockResolvedValue(ALBUM);
   localStorage.clear();
-  // jsdom has no IntersectionObserver; the wall must still draw its first
-  // batch without one, and the tests never depend on the observer firing.
-  vi.stubGlobal(
-    "IntersectionObserver",
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-      takeRecords() {
-        return [];
-      }
-      root = null;
-      rootMargin = "";
-      thresholds = [];
-    },
-  );
+  // jsdom runs no animation frames and reports zero heights, so the wall
+  // never actually drifts here — what these tests pin is the list it draws
+  // and the controls around it, not the rAF loop.
+  vi.stubGlobal("requestAnimationFrame", () => 0);
+  vi.stubGlobal("cancelAnimationFrame", () => {});
 });
 
 describe("PublicAlbumPage", () => {
-  it("renders the hero and every approved photo in one vertical wall", async () => {
+  it("renders the hero and every approved photo on one endless wall", async () => {
     mount();
 
     expect(await screen.findByText("Guest Lens")).toBeInTheDocument();
     expect(screen.getByText("36 Shots Challenge")).toBeInTheDocument();
-    const grid = await screen.findByTestId("album-grid");
-    expect(within(grid).getByTestId("album-photo-r1")).toBeInTheDocument();
-    expect(within(grid).getByTestId("album-photo-r2")).toBeInTheDocument();
-    expect(within(grid).getByTestId("album-photo-r3")).toBeInTheDocument();
+    const wall = await screen.findByTestId("album-wall");
+    expect(within(wall).getByTestId("album-photo-r1")).toBeInTheDocument();
+    expect(within(wall).getByTestId("album-photo-r2")).toBeInTheDocument();
+    expect(within(wall).getByTestId("album-photo-r3")).toBeInTheDocument();
     expect(
       vi.mocked(lensApi.publicAlbum),
     ).toHaveBeenCalledWith("nagaland-cup", "t1", undefined);
   });
 
-  it("reads category-wise by default: a section per category, unfiled last", async () => {
+  it("loops each column twice, and the copy is scenery rather than a second album", async () => {
     mount();
-    await screen.findByTestId("album-grid");
+    const wall = await screen.findByTestId("album-wall");
 
-    // Each photo sits under the category it was filed in...
-    const spirit = screen.getByTestId("album-section-Best Team Spirit");
-    expect(within(spirit).getByTestId("album-photo-r2")).toBeInTheDocument();
-    const action = screen.getByTestId("album-section-Best Action Shot");
-    expect(within(action).getByTestId("album-photo-r1")).toBeInTheDocument();
-    // ...and anything with no category still gets shown, at the end.
-    const rest = screen.getByTestId("album-section-__other");
-    expect(within(rest).getByTestId("album-photo-r3")).toBeInTheDocument();
-    expect(within(rest).getByText("More photos")).toBeInTheDocument();
+    // Every photo is drawn twice so the wrap has no seam...
+    expect(within(wall).getAllByRole("button", { hidden: true }).length).toBe(6);
+    // ...but only one copy is in the album: the other is hidden from AT and
+    // untabbable, or the wall would announce the event twice over.
+    expect(within(wall).getAllByRole("button")).toHaveLength(3);
+    expect(within(wall).getAllByTestId(/^album-photo-/)).toHaveLength(3);
   });
 
-  it("narrows to one category, and the sections collapse into that list", async () => {
+  it("names the category on every tile, so an ungrouped wall still reads category-wise", async () => {
     mount();
-    await screen.findByTestId("album-grid");
+    const tile = await screen.findByTestId("album-photo-r2");
+    expect(within(tile).getByText("Best Team Spirit")).toBeInTheDocument();
+  });
+
+  it("runs the wall on one category when a chip is picked", async () => {
+    mount();
+    await screen.findByTestId("album-wall");
 
     await userEvent.click(screen.getByTestId("album-filter-Best Action Shot"));
 
-    const grid = screen.getByTestId("album-grid");
-    expect(within(grid).getByTestId("album-photo-r1")).toBeInTheDocument();
-    expect(within(grid).queryByTestId("album-photo-r2")).toBeNull();
-    // One category is its own list; the per-category headers are gone.
-    expect(screen.queryByTestId("album-section-Best Action Shot")).toBeNull();
+    const wall = screen.getByTestId("album-wall");
+    expect(within(wall).getByTestId("album-photo-r1")).toBeInTheDocument();
+    expect(within(wall).queryByTestId("album-photo-r2")).toBeNull();
   });
 
   it("matches a photo by the category it was uploaded to, not just its prize", async () => {
     mount();
-    await screen.findByTestId("album-grid");
+    await screen.findByTestId("album-wall");
 
     await userEvent.click(screen.getByTestId("album-filter-Best Team Spirit"));
 
-    const grid = screen.getByTestId("album-grid");
-    expect(within(grid).getByTestId("album-photo-r2")).toBeInTheDocument();
-    expect(within(grid).queryByTestId("album-photo-r3")).toBeNull();
+    const wall = screen.getByTestId("album-wall");
+    expect(within(wall).getByTestId("album-photo-r2")).toBeInTheDocument();
+    expect(within(wall).queryByTestId("album-photo-r3")).toBeNull();
   });
 
   it("filters by school alongside the category", async () => {
     mount();
-    await screen.findByTestId("album-grid");
+    await screen.findByTestId("album-wall");
 
     await userEvent.click(screen.getByLabelText("Filter by school"));
     await userEvent.click(await screen.findByRole("option", { name: /Pine Academy/ }));
 
-    const grid = screen.getByTestId("album-grid");
-    expect(within(grid).getByTestId("album-photo-r3")).toBeInTheDocument();
-    expect(within(grid).queryByTestId("album-photo-r1")).toBeNull();
+    const wall = screen.getByTestId("album-wall");
+    expect(within(wall).getByTestId("album-photo-r3")).toBeInTheDocument();
+    expect(within(wall).queryByTestId("album-photo-r1")).toBeNull();
   });
 
-  it("holds back the tail of a long album until it is scrolled to", async () => {
-    const many = Array.from({ length: 30 }, (_, i) => ({
-      ...ALBUM.photos[2],
-      upload_ref: `p${i}`,
-      category: "",
-    }));
-    vi.mocked(lensApi.publicAlbum).mockResolvedValue({ ...ALBUM, photos: many });
+  it("can be stopped, because motion nobody asked for must be stoppable", async () => {
     mount();
+    const wall = await screen.findByTestId("album-wall");
+    expect(wall).toHaveAttribute("data-running", "true");
 
-    const grid = await screen.findByTestId("album-grid");
-    // A page of tiles, not thirty: a school phone cannot afford the rest.
-    expect(within(grid).getAllByTestId(/^album-photo-/)).toHaveLength(24);
-    expect(screen.getByTestId("album-sentinel")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("wall-motion-toggle"));
+    expect(screen.getByTestId("album-wall")).toHaveAttribute(
+      "data-running",
+      "false",
+    );
+    expect(screen.getByTestId("wall-motion-toggle")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("holds still while a photo is open behind it", async () => {
+    mount();
+    await userEvent.click(await screen.findByTestId("album-photo-r3"));
+
+    expect(screen.getByTestId("album-lightbox")).toBeInTheDocument();
+    expect(screen.getByTestId("album-wall")).toHaveAttribute(
+      "data-running",
+      "false",
+    );
   });
 
   it("opens the lightbox and walks the list on screen", async () => {

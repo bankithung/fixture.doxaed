@@ -109,11 +109,13 @@ Up-front PRD decisions that shape the codebase. Do not relitigate; do not deviat
 
 ## Public album (Guest Lens)
 
-`features/lens/PublicAlbumPage.tsx` is ONE view: a vertical wall of photographs that keeps loading as you scroll (owner 2026-08-13). It replaced `features/lens/universe/` — a CSS-3D sphere of school "planets" (DomeGallery + orbit + `geometry.ts`), deleted in full — because it answered "whose photos are these?" when a visitor asks "show me the photos", and could only ever show one school at a time. Don't reintroduce a 3D surface here without asking.
+`features/lens/PublicAlbumPage.tsx` is ONE view: `InfiniteWall`, an endless wall of photographs that drifts upward on its own and wraps forever (owner 2026-08-13). It replaced `features/lens/universe/` — a CSS-3D sphere of school "planets" (DomeGallery + orbit + `geometry.ts`), deleted in full — because it answered "whose photos are these?" when a visitor asks "show me the photos". A first attempt read "infinite scroll" as lazy pagination; it is not, it is the React Bits **InfiniteScroll** effect, re-cut token-native and **dependency-free** (no GSAP, no `@use-gesture`) exactly as `DomeGallery` and `StarBorder` were.
 
-- **Category is a way through the album, not just a filter.** With no chip selected the wall renders a section per award category (campaign order, `__other` last for unfiled photos); a chip narrows to that one category and the section headers collapse away. Chips match a photo by the category it was **uploaded** to *or* the award it holds.
-- **Infinite scroll is a reveal window**, not pagination: `PAGE = 24` more tiles per `IntersectionObserver` step with a 600px `rootMargin`, sliced AFTER grouping so a section header never appears above nothing. The window resets whenever a filter changes. jsdom has no `IntersectionObserver` — tests stub it and rely on the first batch drawing without it.
-- One lightbox walks `photos`, the same filtered list the page draws, so prev/next always matches what is on screen.
+- **Drift never touches React state.** One rAF loop writes `translate3d` onto each column div; state here would re-render the album 60×/s.
+- **The loop is two copies of each column**, wrapping modulo the measured height of copy one. The second copy is `aria-hidden` + `tabIndex={-1}` — scenery, not a second album — so AT and keyboard walk each photo once. Tests assert exactly this (3 real buttons, 6 including hidden).
+- **It stops for everyone who needs it to:** `prefers-reduced-motion`, hover, focus-within, an open lightbox, or the Pause button. `data-running` on the wall is the readable truth.
+- **A drag is not a click** — pointer drag scrubs; the tile opens only under `DRAG_SLOP` (6px) of travel.
+- Category is readable without grouping: chips carry counts and every tile names the category it was filed under. Chips match a photo by its **upload** category *or* its award.
 
 ## Operations pages (frontend)
 
