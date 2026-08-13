@@ -25,7 +25,7 @@ from apps.lens.models import LensCampaign, LensPass, LensPhoto
 from apps.lens.services import campaign as campaign_service
 from apps.lens.services import passes as pass_service
 from apps.lens.services import photos as photo_service
-from apps.lens.throttling import LensUploadThrottle
+from apps.lens.throttling import LensJoinThrottle, LensUploadThrottle
 from apps.tournaments.models import Tournament, TournamentStatus
 from apps.tournaments.permissions import can_manage_tournament
 from apps.tournaments.scope import accessible_tournaments
@@ -52,6 +52,10 @@ def _campaign_payload(c: LensCampaign) -> dict:
         "award_categories": list(c.award_categories or []),
         "category_limits": dict(c.category_limits or {}),
         "is_open": c.is_open,
+        # Whether a card exists, never its token.
+        "share_minted_at": (
+            c.share_minted_at.isoformat() if c.share_minted_at else None
+        ),
         "opened_at": c.opened_at.isoformat() if c.opened_at else None,
         "closed_at": c.closed_at.isoformat() if c.closed_at else None,
         "created_at": c.created_at.isoformat(),
@@ -68,6 +72,9 @@ def _pass_payload(p: LensPass, photos_used: int) -> dict:
         "institution_id": str(p.institution_id),
         "institution_name": p.institution.name,
         "is_active": p.is_active,
+        # Whether the school HAS a code, never the code: the plaintext exists
+        # only in the response of the call that generated it.
+        "has_code": bool(p.code_hash),
         "photos_used": photos_used,
         "last_minted_at": p.last_minted_at.isoformat() if p.last_minted_at else None,
     }
@@ -307,19 +314,41 @@ class LensReopenView(GenericAPIView):
 
 # --- manager: passes ------------------------------------------------------------
 
-class LensMintPassesView(GenericAPIView):
-    """`POST /api/tournaments/{id}/lens/passes/mint/` — mint a card per
-    institution lacking a pass. Plaintext tokens appear ONLY here (spec D12)."""
+class LensShareCardView(GenericAPIView):
+    """`POST /api/tournaments/{id}/lens/share-card/` — mint the campaign's ONE
+    card. The plaintext token (and its QR) appear only here: re-minting
+    invalidates the poster already on the wall, so it is never automatic."""
 
     permission_classes = [IsAuthenticated]
 
     def post(self, request, tournament_id):
         t = _get_managed_tournament(request, tournament_id)
-        cards, skipped = pass_service.mint_passes(
+        c, token = pass_service.mint_share_card(
             campaign=_resolve_campaign(request, t), by=request.user,
             event_id=_event_id(request), request=request,
         )
-        return Response({"cards": cards, "skipped": skipped})
+        return Response({"card": pass_service.share_card_payload(c, token)})
+
+
+class LensIssueCodesView(GenericAPIView):
+    """`POST /api/tournaments/{id}/lens/passes/codes/` — give every registered
+    school a code for the shared card. Plaintext codes appear ONLY here
+    (spec D12). `institution_ids` re-issues for a chosen few; without it,
+    schools that already hold a code keep it."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        t = _get_managed_tournament(request, tournament_id)
+        ids = request.data.get("institution_ids") or None
+        if ids is not None and not isinstance(ids, list):
+            raise DRFValidationError({"institution_ids": "must be a list"})
+        rows, skipped = pass_service.issue_codes(
+            campaign=_resolve_campaign(request, t), by=request.user,
+            institution_ids=ids,
+            event_id=_event_id(request), request=request,
+        )
+        return Response({"codes": rows, "skipped": skipped})
 
 
 def _get_pass(tournament, pass_id) -> LensPass:
@@ -337,12 +366,20 @@ class LensPassRotateView(GenericAPIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, tournament_id, pass_id):
+        """Fresh code for ONE school; the shared card is untouched."""
         t = _get_managed_tournament(request, tournament_id)
-        p, token = pass_service.rotate_pass(
+        p, code = pass_service.rotate_pass(
             pass_=_get_pass(t, pass_id), by=request.user,
             event_id=_event_id(request), request=request,
         )
-        return Response({"card": pass_service.card_payload(p, token)})
+        return Response({
+            "code": {
+                "pass_id": str(p.id),
+                "institution_id": str(p.institution_id),
+                "institution_name": p.institution.name,
+                "code": code,
+            }
+        })
 
 
 class LensPassRevokeView(GenericAPIView):
@@ -442,6 +479,85 @@ class LensPhotoAwardView(GenericAPIView):
             event_id=_event_id(request), request=request,
         )
         return Response({"photo": _photo_payload(p)})
+
+
+# --- public: the shared card ------------------------------------------------
+
+def _share_or_404(token: str) -> LensCampaign:
+    c = pass_service.resolve_share(token)
+    if c is None:
+        raise NotFound("card_not_found")
+    return c
+
+
+class LensJoinView(GenericAPIView):
+    """The door behind the ONE card.
+
+    `GET /api/lens/join/{token}/` names the album and lists the schools that
+    can sign in — names only, so the picker is usable without leaking anything
+    a passer-by could not read off the fixture list.
+
+    `POST` exchanges (institution, code) for a signed, expiring session token;
+    that token, not the code, is what the upload endpoints take. Wrong codes
+    are counted per school (5 → 15 min lockout) beneath the per-IP throttle,
+    and a locked or unknown school answers identically to a wrong code.
+    """
+
+    permission_classes = [AllowAny]
+    throttle_classes = [LensJoinThrottle]
+
+    def get(self, request, token):
+        c = _share_or_404(token)
+        t = c.tournament
+        passes = (
+            LensPass.objects.filter(
+                campaign=c, is_active=True, institution__deleted_at__isnull=True
+            )
+            .exclude(code_hash="")
+            .select_related("institution")
+            .order_by("institution__name")
+        )
+        return Response({
+            "tournament": {"id": str(t.id), "slug": t.slug, "name": t.name},
+            "campaign": {
+                "id": str(c.id),
+                "title": c.title,
+                "tagline": c.tagline,
+                "instructions": c.instructions,
+                "consent_note": c.consent_note,
+                "is_open": c.is_open,
+            },
+            "institutions": [
+                {"id": str(p.institution_id), "name": p.institution.name}
+                for p in passes
+            ],
+        })
+
+    def post(self, request, token):
+        c = _share_or_404(token)
+        institution_id = str(request.data.get("institution_id") or "").strip()
+        code = str(request.data.get("code") or "").strip()
+        if not institution_id or not code:
+            raise DRFValidationError({"code": "institution_and_code_required"})
+        p = (
+            LensPass.objects.filter(
+                campaign=c, institution_id=institution_id, is_active=True,
+                institution__deleted_at__isnull=True,
+            )
+            .select_related("institution", "campaign")
+            .first()
+        )
+        # An unknown or revoked school must not be distinguishable from a bad
+        # code, or the picker becomes a way to enumerate who is registered.
+        if p is None:
+            raise DRFValidationError({"code": "invalid_code"})
+        ok, error = pass_service.verify_code(p, code)
+        if not ok:
+            raise DRFValidationError({"code": error or "invalid_code"})
+        return Response({
+            "token": pass_service.make_session_token(p),
+            "institution": {"id": str(p.institution_id), "name": p.institution.name},
+        })
 
 
 # --- public: pass page -----------------------------------------------------------

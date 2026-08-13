@@ -97,7 +97,7 @@ const ModuleMatrixPage = lazy(() => import("@/features/permissions/ModuleMatrixP
 // upload page + the public shared album (spec 2026-07-10).
 const LensCampaignListPage = lazy(() => import("@/features/lens/LensCampaignListPage").then((m) => ({ default: m.LensCampaignListPage })));
 const LensConsolePage = lazy(() => import("@/features/lens/LensConsolePage").then((m) => ({ default: m.LensConsolePage })));
-const LensUploadPage = lazy(() => import("@/features/lens/LensUploadPage").then((m) => ({ default: m.LensUploadPage })));
+const LensJoinPage = lazy(() => import("@/features/lens/LensJoinPage").then((m) => ({ default: m.LensJoinPage })));
 const PublicAlbumPage = lazy(() => import("@/features/lens/PublicAlbumPage").then((m) => ({ default: m.PublicAlbumPage })));
 
 /** Listen for global auth events fired by the query client. */
@@ -202,7 +202,10 @@ export default function App(): React.ReactElement {
               <Route path="/t/:slug/:id/team/:teamId" element={<PublicTeamPage />} />
               <Route path="/t/:slug/:id/school/:instId" element={<PublicSchoolPage />} />
               {/* Guest Lens: QR-card upload page + the public shared album. */}
-              <Route path="/lens/:token" element={<LensUploadPage />} />
+              {/* ONE card for the event: the scan lands on the join page,
+                  which hands over to the upload page once a school has typed
+                  its code (owner 2026-08-13). */}
+              <Route path="/lens/join/:token" element={<LensJoinPage />} />
               <Route path="/t/:slug/:id/album" element={<PublicAlbumPage />} />
               <Route path="/t/:slug/:id/album/:campaignId" element={<PublicAlbumPage />} />
               <Route path="/explore" element={<ExplorePage />} />

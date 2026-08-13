@@ -24,7 +24,8 @@ vi.mock("@/api/lens", async (importOriginal) => {
       update: vi.fn(),
       close: vi.fn(),
       reopen: vi.fn(),
-      mint: vi.fn(),
+      shareCard: vi.fn(),
+      issueCodes: vi.fn(),
       rotate: vi.fn(),
       revoke: vi.fn(),
       photos: vi.fn(),
@@ -58,6 +59,7 @@ const CAMPAIGN: LensCampaign = {
   is_open: true,
   opened_at: "2026-07-10T05:00:00Z",
   closed_at: null,
+  share_minted_at: null,
 };
 
 const OVERVIEW: LensOverview = {
@@ -77,6 +79,7 @@ const OVERVIEW: LensOverview = {
       institution_id: "i1",
       institution_name: "Grace School",
       is_active: true,
+      has_code: false,
       photos_used: 4,
       last_minted_at: "2026-07-10T06:00:00Z",
     },
@@ -104,12 +107,19 @@ function photo(over: Partial<LensPhoto> & { id: string }): LensPhoto {
 }
 
 const CARD = {
+  campaign_id: "c1",
+  title: "Guest Lens",
+  tagline: "36 Shots Challenge",
+  join_url: "https://fixture.doxaed.com/lens/join/tok123",
+  token: "tok123",
+  qr_data_uri: "data:image/png;base64,abc123",
+};
+
+const CODE = {
   pass_id: "p1",
   institution_id: "i1",
   institution_name: "Grace School",
-  upload_url: "https://fixture.doxaed.com/lens/tok123",
-  token: "tok123",
-  qr_data_uri: "data:image/png;base64,abc123",
+  code: "MK4TQ9RB",
 };
 
 function mount() {
@@ -138,7 +148,8 @@ beforeEach(() => {
   vi.mocked(lensApi.photos).mockResolvedValue({ photos: [] });
   vi.mocked(lensApi.open).mockResolvedValue({ campaign: CAMPAIGN });
   vi.mocked(lensApi.update).mockResolvedValue({ campaign: CAMPAIGN });
-  vi.mocked(lensApi.mint).mockResolvedValue({ cards: [CARD], skipped: 0 });
+  vi.mocked(lensApi.shareCard).mockResolvedValue({ card: CARD });
+  vi.mocked(lensApi.issueCodes).mockResolvedValue({ codes: [CODE], skipped: 0 });
   vi.mocked(lensApi.approve).mockResolvedValue({
     photo: photo({ id: "ph1", status: "approved" }),
   });
@@ -234,19 +245,39 @@ describe("LensConsolePage", () => {
     expect(await screen.findByText("Photo hidden")).toBeInTheDocument();
   });
 
-  it("mints cards and renders the one-time print sheet with QR images", async () => {
+  it("mints ONE card for the event and prints it with the join link", async () => {
     mount();
 
     await userEvent.click(await screen.findByTestId("lens-tab-cards"));
-    await userEvent.click(screen.getByTestId("mint-btn"));
+    await userEvent.click(await screen.findByTestId("mint-share-card-btn"));
 
-    await waitFor(() => expect(lensApi.mint).toHaveBeenCalledTimes(1));
-    const sheet = await screen.findByTestId("print-sheet");
-    expect(sheet).toBeInTheDocument();
+    await waitFor(() => expect(lensApi.shareCard).toHaveBeenCalledTimes(1));
+    await screen.findByTestId("share-card");
     const qr = screen.getByAltText(/QR code opening the photo upload page/);
     expect(qr).toHaveAttribute("src", "data:image/png;base64,abc123");
-    expect(screen.getByTestId("copy-link-p1")).toBeInTheDocument();
+    expect(screen.getByTestId("copy-share-link")).toBeInTheDocument();
     expect(screen.getByTestId("print-cards-btn")).toBeInTheDocument();
+    // One card, not one per school: no per-school QR anywhere on the sheet.
+    expect(screen.getAllByAltText(/QR code/)).toHaveLength(1);
+  });
+
+  it("issues per-school codes and shows each one exactly once", async () => {
+    mount();
+
+    await userEvent.click(await screen.findByTestId("lens-tab-cards"));
+    await userEvent.click(await screen.findByTestId("issue-codes-btn"));
+
+    await waitFor(() => expect(lensApi.issueCodes).toHaveBeenCalledTimes(1));
+    // The slip a school gets handed, and the same code in its table row.
+    expect(await screen.findByTestId("code-slip-p1")).toHaveTextContent(
+      "MK4TQ9RB",
+    );
+    expect(screen.getByTestId("copy-code-MK4TQ9RB")).toBeInTheDocument();
+    // A re-run for newcomers must not wipe the codes already on screen.
+    vi.mocked(lensApi.issueCodes).mockResolvedValue({ codes: [], skipped: 1 });
+    await userEvent.click(screen.getByTestId("issue-codes-btn"));
+    await waitFor(() => expect(lensApi.issueCodes).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("code-slip-p1")).toBeInTheDocument();
   });
 
   it("assigns an award winner from the approved picker", async () => {

@@ -110,7 +110,7 @@ export function LensCampaignListPage(): React.ReactElement {
           <p className="text-sm font-medium">{t("No photo campaigns yet")}</p>
           <p className="max-w-sm text-sm text-muted-foreground">
             {t(
-              "Each campaign is one shared album: schools scan a QR pass and upload their best shots, you approve and pick winners.",
+              "Each campaign is one shared album: schools scan the event QR code, sign in with their own code and upload their best shots, you approve and pick winners.",
             )}
           </p>
           {fixturesReady ? (

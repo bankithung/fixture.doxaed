@@ -21,6 +21,9 @@ export interface LensCampaign {
   is_open: boolean;
   opened_at: string | null;
   closed_at: string | null;
+  /** When the event's one card was last minted; null = no card yet. The token
+   * itself is never in this payload. */
+  share_minted_at: string | null;
 }
 
 export interface LensStats {
@@ -37,6 +40,9 @@ export interface LensPassRow {
   institution_id: string;
   institution_name: string;
   is_active: boolean;
+  /** Whether a code exists — never the code itself, which the server returns
+   * only in the response of the call that generated it. */
+  has_code: boolean;
   photos_used: number;
   last_minted_at: string | null;
 }
@@ -69,13 +75,38 @@ export interface LensSettingsBody {
 
 /** One printable QR pass card. The plaintext `token` is shown ONCE — it lives
  * only in this mint/rotate response (hash-at-rest, spec D12). */
-export interface LensCard {
+/** The event's ONE card: the QR everyone scans. Held in React state only for
+ * as long as the poster is on screen — the plaintext token exists nowhere
+ * else (hash at rest, spec D12). */
+export interface LensShareCard {
+  campaign_id: string;
+  title: string;
+  tagline: string;
+  join_url: string;
+  token: string;
+  qr_data_uri: string;
+}
+
+/** One school's code, shown once. */
+export interface LensCode {
   pass_id: string;
   institution_id: string;
   institution_name: string;
-  upload_url: string;
-  token: string;
-  qr_data_uri: string;
+  code: string;
+}
+
+/** The join page behind the shared card. */
+export interface LensJoinContext {
+  tournament: { id: string; slug: string; name: string };
+  campaign: {
+    id: string;
+    title: string;
+    tagline: string;
+    instructions: string;
+    consent_note: string;
+    is_open: boolean;
+  };
+  institutions: { id: string; name: string }[];
 }
 
 export type LensPhotoStatus = "pending" | "approved" | "hidden";
@@ -184,13 +215,26 @@ export const lensApi = {
       ...body,
       campaign_id: campaignId,
     }),
-  mint: (tid: string, campaignId: string, body: { event_id: string }) =>
-    api.post<{ cards: LensCard[]; skipped: number }>(
-      `${base(tid)}/passes/mint/`,
-      { ...body, campaign_id: campaignId },
-    ),
+  /** Mint (or re-mint) the campaign's single card. Re-minting retires the
+   * poster already on the wall, so the console confirms first. */
+  shareCard: (tid: string, campaignId: string, body: { event_id: string }) =>
+    api.post<{ card: LensShareCard }>(`${base(tid)}/share-card/`, {
+      ...body,
+      campaign_id: campaignId,
+    }),
+  /** Give schools a code. Without `institution_ids`, schools that already hold
+   * one keep it; with it, those schools get a fresh code. */
+  issueCodes: (
+    tid: string,
+    campaignId: string,
+    body: { event_id: string; institution_ids?: string[] },
+  ) =>
+    api.post<{ codes: LensCode[]; skipped: number }>(`${base(tid)}/passes/codes/`, {
+      ...body,
+      campaign_id: campaignId,
+    }),
   rotate: (tid: string, passId: string, body: { event_id: string }) =>
-    api.post<{ card: LensCard }>(
+    api.post<{ code: LensCode }>(
       `${base(tid)}/passes/${encodeURIComponent(passId)}/rotate/`,
       body,
     ),
@@ -236,7 +280,18 @@ export const lensApi = {
       body,
     ),
 
-  /** Public pass surface (no login; the QR card token IS the credential). */
+  /** The door behind the shared card: what album this is, and which schools
+   * can sign in. */
+  joinContext: (token: string) =>
+    api.get<LensJoinContext>(`/api/lens/join/${encodeURIComponent(token)}/`),
+  /** Exchange (school, code) for the upload session token. */
+  join: (token: string, body: { institution_id: string; code: string }) =>
+    api.post<{ token: string; institution: { id: string; name: string } }>(
+      `/api/lens/join/${encodeURIComponent(token)}/`,
+      body,
+    ),
+
+  /** Public pass surface (no login; the session token IS the credential). */
   passContext: (token: string) =>
     api.get<LensPassContext>(`/api/lens/p/${encodeURIComponent(token)}/`),
   /** Multipart upload; a photo from a school phone can be slow on 2G, so the

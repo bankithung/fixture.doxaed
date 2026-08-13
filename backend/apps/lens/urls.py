@@ -7,12 +7,14 @@ from __future__ import annotations
 from django.urls import path
 
 from apps.lens.views import (
+    LensJoinView,
     LensPassContextView,
     LensPassPhotoDetailView,
     LensPassPhotosView,
 )
 
 urlpatterns = [
+    path("join/<str:token>/", LensJoinView.as_view(), name="lens-join"),
     path("p/<str:token>/", LensPassContextView.as_view(), name="lens-pass-context"),
     path(
         "p/<str:token>/photos/",

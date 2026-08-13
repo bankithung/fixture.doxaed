@@ -214,11 +214,11 @@ def test_hidden_photo_removed_status_on_public_pass_page():
     from apps.lens.models import LensPass
 
     pass_ = LensPass.objects.get(campaign=campaign)
-    # Rotate a fresh token to read the page (plaintext of the first mint is
-    # gone by design); resolve via the service to keep the test honest.
-    from apps.lens.services.passes import rotate_pass
+    # Read the page as that school would after signing in behind the shared
+    # card; resolve via the service to keep the test honest.
+    from apps.lens.services.passes import make_session_token
 
-    _p, token = rotate_pass(pass_=pass_, by=_admin)
+    token = make_session_token(pass_)
     body = APIClient().get(f"/api/lens/p/{token}/").json()
     assert body["photos"][0]["status"] == "removed"
     assert "reason" not in body["photos"][0]

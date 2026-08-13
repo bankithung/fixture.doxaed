@@ -18,9 +18,10 @@ from apps.accounts.models import uuid7
 DEFAULT_TITLE = "Guest Lens"
 DEFAULT_TAGLINE = "36 Shots Challenge"
 DEFAULT_INSTRUCTIONS = (
-    "Scan your school's QR pass to open the upload page. Capture the event "
-    "from your school's point of view and upload your best shots from your "
-    "own phone. The host reviews every photo before it joins the shared album."
+    "Scan the event QR code, pick your school and enter the code the host "
+    "gave you. Capture the event from your school's point of view and upload "
+    "your best shots from your own phone. The host reviews every photo "
+    "before it joins the shared album."
 )
 DEFAULT_CONSENT_NOTE = (
     "Selected photos may be used by the host for event highlights and social "
@@ -60,6 +61,12 @@ class LensCampaign(models.Model):
     tagline = models.CharField(max_length=120, default=DEFAULT_TAGLINE)
     instructions = models.TextField(default=DEFAULT_INSTRUCTIONS, blank=True)
     consent_note = models.TextField(default=DEFAULT_CONSENT_NOTE, blank=True)
+    # ONE card for the whole event (owner 2026-08-13). Everyone scans the same
+    # QR; the school proves who it is with its own code on the page behind it,
+    # so the host prints one poster instead of 35 cards. sha256 at rest like
+    # the pass tokens it replaces; plaintext returned once from the mint call.
+    share_token_hash = models.CharField(max_length=128, blank=True, db_index=True)
+    share_minted_at = models.DateTimeField(null=True, blank=True)
     max_photos_per_institution = models.PositiveIntegerField(default=36)
     award_categories = models.JSONField(default=default_award_categories, blank=True)
     # Optional per-institution cap for each category: {category_name: int}.
@@ -91,8 +98,16 @@ class LensCampaign(models.Model):
 
 
 class LensPass(models.Model):
-    """The QR card credential — one active pass per (campaign, institution),
-    enforced in the service layer (mint skips, rotate replaces in place)."""
+    """One school's standing in the album — one row per (campaign,
+    institution), enforced in the service layer (mint skips, rotate replaces
+    in place).
+
+    It used to BE a QR card: a long token in a per-school URL. Since the
+    campaign carries a single shared card, the credential here is the school's
+    own short ``code``, typed on the join page behind that card. The code is
+    only 8 characters, so unlike the old token it is stored under a slow
+    salted password hash (Argon2id), never sha256.
+    """
 
     id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
     organization = models.ForeignKey(
@@ -105,7 +120,11 @@ class LensPass(models.Model):
     institution = models.ForeignKey(
         "teams.Institution", on_delete=models.CASCADE, related_name="lens_passes"
     )
-    token_hash = models.CharField(max_length=128, db_index=True)
+    # Retired with the per-school cards; kept so old rows migrate without a
+    # data step and nothing re-mints a URL nobody hands out any more.
+    token_hash = models.CharField(max_length=128, db_index=True, blank=True)
+    code_hash = models.CharField(max_length=256, blank=True)
+    code_set_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     expires_at = models.DateTimeField(null=True, blank=True)
     last_minted_at = models.DateTimeField()

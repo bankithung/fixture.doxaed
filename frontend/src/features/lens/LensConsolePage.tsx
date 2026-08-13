@@ -5,18 +5,20 @@ import {
   ArrowLeft,
   Award,
   Check,
+  Copy,
   EyeOff,
+  KeyRound,
   Link2,
   Plus,
-  QrCode,
   X,
 } from "lucide-react";
 import {
   lensApi,
   type LensCampaign,
-  type LensCard,
+  type LensCode,
   type LensPhoto,
   type LensSettingsBody,
+  type LensShareCard,
 } from "@/api/lens";
 import { tournamentsApi } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
@@ -272,8 +274,42 @@ function statusChip(photo: LensPhoto): React.ReactElement {
   );
 }
 
+/** One school's code in the table: the value while this session still holds
+ * it, otherwise only whether one exists. Regenerating is how you get a
+ * forgotten code back — the server cannot tell you the old one. */
+function CodeCell({
+  code,
+  hasCode,
+  onCopy,
+}: {
+  code: string;
+  hasCode: boolean;
+  onCopy: (code: string) => void;
+}): React.ReactElement {
+  if (code) {
+    return (
+      <button
+        type="button"
+        onClick={() => onCopy(code)}
+        data-testid={`copy-code-${code}`}
+        title={t("Copy code")}
+        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted px-2 py-1 font-tabular text-sm tracking-[0.14em] hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {code}
+        <Copy aria-hidden="true" className="h-3 w-3 text-muted-foreground" />
+      </button>
+    );
+  }
+  return (
+    <span className="text-xs text-muted-foreground">
+      {hasCode ? t("Set") : t("Not set")}
+    </span>
+  );
+}
+
 /**
- * Guest Lens manager console: Campaign settings, printable QR pass cards,
+ * Guest Lens manager console: Campaign settings, the event's one printable
+ * QR card and the per-school codes behind it,
  * moderation grid, and award winners (spec 2026-07-10 §4.2). Manager-only
  * route under /tournaments/:id/lens.
  */
@@ -288,7 +324,8 @@ export function LensConsolePage(): React.ReactElement {
   // no cards yet opens on Cards (the setup step). Settings is a tab you visit,
   // not the front page. `null` = "use the derived default"; a click pins it.
   const [tabState, setTab] = useState<TabKey | null>(null);
-  const [cards, setCards] = useState<LensCard[]>([]);
+  const [shareCard, setShareCard] = useState<LensShareCard | null>(null);
+  const [codes, setCodes] = useState<LensCode[]>([]);
   const [confirm, setConfirm] = useState<
     | { kind: "close" }
     | { kind: "reopen" }
@@ -319,6 +356,22 @@ export function LensConsolePage(): React.ReactElement {
   const defaultTab: TabKey =
     (overviewQ.data?.stats.passes_active ?? 0) > 0 ? "moderate" : "cards";
   const tab = tabState ?? defaultTab;
+
+  // Plaintext codes exist only in the response that created them, so the table
+  // shows a code for the schools issued in THIS session and "Set" for the rest.
+  const codeFor = (passId: string): string =>
+    codes.find((c) => c.pass_id === passId)?.code ?? "";
+  const codedCount = (overviewQ.data?.passes ?? []).filter(
+    (p) => p.has_code,
+  ).length;
+  const copyCode = async (code: string): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(code);
+      push({ kind: "success", title: t("Code copied") });
+    } catch {
+      push({ kind: "error", title: t("Could not copy the code") });
+    }
+  };
 
   const photosQ = useQuery({
     queryKey: [...qk.lensPhotos(id), campaignId, statusFilter, instFilter, catFilter],
@@ -385,16 +438,35 @@ export function LensConsolePage(): React.ReactElement {
     },
     onError: fail,
   });
-  const mintM = useMutation({
-    mutationFn: () => lensApi.mint(id, campaignId, { event_id: newEventId() }),
+  const shareCardM = useMutation({
+    mutationFn: () =>
+      lensApi.shareCard(id, campaignId, { event_id: newEventId() }),
     onSuccess: (res) => {
       invalidate();
-      setCards(res.cards);
+      setShareCard(res.card);
+      push({ kind: "success", title: t("Card ready") });
+    },
+    onError: fail,
+  });
+  const issueM = useMutation({
+    mutationFn: (institutionIds?: string[]) =>
+      lensApi.issueCodes(id, campaignId, {
+        event_id: newEventId(),
+        ...(institutionIds ? { institution_ids: institutionIds } : {}),
+      }),
+    onSuccess: (res) => {
+      invalidate();
+      // Merge, never replace: a manager who issues for newcomers must not lose
+      // the codes still on screen from the first run.
+      setCodes((cur) => [
+        ...res.codes,
+        ...cur.filter((c) => !res.codes.some((n) => n.pass_id === c.pass_id)),
+      ]);
       push({
         kind: "success",
-        title: res.cards.length
-          ? t("Cards generated")
-          : t("Every school already has a card"),
+        title: res.codes.length
+          ? t("Codes generated")
+          : t("Every school already has a code"),
       });
     },
     onError: fail,
@@ -404,11 +476,11 @@ export function LensConsolePage(): React.ReactElement {
       lensApi.rotate(id, passId, { event_id: newEventId() }),
     onSuccess: (res) => {
       invalidate();
-      setCards((cur) => [
-        res.card,
-        ...cur.filter((c) => c.pass_id !== res.card.pass_id),
+      setCodes((cur) => [
+        res.code,
+        ...cur.filter((c) => c.pass_id !== res.code.pass_id),
       ]);
-      push({ kind: "success", title: t("Card regenerated") });
+      push({ kind: "success", title: t("Code regenerated") });
     },
     onError: fail,
   });
@@ -417,8 +489,8 @@ export function LensConsolePage(): React.ReactElement {
       lensApi.revoke(id, passId, { event_id: newEventId() }),
     onSuccess: (_res, passId) => {
       invalidate();
-      setCards((cur) => cur.filter((c) => c.pass_id !== passId));
-      push({ kind: "success", title: t("Card revoked") });
+      setCodes((cur) => cur.filter((c) => c.pass_id !== passId));
+      push({ kind: "success", title: t("School removed from the album") });
     },
     onError: fail,
   });
@@ -617,12 +689,18 @@ export function LensConsolePage(): React.ReactElement {
         ) : null}
       </div>
 
-      {/* The printable pass sheet lives OUTSIDE the print:hidden board so it
-          can actually print (it only appears right after minting). */}
-      {tab === "cards" && cards.length > 0 ? (
+      {/* The printable poster lives OUTSIDE the print:hidden board so it can
+          actually print. The QR exists only in the mint response, so it shows
+          until the manager leaves the page. */}
+      {tab === "cards" ? (
         <PassPrintSheet
-          cards={cards}
+          card={shareCard}
+          codes={codes}
+          onMint={() => shareCardM.mutate()}
+          minting={shareCardM.isPending}
+          hasCard={Boolean(campaign.share_minted_at)}
           tournamentName={tournamentQ.data?.name ?? ""}
+          title={campaign.title}
           tagline={campaign.tagline}
           consentNote={campaign.consent_note}
         />
@@ -714,24 +792,24 @@ export function LensConsolePage(): React.ReactElement {
         {tab === "cards" ? (
           <>
             <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
-              <h3 className="panel-title">{t("Pass cards")}</h3>
+              <h3 className="panel-title">{t("School codes")}</h3>
               <span className="font-tabular text-xs text-muted-foreground">
-                {overview.passes.length}
+                {codedCount}/{overview.passes.length}
               </span>
               <Button
                 size="sm"
                 className="ml-auto"
-                onClick={() => mintM.mutate()}
-                disabled={mintM.isPending}
-                data-testid="mint-btn"
+                onClick={() => issueM.mutate(undefined)}
+                disabled={issueM.isPending}
+                data-testid="issue-codes-btn"
               >
-                <QrCode aria-hidden="true" className="h-4 w-4" />
-                {t("Generate cards")}
+                <KeyRound aria-hidden="true" className="h-4 w-4" />
+                {t("Generate codes")}
               </Button>
             </div>
             {overview.passes.length === 0 ? (
               <p className="px-4 py-3 text-sm text-muted-foreground">
-                {t("No cards yet. Generate cards to give each school its QR pass.")}
+                {t("No schools yet. Generate codes to let each school sign in.")}
               </p>
             ) : isMobile ? (
               <ul className="divide-y divide-border">
@@ -751,6 +829,11 @@ export function LensConsolePage(): React.ReactElement {
                       {p.photos_used}/{campaign.max_photos_per_institution}{" "}
                       {t("photos")}
                     </p>
+                    <CodeCell
+                      code={codeFor(p.id)}
+                      hasCode={p.has_code}
+                      onCopy={copyCode}
+                    />
                     <div className="flex gap-2">
                       <Button
                         variant="outline"
@@ -800,7 +883,7 @@ export function LensConsolePage(): React.ReactElement {
                         {t("Photos used")}
                       </th>
                       <th className="px-4 py-2 text-left text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                        {t("Last minted")}
+                        {t("Code")}
                       </th>
                       <th className="px-4 py-2" />
                     </tr>
@@ -823,13 +906,12 @@ export function LensConsolePage(): React.ReactElement {
                         <td className="px-4 py-2 text-right font-tabular text-sm">
                           {p.photos_used}/{campaign.max_photos_per_institution}
                         </td>
-                        <td className="px-4 py-2 text-sm text-muted-foreground">
-                          {p.last_minted_at
-                            ? new Date(p.last_minted_at).toLocaleString([], {
-                                dateStyle: "medium",
-                                timeStyle: "short",
-                              })
-                            : ""}
+                        <td className="px-4 py-2 text-sm">
+                          <CodeCell
+                            code={codeFor(p.id)}
+                            hasCode={p.has_code}
+                            onCopy={copyCode}
+                          />
                         </td>
                         <td className="px-4 py-2 text-right">
                           <div className="flex justify-end gap-1.5">

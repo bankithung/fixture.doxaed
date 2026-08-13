@@ -27,7 +27,7 @@ from apps.fixtures.views import (
 from apps.lens.views import (
     LensCampaignsView,
     LensCloseView,
-    LensMintPassesView,
+    LensIssueCodesView,
     LensOpenView,
     LensOverviewView,
     LensPassRevokeView,
@@ -37,6 +37,7 @@ from apps.lens.views import (
     LensPhotoHideView,
     LensPhotoListView,
     LensReopenView,
+    LensShareCardView,
 )
 from apps.forms.views import (
     GenerateInstitutionFormView,
@@ -428,9 +429,14 @@ urlpatterns = [
         name="tournament-lens-reopen",
     ),
     path(
-        "<uuid:tournament_id>/lens/passes/mint/",
-        LensMintPassesView.as_view(),
-        name="tournament-lens-passes-mint",
+        "<uuid:tournament_id>/lens/share-card/",
+        LensShareCardView.as_view(),
+        name="tournament-lens-share-card",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/passes/codes/",
+        LensIssueCodesView.as_view(),
+        name="tournament-lens-passes-codes",
     ),
     path(
         "<uuid:tournament_id>/lens/passes/<uuid:pass_id>/rotate/",

@@ -65,13 +65,32 @@ def open_campaign(t, admin, **settings_kwargs):
 
 
 def mint_token(campaign, admin):
-    """Mint passes and return ``(pass, plaintext_token)`` for the first card."""
+    """Issue codes and return ``(pass, session_token)`` for the first school —
+    the credential the upload endpoints actually take, as if that school had
+    scanned the shared card and typed its code."""
     from apps.lens.models import LensPass
-    from apps.lens.services.passes import mint_passes
+    from apps.lens.services.passes import issue_codes, make_session_token
 
-    cards, _skipped = mint_passes(campaign=campaign, by=admin)
-    card = cards[0]
-    return LensPass.objects.get(id=card["pass_id"]), card["token"]
+    rows, _skipped = issue_codes(campaign=campaign, by=admin)
+    pass_ = LensPass.objects.get(id=rows[0]["pass_id"])
+    return pass_, make_session_token(pass_)
+
+
+def mint_code(campaign, admin):
+    """``(pass, plaintext_code)`` for the first school."""
+    from apps.lens.models import LensPass
+    from apps.lens.services.passes import issue_codes
+
+    rows, _skipped = issue_codes(campaign=campaign, by=admin)
+    return LensPass.objects.get(id=rows[0]["pass_id"]), rows[0]["code"]
+
+
+def share_token(campaign, admin):
+    """Mint the campaign's one card and return its plaintext token."""
+    from apps.lens.services.passes import mint_share_card
+
+    _c, token = mint_share_card(campaign=campaign, by=admin)
+    return token
 
 
 def jpeg_file(

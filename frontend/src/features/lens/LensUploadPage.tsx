@@ -77,13 +77,21 @@ function ownStatusChip(status: LensOwnPhoto["status"]): React.ReactElement {
 }
 
 /**
- * The page a Guest Lens QR pass card opens: no login, mobile-first, the
- * teacher in charge uploads the school's photos from their own phone
- * (spec 2026-07-10 §4.3). Uploads run sequentially with a visible per-file
- * state list, never a single busy boolean.
+ * Where a school lands after signing in behind the shared QR card: no login,
+ * mobile-first, the teacher in charge uploads the school's photos from their
+ * own phone (spec 2026-07-10 §4.3). Uploads run sequentially with a visible
+ * per-file state list, never a single busy boolean.
+ *
+ * The session token comes from the join page as a prop (it is a credential, so
+ * it never rides in the URL); the route param remains the fallback.
  */
-export function LensUploadPage(): React.ReactElement {
-  const { token = "" } = useParams();
+export function LensUploadPage({
+  sessionToken,
+}: {
+  sessionToken?: string;
+} = {}): React.ReactElement {
+  const { token: routeToken = "" } = useParams();
+  const token = sessionToken ?? routeToken;
   const qc = useQueryClient();
   const { push } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);

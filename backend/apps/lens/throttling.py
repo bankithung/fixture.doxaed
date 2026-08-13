@@ -13,6 +13,27 @@ import hashlib
 from rest_framework.throttling import SimpleRateThrottle
 
 
+class LensJoinThrottle(SimpleRateThrottle):
+    """Code guessing on the shared card, capped per IP.
+
+    Keyed on the client, NOT the card token: the whole event scans one card,
+    so a token key would let one school's typos lock out every other school.
+    The per-school lockout in ``passes.verify_code`` is the other half — this
+    bounds a single attacker, that bounds attempts against one school.
+    """
+
+    scope = "lens_join"
+    rate = "30/hour"
+
+    def get_cache_key(self, request, view) -> str | None:
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return None
+        ident = self.get_ident(request)
+        if ident is None:
+            return None
+        return self.cache_format % {"scope": self.scope, "ident": ident}
+
+
 class LensUploadThrottle(SimpleRateThrottle):
     scope = "lens_upload"
     rate = "120/hour"
