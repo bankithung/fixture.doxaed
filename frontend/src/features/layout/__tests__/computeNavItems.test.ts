@@ -118,12 +118,11 @@ describe("computeTournamentNav", () => {
     stage: "org_registration",
     can_manage: true,
     modules: [],
-    order: ["setup", "org_registration", "team_registration", "members", "fixtures", "ready"],
+    order: ["setup", "org_registration", "team_registration", "fixtures", "ready"],
     stages: [
       { key: "setup", label: "Setup" },
       { key: "org_registration", label: "Institution registration" },
       { key: "team_registration", label: "Team registration" },
-      { key: "members", label: "Members & roles" },
       { key: "fixtures", label: "Fixtures" },
       { key: "ready", label: "Ready" },
     ],
@@ -141,10 +140,10 @@ describe("computeTournamentNav", () => {
       "forms",
       "institutions",
       "teams",
-      "members",
       "fixtures",
       "control",
       "lens",
+      "members",
       "settings",
     ]);
   });

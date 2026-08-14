@@ -16,6 +16,7 @@ from apps.fixtures.models import Venue
 from apps.fixtures.services.draw_config import effective_draw_config
 from apps.teams.models import Team, TeamStatus
 from apps.tournaments.services.sports import iter_leaves
+from apps.tournaments.services.state import FLOW_ORDER
 
 FORMAT_LABELS = {
     "round_robin": "Round-robin (league)",
@@ -36,13 +37,14 @@ STATUS_LABELS = {
     "archived": "Archived",
 }
 
-# The setup funnel (matches the on-screen stage stepper).
-STAGE_ORDER = ["setup", "org_registration", "team_registration", "members", "fixtures", "ready"]
+# The setup funnel (matches the on-screen stage stepper) — imported, never
+# re-declared, so the prompt can't describe a step the flow no longer has.
+# Members & roles is not in it: it sits beside Settings, open at any time.
+STAGE_ORDER = FLOW_ORDER
 STAGE_LABELS = {
     "setup": "Setup",
     "org_registration": "Institution registration",
     "team_registration": "Team registration",
-    "members": "Members & roles",
     "fixtures": "Fixtures",
     "ready": "Ready",
 }

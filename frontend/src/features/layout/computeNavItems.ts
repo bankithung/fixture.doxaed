@@ -30,7 +30,6 @@ export const STAGE_WORK_ROUTE: Record<string, (id: string) => string> = {
   setup: routes.tournamentSports,
   org_registration: routes.tournamentInstitutions,
   team_registration: routes.tournamentTeams,
-  members: routes.tournamentMembers,
   fixtures: routes.tournamentFixtures,
   ready: routes.tournamentOverview,
 };
@@ -39,15 +38,17 @@ export const STAGE_WORK_ROUTE: Record<string, (id: string) => string> = {
  * Reverse-map the current pathname to the setup stage whose page you're on, so
  * the stepper highlights the PAGE you're viewing — not the tournament's
  * server-side stage (owner: on the Sports page, Setup must be highlighted, not
- * Fixtures). Stage-agnostic pages (Overview/Settings) return null; callers fall
- * back to the tournament's current stage there.
+ * Fixtures). Stage-agnostic pages (Overview / Settings / Members & roles)
+ * return null; callers fall back to the tournament's current stage there.
  */
 export function pathStageKey(pathname: string): string | null {
   if (/\/sports(\/|$)/.test(pathname)) return "setup";
   if (/\/(forms|institutions)(\/|$)/.test(pathname)) return "org_registration";
   if (/\/teams(\/|$)/.test(pathname)) return "team_registration";
-  if (/\/members(\/|$)/.test(pathname)) return "members";
   if (/\/fixtures(\/|$)/.test(pathname)) return "fixtures";
+  // `/members` is deliberately absent: roles are handed out at any point in
+  // setup and on match day, so the page belongs beside Settings, not in the
+  // numbered flow (owner 2026-08-14).
   return null;
 }
 
@@ -357,15 +358,6 @@ export function computeTournamentNav(
       icon: Users,
       ...gate("team_registration"),
     },
-    // Member/role administration — managers only.
-    canManage
-      ? {
-          key: "members",
-          label: t("Members"),
-          href: routes.tournamentMembers(tournamentId),
-          icon: UserCog,
-        }
-      : null,
     {
       key: "fixtures",
       label: t("Fixtures"),
@@ -394,6 +386,17 @@ export function computeTournamentNav(
           href: routes.tournamentLens(tournamentId),
           icon: Camera,
           ...gate("ready"),
+        }
+      : null,
+    // Member/role administration — managers only. Pinned at the end beside
+    // Settings because it sits OUTSIDE the staged flow (owner 2026-08-14):
+    // roles are handed out at any point, so it is never a step to complete.
+    canManage
+      ? {
+          key: "members",
+          label: t("Members & roles"),
+          href: routes.tournamentMembers(tournamentId),
+          icon: UserCog,
         }
       : null,
     allowed("tournament.editor")

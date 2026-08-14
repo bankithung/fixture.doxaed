@@ -20,7 +20,6 @@ const STAGE_ROUTE: Record<string, (id: string) => string> = {
   setup: routes.tournamentSports,
   org_registration: routes.tournamentInstitutions,
   team_registration: routes.tournamentTeams,
-  members: routes.tournamentMembers,
   fixtures: routes.tournamentFixtures,
   ready: routes.tournamentOverview,
 };

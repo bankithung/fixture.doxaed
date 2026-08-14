@@ -17,6 +17,7 @@ from apps.forms.models import Form
 from apps.forms.services.forms import create_form, publish_form
 from apps.matches.models import Match
 from apps.teams.models import Team, TeamStatus
+from apps.tournaments.models import Tournament
 from apps.tournaments.models import TournamentStage as G
 from apps.tournaments.models import TournamentStatus as S
 from apps.tournaments.services import state as st
@@ -58,7 +59,39 @@ def test_allowed_transitions_table_complete():
             assert st.can_transition(frm, to) is legal, f"{frm}->{to}"
 
 
-@pytest.mark.parametrize("to", [G.TEAM_REGISTRATION, G.MEMBERS, G.FIXTURES, G.READY])
+def test_members_is_not_a_flow_stage():
+    """Members & roles sits beside Settings, not in the funnel (owner
+    2026-08-14): it is open at any time, so nothing may transition INTO it and
+    it never appears in the order the stepper renders."""
+    assert G.MEMBERS not in st._ORDER
+    assert G.MEMBERS not in st.FLOW_ORDER
+    for frm in st._ORDER:
+        assert not st.can_transition(frm, G.MEMBERS), f"{frm}->members"
+
+
+def test_legacy_members_stage_is_not_a_dead_end():
+    """A tournament parked on the retired stage (none in production, but a
+    long-lived DB could be) still advances to fixtures and still renders."""
+    t = create_tournament(user=_admin(), name="Legacy")
+    t = _advance(t, G.ORG_REGISTRATION)
+    t = _advance(t, G.TEAM_REGISTRATION)
+    _team(t)
+    Tournament.objects.filter(pk=t.pk).update(stage=G.MEMBERS)
+    t.refresh_from_db()
+
+    assert st.can_transition(G.MEMBERS, G.FIXTURES)
+    assert st.can_transition(G.MEMBERS, G.TEAM_REGISTRATION)  # reopen still works
+    assert not st.can_transition(G.MEMBERS, G.READY)  # no two-step skip
+
+    payload = st.build_stage_payload(t, t.created_by)  # renders, no KeyError
+    assert G.MEMBERS not in payload["order"]
+
+    t = _advance(t, G.FIXTURES)
+    assert t.stage == G.FIXTURES
+    assert t.stage_meta[G.FIXTURES]["entered_at"]
+
+
+@pytest.mark.parametrize("to", [G.TEAM_REGISTRATION, G.FIXTURES, G.READY])
 def test_illegal_forward_skip_raises(to):
     t = create_tournament(user=_admin(), name="Skip")
     assert t.stage == G.SETUP
@@ -78,10 +111,7 @@ def test_forward_happy_path_with_lifecycle_and_freeze():
     assert t.stage == G.TEAM_REGISTRATION and t.status == S.REGISTRATION_OPEN
     assert t.rules_frozen_at is not None  # freeze_rules wired (invariant 7)
 
-    _team(t)  # satisfy the members blocker
-    t = _advance(t, G.MEMBERS)
-    assert t.stage == G.MEMBERS
-
+    _team(t)  # satisfy the fixtures blocker
     t = _advance(t, G.FIXTURES)
     assert t.stage == G.FIXTURES
 
@@ -91,12 +121,12 @@ def test_forward_happy_path_with_lifecycle_and_freeze():
 
 
 # --------------------------------------------------------------------------- blockers
-def test_blocker_no_teams_for_members():
+def test_blocker_no_teams_for_fixtures():
     t = create_tournament(user=_admin(), name="Block")
     t = _advance(t, G.ORG_REGISTRATION)
     t = _advance(t, G.TEAM_REGISTRATION)
     with pytest.raises(st.StageTransitionError) as exc:
-        st.transition_tournament(tournament=t, to_stage=G.MEMBERS, ack_warnings=True)
+        st.transition_tournament(tournament=t, to_stage=G.FIXTURES, ack_warnings=True)
     assert exc.value.detail == "stage_blocked"
     assert "no_teams_registered" in exc.value.consequences["blockers"]
 
@@ -106,7 +136,6 @@ def test_blocker_no_fixtures_for_ready():
     t = _advance(t, G.ORG_REGISTRATION)
     t = _advance(t, G.TEAM_REGISTRATION)
     _team(t)
-    t = _advance(t, G.MEMBERS)
     t = _advance(t, G.FIXTURES)
     with pytest.raises(st.StageTransitionError) as exc:
         st.transition_tournament(tournament=t, to_stage=G.READY, ack_warnings=True)
@@ -276,7 +305,6 @@ def test_reopen_with_matches_warns_downstream():
     t = _advance(t, G.ORG_REGISTRATION)
     t = _advance(t, G.TEAM_REGISTRATION)
     _team(t)
-    t = _advance(t, G.MEMBERS)
     t = _advance(t, G.FIXTURES)
     _match(t)
     prev = st.preview_reopen(t, G.TEAM_REGISTRATION)
@@ -374,7 +402,7 @@ def test_api_blocked_returns_409():
     _advance(t, G.TEAM_REGISTRATION)
     r = _client(admin).post(
         f"/api/tournaments/{t.id}/stage/",
-        {"to_stage": G.MEMBERS, "ack_warnings": True}, format="json",
+        {"to_stage": G.FIXTURES, "ack_warnings": True}, format="json",
     )
     assert r.status_code == 409, r.content
     assert r.json()["detail"] == "stage_blocked"

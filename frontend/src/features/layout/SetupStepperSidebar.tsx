@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, Lock, Settings } from "lucide-react";
+import { ArrowLeft, Lock, Settings, UserCog } from "lucide-react";
 import type { StagePayload } from "@/api/tournaments";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import { Meter } from "@/features/dashboard/charts";
@@ -15,10 +15,32 @@ const STAGE_SUB: Record<string, string> = {
   setup: "Sports & categories",
   org_registration: "Register schools",
   team_registration: "Add teams",
-  members: "Invite people & roles",
   fixtures: "Generate & schedule",
   ready: "Review & publish",
 };
+
+/**
+ * Always-open surfaces, pinned below the flow. Neither is a step you finish:
+ * roles get handed out (and taken back) all through setup and on match day, and
+ * settings are edited whenever. Numbering them made the funnel lie about how
+ * far along the tournament was (owner 2026-08-14).
+ */
+const ALWAYS_OPEN: { key: string; label: string; sub: string; icon: typeof Settings; to: (id: string) => string }[] = [
+  {
+    key: "members",
+    label: "Members & roles",
+    sub: "Invite people & roles",
+    icon: UserCog,
+    to: routes.tournamentMembers,
+  },
+  {
+    key: "settings",
+    label: "Settings",
+    sub: "Name, dates, rules",
+    icon: Settings,
+    to: routes.tournamentSettings,
+  },
+];
 
 /**
  * Vertical stage stepper shown INSTEAD of the nav rail during tournament setup
@@ -48,7 +70,6 @@ export function SetupStepperSidebar({
   // (Overview/Settings) fall back to the tournament's real current stage.
   const viewedKey = pathStageKey(pathname);
   const activeIdx = viewedKey ? order.indexOf(viewedKey) : curIdx;
-  const settingsHref = routes.tournamentSettings(tournamentId);
   const doneCount = Math.max(0, curIdx);
 
   return (
@@ -197,20 +218,48 @@ export function SetupStepperSidebar({
         </nav>
       </div>
 
-      {/* Settings stays reachable through the whole setup flow. */}
+      {/* Off to one side of the flow: open at any point, in any order. */}
       <div className="shrink-0 border-t border-border p-3">
-        <Link
-          to={settingsHref}
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-            pathname === settingsHref
-              ? "bg-accent font-medium text-accent-foreground"
-              : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-          )}
-        >
-          <Settings aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
-          {t("Settings")}
-        </Link>
+        <nav aria-label={t("Tournament tools")}>
+          <ul className="flex flex-col gap-0.5">
+            {ALWAYS_OPEN.map(({ key, label, sub, icon: Icon, to }) => {
+              const href = to(tournamentId);
+              const here = pathname === href;
+              return (
+                <li key={key}>
+                  <Link
+                    to={href}
+                    aria-current={here ? "page" : undefined}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2 transition-colors",
+                      here
+                        ? "bg-accent text-accent-foreground"
+                        : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                    )}
+                  >
+                    <Icon
+                      aria-hidden="true"
+                      className="h-[18px] w-[18px] shrink-0"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className={cn(
+                          "block truncate text-sm leading-tight",
+                          here ? "font-medium" : "",
+                        )}
+                      >
+                        {t(label)}
+                      </span>
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                        {t(sub)}
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
       </div>
     </aside>
   );

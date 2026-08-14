@@ -14,6 +14,7 @@ re-implement). Idempotent on ``event_id`` (invariant 3); one new audit string
 from __future__ import annotations
 
 import logging
+import math
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -55,15 +56,40 @@ G = TournamentStage
 S = TournamentStatus
 
 # Forward order; forward = one step, backward (reopen) = any earlier stage.
+#
+# MEMBERS is deliberately NOT here (owner 2026-08-14). Inviting people and
+# assigning roles is not a step you finish once and leave behind — an organizer
+# adds a scorer the morning of the event — so gating the flow on it made the
+# funnel lie about progress. It lives alongside Settings as an always-open
+# surface instead. The enum value stays (stage_meta rows and audit history
+# reference it) but nothing can transition INTO it any more.
 _ORDER = [
     G.SETUP,
     G.ORG_REGISTRATION,
     G.TEAM_REGISTRATION,
-    G.MEMBERS,
     G.FIXTURES,
     G.READY,
 ]
 _RANK = {s: i for i, s in enumerate(_ORDER)}
+# A retired stage sits BETWEEN two live ones, so it gets a fractional rank: a
+# tournament parked on one (none exist in production, but a long-lived DB or a
+# replayed fixture could) still compares, renders, and moves forward instead of
+# raising KeyError. MEMBERS used to sit after team registration.
+_RETIRED_RANK: dict[str, float] = {G.MEMBERS: _RANK[G.TEAM_REGISTRATION] + 0.5}
+
+
+#: The setup funnel, in order — the ONE list. Import this rather than
+#: re-declaring it (the assistant's prompt builder does); the stage payload's
+#: ``order`` is the same list, so screen and prompt can never drift.
+FLOW_ORDER: list[str] = list(_ORDER)
+
+
+def _rank(stage: str) -> float:
+    """Flow position of ``stage``. Retired stages rank between their old
+    neighbours so ``to > from`` still means "forward"."""
+    if stage in _RANK:
+        return _RANK[stage]
+    return _RETIRED_RANK.get(stage, 0)
 
 # PRD §5.2 lifecycle order (for forward-only coupling).
 _STATUS_ORDER = [
@@ -86,13 +112,20 @@ _STAGE_STATUS = {
 
 
 def _allowed(frm: str) -> set[str]:
-    i = _RANK[frm]
-    fwd = {_ORDER[i + 1]} if i + 1 < len(_ORDER) else set()
-    back = set(_ORDER[:i])
+    """Forward one step, or back to any earlier stage. A retired stage's
+    fractional rank makes ``ceil`` the next live stage and ``floor`` the
+    earlier ones, so it is never a dead end."""
+    i = _rank(frm)
+    nxt = math.floor(i) + 1  # the next live stage
+    fwd = {_ORDER[nxt]} if nxt < len(_ORDER) else set()
+    back = set(_ORDER[: math.ceil(i)])  # every live stage strictly before frm
     return fwd | back
 
 
-ALLOWED_TRANSITIONS: dict[str, set[str]] = {s: _allowed(s) for s in _ORDER}
+# Retired stages get an entry too, so a tournament parked on one is not stuck.
+ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+    s: _allowed(s) for s in [*_ORDER, *_RETIRED_RANK]
+}
 
 
 def can_transition(frm: str, to: str) -> bool:
@@ -223,8 +256,10 @@ def preview_advance(t: Tournament, to_stage: str) -> dict:
     warnings: list[dict] = []
     counts = _counts_for(t)
 
-    # Hard gates (each stage gates the next).
-    if to_stage == G.MEMBERS and counts["teams"] == 0:
+    # Hard gates (each stage gates the next). Team registration now gates
+    # FIXTURES directly — members/roles left the flow (owner 2026-08-14), and
+    # there is nothing to draw a fixture from without teams.
+    if to_stage == G.FIXTURES and counts["teams"] == 0:
         blockers.append("no_teams_registered")
     if to_stage == G.READY and counts["matches"] == 0:
         blockers.append("no_fixtures_generated")
@@ -328,7 +363,7 @@ def preview_transition(t: Tournament, to_stage: str) -> dict:
             "from_stage": t.stage, "to_stage": to_stage, "allowed": False,
             "blockers": ["illegal_transition"], "warnings": [],
         }
-    is_forward = _RANK[to_stage] > _RANK[t.stage]
+    is_forward = _rank(to_stage) > _rank(t.stage)
     return preview_advance(t, to_stage) if is_forward else preview_reopen(t, to_stage)
 
 
@@ -403,7 +438,7 @@ def transition_tournament(
         if to_stage not in ALLOWED_TRANSITIONS.get(frm, set()):
             raise ValidationError(f"Illegal stage transition: {frm} -> {to_stage}")
 
-        is_forward = _RANK[to_stage] > _RANK[frm]
+        is_forward = _rank(to_stage) > _rank(frm)
         consequences = (
             preview_advance(locked, to_stage)
             if is_forward
@@ -476,7 +511,7 @@ def build_stage_payload(t: Tournament, user) -> dict:
     )
 
     counts = _counts_for(t)
-    cur_rank = _RANK[t.stage]
+    cur_rank = _rank(t.stage)
     stages = []
     for i, s in enumerate(_ORDER):
         if i < cur_rank:
@@ -527,8 +562,6 @@ def _stage_counts(stage: str, counts: dict) -> dict:
         return {"institutions": counts["institutions"]}
     if stage == G.TEAM_REGISTRATION:
         return {"teams": counts["teams"]}
-    if stage == G.MEMBERS:
-        return {"members": counts["members"]}
     if stage == G.FIXTURES:
         return {"matches": counts["matches"]}
     return {}

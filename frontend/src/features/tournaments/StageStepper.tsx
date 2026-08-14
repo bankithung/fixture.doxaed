@@ -11,7 +11,6 @@ import {
   Lock,
   Settings2,
   Trophy,
-  UserPlus,
   Users,
 } from "lucide-react";
 import {
@@ -44,8 +43,6 @@ function stageRoute(id: string, key: string): string | null {
       return routes.tournamentInstitutions(id);
     case "team_registration":
       return routes.tournamentTeams(id);
-    case "members":
-      return routes.tournamentMembers(id);
     case "fixtures":
       return routes.tournamentFixtures(id);
     // "ready" stays null — Overview (where this hero lives) IS its page.
@@ -59,7 +56,6 @@ const STAGE_ICON: Record<string, typeof Building2> = {
   setup: Settings2,
   org_registration: Building2,
   team_registration: Users,
-  members: UserPlus,
   fixtures: CalendarClock,
   ready: Trophy,
 };
@@ -68,7 +64,6 @@ const STAGE_HINT: Record<string, string> = {
   setup: "Start setup. Invite institutions next.",
   org_registration: "Register the schools and colleges taking part.",
   team_registration: "Collect each institution's teams.",
-  members: "Invite people and assign their roles.",
   fixtures: "Generate and schedule the fixtures.",
   ready: "Setup complete. The tournament is scheduled.",
 };

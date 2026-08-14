@@ -27,15 +27,21 @@ Create tournament
    • Option B: admin enters teams directly by selecting a registered org
       │  (advancing → team-reg form auto-closes + admin warned; reversible)
       ▼
-[Stage 3] MEMBERS & ROLES (run-the-tournament staff)
-   • Admin invites members to THIS tournament and assigns each a role
-   • Invited members see the tournament in their profile
-      │
-      ▼
-[Stage 4] FIXTURE GENERATION (constraint-driven — see §3)
+[Stage 3] FIXTURE GENERATION (constraint-driven — see §3)
    • NOT one-click. A deep wizard: pick sport, pick tournament type, then a
      thorough requirements interview → fixtures generated to the user's needs.
 ```
+
+**Members & roles is NOT a stage** (owner 2026-08-14). Inviting people and
+assigning roles is not work you finish once and leave behind — an organizer adds
+a scorer on the morning of the event — so numbering it made the funnel misreport
+progress ("2/6" when the tournament was really two of five steps in). It is an
+always-open surface pinned beside Settings, below the flow, in both the setup
+stepper sidebar and the nav rail. The `members` stage value survives in the enum
+because `stage_meta` and audit history reference it; nothing can transition into
+it, and `state.py::_RETIRED_RANK` keeps any tournament parked on it from
+becoming a dead end. Team registration now gates FIXTURE GENERATION directly
+(`no_teams_registered`).
 
 ### Stage mechanics (apply to every transition)
 - **Forms auto-close** when the stage they belong to is left.
