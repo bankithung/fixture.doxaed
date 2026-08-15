@@ -132,7 +132,9 @@ export function PreviewToolbar({
       className="flex flex-col gap-2 border-b border-border bg-muted/30 px-3 py-2"
     >
       <div className="flex flex-wrap items-center gap-1.5">
-        <div className="relative min-w-48 flex-1 sm:max-w-72">
+        {/* The search box takes the room the toolbar is not using (owner
+            2026-08-15) — the controls sit right, it grows into the gap. */}
+        <div className="relative min-w-48 flex-1 basis-64">
           <Search
             aria-hidden="true"
             className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
