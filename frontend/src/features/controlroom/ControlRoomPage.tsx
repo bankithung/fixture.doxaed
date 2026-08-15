@@ -29,7 +29,7 @@ import {
   type SlotDelay,
 } from "./format";
 import type { ControlRoomPerms } from "./MatchActionsMenu";
-import { MatchRow, MatchSheetHeader } from "./MatchRow";
+import { MatchSheet } from "./MatchSheet";
 import { MatchTile } from "./MatchTile";
 import {
   CompetitionProgressPanel,
@@ -291,34 +291,19 @@ function MatchFeed({
     );
   }
   return (
-    <div role="table" aria-label={label}>
-      <MatchSheetHeader showTime={false} />
-      {groupByKickoff(matches, tz).map((g) => (
-        <div key={`${g.label}-${g.matches[0].id}`}>
-          <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5">
-            <span className="font-tabular text-[13px] font-semibold">
-              {g.label}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {g.matches.length}{" "}
-              {g.matches.length === 1 ? t("match") : t("matches")}
-            </span>
-          </div>
-          {g.matches.map((m) => (
-            <MatchRow
-              key={m.id}
-              match={m}
-              timeZone={tz}
-              tournamentId={tournamentId}
-              siblings={siblingsOf(m)}
-              perms={perms}
-              delayMinutes={delayFor(delays, m)}
-              showTime={false}
-            />
-          ))}
-        </div>
-      ))}
-    </div>
+    <MatchSheet
+      ariaLabel={label}
+      groups={groupByKickoff(matches, tz).map((g) => ({
+        key: `${g.label}-${g.matches[0].id}`,
+        label: g.label,
+        matches: g.matches,
+      }))}
+      timeZone={tz}
+      tournamentId={tournamentId}
+      siblingsOf={siblingsOf}
+      perms={perms}
+      delayFor={(m) => delayFor(delays, m)}
+    />
   );
 }
 

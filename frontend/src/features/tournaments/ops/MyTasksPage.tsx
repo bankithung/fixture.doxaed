@@ -16,7 +16,7 @@ import { Select } from "@/components/ui/Select";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import type { ControlRoomPerms } from "@/features/controlroom/MatchActionsMenu";
-import { MatchRow, MatchSheetHeader } from "@/features/controlroom/MatchRow";
+import { MatchSheet } from "@/features/controlroom/MatchSheet";
 import { RowActions } from "@/features/controlroom/MatchActionsMenu";
 import { StatusPill } from "@/features/controlroom/MatchTile";
 import { LeafLabel } from "@/features/fixtures/LeafLabel";
@@ -342,6 +342,32 @@ export function MyTasksPage(): React.ReactElement {
       return true;
     });
   }, [mine, role, effComp, effVenue, effDay, status, search, tz, userId]);
+
+  /** The viewer's own seat on a match — only this page can know it. */
+  const seatBadges = (m: ControlRoomMatch): React.ReactNode => {
+    const roles = myRolesOn(m, userId);
+    const scoringSeat = m.scorer?.id === userId;
+    return (
+      <span
+        data-testid={`myrole-${m.id}`}
+        className="flex shrink-0 flex-wrap items-center gap-1 text-[0.625rem]"
+      >
+        {scoringSeat ? (
+          <span className="rounded bg-primary/15 px-1.5 py-0.5 font-medium text-primary">
+            {t("Scoring")}
+          </span>
+        ) : null}
+        {roles.map((r) => (
+          <span
+            key={r}
+            className="rounded bg-info-muted px-1.5 py-0.5 font-medium capitalize text-info"
+          >
+            {r}
+          </span>
+        ))}
+      </span>
+    );
+  };
 
   const groups = useMemo(() => {
     const keyed = filtered.map((m) => {
@@ -836,72 +862,47 @@ export function MyTasksPage(): React.ReactElement {
             </Button>
           </div>
         ) : (
-          <div data-testid="mytasks-list" role={isMobile ? undefined : "table"}>
-            {/* Desktop reads as a sheet with named columns; the phone keeps its
+          <div data-testid="mytasks-list">
+            {/* Desktop reads as the operations sheet; the phone keeps its
                 stacked cards (house table→cards rule). */}
-            {isMobile ? null : (
-              <MatchSheetHeader showCourt={groupBy !== "venue"} hasBadges />
-            )}
-            {groups.map((g) => (
-              <div key={g.key}>
-                <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5">
-                  <h2 className="text-[13px] font-semibold">{g.label}</h2>
-                  <span className="font-tabular text-xs text-muted-foreground">
-                    {g.matches.length}
-                  </span>
-                </div>
-                {g.matches.map((m) => {
-                  const roles = myRolesOn(m, userId);
-                  const scoringSeat = m.scorer?.id === userId;
-                  const badges = (
-                    <span
-                      data-testid={`myrole-${m.id}`}
-                      className="flex shrink-0 items-center gap-1 text-[0.625rem]"
-                    >
-                      {scoringSeat ? (
-                        <span className="rounded bg-primary/15 px-1.5 py-0.5 font-medium text-primary">
-                          {t("Scoring")}
-                        </span>
-                      ) : null}
-                      {roles.map((r) => (
-                        <span
-                          key={r}
-                          className="rounded bg-info-muted px-1.5 py-0.5 font-medium capitalize text-info"
-                        >
-                          {r}
-                        </span>
-                      ))}
+            {isMobile ? (
+              groups.map((g) => (
+                <div key={g.key}>
+                  <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5">
+                    <h2 className="text-[13px] font-semibold">{g.label}</h2>
+                    <span className="font-tabular text-xs text-muted-foreground">
+                      {g.matches.length}
                     </span>
-                  );
-                  const siblings = all.filter((x) => x.leaf_key === m.leaf_key);
-                  if (isMobile) {
-                    return (
-                      <MyTaskCard
-                        key={m.id}
-                        match={m}
-                        timeZone={tz}
-                        tournamentId={id}
-                        siblings={siblings}
-                        perms={perms}
-                        badges={badges}
-                      />
-                    );
-                  }
-                  return (
-                    <MatchRow
+                  </div>
+                  {g.matches.map((m) => (
+                    <MyTaskCard
                       key={m.id}
                       match={m}
                       timeZone={tz}
                       tournamentId={id}
-                      siblings={siblings}
+                      siblings={all.filter((x) => x.leaf_key === m.leaf_key)}
                       perms={perms}
-                      showCourt={groupBy !== "venue"}
-                      badges={badges}
+                      badges={seatBadges(m)}
                     />
-                  );
-                })}
-              </div>
-            ))}
+                  ))}
+                </div>
+              ))
+            ) : (
+              <MatchSheet
+                ariaLabel={t("My matches")}
+                groups={groups.map((g) => ({
+                  key: g.key,
+                  label: g.label,
+                  matches: g.matches,
+                }))}
+                timeZone={tz}
+                tournamentId={id}
+                siblingsOf={(m) => all.filter((x) => x.leaf_key === m.leaf_key)}
+                perms={perms}
+                showCourt={groupBy !== "venue"}
+                badgesFor={seatBadges}
+              />
+            )}
           </div>
         )}
       </div>

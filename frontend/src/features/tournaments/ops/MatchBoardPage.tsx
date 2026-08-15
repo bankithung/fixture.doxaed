@@ -8,7 +8,7 @@ import { useAuthStore } from "@/features/auth/authStore";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
 import type { ControlRoomPerms } from "@/features/controlroom/MatchActionsMenu";
-import { MatchRow, MatchSheetHeader } from "@/features/controlroom/MatchRow";
+import { MatchSheet } from "@/features/controlroom/MatchSheet";
 import { ShiftDayDialog } from "@/features/fixtures/ShiftDayDialog";
 import {
   fmtDayLabel,
@@ -485,30 +485,19 @@ export function MatchesBoardPage(): React.ReactElement {
             {t("No matches fit these filters.")}
           </p>
         ) : (
-          <div role="table" aria-label={t("Matches")}>
-            <MatchSheetHeader showCourt={groupBy !== "venue"} />
-            {groups.map((g) => (
-              <div key={g.key}>
-                <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5">
-                  <h3 className="text-[13px] font-semibold">{g.label}</h3>
-                  <span className="font-tabular text-xs text-muted-foreground">
-                    {g.matches.length}
-                  </span>
-                </div>
-                {g.matches.map((m) => (
-                  <MatchRow
-                    key={m.id}
-                    match={m}
-                    timeZone={tz}
-                    tournamentId={id}
-                    siblings={siblingsOf(m)}
-                    perms={perms}
-                    showCourt={groupBy !== "venue"}
-                  />
-                ))}
-              </div>
-            ))}
-          </div>
+          <MatchSheet
+            ariaLabel={t("Matches")}
+            groups={groups.map((g) => ({
+              key: g.key,
+              label: g.label,
+              matches: g.matches,
+            }))}
+            timeZone={tz}
+            tournamentId={id}
+            siblingsOf={siblingsOf}
+            perms={perms}
+            showCourt={groupBy !== "venue"}
+          />
         )}
 
         {ordered.length > PAGE_SIZE ? (

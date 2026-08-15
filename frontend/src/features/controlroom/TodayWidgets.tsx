@@ -14,7 +14,7 @@ import { SportLeaderBoards } from "@/features/live/SportLeaderBoards";
 import { t } from "@/lib/t";
 import { FINAL, IN_PLAY, fmtKickoff, isCalled } from "./format";
 import type { ControlRoomPerms } from "./MatchActionsMenu";
-import { MatchRow } from "./MatchRow";
+import { MatchSheet } from "./MatchSheet";
 import { MatchTile } from "./MatchTile";
 
 const teamName = (tm: { name: string } | null): string => tm?.name || t("TBD");
@@ -152,20 +152,16 @@ function CourtRow({
               {t("Nothing is on this court today.")}
             </p>
           ) : ctx && !ctx.isMobile ? (
-            <div role="table" aria-label={venue.venue || t("No court")}>
-              {order.map((m) => (
-                <MatchRow
-                  key={m.id}
-                  match={m}
-                  timeZone={timeZone}
-                  tournamentId={ctx.tournamentId}
-                  siblings={ctx.siblingsOf(m)}
-                  perms={ctx.perms}
-                  delayMinutes={ctx.delayFor(m)}
-                  showCourt={false}
-                />
-              ))}
-            </div>
+            <MatchSheet
+              ariaLabel={venue.venue || t("No court")}
+              groups={[{ key: key, label: "", matches: order }]}
+              timeZone={timeZone}
+              tournamentId={ctx.tournamentId}
+              siblingsOf={ctx.siblingsOf}
+              perms={ctx.perms}
+              delayFor={ctx.delayFor}
+              showCourt={false}
+            />
           ) : ctx ? (
             <div className="flex flex-col gap-2 p-2">
               {order.map((m) => (
