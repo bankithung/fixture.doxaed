@@ -4,7 +4,7 @@ import { LeafLabel } from "@/features/fixtures/LeafLabel";
 import { liveSetView } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { FINAL, IN_PLAY, fmtKickoff, isOverdue } from "./format";
+import { FINAL, IN_PLAY, fmtKickoff, isOverdue, matchWinner } from "./format";
 import { RowActions, type ControlRoomPerms } from "./MatchActionsMenu";
 import { StatusPill, groupSuffix } from "./MatchTile";
 
@@ -45,6 +45,7 @@ export function MatchRow({
   const done = FINAL.has(match.status);
   const overdue = isOverdue(match);
   const grp = groupSuffix(match.leaf_label, match.group_label);
+  const winner = matchWinner(match);
 
   return (
     <div
@@ -144,6 +145,29 @@ export function MatchRow({
         )}
       </div>
 
+      {/* Winner — the result you can scan (owner 2026-08-15). Blank until the
+          match is settled; a level score reads "Draw". */}
+      <div
+        data-testid={`winner-${match.id}`}
+        className="hidden w-32 shrink-0 truncate text-[0.6875rem] md:block"
+      >
+        {winner ? (
+          <span
+            title={winner.label}
+            className={cn(
+              "inline-block max-w-full truncate rounded px-1.5 py-0.5 font-medium",
+              winner.side === "draw"
+                ? "bg-muted text-muted-foreground"
+                : "bg-success-muted text-success",
+            )}
+          >
+            {winner.label}
+          </span>
+        ) : (
+          <span className="text-muted-foreground/50">·</span>
+        )}
+      </div>
+
       <div className="hidden w-24 shrink-0 items-center gap-1 truncate text-[0.6875rem] text-muted-foreground lg:flex">
         {delayMinutes ? (
           <span
@@ -172,6 +196,48 @@ export function MatchRow({
           perms={perms}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The sheet's column header — the same widths every MatchRow uses, so a long
+ * board reads as a spreadsheet with named columns instead of an unlabelled
+ * stack of lines (owner 2026-08-15). Render it once, above the first group
+ * band of a list.
+ */
+export function MatchSheetHeader({
+  showCourt = true,
+  showTime = true,
+  hasBadges = false,
+}: {
+  showCourt?: boolean;
+  showTime?: boolean;
+  /** The caller renders a badges cell in each row (My tasks' own seat). */
+  hasBadges?: boolean;
+}): React.ReactElement {
+  const cell =
+    "shrink-0 text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground";
+  return (
+    <div
+      role="row"
+      data-testid="match-sheet-header"
+      className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-muted px-4 py-1.5"
+    >
+      <span className={cn(cell, "w-[6.25rem]")}>{t("Status")}</span>
+      {showTime ? <span className={cn(cell, "w-16")}>{t("Time")}</span> : null}
+      {showCourt ? <span className={cn(cell, "w-24")}>{t("Court")}</span> : null}
+      <span className={cn(cell, "hidden w-56 md:block")}>
+        {t("Competition")}
+      </span>
+      <span className={cn(cell, "min-w-0 flex-1")}>{t("Match")}</span>
+      {hasBadges ? <span className={cn(cell, "w-16")}>{t("Your seat")}</span> : null}
+      <span className={cn(cell, "w-16 text-right")}>{t("Score")}</span>
+      <span className={cn(cell, "hidden w-32 md:block")}>{t("Winner")}</span>
+      <span className={cn(cell, "hidden w-24 lg:block")}>{t("Crew")}</span>
+      <span className={cn(cell, "w-8")}>
+        <span className="sr-only">{t("Actions")}</span>
+      </span>
     </div>
   );
 }

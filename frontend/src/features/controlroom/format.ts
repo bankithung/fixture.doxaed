@@ -51,6 +51,28 @@ export function urgencyWeight(m: ControlRoomMatch): number {
   return 0;
 }
 
+/** Who won, once a match is settled — the board's "Winner" column (owner
+ * 2026-08-15: a result you have to read off two score numbers is not a result
+ * you can scan). Set sports carry sets-won in home/away_score, so the same
+ * comparison holds; a level score falls through to penalties, and anything
+ * still level is a draw. Null while the match is unfinished. */
+export function matchWinner(
+  m: ControlRoomMatch,
+): { label: string; side: "home" | "away" | "draw" } | null {
+  if (!FINAL.has(m.status)) return null;
+  const home = m.home_score ?? 0;
+  const away = m.away_score ?? 0;
+  const hp = m.home_pens ?? null;
+  const ap = m.away_pens ?? null;
+  const [h, a] = home === away && hp != null && ap != null ? [hp, ap] : [home, away];
+  if (h === a) return { label: t("Draw"), side: "draw" };
+  const winner = h > a ? m.home_team : m.away_team;
+  return {
+    label: winner?.name ?? t("TBD"),
+    side: h > a ? "home" : "away",
+  };
+}
+
 /** Compact day-chip label ("Sat, Jun 20") for an ISO tournament-TZ date. */
 export function fmtDayLabel(iso: string): string {
   return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {

@@ -16,7 +16,7 @@ import { Select } from "@/components/ui/Select";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import type { ControlRoomPerms } from "@/features/controlroom/MatchActionsMenu";
-import { MatchRow } from "@/features/controlroom/MatchRow";
+import { MatchRow, MatchSheetHeader } from "@/features/controlroom/MatchRow";
 import { RowActions } from "@/features/controlroom/MatchActionsMenu";
 import { StatusPill } from "@/features/controlroom/MatchTile";
 import { LeafLabel } from "@/features/fixtures/LeafLabel";
@@ -836,7 +836,12 @@ export function MyTasksPage(): React.ReactElement {
             </Button>
           </div>
         ) : (
-          <div data-testid="mytasks-list">
+          <div data-testid="mytasks-list" role={isMobile ? undefined : "table"}>
+            {/* Desktop reads as a sheet with named columns; the phone keeps its
+                stacked cards (house table→cards rule). */}
+            {isMobile ? null : (
+              <MatchSheetHeader showCourt={groupBy !== "venue"} hasBadges />
+            )}
             {groups.map((g) => (
               <div key={g.key}>
                 <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5">

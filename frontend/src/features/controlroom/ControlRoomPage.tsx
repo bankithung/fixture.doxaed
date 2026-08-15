@@ -29,7 +29,7 @@ import {
   type SlotDelay,
 } from "./format";
 import type { ControlRoomPerms } from "./MatchActionsMenu";
-import { MatchRow } from "./MatchRow";
+import { MatchRow, MatchSheetHeader } from "./MatchRow";
 import { MatchTile } from "./MatchTile";
 import {
   CompetitionProgressPanel,
@@ -292,6 +292,7 @@ function MatchFeed({
   }
   return (
     <div role="table" aria-label={label}>
+      <MatchSheetHeader showTime={false} />
       {groupByKickoff(matches, tz).map((g) => (
         <div key={`${g.label}-${g.matches[0].id}`}>
           <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5">

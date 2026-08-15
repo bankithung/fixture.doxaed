@@ -260,6 +260,12 @@ describe("ControlRoomPage", () => {
     expect(within(board).getByTestId("tile-m3")).toBeInTheDocument();
     expect(within(board).getByText("2 - 1")).toBeInTheDocument();
     expect(within(board).queryByTestId("tile-m1")).toBeNull();
+    // The board reads as a sheet — named columns, winner among them (owner
+    // 2026-08-15) — and a settled match names the side that won.
+    expect(within(board).getByTestId("match-sheet-header")).toHaveTextContent(
+      "Winner",
+    );
+    expect(within(board).getByTestId("winner-m3")).toHaveTextContent("Alpha FC");
 
     // The ops band's "Needs you" cell jumps back to the exceptions filter.
     await userEvent.click(screen.getByTestId("ops-needs-you"));

@@ -8,7 +8,7 @@ import { useAuthStore } from "@/features/auth/authStore";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
 import type { ControlRoomPerms } from "@/features/controlroom/MatchActionsMenu";
-import { MatchRow } from "@/features/controlroom/MatchRow";
+import { MatchRow, MatchSheetHeader } from "@/features/controlroom/MatchRow";
 import { ShiftDayDialog } from "@/features/fixtures/ShiftDayDialog";
 import {
   fmtDayLabel,
@@ -485,7 +485,8 @@ export function MatchesBoardPage(): React.ReactElement {
             {t("No matches fit these filters.")}
           </p>
         ) : (
-          <div>
+          <div role="table" aria-label={t("Matches")}>
+            <MatchSheetHeader showCourt={groupBy !== "venue"} />
             {groups.map((g) => (
               <div key={g.key}>
                 <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5">
