@@ -722,30 +722,6 @@ export function FixtureSetupHub({
       {/* No page title here (owner ask 2026-07-09): the sticky step bar already
           names the page, so the hub goes straight into content. Only the
           done-state toolbar (Share + overflow) renders up top. */}
-      {showToolbar ? (
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
-          {!showDoneBanner ? (
-            <Button
-              size="sm"
-              data-testid="share-schedule"
-              disabled={!shareReady}
-              onClick={() => void shareSchedule()}
-            >
-              <Share2 aria-hidden="true" className="h-4 w-4" />
-              {t("Share schedule")}
-            </Button>
-          ) : null}
-          <HubMoreMenu
-            canRepair={canRepair}
-            shareReady={shareReady}
-            bracketTo={routes.tournamentBracket(id)}
-            onReRun={() => setWizard({})}
-            onShiftDay={() => setShiftOpen(true)}
-            onPrint={openPublicSchedule}
-          />
-        </div>
-      ) : null}
-
       {/* The journey stepper lives in a sticky sub-toolbar pinned under the top
           bar (FixtureStepBar, rendered by AppShell) · same placement as the
           Sports setup page. The hub publishes its state to useFixtureStepStore
@@ -861,6 +837,37 @@ export function FixtureSetupHub({
           data-testid="fixtures-overview"
           className="flex w-full flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm"
         >
+          {/* The schedule tools belong to this panel, not to the page above it
+              (owner 2026-08-15) — one section owns its own actions. */}
+          {showToolbar ? (
+            <div className="flex flex-wrap items-center gap-1.5 bg-muted/30 px-4 py-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                {t("Schedule tools")}
+              </span>
+              <span className="ml-auto flex items-center gap-1.5">
+                {!showDoneBanner ? (
+                  <Button
+                    size="sm"
+                    data-testid="share-schedule"
+                    disabled={!shareReady}
+                    onClick={() => void shareSchedule()}
+                  >
+                    <Share2 aria-hidden="true" className="h-4 w-4" />
+                    {t("Share schedule")}
+                  </Button>
+                ) : null}
+                <HubMoreMenu
+                  canRepair={canRepair}
+                  shareReady={shareReady}
+                  bracketTo={routes.tournamentBracket(id)}
+                  onReRun={() => setWizard({})}
+                  onShiftDay={() => setShiftOpen(true)}
+                  onPrint={openPublicSchedule}
+                />
+              </span>
+            </div>
+          ) : null}
+
           <GlobalSetupCard
             flat
             tournamentId={id}

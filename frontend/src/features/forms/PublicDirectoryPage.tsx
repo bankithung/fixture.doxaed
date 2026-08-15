@@ -20,6 +20,7 @@ import { StaggeredDrawer } from "@/components/ui/StaggeredDrawer";
 import { StarBorder } from "@/components/ui/StarBorder";
 import { Centered, PublicShell } from "@/features/registration/PublicShell";
 import { RangePills } from "@/features/dashboard/RangePills";
+import { RegistrationMatrix } from "./RegistrationMatrix";
 import {
   buildCompTree,
   compLeafKeys,
@@ -128,31 +129,6 @@ function CompetitionsSection({
 }
 
 /** Multi-value answers render as compact chips; single values as text. */
-function Cell({
-  map,
-  val,
-}: {
-  map: Map<string, string>;
-  val: unknown;
-}): React.ReactElement {
-  const labels = valueLabels(map, val);
-  if (labels.length === 0)
-    return <span className="text-muted-foreground/40">·</span>;
-  if (labels.length === 1)
-    return <span className="text-muted-foreground">{labels[0]}</span>;
-  return (
-    <div className="flex flex-wrap gap-1">
-      {labels.map((l, i) => (
-        <span
-          key={i}
-          className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
-        >
-          {l}
-        </span>
-      ))}
-    </div>
-  );
-}
 
 function EmptyState({
   message,
@@ -359,7 +335,10 @@ export function PublicDirectoryPage(): React.ReactElement {
 
   return (
     <PublicShell wide tournamentName={d.tournament_name}>
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 pb-24 pt-6 sm:px-6 lg:pb-8">
+      {/* 90% of the viewport on a desk (owner 2026-08-15) — the matrix is wide
+          and was being squeezed into a 72rem column with dead margins; a phone
+          still gets the full width minus its gutters. */}
+      <div className="mx-auto flex w-full flex-col gap-4 px-4 pb-24 pt-6 sm:px-6 lg:w-[90%] lg:max-w-none lg:pb-8">
         {/* Page header: the tournament leads; the register CTA lives in the
             panel toolbar beside Filters. */}
         <header className="flex flex-wrap items-end justify-between gap-3">
@@ -601,107 +580,13 @@ export function PublicDirectoryPage(): React.ReactElement {
             })}
           </ul>
         ) : (
-          <div className="max-h-[34rem] overflow-auto rounded-xl border border-border bg-card shadow-sm">
-            <table className="w-full border-separate border-spacing-0 text-sm">
-              <thead>
-                <tr className="text-left text-[0.6875rem] uppercase tracking-wide text-muted-foreground">
-                  <th className="sticky left-0 top-0 z-30 border-b border-border bg-muted px-4 py-2.5 font-medium">
-                    {t(d.name_label ?? "Institution")}
-                  </th>
-                  {showType ? (
-                    <th className="sticky top-0 z-20 border-b border-border bg-muted px-3 py-2.5 font-medium">
-                      {t("Type")}
-                    </th>
-                  ) : null}
-                  {showRegion ? (
-                    <th className="sticky top-0 z-20 border-b border-border bg-muted px-3 py-2.5 font-medium">
-                      {t("Region")}
-                    </th>
-                  ) : null}
-                  <th className="sticky top-0 z-20 border-b border-border bg-muted px-3 py-2.5 font-medium">
-                    {t("Competitions")}
-                  </th>
-                  {columns.map((c) => (
-                    <th
-                      key={c.key}
-                      className="sticky top-0 z-20 border-b border-border bg-muted px-3 py-2.5 font-medium"
-                      title={c.label}
-                    >
-                      <span className="block max-w-[12rem] truncate">{c.label}</span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {entries.map((e, i) => (
-                  <tr key={i} className="group">
-                    <td
-                      className="sticky left-0 z-10 border-b border-border bg-card px-4 py-2.5 align-top font-medium group-hover:bg-accent/40"
-                      title={e.name}
-                    >
-                      <span className="flex items-center gap-2">
-                        {e.logo ? (
-                          <img
-                            src={e.logo}
-                            alt=""
-                            className="h-6 w-6 shrink-0 rounded object-cover"
-                          />
-                        ) : null}
-                        <span className="block min-w-[8rem] max-w-[13rem] whitespace-normal break-words leading-snug sm:max-w-[24rem]">
-                          {e.name}
-                        </span>
-                      </span>
-                    </td>
-                    {showType ? (
-                      <td className="border-b border-border px-3 py-2.5 align-top capitalize text-muted-foreground group-hover:bg-accent/40">
-                        {t(e.kind)}
-                      </td>
-                    ) : null}
-                    {showRegion ? (
-                      <td className="border-b border-border px-3 py-2.5 align-top text-muted-foreground group-hover:bg-accent/40">
-                        {e.region || "·"}
-                      </td>
-                    ) : null}
-                    <td className="border-b border-border px-3 py-2.5 align-top group-hover:bg-accent/40">
-                      {(e.competitions ?? []).length ? (
-                        <div className="flex max-w-[20rem] flex-wrap items-center gap-1">
-                          {e.competitions.slice(0, 2).map((c) => (
-                            <span
-                              key={c.leaf_key}
-                              className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
-                            >
-                              {c.label}
-                            </span>
-                          ))}
-                          {e.competitions.length > 2 ? (
-                            <button
-                              type="button"
-                              onClick={() => setCompModal(e)}
-                              className="rounded-md px-1.5 py-0.5 text-xs font-medium text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            >
-                              {t("View all")} ({e.competitions.length})
-                            </button>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground/40">·</span>
-                      )}
-                    </td>
-                    {columns.map((c) => (
-                      <td
-                        key={c.key}
-                        className="border-b border-border px-3 py-2.5 align-top group-hover:bg-accent/40"
-                      >
-                        <div className="max-w-[16rem]">
-                          <Cell map={c.map} val={e.values[c.key]} />
-                        </div>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          /* The registration matrix (owner 2026-08-15): schools down the side,
+             every competition across the top, a tick or a cross in the cell. */
+          <RegistrationMatrix
+            entries={entries}
+            competitions={d.competitions ?? []}
+            nameLabel={d.name_label ?? "Institution"}
+          />
         )}
           </>
         ) : null}

@@ -105,10 +105,10 @@ describe("PublicDirectoryPage", () => {
     expect(screen.getByTestId("registered-count")).toHaveTextContent(
       "2registered",
     );
-    // The form's own choice questions become rail filters.
-    expect(screen.getAllByText("Which competition?").length).toBeGreaterThan(0);
-    // A chosen option surfaces in the table cells.
-    expect(screen.getAllByText("U-14 Girls").length).toBeGreaterThan(0);
+    // The registration matrix leads: schools down the side, competitions
+    // across the top (owner 2026-08-15).
+    expect(screen.getByTestId("registration-matrix")).toBeInTheDocument();
+    expect(screen.getByText("Competition legend")).toBeInTheDocument();
     // Entries table.
     expect(screen.getByText("Grace High")).toBeInTheDocument();
     expect(screen.getByText("Mount Hermon")).toBeInTheDocument();
@@ -123,6 +123,10 @@ describe("PublicDirectoryPage", () => {
     expect(
       screen.getByRole("link", { name: /Register your institution/ }),
     ).toHaveAttribute("href", "/f/form1");
+
+    // The form's own choice questions are filters, in the drawer.
+    await userEvent.click(screen.getByTestId("open-directory-filters"));
+    expect(screen.getAllByText("Which competition?").length).toBeGreaterThan(0);
   });
 
   it("hides the register CTA once the form has closed", async () => {
