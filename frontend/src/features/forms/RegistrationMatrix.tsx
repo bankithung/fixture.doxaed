@@ -38,6 +38,17 @@ function shortCode(label: string, sport: string): string {
   return code || sport.slice(0, 2).toUpperCase();
 }
 
+/** Institution names that arrived as slugs ("st_thomas_hr_sec_school") read
+ * as slugs. The matrix shows them the way the reference sheet does — the
+ * stored name is untouched, this is display only. */
+function displayName(name: string): string {
+  if (/\s/.test(name) || /[A-Z]/.test(name)) return name;
+  return name
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
+
 interface Column {
   leafKey: string;
   code: string;
@@ -175,7 +186,7 @@ export function RegistrationMatrix({
               <th
                 scope="col"
                 rowSpan={2}
-                className="sticky left-10 top-0 z-40 border-b border-r border-border bg-muted px-3 py-2 text-left text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground"
+                className="sticky left-10 top-0 z-40 w-52 border-b border-r border-border bg-muted px-3 py-2 text-left text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground"
               >
                 {t(nameLabel)}
               </th>
@@ -230,8 +241,9 @@ export function RegistrationMatrix({
                   </td>
                   <th
                     scope="row"
+                    title={entry.name}
                     className={cn(
-                      "sticky left-10 z-10 border-b border-r border-border px-3 py-2 text-left font-medium",
+                      "sticky left-10 z-10 w-52 max-w-[13rem] border-b border-r border-border px-3 py-2 text-left font-medium",
                       zebra,
                     )}
                   >
@@ -243,8 +255,11 @@ export function RegistrationMatrix({
                           className="h-5 w-5 shrink-0 rounded object-cover"
                         />
                       ) : null}
-                      <span className="block min-w-[8rem] max-w-[16rem] whitespace-normal break-words leading-snug">
-                        {entry.name}
+                      {/* One line, ellipsed — the name column was eating the
+                          width the competitions need (owner 2026-08-15); the
+                          full name stays on hover and for screen readers. */}
+                      <span className="block truncate text-[0.8125rem] leading-snug">
+                        {displayName(entry.name)}
                       </span>
                     </span>
                   </th>
