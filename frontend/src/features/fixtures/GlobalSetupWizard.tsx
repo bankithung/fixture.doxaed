@@ -130,22 +130,48 @@ function plusHour(hhmm: string): string {
   return `${String(h + 1).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-/** What the opening/closing ceremonies do to play times on their own day
- * (scheduler `ceremony_window`): the tournament OPENS with the opening
- * ceremony, so nothing runs before it ends, and CLOSES with the closing one,
- * so nothing runs after it starts. Derived — never a second thing to fill in.
- * Returns null when the ceremony doesn't move the day's window. */
+/** The ceremonies WRITE the play times (owner 2026-08-15), the way the match
+ * days write the ceremony dates: the tournament opens with the opening
+ * ceremony, so the first match starts when it ends, and closes with the
+ * closing one, so the last match is done when it starts. Applied whenever a
+ * ceremony is added or retimed, and when the stored form is seeded — never a
+ * second thing to fill in. Still editable after: widening the window back
+ * only affects the other days, because the engine keeps bounding the ceremony
+ * day itself (scheduler `ceremony_window`). A ceremony that would invert the
+ * window is left alone — `ceremonyEffect` warns instead. */
+function withCeremonyBounds(f: Form): Form {
+  let { daily_start, daily_end } = f;
+  const open_to = f.opening?.date ? f.opening.to : "";
+  const close_from = f.closing?.date ? f.closing.from : "";
+  if (open_to && open_to > daily_start && open_to < daily_end) {
+    daily_start = open_to;
+  }
+  if (close_from && close_from < daily_end && close_from > daily_start) {
+    daily_end = close_from;
+  }
+  return daily_start === f.daily_start && daily_end === f.daily_end
+    ? f
+    : { ...f, daily_start, daily_end };
+}
+
+/** The first/last match time a ceremony produces on its own day, for the line
+ * that says so under the ceremony, the play times and the review. Null when
+ * there is no such ceremony; `empty` when it would swallow the whole day (the
+ * one case `withCeremonyBounds` refuses to apply). */
 function ceremonyEffect(
   form: Form,
   which: "opening" | "closing",
 ): { day: string; time: string; empty: boolean } | null {
   const c = which === "opening" ? form.opening : form.closing;
   if (!c?.date) return null;
+  // `<`/`>`, not `<=`/`>=`: once the bounds are applied the ceremony's edge IS
+  // the play time, and that is exactly when the line has to stay on screen to
+  // explain the number in the field.
   if (which === "opening") {
-    if (c.to <= form.daily_start) return null;
+    if (c.to < form.daily_start) return null;
     return { day: c.date, time: c.to, empty: c.to >= form.daily_end };
   }
-  if (c.from >= form.daily_end) return null;
+  if (c.from > form.daily_end) return null;
   return { day: c.date, time: c.from, empty: c.from <= form.daily_start };
 }
 
@@ -315,6 +341,16 @@ export function GlobalSetupWizard({
     setDirty(true);
     setForm((f) => ({ ...f, [k]: v }));
   };
+  // A ceremony edit re-derives the play times from it (see
+  // `withCeremonyBounds`) — the owner's ask: setting the ceremonies IS setting
+  // when the first and last match of that day are.
+  const setCeremony = (
+    which: "opening" | "closing",
+    v: CeremonyValue | null,
+  ): void => {
+    setDirty(true);
+    setForm((f) => withCeremonyBounds({ ...f, [which]: v }));
+  };
   // Switching break mode clears the OTHER side so the two never coexist (the
   // engine would otherwise apply both) — a true overall-OR-per-venue choice.
   const setBreakMode = (mode: Form["break_mode"]): void => {
@@ -380,7 +416,10 @@ export function GlobalSetupWizard({
           isAll(c) &&
           c.params?.label === "daily_break",
       );
-      setForm({
+      // Bounds applied on the way in too, so a tournament whose ceremonies
+      // were set before this existed shows the real first/last match time the
+      // moment it is opened (and stores it on the next save).
+      setForm(withCeremonyBounds({
         date_start: String(cal?.date_start ?? ""),
         date_end: String(cal?.date_end ?? ""),
         blackouts: (one("blackout_dates")?.params.dates as string[]) ?? [],
@@ -407,7 +446,7 @@ export function GlobalSetupWizard({
           : "overall",
         daily_break_from: String(dailyBreak?.params.from ?? ""),
         daily_break_to: String(dailyBreak?.params.to ?? ""),
-      });
+      }));
       setSeededSig(sig);
     }
   }
@@ -575,20 +614,31 @@ export function GlobalSetupWizard({
   const isLast = step === WIZARD_STEPS.length - 1;
   const datesSet = form.date_start !== "" && form.date_end !== "";
 
-  // The ceremonies set the first and last match times on their own day, with
-  // nothing extra to fill in (owner ask 2026-08-15). Both steps read the same
-  // derived lines so the Play times step never contradicts the ceremony.
+  // The ceremonies WRITE the play times (see `withCeremonyBounds`); these
+  // lines say so wherever the numbers show, so the filled-in 10:00 is never a
+  // mystery. Same text under the ceremony, on Play times and in the review.
   const openEffect = ceremonyEffect(form, "opening");
   const closeEffect = ceremonyEffect(form, "closing");
   const openNote = openEffect
     ? openEffect.empty
-      ? t(`This covers all of ${fmtDay(openEffect.day)}. No matches that day.`)
-      : t(`Play starts when this ends. First match on ${fmtDay(openEffect.day)} at ${openEffect.time}.`)
+      ? t(`This covers all of ${fmtDay(openEffect.day)}. Set it inside the play window or no matches can run.`)
+      : t(`First match set to ${openEffect.time}, when this ends.`)
     : undefined;
   const closeNote = closeEffect
     ? closeEffect.empty
-      ? t(`This covers all of ${fmtDay(closeEffect.day)}. No matches that day.`)
-      : t(`Play stops when this starts. Matches on ${fmtDay(closeEffect.day)} finish by ${closeEffect.time}.`)
+      ? t(`This covers all of ${fmtDay(closeEffect.day)}. Set it inside the play window or no matches can run.`)
+      : t(`Last match must finish by ${closeEffect.time}, when this starts.`)
+    : undefined;
+  // Away from the ceremony fields, "this" needs naming.
+  const openLine = openEffect
+    ? openEffect.empty
+      ? t(`The opening ceremony covers all of ${fmtDay(openEffect.day)}. No matches can run.`)
+      : t(`First match ${openEffect.time}, set by the opening ceremony on ${fmtDay(openEffect.day)}.`)
+    : undefined;
+  const closeLine = closeEffect
+    ? closeEffect.empty
+      ? t(`The closing ceremony covers all of ${fmtDay(closeEffect.day)}. No matches can run.`)
+      : t(`Last match finishes by ${closeEffect.time}, set by the closing ceremony on ${fmtDay(closeEffect.day)}.`)
     : undefined;
 
   /** The header / footer primary action (single set — Next while stepping,
@@ -789,7 +839,7 @@ export function GlobalSetupWizard({
                 label={t("Opening ceremony")}
                 tone="opening"
                 value={form.opening}
-                onChange={(v) => set("opening", v)}
+                onChange={(v) => setCeremony("opening", v)}
                 testId="opening"
                 defaultDate={form.date_start}
                 defaultFrom={form.daily_start}
@@ -800,7 +850,7 @@ export function GlobalSetupWizard({
                 label={t("Closing ceremony")}
                 tone="closing"
                 value={form.closing}
-                onChange={(v) => set("closing", v)}
+                onChange={(v) => setCeremony("closing", v)}
                 testId="closing"
                 defaultDate={form.date_end}
                 defaultFrom={form.daily_end}
@@ -956,16 +1006,16 @@ export function GlobalSetupWizard({
                 />
               </Field>
             </div>
-            {openNote || closeNote ? (
-              /* The ceremony days differ, and they are worked out from the
-                 ceremonies themselves. Shown here so this step never reads as
-                 if play starts at 09:00 on a morning the ceremony owns. */
+            {openLine || closeLine ? (
+              /* Where the two times above came from: the ceremonies set them,
+                 so this step can never read as if play starts at 09:00 on a
+                 morning the opening ceremony owns. */
               <div
                 data-testid="ceremony-day-times"
                 className="flex flex-col gap-1 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground"
               >
-                {openNote ? <p>{openNote}</p> : null}
-                {closeNote ? <p>{closeNote}</p> : null}
+                {openLine ? <p>{openLine}</p> : null}
+                {closeLine ? <p>{closeLine}</p> : null}
               </div>
             ) : null}
             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1072,10 +1122,10 @@ export function GlobalSetupWizard({
               v={form.sunday_church ? t("Free until 13:00") : t("Open")}
             />
               </dl>
-              {openNote || closeNote ? (
+              {openLine || closeLine ? (
                 <div className="mt-4 flex flex-col gap-1 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                  {openNote ? <p>{openNote}</p> : null}
-                  {closeNote ? <p>{closeNote}</p> : null}
+                  {openLine ? <p>{openLine}</p> : null}
+                  {closeLine ? <p>{closeLine}</p> : null}
                 </div>
               ) : null}
             </Panel>
