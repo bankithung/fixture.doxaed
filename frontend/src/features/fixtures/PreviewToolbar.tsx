@@ -1,12 +1,14 @@
-import { useMemo } from "react";
-import { Download, FileText, Search, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Download, FileText, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, type SelectOption } from "@/components/ui/Select";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { PreviewFilterDrawer } from "./PreviewFilterDrawer";
 import {
   EMPTY_FILTERS,
+  FILTER_FIELDS,
   facetsFor,
   GROUP_LABELS,
   type GridFilters,
@@ -14,27 +16,14 @@ import {
   type PreviewRow,
 } from "./previewGrid";
 
-/** The filter fields that are driven by facets of the data itself. */
-const FACET_FIELDS = [
-  ["sport", "Sport"],
-  ["category", "Category"],
-  ["day", "Day"],
-  ["venue", "Venue"],
-  ["stage", "Stage"],
-  ["round", "Round"],
-] as const;
-
-type FacetField = (typeof FACET_FIELDS)[number][0];
-
 const GROUP_OPTIONS: SelectOption[] = (
   Object.keys(GROUP_LABELS) as GroupBy[]
 ).map((value) => ({ value, label: t(GROUP_LABELS[value]) }));
 
-const STATUS_OPTIONS: SelectOption[] = [
-  { value: "", label: t("Any status") },
-  { value: "placed", label: t("Scheduled") },
-  { value: "unplaced", label: t("No time yet") },
-];
+const STATUS_LABELS: Record<string, string> = {
+  placed: "Scheduled",
+  unplaced: "No time yet",
+};
 
 function Chip({
   label,
@@ -67,9 +56,9 @@ function Chip({
 }
 
 /**
- * The spreadsheet's filter bar, ERP-style (owner ask 2026-08-15): a search box
- * plus one dropdown per column facet, each counting rows against the OTHER
- * filters, the applied filters restated as removable chips, a group-by
+ * The sheet's toolbar: a search box, ONE Filter button (the filters live in a
+ * right-hand drawer — owner 2026-08-15, seven dropdowns were crowding the
+ * sheet), the applied filters restated as removable chips, the group-by
  * control, the visible/total tally and two exports — CSV for a spreadsheet,
  * PDF for the landscape run sheet — both carrying exactly what is on screen.
  * Selection is lifted so the page can drive the sheet and the competition
@@ -97,19 +86,15 @@ export function PreviewToolbar({
   onExportCsv: () => void;
   onExportPdf: () => void;
 }): React.ReactElement {
-  const facets = useMemo(() => {
-    const out = {} as Record<FacetField, ReturnType<typeof facetsFor>>;
-    for (const [field] of FACET_FIELDS) out[field] = facetsFor(rows, filters, field);
-    return out;
-  }, [rows, filters]);
-  // Names for every value the data has ever had. The contextual facets above
-  // can legitimately go empty (another filter excludes everything), and a chip
-  // must still read "Table Tennis", never the raw key.
+  const [drawer, setDrawer] = useState(false);
+
+  // Names for every value the data has ever had, so a chip reads "Table
+  // Tennis" even when another filter leaves that facet empty.
   const names = useMemo(() => {
     const out = new Map<string, string>();
-    for (const [field] of FACET_FIELDS) {
-      for (const o of facetsFor(rows, EMPTY_FILTERS, field)) {
-        out.set(`${field}|${o.value}`, o.label);
+    for (const f of FILTER_FIELDS) {
+      for (const o of facetsFor(rows, EMPTY_FILTERS, f.key)) {
+        out.set(`${f.key}|${o.value}`, o.label);
       }
     }
     return out;
@@ -121,9 +106,8 @@ export function PreviewToolbar({
   const active = (Object.keys(EMPTY_FILTERS) as (keyof GridFilters)[]).filter(
     (k) => filters[k] !== "",
   );
-
-  const labelFor = (field: FacetField, value: string): string =>
-    names.get(`${field}|${value}`) ?? value;
+  // The Filter button counts what the drawer owns; the search box shows itself.
+  const drawerCount = active.filter((k) => k !== "q").length;
 
   const chipLabel: Record<keyof GridFilters, string> = {
     q: t("Search"),
@@ -134,6 +118,12 @@ export function PreviewToolbar({
     stage: t("Stage"),
     round: t("Round"),
     status: t("Status"),
+  };
+
+  const chipValue = (k: keyof GridFilters): string => {
+    if (k === "q") return filters.q;
+    if (k === "status") return t(STATUS_LABELS[filters.status] ?? filters.status);
+    return names.get(`${k}|${filters[k]}`) ?? filters[k];
   };
 
   return (
@@ -157,56 +147,20 @@ export function PreviewToolbar({
           />
         </div>
 
-        {FACET_FIELDS.map(([field, label]) => {
-          const options = facets[field];
-          // A facet with nothing to choose between is noise, not a filter.
-          if (options.length < 2 && !filters[field]) return null;
-          return (
-            <div key={field} className="w-36" data-testid={`filter-${field}`}>
-              <Select
-                size="sm"
-                value={filters[field]}
-                aria-label={t(label)}
-                placeholder={t(`All ${label.toLowerCase()}`)}
-                onChange={(v) =>
-                  set(
-                    // Picking a sport drops a category from another sport.
-                    field === "sport" ? { sport: v, category: "" } : { [field]: v },
-                  )
-                }
-                options={[
-                  { value: "", label: t(`All ${label.toLowerCase()}`) },
-                  // The picked value always stays in its own list, even when
-                  // another filter leaves it with nothing.
-                  ...(filters[field] && !options.some((o) => o.value === filters[field])
-                    ? [
-                        {
-                          value: filters[field],
-                          label: `${labelFor(field, filters[field])} (0)`,
-                        },
-                      ]
-                    : []),
-                  ...options.map((o) => ({
-                    value: o.value,
-                    label: `${o.label} (${o.count})`,
-                  })),
-                ]}
-                className="text-xs"
-              />
-            </div>
-          );
-        })}
-
-        <div className="w-32" data-testid="filter-status">
-          <Select
-            size="sm"
-            value={filters.status}
-            aria-label={t("Status")}
-            onChange={(v) => set({ status: v as GridFilters["status"] })}
-            options={STATUS_OPTIONS}
-            className="text-xs"
-          />
-        </div>
+        <Button
+          variant={drawerCount ? "secondary" : "outline"}
+          data-testid="open-filters"
+          onClick={() => setDrawer(true)}
+          className="px-2.5 text-xs"
+        >
+          <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
+          {t("Filter")}
+          {drawerCount ? (
+            <span className="rounded bg-primary px-1.5 font-tabular text-[0.6875rem] text-primary-foreground">
+              {drawerCount}
+            </span>
+          ) : null}
+        </Button>
 
         <div className="ml-auto flex items-center gap-1.5">
           <span className="hidden text-[0.6875rem] text-muted-foreground sm:inline">
@@ -259,14 +213,7 @@ export function PreviewToolbar({
             key={k}
             testid={`chip-filter-${k}`}
             label={chipLabel[k]}
-            value={
-              k === "q"
-                ? filters.q
-                : k === "status"
-                  ? (STATUS_OPTIONS.find((o) => o.value === filters.status)?.label ??
-                    filters.status)
-                  : labelFor(k as FacetField, filters[k])
-            }
+            value={chipValue(k)}
             onClear={() => set({ [k]: "" } as Partial<GridFilters>)}
           />
         ))}
@@ -283,6 +230,15 @@ export function PreviewToolbar({
           </button>
         ) : null}
       </div>
+
+      <PreviewFilterDrawer
+        open={drawer}
+        onClose={() => setDrawer(false)}
+        rows={rows}
+        filters={filters}
+        onFilters={onFilters}
+        visible={visible}
+      />
     </div>
   );
 }

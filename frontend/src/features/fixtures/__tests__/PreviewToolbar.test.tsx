@@ -37,9 +37,10 @@ const ROWS = buildRows(
     }),
   ],
   NAMES,
+  ["p3"],
 );
 
-function mount(filters: GridFilters = EMPTY_FILTERS) {
+function mount(filters: GridFilters = EMPTY_FILTERS, visible = ROWS.length) {
   const onFilters = vi.fn();
   const onGroupBy = vi.fn();
   const onExportCsv = vi.fn();
@@ -51,7 +52,7 @@ function mount(filters: GridFilters = EMPTY_FILTERS) {
       onFilters={onFilters}
       groupBy="day_venue"
       onGroupBy={onGroupBy}
-      visible={ROWS.length}
+      visible={visible}
       onExportCsv={onExportCsv}
       onExportPdf={onExportPdf}
     />,
@@ -60,14 +61,23 @@ function mount(filters: GridFilters = EMPTY_FILTERS) {
 }
 
 describe("PreviewToolbar", () => {
-  it("offers each facet with the count you would get", async () => {
-    const { onFilters } = mount();
+  it("keeps ONE filter button instead of a row of dropdowns", async () => {
+    mount();
     expect(screen.getByTestId("sheet-count")).toHaveTextContent("3 rows");
-    await userEvent.click(screen.getByRole("button", { name: "Sport" }));
-    expect(
-      screen.getByRole("option", { name: "Table Tennis (2)" }),
-    ).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("option", { name: "Sepak Takraw (1)" }));
+    expect(screen.queryByTestId("filter-drawer")).toBeNull();
+    await userEvent.click(screen.getByTestId("open-filters"));
+    expect(screen.getByTestId("filter-drawer")).toBeInTheDocument();
+  });
+
+  it("picks a value from the drawer, filter names on the left", async () => {
+    const { onFilters } = mount();
+    await userEvent.click(screen.getByTestId("open-filters"));
+    // Sport pane opens first; its values carry the count they would give.
+    expect(screen.getByTestId("filter-value-table_tennis")).toHaveTextContent(
+      "Table Tennis",
+    );
+    expect(screen.getByTestId("filter-value-table_tennis")).toHaveTextContent("2");
+    await userEvent.click(screen.getByTestId("filter-value-sepak_takraw"));
     // Picking a sport drops a category left over from another sport.
     expect(onFilters).toHaveBeenCalledWith({
       ...EMPTY_FILTERS,
@@ -76,10 +86,31 @@ describe("PreviewToolbar", () => {
     });
   });
 
-  it("types into the search box", async () => {
+  it("moves between filters through the left rail", async () => {
+    const { onFilters } = mount();
+    await userEvent.click(screen.getByTestId("open-filters"));
+    await userEvent.click(screen.getByTestId("filter-pane-venue"));
+    await userEvent.click(screen.getByTestId("filter-value-T2"));
+    expect(onFilters).toHaveBeenCalledWith({ ...EMPTY_FILTERS, venue: "T2" });
+  });
+
+  it("filters by the scheduler's verdict, not just the data", async () => {
+    const { onFilters } = mount();
+    await userEvent.click(screen.getByTestId("open-filters"));
+    await userEvent.click(screen.getByTestId("filter-pane-status"));
+    expect(screen.getByTestId("filter-value-unplaced")).toHaveTextContent("1");
+    await userEvent.click(screen.getByTestId("filter-value-unplaced"));
+    expect(onFilters).toHaveBeenCalledWith({
+      ...EMPTY_FILTERS,
+      status: "unplaced",
+    });
+  });
+
+  it("types into the search box without opening the drawer", async () => {
     const { onFilters } = mount();
     await userEvent.type(screen.getByTestId("filter-search"), "g");
     expect(onFilters).toHaveBeenCalledWith({ ...EMPTY_FILTERS, q: "g" });
+    expect(screen.queryByTestId("filter-drawer")).toBeNull();
   });
 
   it("restates applied filters as chips you can remove one at a time", async () => {
@@ -88,6 +119,8 @@ describe("PreviewToolbar", () => {
       sport: "table_tennis",
       status: "unplaced",
     });
+    // The button carries how many filters the drawer holds.
+    expect(screen.getByTestId("open-filters")).toHaveTextContent("2");
     expect(screen.getByTestId("chip-filter-sport")).toHaveTextContent("Table Tennis");
     expect(screen.getByTestId("chip-filter-status")).toHaveTextContent("No time yet");
 
@@ -103,19 +136,9 @@ describe("PreviewToolbar", () => {
   });
 
   it("shows the visible/total tally and offers both exports", async () => {
-    const onExportCsv = vi.fn();
-    const onExportPdf = vi.fn();
-    render(
-      <PreviewToolbar
-        rows={ROWS}
-        filters={{ ...EMPTY_FILTERS, sport: "table_tennis" }}
-        onFilters={vi.fn()}
-        groupBy="day"
-        onGroupBy={vi.fn()}
-        visible={2}
-        onExportCsv={onExportCsv}
-        onExportPdf={onExportPdf}
-      />,
+    const { onExportCsv, onExportPdf } = mount(
+      { ...EMPTY_FILTERS, sport: "table_tennis" },
+      2,
     );
     expect(screen.getByTestId("sheet-count")).toHaveTextContent("2 of 3 rows");
     await userEvent.click(screen.getByTestId("export-csv"));
@@ -129,5 +152,12 @@ describe("PreviewToolbar", () => {
     await userEvent.click(screen.getByRole("button", { name: "Group by" }));
     await userEvent.click(screen.getByRole("option", { name: "Competition" }));
     expect(onGroupBy).toHaveBeenCalledWith("competition");
+  });
+
+  it("closes the drawer from its own footer", async () => {
+    mount();
+    await userEvent.click(screen.getByTestId("open-filters"));
+    await userEvent.click(screen.getByTestId("drawer-done"));
+    expect(screen.queryByTestId("filter-drawer")).toBeNull();
   });
 });

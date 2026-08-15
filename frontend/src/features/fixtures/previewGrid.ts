@@ -78,6 +78,19 @@ export const GROUP_LABELS: Record<GroupBy, string> = {
   none: "No grouping",
 };
 
+/** The facet-driven filter fields, in the order they are offered. Shared by
+ * the toolbar chips and the filter drawer so the two never drift. */
+export const FILTER_FIELDS = [
+  { key: "sport", label: "Sport" },
+  { key: "category", label: "Category" },
+  { key: "day", label: "Day" },
+  { key: "venue", label: "Venue" },
+  { key: "stage", label: "Stage" },
+  { key: "round", label: "Round" },
+] as const;
+
+export type FacetField = (typeof FILTER_FIELDS)[number]["key"];
+
 /** Every filter the toolbar owns. "" always means "all". */
 export interface GridFilters {
   q: string;
