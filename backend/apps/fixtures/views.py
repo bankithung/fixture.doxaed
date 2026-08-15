@@ -275,7 +275,8 @@ class PreviewAllFixturesView(GenericAPIView):
     across EVERY competition (all sports + categories), scheduled together so
     shared courts + cross-sport clashes are coordinated globally. Persists
     nothing (read-only POST, no `event_id`). Gate: bracket_editor. Body
-    `{schedule?, include_schedule}`."""
+    `{schedule?, draw?, include_schedule}` — `draw` overrides every leaf's
+    config (e.g. `{"seeding": "random"}` for a fresh draw)."""
 
     permission_classes = [IsAuthenticated]
 
@@ -286,10 +287,12 @@ class PreviewAllFixturesView(GenericAPIView):
         if not can_access_module(request.user, t, "tournament.bracket_editor"):
             raise PermissionDenied("not_tournament_manager")
         schedule = request.data.get("schedule")
+        draw = request.data.get("draw")
         try:
             data = preview_all_fixtures(
                 tournament=t,
                 schedule=schedule if isinstance(schedule, dict) else None,
+                draw=draw if isinstance(draw, dict) else None,
                 include_schedule=bool(request.data.get("include_schedule", True)),
             )
         except (ValueError, TypeError) as e:
@@ -302,7 +305,10 @@ class PublishAllFixturesView(GenericAPIView):
     competition's draw (idempotent: existing draws are kept) then schedule them
     ALL together in one run. The whole request is one transaction
     (ATOMIC_REQUESTS), so it commits all-or-nothing. Gates: bracket_editor
-    (generate) + schedule_editor (schedule). Body `{schedule?}`."""
+    (generate) + schedule_editor (schedule). Body `{schedule?, draw?,
+    per_leaf_seed?, per_leaf_inputs_hash?}` — `draw` replays the preview's
+    per-leaf overrides (e.g. a random re-draw) so publish commits exactly what
+    was previewed."""
 
     permission_classes = [IsAuthenticated]
 
@@ -324,6 +330,8 @@ class PublishAllFixturesView(GenericAPIView):
         # single-leaf accept contract. Both optional for legacy callers.
         per_leaf_seed = dict(request.data.get("per_leaf_seed") or {})
         expected_hashes = dict(request.data.get("per_leaf_inputs_hash") or {})
+        draw_over = request.data.get("draw")
+        draw_over = draw_over if isinstance(draw_over, dict) else None
         drifted = sorted(
             lk for lk, exp in expected_hashes.items()
             if compute_inputs_hash(t, lk or None) != str(exp)
@@ -342,7 +350,9 @@ class PublishAllFixturesView(GenericAPIView):
         drawn = 0
         try:
             for lf in iter_leaves(t.sports or []):
-                cfg = effective_draw_config(t, lf["leaf_key"])
+                cfg = effective_draw_config(
+                    t, lf["leaf_key"], overrides=draw_over,
+                )
                 seed = per_leaf_seed.get(lf["leaf_key"])
                 if seed is not None:
                     cfg = {**cfg, "seed": int(seed)}

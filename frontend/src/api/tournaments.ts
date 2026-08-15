@@ -687,8 +687,11 @@ export const tournamentsApi = {
         | "swiss"
         | "double_elim";
       leafKey?: string;
-      /** Replay the previewed draw exactly (§5.2 — Accept carries the seed). */
+      /** Replay the previewed draw exactly (§5.2 — Accept carries the seed).
+       * A random re-draw needs BOTH: the seed is only honoured when the
+       * seeding method is "random". */
       seed?: number;
+      seeding?: "registration" | "random" | "seeded" | "snake";
       /** Optimistic-concurrency guard (§9 A1/D10): the preview's
        * `inputs_hash`; the server answers 409 `inputs_changed` on drift. */
       expectedInputsHash?: string;
@@ -701,6 +704,7 @@ export const tournamentsApi = {
       body.advance_per_group = opts.advancePerGroup;
     }
     if (opts?.seed !== undefined) body.seed = opts.seed;
+    if (opts?.seeding !== undefined) body.seeding = opts.seeding;
     if (opts?.expectedInputsHash !== undefined) {
       body.expected_inputs_hash = opts.expectedInputsHash;
     }
@@ -1066,7 +1070,13 @@ export const tournamentsApi = {
    * scheduled together — the master "see everything before publishing" view. */
   previewAllFixtures: (
     id: string,
-    body: { schedule?: Partial<ScheduleRequest>; include_schedule?: boolean },
+    body: {
+      schedule?: Partial<ScheduleRequest>;
+      /** DrawConfig overrides applied to EVERY competition, this run only
+       * (e.g. `{seeding: "random"}` for a fresh draw). */
+      draw?: DrawConfigLayer;
+      include_schedule?: boolean;
+    },
   ) =>
     api.post<
       FixturePreview & {
@@ -1084,6 +1094,9 @@ export const tournamentsApi = {
     id: string,
     body: {
       schedule?: Partial<ScheduleRequest>;
+      /** The same per-leaf overrides the preview ran with, so publish commits
+       * exactly what was previewed (a random re-draw included). */
+      draw?: DrawConfigLayer;
       per_leaf_seed?: Record<string, number | null>;
       per_leaf_inputs_hash?: Record<string, string>;
     },

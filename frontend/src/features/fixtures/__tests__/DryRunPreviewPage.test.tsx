@@ -455,6 +455,12 @@ describe("DryRunPreviewPage", () => {
     await waitFor(() =>
       expect(tournamentsApi.previewFixtures).toHaveBeenCalledTimes(2),
     );
+    // A re-roll is a RANDOM re-draw, not the same deterministic order again
+    // (owner 2026-08-15): the stored config usually seeds by registration.
+    expect(tournamentsApi.previewFixtures).toHaveBeenLastCalledWith(
+      "t1",
+      expect.objectContaining({ draw: { seeding: "random" } }),
+    );
     await userEvent.click(screen.getByTestId("discard-preview"));
     await waitFor(() =>
       expect(screen.getByTestId("fixtures-page")).toBeInTheDocument(),
@@ -490,7 +496,7 @@ describe("DryRunPreviewPage", () => {
 
     // plain verdict + the failure link back to the rules
     expect(await screen.findByTestId("soft-score")).toHaveTextContent(
-      "1 problem(s) need fixing before you publish.",
+      "1 problem to fix before you publish.",
     );
     expect(screen.getByTestId("fix-rules-link")).toBeInTheDocument();
     expect(
@@ -508,11 +514,13 @@ describe("DryRunPreviewPage", () => {
       "aria-expanded",
       "false",
     );
-    // unscheduled matches explained in plain words
-    expect(screen.getByText("1 match(es) have no time yet")).toBeInTheDocument();
+    // The unplaced match is reported ONCE, inside the problem that caused it
+    // (owner 2026-08-15) — no second panel repeating the same trouble.
+    expect(screen.queryByTestId("unscheduled-summary")).toBeNull();
     expect(
-      screen.getByText("Add another day or venue in Step 1, then preview again."),
-    ).toBeInTheDocument();
+      screen.getByTestId("violation-session_window_starved"),
+    ).toHaveTextContent("1 matches");
+    expect(screen.getByTestId("show-unplaced")).toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId("relax-demote_to_soft"));
     await waitFor(() =>
@@ -609,6 +617,42 @@ describe("DryRunPreviewPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Open Step 1" }));
     await waitFor(() =>
       expect(screen.getByTestId("fixtures-page")).toBeInTheDocument(),
+    );
+  });
+
+  it("publishes a re-rolled draw as the random draw it previewed", async () => {
+    mount();
+    await userEvent.click(await screen.findByTestId("regenerate-preview"));
+    await waitFor(() =>
+      expect(tournamentsApi.previewFixtures).toHaveBeenCalledTimes(2),
+    );
+    await userEvent.click(screen.getByTestId("accept-preview"));
+    // Seed alone is ignored by a registration-seeded config — the seeding
+    // method has to travel with it or publish would commit another draw.
+    await waitFor(() =>
+      expect(tournamentsApi.generateFixtures).toHaveBeenCalledWith("t1", {
+        leafKey: "football.u15",
+        seeding: "random",
+        seed: 1234567,
+        expectedInputsHash: "hash-1",
+      }),
+    );
+  });
+
+  it("all-mode publishes the re-rolled draw with the same override", async () => {
+    mount("/tournaments/t1/fixtures/preview?all=1");
+    await userEvent.click(await screen.findByTestId("regenerate-preview"));
+    await waitFor(() =>
+      expect(tournamentsApi.previewAllFixtures).toHaveBeenCalledTimes(2),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Publish all competitions" }),
+    );
+    await waitFor(() =>
+      expect(tournamentsApi.publishAllFixtures).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({ draw: { seeding: "random" } }),
+      ),
     );
   });
 

@@ -225,3 +225,58 @@ def test_publish_all_replays_previewed_seeds_and_409s_on_drift():
         if m.home_team_id and m.away_team_id
     }
     assert committed == previewed
+
+
+def _pairings(out) -> list[tuple[str, str]]:
+    return [
+        (m["home"].get("team_id"), m["away"].get("team_id"))
+        for m in out["matches"]
+        if m["home"].get("team_id") and m["away"].get("team_id")
+    ]
+
+
+def test_try_another_draw_really_redraws_and_publish_replays_it():
+    """"Try another draw" must actually shuffle (owner 2026-08-15).
+
+    The stored config seeds by registration order — deterministic — so a
+    re-run returned the identical draw forever. A `draw` override asks for a
+    random draw for this run only, and publish-all replays the SAME override
+    plus the returned per-leaf seeds, so what was previewed is what commits.
+    """
+    admin = _verified("a@test.local")
+    t = _tournament(admin)
+    _register(t, 8, "football.u15", "football", "S1")
+    _register(t, 8, "table_tennis.u15", "table_tennis", "S2")
+    _venues(t)
+
+    plain = preview_all_fixtures(tournament=t, schedule=SCHEDULE)
+    again = preview_all_fixtures(tournament=t, schedule=SCHEDULE)
+    assert _pairings(plain) == _pairings(again)  # deterministic without it
+    assert all(s is None for s in (plain["per_leaf_seed"] or {}).values())
+
+    rolls = [
+        preview_all_fixtures(
+            tournament=t, schedule=SCHEDULE, draw={"seeding": "random"},
+        )
+        for _ in range(4)
+    ]
+    seeds = rolls[0]["per_leaf_seed"]
+    assert seeds and all(s is not None for s in seeds.values())
+    # A fresh seed per run, so the draw genuinely moves.
+    assert any(_pairings(r) != _pairings(plain) for r in rolls)
+
+    c = _client(admin)
+    r = c.post(
+        f"/api/tournaments/{t.id}/fixtures/publish-all/",
+        {"schedule": SCHEDULE, "draw": {"seeding": "random"},
+         "per_leaf_seed": seeds},
+        format="json",
+    )
+    assert r.status_code == 201, r.data
+    committed = {
+        (str(m.home_team_id), str(m.away_team_id))
+        for m in Match.objects.filter(
+            tournament=t, home_team__isnull=False, away_team__isnull=False,
+        )
+    }
+    assert set(_pairings(rolls[0])) <= committed

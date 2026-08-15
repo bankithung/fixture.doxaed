@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle,
   ArrowLeft,
   Check,
   ChevronDown,
@@ -58,7 +57,7 @@ import {
   type PreviewExportMeta,
 } from "./previewExport";
 import { competitionLabel } from "./previewFilters";
-import { ViolationsPanel } from "./ViolationsPanel";
+import { PreviewNotices, type UnplacedLeaf } from "./PreviewNotices";
 
 /** Pairing-layer warning labels per stable code (§7.7). */
 const WARNING_LABELS: Record<string, string> = {
@@ -139,8 +138,14 @@ export function DryRunPreviewPage(): React.ReactElement {
   const qc = useQueryClient();
   const toast = useToast();
   const { isMobile } = useBreakpoint();
-  // Bumping the roll re-simulates (fresh seed for random draws — §5.2).
+  // Bumping the roll re-simulates. A roll is a RANDOM re-draw (owner
+  // 2026-08-15: "try another draw" must actually shuffle): the stored config
+  // usually seeds by registration order, which is deterministic, so without
+  // this override the same draw came back every time. The override is never
+  // persisted — publish replays it together with the previewed seeds so what
+  // was previewed is what commits.
   const [roll, setRoll] = useState(0);
+  const drawOverride = roll > 0 ? { seeding: "random" as const } : undefined;
   const [stale, setStale] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   // The spreadsheet's state: ERP filters, column sort, group bands.
@@ -193,11 +198,13 @@ export function DryRunPreviewPage(): React.ReactElement {
       isAll
         ? tournamentsApi.previewAllFixtures(id, {
             schedule: schedule!,
+            ...(drawOverride ? { draw: drawOverride } : {}),
             include_schedule: true,
           })
         : tournamentsApi.previewFixtures(id, {
             ...(leaf ? { leaf_key: leaf } : {}),
             schedule: schedule!,
+            ...(drawOverride ? { draw: drawOverride } : {}),
             include_schedule: true,
           }),
   });
@@ -315,16 +322,22 @@ export function DryRunPreviewPage(): React.ReactElement {
 
   // The unplaced matches per competition — a chip you can click to filter the
   // sheet down to exactly those rows.
-  const unscheduledByLeaf = useMemo(() => {
+  const unscheduledByLeaf = useMemo((): UnplacedLeaf[] => {
     const set = new Set(p?.unscheduled ?? []);
-    const byLeaf = new Map<string, { label: string; count: number }>();
+    const byLeaf = new Map<string, UnplacedLeaf>();
     for (const m of p?.matches ?? []) {
       if (!set.has(m.ref)) continue;
       const hit = byLeaf.get(m.leaf_key);
       if (hit) hit.count += 1;
-      else byLeaf.set(m.leaf_key, { label: competitionLabel(m), count: 1 });
+      else {
+        byLeaf.set(m.leaf_key, {
+          leafKey: m.leaf_key,
+          label: competitionLabel(m),
+          count: 1,
+        });
+      }
     }
-    return [...byLeaf.entries()];
+    return [...byLeaf.values()];
   }, [p]);
 
   const rePreview = (): void => {
@@ -381,6 +394,7 @@ export function DryRunPreviewPage(): React.ReactElement {
         };
         return tournamentsApi.publishAllFixtures(id, {
           schedule: schedule!,
+          ...(drawOverride ? { draw: drawOverride } : {}),
           ...(all.per_leaf_seed ? { per_leaf_seed: all.per_leaf_seed } : {}),
           ...(all.per_leaf_inputs_hash
             ? { per_leaf_inputs_hash: all.per_leaf_inputs_hash }
@@ -389,6 +403,9 @@ export function DryRunPreviewPage(): React.ReactElement {
       }
       await tournamentsApi.generateFixtures(id, {
         leafKey: leaf || undefined,
+        // Both, or the seed is ignored: a seed only means anything to the
+        // random seeding method.
+        ...(drawOverride ? { seeding: "random" as const } : {}),
         ...(pv.seed != null ? { seed: pv.seed } : {}),
         expectedInputsHash: pv.inputs_hash,
       });
@@ -650,85 +667,36 @@ export function DryRunPreviewPage(): React.ReactElement {
           </div>
         ) : null}
 
-        {/* Notices: drift, skipped competitions, the verdict, unplaced work —
-            one strip, not four cards adrift on the page. */}
+        {/* ONE notice block: drift, the verdict, every problem with its own
+            count and fixes (owner 2026-08-15 — the same trouble was being
+            reported three times over). */}
         {p || stale ? (
           <div className="flex flex-col gap-2 border-b border-border px-3 py-2">
             {stale ? (
               <InputsChangedBanner context="accept" onRePreview={rePreview} />
             ) : null}
-
-            {skippedLeaves.length ? (
-              <div
-                data-testid="skipped-leaves-notice"
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/40 bg-warning-muted px-3 py-2"
-              >
-                <p className="text-xs font-medium text-warning">
-                  {t(
-                    `${skippedLeaves.length} ${skippedLeaves.length === 1 ? "competition is" : "competitions are"} not drawn yet (fewer than 2 teams). Publishing skips them.`,
-                  )}
-                </p>
-                {skippedLeaves.map((w) => (
-                  <LeafLabel key={w.leaf_key} label={w.leaf_key ?? ""} />
-                ))}
-              </div>
-            ) : null}
-
             {p ? (
-              <ViolationsPanel
+              <PreviewNotices
                 violations={p.violations}
+                unplacedCount={unplacedCount}
+                unplacedRefs={p.unscheduled}
+                unplacedByLeaf={unscheduledByLeaf}
+                skippedLeaves={skippedLeaves.map((w) => w.leaf_key ?? "")}
                 onRelax={busy ? undefined : onRelax}
                 onFixRules={() => navigate(routes.tournamentFixtures(id))}
+                onShowUnplaced={() => {
+                  setFilters({ ...EMPTY_FILTERS, status: "unplaced" });
+                  setViewMode("sheet");
+                }}
+                onShowLeaf={(leafKey) => {
+                  setFilters({
+                    ...EMPTY_FILTERS,
+                    category: leafKey,
+                    status: "unplaced",
+                  });
+                  setViewMode("sheet");
+                }}
               />
-            ) : null}
-
-            {unplacedCount ? (
-              <div
-                data-testid="unscheduled-summary"
-                className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-lg border border-warning/40 bg-warning-muted px-3 py-2"
-              >
-                <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0 text-warning" />
-                <span className="text-sm font-semibold">
-                  {unplacedCount} {t("match(es) have no time yet")}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {t("Add another day or venue in Step 1, then preview again.")}
-                </span>
-                <button
-                  type="button"
-                  data-testid="show-unplaced"
-                  onClick={() => {
-                    setFilters({ ...EMPTY_FILTERS, status: "unplaced" });
-                    setViewMode("sheet");
-                  }}
-                  className="text-xs font-medium text-primary hover:underline"
-                >
-                  {t("Show them in the sheet")}
-                </button>
-                <span className="flex w-full flex-wrap items-center gap-1.5">
-                  {unscheduledByLeaf.map(([leafKey, e]) => (
-                    <button
-                      key={leafKey}
-                      type="button"
-                      data-testid={`unplaced-leaf-${leafKey}`}
-                      onClick={() => {
-                        setFilters({
-                          ...EMPTY_FILTERS,
-                          category: leafKey,
-                          status: "unplaced",
-                        });
-                        setViewMode("sheet");
-                      }}
-                      className="inline-flex items-center gap-1.5 rounded border border-warning/40 bg-card px-1.5 py-0.5 text-[0.6875rem] transition-colors hover:bg-muted"
-                    >
-                      <span className="max-w-64 truncate">{e.label}</span>
-                      <span className="font-tabular text-muted-foreground">
-                        {e.count}
-                      </span>
-                    </button>
-                  ))}
-                </span>
-              </div>
             ) : null}
           </div>
         ) : null}
@@ -759,10 +727,24 @@ export function DryRunPreviewPage(): React.ReactElement {
             </Button>
           </div>
         ) : !p ? (
-          <div className="flex flex-col gap-2 p-3" aria-busy="true">
-            {[0, 1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="h-7 animate-pulse rounded bg-muted/50" />
-            ))}
+          /* The skeleton stands the sheet up at its real height (owner
+             2026-08-15): a short stub made the panel jump when the rows
+             arrived. Rows fill whatever the screen gives us. */
+          <div
+            className="flex min-h-[60vh] flex-col gap-2 p-3"
+            aria-busy="true"
+            data-testid="preview-skeleton"
+          >
+            <div className="h-8 shrink-0 animate-pulse rounded bg-muted/60" />
+            <div className="flex flex-1 flex-col gap-1.5">
+              {Array.from({ length: 18 }, (_, i) => (
+                <div
+                  key={i}
+                  className="h-6 flex-1 animate-pulse rounded bg-muted/40"
+                  style={{ animationDelay: `${(i % 6) * 80}ms` }}
+                />
+              ))}
+            </div>
           </div>
         ) : viewMode === "sheet" ? (
           <>

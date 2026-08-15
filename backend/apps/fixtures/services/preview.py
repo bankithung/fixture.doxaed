@@ -576,6 +576,7 @@ def _rebase_plans(plans: list[MatchPlan], base: int) -> list[MatchPlan]:
 
 def preview_all_fixtures(
     *, tournament, schedule: dict[str, Any] | None = None,
+    draw: dict[str, Any] | None = None,
     include_schedule: bool = True,
 ) -> dict[str, Any]:
     """Combined dry-run across EVERY competition (all sports + categories).
@@ -585,7 +586,12 @@ def preview_all_fixtures(
     cross-sport clash rules are coordinated globally (publishing one competition
     at a time only sees the already-committed ones). Persists nothing — the same
     simulate-only contract as ``preview_fixtures``. The ``matches`` array spans
-    every competition (each row carries its ``leaf_key``)."""
+    every competition (each row carries its ``leaf_key``).
+
+    ``draw`` overrides apply to EVERY leaf — that is how "try another draw"
+    asks for a random re-draw of the whole tournament ({"seeding": "random"})
+    without touching the stored config; publish-all replays the same override
+    plus the returned per-leaf seeds."""
     leaves = iter_leaves(tournament.sports or [])
     warnings: list[dict[str, Any]] = []
     all_plans: list[MatchPlan] = []
@@ -593,7 +599,7 @@ def preview_all_fixtures(
     base = 0
     for lf in leaves:
         lk = lf["leaf_key"]
-        cfg = effective_draw_config(tournament, lk)
+        cfg = effective_draw_config(tournament, lk, overrides=draw)
         seeding = str(cfg.get("seeding") or "registration")
         seed = int(cfg["seed"]) if cfg.get("seed") is not None else None
         if seeding == "random" and seed is None:
