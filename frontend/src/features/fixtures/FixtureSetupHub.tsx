@@ -36,7 +36,7 @@ import { t } from "@/lib/t";
 import "@/components/ui/star-border.css";
 import { AssistantWidget } from "@/features/assistant/AssistantPanel";
 import { AdvanceToKnockoutDialog } from "./AdvanceToKnockoutDialog";
-import { CompetitionCard } from "./CompetitionCard";
+import { CompetitionTable } from "./CompetitionTable";
 import { CompetitionFormatWizard } from "./CompetitionFormatWizard";
 import { CompetitionFormatBoard } from "./CompetitionFormatBoard";
 import { ClashesSection } from "./ClashesSection";
@@ -854,8 +854,15 @@ export function FixtureSetupHub({
           )}
         </SetupSubPage>
       ) : (
-        <>
+        /* ONE section for the whole step (owner 2026-08-15): the Step 1
+           receipt, the publish-everything call, the competition table and the
+           advanced tools are bands of a single panel, not a stack of cards. */
+        <section
+          data-testid="fixtures-overview"
+          className="flex w-full flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+        >
           <GlobalSetupCard
+            flat
             tournamentId={id}
             canManage={canManage}
             onEdit={(step) => setSetup({ step })}
@@ -866,7 +873,7 @@ export function FixtureSetupHub({
           {canManage && competitions.some((c) => c.leafKey) ? (
             <section
               data-testid="preview-all-cta"
-              className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5"
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-primary/5 px-4 py-2.5"
             >
               <CalendarClock
                 aria-hidden="true"
@@ -897,7 +904,7 @@ export function FixtureSetupHub({
             /* §6.3 celebrate state. */
             <section
               data-testid="done-banner"
-              className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-success/40 bg-success-muted px-4 py-2.5"
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-success-muted px-4 py-2.5"
             >
               <PartyPopper
                 aria-hidden="true"
@@ -982,78 +989,44 @@ export function FixtureSetupHub({
               ) : null}
             </EmptyState>
           ) : (
-            <div id="competition-list" className="flex flex-col gap-3">
-              {GROUPS.map((g) => {
-                const list = grouped[g.key];
-                if (list.length === 0) return null;
-                const open = openSections[g.key];
-                return (
-                  <section key={g.key} className="flex flex-col gap-1.5">
-                    <button
-                      type="button"
-                      data-testid={`section-${g.key}`}
-                      aria-expanded={open}
-                      className="flex items-center gap-1.5 text-left"
-                      onClick={() =>
-                        setOpenSections((p) => ({ ...p, [g.key]: !p[g.key] }))
-                      }
-                    >
-                      {open ? (
-                        <ChevronDown
-                          aria-hidden="true"
-                          className="h-4 w-4 shrink-0 text-muted-foreground"
-                        />
-                      ) : (
-                        <ChevronRight
-                          aria-hidden="true"
-                          className="h-4 w-4 shrink-0 text-muted-foreground"
-                        />
-                      )}
-                      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {t(g.title)}
-                      </h3>
-                      <span className="rounded-full bg-muted px-1.5 py-0.5 font-tabular text-[0.6875rem] text-muted-foreground">
-                        {list.length}
-                      </span>
-                    </button>
-                    {open ? (
-                      <div className="overflow-hidden bento-card star-rim rounded-lg border border-border bg-card shadow-sm">
-                        {list.map((c) => {
-                          const key = c.leafKey || "general";
-                          return (
-                            <CompetitionCard
-                              key={key}
-                              competition={c}
-                              drawFormat={formatFor(c.leafKey)}
-                              tournamentId={id}
-                              canManage={canManage}
-                              canRepair={canRepair}
-                              kept={keptDraws.has(c.leafKey)}
-                              detailOpen={expanded === key}
-                              busy={nextRound.isPending}
-                              fixable={FIXABLE}
-                              globalsUnset={globalsUnset}
-                              onToggleDetail={() =>
-                                setExpanded(expanded === key ? null : key)
-                              }
-                              onAction={(a) => onCardAction(c, a)}
-                              onFix={onFix}
-                            />
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </section>
-                );
-              })}
+            /* ONE table for every competition (owner 2026-08-15) — a band per
+               status group, a line per competition, no card per row. */
+            <div className="overflow-hidden">
+              <CompetitionTable
+                groups={GROUPS.filter((g) => grouped[g.key].length > 0).map(
+                  (g) => ({
+                    key: g.key,
+                    title: g.title,
+                    competitions: grouped[g.key],
+                  }),
+                )}
+                openGroups={openSections}
+                onToggleGroup={(k) =>
+                  setOpenSections((prev) => ({
+                    ...prev,
+                    [k]: !prev[k as keyof typeof prev],
+                  }))
+                }
+                formatFor={formatFor}
+                tournamentId={id}
+                canManage={canManage}
+                canRepair={canRepair}
+                keptDraws={keptDraws}
+                expanded={expanded}
+                busy={nextRound.isPending}
+                fixable={FIXABLE}
+                globalsUnset={globalsUnset}
+                onToggleDetail={(key) =>
+                  setExpanded(expanded === key ? null : key)
+                }
+                onAction={(c, a) => onCardAction(c, a)}
+                onFix={onFix}
+              />
             </div>
           )}
 
           {tabs.length > 0 ? (
-            <section
-              data-testid="advanced-tools"
-              className="bento-card star-rim overflow-hidden rounded-lg border border-border bg-card shadow-sm"
-            >
+            <section data-testid="advanced-tools" className="overflow-hidden">
               <button
                 type="button"
                 data-testid="advanced-tools-toggle"
@@ -1139,8 +1112,10 @@ export function FixtureSetupHub({
               last journey step (Preview & publish). Earlier steps advance within
               the journey (wizard save -> Clashes -> Formats -> here), so this is
               the single place the whole fixture stage hands off to Ready. */}
-          <StageContinue tournamentId={id} />
-        </>
+          <div className="px-4 py-3">
+            <StageContinue tournamentId={id} />
+          </div>
+        </section>
       )}
 
       {wizard ? (

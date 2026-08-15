@@ -28,10 +28,13 @@ function fmtDay(iso: string): string {
  * the stage gate (dates + venues) is satisfied.
  */
 export function GlobalSetupCard({
+  flat = false,
   tournamentId,
   canManage,
   onEdit,
 }: {
+  /** Drop the card shell — the hub renders this as a band inside ONE panel. */
+  flat?: boolean;
   tournamentId: string;
   canManage: boolean;
   /** Open the Step 1 wizard at this step. */
@@ -136,7 +139,11 @@ export function GlobalSetupCard({
   return (
     <section
       data-testid="global-setup-strip"
-      className="bento-card star-rim overflow-hidden rounded-lg border border-border bg-card shadow-sm"
+      className={
+        flat
+          ? "overflow-hidden"
+          : "bento-card star-rim overflow-hidden rounded-lg border border-border bg-card shadow-sm"
+      }
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border px-4 py-2.5">
         <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
