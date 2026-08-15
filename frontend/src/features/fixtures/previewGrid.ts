@@ -446,9 +446,6 @@ export function occupancyByCourt(
   return map;
 }
 
-/** An idle stretch of this many minutes or more is a break worth showing. */
-export const BREAK_MIN = 30;
-
 /** The genuinely-empty sub-windows of [start, end) once every busy interval
  * is removed. */
 export function idleWindows(
@@ -477,6 +474,8 @@ export interface BlackoutWindow {
   to: string;
   /** Weekday keys ("sun", "mon"…); empty/absent = every day. */
   days?: string[];
+  /** One date only ("2026-08-17") — a ceremony, not a recurring window. */
+  date?: string;
   /** Stored label ("daily_break") — humanized for the sheet. */
   label?: string;
 }
@@ -495,15 +494,21 @@ export type GridLine =
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
-/** Humanize a stored blackout label ("daily_break" -> "Daily break"). */
+/** Humanize a stored blackout label ("daily_break" -> "Daily break",
+ * "opening" -> "Opening ceremony"). */
 export function blackoutLabel(label: string | undefined): string {
+  if (label === "opening") return t("Opening ceremony");
+  if (label === "closing") return t("Closing ceremony");
   if (!label) return t("Scheduled break");
   const words = label.replace(/[_.]+/g, " ").trim();
   return words ? words[0]!.toUpperCase() + words.slice(1) : t("Scheduled break");
 }
 
-/** The configured window covering most of an idle stretch, if any — that is
- * what turns "the court happens to be free" into "this is the break you set". */
+/** A gap only counts as "the break you set" once this much of it falls inside
+ * the configured window — play rarely ends exactly on the break's edge. */
+const BREAK_OVERLAP_MIN = 10;
+
+/** The configured window an idle stretch is standing in, if any. */
 function coveringBlackout(
   start: number,
   end: number,
@@ -513,47 +518,55 @@ function coveringBlackout(
   const weekday = day ? WEEKDAY_KEYS[new Date(`${day}T00:00:00`).getDay()] : "";
   for (const w of windows) {
     if (w.days?.length && weekday && !w.days.includes(weekday)) continue;
+    if (w.date && w.date !== day) continue;
     const overlap =
       Math.min(end, toMinutes(w.to)) - Math.max(start, toMinutes(w.from));
-    // Half the gap (or a solid 30 minutes) inside the window is enough: play
-    // rarely ends exactly on the break's edge.
-    if (overlap > 0 && overlap >= Math.min(30, (end - start) / 2)) return w;
+    if (overlap >= BREAK_OVERLAP_MIN) return w;
   }
   return null;
 }
 
 /**
- * Interleave "no play" lines into one court's day: a break shows only where
- * the COURT is idle for BREAK_MIN+ minutes, measured against the full
- * occupancy rather than the filtered rows.
+ * Interleave the tournament's OWN breaks into one court's day.
+ *
+ * A break line means "you set a break here" — nothing else (owner 2026-08-15,
+ * twice: an idle court reads as an unplanned break and made one configured
+ * break look like three). So a line appears only where the court is idle
+ * across a configured no-play window — the daily break, a ceremony, a Sunday
+ * window — and it shows THAT window's own hours, not the ragged gap around
+ * it. Courts standing empty for any other reason (a rule keeping two
+ * competitions apart, a round waiting on its feeders) are simply time between
+ * matches, and the sheet stays quiet about them.
  */
 export function linesWithBreaks(
   rows: readonly PreviewRow[],
   busy: readonly [number, number][],
-  /** The tournament's configured no-play windows, so a scheduled break reads
-   * as one instead of looking like an unexplained hole in the day. */
+  /** The tournament's configured no-play windows. */
   blackouts: readonly BlackoutWindow[] = [],
 ): GridLine[] {
   const out: GridLine[] = [];
+  const shown = new Set<string>();
   rows.forEach((row, i) => {
     out.push({ kind: "match", row });
     const next = rows[i + 1];
     if (!next || !row.start || !next.start || row.minutes == null) return;
     const gapStart = toMinutes(row.start) + row.minutes;
     const gapEnd = toMinutes(next.start);
-    idleWindows(gapStart, gapEnd, busy).forEach(([s, e], j) => {
-      if (e - s >= BREAK_MIN) {
-        const w = coveringBlackout(s, e, row.day, blackouts);
-        out.push({
-          kind: "break",
-          key: `brk-${row.ref}-${j}`,
-          from: fromMinutes(s),
-          to: fromMinutes(e),
-          minutes: e - s,
-          label: w ? blackoutLabel(w.label) : t("Court free"),
-        });
-      }
-    });
+    for (const [s, e] of idleWindows(gapStart, gapEnd, busy)) {
+      const w = coveringBlackout(s, e, row.day, blackouts);
+      if (!w) continue;
+      const key = `${row.day}|${w.from}|${w.to}`;
+      if (shown.has(key)) continue;
+      shown.add(key);
+      out.push({
+        kind: "break",
+        key: `brk-${row.ref}-${w.from}`,
+        from: w.from,
+        to: w.to,
+        minutes: Math.max(0, toMinutes(w.to) - toMinutes(w.from)),
+        label: blackoutLabel(w.label),
+      });
+    }
   });
   return out;
 }

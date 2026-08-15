@@ -214,30 +214,40 @@ export function DryRunPreviewPage(): React.ReactElement {
 
   const p = preview.data;
 
-  const blackouts = useMemo(
-    (): BlackoutWindow[] =>
-      (settingsQ.data?.constraints ?? [])
-        .filter(
-          (c) =>
-            c.type === "recurring_blackout_window" && c.hard && c.scope === "all",
-        )
-        .map((c) => {
-          const prm = c.params as {
-            from?: string;
-            to?: string;
-            days?: string[];
-            label?: string;
-          };
-          return {
-            from: prm.from ?? "",
-            to: prm.to ?? "",
-            days: prm.days ?? [],
-            label: prm.label ?? "",
-          };
-        })
-        .filter((w) => w.from && w.to),
-    [settingsQ.data],
-  );
+  // The tournament's OWN no-play windows: the wizard's daily break, any
+  // recurring window, and the ceremonies on their own date. Only these draw a
+  // break line in the sheet — a court standing empty for a scheduling reason
+  // is not a break (owner 2026-08-15).
+  const blackouts = useMemo((): BlackoutWindow[] => {
+    const out: BlackoutWindow[] = [];
+    for (const c of settingsQ.data?.constraints ?? []) {
+      if (!c.hard) continue;
+      const prm = c.params as {
+        from?: string;
+        to?: string;
+        days?: string[];
+        label?: string;
+        date?: string;
+      };
+      if (!prm.from || !prm.to) continue;
+      if (c.type === "recurring_blackout_window" && c.scope === "all") {
+        out.push({
+          from: prm.from,
+          to: prm.to,
+          days: prm.days ?? [],
+          label: prm.label ?? "",
+        });
+      } else if (c.type === "ceremony_block" && prm.date) {
+        out.push({
+          from: prm.from,
+          to: prm.to,
+          date: prm.date,
+          label: prm.label ?? "",
+        });
+      }
+    }
+    return out;
+  }, [settingsQ.data]);
 
   // The spreadsheet model: every previewed match as a row, then the toolbar's
   // filters. Both the sheet AND the draw views read from the same filtered

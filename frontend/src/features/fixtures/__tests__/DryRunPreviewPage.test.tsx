@@ -238,7 +238,21 @@ describe("DryRunPreviewPage", () => {
     expect(screen.queryByTestId("chip-g1")).toBeNull();
   });
 
-  it("marks a Break where a court has a gap between matches", async () => {
+  /** The tournament's own daily break, as the settings endpoint returns it. */
+  function withDailyBreak(from: string, to: string): void {
+    vi.mocked(tournamentsApi.settings).mockResolvedValue({
+      rules: {},
+      constraints: [
+        {
+          type: "recurring_blackout_window", scope: "all", hard: true,
+          weight: 5, params: { from, to, days: [], label: "daily_break" },
+        },
+      ],
+      rules_frozen_at: null, can_edit: true, can_manage: true, can_delete: true,
+    } as unknown as TournamentSettings);
+  }
+
+  it("marks the tournament's own break where the court stands idle for it", async () => {
     vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
       ...PREVIEW,
       matches: [
@@ -254,14 +268,15 @@ describe("DryRunPreviewPage", () => {
         },
       ],
     });
+    withDailyBreak("09:30", "10:30");
     mount();
-    // g1 ends 09:30, g2 starts 10:30 -> an idle-court line inside the band,
-    // in 12-hour clock (owner 2026-08-15).
-    expect(await screen.findByText(/9:30 AM to 10:30 AM/)).toBeInTheDocument();
-    expect(screen.getByText("Court free")).toBeInTheDocument();
+    // g1 ends 09:30, g2 starts 10:30, and the organiser's break sits in that
+    // window -> ONE named line, in 12-hour clock (owner 2026-08-15).
+    expect(await screen.findByText("Daily break")).toBeInTheDocument();
+    expect(screen.getByText(/9:30 AM to 10:30 AM/)).toBeInTheDocument();
   });
 
-  it("does NOT mark a Break when another match fills the whole court gap", async () => {
+  it("says nothing about a court that is simply idle between matches", async () => {
     vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
       ...PREVIEW,
       matches: [
@@ -285,10 +300,11 @@ describe("DryRunPreviewPage", () => {
     });
     mount();
     expect(await screen.findByTestId("sheet-row-g1")).toBeInTheDocument();
-    expect(screen.queryByText(/Court free/)).toBeNull(); // busy, not idle
+    // No break was configured, so no break line — whatever the court is doing.
+    expect(screen.queryByText(/break/i)).toBeNull();
   });
 
-  it("marks a Break only in the IDLE part of a partly-filled gap", async () => {
+  it("marks the break only where the court is genuinely free for it", async () => {
     vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
       ...PREVIEW,
       matches: [
@@ -310,11 +326,13 @@ describe("DryRunPreviewPage", () => {
         },
       ],
     });
+    // A break covering the WHOLE 09:30-11:30 gap: the court is busy with a
+    // hidden match until 10:30, so only the free half earns the line.
+    withDailyBreak("10:30", "11:30");
     mount();
     expect(await screen.findByTestId("sheet-row-g1")).toBeInTheDocument();
-    // Break only for the genuinely-idle 10:30-11:30 stretch, not the busy part.
-    expect(await screen.findByText(/10:30 AM to 11:30 AM/)).toBeInTheDocument();
-    expect(screen.queryByText(/9:30 AM to 10:30 AM/)).toBeNull();
+    expect(screen.getByText("Daily break")).toBeInTheDocument();
+    expect(screen.getByText(/10:30 AM to 11:30 AM/)).toBeInTheDocument();
   });
 
   it("moves between the sheet, the group stage and the knockout", async () => {

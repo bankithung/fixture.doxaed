@@ -58,25 +58,45 @@ describe("linesWithBreaks labels", () => {
   const rows = buildRows([g1, g2], NAMES);
   const busy = occupancyByCourt([g1, g2]).get("2026-08-17|T1") ?? [];
 
-  it("names the gap after the tournament's own break window", () => {
+  it("draws the break you configured, with that window's own hours", () => {
     const lines = linesWithBreaks(rows, busy, [
-      { from: "12:00", to: "13:59", days: [], label: "daily_break" },
+      { from: "12:01", to: "12:30", days: [], label: "daily_break" },
     ]);
-    expect(lines[1]).toMatchObject({ kind: "break", label: "Daily break" });
+    expect(lines.map((l) => l.kind)).toEqual(["match", "break", "match"]);
+    expect(lines[1]).toMatchObject({
+      label: "Daily break",
+      from: "12:01",
+      to: "12:30",
+      minutes: 29,
+    });
   });
 
-  it("calls an unexplained gap what it is: an idle court", () => {
-    expect(linesWithBreaks(rows, busy, [])[1]).toMatchObject({
-      label: "Court free",
-    });
+  it("stays quiet about a court that is merely idle", () => {
+    // The court is free 11:40 to 13:59 but nothing was scheduled there — an
+    // empty court is not a break and must not read like one.
+    expect(linesWithBreaks(rows, busy, []).map((l) => l.kind)).toEqual([
+      "match",
+      "match",
+    ]);
   });
 
   it("ignores a window that does not fall on this weekday", () => {
     // 2026-08-17 is a Monday; a Sunday-only window must not claim the gap.
     const lines = linesWithBreaks(rows, busy, [
-      { from: "12:00", to: "13:59", days: ["sun"], label: "sunday_church" },
+      { from: "12:00", to: "13:00", days: ["sun"], label: "sunday_church" },
     ]);
-    expect(lines[1]).toMatchObject({ label: "Court free" });
+    expect(lines.map((l) => l.kind)).toEqual(["match", "match"]);
+  });
+
+  it("shows a ceremony only on its own date", () => {
+    const onDay = linesWithBreaks(rows, busy, [
+      { from: "12:00", to: "13:00", date: "2026-08-17", label: "opening" },
+    ]);
+    expect(onDay[1]).toMatchObject({ label: "Opening ceremony" });
+    const otherDay = linesWithBreaks(rows, busy, [
+      { from: "12:00", to: "13:00", date: "2026-08-18", label: "opening" },
+    ]);
+    expect(otherDay.map((l) => l.kind)).toEqual(["match", "match"]);
   });
 });
 

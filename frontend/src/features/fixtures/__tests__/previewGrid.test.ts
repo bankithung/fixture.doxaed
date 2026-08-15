@@ -151,12 +151,25 @@ describe("linesWithBreaks", () => {
   const g1 = court({ ref: "g1", scheduled_at: "2026-08-16T09:00:00" });
   const g2 = court({ ref: "g2", scheduled_at: "2026-08-16T10:30:00" });
 
-  it("shows a break when the court is genuinely idle", () => {
+  it("shows the configured break where the court is idle for it", () => {
     const rows = buildRows([g1, g2], NAMES);
     const busy = occupancyByCourt([g1, g2]).get("2026-08-16|Court 1") ?? [];
-    const lines = linesWithBreaks(rows, busy);
+    const lines = linesWithBreaks(rows, busy, [
+      { from: "09:30", to: "10:30", days: [], label: "daily_break" },
+    ]);
     expect(lines.map((l) => l.kind)).toEqual(["match", "break", "match"]);
-    expect(lines[1]).toMatchObject({ from: "09:30", to: "10:30", minutes: 60 });
+    expect(lines[1]).toMatchObject({
+      from: "09:30", to: "10:30", minutes: 60, label: "Daily break",
+    });
+  });
+
+  it("draws nothing for an idle court with no break configured", () => {
+    const rows = buildRows([g1, g2], NAMES);
+    const busy = occupancyByCourt([g1, g2]).get("2026-08-16|Court 1") ?? [];
+    expect(linesWithBreaks(rows, busy).map((l) => l.kind)).toEqual([
+      "match",
+      "match",
+    ]);
   });
 
   it("shows no break when another category fills the gap", () => {
@@ -167,7 +180,12 @@ describe("linesWithBreaks", () => {
     });
     const rows = buildRows([g1, g2], NAMES);
     const busy = occupancyByCourt([g1, g2, filler]).get("2026-08-16|Court 1") ?? [];
-    expect(linesWithBreaks(rows, busy).map((l) => l.kind)).toEqual(["match", "match"]);
+    // Even with the break configured: the court is playing, not resting.
+    expect(
+      linesWithBreaks(rows, busy, [
+        { from: "09:30", to: "10:30", days: [], label: "daily_break" },
+      ]).map((l) => l.kind),
+    ).toEqual(["match", "match"]);
   });
 });
 
