@@ -177,7 +177,7 @@ beforeEach(() => {
 });
 
 describe("DryRunPreviewPage", () => {
-  it("runs the pure simulate, leads with the verdict and renders the day grid", async () => {
+  it("runs the pure simulate, leads with the verdict and fills the spreadsheet", async () => {
     mount();
     // the simulate uses the SAME schedule payload Publish will send (§9 A1)
     await waitFor(() =>
@@ -199,18 +199,22 @@ describe("DryRunPreviewPage", () => {
     expect(await screen.findByTestId("soft-score")).toHaveTextContent(
       "This schedule works. No rules are broken.",
     );
-    // A single competition opens its own panel, Group stage first (owner ask
-    // 2026-07-13: groups and knockout apart, like the FIFA panel).
+    // The spreadsheet leads: every match is a line, group stage and knockout
+    // together, banded by day and court (owner 2026-08-15).
+    expect(screen.getByTestId("matches-spreadsheet")).toBeInTheDocument();
+    expect(screen.getByTestId("sheet-row-p1")).toHaveTextContent("Alpha FC");
+    expect(screen.getByTestId("sheet-row-p2")).toBeInTheDocument();
+    expect(screen.getByTestId("sheet-count")).toHaveTextContent("2 rows");
+    expect(
+      screen.getByTestId("sheet-band-2026-06-20|Main Ground"),
+    ).toBeInTheDocument();
+    // The structure lives one click away, on the Draw view.
+    await userEvent.click(screen.getByTestId("preview-view-draw"));
     expect(screen.getByTestId("competition-panel")).toBeInTheDocument();
     expect(screen.getByTestId("stage-group-Group A")).toBeInTheDocument();
     expect(screen.getByTestId("chip-p1")).toHaveTextContent("Alpha FC");
     // The knockout match (p2) lives on the Knockout tab, not in the groups.
     expect(screen.queryByTestId("chip-p2")).toBeNull();
-    // The Schedule tab shows the whole competition's calendar, knockout too.
-    await userEvent.click(screen.getByTestId("stage-tab-schedule"));
-    expect(screen.getByTestId("day-2026-06-20")).toBeInTheDocument();
-    expect(screen.getByTestId("day-2026-06-21")).toBeInTheDocument();
-    expect(screen.getByTestId("chip-p2")).toBeInTheDocument();
     // nothing persisted by the preview itself
     expect(tournamentsApi.generateFixtures).not.toHaveBeenCalled();
   });
@@ -218,6 +222,7 @@ describe("DryRunPreviewPage", () => {
   it("splits a multi-stage competition into Group stage and Knockout tabs", async () => {
     vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue(MULTISTAGE_PREVIEW);
     mount();
+    await userEvent.click(await screen.findByTestId("preview-view-draw"));
 
     // Group stage first: the group match as a chip, knockout out of sight.
     expect(await screen.findByTestId("chip-g1")).toBeInTheDocument();
@@ -248,8 +253,7 @@ describe("DryRunPreviewPage", () => {
       ],
     });
     mount();
-    // g1 ends 09:30, g2 starts 10:30 -> a visible 60-min break between them.
-    await userEvent.click(await screen.findByTestId("stage-tab-schedule"));
+    // g1 ends 09:30, g2 starts 10:30 -> a break line inside the court band.
     expect(await screen.findByText(/09:30-10:30/)).toBeInTheDocument();
   });
 
@@ -276,8 +280,7 @@ describe("DryRunPreviewPage", () => {
       ],
     });
     mount();
-    await userEvent.click(await screen.findByTestId("stage-tab-schedule"));
-    expect(await screen.findByTestId("chip-g1")).toBeInTheDocument();
+    expect(await screen.findByTestId("sheet-row-g1")).toBeInTheDocument();
     expect(screen.queryByText(/Break/)).toBeNull(); // court is busy, not idle
   });
 
@@ -304,26 +307,28 @@ describe("DryRunPreviewPage", () => {
       ],
     });
     mount();
-    await userEvent.click(await screen.findByTestId("stage-tab-schedule"));
-    expect(await screen.findByTestId("chip-g1")).toBeInTheDocument();
+    expect(await screen.findByTestId("sheet-row-g1")).toBeInTheDocument();
     // Break only for the genuinely-idle 10:30-11:30 stretch, not the busy part.
     expect(await screen.findByText(/10:30-11:30/)).toBeInTheDocument();
     expect(screen.queryByText(/09:30-10:30/)).toBeNull();
   });
 
-  it("moves between Group stage, Knockout and Schedule tabs", async () => {
+  it("moves between the sheet, the group stage and the knockout", async () => {
     vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue(MULTISTAGE_PREVIEW);
     mount();
-    // Group stage first: the group card with its teams and fixtures together.
-    expect(await screen.findByTestId("stage-group-Group A")).toBeInTheDocument();
-    expect(screen.queryByTestId("day-2026-06-20")).toBeNull();
-    // Schedule tab: the day bands.
-    await userEvent.click(screen.getByTestId("stage-tab-schedule"));
-    expect(screen.getByTestId("day-2026-06-20")).toBeInTheDocument();
+    // The sheet leads; the structure is behind the Draw view.
+    expect(await screen.findByTestId("sheet-row-g1")).toBeInTheDocument();
     expect(screen.queryByTestId("stage-group-Group A")).toBeNull();
-    // Back to the groups.
+    await userEvent.click(screen.getByTestId("preview-view-draw"));
+    expect(screen.getByTestId("stage-group-Group A")).toBeInTheDocument();
+    // Knockout tab, then back to the groups.
+    await userEvent.click(screen.getByTestId("stage-tab-knockout"));
+    expect(screen.getByTestId("preview-bracket")).toBeInTheDocument();
     await userEvent.click(screen.getByTestId("stage-tab-groups"));
     expect(screen.getByTestId("stage-group-Group A")).toBeInTheDocument();
+    // Back to the spreadsheet.
+    await userEvent.click(screen.getByTestId("preview-view-sheet"));
+    expect(screen.getByTestId("sheet-row-g1")).toBeInTheDocument();
   });
 
   it("shows only the bracket for a pure-knockout competition (no empty grid)", async () => {
@@ -338,6 +343,7 @@ describe("DryRunPreviewPage", () => {
       ],
     });
     mount();
+    await userEvent.click(await screen.findByTestId("preview-view-draw"));
     // No group stage -> just the bracket inline; no schedule chip, no message.
     expect(await screen.findByTestId("preview-bracket")).toBeInTheDocument();
     expect(screen.queryByTestId("chip-k1")).toBeNull();
@@ -346,7 +352,7 @@ describe("DryRunPreviewPage", () => {
 
   it("keeps the draw number and quality behind the closed Advanced details", async () => {
     mount();
-    await screen.findByTestId("competition-panel");
+    await screen.findByTestId("matches-spreadsheet");
     // closed by default when nothing needs attention
     expect(screen.queryByTestId("preview-seed")).toBeNull();
     expect(screen.queryByTestId("schedule-quality")).toBeNull();
@@ -520,7 +526,7 @@ describe("DryRunPreviewPage", () => {
     mount();
 
     // Closed by default even when flagged; opening reveals the panel.
-    await screen.findByTestId("competition-panel");
+    await screen.findByTestId("matches-spreadsheet");
     expect(screen.queryByTestId("fairness-panel")).toBeNull();
     await userEvent.click(screen.getByTestId("advanced-details-toggle"));
     const panel = await screen.findByTestId("fairness-panel");
@@ -548,7 +554,7 @@ describe("DryRunPreviewPage", () => {
     });
     mount();
 
-    await screen.findByTestId("competition-panel");
+    await screen.findByTestId("matches-spreadsheet");
     expect(screen.queryByTestId("fairness-panel")).toBeNull();
     await userEvent.click(screen.getByTestId("advanced-details-toggle"));
     expect(screen.getAllByTestId(/^fairness-row-/)).toHaveLength(8);
@@ -558,7 +564,7 @@ describe("DryRunPreviewPage", () => {
 
   it("omits the fairness panel when the preview carries no per-team data", async () => {
     mount();
-    await screen.findByTestId("competition-panel");
+    await screen.findByTestId("matches-spreadsheet");
     await userEvent.click(screen.getByTestId("advanced-details-toggle"));
     expect(screen.queryByTestId("fairness-panel")).toBeNull();
     expect(screen.getByTestId("preview-seed")).toBeInTheDocument();
@@ -589,7 +595,7 @@ describe("DryRunPreviewPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("all-mode shows knockout-only competitions in the combined day view", async () => {
+  it("all-mode shows knockout-only competitions in the combined sheet", async () => {
     vi.mocked(tournamentsApi.previewAllFixtures).mockResolvedValue({
       ...PREVIEW,
       competitions: 2,
@@ -604,10 +610,10 @@ describe("DryRunPreviewPage", () => {
       ],
     });
     mount("/tournaments/t1/fixtures/preview?all=1");
-    // Two competitions -> the combined view, with the knockout match VISIBLE
-    // as a chip (a knockout-only sport must not read as empty).
-    expect(await screen.findByTestId("chip-k9")).toBeInTheDocument();
-    expect(screen.getByTestId("chip-p1")).toBeInTheDocument();
+    // Two competitions -> the combined sheet, with the knockout match VISIBLE
+    // as its own line (a knockout-only sport must not read as empty).
+    expect(await screen.findByTestId("sheet-row-k9")).toBeInTheDocument();
+    expect(screen.getByTestId("sheet-row-p1")).toBeInTheDocument();
     expect(screen.queryByTestId("competition-panel")).toBeNull();
   });
 
@@ -654,5 +660,62 @@ describe("DryRunPreviewPage", () => {
     );
     expect(tournamentsApi.generateFixtures).not.toHaveBeenCalled();
     expect(tournamentsApi.scheduleFixtures).not.toHaveBeenCalled();
+  });
+
+  const sheetRefs = (): (string | null)[] =>
+    screen
+      .getAllByTestId(/^sheet-row-/)
+      .map((el) => el.getAttribute("data-testid"));
+
+  it("sorts the sheet by a column, both ways, then back to play order", async () => {
+    mount();
+    await screen.findByTestId("matches-spreadsheet");
+    // Play order first: p1 (day 1) before p2 (day 2).
+    expect(sheetRefs()).toEqual(["sheet-row-p1", "sheet-row-p2"]);
+    // Away ascending: "Bravo FC" before "Winner of p1".
+    await userEvent.click(screen.getByTestId("sheet-sort-away"));
+    expect(screen.getByTestId("sheet-sort-away").closest("th")).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+    expect(sheetRefs()).toEqual(["sheet-row-p1", "sheet-row-p2"]);
+    await userEvent.click(screen.getByTestId("sheet-sort-away"));
+    expect(sheetRefs()).toEqual(["sheet-row-p2", "sheet-row-p1"]);
+    // A third click drops the sort.
+    await userEvent.click(screen.getByTestId("sheet-sort-away"));
+    expect(screen.getByTestId("sheet-sort-away").closest("th")).toHaveAttribute(
+      "aria-sort",
+      "none",
+    );
+    expect(sheetRefs()).toEqual(["sheet-row-p1", "sheet-row-p2"]);
+  });
+
+  it("searches the sheet and clears the filter again", async () => {
+    mount();
+    await screen.findByTestId("matches-spreadsheet");
+    await userEvent.type(screen.getByTestId("filter-search"), "bravo");
+    expect(sheetRefs()).toEqual(["sheet-row-p1"]);
+    expect(screen.getByTestId("sheet-count")).toHaveTextContent("1 of 2 rows");
+    expect(screen.getByTestId("chip-filter-q")).toHaveTextContent("bravo");
+
+    await userEvent.click(screen.getByTestId("clear-filters"));
+    expect(sheetRefs()).toEqual(["sheet-row-p1", "sheet-row-p2"]);
+  });
+
+  it("filters the sheet down to the matches with no time", async () => {
+    vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
+      ...PREVIEW,
+      unscheduled: ["p2"],
+    });
+    mount();
+    await userEvent.click(await screen.findByTestId("show-unplaced"));
+    expect(sheetRefs()).toEqual(["sheet-row-p2"]);
+    expect(screen.getByTestId("sheet-row-p2")).toHaveAttribute(
+      "data-unplaced",
+      "true",
+    );
+    expect(screen.getByTestId("chip-filter-status")).toHaveTextContent(
+      "No time yet",
+    );
   });
 });

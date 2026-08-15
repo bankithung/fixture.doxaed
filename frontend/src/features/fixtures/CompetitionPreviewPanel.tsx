@@ -13,7 +13,8 @@ import { t } from "@/lib/t";
 import "@/components/ui/star-border.css";
 import { shortGroupName } from "./groupSlotLabel";
 import { LeafLabel } from "./LeafLabel";
-import { LEAF_ACCENTS, MatchChip, MatchesByDayGrid } from "./MatchesByDayGrid";
+import { LEAF_ACCENTS } from "./leafAccents";
+import { MatchChip } from "./MatchChip";
 
 /** Adapt a previewed (placeholder) match to the MatchRow shape the FIFA
  * bracket renders — no scores yet, typed pointers passed through so an
@@ -56,28 +57,25 @@ interface GroupBucket {
   matches: PreviewMatch[];
 }
 
-type StageTab = "groups" | "knockout" | "schedule";
+type StageTab = "groups" | "knockout";
 
 /**
- * ONE competition, Google-sports-panel style (owner ask 2026-07-13): its own
- * header + stage tabs — "Group stage" (each group's teams and fixtures
- * together), "Knockout" (the bracket, byes shown as explicit Bye cards) and
- * "Schedule" (every timed match of this competition by day). Replaces the
- * everything-on-one-page stack for a selected category.
+ * ONE competition's STRUCTURE, Google-sports-panel style (owner ask
+ * 2026-07-13): its own header + stage tabs — "Group stage" (each group's
+ * teams and fixtures together) and "Knockout" (the bracket, byes shown as
+ * explicit Bye cards). The calendar itself lives in the preview spreadsheet
+ * (owner 2026-08-15), so this panel answers "who plays whom", never "when".
  */
 export function CompetitionPreviewPanel({
   label,
   matches,
   teamNames,
   unscheduled,
-  occupancy,
 }: {
   label: string;
   matches: PreviewMatch[];
   teamNames: ReadonlyMap<string, string>;
   unscheduled: readonly string[];
-  /** EVERY previewed match (all competitions) — court-gap truth for breaks. */
-  occupancy?: PreviewMatch[];
 }): React.ReactElement {
   const { groups, ko, teamsCount, untimed } = useMemo(() => {
     const koMatches: PreviewMatch[] = [];
@@ -132,12 +130,9 @@ export function CompetitionPreviewPanel({
     const out: [StageTab, string][] = [];
     if (groups.length) out.push(["groups", t("Group stage")]);
     if (ko.length) out.push(["knockout", t("Knockout")]);
-    out.push(["schedule", t("Schedule")]);
     return out;
   }, [groups.length, ko.length]);
-  const [tab, setTab] = useState<StageTab>(
-    groups.length ? "groups" : ko.length ? "knockout" : "schedule",
-  );
+  const [tab, setTab] = useState<StageTab>(groups.length ? "groups" : "knockout");
 
   const bracketColumns = useMemo(() => {
     const byRound = new Map<number, MatchRow[]>();
@@ -287,15 +282,6 @@ export function CompetitionPreviewPanel({
         </div>
       ) : null}
 
-      {tab === "schedule" ? (
-        <div className="flex flex-col gap-3" data-testid="stage-schedule">
-          <MatchesByDayGrid
-            matches={matches.filter((m) => m.scheduled_at)}
-            teamNames={teamNames}
-            occupancy={occupancy}
-          />
-        </div>
-      ) : null}
     </section>
   );
 }
