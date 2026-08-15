@@ -213,10 +213,12 @@ describe("DryRunPreviewPage", () => {
     // The structure lives one click away, on the Draw view.
     await userEvent.click(screen.getByTestId("preview-view-draw"));
     expect(screen.getByTestId("competition-panel")).toBeInTheDocument();
-    expect(screen.getByTestId("stage-group-Group A")).toBeInTheDocument();
-    expect(screen.getByTestId("chip-p1")).toHaveTextContent("Alpha FC");
-    // The knockout match (p2) lives on the Knockout tab, not in the groups.
-    expect(screen.queryByTestId("chip-p2")).toBeNull();
+    // The draw reads as a table too: one line per team, group and slot as
+    // columns (owner 2026-08-15).
+    expect(screen.getByTestId("draw-groups")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("draw-row-football.u15-Group A-1"),
+    ).toHaveTextContent("Alpha FC");
     // nothing persisted by the preview itself
     expect(tournamentsApi.generateFixtures).not.toHaveBeenCalled();
   });
@@ -226,16 +228,17 @@ describe("DryRunPreviewPage", () => {
     mount();
     await userEvent.click(await screen.findByTestId("preview-view-draw"));
 
-    // Group stage first: the group match as a chip, knockout out of sight.
-    expect(await screen.findByTestId("chip-g1")).toBeInTheDocument();
-    expect(screen.queryByTestId("chip-k1")).toBeNull();
-    expect(screen.queryByTestId("chip-k2")).toBeNull();
+    // Group stage first: the group's teams as rows, knockout out of sight.
+    expect(await screen.findByTestId("stage-groups")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("draw-row-football.u15-Group A-1"),
+    ).toHaveTextContent("Alpha FC");
     expect(screen.queryByTestId("preview-bracket")).toBeNull();
     // Knockout tab: the bracket with its placeholder slots.
     await userEvent.click(screen.getByTestId("stage-tab-knockout"));
     expect(screen.getByTestId("preview-bracket")).toBeInTheDocument();
     expect(screen.getAllByText("Group A top 1").length).toBeGreaterThan(0);
-    expect(screen.queryByTestId("chip-g1")).toBeNull();
+    expect(screen.queryByTestId("stage-groups")).toBeNull();
   });
 
   /** The tournament's own daily break, as the settings endpoint returns it. */
@@ -340,14 +343,14 @@ describe("DryRunPreviewPage", () => {
     mount();
     // The sheet leads; the structure is behind the Draw view.
     expect(await screen.findByTestId("sheet-row-g1")).toBeInTheDocument();
-    expect(screen.queryByTestId("stage-group-Group A")).toBeNull();
+    expect(screen.queryByTestId("stage-groups")).toBeNull();
     await userEvent.click(screen.getByTestId("preview-view-draw"));
-    expect(screen.getByTestId("stage-group-Group A")).toBeInTheDocument();
+    expect(screen.getByTestId("stage-groups")).toBeInTheDocument();
     // Knockout tab, then back to the groups.
     await userEvent.click(screen.getByTestId("stage-tab-knockout"));
     expect(screen.getByTestId("preview-bracket")).toBeInTheDocument();
     await userEvent.click(screen.getByTestId("stage-tab-groups"));
-    expect(screen.getByTestId("stage-group-Group A")).toBeInTheDocument();
+    expect(screen.getByTestId("stage-groups")).toBeInTheDocument();
     // Back to the spreadsheet.
     await userEvent.click(screen.getByTestId("preview-view-sheet"));
     expect(screen.getByTestId("sheet-row-g1")).toBeInTheDocument();
@@ -366,9 +369,9 @@ describe("DryRunPreviewPage", () => {
     });
     mount();
     await userEvent.click(await screen.findByTestId("preview-view-draw"));
-    // No group stage -> just the bracket inline; no schedule chip, no message.
+    // No group stage -> just the bracket; no group table, no message.
     expect(await screen.findByTestId("preview-bracket")).toBeInTheDocument();
-    expect(screen.queryByTestId("chip-k1")).toBeNull();
+    expect(screen.queryByTestId("stage-groups")).toBeNull();
     expect(screen.queryByTestId("preview-knockout-only")).toBeNull();
   });
 
