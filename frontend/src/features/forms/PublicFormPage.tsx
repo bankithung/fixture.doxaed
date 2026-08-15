@@ -762,43 +762,7 @@ export function PublicFormPage(): React.ReactElement {
     <PublicShell tournamentName={data?.tournament_name}>
       {/* Extra bottom padding reserves room for the floating contact button so it
           never covers the Back/Next/Submit footer (notably on narrow screens). */}
-      <BentoGrid className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 pb-28 pt-8 sm:px-6">
-        {/* Heading — the registry link sits top-right on the same row as the title. */}
-        <div className="flex flex-col gap-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className={OVERLINE}>{t("Registration")}</p>
-              <h1 className="page-title mt-1">
-                {t(form.title)}
-              </h1>
-            </div>
-            <a
-              href={`/f/${form.id}/directory`}
-              className={cn(
-                buttonVariants({ variant: "outline", size: "sm" }),
-                "h-8 shrink-0 px-2.5 text-xs",
-              )}
-            >
-              <Users aria-hidden="true" className="h-3.5 w-3.5" />
-              {t("Registered")}
-            </a>
-          </div>
-
-          {/* Instructions — a highlighted callout (dates, age cut-off, rules) so
-              applicants actually read them instead of skimming grey body text. */}
-          {form.description ? (
-            <aside
-              role="note"
-              className="flex gap-3 rounded-xl border border-primary/30 bg-primary/[0.06] p-4 sm:p-5"
-            >
-              <Info aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-              <RichText
-                html={form.description}
-                className="text-sm leading-relaxed text-foreground/90 [&_a]:font-medium [&_a]:text-primary [&_a]:underline [&_strong]:font-semibold"
-              />
-            </aside>
-          ) : null}
-        </div>
+      <BentoGrid className="mx-auto flex w-full max-w-3xl flex-col px-4 pb-28 pt-8 sm:px-6">
         <ContactAdminDialog
           formId={form?.id ?? formId ?? ""}
           open={contactOpen}
@@ -818,218 +782,248 @@ export function PublicFormPage(): React.ReactElement {
           <span className="hidden sm:inline">{t("Contact the organisers")}</span>
         </button>
 
-        {/* Admin entry path: organizer filling the form — no access code. */}
-        {data?.can_manage ? (
-          <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
-            <ShieldCheck aria-hidden="true" className="h-4 w-4 text-primary" />
-            <span>
-              {t(
-                "Signed in as an organizer. Add or replace any school's teams without a code.",
-              )}
-            </span>
-          </div>
-        ) : null}
-
-        {/* Bound per-institution link: show who they're registering as. */}
-        {boundLabel ? (
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
-            <ShieldCheck aria-hidden="true" className="h-4 w-4 text-primary" />
-            <span>
-              {t("Registering as")}{" "}
-              <span className="font-medium text-foreground">{boundLabel}</span>
-            </span>
-          </div>
-        ) : null}
-
-        {/* Step indicator (the review step is the final step). */}
-        {sections.length >= 1 ? (
-          <p className="font-tabular text-xs text-muted-foreground" aria-live="polite">
-            {t("Step")} {clamped + 1} {t("of")} {sections.length + 1}
-            {isReview
-              ? ` · ${t("Review")}`
-              : current?.title
-                ? ` · ${t(current.title)}`
-                : ""}
-          </p>
-        ) : null}
-
-        {/* Review step: read everything back (read-only), then submit. */}
-        {isReview ? (
-          <StarBorder>
+        {/* ONE panel for the whole form (owner 2026-08-15): the heading, the
+            organiser's instructions, who you are registering as, the step you
+            are on, the questions themselves and the Back/Next footer are bands
+            of a single card, not a stack of them. */}
+        <StarBorder>
           <section
-            aria-label={t("Review your registration")}
-            className="bento-card flex flex-col gap-6 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6"
+            data-testid="registration-panel"
+            className="bento-card flex w-full flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm"
           >
-            <div>
-              <h2 className="text-base font-semibold">
-                {t("Review your registration")}
-              </h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                {t("Check your answers, then submit. Use Back to edit.")}
-              </p>
-            </div>
-            {sections.map((s, i) => {
-              const fields = renderGrouped(s.fields, true);
-              if (fields.length === 0) return null;
-              return (
-                <div
-                  key={i}
-                  className="flex flex-col gap-4 border-t border-border pt-5 first:border-t-0 first:pt-0"
-                >
-                  {s.title ? (
-                    <h3 className="text-sm font-semibold text-muted-foreground">
-                      {t(s.title)}
-                    </h3>
-                  ) : null}
-                  <div className="flex flex-col gap-5">{fields}</div>
-                </div>
-              );
-            })}
-          </section>
-          </StarBorder>
-        ) : current ? (
-          <StarBorder>
-          <section
-            aria-label={current.title || t("Section")}
-            className="bento-card flex flex-col gap-5 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6"
-          >
-            <div>
-              <h2 className="text-base font-semibold">{t(current.title)}</h2>
-              {current.description ? (
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  {t(current.description)}
-                </p>
-              ) : null}
-            </div>
-
-            {/* Until the access code is verified, the ONLY things on screen
-                are the school picker and the code panel · no prefilled
-                contacts, sports or categories leak to someone without the
-                code. */}
-            {renderGrouped(
-              codeGateOpen(current)
-                ? current.fields.filter((f) => f.key === instField?.key)
-                : current.fields,
-            )}
-
-            {/* School access code — required before this school's teams can
-                be registered or edited (sent to the school's contact email
-                when team registration opened). */}
-            {needsCode && current.fields.some((f) => f.key === instField?.key) ? (
-              <div className="flex flex-col gap-2 rounded-lg border border-primary/25 bg-primary/5 p-4">
-                {accessToken ? (
-                  <div className="flex items-start gap-2 text-sm">
-                    <ShieldCheck
-                      aria-hidden="true"
-                      className="mt-0.5 h-4 w-4 shrink-0 text-primary"
-                    />
-                    <span>
-                      {editingPrior
-                        ? t(
-                            "Code verified. You're editing your existing registration; submitting replaces it.",
-                          )
-                        : t("Code verified. You can register your teams.")}
-                    </span>
-                  </div>
-                ) : selectedInstOption?.has_code === false ? (
-                  <>
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <KeyRound aria-hidden="true" className="h-4 w-4 text-primary" />
-                      {t("School access code")}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {t(
-                        "This school has no access code yet. Ask the organizer to send one to your school's contact email before registering teams.",
-                      )}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <KeyRound aria-hidden="true" className="h-4 w-4 text-primary" />
-                      {t("School access code")}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {t(
-                        "A code was emailed to your school's contact. Enter it to add or edit teams. No code? Ask the organizer.",
-                      )}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Input
-                        value={codeInput}
-                        onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
-                        placeholder="E.g. K7MWPX2A"
-                        className="h-9 max-w-[11rem] font-tabular uppercase"
-                        aria-label={t("Access code")}
-                      />
-                      <Button
-                        size="sm"
-                        disabled={verifyCode.isPending || codeInput.trim().length < 4}
-                        onClick={() => verifyCode.mutate()}
-                      >
-                        {verifyCode.isPending ? t("Checking…") : t("Verify code")}
-                      </Button>
-                    </div>
-                    {codeError ? (
-                      <p role="alert" className="text-xs text-destructive">
-                        {codeError}
-                      </p>
-                    ) : null}
-                  </>
+            <header className="flex items-start justify-between gap-3 px-5 py-4 sm:px-6">
+              <div className="min-w-0">
+                <p className={OVERLINE}>{t("Registration")}</p>
+                <h1 className="page-title mt-1">{t(form.title)}</h1>
+              </div>
+              <a
+                href={`/f/${form.id}/directory`}
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "h-8 shrink-0 px-2.5 text-xs",
                 )}
+              >
+                <Users aria-hidden="true" className="h-3.5 w-3.5" />
+                {t("Registered")}
+              </a>
+            </header>
+
+            {/* Instructions — dates, age cut-off, rules — where they are read. */}
+            {form.description ? (
+              <aside role="note" className="flex gap-3 bg-primary/[0.06] px-5 py-4 sm:px-6">
+                <Info aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                <RichText
+                  html={form.description}
+                  className="text-sm leading-relaxed text-foreground/90 [&_a]:font-medium [&_a]:text-primary [&_a]:underline [&_strong]:font-semibold"
+                />
+              </aside>
+            ) : null}
+
+            {/* Admin entry path: organizer filling the form — no access code. */}
+            {data?.can_manage ? (
+              <div className="flex items-center gap-2 bg-primary/5 px-5 py-2.5 text-sm sm:px-6">
+                <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+                <span>
+                  {t(
+                    "Signed in as an organizer. Add or replace any school's teams without a code.",
+                  )}
+                </span>
               </div>
             ) : null}
+
+            {/* Bound per-institution link: show who they're registering as. */}
+            {boundLabel ? (
+              <div className="flex items-center gap-2 bg-muted/40 px-5 py-2.5 text-sm sm:px-6">
+                <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+                <span>
+                  {t("Registering as")}{" "}
+                  <span className="font-medium text-foreground">{boundLabel}</span>
+                </span>
+              </div>
+            ) : null}
+
+            {/* Where you are, and what this step is — said ONCE (the section
+                used to repeat its own title as a second heading). */}
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 bg-muted/30 px-5 py-3 sm:px-6">
+              <h2 className="text-base font-semibold">
+                {isReview
+                  ? t("Review your registration")
+                  : current
+                    ? t(current.title)
+                    : t("Questions")}
+              </h2>
+              {sections.length >= 1 ? (
+                <span
+                  className="font-tabular text-xs text-muted-foreground"
+                  aria-live="polite"
+                >
+                  {t("Step")} {clamped + 1} {t("of")} {sections.length + 1}
+                </span>
+              ) : null}
+              <p className="w-full text-sm text-muted-foreground">
+                {isReview
+                  ? t("Check your answers, then submit. Use Back to edit.")
+                  : current?.description
+                    ? t(current.description)
+                    : ""}
+              </p>
+            </div>
+
+            {/* The questions themselves. */}
+            {isReview ? (
+              <div
+                aria-label={t("Review your registration")}
+                className="flex flex-col gap-6 px-5 py-5 sm:px-6"
+              >
+                {sections.map((s, i) => {
+                  const fields = renderGrouped(s.fields, true);
+                  if (fields.length === 0) return null;
+                  return (
+                    <div
+                      key={i}
+                      className="flex flex-col gap-4 border-t border-border pt-5 first:border-t-0 first:pt-0"
+                    >
+                      {s.title ? (
+                        <h3 className="text-sm font-semibold text-muted-foreground">
+                          {t(s.title)}
+                        </h3>
+                      ) : null}
+                      <div className="flex flex-col gap-5">{fields}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : current ? (
+              <div className="flex flex-col gap-5 px-5 py-5 sm:px-6">
+                {/* Until the access code is verified, the ONLY things on screen
+                    are the school picker and the code panel · no prefilled
+                    contacts, sports or categories leak to someone without the
+                    code. */}
+                {renderGrouped(
+                  codeGateOpen(current)
+                    ? current.fields.filter((f) => f.key === instField?.key)
+                    : current.fields,
+                )}
+
+                {/* School access code — required before this school's teams can
+                    be registered or edited (sent to the school's contact email
+                    when team registration opened). */}
+                {needsCode && current.fields.some((f) => f.key === instField?.key) ? (
+                  <div className="flex flex-col gap-2 rounded-lg border border-primary/25 bg-primary/5 p-4">
+                    {accessToken ? (
+                      <div className="flex items-start gap-2 text-sm">
+                        <ShieldCheck
+                          aria-hidden="true"
+                          className="mt-0.5 h-4 w-4 shrink-0 text-primary"
+                        />
+                        <span>
+                          {editingPrior
+                            ? t(
+                                "Code verified. You're editing your existing registration; submitting replaces it.",
+                              )
+                            : t("Code verified. You can register your teams.")}
+                        </span>
+                      </div>
+                    ) : selectedInstOption?.has_code === false ? (
+                      <>
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <KeyRound aria-hidden="true" className="h-4 w-4 text-primary" />
+                          {t("School access code")}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {t(
+                            "This school has no access code yet. Ask the organizer to send one to your school's contact email before registering teams.",
+                          )}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <KeyRound aria-hidden="true" className="h-4 w-4 text-primary" />
+                          {t("School access code")}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {t(
+                            "A code was emailed to your school's contact. Enter it to add or edit teams. No code? Ask the organizer.",
+                          )}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Input
+                            value={codeInput}
+                            onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+                            placeholder="E.g. K7MWPX2A"
+                            className="h-9 max-w-[11rem] font-tabular uppercase"
+                            aria-label={t("Access code")}
+                          />
+                          <Button
+                            size="sm"
+                            disabled={verifyCode.isPending || codeInput.trim().length < 4}
+                            onClick={() => verifyCode.mutate()}
+                          >
+                            {verifyCode.isPending ? t("Checking…") : t("Verify code")}
+                          </Button>
+                        </div>
+                        {codeError ? (
+                          <p role="alert" className="text-xs text-destructive">
+                            {codeError}
+                          </p>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <p className="px-5 py-5 text-sm text-muted-foreground sm:px-6">
+                {t("This form has no questions yet.")}
+              </p>
+            )}
+
+            {/* Form-level error */}
+            {formError ? (
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="bg-destructive/10 px-5 py-3 text-sm text-destructive sm:px-6"
+              >
+                {formError}
+              </div>
+            ) : null}
+
+            {/* Navigation closes the same panel. */}
+            <div className="flex items-center justify-between gap-3 bg-muted/30 px-5 py-3 sm:px-6">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onBack}
+                disabled={clamped === 0 || submit.isPending}
+              >
+                {t("Back")}
+              </Button>
+              {isReview ? (
+                <Button
+                  type="button"
+                  size="lg"
+                  disabled={submit.isPending}
+                  onClick={onSubmit}
+                >
+                  {submit.isPending ? t("Submitting…") : t("Submit")}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="lg"
+                  disabled={!current}
+                  onClick={onNext}
+                >
+                  {sections.length > 0 && clamped === sections.length - 1
+                    ? t("Review")
+                    : t("Next")}
+                </Button>
+              )}
+            </div>
           </section>
-          </StarBorder>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {t("This form has no questions yet.")}
-          </p>
-        )}
-
-        {/* Form-level error */}
-        {formError ? (
-          <div
-            role="alert"
-            aria-live="assertive"
-            className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-          >
-            {formError}
-          </div>
-        ) : null}
-
-        {/* Navigation */}
-        <div className="flex items-center justify-between gap-3 border-t border-border pt-5">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onBack}
-            disabled={clamped === 0 || submit.isPending}
-          >
-            {t("Back")}
-          </Button>
-          {isReview ? (
-            <Button
-              type="button"
-              size="lg"
-              disabled={submit.isPending}
-              onClick={onSubmit}
-            >
-              {submit.isPending ? t("Submitting…") : t("Submit")}
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              size="lg"
-              disabled={!current}
-              onClick={onNext}
-            >
-              {sections.length > 0 && clamped === sections.length - 1
-                ? t("Review")
-                : t("Next")}
-            </Button>
-          )}
-        </div>
+        </StarBorder>
       </BentoGrid>
     </PublicShell>
   );
