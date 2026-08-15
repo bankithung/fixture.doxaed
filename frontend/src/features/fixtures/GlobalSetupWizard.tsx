@@ -121,6 +121,34 @@ function draftBreaks(d: VenueDraft): { from: string; to: string }[] {
     : [];
 }
 
+/** "18:00" + 1h → "19:00" (clamped inside the day). Seeds a ceremony's window
+ * from the daily play times. */
+function plusHour(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
+  if (h >= 23) return "23:59";
+  return `${String(h + 1).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** What the opening/closing ceremonies do to play times on their own day
+ * (scheduler `ceremony_window`): the tournament OPENS with the opening
+ * ceremony, so nothing runs before it ends, and CLOSES with the closing one,
+ * so nothing runs after it starts. Derived — never a second thing to fill in.
+ * Returns null when the ceremony doesn't move the day's window. */
+function ceremonyEffect(
+  form: Form,
+  which: "opening" | "closing",
+): { day: string; time: string; empty: boolean } | null {
+  const c = which === "opening" ? form.opening : form.closing;
+  if (!c?.date) return null;
+  if (which === "opening") {
+    if (c.to <= form.daily_start) return null;
+    return { day: c.date, time: c.to, empty: c.to >= form.daily_end };
+  }
+  if (c.from >= form.daily_end) return null;
+  return { day: c.date, time: c.from, empty: c.from <= form.daily_start };
+}
+
 /** "2026-06-12" → "Jun 12" — the review reads in words, not ISO. */
 function fmtDay(iso: string): string {
   return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
@@ -257,6 +285,7 @@ export function GlobalSetupWizard({
   tournamentId,
   onClose,
   onSaved,
+  onSavedInPlace,
   initialStep = 0,
 }: {
   tournamentId: string;
@@ -265,6 +294,11 @@ export function GlobalSetupWizard({
   /** Called after a successful save instead of `onClose`, so the hub can route
    * to the next journey step (Clashes & sessions) rather than just closing. */
   onSaved?: () => void;
+  /** Called after a per-step Save that STAYS here, with the step the user is
+   * on. The hub pins the wizard open on it: saving the dates satisfies the
+   * "globals unset" gate that opened the wizard, and without this the wizard
+   * would unmount mid-edit and drop the user on another journey step. */
+  onSavedInPlace?: (step: number) => void;
   /** Deep-link target (a GlobalSetupCard pencil / readiness fix action). */
   initialStep?: number;
 }): React.ReactElement {
@@ -507,10 +541,13 @@ export function GlobalSetupWizard({
         (onSaved ?? onClose)();
         return;
       }
-      // Staying put: wait for the stored sources to come back before dropping
-      // the dirty flag, then let the reconcile block re-seed. Without the
-      // re-seed a freshly created venue would still have no id in the form and
-      // the next save would create it a second time.
+      // Staying put: hold the wizard open on THIS step first (the save may have
+      // just satisfied the gate that opened it), then wait for the stored
+      // sources to come back before dropping the dirty flag and letting the
+      // reconcile block re-seed. Without the re-seed a freshly created venue
+      // would still have no id in the form and the next save would create it a
+      // second time.
+      onSavedInPlace?.(step);
       await Promise.all([
         venues.refetch(),
         settings.refetch(),
@@ -537,6 +574,22 @@ export function GlobalSetupWizard({
   const cur = WIZARD_STEPS[step] ?? WIZARD_STEPS[0];
   const isLast = step === WIZARD_STEPS.length - 1;
   const datesSet = form.date_start !== "" && form.date_end !== "";
+
+  // The ceremonies set the first and last match times on their own day, with
+  // nothing extra to fill in (owner ask 2026-08-15). Both steps read the same
+  // derived lines so the Play times step never contradicts the ceremony.
+  const openEffect = ceremonyEffect(form, "opening");
+  const closeEffect = ceremonyEffect(form, "closing");
+  const openNote = openEffect
+    ? openEffect.empty
+      ? t(`This covers all of ${fmtDay(openEffect.day)}. No matches that day.`)
+      : t(`Play starts when this ends. First match on ${fmtDay(openEffect.day)} at ${openEffect.time}.`)
+    : undefined;
+  const closeNote = closeEffect
+    ? closeEffect.empty
+      ? t(`This covers all of ${fmtDay(closeEffect.day)}. No matches that day.`)
+      : t(`Play stops when this starts. Matches on ${fmtDay(closeEffect.day)} finish by ${closeEffect.time}.`)
+    : undefined;
 
   /** The header / footer primary action (single set — Next while stepping,
    * Save on the last step). Kept in one place so it stays unambiguous. */
@@ -739,6 +792,9 @@ export function GlobalSetupWizard({
                 onChange={(v) => set("opening", v)}
                 testId="opening"
                 defaultDate={form.date_start}
+                defaultFrom={form.daily_start}
+                defaultTo={plusHour(form.daily_start)}
+                note={openNote}
               />
               <CeremonyField
                 label={t("Closing ceremony")}
@@ -747,6 +803,9 @@ export function GlobalSetupWizard({
                 onChange={(v) => set("closing", v)}
                 testId="closing"
                 defaultDate={form.date_end}
+                defaultFrom={form.daily_end}
+                defaultTo={plusHour(form.daily_end)}
+                note={closeNote}
               >
                 <div className="mt-4 flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                   <Info
@@ -897,6 +956,18 @@ export function GlobalSetupWizard({
                 />
               </Field>
             </div>
+            {openNote || closeNote ? (
+              /* The ceremony days differ, and they are worked out from the
+                 ceremonies themselves. Shown here so this step never reads as
+                 if play starts at 09:00 on a morning the ceremony owns. */
+              <div
+                data-testid="ceremony-day-times"
+                className="flex flex-col gap-1 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground"
+              >
+                {openNote ? <p>{openNote}</p> : null}
+                {closeNote ? <p>{closeNote}</p> : null}
+              </div>
+            ) : null}
             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {t("Pace")}
             </h4>
@@ -1001,6 +1072,12 @@ export function GlobalSetupWizard({
               v={form.sunday_church ? t("Free until 13:00") : t("Open")}
             />
               </dl>
+              {openNote || closeNote ? (
+                <div className="mt-4 flex flex-col gap-1 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                  {openNote ? <p>{openNote}</p> : null}
+                  {closeNote ? <p>{closeNote}</p> : null}
+                </div>
+              ) : null}
             </Panel>
           )}
         </div>

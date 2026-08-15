@@ -335,6 +335,60 @@ describe("GlobalSetupWizard", () => {
     expect(screen.getByTestId("closing-date")).toHaveValue("2026-08-05");
   });
 
+  it("ceremonies set the first and last match times on their own day", async () => {
+    wrap(<GlobalSetupWizard tournamentId="t1" onClose={() => {}} />);
+    fireEvent.change(await screen.findByLabelText("First match day"), {
+      target: { value: "2026-08-16" },
+    });
+    fireEvent.change(screen.getByLabelText("Last match day"), {
+      target: { value: "2026-08-17" },
+    });
+
+    // Opening seeds at the start of play and pushes the first match to its end.
+    await userEvent.click(screen.getByTestId("opening-add"));
+    expect(screen.getByLabelText("Opening ceremony from")).toHaveValue("09:00");
+    expect(screen.getByTestId("opening-note")).toHaveTextContent(
+      "First match on Aug 16 at 10:00.",
+    );
+
+    // Closing seeds at the END of play, so by default it costs no play time.
+    await userEvent.click(screen.getByTestId("closing-add"));
+    expect(screen.getByLabelText("Closing ceremony from")).toHaveValue("18:00");
+    expect(screen.queryByTestId("closing-note")).toBeNull();
+
+    // Moved into the afternoon, it ends play when it starts.
+    fireEvent.change(screen.getByLabelText("Closing ceremony from"), {
+      target: { value: "16:00" },
+    });
+    expect(screen.getByTestId("closing-note")).toHaveTextContent(
+      "Matches on Aug 17 finish by 16:00.",
+    );
+
+    // The Play times step reads the same derived lines (it used to claim 09:00
+    // on a morning the opening ceremony owns).
+    await toStep(2);
+    const notes = screen.getByTestId("ceremony-day-times");
+    expect(notes).toHaveTextContent("First match on Aug 16 at 10:00.");
+    expect(notes).toHaveTextContent("Matches on Aug 17 finish by 16:00.");
+  });
+
+  it("warns when a ceremony would swallow its whole day", async () => {
+    wrap(<GlobalSetupWizard tournamentId="t1" onClose={() => {}} />);
+    fireEvent.change(await screen.findByLabelText("First match day"), {
+      target: { value: "2026-08-16" },
+    });
+    fireEvent.change(screen.getByLabelText("Last match day"), {
+      target: { value: "2026-08-17" },
+    });
+    await userEvent.click(screen.getByTestId("closing-add"));
+    fireEvent.change(screen.getByLabelText("Closing ceremony from"), {
+      target: { value: "08:00" },
+    });
+    expect(screen.getByTestId("closing-note")).toHaveTextContent(
+      "This covers all of Aug 17. No matches that day.",
+    );
+  });
+
   it("opens at the deep-linked step, rendered inline (not as a modal)", async () => {
     wrap(
       <GlobalSetupWizard tournamentId="t1" onClose={() => {}} initialStep={1} />,

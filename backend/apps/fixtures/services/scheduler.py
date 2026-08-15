@@ -382,13 +382,20 @@ def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> l
             if day is None:
                 continue
             venues = [str(v) for v in p.get("venues") or []] or None
+            label = str(p.get("label") or "")
             cfg.constraint_rules.append(ScopedRule(ctype, "all", True, weight, {
                 "date": day,
                 "from": _parse_time(p.get("from"), cfg.daily_start),
                 "to": _parse_time(p.get("to"), cfg.daily_end),
                 "venues": venues,
+                "label": label,
             }, record=c))
-            notes.append(f"Ceremony block on {day} removed from the grid.")
+            notes.append(
+                f"Ceremony block on {day} removed from the grid."
+                if label not in ("opening", "closing") else
+                f"{label.title()} ceremony on {day}: play "
+                f"{'starts after it' if label == 'opening' else 'ends before it'}."
+            )
         elif ctype == "reserve_days":
             # Activated reserve days (rain-day shift, increment D) are in
             # use — they re-join the calendar instead of being excluded.
@@ -567,6 +574,25 @@ def _subtract_windows(
     return out
 
 
+def ceremony_window(params: dict[str, Any]) -> tuple[time, time]:
+    """The stretch of the ceremony's day that carries no matches.
+
+    A plain ceremony block (no label — the advanced builder's own record) cuts
+    exactly its own window. The wizard's OPENING and CLOSING ceremonies bound
+    the day instead, because that is what they mean: the tournament opens with
+    the opening ceremony, so nothing runs before it ends, and it closes with
+    the closing ceremony, so nothing runs after it starts (owner 2026-08-15).
+    Day bounds are used rather than ``daily_start``/``daily_end`` so the cut is
+    right whatever a venue's own window is — the caller intersects."""
+    label = str(params.get("label") or "")
+    frm, to = params["from"], params["to"]
+    if label == "opening":
+        return (time.min, to)
+    if label == "closing":
+        return (frm, time.max)
+    return (frm, to)
+
+
 def build_slots(cfg: ScheduleConfig) -> list[tuple[datetime, str, datetime]]:
     """Enumerate candidate (start, venue, window_end) slots across the
     calendar. Starts step by ``slot_minutes``; whether a given match FITS a
@@ -616,7 +642,7 @@ def build_slots(cfg: ScheduleConfig) -> list[tuple[datetime, str, datetime]]:
                     if not r.params.get("days") or d.weekday() in r.params["days"]
                 ]
                 cuts += [
-                    (r.params["from"], r.params["to"]) for r in ceremonies
+                    ceremony_window(r.params) for r in ceremonies
                     if r.params.get("date") == d and (
                         not r.params.get("venues")
                         or base in r.params["venues"] or venue in r.params["venues"]
@@ -1734,8 +1760,9 @@ def validate_schedule(
             if wanted and base_of.get(venue, venue) not in wanted \
                     and venue not in wanted:
                 continue
-            ws = datetime.combine(dt.date(), r.params["from"])
-            we = datetime.combine(dt.date(), r.params["to"])
+            c_from, c_to = ceremony_window(r.params)
+            ws = datetime.combine(dt.date(), c_from)
+            we = datetime.combine(dt.date(), c_to)
             if dt < we and ws < end:
                 violations.append({
                     "code": "ceremony_block", "hard": True, "match_id": mid,

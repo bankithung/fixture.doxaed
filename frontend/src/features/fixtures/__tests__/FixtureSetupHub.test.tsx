@@ -30,8 +30,10 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       stage: vi.fn(),
       fixtureReadiness: vi.fn(),
       drawConfig: vi.fn(),
+      updateDrawConfig: vi.fn(),
       venues: vi.fn(),
       settings: vi.fn(),
+      updateSettings: vi.fn(),
       constraintTypes: vi.fn(),
       sports: vi.fn(),
       scheduleChanges: vi.fn(),
@@ -165,14 +167,22 @@ beforeEach(() => {
     defaults: { format: "round_robin" } as unknown as DrawConfig,
   });
   vi.mocked(tournamentsApi.venues).mockResolvedValue({ venues: [] });
-  vi.mocked(tournamentsApi.settings).mockResolvedValue({
+  const SETTINGS = {
     rules: {},
     constraints: [],
     rules_frozen_at: null,
     can_edit: true,
     can_manage: true,
     can_delete: true,
-  } as unknown as TournamentSettings);
+  } as unknown as TournamentSettings;
+  vi.mocked(tournamentsApi.settings).mockResolvedValue(SETTINGS);
+  vi.mocked(tournamentsApi.updateSettings).mockResolvedValue(SETTINGS);
+  vi.mocked(tournamentsApi.updateDrawConfig).mockResolvedValue({
+    leaf_key: "*",
+    draw_config: {},
+    effective: { format: "round_robin" } as unknown as DrawConfig,
+    has_matches: false,
+  });
   vi.mocked(tournamentsApi.constraintTypes).mockResolvedValue([]);
   vi.mocked(tournamentsApi.sports).mockResolvedValue({ sports: [] });
   vi.mocked(tournamentsApi.scheduleChanges).mockResolvedValue({ results: [] });
@@ -294,6 +304,36 @@ describe("FixtureSetupHub", () => {
     expect(
       await screen.findByTestId("global-setup-inline"),
     ).toBeInTheDocument();
+  });
+
+  it("a per-step Save keeps you in the wizard instead of jumping to Clashes", async () => {
+    // Owner bug 2026-08-15: saving on a sub-step satisfied the globals gate,
+    // the wizard unmounted, and the body fell through to the next unfinished
+    // stage (Clashes & sessions) mid-edit.
+    mockGlobalsUnset();
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+    const panel = await screen.findByTestId("global-setup-inline");
+
+    await userEvent.type(
+      within(panel).getByLabelText("First match day"),
+      "2026-08-16",
+    );
+    await userEvent.type(
+      within(panel).getByLabelText("Last match day"),
+      "2026-08-17",
+    );
+    // The save makes the globals checks pass — the gate that opened the wizard
+    // is now satisfied.
+    vi.mocked(tournamentsApi.fixtureReadiness).mockResolvedValue(READINESS);
+    await userEvent.click(within(panel).getByTestId("save-step"));
+
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalled(),
+    );
+    // Still Step 1, still the same sub-step — no Clashes page, no jump.
+    const after = await screen.findByTestId("global-setup-inline");
+    expect(within(after).getByText("Step 1 of 4")).toBeInTheDocument();
+    expect(screen.queryByTestId("save-clashes")).toBeNull();
   });
 
   it("gate engages on legacy scheduling data: drawn matches + ready leaves never surface Preview before Step 1", async () => {

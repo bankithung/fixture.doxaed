@@ -24,6 +24,9 @@ export function CeremonyField({
   onChange,
   testId,
   defaultDate,
+  defaultFrom = "09:00",
+  defaultTo = "10:00",
+  note,
   tone = "opening",
   children,
 }: {
@@ -34,6 +37,15 @@ export function CeremonyField({
   /** Auto-detected date (e.g. the first/last match day) the ceremony defaults
    * to when added — still editable after. */
   defaultDate?: string;
+  /** Auto-detected window the ceremony defaults to, taken from the daily play
+   * times: an opening sits at the start of play, a closing at the end. Matters
+   * because these two ceremonies bound the day (see `note`) — a closing
+   * defaulting to the morning would block the whole last day. */
+  defaultFrom?: string;
+  defaultTo?: string;
+  /** What this ceremony does to the day's play times, in words. Shown under
+   * the inputs so the effect is read where it is set. */
+  note?: string;
   /** Drives the coloured icon: opening = primary, closing = destructive. */
   tone?: "opening" | "closing";
   /** Extra content rendered at the bottom of the panel once a ceremony exists
@@ -81,7 +93,11 @@ export function CeremonyField({
           className="mt-3 border-primary text-primary hover:bg-accent hover:text-primary"
           data-testid={testId ? `${testId}-add` : undefined}
           onClick={() =>
-            onChange({ date: defaultDate ?? "", from: "09:00", to: "10:00" })
+            onChange({
+              date: defaultDate ?? "",
+              from: defaultFrom,
+              to: defaultTo,
+            })
           }
         >
           {t("Add")}
@@ -149,6 +165,15 @@ export function CeremonyField({
           </div>
         </div>
       )}
+
+      {value !== null && note ? (
+        <p
+          data-testid={testId ? `${testId}-note` : undefined}
+          className="mt-3 text-xs text-muted-foreground"
+        >
+          {note}
+        </p>
+      ) : null}
 
       {value !== null ? children : null}
     </section>

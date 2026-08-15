@@ -581,6 +581,13 @@ export function FixtureSetupHub({
     setGateDismissed(true);
     if (wasFlow) setView("clashes");
   };
+  /** A per-step Save inside the wizard: stay exactly where the user is. The
+   * gate-derived `setupView` above would evaporate the moment the saved dates
+   * make `globalsUnset` false, so pin the wizard to real state on that step —
+   * saving must never move you to another journey step. */
+  const savedSetupInPlace = (step: number): void => {
+    setSetup({ step, flow: setupView?.flow });
+  };
 
   /** Which page the body is currently showing — so the stepper highlights the
    * page you're on (Step 1 wizard / gate → 1, sub-pages → 2/3, the competition
@@ -762,6 +769,7 @@ export function FixtureSetupHub({
           initialStep={setupView.step}
           onClose={closeSetup}
           onSaved={savedSetup}
+          onSavedInPlace={savedSetupInPlace}
         />
       ) : globalsUnset ? (
         /* §6.1 empty state — nothing else is actionable before dates + venues. */

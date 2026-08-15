@@ -109,6 +109,53 @@ def test_ceremony_block_without_venues_blocks_everything():
     assert res.assignments["m"][0].time() >= time(11, 0)
 
 
+def test_opening_ceremony_holds_the_whole_morning_before_it():
+    """Owner 2026-08-15: the tournament OPENS with the opening ceremony, so
+    play starts when it ends — not before it, and not only after its own
+    window. Other days keep their normal morning."""
+    cfg = _cfg(date_start=SAT, date_end=SUN)
+    merge_stored_constraints(cfg, [
+        {"type": "ceremony_block",
+         "params": {"date": "2026-08-01", "from": "10:00", "to": "11:00",
+                    "label": "opening"}},
+    ])
+    slots = build_slots(cfg)
+    day1 = [dt.time() for dt, _v, _w in slots if dt.date() == SAT]
+    assert day1 and min(day1) == time(11, 0)
+    day2 = [dt.time() for dt, _v, _w in slots if dt.date() == SUN]
+    assert min(day2) == time(9, 0)
+
+
+def test_closing_ceremony_ends_play_before_it():
+    """…and CLOSES with the closing one: nothing is scheduled after it starts,
+    including a match that would only run past it."""
+    cfg = _cfg(date_start=SAT, date_end=SUN, slot_minutes=60)
+    merge_stored_constraints(cfg, [
+        {"type": "ceremony_block",
+         "params": {"date": "2026-08-02", "from": "16:00", "to": "17:00",
+                    "label": "closing"}},
+    ])
+    slots = build_slots(cfg)
+    day2 = [(dt.time(), w.time()) for dt, _v, w in slots if dt.date() == SUN]
+    assert day2 and max(s for s, _w in day2) == time(15, 0)
+    assert all(w <= time(16, 0) for _s, w in day2)  # a match can't run into it
+    day1 = [dt.time() for dt, _v, _w in slots if dt.date() == SAT]
+    assert max(day1) == time(17, 0)  # the other day plays to the daily end
+
+
+def test_unlabelled_ceremony_block_still_cuts_only_its_own_window():
+    """The advanced builder's plain ceremony block is unchanged — only the
+    wizard's opening/closing carry the day-bounding meaning."""
+    cfg = _cfg()
+    merge_stored_constraints(cfg, [
+        {"type": "ceremony_block",
+         "params": {"date": "2026-08-01", "from": "12:00", "to": "13:00"}},
+    ])
+    starts = [dt.time() for dt, _v, _w in build_slots(cfg)]
+    assert time(9, 0) in starts and time(13, 0) in starts
+    assert time(12, 0) not in starts
+
+
 def test_reserve_days_excluded_at_generation():
     cfg = _cfg(date_end=SUN)
     merge_stored_constraints(cfg, [

@@ -159,7 +159,17 @@ def _capacity_check(tournament, teams_by_leaf: dict[str, list]) -> dict | None:
                 and str(c.get("scope") or "all") == "all":
             break_minutes += _minutes(p.get("from"), p.get("to"))
         elif ctype == "ceremony_block" and not p.get("venues"):
-            ceremony_minutes += _minutes(p.get("from"), p.get("to"))
+            # Opening/closing ceremonies bound their day (scheduler
+            # ``ceremony_window``): nothing plays before the opening ends or
+            # after the closing starts, so the day loses that whole stretch,
+            # not just the ceremony's own hour.
+            label = str(p.get("label") or "")
+            if label == "opening":
+                ceremony_minutes += _minutes(cal.get("daily_start"), p.get("to"))
+            elif label == "closing":
+                ceremony_minutes += _minutes(p.get("from"), cal.get("daily_end"))
+            else:
+                ceremony_minutes += _minutes(p.get("from"), p.get("to"))
         elif ctype == "official_capacity":
             scope = str(c.get("scope") or "")
             if scope.startswith("sport:"):
