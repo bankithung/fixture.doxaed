@@ -619,12 +619,29 @@ export function GlobalSetupWizard({
   // mystery. Same text under the ceremony, on Play times and in the review.
   const openEffect = ceremonyEffect(form, "opening");
   const closeEffect = ceremonyEffect(form, "closing");
-  const openNote = openEffect
+  // A ceremony dated outside the match days changes nothing — the engine only
+  // cuts the day it sits on (scheduler `ceremony_window`). Say so loudly:
+  // moving the date range later leaves the old ceremony date behind, and it
+  // then silently stops setting the first/last match time (owner 2026-08-15).
+  const offRange = (c: CeremonyValue | null): boolean =>
+    Boolean(
+      c?.date &&
+        form.date_start &&
+        form.date_end &&
+        (c.date < form.date_start || c.date > form.date_end),
+    );
+  const openOff = offRange(form.opening);
+  const closeOff = offRange(form.closing);
+  const openNote = openOff
+    ? t(`This is not a match day (your matches run ${fmtDay(form.date_start)} to ${fmtDay(form.date_end)}), so it does not set the first match time.`)
+    : openEffect
     ? openEffect.empty
       ? t(`This covers all of ${fmtDay(openEffect.day)}. Set it inside the play window or no matches can run.`)
       : t(`First match set to ${openEffect.time}, when this ends.`)
     : undefined;
-  const closeNote = closeEffect
+  const closeNote = closeOff
+    ? t(`This is not a match day (your matches run ${fmtDay(form.date_start)} to ${fmtDay(form.date_end)}), so it does not set the last match time.`)
+    : closeEffect
     ? closeEffect.empty
       ? t(`This covers all of ${fmtDay(closeEffect.day)}. Set it inside the play window or no matches can run.`)
       : t(`Last match must finish by ${closeEffect.time}, when this starts.`)
@@ -845,6 +862,7 @@ export function GlobalSetupWizard({
                 defaultFrom={form.daily_start}
                 defaultTo={plusHour(form.daily_start)}
                 note={openNote}
+                noteTone={openOff ? "warning" : "muted"}
               />
               <CeremonyField
                 label={t("Closing ceremony")}
@@ -856,6 +874,7 @@ export function GlobalSetupWizard({
                 defaultFrom={form.daily_end}
                 defaultTo={plusHour(form.daily_end)}
                 note={closeNote}
+                noteTone={closeOff ? "warning" : "muted"}
               >
                 <div className="mt-4 flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                   <Info

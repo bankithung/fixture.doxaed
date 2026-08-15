@@ -68,6 +68,16 @@ export type GroupBy =
   | "competition"
   | "group";
 
+/** How each banding reads in the toolbar and on an export's cover line. */
+export const GROUP_LABELS: Record<GroupBy, string> = {
+  day_venue: "Day and court",
+  day: "Day",
+  venue: "Court",
+  competition: "Competition",
+  group: "Group",
+  none: "No grouping",
+};
+
 /** Every filter the toolbar owns. "" always means "all". */
 export interface GridFilters {
   q: string;
@@ -117,6 +127,17 @@ export function addMinutes(hhmm: string, mins: number): string {
   return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(
     total % 60,
   ).padStart(2, "0")}`;
+}
+
+/** Wall clock in the house 12-hour reading: "13:59" -> "1:59 PM" (owner
+ * 2026-08-15 — organisers read schedules in am/pm, never 24-hour). Sorting and
+ * filtering still use the raw 24-hour value, so the sheet stays in play order. */
+export function fmtClock(hhmm: string): string {
+  if (!hhmm) return "";
+  const [h, m] = hhmm.split(":").map(Number);
+  const hour24 = h ?? 0;
+  const hour = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${hour}:${String(m ?? 0).padStart(2, "0")} ${hour24 < 12 ? "AM" : "PM"}`;
 }
 
 /** "13:59" -> minutes since midnight. */
@@ -274,6 +295,47 @@ export function facetsFor(
     : out.sort((a, b) => a.label.localeCompare(b.label));
 }
 
+const FILTER_TITLES: Record<keyof GridFilters, string> = {
+  q: "Search",
+  sport: "Sport",
+  category: "Category",
+  day: "Day",
+  venue: "Venue",
+  stage: "Stage",
+  round: "Round",
+  status: "Status",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  placed: "Scheduled",
+  unplaced: "No time yet",
+};
+
+/** The applied filters in one plain line ("Sport: Table Tennis · Status: No
+ * time yet") — what an export has to state so a printed sheet is never
+ * mistaken for the whole draw. "" when nothing is filtered. */
+export function filterSummary(
+  rows: readonly PreviewRow[],
+  f: GridFilters,
+): string {
+  const label = (field: keyof typeof FACET_OF, value: string): string =>
+    facetsFor(rows, EMPTY_FILTERS, field).find((o) => o.value === value)?.label ??
+    value;
+  const parts: string[] = [];
+  for (const key of Object.keys(FILTER_TITLES) as (keyof GridFilters)[]) {
+    const v = f[key];
+    if (!v) continue;
+    const shown =
+      key === "q"
+        ? `"${v}"`
+        : key === "status"
+          ? t(STATUS_LABELS[v] ?? v)
+          : label(key, v);
+    parts.push(`${t(FILTER_TITLES[key])}: ${shown}`);
+  }
+  return parts.join(" · ");
+}
+
 /** Chronological baseline: day, then kickoff, then venue, then ref. Rows with
  * no time sink to the bottom — they are work still to do, not 00:00 matches. */
 function chronoKey(r: PreviewRow): string {
@@ -408,9 +470,57 @@ export function idleWindows(
   return idle;
 }
 
+/** A configured no-play window from the tournament's rules (the wizard's
+ * daily break, a Sunday church window, …). */
+export interface BlackoutWindow {
+  from: string;
+  to: string;
+  /** Weekday keys ("sun", "mon"…); empty/absent = every day. */
+  days?: string[];
+  /** Stored label ("daily_break") — humanized for the sheet. */
+  label?: string;
+}
+
 export type GridLine =
   | { kind: "match"; row: PreviewRow }
-  | { kind: "break"; key: string; from: string; to: string; minutes: number };
+  | {
+      kind: "break";
+      key: string;
+      from: string;
+      to: string;
+      minutes: number;
+      /** What this gap IS: a scheduled break, or an idle court. */
+      label: string;
+    };
+
+const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+/** Humanize a stored blackout label ("daily_break" -> "Daily break"). */
+export function blackoutLabel(label: string | undefined): string {
+  if (!label) return t("Scheduled break");
+  const words = label.replace(/[_.]+/g, " ").trim();
+  return words ? words[0]!.toUpperCase() + words.slice(1) : t("Scheduled break");
+}
+
+/** The configured window covering most of an idle stretch, if any — that is
+ * what turns "the court happens to be free" into "this is the break you set". */
+function coveringBlackout(
+  start: number,
+  end: number,
+  day: string,
+  windows: readonly BlackoutWindow[],
+): BlackoutWindow | null {
+  const weekday = day ? WEEKDAY_KEYS[new Date(`${day}T00:00:00`).getDay()] : "";
+  for (const w of windows) {
+    if (w.days?.length && weekday && !w.days.includes(weekday)) continue;
+    const overlap =
+      Math.min(end, toMinutes(w.to)) - Math.max(start, toMinutes(w.from));
+    // Half the gap (or a solid 30 minutes) inside the window is enough: play
+    // rarely ends exactly on the break's edge.
+    if (overlap > 0 && overlap >= Math.min(30, (end - start) / 2)) return w;
+  }
+  return null;
+}
 
 /**
  * Interleave "no play" lines into one court's day: a break shows only where
@@ -420,6 +530,9 @@ export type GridLine =
 export function linesWithBreaks(
   rows: readonly PreviewRow[],
   busy: readonly [number, number][],
+  /** The tournament's configured no-play windows, so a scheduled break reads
+   * as one instead of looking like an unexplained hole in the day. */
+  blackouts: readonly BlackoutWindow[] = [],
 ): GridLine[] {
   const out: GridLine[] = [];
   rows.forEach((row, i) => {
@@ -430,12 +543,14 @@ export function linesWithBreaks(
     const gapEnd = toMinutes(next.start);
     idleWindows(gapStart, gapEnd, busy).forEach(([s, e], j) => {
       if (e - s >= BREAK_MIN) {
+        const w = coveringBlackout(s, e, row.day, blackouts);
         out.push({
           kind: "break",
           key: `brk-${row.ref}-${j}`,
           from: fromMinutes(s),
           to: fromMinutes(e),
           minutes: e - s,
+          label: w ? blackoutLabel(w.label) : t("Court free"),
         });
       }
     });
@@ -446,8 +561,8 @@ export function linesWithBreaks(
 const CSV_COLUMNS: [string, (r: PreviewRow) => string][] = [
   ["Date", (r) => r.day],
   ["Day", (r) => r.dayLabel],
-  ["Start", (r) => r.start],
-  ["End", (r) => r.end],
+  ["Start", (r) => fmtClock(r.start)],
+  ["End", (r) => fmtClock(r.end)],
   ["Minutes", (r) => (r.minutes == null ? "" : String(r.minutes))],
   ["Venue", (r) => (r.placed || r.day ? r.venue : "")],
   ["Sport", (r) => r.sportLabel],

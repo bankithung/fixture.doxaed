@@ -44,12 +44,19 @@ import {
   applyFilters,
   buildRows,
   EMPTY_FILTERS,
-  toCsv,
+  filterSummary,
+  GROUP_LABELS,
+  type BlackoutWindow,
   type ColumnKey,
   type GridFilters,
   type GridSort,
   type GroupBy,
 } from "./previewGrid";
+import {
+  downloadPreviewCsv,
+  openPreviewPdf,
+  type PreviewExportMeta,
+} from "./previewExport";
 import { competitionLabel } from "./previewFilters";
 import { ViolationsPanel } from "./ViolationsPanel";
 
@@ -155,6 +162,13 @@ export function DryRunPreviewPage(): React.ReactElement {
     queryKey: qk.fixtureReadiness(id),
     queryFn: () => tournamentsApi.fixtureReadiness(id),
   });
+  // The tournament's own no-play windows (the wizard's daily break, a Sunday
+  // window): the sheet names a scheduled break instead of showing an
+  // unexplained hole in the day.
+  const settingsQ = useQuery({
+    queryKey: qk.settings(id),
+    queryFn: () => tournamentsApi.settings(id),
+  });
   // Publish → control room handoff (control room spec §3.2): once the
   // tournament is `ready`, a successful publish lands in the cockpit.
   const stageQ = useQuery({
@@ -199,6 +213,31 @@ export function DryRunPreviewPage(): React.ReactElement {
       (readiness.data === undefined ? "" : leaf || t("All competitions")));
 
   const p = preview.data;
+
+  const blackouts = useMemo(
+    (): BlackoutWindow[] =>
+      (settingsQ.data?.constraints ?? [])
+        .filter(
+          (c) =>
+            c.type === "recurring_blackout_window" && c.hard && c.scope === "all",
+        )
+        .map((c) => {
+          const prm = c.params as {
+            from?: string;
+            to?: string;
+            days?: string[];
+            label?: string;
+          };
+          return {
+            from: prm.from ?? "",
+            to: prm.to ?? "",
+            days: prm.days ?? [],
+            label: prm.label ?? "",
+          };
+        })
+        .filter((w) => w.from && w.to),
+    [settingsQ.data],
+  );
 
   // The spreadsheet model: every previewed match as a row, then the toolbar's
   // filters. Both the sheet AND the draw views read from the same filtered
@@ -292,16 +331,30 @@ export function DryRunPreviewPage(): React.ReactElement {
           : null,
     );
 
-  /** Export exactly what the filters are showing, in the order shown. */
-  const onExport = (): void => {
-    const blob = new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `fixture-preview-${id}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  /** What both exports say about themselves: they carry exactly what the
+   * filters are showing, and they are a trial run, not a published schedule. */
+  const exportMeta = useMemo(
+    (): PreviewExportMeta => ({
+      title: label || t("Fixture preview"),
+      filterSummary: filterSummary(allRows, filters),
+      shown: rows.length,
+      total: allRows.length,
+      groupLabel: t(GROUP_LABELS[groupBy]),
+      unplaced: p?.unscheduled.length ?? 0,
+    }),
+    [label, allRows, filters, rows.length, groupBy, p],
+  );
+
+  const onExportCsv = (): void => downloadPreviewCsv(rows, exportMeta);
+  const onExportPdf = (): void =>
+    openPreviewPdf({
+      rows,
+      sort,
+      groupBy,
+      occupancy: p?.matches,
+      blackouts,
+      meta: exportMeta,
+    });
 
   /** Publish = the real generate + schedule endpoints replaying the previewed
    * seed, both guarded by `expected_inputs_hash` (D6/D10). */
@@ -710,7 +763,8 @@ export function DryRunPreviewPage(): React.ReactElement {
               groupBy={groupBy}
               onGroupBy={setGroupBy}
               visible={rows.length}
-              onExport={onExport}
+              onExportCsv={onExportCsv}
+              onExportPdf={onExportPdf}
             />
             <MatchesSpreadsheet
               rows={rows}
@@ -718,6 +772,7 @@ export function DryRunPreviewPage(): React.ReactElement {
               onSort={onSort}
               groupBy={groupBy}
               occupancy={p.matches}
+              blackouts={blackouts}
               filtered={filtersOn}
               onClearFilters={() => setFilters(EMPTY_FILTERS)}
             />
@@ -731,7 +786,8 @@ export function DryRunPreviewPage(): React.ReactElement {
               groupBy={groupBy}
               onGroupBy={setGroupBy}
               visible={rows.length}
-              onExport={onExport}
+              onExportCsv={onExportCsv}
+              onExportPdf={onExportPdf}
             />
             <div className="max-h-[65vh] overflow-auto px-3 py-3">
               {selectedLeaf ? (

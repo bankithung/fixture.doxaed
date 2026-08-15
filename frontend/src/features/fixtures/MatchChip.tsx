@@ -1,7 +1,7 @@
 import type { PreviewMatch } from "@/api/tournaments";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { addMinutes, clockOf } from "./previewGrid";
+import { addMinutes, clockOf, fmtClock } from "./previewGrid";
 import { competitionLabel } from "./previewFilters";
 import { shortGroupName } from "./groupSlotLabel";
 import { LeafLabel } from "./LeafLabel";
@@ -44,11 +44,11 @@ export function MatchChip({
       {/* meta: kickoff (and end) time, round, length */}
       <div className="flex items-center gap-1.5">
         <span className="font-tabular text-xs font-semibold">
-          {start || "·"}
+          {fmtClock(start) || "·"}
           {start && dur ? (
             <span className="font-normal text-muted-foreground">
-              {" - "}
-              {addMinutes(start, dur)}
+              {" to "}
+              {fmtClock(addMinutes(start, dur))}
             </span>
           ) : null}
         </span>

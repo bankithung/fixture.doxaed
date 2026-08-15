@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Download, Search, X } from "lucide-react";
+import { Download, FileText, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, type SelectOption } from "@/components/ui/Select";
@@ -8,6 +8,7 @@ import { t } from "@/lib/t";
 import {
   EMPTY_FILTERS,
   facetsFor,
+  GROUP_LABELS,
   type GridFilters,
   type GroupBy,
   type PreviewRow,
@@ -25,14 +26,9 @@ const FACET_FIELDS = [
 
 type FacetField = (typeof FACET_FIELDS)[number][0];
 
-const GROUP_OPTIONS: SelectOption[] = [
-  { value: "day_venue", label: t("Day and court") },
-  { value: "day", label: t("Day") },
-  { value: "venue", label: t("Court") },
-  { value: "competition", label: t("Competition") },
-  { value: "group", label: t("Group") },
-  { value: "none", label: t("No grouping") },
-];
+const GROUP_OPTIONS: SelectOption[] = (
+  Object.keys(GROUP_LABELS) as GroupBy[]
+).map((value) => ({ value, label: t(GROUP_LABELS[value]) }));
 
 const STATUS_OPTIONS: SelectOption[] = [
   { value: "", label: t("Any status") },
@@ -74,9 +70,10 @@ function Chip({
  * The spreadsheet's filter bar, ERP-style (owner ask 2026-08-15): a search box
  * plus one dropdown per column facet, each counting rows against the OTHER
  * filters, the applied filters restated as removable chips, a group-by
- * control, the visible/total tally and a CSV export of exactly what is on
- * screen. Selection is lifted so the page can drive the sheet and the
- * competition views from the same state.
+ * control, the visible/total tally and two exports — CSV for a spreadsheet,
+ * PDF for the landscape run sheet — both carrying exactly what is on screen.
+ * Selection is lifted so the page can drive the sheet and the competition
+ * views from the same state.
  */
 export function PreviewToolbar({
   rows,
@@ -85,7 +82,8 @@ export function PreviewToolbar({
   groupBy,
   onGroupBy,
   visible,
-  onExport,
+  onExportCsv,
+  onExportPdf,
 }: {
   /** ALL rows (unfiltered) — facets count against them. */
   rows: PreviewRow[];
@@ -95,7 +93,9 @@ export function PreviewToolbar({
   onGroupBy: (g: GroupBy) => void;
   /** How many rows survive the current filters. */
   visible: number;
-  onExport: () => void;
+  /** Both exports carry exactly what the filters are showing. */
+  onExportCsv: () => void;
+  onExportPdf: () => void;
 }): React.ReactElement {
   const facets = useMemo(() => {
     const out = {} as Record<FacetField, ReturnType<typeof facetsFor>>;
@@ -225,12 +225,22 @@ export function PreviewToolbar({
           <Button
             variant="outline"
             data-testid="export-csv"
-            onClick={onExport}
+            onClick={onExportCsv}
             className="px-2.5 text-xs"
-            title={t("Download the rows you can see")}
+            title={t("Download the rows you can see as a spreadsheet")}
           >
             <Download aria-hidden="true" className="h-3.5 w-3.5" />
             {t("CSV")}
+          </Button>
+          <Button
+            variant="outline"
+            data-testid="export-pdf"
+            onClick={onExportPdf}
+            className="px-2.5 text-xs"
+            title={t("Print or save the rows you can see, landscape")}
+          >
+            <FileText aria-hidden="true" className="h-3.5 w-3.5" />
+            {t("PDF")}
           </Button>
         </div>
       </div>

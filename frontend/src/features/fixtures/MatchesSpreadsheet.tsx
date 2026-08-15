@@ -5,10 +5,12 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import {
+  fmtClock,
   groupRows,
   linesWithBreaks,
   occupancyByCourt,
   sortRows,
+  type BlackoutWindow,
   type ColumnKey,
   type GridSort,
   type GroupBy,
@@ -38,16 +40,22 @@ const COLUMNS: Column[] = [
   {
     key: "start",
     label: "Start",
-    width: "w-16",
+    width: "w-20",
     phone: true,
-    cell: (r) => <span className="font-tabular">{r.start || "·"}</span>,
+    cell: (r) => (
+      <span className="whitespace-nowrap font-tabular">
+        {fmtClock(r.start) || "·"}
+      </span>
+    ),
   },
   {
     key: "end",
     label: "End",
-    width: "w-16",
+    width: "w-20",
     cell: (r) => (
-      <span className="font-tabular text-muted-foreground">{r.end || "·"}</span>
+      <span className="whitespace-nowrap font-tabular text-muted-foreground">
+        {fmtClock(r.end) || "·"}
+      </span>
     ),
   },
   {
@@ -156,6 +164,7 @@ export function MatchesSpreadsheet({
   onSort,
   groupBy,
   occupancy,
+  blackouts,
   onClearFilters,
   filtered,
 }: {
@@ -166,6 +175,8 @@ export function MatchesSpreadsheet({
   groupBy: GroupBy;
   /** Every previewed match, so a break only shows when the court is truly free. */
   occupancy?: readonly PreviewMatch[];
+  /** Configured no-play windows, so a scheduled break says which one it is. */
+  blackouts?: readonly BlackoutWindow[];
   onClearFilters?: () => void;
   /** True when filters are hiding rows (drives the empty-state wording). */
   filtered?: boolean;
@@ -188,7 +199,11 @@ export function MatchesSpreadsheet({
       // mixes courts, where an "idle" gap would be meaningless.
       lines:
         groupBy === "day_venue"
-          ? linesWithBreaks(band.rows, busyByCourt.get(`${band.day}|${band.venue}`) ?? [])
+          ? linesWithBreaks(
+              band.rows,
+              busyByCourt.get(`${band.day}|${band.venue}`) ?? [],
+              blackouts ?? [],
+            )
           : band.rows.map((row) => ({ kind: "match" as const, row })),
     }));
     // Line numbers run continuously down the whole sheet, in the order the
@@ -200,7 +215,7 @@ export function MatchesSpreadsheet({
         .map((l, i) => [l.row.ref, i + 1] as const),
     );
     return { bands: grouped, lineNos: nos };
-  }, [rows, sort, groupBy, busyByCourt]);
+  }, [rows, sort, groupBy, busyByCourt, blackouts]);
 
   const span = columns.length + 1;
 
@@ -313,10 +328,11 @@ export function MatchesSpreadsheet({
                         <span className="flex items-center gap-1.5">
                           <Coffee aria-hidden="true" className="h-3 w-3 text-warning" />
                           <span className="text-[0.6875rem] font-medium">
-                            {t("Break")}
+                            {line.label}
                           </span>
                           <span className="font-tabular text-[0.6875rem] text-muted-foreground">
-                            {line.from}-{line.to} · {line.minutes} {t("min")}
+                            {fmtClock(line.from)} {t("to")} {fmtClock(line.to)} ·{" "}
+                            {line.minutes} {t("min")}
                           </span>
                         </span>
                       </td>

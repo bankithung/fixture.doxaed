@@ -203,6 +203,8 @@ describe("DryRunPreviewPage", () => {
     // together, banded by day and court (owner 2026-08-15).
     expect(screen.getByTestId("matches-spreadsheet")).toBeInTheDocument();
     expect(screen.getByTestId("sheet-row-p1")).toHaveTextContent("Alpha FC");
+    // Times read in 12-hour clock with am/pm, never 24-hour.
+    expect(screen.getByTestId("sheet-row-p1")).toHaveTextContent("9:00 AM");
     expect(screen.getByTestId("sheet-row-p2")).toBeInTheDocument();
     expect(screen.getByTestId("sheet-count")).toHaveTextContent("2 rows");
     expect(
@@ -253,8 +255,10 @@ describe("DryRunPreviewPage", () => {
       ],
     });
     mount();
-    // g1 ends 09:30, g2 starts 10:30 -> a break line inside the court band.
-    expect(await screen.findByText(/09:30-10:30/)).toBeInTheDocument();
+    // g1 ends 09:30, g2 starts 10:30 -> an idle-court line inside the band,
+    // in 12-hour clock (owner 2026-08-15).
+    expect(await screen.findByText(/9:30 AM to 10:30 AM/)).toBeInTheDocument();
+    expect(screen.getByText("Court free")).toBeInTheDocument();
   });
 
   it("does NOT mark a Break when another match fills the whole court gap", async () => {
@@ -281,7 +285,7 @@ describe("DryRunPreviewPage", () => {
     });
     mount();
     expect(await screen.findByTestId("sheet-row-g1")).toBeInTheDocument();
-    expect(screen.queryByText(/Break/)).toBeNull(); // court is busy, not idle
+    expect(screen.queryByText(/Court free/)).toBeNull(); // busy, not idle
   });
 
   it("marks a Break only in the IDLE part of a partly-filled gap", async () => {
@@ -309,8 +313,8 @@ describe("DryRunPreviewPage", () => {
     mount();
     expect(await screen.findByTestId("sheet-row-g1")).toBeInTheDocument();
     // Break only for the genuinely-idle 10:30-11:30 stretch, not the busy part.
-    expect(await screen.findByText(/10:30-11:30/)).toBeInTheDocument();
-    expect(screen.queryByText(/09:30-10:30/)).toBeNull();
+    expect(await screen.findByText(/10:30 AM to 11:30 AM/)).toBeInTheDocument();
+    expect(screen.queryByText(/9:30 AM to 10:30 AM/)).toBeNull();
   });
 
   it("moves between the sheet, the group stage and the knockout", async () => {

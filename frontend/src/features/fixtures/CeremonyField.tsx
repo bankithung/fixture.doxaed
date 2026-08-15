@@ -27,6 +27,7 @@ export function CeremonyField({
   defaultFrom = "09:00",
   defaultTo = "10:00",
   note,
+  noteTone = "muted",
   tone = "opening",
   children,
 }: {
@@ -46,6 +47,10 @@ export function CeremonyField({
   /** What this ceremony does to the day's play times, in words. Shown under
    * the inputs so the effect is read where it is set. */
   note?: string;
+  /** `warning` when the note is telling the organiser the ceremony does
+   * nothing (a date outside the match days) — that must not read as a quiet
+   * aside. */
+  noteTone?: "muted" | "warning";
   /** Drives the coloured icon: opening = primary, closing = destructive. */
   tone?: "opening" | "closing";
   /** Extra content rendered at the bottom of the panel once a ceremony exists
@@ -169,7 +174,12 @@ export function CeremonyField({
       {value !== null && note ? (
         <p
           data-testid={testId ? `${testId}-note` : undefined}
-          className="mt-3 text-xs text-muted-foreground"
+          className={cn(
+            "mt-3 text-xs",
+            noteTone === "warning"
+              ? "font-medium text-warning"
+              : "text-muted-foreground",
+          )}
         >
           {note}
         </p>

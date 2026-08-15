@@ -42,7 +42,8 @@ const ROWS = buildRows(
 function mount(filters: GridFilters = EMPTY_FILTERS) {
   const onFilters = vi.fn();
   const onGroupBy = vi.fn();
-  const onExport = vi.fn();
+  const onExportCsv = vi.fn();
+  const onExportPdf = vi.fn();
   render(
     <PreviewToolbar
       rows={ROWS}
@@ -51,10 +52,11 @@ function mount(filters: GridFilters = EMPTY_FILTERS) {
       groupBy="day_venue"
       onGroupBy={onGroupBy}
       visible={ROWS.length}
-      onExport={onExport}
+      onExportCsv={onExportCsv}
+      onExportPdf={onExportPdf}
     />,
   );
-  return { onFilters, onGroupBy, onExport };
+  return { onFilters, onGroupBy, onExportCsv, onExportPdf };
 }
 
 describe("PreviewToolbar", () => {
@@ -100,8 +102,9 @@ describe("PreviewToolbar", () => {
     expect(onFilters).toHaveBeenCalledWith(EMPTY_FILTERS);
   });
 
-  it("shows the visible/total tally and exports what is on screen", async () => {
-    const onExport = vi.fn();
+  it("shows the visible/total tally and offers both exports", async () => {
+    const onExportCsv = vi.fn();
+    const onExportPdf = vi.fn();
     render(
       <PreviewToolbar
         rows={ROWS}
@@ -110,12 +113,15 @@ describe("PreviewToolbar", () => {
         groupBy="day"
         onGroupBy={vi.fn()}
         visible={2}
-        onExport={onExport}
+        onExportCsv={onExportCsv}
+        onExportPdf={onExportPdf}
       />,
     );
     expect(screen.getByTestId("sheet-count")).toHaveTextContent("2 of 3 rows");
     await userEvent.click(screen.getByTestId("export-csv"));
-    expect(onExport).toHaveBeenCalled();
+    expect(onExportCsv).toHaveBeenCalled();
+    await userEvent.click(screen.getByTestId("export-pdf"));
+    expect(onExportPdf).toHaveBeenCalled();
   });
 
   it("changes the group bands", async () => {
