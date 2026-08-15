@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { tournamentsApi, type TeamRow } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { ScheduleWizard } from "@/features/tournaments/ScheduleWizard";
 import { StageContinue } from "@/features/tournaments/StageContinue";
@@ -919,15 +919,28 @@ export function FixtureSetupHub({
                 </p>
               </div>
               <span className="flex shrink-0 flex-wrap items-center gap-3">
-                {/* Handoff to the live-ops cockpit (control room spec §3.2). */}
-                <Link
-                  to={routes.tournamentControl(id)}
-                  data-testid="done-open-control"
-                  className={cn(buttonVariants({ size: "sm" }))}
-                >
-                  <Radio aria-hidden="true" className="h-4 w-4" />
-                  {t("Open control room")}
-                </Link>
+                {/* Handoff to the live-ops cockpit (control room spec §3.2).
+                    It runs the SAME stage flow as Continue — confirmation and
+                    all — so the two buttons on this page never disagree about
+                    what publishing did (owner 2026-08-15); once the stage is
+                    already Ready it just opens the room. */}
+                <StageContinue
+                  tournamentId={id}
+                  destination={routes.tournamentControl(id)}
+                  trigger={({ start, willAdvance, pending }) => (
+                    <Button
+                      size="sm"
+                      data-testid="done-open-control"
+                      disabled={pending}
+                      onClick={start}
+                    >
+                      <Radio aria-hidden="true" className="h-4 w-4" />
+                      {willAdvance
+                        ? t("Finish setup & open control room")
+                        : t("Open control room")}
+                    </Button>
+                  )}
+                />
                 <Button
                   size="sm"
                   variant="outline"

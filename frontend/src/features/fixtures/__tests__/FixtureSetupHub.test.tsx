@@ -28,6 +28,8 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       matches: vi.fn(),
       standings: vi.fn(),
       stage: vi.fn(),
+      previewStage: vi.fn(),
+      transitionStage: vi.fn(),
       fixtureReadiness: vi.fn(),
       drawConfig: vi.fn(),
       updateDrawConfig: vi.fn(),
@@ -139,6 +141,10 @@ function wrap(
             <Route
               path="/tournaments/t1/fixtures/preview"
               element={<div data-testid="preview-page" />}
+            />
+            <Route
+              path="/tournaments/t1/control"
+              element={<div data-testid="control-room-page" />}
             />
           </Routes>
         </MemoryRouter>
@@ -656,11 +662,11 @@ describe("FixtureSetupHub", () => {
 
     const banner = await screen.findByTestId("done-banner");
     expect(within(banner).getByText("Your schedule is out")).toBeInTheDocument();
-    // Handoff to the live-ops cockpit (control room spec §3.2).
-    expect(within(banner).getByTestId("done-open-control")).toHaveAttribute(
-      "href",
-      "/tournaments/t1/control",
-    );
+    // Handoff to the live-ops cockpit (control room spec §3.2) — the SAME
+    // verified stage move Continue runs, never a bare link past it.
+    expect(
+      within(banner).getByTestId("done-open-control"),
+    ).toBeInTheDocument();
     const share = within(banner).getByTestId("share-schedule");
     await waitFor(() => expect(share).toBeEnabled()); // slug resolved
     await userEvent.click(share);
@@ -675,6 +681,47 @@ describe("FixtureSetupHub", () => {
     await userEvent.click(screen.getByTestId("done-dismiss"));
     expect(screen.queryByTestId("done-banner")).toBeNull();
     expect(screen.getByTestId("share-schedule")).toBeInTheDocument();
+  });
+
+  it("Open control room runs the same confirmed stage move as Continue", async () => {
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([groupMatch()]);
+    vi.mocked(tournamentsApi.stage).mockResolvedValue({
+      stage: "fixtures",
+      status: "registration_open",
+      order: ["setup", "fixtures", "ready"],
+      allowed_to: ["ready"],
+      can_manage: true,
+      modules: [],
+      rules_frozen_at: null,
+      stages: [
+        { key: "setup", label: "Setup" },
+        { key: "fixtures", label: "Fixtures" },
+        { key: "ready", label: "Ready" },
+      ],
+    } as unknown as StagePayload);
+    vi.mocked(tournamentsApi.previewStage).mockResolvedValue({
+      blockers: [],
+      warnings: [],
+    } as unknown as Awaited<ReturnType<typeof tournamentsApi.previewStage>>);
+    vi.mocked(tournamentsApi.transitionStage).mockResolvedValue(
+      {} as unknown as Awaited<ReturnType<typeof tournamentsApi.transitionStage>>,
+    );
+    wrap(<FixtureSetupHub tournamentId="t1" />);
+
+    // It confirms first — no silent jump past the stage.
+    await userEvent.click(await screen.findByTestId("done-open-control"));
+    await userEvent.click(await screen.findByTestId("confirm-continue"));
+
+    await waitFor(() =>
+      expect(tournamentsApi.transitionStage).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({ to_stage: "ready", ack_warnings: true }),
+      ),
+    );
+    // ...and lands in the control room, not back on the setup page.
+    await waitFor(() =>
+      expect(screen.getByTestId("control-room-page")).toBeInTheDocument(),
+    );
   });
 
   it("Print lives in the More menu and opens the public schedule page", async () => {
