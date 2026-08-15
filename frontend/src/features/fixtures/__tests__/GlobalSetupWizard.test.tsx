@@ -155,6 +155,98 @@ describe("GlobalSetupWizard", () => {
     expect(byType.max_matches_per_team_per_day.params).toEqual({ count: 1 });
   });
 
+  it("saves from any step and stays put (no walk to Check & save)", async () => {
+    // First read: no venues. Every read after the save sees the created one, so
+    // the pristine form re-seeds with its id instead of creating it twice.
+    vi.mocked(tournamentsApi.venues)
+      .mockResolvedValueOnce({ venues: [] })
+      .mockResolvedValue({
+        venues: [
+          {
+            id: "v-new",
+            name: "MP Hall",
+            venue_type: "ground",
+            windows: [],
+            count: 1,
+            sports: [],
+            breaks: [],
+          },
+        ],
+      });
+    const onClose = vi.fn();
+    const onSaved = vi.fn();
+    wrap(
+      <GlobalSetupWizard
+        tournamentId="t1"
+        onClose={onClose}
+        onSaved={onSaved}
+      />,
+    );
+    fireEvent.change(await screen.findByLabelText("First match day"), {
+      target: { value: "2026-08-01" },
+    });
+    fireEvent.change(screen.getByLabelText("Last match day"), {
+      target: { value: "2026-08-05" },
+    });
+
+    await toStep(1); // Venues
+    await userEvent.click(screen.getByTestId("add-venue"));
+    fireEvent.change(screen.getByTestId("venue-name-0"), {
+      target: { value: "MP Hall" },
+    });
+    await userEvent.click(screen.getByTestId("save-step"));
+
+    // All three channels written from the Venues step…
+    await waitFor(() =>
+      expect(tournamentsApi.createVenue).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({ name: "MP Hall" }),
+      ),
+    );
+    expect(tournamentsApi.updateSettings).toHaveBeenCalled();
+    expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith(
+      "t1",
+      expect.objectContaining({
+        config: {
+          calendar: expect.objectContaining({
+            date_start: "2026-08-01",
+            date_end: "2026-08-05",
+          }),
+        },
+      }),
+    );
+    // …and the wizard stays on the step it was on.
+    const panel = screen.getByTestId("global-setup-inline");
+    expect(within(panel).getByText("Step 2 of 4")).toBeInTheDocument();
+    expect(screen.getByTestId("add-venue")).toBeInTheDocument();
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+
+    // Saving again re-uses the stored venue rather than creating a duplicate.
+    await waitFor(() =>
+      expect(screen.getByTestId("venue-name-0")).toHaveValue("MP Hall"),
+    );
+    await userEvent.click(screen.getByTestId("save-step"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateSettings).toHaveBeenCalledTimes(2),
+    );
+    expect(tournamentsApi.createVenue).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows no second Save on the review step (the primary action is Save)", async () => {
+    wrap(<GlobalSetupWizard tournamentId="t1" onClose={() => {}} />);
+    fireEvent.change(await screen.findByLabelText("First match day"), {
+      target: { value: "2026-08-01" },
+    });
+    fireEvent.change(screen.getByLabelText("Last match day"), {
+      target: { value: "2026-08-05" },
+    });
+    expect(screen.getByTestId("save-step")).toBeInTheDocument();
+    await toStep(3);
+    expect(screen.queryByTestId("save-step")).toBeNull();
+    expect(screen.getByTestId("save-global-setup")).toBeInTheDocument();
+  });
+
   it("prefills stored values and preserves unmanaged constraint records", async () => {
     vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
       draw_config: {

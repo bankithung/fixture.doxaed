@@ -378,8 +378,11 @@ export function GlobalSetupWizard({
     }
   }
 
+  // `close: false` = the per-step Save (owner ask 2026-08-15): persist exactly
+  // the same three channels, then STAY on the step. Every sub-step writes the
+  // whole form, so a save from step 2 keeps the dates typed on step 1 too.
   const save = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (_opts: { close: boolean }) => {
       // 1) Venue pool diff → the Venue CRUD API (§2.3).
       const stored = venues.data?.venues ?? [];
       const drafts = form.venues.filter((d) => d.name.trim());
@@ -497,10 +500,25 @@ export function GlobalSetupWizard({
         event_id: newEventId(),
       });
     },
-    onSuccess: () => {
+    onSuccess: async (_data, opts) => {
       invalidateTournament(qc, tournamentId);
-      toast.push({ kind: "success", title: t("Step 1 saved") });
-      (onSaved ?? onClose)();
+      if (opts.close) {
+        toast.push({ kind: "success", title: t("Step 1 saved") });
+        (onSaved ?? onClose)();
+        return;
+      }
+      // Staying put: wait for the stored sources to come back before dropping
+      // the dirty flag, then let the reconcile block re-seed. Without the
+      // re-seed a freshly created venue would still have no id in the form and
+      // the next save would create it a second time.
+      await Promise.all([
+        venues.refetch(),
+        settings.refetch(),
+        drawConfig.refetch(),
+      ]);
+      setDirty(false);
+      setSeededSig(null);
+      toast.push({ kind: "success", title: t("Progress saved") });
     },
     onError: (e) =>
       toast.push({
@@ -526,7 +544,7 @@ export function GlobalSetupWizard({
     <Button
       disabled={save.isPending || loading}
       data-testid="save-global-setup"
-      onClick={() => save.mutate()}
+      onClick={() => save.mutate({ close: true })}
     >
       <Sparkles aria-hidden="true" className="h-4 w-4" />
       {save.isPending ? t("Saving…") : t("Save")}
@@ -538,6 +556,20 @@ export function GlobalSetupWizard({
     >
       {t("Next")}
       <ChevronRight aria-hidden="true" className="h-4 w-4" />
+    </Button>
+  );
+
+  /** Save without leaving the step — on every sub-step except the last, where
+   * the primary action already IS the save. Lets someone come back to change
+   * one venue and keep it without walking to Check & save. */
+  const saveHereAction = isLast ? null : (
+    <Button
+      variant="outline"
+      disabled={save.isPending || loading}
+      data-testid="save-step"
+      onClick={() => save.mutate({ close: false })}
+    >
+      {save.isPending ? t("Saving…") : t("Save")}
     </Button>
   );
 
@@ -999,6 +1031,7 @@ export function GlobalSetupWizard({
           <Button variant="outline" onClick={onClose}>
             {t("Cancel")}
           </Button>
+          {saveHereAction}
           {primaryAction}
         </div>
       </div>
