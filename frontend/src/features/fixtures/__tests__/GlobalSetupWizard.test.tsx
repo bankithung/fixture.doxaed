@@ -397,6 +397,32 @@ describe("GlobalSetupWizard", () => {
     );
   });
 
+  it("a ceremony off the match days does not set the play times", async () => {
+    wrap(<GlobalSetupWizard tournamentId="t1" onClose={() => {}} />);
+    fireEvent.change(await screen.findByLabelText("First match day"), {
+      target: { value: "2026-08-17" },
+    });
+    fireEvent.change(screen.getByLabelText("Last match day"), {
+      target: { value: "2026-08-18" },
+    });
+    await userEvent.click(screen.getByTestId("opening-add"));
+    // Moved to the day BEFORE the tournament (what happens when the match
+    // dates are pushed back after the ceremony was added).
+    fireEvent.change(screen.getByTestId("opening-date"), {
+      target: { value: "2026-08-16" },
+    });
+
+    // It is not on a match day, so it bounds nothing and says so.
+    expect(screen.getByTestId("opening-note")).toHaveTextContent(
+      "This is not a match day",
+    );
+    await toStep(2);
+    expect(
+      screen.getByLabelText("First match of the day starts at"),
+    ).toHaveValue("09:00");
+    expect(screen.queryByTestId("ceremony-day-times")).toBeNull();
+  });
+
   it("re-derives the play times of a tournament set up before this", async () => {
     // Stored: ceremonies inside a 09:00-18:00 window (what the wizard wrote
     // before it could set the times). Opening it shows the real first/last

@@ -170,13 +170,11 @@ export function GroupCompositionView({
                     >
                       {line.lineNo}
                     </td>
-                    <td
-                      className={cn(
-                        "border-b border-r border-border/60 px-2 py-1 group-hover:bg-accent/40",
-                        line.slot > 1 && "text-muted-foreground/40",
-                      )}
-                    >
-                      {line.slot === 1 ? line.group : "\u00b7"}
+                    {/* Every row names its own group: a filtered or sorted
+                        sheet must never leave a cell to be inferred from the
+                        row above it (owner 2026-08-15). */}
+                    <td className="border-b border-r border-border/60 px-2 py-1 group-hover:bg-accent/40">
+                      {line.group}
                     </td>
                     <td className="border-b border-r border-border/60 px-2 py-1 text-right font-tabular text-muted-foreground group-hover:bg-accent/40">
                       {line.slot}

@@ -50,6 +50,11 @@ interface Form {
   venues: VenueDraft[];
   daily_start: string;
   daily_end: string;
+  /** The play window the organiser typed, before any ceremony narrows it.
+   * Kept so a ceremony that stops applying (moved off the match days, deleted)
+   * gives the day back instead of leaving its bound behind forever. */
+  base_start: string;
+  base_end: string;
   slot_minutes: number;
   rest_minutes: number;
   max_per_day: number;
@@ -71,6 +76,8 @@ const EMPTY_FORM: Form = {
   venues: [],
   daily_start: "09:00",
   daily_end: "18:00",
+  base_start: "09:00",
+  base_end: "18:00",
   // Start-grid step + fallback when a competition sets no length of its own.
   // Match LENGTHS are now set per competition on the format step; this is just
   // the scheduling granularity, so a fine default keeps schedules tight.
@@ -140,9 +147,22 @@ function plusHour(hhmm: string): string {
  * day itself (scheduler `ceremony_window`). A ceremony that would invert the
  * window is left alone — `ceremonyEffect` warns instead. */
 function withCeremonyBounds(f: Form): Form {
-  let { daily_start, daily_end } = f;
-  const open_to = f.opening?.date ? f.opening.to : "";
-  const close_from = f.closing?.date ? f.closing.from : "";
+  // Always re-derived from the organiser's own window, never from the last
+  // derived value — otherwise a bound could only ever tighten.
+  let daily_start = f.base_start || f.daily_start;
+  let daily_end = f.base_end || f.daily_end;
+  // A ceremony OFF the match days bounds nothing (owner 2026-08-15): the
+  // engine only cuts the day a ceremony sits on, so letting a ceremony dated
+  // before the tournament push the first match time silently shortened every
+  // playing day for a ceremony that was never going to happen on one.
+  const onMatchDay = (c: CeremonyValue | null): boolean =>
+    Boolean(
+      c?.date &&
+        (!f.date_start || c.date >= f.date_start) &&
+        (!f.date_end || c.date <= f.date_end),
+    );
+  const open_to = onMatchDay(f.opening) ? f.opening!.to : "";
+  const close_from = onMatchDay(f.closing) ? f.closing!.from : "";
   if (open_to && open_to > daily_start && open_to < daily_end) {
     daily_start = open_to;
   }
@@ -164,6 +184,14 @@ function ceremonyEffect(
 ): { day: string; time: string; empty: boolean } | null {
   const c = which === "opening" ? form.opening : form.closing;
   if (!c?.date) return null;
+  // Off the match days it sets no play time at all (the ceremony's own note
+  // says so instead) — never claim a first/last match it does not produce.
+  if (
+    (form.date_start && c.date < form.date_start) ||
+    (form.date_end && c.date > form.date_end)
+  ) {
+    return null;
+  }
   // `<`/`>`, not `<=`/`>=`: once the bounds are applied the ceremony's edge IS
   // the play time, and that is exactly when the line has to stay on screen to
   // explain the number in the field.
@@ -339,7 +367,21 @@ export function GlobalSetupWizard({
   const [form, setForm] = useState<Form>(EMPTY_FORM);
   const set = <K extends keyof Form>(k: K, v: Form[K]): void => {
     setDirty(true);
-    setForm((f) => ({ ...f, [k]: v }));
+    setForm((f) => {
+      // The play times the organiser types ARE the base window; the dates can
+      // move a ceremony in or out of range. Both re-derive the effective
+      // window (see `withCeremonyBounds`).
+      if (k === "daily_start") {
+        return withCeremonyBounds({ ...f, base_start: v as string });
+      }
+      if (k === "daily_end") {
+        return withCeremonyBounds({ ...f, base_end: v as string });
+      }
+      if (k === "date_start" || k === "date_end") {
+        return withCeremonyBounds({ ...f, [k]: v });
+      }
+      return { ...f, [k]: v };
+    });
   };
   // A ceremony edit re-derives the play times from it (see
   // `withCeremonyBounds`) — the owner's ask: setting the ceremonies IS setting
@@ -433,6 +475,11 @@ export function GlobalSetupWizard({
         venues: venues.data.venues.map(venueDraft),
         daily_start: String(cal?.daily_start ?? "09:00"),
         daily_end: String(cal?.daily_end ?? "18:00"),
+        // The stored window IS the organiser's base until they type another:
+        // a ceremony narrows it from here, and dropping the ceremony restores
+        // exactly this.
+        base_start: String(cal?.daily_start ?? "09:00"),
+        base_end: String(cal?.daily_end ?? "18:00"),
         slot_minutes: Number(cal?.slot_minutes ?? 30),
         rest_minutes: Number(one("min_rest_minutes")?.params.minutes ?? 60),
         max_per_day: Number(
