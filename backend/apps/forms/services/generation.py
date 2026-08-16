@@ -229,21 +229,51 @@ def build_team_form_schema(
                      "leaf_key": v, "label": str(_opt_label(o))},
                 ))
 
+    # Within-school (spec 2026-08-16 §D6): the competitor is a HOUSE, and there
+    # is no Stage-1 form — this one IS the registration. Same generator, same
+    # traversal engine, same regeneration contract; only the competitor question
+    # and the person fields differ, because "School" and "Region" are
+    # meaningless inside one school.
+    intra = bool(
+        tournament is not None
+        and getattr(tournament, "scope", "") == "intra_school"
+    )
+    noun = (getattr(tournament, "group_kind", "") or "house") if intra else ""
+    noun_label = {
+        "house": "house", "class": "class", "form": "form",
+        "department": "department",
+    }.get(noun, "house")
+
+    competitor_field = (
+        {
+            "key": "house_id",
+            "type": "dropdown",
+            "label": f"Which {noun_label} are you registering for?",
+            "required": True,
+            "options": [],
+            # Live-bound, exactly like institution_list: the public form fills
+            # these from the houses entered in this event at fetch time.
+            "data_source": {"type": "house_list"},
+        }
+        if intra
+        else {
+            "key": "institution_id",
+            "type": "dropdown",
+            "label": "Select your institution",
+            "required": True,
+            "options": [],
+            # Live-bound: the public form fills these from the current
+            # registered institutions at fetch time (always up to date).
+            "data_source": {"type": "institution_list"},
+        }
+    )
+
     sections: list[dict] = [
         {
             "key": "institution",
-            "title": "Your institution",
+            "title": f"Your {noun_label}" if intra else "Your institution",
             "fields": [
-                {
-                    "key": "institution_id",
-                    "type": "dropdown",
-                    "label": "Select your institution",
-                    "required": True,
-                    "options": [],
-                    # Live-bound: the public form fills these from the current
-                    # registered institutions at fetch time (always up to date).
-                    "data_source": {"type": "institution_list"},
-                },
+                competitor_field,
                 # Contact carried over from Stage 1 (prefilled, editable) so a
                 # school confirms rather than re-enters it. Optional: a per-
                 # institution link prefills these; the public link leaves blank.
@@ -295,7 +325,18 @@ def build_team_form_schema(
             "label": "Player", "repeatable": True,
             "fields": [
                 {"key": f"player_name_{slug}", "type": "short_text",
-                 "label": "Player name", "required": True},
+                 "label": "Student name" if intra else "Player name",
+                 "required": True},
+                # School-internal identity. A within-school form asks the
+                # things a school actually knows a child by; asking for their
+                # "school" and "region" inside one school is noise.
+                *([
+                    {"key": f"player_class_{slug}", "type": "short_text",
+                     "label": "Class & section", "required": True,
+                     "help": "e.g. 9-B"},
+                    {"key": f"player_roll_{slug}", "type": "short_text",
+                     "label": "Roll number", "required": False},
+                ] if intra else []),
                 {"key": f"player_dob_{slug}", "type": "date",
                  "label": "Date of birth", "required": True},
                 {"key": f"player_docs_{slug}", "type": "file_upload",
@@ -447,6 +488,11 @@ def build_team_form_schema(
 
     schema = {"version": 1, "sections": sections}
     bindings = {
+        # Competitor-agnostic pointers (spec 2026-08-16): every consumer that
+        # used to read `institution_id` blindly can now ask what KIND of
+        # competitor this form registers, and which answer key carries it.
+        "competitor_kind": "house" if intra else "institution",
+        "competitor_id": "house_id" if intra else "institution_id",
         "institution_id": "institution_id",
         "contact_name": "contact_name",
         "contact_email": "contact_email",

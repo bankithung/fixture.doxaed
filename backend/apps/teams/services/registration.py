@@ -144,6 +144,11 @@ def register_school(
     institution_id: _uuid.UUID | None = None,
     institution_kind: str = "school",
     institution_attributes: dict | None = None,
+    # Intra-school (spec 2026-08-16): the HOUSE these teams play for. The
+    # institution stays the one host school so every existing reader keeps
+    # working; `group` is what actually distinguishes the competitors.
+    group=None,
+    group_id=None,
 ) -> list[Team]:
     """Create the school's teams + players. Returns the created Team rows.
 
@@ -200,6 +205,19 @@ def register_school(
             # School-name mirror stays in sync with the institution (deprecated).
             school_label = resolved.name if resolved is not None else (school_name or "")
 
+            # The house/class these teams play for, in a within-school event.
+            resolved_group = group
+            if resolved_group is None and group_id is not None:
+                from apps.teams.models import TeamGroup
+
+                resolved_group = TeamGroup.objects.filter(
+                    id=group_id,
+                    organization=org,
+                    deleted_at__isnull=True,
+                ).first()
+                if resolved_group is None:
+                    raise ValueError("group_not_found")
+
             # H5 backstop: a leaf's age rule blocks over/under-age players at
             # the write boundary no matter which surface called us. Coarse
             # dob_year is exact for the default 31 Dec cutoff; players with
@@ -232,6 +250,7 @@ def register_school(
                     organization=org,
                     tournament=tournament,
                     institution=resolved,
+                    group=resolved_group,
                     slug=_unique_team_slug(tournament, td["name"]),
                     name=td["name"][:200],
                     short_name=(td.get("short_name") or "")[:40],
@@ -260,14 +279,22 @@ def register_school(
                     full_name = pd["full_name"][:200]
                     person = None
                     if resolved is not None and full_name.strip():
-                        person = (
-                            Person.objects.filter(
-                                full_name__iexact=full_name.strip(),
-                                players__tournament=tournament,
-                                players__team__institution=resolved,
-                                players__deleted_at__isnull=True,
+                        dedupe = Person.objects.filter(
+                            full_name__iexact=full_name.strip(),
+                            players__tournament=tournament,
+                            players__team__institution=resolved,
+                            players__deleted_at__isnull=True,
+                        )
+                        # In a within-school event EVERY team shares the one
+                        # host institution, so name-matching inside it would
+                        # merge two different students called the same thing in
+                        # different houses into one Person. Narrow to the house.
+                        if resolved_group is not None:
+                            dedupe = dedupe.filter(
+                                players__team__group=resolved_group
                             )
-                            .exclude(id__in=team_person_ids)
+                        person = (
+                            dedupe.exclude(id__in=team_person_ids)
                             .order_by("created_at")
                             .first()
                         )

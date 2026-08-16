@@ -54,7 +54,7 @@ from apps.forms.services.responses import submit_response
 from apps.forms.services.validation import AnswerError
 from apps.forms.throttling import PublicFormThrottle
 from apps.tournaments.models import Tournament
-from apps.tournaments.permissions import can_access_module
+from apps.tournaments.permissions import can_access_module, can_manage_tournament
 from apps.tournaments.scope import accessible_tournaments
 
 
@@ -235,22 +235,52 @@ def _resolve_data_sources(schema: dict, tournament) -> dict:
     institutions rather than a snapshot. Returns a copy; never mutates the DB."""
     import copy as _copy
 
-    def _is_inst(f):
-        return (
-            f.get("type") in _DATA_BOUND
-            and (f.get("data_source") or {}).get("type") == "institution_list"
-        )
+    def _source_of(f) -> str:
+        if f.get("type") not in _DATA_BOUND:
+            return ""
+        return str((f.get("data_source") or {}).get("type") or "")
 
-    def _scan(fields):
+    def _is_inst(f):
+        return _source_of(f) == "institution_list"
+
+    def _is_house(f):
+        return _source_of(f) == "house_list"
+
+    def _scan(fields, pred):
         for f in fields:
-            if _is_inst(f):
+            if pred(f):
                 return True
-            if f.get("type") == "group" and _scan(f.get("fields", [])):
+            if f.get("type") == "group" and _scan(f.get("fields", []), pred):
                 return True
         return False
 
     sections = (schema or {}).get("sections", [])
-    if not any(_scan(s.get("fields", [])) for s in sections):
+    # Houses (spec 2026-08-16): the within-school competitor list, returned in
+    # the SAME option shape as institutions so the renderer needs no branch.
+    if any(_scan(s.get("fields", []), _is_house) for s in sections):
+        from apps.teams.services.houses import houses_for
+
+        house_options = [
+            {
+                "value": str(g.id),
+                "label": g.name,
+                # A house enters every competition the event runs; scoping is
+                # the organiser's job through the category tree, not a
+                # per-competitor allow-list as in the school flow.
+                "leaves": [],
+                "requires_code": False,
+                "has_code": False,
+                **({"colour": g.colour} if g.colour else {}),
+            }
+            for g in houses_for(tournament)
+        ]
+        out = _copy.deepcopy(schema)
+        for sec in out.get("sections", []):
+            for f in sec.get("fields", []):
+                if _is_house(f):
+                    f["options"] = house_options
+        return out
+    if not any(_scan(s.get("fields", []), _is_inst) for s in sections):
         return schema
 
     from apps.teams.models import Institution
@@ -589,9 +619,27 @@ class PublicFormView(GenericAPIView):
             from apps.teams.models import Institution
             from apps.teams.services.access import read_access_token
 
-            iid_key = (form.settings or {}).get("bindings", {}).get(
-                "institution_id", "institution_id"
-            )
+            bindings = (form.settings or {}).get("bindings", {})
+            # Within-school (spec 2026-08-16): the competitor is a house, and
+            # authorization is a house MEMBERSHIP rather than a mailed code —
+            # the owner's flow is "the admin will add members so that the
+            # members who are in the respective house can add students".
+            if bindings.get("competitor_kind") == "house":
+                from apps.teams.services.houses import may_register_for
+
+                from apps.teams.services.houses import houses_for
+
+                gid = str(answers.get(bindings.get("competitor_id", "house_id")) or "")
+                if not gid:
+                    raise DRFValidationError({"detail": "house_required"})
+                # Reject an unknown house HERE rather than letting the mapper
+                # raise past the API boundary as a 500.
+                if not houses_for(form.tournament).filter(id=gid).exists():
+                    raise DRFValidationError({"detail": "house_not_found"})
+                if not may_register_for(form.tournament, request.user, gid):
+                    raise DRFValidationError({"detail": "house_access_required"})
+
+            iid_key = bindings.get("institution_id", "institution_id")
             inst = None
             try:
                 inst_id = str(answers.get(iid_key) or "")
@@ -603,9 +651,14 @@ class PublicFormView(GenericAPIView):
                 inst = None
             # An authenticated tournament MANAGER needs no code — they own the
             # tournament and use the same form as a "proper" admin entry page.
-            manager = (
-                request.user.is_authenticated
-                and can_access_module(request.user, form.tournament, "forms")
+            #
+            # This asks whether they RUN the tournament, not whether they can
+            # see the forms module. The module is a role default for
+            # `team_manager`, so the old check let any team manager submit —
+            # and, through the supersede path below, REPLACE — the team set of
+            # any school in the event, with no code at all.
+            manager = request.user.is_authenticated and can_manage_tournament(
+                request.user, form.tournament
             )
             if inst is not None and not manager:
                 # DEFAULT-CLOSED (C10): every institution is protected — only

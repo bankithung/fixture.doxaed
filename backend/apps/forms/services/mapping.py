@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import uuid
 
+from django.core.exceptions import ValidationError
+
 from apps.forms.constants import FormPurpose
 from apps.forms.models import FormResponse
 from apps.teams.services.registration import (
@@ -368,16 +370,45 @@ def _map_team_registration_multi(resp, form, b, a) -> FormResponse:
     """Auto-generated team form: collect teams from every category group into one
     register_school call (all under the chosen institution)."""
     institution_id = a.get(b.get("institution_id", "institution_id")) or None
-    # The team name defaults to the institution's name when left blank — resolve
-    # it once so blank rows can adopt it.
-    inst_name = ""
-    if institution_id:
+    # Within-school (spec 2026-08-16): the competitor is a HOUSE. The host
+    # school is still the institution every team's FK resolves to, so the whole
+    # downstream stays intact; the house is what distinguishes the entrants.
+    group_id = None
+    default_name = ""
+    if b.get("competitor_kind") == "house":
+        from apps.teams.models import Institution, TeamGroup
+
+        group_id = a.get(b.get("competitor_id", "house_id")) or None
+        group = (
+            TeamGroup.objects.filter(
+                id=group_id,
+                organization=form.tournament.organization,
+                deleted_at__isnull=True,
+            ).first()
+            if group_id
+            else None
+        )
+        if group is None:
+            raise ValidationError("house_not_found")
+        # A blank team name adopts the HOUSE, not the school: defaulting to the
+        # one shared institution would put every house in a leaf into a fight
+        # over the same name and silently produce "St Mary's 2", "St Mary's 3".
+        default_name = group.name
+        if not institution_id:
+            host = Institution.objects.filter(
+                tournament=form.tournament, deleted_at__isnull=True
+            ).order_by("created_at").first()
+            institution_id = str(host.id) if host else None
+    elif institution_id:
+        # The team name defaults to the institution's name when left blank —
+        # resolve it once so blank rows can adopt it.
         from apps.teams.models import Institution
 
         inst = Institution.objects.filter(
             id=institution_id, tournament=form.tournament, deleted_at__isnull=True
         ).first()
-        inst_name = inst.name if inst else ""
+        default_name = inst.name if inst else ""
+    inst_name = default_name
     # Team names are unique per competition leaf — track per-leaf names so a
     # defaulted (institution) name auto-suffixes instead of failing the submit.
     used_by_leaf: dict[str, set[str]] = {}
@@ -441,6 +472,7 @@ def _map_team_registration_multi(resp, form, b, a) -> FormResponse:
         channel="self",
         event_id=derived_event_id,
         institution_id=institution_id,
+        group_id=group_id,
     ) if teams_payload else []
     resp.mapped_entities = {"team_ids": [str(t.id) for t in teams]}
     resp.save(update_fields=["mapped_entities"])
