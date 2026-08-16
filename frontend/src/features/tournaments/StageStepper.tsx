@@ -41,6 +41,8 @@ function stageRoute(id: string, key: string): string | null {
       return routes.tournamentSports(id);
     case "org_registration":
       return routes.tournamentInstitutions(id);
+    case "house_setup":
+      return routes.tournamentHouses(id);
     case "team_registration":
       return routes.tournamentTeams(id);
     case "fixtures":
@@ -55,6 +57,7 @@ function stageRoute(id: string, key: string): string | null {
 const STAGE_ICON: Record<string, typeof Building2> = {
   setup: Settings2,
   org_registration: Building2,
+  house_setup: Users,
   team_registration: Users,
   fixtures: CalendarClock,
   ready: Trophy,
@@ -63,6 +66,7 @@ const STAGE_ICON: Record<string, typeof Building2> = {
 const STAGE_HINT: Record<string, string> = {
   setup: "Start setup. Invite institutions next.",
   org_registration: "Register the schools and colleges taking part.",
+  house_setup: "Set up the houses and who manages each one.",
   team_registration: "Collect each institution's teams.",
   fixtures: "Generate and schedule the fixtures.",
   ready: "Setup complete. The tournament is scheduled.",

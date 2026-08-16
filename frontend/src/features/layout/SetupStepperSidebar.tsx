@@ -14,6 +14,7 @@ import "@/components/backdrop/effects.css";
 const STAGE_SUB: Record<string, string> = {
   setup: "Sports & categories",
   org_registration: "Register schools",
+  house_setup: "Houses & members",
   team_registration: "Add teams",
   fixtures: "Generate & schedule",
   ready: "Review & publish",

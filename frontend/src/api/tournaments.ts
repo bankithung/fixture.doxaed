@@ -93,8 +93,40 @@ export interface SportCatalogItem {
   status: string;
 }
 
+/** Who competes in a tournament (spec 2026-08-16). */
+export type TournamentScope = "inter_school" | "intra_school";
+/** The intra-institution grouping a within-school event competes by. */
+export type GroupKind = "house" | "class" | "form" | "department";
+
+/** One competing house/class in a within-school event. */
+export interface TournamentHouse {
+  id: string;
+  name: string;
+  kind: GroupKind;
+  colour: string;
+  teams: number;
+  members: {
+    id: string;
+    user_id: string;
+    name: string;
+    email: string;
+    role: string;
+  }[];
+}
+
+export interface TournamentHouses {
+  scope: TournamentScope;
+  group_kind: GroupKind | "";
+  can_manage: boolean;
+  /** null = unrestricted (an organizer); a list = the houses this user acts for. */
+  my_houses: string[] | null;
+  houses: TournamentHouse[];
+}
+
 export interface Tournament {
   id: string;
+  scope?: TournamentScope;
+  group_kind?: GroupKind | "";
   slug: string;
   name: string;
   status: string;
@@ -581,8 +613,52 @@ export const tournamentsApi = {
    * has none and makes them the tournament admin. `event_id` is a client UUID
    * for idempotency (invariant 3).
    */
-  create: (payload: { name: string; sport_code?: string; event_id: string }) =>
-    api.post<Tournament>("/api/tournaments/", payload),
+  create: (payload: {
+    name: string;
+    sport_code?: string;
+    event_id: string;
+    /** Who competes (spec 2026-08-16). Omitted = between schools, unchanged. */
+    scope?: TournamentScope;
+    /** Only with scope "intra_school": the grouping the host competes by. */
+    group_kind?: GroupKind;
+  }) => api.post<Tournament>("/api/tournaments/", payload),
+  /** Houses & members — the within-school competitor list (spec 2026-08-16). */
+  houses: (tournamentId: string) =>
+    api.get<TournamentHouses>(`/api/tournaments/${tournamentId}/houses/`),
+  createHouse: (
+    tournamentId: string,
+    payload: { name: string; colour?: string; kind?: GroupKind },
+  ) => api.post<TournamentHouse>(`/api/tournaments/${tournamentId}/houses/`, payload),
+  updateHouse: (
+    tournamentId: string,
+    houseId: string,
+    payload: { name?: string; colour?: string },
+  ) =>
+    api.patch<TournamentHouse>(
+      `/api/tournaments/${tournamentId}/houses/${houseId}/`,
+      payload,
+    ),
+  removeHouse: (tournamentId: string, houseId: string) =>
+    api.delete<void>(`/api/tournaments/${tournamentId}/houses/${houseId}/`),
+  addHouseMember: (tournamentId: string, houseId: string, email: string) =>
+    api.post<TournamentHouse>(
+      `/api/tournaments/${tournamentId}/houses/${houseId}/members/`,
+      { email },
+    ),
+  removeHouseMember: (tournamentId: string, houseId: string, userId: string) =>
+    api.delete<void>(
+      `/api/tournaments/${tournamentId}/houses/${houseId}/members/?user=${encodeURIComponent(userId)}`,
+    ),
+  /** Reserve a court for one or more competitions (leaf-key prefixes). */
+  setCourtCompetitions: (
+    tournamentId: string,
+    courtId: string,
+    competitions: string[],
+  ) =>
+    api.patch<{ id: string; competitions: string[] }>(
+      `/api/tournaments/${tournamentId}/courts/${courtId}/`,
+      { competitions },
+    ),
   /** Invite anyone by email to this tournament with a tournament role. */
   invite: (
     tournamentId: string,
@@ -1204,6 +1280,9 @@ export interface VenueRecord {
   /** Daily breaks for THIS venue (lunch/prayer); no match is scheduled here
    * during them (owner ask 2026-06-27). */
   breaks?: { from: string; to: string }[];
+  /** One row per playing surface, with the competitions reserved to it
+   * (leaf-key prefixes; empty = takes anything). Spec 2026-08-16. */
+  courts?: { id: string; index: number; name: string; competitions: string[] }[];
 }
 
 /** `POST …/fixtures/next-round/` response (Swiss, increment P). */

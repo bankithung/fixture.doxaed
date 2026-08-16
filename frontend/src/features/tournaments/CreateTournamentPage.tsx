@@ -4,13 +4,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Trophy } from "lucide-react";
+import { Building2, Home, Trophy } from "lucide-react";
 import { BentoCard, BentoGrid } from "@/features/dashboard/BentoCard";
-import { tournamentsApi } from "@/api/tournaments";
+import { tournamentsApi, type TournamentScope } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/tailwind";
 import { routes } from "@/lib/routes";
 import { newEventId } from "@/lib/eventId";
 import { t } from "@/lib/t";
@@ -18,6 +19,28 @@ import { t } from "@/lib/t";
 const schema = z.object({
   name: z.string().min(1, t("Tournament name is required")).max(200),
 });
+
+/** Who competes. Asked HERE and only here: it decides which setup stages
+ * exist, so it cannot be changed once registration data exists. */
+const SCOPES: {
+  value: TournamentScope;
+  label: string;
+  hint: string;
+  icon: typeof Trophy;
+}[] = [
+  {
+    value: "inter_school",
+    label: t("Between schools"),
+    hint: t("Each school registers, then enters its own teams."),
+    icon: Building2,
+  },
+  {
+    value: "intra_school",
+    label: t("Within one school"),
+    hint: t("Houses or classes compete. No school registration — you set up the groups."),
+    icon: Home,
+  },
+];
 type FormValues = z.infer<typeof schema>;
 
 /**
@@ -30,6 +53,7 @@ export function CreateTournamentPage(): React.ReactElement {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [scope, setScope] = useState<TournamentScope>("inter_school");
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { name: "" },
@@ -42,6 +66,7 @@ export function CreateTournamentPage(): React.ReactElement {
       const created = await tournamentsApi.create({
         name: values.name,
         event_id: newEventId(),
+        scope,
       });
       // Refresh the list so the new tournament shows without a manual reload.
       await qc.invalidateQueries({ queryKey: ["tournaments"] });
@@ -103,6 +128,45 @@ export function CreateTournamentPage(): React.ReactElement {
               </p>
             ) : null}
           </div>
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="pb-1.5 text-sm font-medium">{t("Who is competing?")}</legend>
+            <div className="grid gap-2">
+              {SCOPES.map((s) => {
+                const Icon = s.icon;
+                const on = scope === s.value;
+                return (
+                  <button
+                    key={s.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    data-testid={`scope-${s.value}`}
+                    onClick={() => setScope(s.value)}
+                    className={cn(
+                      "flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+                      on
+                        ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                        : "border-border hover:bg-secondary/40",
+                    )}
+                  >
+                    <Icon
+                      aria-hidden="true"
+                      className={cn(
+                        "mt-0.5 h-4 w-4 shrink-0",
+                        on ? "text-primary" : "text-muted-foreground",
+                      )}
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium">{s.label}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {s.hint}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
           <Button type="submit" disabled={submitting} size="lg" className="w-full">
             {submitting ? t("Creating...") : t("Create tournament")}
           </Button>

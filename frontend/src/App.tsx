@@ -42,6 +42,7 @@ import { RefereeLandingPage } from "@/features/roles/RefereeLandingPage";
 import { TeamManagerLandingPage } from "@/features/roles/TeamManagerLandingPage";
 import { MyProfilePage } from "@/features/roles/MyProfilePage";
 import { NotificationPrefsPage } from "@/features/roles/NotificationPrefsPage";
+import { HousesPage } from "@/features/tournaments/HousesPage";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 
@@ -250,6 +251,7 @@ export default function App(): React.ReactElement {
                   <Route path="sports" element={<SportsTab />} />
                   <Route path="forms" element={<FormsListPage />} />
                   <Route path="institutions" element={<InstitutionsTab />} />
+                  <Route path="houses" element={<HousesPage />} />
                   <Route path="teams" element={<TeamsTab />} />
                   <Route path="members" element={<TournamentMembersPage />} />
                   <Route path="fixtures" element={<FixturesTab />} />

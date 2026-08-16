@@ -26,6 +26,7 @@ import { t } from "@/lib/t";
 import "@/components/ui/star-border.css";
 import { BlackoutDatesField } from "./BlackoutDatesField";
 import { CeremonyField, type CeremonyValue } from "./CeremonyField";
+import { configuredLeaves } from "@/features/tournaments/tabs/shared";
 import { VenueRow, type VenueDraft } from "./VenueRow";
 
 /** Constraint types the wizard OWNS at `scope:"all"` — its save replaces
@@ -104,6 +105,25 @@ function ceremonyFrom(c: ConstraintRecord | undefined): CeremonyValue | null {
   };
 }
 
+/** Per-court reservations are their OWN endpoint: the court rows only exist
+ * after the venue's `count` has been saved, so this runs against the venue the
+ * server just returned rather than the draft's stale indices. */
+async function saveCourtCompetitions(
+  tournamentId: string,
+  saved: VenueRecord | undefined,
+  draft: VenueDraft,
+): Promise<void> {
+  const rows = saved?.courts ?? [];
+  if (rows.length === 0) return;
+  for (const court of rows) {
+    const want = (draft.courts ?? []).find((c) => c.index === court.index);
+    const next = want?.competitions ?? [];
+    const have = court.competitions ?? [];
+    if (JSON.stringify(next) === JSON.stringify(have)) continue;
+    await tournamentsApi.setCourtCompetitions(tournamentId, court.id, next);
+  }
+}
+
 function venueDraft(v: VenueRecord): VenueDraft {
   return {
     id: v.id,
@@ -113,6 +133,11 @@ function venueDraft(v: VenueRecord): VenueDraft {
     from: v.windows?.[0]?.from ?? "",
     to: v.windows?.[0]?.to ?? "",
     sports: v.sports ?? [],
+    courts: (v.courts ?? []).map((c) => ({
+      id: c.id,
+      index: c.index,
+      competitions: c.competitions ?? [],
+    })),
     break_from: v.breaks?.[0]?.from ?? "",
     break_to: v.breaks?.[0]?.to ?? "",
   };
@@ -425,6 +450,11 @@ export function GlobalSetupWizard({
     queryFn: () => tournamentsApi.sports(tournamentId),
   });
   const sportOptions = sportsQ.data?.sports ?? [];
+  // Every competition, offered per court so a court can be reserved for one
+  // category rather than a whole sport (spec 2026-08-16).
+  const competitionOptions = configuredLeaves(sportsQ.data?.sports ?? []).map(
+    (l) => ({ key: l.leaf_key, label: l.label }),
+  );
 
   // Reconcile the form with the stored sources whenever they change AND the
   // user hasn't edited yet (pristine): seeds on first load and ALSO absorbs
@@ -516,7 +546,10 @@ export function GlobalSetupWizard({
           breaks: draftBreaks(d),
         };
         if (!d.id) {
-          await tournamentsApi.createVenue(tournamentId, body);
+          // Courts are materialised server-side from `count`, so the created
+          // venue comes back with real rows to hang reservations on.
+          const made = await tournamentsApi.createVenue(tournamentId, body);
+          await saveCourtCompetitions(tournamentId, made, d);
           continue;
         }
         const prev = stored.find((v) => v.id === d.id);
@@ -528,7 +561,10 @@ export function GlobalSetupWizard({
           JSON.stringify(prev.windows ?? []) !== JSON.stringify(body.windows) ||
           JSON.stringify(prev.sports ?? []) !== JSON.stringify(body.sports) ||
           JSON.stringify(prev.breaks ?? []) !== JSON.stringify(body.breaks);
-        if (changed) await tournamentsApi.updateVenue(tournamentId, d.id, body);
+        const saved = changed
+          ? await tournamentsApi.updateVenue(tournamentId, d.id, body)
+          : prev;
+        await saveCourtCompetitions(tournamentId, saved, d);
       }
       for (const v of stored) {
         if (!drafts.some((d) => d.id === v.id)) {
@@ -1018,6 +1054,7 @@ export function GlobalSetupWizard({
                 value={v}
                 index={i}
                 sportOptions={sportOptions}
+                competitionOptions={competitionOptions}
                 showBreak={form.break_mode === "per_venue"}
                 onChange={(nv) =>
                   set("venues", form.venues.map((x, j) => (j === i ? nv : x)))

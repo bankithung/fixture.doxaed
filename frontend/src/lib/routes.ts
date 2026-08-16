@@ -62,6 +62,10 @@ export const routes = {
     `/tournaments/${encodeURIComponent(id)}/sports`,
   tournamentInstitutions: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/institutions`,
+  /** Stage two of a WITHIN-SCHOOL event, where institution registration sits
+   * in a between-schools one (spec 2026-08-16). */
+  tournamentHouses: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/houses`,
   tournamentTeams: (id: string) => `/tournaments/${encodeURIComponent(id)}/teams`,
   tournamentFixtures: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/fixtures`,

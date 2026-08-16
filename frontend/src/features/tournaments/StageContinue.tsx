@@ -26,6 +26,7 @@ import { pathStageKey } from "@/features/layout/computeNavItems";
 const STAGE_ROUTE: Record<string, (id: string) => string> = {
   setup: routes.tournamentSports,
   org_registration: routes.tournamentInstitutions,
+  house_setup: routes.tournamentHouses,
   team_registration: routes.tournamentTeams,
   fixtures: routes.tournamentFixtures,
   ready: routes.tournamentControl,

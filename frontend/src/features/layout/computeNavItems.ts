@@ -29,6 +29,7 @@ import { t } from "@/lib/t";
 export const STAGE_WORK_ROUTE: Record<string, (id: string) => string> = {
   setup: routes.tournamentSports,
   org_registration: routes.tournamentInstitutions,
+  house_setup: routes.tournamentHouses,
   team_registration: routes.tournamentTeams,
   fixtures: routes.tournamentFixtures,
   ready: routes.tournamentOverview,
@@ -43,6 +44,7 @@ export const STAGE_WORK_ROUTE: Record<string, (id: string) => string> = {
  */
 export function pathStageKey(pathname: string): string | null {
   if (/\/sports(\/|$)/.test(pathname)) return "setup";
+  if (/\/houses(\/|$)/.test(pathname)) return "house_setup";
   if (/\/(forms|institutions)(\/|$)/.test(pathname)) return "org_registration";
   if (/\/teams(\/|$)/.test(pathname)) return "team_registration";
   if (/\/fixtures(\/|$)/.test(pathname)) return "fixtures";
