@@ -117,6 +117,27 @@ Up-front PRD decisions that shape the codebase. Do not relitigate; do not deviat
 - **A drag is not a click** — pointer drag scrubs; the tile opens only under `DRAG_SLOP` (6px) of travel.
 - Category is readable without grouping: chips carry counts and every tile names the category it was filed under. Chips match a photo by its **upload** category *or* its award.
 
+## Tournament scope: between schools vs within one school (2026-08-16)
+
+`Tournament.scope` (`inter_school` | `intra_school`) is set at creation and decides who competes. Spec: `docs/superpowers/specs/2026-08-16-tournament-scope-and-court-categories-design.md`.
+
+- **Stage two has two identities, and the funnel keeps five steps either way.** An intra-school event does NOT skip institution registration — it replaces it with `house_setup`. `_STAGE_STATUS` makes that stage the ONLY producer of the `published` lifecycle status, so skipping it would silently strip `published` from every sports day. `state.py::flow_order(tournament)` is the one list; the stage payload's `order` comes from it, so screen, prompt and server cannot drift.
+- **The competitor is a house, but the host school is still a real `Institution` row.** ~40 readers key on `Team.institution` / the `Team.school` text mirror (standings, keep-apart, emails, records, the album), several through `PROTECT`ed FKs. An intra-school tournament auto-creates ONE already-registered institution at creation and the house rides on the existing `Team.group`. Do not "fix" this by nulling the institution — nothing writes null and nothing is ready for it.
+- **Houses are season-scoped, not tournament-scoped** (`teams.TeamGroup` + `TournamentHouse`), because a year's events sum into one house table. `TeamGroupMembership` is the first per-competitor scope in the system: before it, a `team_manager` could edit ANY institution's teams.
+- **Three things break the moment every team shares one institution**, all fixed and all pinned by tests: Person dedupe matched by name within the institution (two same-named students in different houses became one person); a blank team name defaulted to the institution (every house fought over "<School>" and became "School 2"); and `_separate_institutions` buckets every team together.
+- Names are always free text, and the noun follows `Tournament.group_kind` (house / class / form / department) — nothing user-visible hardcodes "house".
+
+## Courts are reserved per COMPETITION, not per sport (2026-08-16)
+
+`Court.competitions` is a list of leaf-key **prefixes**, matched segment-aligned by `sports.leaf_allowed_by`: `table_tennis` = the whole sport (exactly what `Venue.sports` already said), `table_tennis.u14` = both genders, `table_tennis.u14.boys` = one competition. `table_tennis.u1` matches nothing; an empty list takes anything, which is why no existing venue needed migrating.
+
+- It lives on `Court`, not `Venue`, because the case is two courts in ONE hall. `Venue.sports` stays as the coarse filter and a match must pass both.
+- **The rule binds at generation**, not only afterwards: `schedule_matches.feasible` AND `optimizer._single_match_ok` gate on it (keep them in lockstep — the optimizer must not undo what the greedy pass respected), plus the `relaxed_venue_type_sports` probe.
+- `validate_schedule` now reports `venue_sport_mismatch` and `court_competition_mismatch`. Before this it checked NO resource binding, so every repair verb could hand-move a match past even the sport allow-list.
+- **Courts are materialised eagerly** (`services/courts.py::materialise_courts`, called on venue create/update) — they used to appear only when a match first landed on one, so an admin could not address "court 2" before the draw, which is exactly when a reservation must be set. Shrinking `count` retires rows rather than deleting them.
+- `readiness._courts_for_leaf` buckets supply per competition once any court is reserved; bucketing by sport alone was blind to the halved supply and would emit an unplayable day.
+- `ScheduleConfig.court_competitions` is keyed by the EXPANDED court name ("Hall · T2"); every other `venue_*` map is keyed by the base name.
+
 ## Operations pages (frontend)
 
 - **`MatchRow`** (`features/controlroom/MatchRow.tsx`) is the shared dense match row: it is a **desktop table row** and overflows below `md`, so any page that lists matches on a phone needs its own card layout (see `MyTasksPage`'s `MyTaskCard`). It takes an optional `badges` slot for caller-owned chips. Finished matches carry `data-done` + a `success-muted` tint.
