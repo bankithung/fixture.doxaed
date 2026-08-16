@@ -9,7 +9,7 @@ import { tournamentsApi } from "@/api/tournaments";
 
 vi.mock("@/api/tournaments");
 
-const ORDER = [
+const BASE_ORDER = [
   "setup",
   "org_registration",
   "team_registration",
@@ -20,19 +20,35 @@ const ORDER = [
 const LABELS: Record<string, string> = {
   setup: "Setup",
   org_registration: "Institution registration",
+  house_setup: "Houses & members",
   team_registration: "Team registration",
   members: "Members & roles",
   fixtures: "Fixtures",
   ready: "Ready",
 };
 
-function stagePayload(current: string) {
+// A within-school event swaps institution registration for house setup; the
+// server's `order` is the one list, so the screen follows it.
+const INTRA_ORDER = [
+  "setup",
+  "house_setup",
+  "team_registration",
+  "members",
+  "fixtures",
+  "ready",
+];
+
+function stagePayload(
+  current: string,
+  opts: { order?: string[]; allowedTo?: string[] } = {},
+) {
+  const ORDER = opts.order ?? BASE_ORDER;
   const curIdx = ORDER.indexOf(current);
   return {
     stage: current,
     status: "published",
     order: ORDER,
-    allowed_to: [],
+    allowed_to: opts.allowedTo ?? [],
     can_manage: true,
     modules: [],
     rules_frozen_at: null,
@@ -60,6 +76,8 @@ function renderAt(path: string) {
             <Route path="/tournaments/:id" element={<TournamentWorkspace />}>
               <Route path="forms" element={<div>FORMS PAGE</div>} />
               <Route path="institutions" element={<div>INSTITUTIONS PAGE</div>} />
+              <Route path="houses" element={<div>HOUSES PAGE</div>} />
+              <Route path="teams" element={<div>TEAMS PAGE</div>} />
               <Route path="sports" element={<div>SPORTS PAGE</div>} />
             </Route>
           </Routes>
@@ -121,5 +139,60 @@ describe("TournamentWorkspace stage stepper", () => {
     await screen.findByText("FORMS PAGE");
     await screen.findByText("Fixtures"); // upcoming chip rendered…
     expect(screen.queryByRole("button", { name: /Fixtures/ })).toBeNull();
+  });
+});
+
+describe("within-school flow", () => {
+  // The Houses page is stage two of a sports day. It carries the flow's
+  // Continue control like every other stage work page — it had none, because
+  // the page was missing from TAB_DEFS and so never counted as a `flowPage`,
+  // which left an admin who had named their houses with no way forward.
+  it("the Houses page offers Continue to the next stage", async () => {
+    vi.mocked(tournamentsApi.stage).mockResolvedValue(
+      stagePayload("house_setup", {
+        order: INTRA_ORDER,
+        allowedTo: ["team_registration"],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+    );
+    renderAt("/tournaments/t1/houses");
+    await screen.findByText("HOUSES PAGE");
+
+    expect(
+      await screen.findByRole("button", { name: /Continue/ }),
+    ).toBeInTheDocument();
+    // …and it names where it goes (the stage strip also lists the label, so
+    // anchor on the Continue card's own copy).
+    expect(await screen.findByText(/Done with this step\?/)).toBeInTheDocument();
+  });
+
+  it("the mobile stage strip can reach the Houses page", async () => {
+    vi.mocked(tournamentsApi.stage).mockResolvedValue(
+      stagePayload("house_setup", {
+        order: INTRA_ORDER,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+    );
+    renderAt("/tournaments/t1/sports");
+    await screen.findByText("SPORTS PAGE");
+
+    // Reached stages are tappable chips; house_setup was inert because the
+    // workspace's own STAGE_ROUTE had no entry for it.
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Houses & members/ }),
+    );
+    expect(await screen.findByText("HOUSES PAGE")).toBeInTheDocument();
+  });
+
+  it("does not lock the Houses page behind its own stage", async () => {
+    vi.mocked(tournamentsApi.stage).mockResolvedValue(
+      stagePayload("house_setup", {
+        order: INTRA_ORDER,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+    );
+    renderAt("/tournaments/t1/houses");
+    expect(await screen.findByText("HOUSES PAGE")).toBeInTheDocument();
+    expect(screen.queryByText(/isn't active yet/)).toBeNull();
   });
 });
