@@ -15,10 +15,13 @@ import { cn } from "@/lib/tailwind";
 import { BentoGrid } from "@/features/dashboard/BentoCard";
 import { t } from "@/lib/t";
 
-/** Each setup stage → its work page, for the clickable top stepper. */
+/** Each setup stage → its work page, for the clickable top stepper. Stages the
+ * server puts in `order` but this map omits render as inert chips, which is how
+ * a within-school event's Houses stage became untappable on mobile. */
 const STAGE_ROUTE: Record<string, (id: string) => string> = {
   setup: routes.tournamentSports,
   org_registration: routes.tournamentInstitutions,
+  house_setup: routes.tournamentHouses,
   team_registration: routes.tournamentTeams,
   fixtures: routes.tournamentFixtures,
   ready: routes.tournamentOverview,
@@ -35,6 +38,12 @@ const TAB_DEFS = (id: string) => [
   // stage (keep in sync with computeTournamentNav).
   { to: routes.tournamentForms(id), label: "Forms", stageKey: "org_registration" },
   { to: routes.tournamentInstitutions(id), label: "Institutions", stageKey: "org_registration" },
+  // Stage two of a WITHIN-SCHOOL event, standing where Institutions sits in a
+  // between-schools one. It has to be listed even though these defs no longer
+  // render tabs: `activeTab` is what makes a page a `flowPage`, so without an
+  // entry the Houses page got no "Continue to Team registration" control and a
+  // sports day dead-ended there with no way out of the stage.
+  { to: routes.tournamentHouses(id), label: "Houses", stageKey: "house_setup" },
   { to: routes.tournamentTeams(id), label: "Teams", stageKey: "team_registration" },
   // Members (invite people / assign roles) is always available — like Overview &
   // Settings — not a stage-gated work section. Keep in sync with computeNavItems.
