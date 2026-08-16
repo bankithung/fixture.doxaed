@@ -736,6 +736,171 @@ def reconcile_institution_form_schema(
     return {"version": existing_schema.get("version", 1), "sections": new_sections}, meta
 
 
+# --------------------------------------------------------------- participants
+#: The competitor-facing questions asked about each KIND of participant, as
+#: plain schema data. Every entry is editable in the builder afterwards — the
+#: generator seeds a sensible sheet, it does not own it (owner 2026-08-17: "no
+#: hard-coded rules … let the user decide based on their requirements").
+#: ``bind`` names the RosterMember column an answer lands in; a question with
+#: no ``bind`` is kept in ``attributes``, so an admin can add anything the
+#: event needs without a schema change.
+def _participant_fields(kind: str, *, intra: bool) -> list[dict]:
+    if kind == "teacher":
+        return [
+            {"key": "teacher_name", "type": "short_text", "required": True,
+             "label": "Teacher name", "bind": "full_name"},
+            {"key": "teacher_designation", "type": "short_text", "required": False,
+             "label": "Designation"},
+            {"key": "teacher_phone", "type": "phone", "required": True,
+             "label": "Mobile number", "bind": "contact_phone",
+             "help": "The organizer calls this number on the day."},
+            {"key": "teacher_email", "type": "email", "required": False,
+             "label": "Email", "bind": "contact_email"},
+            {"key": "teacher_docs", "type": "file_upload", "required": False,
+             "multiple": True, "label": "ID / authorization letter",
+             "help": "Optional — upload one or more."},
+        ]
+    return [
+        {"key": "student_name", "type": "short_text", "required": True,
+         "label": "Student name", "bind": "full_name"},
+        {"key": "student_class", "type": "short_text", "required": True,
+         "label": "Class & section", "bind": "class_section", "help": "e.g. 9-B"},
+        {"key": "student_roll", "type": "short_text", "required": False,
+         "label": "Roll number", "bind": "roll_no",
+         "help": "Your school's own number — it keeps a re-submitted list from "
+                 "duplicating this student."},
+        {"key": "student_gender", "type": "single_choice", "required": False,
+         "label": "Gender", "bind": "gender",
+         "options": [{"value": "male", "label": "Male"},
+                     {"value": "female", "label": "Female"},
+                     {"value": "other", "label": "Other"}]},
+        {"key": "student_dob", "type": "date", "required": True,
+         "label": "Date of birth", "bind": "date_of_birth"},
+        *([] if intra else [
+            {"key": "student_phone", "type": "phone", "required": False,
+             "label": "Contact number", "bind": "contact_phone"},
+        ]),
+        {"key": "student_docs", "type": "file_upload", "required": False,
+         "multiple": True, "label": "Documents (ID / birth certificate)",
+         "help": "Optional — upload one or more. Images are compressed automatically."},
+    ]
+
+
+def build_participants_form_schema(tournament) -> tuple[dict, dict]:
+    """(schema, bindings) for the participants form (spec 2026-08-17).
+
+    ONE sheet per school: every student, and every teacher travelling with
+    them. No competition questions at all — who is entering which event is the
+    team form's job, and asking it here would make the school answer twice.
+
+    The two repeatable groups are ordinary schema groups on the existing
+    engine, so the admin can add, remove or reorder questions in the builder
+    exactly as with any other form.
+    """
+    intra = getattr(tournament, "scope", "") == "intra_school"
+    noun_label = {
+        "house": "house", "class": "class", "form": "form",
+        "department": "department",
+    }.get(getattr(tournament, "group_kind", "") or "house", "house")
+
+    competitor_field = (
+        {"key": "house_id", "type": "dropdown", "required": True,
+         "label": f"Which {noun_label} are you entering participants for?",
+         "options": [], "data_source": {"type": "house_list"}}
+        if intra
+        else {"key": "institution_id", "type": "dropdown", "required": True,
+              "label": "Select your institution", "options": [],
+              "data_source": {"type": "institution_list"}}
+    )
+
+    groups: list[dict] = []
+    sections: list[dict] = [
+        {
+            "key": "institution",
+            "title": f"Your {noun_label}" if intra else "Your institution",
+            "description": (
+                "List everyone taking part first. Teams are built afterwards by "
+                "picking from this list, so nobody is entered twice by mistake."
+            ),
+            "fields": [
+                competitor_field,
+                {"key": "contact_name", "type": "short_text",
+                 "label": "Contact person", "required": False},
+                {"key": "contact_email", "type": "email",
+                 "label": "Contact email", "required": False},
+                {"key": "contact_phone", "type": "phone",
+                 "label": "Contact phone", "required": False},
+            ],
+        }
+    ]
+    for kind, gkey, title, label, description in (
+        ("student", "students", "Students", "Student",
+         "Everyone who will compete, in any sport. Enter each student once — "
+         "you pick them per team on the next form."),
+        ("teacher", "teachers", "Teachers in charge", "Teacher",
+         "The staff travelling with the team. A teacher can only be in one "
+         "place at a time, so the draw keeps their competitions apart."),
+    ):
+        fields = _participant_fields(kind, intra=intra)
+        sections.append({
+            "key": f"section_{gkey}",
+            "title": title,
+            "description": description,
+            "fields": [{
+                "key": gkey, "type": "group", "label": label,
+                "repeatable": True,
+                "min_items": 1 if kind == "student" else 0,
+                "fields": fields,
+            }],
+        })
+        name_key = next(
+            (f["key"] for f in fields if f.get("bind") == "full_name"), ""
+        )
+        groups.append({
+            "kind": kind,
+            "group": gkey,
+            "name": name_key,
+            # answer key -> RosterMember column. Everything else in the row is
+            # preserved on the member's `attributes`.
+            "fields": {
+                f["bind"]: f["key"] for f in fields
+                if f.get("bind") and f["bind"] != "full_name"
+            },
+        })
+
+    bindings = {
+        "competitor_kind": "house" if intra else "institution",
+        "competitor_id": "house_id" if intra else "institution_id",
+        "institution_id": "institution_id",
+        "contact_name": "contact_name",
+        "contact_email": "contact_email",
+        "contact_phone": "contact_phone",
+        "participant_groups": groups,
+    }
+    return {"version": 1, "sections": sections}, bindings
+
+
+def generate_participants_form(*, tournament, created_by=None, request=None) -> Form:
+    """Create the DRAFT participants form for the admin to review and publish."""
+    schema, bindings = build_participants_form_schema(tournament)
+    form = create_form(
+        tournament=tournament,
+        title="Participant registration",
+        purpose=FormPurpose.PARTICIPANT_REGISTRATION,
+        stage="roster",
+        schema=schema,
+        created_by=created_by,
+        request=request,
+    )
+    form.settings = {
+        **(form.settings or {}),
+        "bindings": bindings,
+        "inputs_hash": sports_inputs_hash(tournament.sports),
+    }
+    form.save(update_fields=["settings"])
+    return form
+
+
 def generate_institution_form(*, tournament, created_by=None, request=None) -> Form:
     """Create a DRAFT institution-registration form from the tournament's sports,
     for the admin to review/edit/publish."""

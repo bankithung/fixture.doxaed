@@ -147,7 +147,130 @@ def map_response(resp: FormResponse) -> FormResponse:
         return _map_team_registration(resp)
     if resp.form.purpose == FormPurpose.ORGANIZATION_REGISTRATION:
         return _map_organization_registration(resp)
+    if resp.form.purpose == FormPurpose.PARTICIPANT_REGISTRATION:
+        return _map_participant_registration(resp)
     # generic: the response IS the record.
+    return resp
+
+
+def _competitor_of(form, bindings: dict, answers: dict):
+    """(institution, group) a competitor-scoped submission belongs to.
+
+    Inter-school: the chosen institution, no group. Within-school: the chosen
+    house, under the ONE host institution — every ``Team.institution`` reader in
+    the system keys on a real row, so the house rides alongside it rather than
+    replacing it (spec 2026-08-16).
+    """
+    from apps.teams.models import Institution, TeamGroup
+
+    if bindings.get("competitor_kind") == "house":
+        gid = answers.get(bindings.get("competitor_id", "house_id")) or None
+        group = (
+            TeamGroup.objects.filter(
+                id=gid, organization=form.tournament.organization,
+                deleted_at__isnull=True,
+            ).first()
+            if gid
+            else None
+        )
+        if group is None:
+            raise ValidationError("house_not_found")
+        host = (
+            Institution.objects.filter(
+                tournament=form.tournament, deleted_at__isnull=True
+            ).order_by("created_at").first()
+        )
+        return host, group
+
+    iid = answers.get(bindings.get("institution_id", "institution_id")) or None
+    inst = (
+        Institution.objects.filter(
+            id=iid, tournament=form.tournament, deleted_at__isnull=True
+        ).first()
+        if iid
+        else None
+    )
+    return inst, None
+
+
+def _as_date(value):
+    from django.utils.dateparse import parse_date
+
+    if not value:
+        return None
+    try:
+        return parse_date(str(value)[:10])
+    except (ValueError, TypeError):
+        return None
+
+
+def _map_participant_registration(resp: FormResponse) -> FormResponse:
+    """Stage: participants. Each row of each participant group becomes a
+    declared ``RosterMember`` for the submitting school.
+
+    Idempotent twice over: ``map_response`` skips an already-mapped response,
+    and ``declare_member`` matches an existing row by roll number (else name)
+    within the school, so a school that fixes a typo and re-submits UPDATES its
+    list rather than doubling it. Nobody is removed by omission — a participant
+    already fielded on a team must be withdrawn deliberately, not by editing a
+    form.
+    """
+    from apps.teams.services.roster import declare_member
+
+    form = resp.form
+    b = (form.settings or {}).get("bindings", {})
+    a = resp.answers or {}
+    inst, group = _competitor_of(form, b, a)
+    if inst is None:
+        raise ValidationError("institution_not_found")
+
+    member_ids: list[str] = []
+    for cfg in b.get("participant_groups", []) or []:
+        gkey = cfg.get("group")
+        name_key = cfg.get("name")
+        kind = cfg.get("kind") or "student"
+        binds: dict[str, str] = cfg.get("fields") or {}
+        rows = a.get(gkey, []) or []
+        if not (gkey and name_key) or not isinstance(rows, list):
+            continue
+        answer_keys = {name_key, *binds.values()}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get(name_key) or "").strip()
+            if not name:
+                continue
+            fields = {}
+            for column, key in binds.items():
+                val = row.get(key)
+                if val in (None, ""):
+                    continue
+                fields[column] = (
+                    _as_date(val) if column == "date_of_birth" else str(val)
+                )
+            # Anything the admin added to the group in the builder is kept
+            # verbatim, so extending the sheet never needs a schema change.
+            extra = {
+                k: v for k, v in row.items()
+                if k not in answer_keys and v not in (None, "", [])
+            }
+            member = declare_member(
+                tournament=form.tournament,
+                institution=inst,
+                full_name=name,
+                kind=kind,
+                group=group,
+                source_response_id=resp.id,
+                attributes=extra or None,
+                **fields,
+            )
+            member_ids.append(str(member.id))
+
+    resp.mapped_entities = {
+        "institution_id": str(inst.id),
+        "roster_member_ids": member_ids,
+    }
+    resp.save(update_fields=["mapped_entities"])
     return resp
 
 

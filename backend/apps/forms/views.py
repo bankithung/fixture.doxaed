@@ -23,6 +23,7 @@ from rest_framework.response import Response
 
 from apps.forms.constants import (
     CHOICE_TYPES,
+    COMPETITOR_PURPOSES,
     FIELD_TYPES,
     FormPurpose,
     FormStatus,
@@ -451,6 +452,29 @@ def _public_payload(form, link=None):
     return data
 
 
+def _roster_payload(tournament, institution, group=None) -> dict:
+    """The declared students + teachers a team form's dropdowns pick from.
+
+    Empty (and cheap) unless the tournament actually runs participants-first,
+    so nothing changes for the flows that type names.
+    """
+    from apps.teams.models import RosterMemberKind
+    from apps.teams.services.roster import member_options
+    from apps.tournaments.models import RosterMode
+
+    if getattr(tournament, "roster_mode", None) != RosterMode.ROSTER_FIRST:
+        return {"students": [], "teachers": [], "enabled": False}
+    return {
+        "enabled": True,
+        "students": member_options(
+            tournament, institution, kind=RosterMemberKind.STUDENT, group=group,
+        ),
+        "teachers": member_options(
+            tournament, institution, kind=RosterMemberKind.TEACHER, group=group,
+        ),
+    }
+
+
 class TeamAccessView(GenericAPIView):
     """`POST /api/forms/{form_id}/team-access/` — exchange (institution,
     access code) for a short-lived signed token + the institution's previous
@@ -477,7 +501,7 @@ class TeamAccessView(GenericAPIView):
             .select_related("tournament")
             .first()
         )
-        if form is None or form.purpose != FormPurpose.TEAM_REGISTRATION or not is_open(form):
+        if form is None or form.purpose not in COMPETITOR_PURPOSES or not is_open(form):
             raise NotFound("form_not_found")
         inst = Institution.objects.filter(
             id=str(request.data.get("institution_id") or ""),
@@ -527,6 +551,10 @@ class TeamAccessView(GenericAPIView):
             "expires_in": 2 * 60 * 60,
             "editing": prior is not None,
             "prefill": prefill,
+            # The person pickers, revealed only now (spec 2026-08-17). A
+            # school's roll of children is PII, so it is never part of the
+            # public schema — the caller has just proved it is this school.
+            "roster": _roster_payload(form.tournament, inst),
             # Names + signed view URLs for any files in the prior submission, so
             # the renderer shows them as thumbnails/links, not bare "Uploaded file".
             "file_meta": file_meta_for(form, prefill),
@@ -615,7 +643,10 @@ class PublicFormView(GenericAPIView):
             and FormResponse.objects.filter(form=form, event_id=event_id).exists()
         )
         authorized_inst_id: str | None = None
-        if form.purpose == FormPurpose.TEAM_REGISTRATION and not is_replay:
+        # Both competitor-scoped purposes go through the SAME gate: a
+        # participants sheet is a school's roll of children, so it is at least
+        # as protected as its team list (spec 2026-08-17).
+        if form.purpose in COMPETITOR_PURPOSES and not is_replay:
             from apps.teams.models import Institution
             from apps.teams.services.access import read_access_token
 
@@ -685,11 +716,14 @@ class PublicFormView(GenericAPIView):
                 # A manager's full-form submission for a school REPLACES that
                 # school's set (same authoritative semantics as the code path).
                 authorized_inst_id = str(inst.id)
-            errs = team_registration_field_errors(
-                form, answers, exclude_institution_id=authorized_inst_id
-            )
-            if errs:
-                raise DRFValidationError({"errors": errs})
+            # Duplicate-team-name checking belongs to the team form alone — a
+            # participants sheet has no team names to collide.
+            if form.purpose == FormPurpose.TEAM_REGISTRATION:
+                errs = team_registration_field_errors(
+                    form, answers, exclude_institution_id=authorized_inst_id
+                )
+                if errs:
+                    raise DRFValidationError({"errors": errs})
         try:
             resp = submit_response(
                 form=form,
@@ -703,8 +737,10 @@ class PublicFormView(GenericAPIView):
         except AnswerError as e:
             raise DRFValidationError({"errors": e.errors}) from e
         # A code-authorized (re)submission REPLACES the institution's previous
-        # team registration instead of stacking a duplicate set.
-        if authorized_inst_id is not None:
+        # team registration instead of stacking a duplicate set. NOT so for a
+        # participants sheet: ``declare_member`` updates in place, and dropping
+        # people by omission would strip a child already fielded on a team.
+        if authorized_inst_id is not None and form.purpose == FormPurpose.TEAM_REGISTRATION:
             supersede_team_registration(
                 form, authorized_inst_id, exclude_response_id=resp.id, request=request
             )

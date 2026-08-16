@@ -247,10 +247,23 @@ def _house_count(t: Tournament) -> int:
     ).count()
 
 
+def _participant_count(t: Tournament) -> int:
+    """People declared for a participants-first tournament. Always 0 for the
+    tournaments that never asked for the stage — nothing writes a roster there."""
+    if getattr(t, "roster_mode", None) != RosterMode.ROSTER_FIRST:
+        return 0
+    from apps.teams.models import RosterMember, RosterMemberStatus
+
+    return RosterMember.objects.filter(
+        tournament=t, deleted_at__isnull=True, status=RosterMemberStatus.ACTIVE
+    ).count()
+
+
 def _counts_for(t: Tournament) -> dict[str, int]:
     return {
         "institutions": _institution_count(t),
         "houses": _house_count(t),
+        "participants": _participant_count(t),
         "teams": _team_count(t),
         "members": _member_count(t),
         "matches": _match_count(t),
@@ -299,6 +312,30 @@ def _reopen_stage_form(t: Tournament, stage: str, *, by=None, request=None) -> l
             publish_form(form, user=by, request=request)
             reopened.append(str(form.id))
     return reopened
+
+
+def _ensure_participants_form(tournament_id, user_id) -> None:
+    """On entering ``roster``, auto-create the DRAFT participants form when none
+    exists — the same courtesy the team stage already does, so the admin arrives
+    at a ready sheet rather than a blank builder. Post-commit + idempotent."""
+    from apps.forms.services.generation import generate_participants_form
+
+    exists = (
+        Form.objects.filter(tournament_id=tournament_id, deleted_at__isnull=True)
+        .filter(Q(stage=G.ROSTER) | Q(purpose=FormPurpose.PARTICIPANT_REGISTRATION))
+        .exists()
+    )
+    if exists:
+        return
+    tournament = Tournament.objects.filter(id=tournament_id).first()
+    if tournament is None:
+        return
+    user = None
+    if user_id is not None:
+        from django.contrib.auth import get_user_model
+
+        user = get_user_model().objects.filter(id=user_id).first()
+    generate_participants_form(tournament=tournament, created_by=user)
 
 
 def _ensure_team_form(tournament_id, user_id) -> None:
@@ -370,6 +407,18 @@ def preview_advance(t: Tournament, to_stage: str) -> dict:
     # exists — surface it so the advance isn't a surprise.
     if to_stage == G.TEAM_REGISTRATION and not _stage_forms(t, G.TEAM_REGISTRATION).exists():
         warnings.append({"code": "team_form_will_be_created"})
+    if to_stage == G.ROSTER and not _stage_forms(t, G.ROSTER).exists():
+        warnings.append({"code": "participants_form_will_be_created"})
+    # Participants-first: teams are built by picking declared people, so opening
+    # team registration with an empty roster leaves every dropdown blank. A
+    # WARNING, not a blocker — an organizer who enters the roster themselves
+    # afterwards is doing nothing wrong.
+    if (
+        to_stage == G.TEAM_REGISTRATION
+        and t.roster_mode == RosterMode.ROSTER_FIRST
+        and counts["participants"] == 0
+    ):
+        warnings.append({"code": "no_participants_declared"})
     # Nudge the admin to pick sports before opening stage two (institution
     # registration, or house setup) — the sports drive the generated forms +
     # fixtures either way.
@@ -588,6 +637,14 @@ def transition_tournament(
             actor_id = getattr(by, "id", None)
             transaction.on_commit(lambda: _ensure_team_form(tid_team, actor_id))
 
+        # Same for the participants stage (spec 2026-08-17).
+        if is_forward and to_stage == G.ROSTER:
+            tid_roster = locked.id
+            actor_roster = getattr(by, "id", None)
+            transaction.on_commit(
+                lambda: _ensure_participants_form(tid_roster, actor_roster)
+            )
+
     return locked
 
 
@@ -653,6 +710,8 @@ def _stage_counts(stage: str, counts: dict) -> dict:
         return {"institutions": counts["institutions"]}
     if stage == G.HOUSE_SETUP:
         return {"houses": counts["houses"]}
+    if stage == G.ROSTER:
+        return {"participants": counts["participants"]}
     if stage == G.TEAM_REGISTRATION:
         return {"teams": counts["teams"]}
     if stage == G.FIXTURES:

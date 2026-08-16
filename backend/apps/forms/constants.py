@@ -12,8 +12,22 @@ class FormStatus(models.TextChoices):
 
 class FormPurpose(models.TextChoices):
     ORGANIZATION_REGISTRATION = "organization_registration", _("Organization registration")
+    # Participants-first (spec 2026-08-17): a school declares every student and
+    # teacher ONCE, before any team exists, so team entry becomes a pick from a
+    # known list rather than a typed name.
+    PARTICIPANT_REGISTRATION = "participant_registration", _("Participant registration")
     TEAM_REGISTRATION = "team_registration", _("Team registration")
     GENERIC = "generic", _("Generic")
+
+
+#: Purposes whose submissions carry ONE competitor's own data — a school's
+#: students, a school's teams. Every one of them goes through the same
+#: authorization gate (access-code token, bound link, house membership or
+#: manager) before it may be written or replaced.
+COMPETITOR_PURPOSES = frozenset({
+    FormPurpose.PARTICIPANT_REGISTRATION.value,
+    FormPurpose.TEAM_REGISTRATION.value,
+})
 
 
 class ResponseStatus(models.TextChoices):
@@ -30,6 +44,7 @@ class ResponseStatus(models.TextChoices):
 # a forms -> tournaments import cycle (tournaments already imports forms).
 STAGE_TO_PURPOSE: dict[str, str] = {
     "org_registration": FormPurpose.ORGANIZATION_REGISTRATION.value,
+    "roster": FormPurpose.PARTICIPANT_REGISTRATION.value,
     "team_registration": FormPurpose.TEAM_REGISTRATION.value,
 }
 PURPOSE_TO_STAGE: dict[str, str] = {v: k for k, v in STAGE_TO_PURPOSE.items()}

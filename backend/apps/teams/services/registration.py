@@ -23,7 +23,10 @@ from apps.teams.models import (
     Person,
     Player,
     RegistrationLink,
+    RosterMember,
+    RosterMemberStatus,
     Team,
+    TeamStaff,
     TeamStatus,
 )
 
@@ -126,6 +129,62 @@ def get_or_create_institution(
         created_by=created_by,
         source_response_id=source_response_id,
     )
+
+
+def _staff_ref(entry) -> tuple[str, str]:
+    """One ``staff`` entry as (member_id, role). Accepts a bare id or a dict, so
+    a caller that only knows "this teacher" need not invent a role."""
+    if isinstance(entry, dict):
+        return (
+            str(entry.get("member_id") or entry.get("id") or ""),
+            str(entry.get("role") or "in_charge")[:32],
+        )
+    return str(entry or ""), "in_charge"
+
+
+def _resolve_members(tournament, institution, teams: list[dict]) -> dict[str, RosterMember]:
+    """Every declared participant the submission PICKS, keyed by id.
+
+    Scoped to the submitting institution on purpose: a school fielding another
+    school's child (or claiming their teacher, which would link two unrelated
+    schools' matches in the scheduler) is refused rather than silently dropped.
+    An id we cannot resolve is an error too — falling back to the typed name
+    would quietly restore the guess this layer exists to remove.
+    """
+    wanted: set[str] = set()
+    for td in teams:
+        for pd in td.get("players", []) or []:
+            if pd.get("member_id"):
+                wanted.add(str(pd["member_id"]))
+        for entry in td.get("staff", []) or []:
+            mid, _role = _staff_ref(entry)
+            if mid:
+                wanted.add(mid)
+    if not wanted:
+        return {}
+    valid = [m for m in wanted if _is_uuid(m)]
+    found = {
+        str(m.id): m
+        for m in RosterMember.objects.filter(
+            id__in=valid,
+            tournament=tournament,
+            institution=institution,
+            deleted_at__isnull=True,
+            status=RosterMemberStatus.ACTIVE,
+        ).select_related("person")
+    }
+    missing = sorted(wanted - set(found))
+    if missing:
+        raise ValidationError(f"participant_not_in_roster:{missing[0]}")
+    return found
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        _uuid.UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return True
 
 
 def register_school(
@@ -245,6 +304,11 @@ def register_school(
                                 f"{pd.get('full_name', '')}:{code}"
                             )
 
+            # Participants-first (spec 2026-08-17): identities the submission
+            # PICKS rather than types. Resolved once, up front, so a bad id
+            # fails the whole submission before any row is written.
+            picked = _resolve_members(tournament, resolved, teams)
+
             for td in teams:
                 team = Team.objects.create(
                     organization=org,
@@ -269,6 +333,27 @@ def register_school(
                 # (review W2-F, critical).
                 team_person_ids: set = set()
                 for pd in td.get("players", []):
+                    # A picked participant IS the identity — no matching, no
+                    # dedupe pass, and a name re-picked on one squad lands once
+                    # (a second Player row would trip unique_person_per_team and
+                    # roll the school's whole submission back).
+                    member = picked.get(str(pd.get("member_id") or ""))
+                    if member is not None:
+                        if member.person_id in team_person_ids:
+                            continue
+                        team_person_ids.add(member.person_id)
+                        Player.objects.create(
+                            organization=org,
+                            tournament=tournament,
+                            team=team,
+                            person=member.person,
+                            jersey_no=pd.get("jersey_no"),
+                            position=(pd.get("position") or "")[:16],
+                            captain=bool(pd.get("captain", False)),
+                            is_goalkeeper=bool(pd.get("is_goalkeeper", False)),
+                            added_by=submitted_by,
+                        )
+                        continue
                     # W2-D person dedupe: the same name registered before by
                     # THIS institution in THIS tournament is the same person,
                     # so a student entering football AND badminton shares one
@@ -316,6 +401,19 @@ def register_school(
                         captain=bool(pd.get("captain", False)),
                         is_goalkeeper=bool(pd.get("is_goalkeeper", False)),
                         added_by=submitted_by,
+                    )
+                # Teachers in charge. Many per team on purpose: a school that
+                # sends two teachers can legitimately run two courts at once,
+                # and the scheduler keys its keep-apart edge on the teacher.
+                seen_staff: set = set()
+                for entry in td.get("staff", []) or []:
+                    mid, role = _staff_ref(entry)
+                    member = picked.get(mid)
+                    if member is None or member.id in seen_staff:
+                        continue
+                    seen_staff.add(member.id)
+                    TeamStaff.objects.create(
+                        organization=org, team=team, member=member, role=role,
                     )
                 created.append(team)
 

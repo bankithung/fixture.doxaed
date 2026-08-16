@@ -39,10 +39,15 @@ EDITABLE = (
 )
 
 
-def roster_for(tournament, institution=None, *, kind: str | None = None):
+def roster_for(tournament, institution=None, *, kind: str | None = None, group=None):
     """The declared people of a tournament, newest last. Scope to ONE
     institution for anything a school is allowed to see — a roster is student
-    PII and must never be handed out across schools."""
+    PII and must never be handed out across schools.
+
+    ``group`` narrows further to one house: inside a within-school event every
+    competitor shares the single host institution, so the house is the only
+    boundary a house captain may be trusted with.
+    """
     qs = RosterMember.objects.filter(
         tournament=tournament,
         deleted_at__isnull=True,
@@ -50,6 +55,8 @@ def roster_for(tournament, institution=None, *, kind: str | None = None):
     ).select_related("person", "institution", "group")
     if institution is not None:
         qs = qs.filter(institution=institution)
+    if group is not None:
+        qs = qs.filter(group=group)
     if kind:
         qs = qs.filter(kind=kind)
     return qs.order_by("kind", "person__full_name")
@@ -180,7 +187,9 @@ def withdraw_member(*, member: RosterMember, by=None, request=None) -> None:
     )
 
 
-def member_options(tournament, institution, *, kind=RosterMemberKind.STUDENT):
+def member_options(
+    tournament, institution, *, kind=RosterMemberKind.STUDENT, group=None,
+):
     """The picker payload a team form fills its person dropdowns from.
 
     Deliberately NOT part of the public form schema: schema resolution happens
@@ -195,5 +204,5 @@ def member_options(tournament, institution, *, kind=RosterMemberKind.STUDENT):
             "roll_no": m.roll_no,
             "kind": m.kind,
         }
-        for m in roster_for(tournament, institution, kind=kind)
+        for m in roster_for(tournament, institution, kind=kind, group=group)
     ]
