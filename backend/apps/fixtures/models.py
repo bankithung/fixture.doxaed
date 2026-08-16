@@ -95,6 +95,16 @@ class Court(models.Model):
     # 1-based T-number within the venue ("Hall · T3" -> 3). A single-court
     # venue is index 1 even though its name carries no suffix.
     index = models.PositiveSmallIntegerField(default=1)
+    # Competitions reserved to THIS court (spec 2026-08-16 §D7): a list of
+    # leaf-key PREFIXES, matched segment-aligned by
+    # ``apps.tournaments.services.sports.leaf_allowed_by`` —
+    # "table_tennis" (whole sport) / "table_tennis.u14" (both genders) /
+    # "table_tennis.u14.boys" (one competition). Empty = takes anything.
+    #
+    # It lives here rather than on Venue because the whole point is two courts
+    # in ONE hall running different categories; ``Venue.sports`` stays as the
+    # coarser filter above it and a match must satisfy both.
+    competitions = models.JSONField(default=list, blank=True)
     deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

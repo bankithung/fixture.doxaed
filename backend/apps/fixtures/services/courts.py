@@ -88,6 +88,44 @@ class CourtResolver:
         return court
 
 
+def materialise_courts(venue) -> list[Court]:
+    """Make the venue's playing surfaces real rows, now, one per ``count``.
+
+    Courts used to appear only when a match first landed on one (``resolve``
+    below), which meant an admin could not address "court 2" before the draw —
+    and per-court competition reservations (spec 2026-08-16) have to be set
+    BEFORE the draw, or they cannot influence it. Idempotent; surplus rows from
+    a reduced ``count`` are soft-deleted rather than dropped, because a match
+    may still reference one by name.
+    """
+    from django.utils import timezone as dj_tz
+
+    from apps.fixtures.services.scheduler import court_venue_name
+
+    n = max(1, int(venue.count or 1))
+    live = {c.index: c for c in venue.courts.filter(deleted_at__isnull=True)}
+    out: list[Court] = []
+    for i in range(1, n + 1):
+        name = venue.name if n == 1 else court_venue_name(venue.name, i)
+        court = live.get(i)
+        if court is None:
+            court = Court.objects.create(
+                organization=venue.organization, venue=venue, name=name, index=i,
+            )
+        elif court.name != name:
+            # A rename of the venue, or a count crossing the 1 -> N boundary,
+            # changes every court's display name — and the name IS the identity
+            # Match.venue stores.
+            court.name = name
+            court.save(update_fields=["name", "updated_at"])
+        out.append(court)
+    surplus = [c for idx, c in live.items() if idx > n]
+    for c in surplus:
+        c.deleted_at = dj_tz.now()
+        c.save(update_fields=["deleted_at", "updated_at"])
+    return out
+
+
 def resolve_court(organization, venue_name: str | None) -> Court | None:
     """One-shot :meth:`CourtResolver.resolve` — for the single-match writers.
     Bulk callers should keep a :class:`CourtResolver` for the whole run."""

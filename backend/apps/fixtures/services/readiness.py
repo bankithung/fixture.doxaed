@@ -179,11 +179,26 @@ def _capacity_check(tournament, teams_by_leaf: dict[str, list]) -> dict | None:
     venues = list(
         Venue.objects.filter(
             organization=tournament.organization, deleted_at__isnull=True
-        ).values("count", "sports")
+        ).values("id", "count", "sports")
     )
     if not venues:
         return None
     courts_total = sum(max(1, int(v["count"] or 1)) for v in venues)
+
+    # Per-court competition reservations (spec 2026-08-16). Reserving court 1
+    # for U14 Boys halves the real supply for every OTHER category in that
+    # hall, and a supply figure bucketed only by sport cannot see it — which
+    # would let the generator emit a day that physically cannot be played.
+    from apps.fixtures.models import Court
+
+    reserved: dict[str, list[str]] = {}
+    for cid, comps in Court.objects.filter(
+        venue__organization=tournament.organization,
+        venue__deleted_at__isnull=True,
+        deleted_at__isnull=True,
+    ).exclude(competitions=[]).values_list("venue_id", "competitions"):
+        reserved.setdefault(str(cid), []).append(comps)
+    any_reserved = bool(reserved)
 
     def _courts_for(sport: str) -> int:
         n = sum(
@@ -193,8 +208,27 @@ def _capacity_check(tournament, teams_by_leaf: dict[str, list]) -> dict | None:
         )
         return n or courts_total
 
+    def _courts_for_leaf(leaf_key: str, sport: str) -> int:
+        """Playing surfaces this ONE competition may actually use."""
+        from apps.tournaments.services.sports import leaf_allowed_by
+
+        n = 0
+        for v in venues:
+            if v["sports"] and sport not in v["sports"]:
+                continue
+            count = max(1, int(v["count"] or 1))
+            comps = reserved.get(str(v["id"]), [])
+            # Courts with no reservation take anything; reserved ones only
+            # count when this leaf is inside the reservation.
+            free = count - len(comps)
+            n += max(free, 0) + sum(
+                1 for c in comps if leaf_allowed_by(c, leaf_key)
+            )
+        return n
+
     # Demand per sport (estimated matches x duration).
     demand: dict[str, int] = {}
+    demand_sport: dict[str, str] = {}
     slot_fallback = int(cal.get("slot_minutes") or 30)
     for leaf in iter_leaves(tournament.sports):
         leaf_key = leaf["leaf_key"]
@@ -208,18 +242,33 @@ def _capacity_check(tournament, teams_by_leaf: dict[str, list]) -> dict | None:
             ) or slot_fallback
         )
         sport = leaf.get("sport_key") or leaf_key.split(".")[0]
-        demand[sport] = demand.get(sport, 0) + est * dur
+        if any_reserved:
+            # Keep the buckets per COMPETITION so a reserved court is measured
+            # against the competition it was reserved for.
+            demand[leaf_key] = demand.get(leaf_key, 0) + est * dur
+            demand_sport[leaf_key] = sport
+        else:
+            demand[sport] = demand.get(sport, 0) + est * dur
+            demand_sport[sport] = sport
     if not demand:
         return None
 
     worst: tuple[float, str, int, int] | None = None
-    for sport, need in demand.items():
-        concurrency = _courts_for(sport)
+    for bucket, need in demand.items():
+        sport = demand_sport.get(bucket, bucket)
+        concurrency = (
+            _courts_for_leaf(bucket, sport) if any_reserved else _courts_for(sport)
+        )
         cap = capacity_caps.get(sport)
         if cap:
             concurrency = min(concurrency, cap)
+        if concurrency <= 0:
+            # Every court that could host this competition is reserved for
+            # another one: it cannot be played at all, which is worse than
+            # tight and must not read as "fits".
+            concurrency = 0
         have = max((net_day * days - ceremony_minutes) * concurrency, 1)
-        ratio = need / have
+        ratio = need / have if concurrency else float("inf")
         if worst is None or ratio > worst[0]:
             worst = (ratio, sport, need, have)
     total_need = sum(demand.values())

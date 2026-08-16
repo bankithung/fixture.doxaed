@@ -121,6 +121,12 @@ class ScheduleConfig:
     # contains the match's sport. Makes "2 courts per sport" enforced rather
     # than convention — separating sports that share a venue_type.
     venue_sports: dict[str, list[str]] = field(default_factory=dict)
+    # Competition allow-list per COURT ({court_display_name: [leaf_prefix, ...]},
+    # spec 2026-08-16 §D7). Keyed by the EXPANDED name ``expand_venues`` emits
+    # ("Hall · T2") — every other venue_* map above is keyed by the BASE name,
+    # which is exactly why courts of one hall were indistinguishable before.
+    # Empty/absent = that court takes any competition.
+    court_competitions: dict[str, list[str]] = field(default_factory=dict)
     # no_person_overlap gaps in minutes (§2.4/§9 A3): None = legacy behavior
     # (linked teams use the team rest gap, venue-agnostic).
     person_min_gap: int | None = None
@@ -198,6 +204,7 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
     venue_counts: dict[str, int] = {}
     venue_unavailable: dict[str, set[date]] = {}
     venue_sports: dict[str, list[str]] = {}
+    court_competitions: dict[str, list[str]] = {}
     for v in d.get("venues") or []:
         if isinstance(v, dict):
             name = str(v.get("name") or "").strip()
@@ -218,6 +225,24 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
                 count = 1
             if count > 1:
                 venue_counts[name] = count
+            # Per-court competition reservations. The payload carries courts by
+            # 1-based index; resolve each to the display name the grid uses so
+            # the lookup needs no reverse-mapping at placement time.
+            for c in v.get("courts") or []:
+                if not isinstance(c, dict):
+                    continue
+                try:
+                    idx = int(c.get("index") or 0)
+                except (TypeError, ValueError):
+                    continue
+                comps = [
+                    str(x).strip() for x in (c.get("competitions") or [])
+                    if str(x).strip()
+                ]
+                if not comps or idx < 1:
+                    continue
+                display = name if count <= 1 else court_venue_name(name, idx)
+                court_competitions[display] = comps
             off = {
                 x for x in (
                     _parse_date(u) for u in v.get("unavailable_dates") or []
@@ -269,6 +294,7 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
         venue_counts=venue_counts,
         venue_unavailable_dates=venue_unavailable,
         venue_sports=venue_sports,
+        court_competitions=court_competitions,
         activated_reserve_days=activated,
         optimize=bool(d.get("optimize", False)),
         optimize_engine=str(d.get("optimize_engine") or "local"),
@@ -506,6 +532,33 @@ def court_base_of(venue: str, venues: Sequence[str]) -> str:
     return venue
 
 
+def court_allows(cfg_or_map, venue: str, leaf_key: str) -> bool:
+    """May a match in competition ``leaf_key`` be played on court ``venue``?
+
+    ``cfg_or_map`` is a ScheduleConfig or the bare ``court_competitions`` map.
+    An unrestricted court (no entry, or an empty list) takes anything — the
+    behaviour every court had before this existed, which is why no venue needed
+    migrating. A restricted court matches by segment-aligned leaf PREFIX, so a
+    reservation can name a sport, an age group, or one exact competition.
+
+    A match with no leaf at all (a direct add, or a legacy row) is refused by a
+    restricted court: "this court is for U14 Boys" cannot be honoured for a
+    match that will not say what it is.
+    """
+    from apps.tournaments.services.sports import leaf_allowed_by
+
+    comps = (
+        cfg_or_map.court_competitions
+        if hasattr(cfg_or_map, "court_competitions")
+        else (cfg_or_map or {})
+    ).get(venue)
+    if not comps:
+        return True
+    if not leaf_key:
+        return False
+    return leaf_allowed_by(comps, leaf_key)
+
+
 def expand_venues(cfg: ScheduleConfig) -> list[tuple[str, str]]:
     """``(display_name, base_name)`` pairs: a venue with ``count=N`` becomes N
     parallel sub-venues ("Hall · T1"…) sharing the base venue's windows and
@@ -538,14 +591,29 @@ def relaxed_venue_type_sports(
     relaxed, and sports sharing a venue_type stay separated exactly as before.
     """
     required: dict[str, str] = {}
+    leaves_by_sport: dict[str, set[str]] = {}
     for m in matches:
         if m.venue_type and m.sport:
             required.setdefault(m.sport, m.venue_type)
+        if m.sport:
+            leaves_by_sport.setdefault(m.sport, set()).add(m.leaf_key)
+    # Courts of each base venue, so a venue reserved court-by-court to OTHER
+    # competitions doesn't read as satisfying this sport (spec 2026-08-16).
+    courts_of: dict[str, list[str]] = {}
+    for display, base in expand_venues(cfg):
+        courts_of.setdefault(base, []).append(display)
+
     relax: set[str] = set()
     for sport, vtype in required.items():
+        leaves = leaves_by_sport.get(sport) or {""}
         satisfiable = any(
             (not (allowed := cfg.venue_sports.get(v)) or sport in allowed)
             and cfg.venue_types.get(v, "") in ("", vtype)
+            and any(
+                court_allows(cfg, court, leaf)
+                for court in courts_of.get(v, [v])
+                for leaf in leaves
+            )
             for v in cfg.venues
         )
         if not satisfiable:
@@ -961,6 +1029,11 @@ def schedule_matches(
         # sports rejects matches of any other sport — "TT only on TT courts".
         allowed_sports = cfg.venue_sports.get(base_of.get(venue, venue))
         if allowed_sports and m.sport and m.sport not in allowed_sports:
+            return False
+        # Competition allow-list per court (spec 2026-08-16): court 1 boys,
+        # court 2 girls. Narrower than the venue's sport list and checked
+        # against the match's leaf, so it binds at any depth of the tree.
+        if not court_allows(cfg, venue, m.leaf_key):
             return False
         end = dt + dur
         if end > wend:
@@ -1495,6 +1568,26 @@ def validate_schedule(
                 "code": "venue_unavailable", "hard": True, "match_id": mid,
                 "venue": venue, "date": dt.date().isoformat(),
             })
+        # Resource bindings, checked HERE and not only at placement time: every
+        # repair verb (reschedule_match / swap_slots / bulk moves) routes
+        # through validate_schedule, so before this the sport allow-list could
+        # be walked straight past by a manual move. The per-court competition
+        # reservation would have inherited the same hole.
+        if m_ex is not None:
+            base = base_of.get(venue, venue)
+            allowed_sports = cfg.venue_sports.get(base)
+            if allowed_sports and m_ex.sport and m_ex.sport not in allowed_sports:
+                violations.append({
+                    "code": "venue_sport_mismatch", "hard": True, "match_id": mid,
+                    "venue": venue, "sport": m_ex.sport,
+                    "allowed": list(allowed_sports),
+                })
+            if not court_allows(cfg, venue, m_ex.leaf_key):
+                violations.append({
+                    "code": "court_competition_mismatch", "hard": True,
+                    "match_id": mid, "venue": venue, "leaf_key": m_ex.leaf_key,
+                    "allowed": list(cfg.court_competitions.get(venue) or []),
+                })
         m = by_id.get(mid)
         if m:
             for t in (m.home, m.away):

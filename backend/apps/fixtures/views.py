@@ -9,6 +9,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from apps.fixtures.models import Court, Venue
+from apps.fixtures.services.courts import materialise_courts
 from apps.fixtures.services.draw_config import (
     DEFAULT_DRAW_CONFIG,
     effective_draw_config,
@@ -962,6 +963,13 @@ def _venue_payload(v: Venue) -> dict:
         "unavailable_dates": v.unavailable_dates or [],
         "sports": v.sports or [],
         "breaks": v.breaks or [],
+        # One entry per playing surface, so the editor can reserve court 2 for
+        # a category without a second round trip (spec 2026-08-16).
+        "courts": [
+            {"id": str(c.id), "index": c.index, "name": c.name,
+             "competitions": list(c.competitions or [])}
+            for c in v.courts.filter(deleted_at__isnull=True).order_by("index")
+        ],
     }
 
 
@@ -1049,6 +1057,7 @@ class TournamentVenuesView(GenericAPIView):
             breaks=_clean_windows(request.data.get("breaks")),
             created_by=request.user,
         )
+        materialise_courts(v)
         return Response(_venue_payload(v), status=201)
 
 
@@ -1099,6 +1108,10 @@ class TournamentVenueDetailView(GenericAPIView):
         v.save(update_fields=["name", "venue_type", "windows", "count",
                               "unavailable_dates", "sports", "breaks",
                               "updated_at"])
+        # Keep the court rows in step with `count` (and with a rename): they
+        # are what per-competition reservations hang off, and those have to
+        # exist before the draw to be able to shape it.
+        materialise_courts(v)
         return Response(_venue_payload(v))
 
     def delete(self, request, tournament_id, venue_id):
@@ -1117,6 +1130,7 @@ def _court_payload(c: Court) -> dict:
         "venue_name": c.venue.name,
         "name": c.name,
         "index": c.index,
+        "competitions": list(c.competitions or []),
     }
 
 
@@ -1177,6 +1191,66 @@ class TournamentCourtDetailView(GenericAPIView):
         if c is None:
             raise NotFound("court_not_found")
         return Response(_court_payload(c))
+
+    def patch(self, request, tournament_id, court_id):
+        """Reserve this court for one or more competitions (spec 2026-08-16).
+
+        The body is ``{"competitions": ["table_tennis.u14.boys", ...]}`` — leaf
+        keys, or any ANCESTOR of one ("table_tennis", "table_tennis.u14"), so a
+        reservation can be as coarse or as exact as the organiser wants. An
+        empty list clears the reservation and the court takes anything again.
+
+        Manager-gated, unlike the read: this shapes the draw.
+        """
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        from apps.tournaments.permissions import can_manage_tournament
+
+        if not can_manage_tournament(request.user, t):
+            raise PermissionDenied("forbidden")
+        c = (
+            Court.objects.select_related("venue")
+            .filter(id=court_id, organization=t.organization, deleted_at__isnull=True)
+            .first()
+        )
+        if c is None:
+            raise NotFound("court_not_found")
+        if "competitions" in request.data:
+            c.competitions = _clean_competitions(request.data["competitions"], t)
+            c.save(update_fields=["competitions", "updated_at"])
+        return Response(_court_payload(c))
+
+
+def _clean_competitions(raw, tournament) -> list[str]:
+    """De-duped competition prefixes, each validated against the tournament's
+    own category tree — a court cannot be reserved for a competition that does
+    not exist, which is the kind of typo that silently strands a whole draw.
+
+    Every ANCESTOR of a configured leaf is valid, not only the leaves: that is
+    what lets one reservation cover "all of U14" or a whole sport.
+    """
+    from apps.tournaments.services.sports import LEAF_SEP, iter_leaves
+
+    valid: set[str] = set()
+    for leaf in iter_leaves(tournament.sports or []):
+        parts = leaf["leaf_key"].split(LEAF_SEP)
+        for i in range(1, len(parts) + 1):
+            valid.add(LEAF_SEP.join(parts[:i]))
+
+    if isinstance(raw, str):
+        # A bare string would otherwise iterate character by character and
+        # reject on the first letter — a confusing 400 for a real mistake.
+        raw = [raw] if raw.strip() else []
+    out: list[str] = []
+    for item in raw or []:
+        key = str(item).strip()[:160]
+        if not key or key in out:
+            continue
+        if key not in valid:
+            raise DRFValidationError({"detail": "unknown_competition", "key": key})
+        out.append(key)
+    return out
 
 
 class PublicTournamentScheduleView(GenericAPIView):

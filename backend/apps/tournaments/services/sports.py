@@ -337,6 +337,37 @@ def iter_leaves(sports: list[dict] | None) -> list[dict]:
     return out
 
 
+def leaf_matches_prefix(prefix: str, leaf_key: str) -> bool:
+    """Does ``leaf_key`` fall under the competition ``prefix``?
+
+    A leaf key is the dot-joined path ``sport.node.node…``, so a prefix names a
+    whole subtree at any depth — the contract per-court reservations rest on
+    (spec 2026-08-16 §D7)::
+
+        table_tennis              -> every table tennis competition
+        table_tennis.u14          -> both genders at U14
+        table_tennis.u14.boys     -> that one competition
+
+    The match is SEGMENT-ALIGNED: ``table_tennis.u1`` matches nothing, and a
+    bare ``table_tennis`` matches the sport-level leaf a category-less sport
+    yields as well as everything beneath it. An empty prefix matches nothing —
+    "unrestricted" is the absence of a rule, never a rule that says yes.
+    """
+    if not prefix or not leaf_key:
+        return False
+    if leaf_key == prefix:
+        return True
+    return leaf_key.startswith(prefix + LEAF_SEP)
+
+
+def leaf_allowed_by(prefixes: list[str] | None, leaf_key: str) -> bool:
+    """Whether a competition may use a resource restricted to ``prefixes``.
+    An empty/absent list is unrestricted — the resource takes anything."""
+    if not prefixes:
+        return True
+    return any(leaf_matches_prefix(p, leaf_key) for p in prefixes)
+
+
 def sport_for_leaf(sports: list[dict] | None, leaf_key: str) -> str:
     """The sport key a leaf belongs to ('' when the leaf isn't recognized).
     Leaf keys are sport-prefixed by construction, so this is a prefix check

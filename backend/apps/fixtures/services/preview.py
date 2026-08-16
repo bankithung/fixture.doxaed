@@ -57,16 +57,31 @@ def stored_venue_records(tournament) -> list[dict[str, Any]]:
     """The workspace's stored Venue pool as scheduler venue records — the
     same fallback ``ScheduleFixturesView`` applies when a run names no
     venues, so preview ≡ commit on resources too."""
-    from apps.fixtures.models import Venue
+    from apps.fixtures.models import Court, Venue
 
+    venues = list(
+        Venue.objects.filter(
+            organization=tournament.organization, deleted_at__isnull=True
+        ).order_by("name")
+    )
+    # Per-court competition reservations (spec 2026-08-16). Carried here so the
+    # rule reaches the engine on a stored-pool run — a preview that ignored it
+    # would disagree with the commit it is supposed to mirror.
+    courts: dict[str, list[dict]] = {}
+    for c in Court.objects.filter(
+        venue__in=venues, deleted_at__isnull=True
+    ).order_by("venue_id", "index"):
+        if c.competitions:
+            courts.setdefault(str(c.venue_id), []).append(
+                {"index": c.index, "competitions": list(c.competitions)}
+            )
     return [
         {"name": v.name, "venue_type": v.venue_type,
          "windows": v.windows, "count": v.count,
          "unavailable_dates": v.unavailable_dates or [],
-         "sports": v.sports or [], "breaks": v.breaks or []}
-        for v in Venue.objects.filter(
-            organization=tournament.organization, deleted_at__isnull=True
-        ).order_by("name")
+         "sports": v.sports or [], "breaks": v.breaks or [],
+         "courts": courts.get(str(v.id), [])}
+        for v in venues
     ]
 
 
