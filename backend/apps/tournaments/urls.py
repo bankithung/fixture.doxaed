@@ -61,6 +61,11 @@ from apps.streaming.views import (
     TournamentStreamLinkDetailView,
     TournamentStreamLinksView,
 )
+from apps.teams.views_tournament_houses import (
+    TournamentHouseDetailView,
+    TournamentHouseListView,
+    TournamentHouseMemberView,
+)
 from apps.teams.views import (
     InstitutionDetailView,
     InstitutionEditLinkView,
@@ -382,6 +387,21 @@ urlpatterns = [
         "<uuid:tournament_id>/institutions/<uuid:institution_id>/",
         InstitutionDetailView.as_view(),
         name="tournament-institution-detail",
+    ),
+    path(
+        "<uuid:tournament_id>/houses/",
+        TournamentHouseListView.as_view(),
+        name="tournament-houses",
+    ),
+    path(
+        "<uuid:tournament_id>/houses/<uuid:house_id>/",
+        TournamentHouseDetailView.as_view(),
+        name="tournament-house-detail",
+    ),
+    path(
+        "<uuid:tournament_id>/houses/<uuid:house_id>/members/",
+        TournamentHouseMemberView.as_view(),
+        name="tournament-house-members",
     ),
     path(
         "<uuid:tournament_id>/disputes/",

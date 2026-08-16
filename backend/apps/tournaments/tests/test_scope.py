@@ -34,6 +34,15 @@ def _advance(t, to):
     return st.transition_tournament(tournament=t, to_stage=to, ack_warnings=True)
 
 
+def _houses(t, *names):
+    """A within-school event cannot open team registration with fewer than two
+    competitors — see apps/teams/tests/test_houses.py for that gate itself."""
+    from apps.teams.services.houses import create_house
+
+    for n in names or ("Blue", "Green"):
+        create_house(tournament=t, name=n)
+
+
 # ------------------------------------------------------------------ inter-school
 def test_the_existing_flow_is_untouched():
     """No scope argument = exactly what shipped before: the same funnel, the
@@ -120,6 +129,7 @@ def test_intra_school_reaches_published_exactly_like_the_school_flow():
     t.refresh_from_db()
     assert t.status == S.PUBLISHED
 
+    _houses(t)
     _advance(t, G.TEAM_REGISTRATION)
     t.refresh_from_db()
     assert t.status == S.REGISTRATION_OPEN
@@ -145,6 +155,7 @@ def test_intra_school_reopens_backward_like_any_other_funnel():
         scope=TournamentScope.INTRA_SCHOOL,
     )
     _advance(t, G.HOUSE_SETUP)
+    _houses(t)
     _advance(t, G.TEAM_REGISTRATION)
     _advance(t, G.HOUSE_SETUP)
     t.refresh_from_db()

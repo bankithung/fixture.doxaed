@@ -227,9 +227,22 @@ def _institution_count(t: Tournament) -> int:
     ).exclude(status__in=["withdrawn", "rejected"]).count()
 
 
+def _house_count(t: Tournament) -> int:
+    """Houses entered in a within-school event. Always 0 for inter-school —
+    there are none, and the funnel never asks."""
+    if t.scope != TournamentScope.INTRA_SCHOOL:
+        return 0
+    from apps.teams.models import TournamentHouse
+
+    return TournamentHouse.objects.filter(
+        tournament=t, group__deleted_at__isnull=True
+    ).count()
+
+
 def _counts_for(t: Tournament) -> dict[str, int]:
     return {
         "institutions": _institution_count(t),
+        "houses": _house_count(t),
         "teams": _team_count(t),
         "members": _member_count(t),
         "matches": _match_count(t),
@@ -319,6 +332,14 @@ def preview_advance(t: Tournament, to_stage: str) -> dict:
     # there is nothing to draw a fixture from without teams.
     if to_stage == G.FIXTURES and counts["teams"] == 0:
         blockers.append("no_teams_registered")
+    # A within-school event needs something to compete: one house cannot play
+    # itself, and the generated registration form has nothing to bind to.
+    if (
+        to_stage == G.TEAM_REGISTRATION
+        and t.scope == TournamentScope.INTRA_SCHOOL
+        and counts["houses"] < 2
+    ):
+        blockers.append("not_enough_houses")
     if to_stage == G.READY and counts["matches"] == 0:
         blockers.append("no_fixtures_generated")
 
@@ -622,6 +643,8 @@ def build_stage_payload(t: Tournament, user) -> dict:
 def _stage_counts(stage: str, counts: dict) -> dict:
     if stage == G.ORG_REGISTRATION:
         return {"institutions": counts["institutions"]}
+    if stage == G.HOUSE_SETUP:
+        return {"houses": counts["houses"]}
     if stage == G.TEAM_REGISTRATION:
         return {"teams": counts["teams"]}
     if stage == G.FIXTURES:

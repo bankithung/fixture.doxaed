@@ -155,21 +155,124 @@ class TeamGroup(models.Model):
         max_length=16, choices=TeamGroupKind.choices,
         default=TeamGroupKind.HOUSE,
     )
+    # Free text, always: the host calls their houses whatever they call them.
     name = models.CharField(max_length=120)
     colour = models.CharField(max_length=16, blank=True)  # house colour token
     attributes = models.JSONField(default=dict, blank=True)
+    # Soft delete (spec 2026-08-16): a house that has already played is part of
+    # the season's point history and an append-only ledger references it, so it
+    # is retired, never removed. The uniqueness rule below frees the name again.
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = "teams_team_group"
         constraints = [
             models.UniqueConstraint(
-                fields=["season", "name"], name="unique_group_name_per_season",
+                fields=["season", "name"],
+                condition=Q(deleted_at__isnull=True),
+                name="unique_group_name_per_season",
             ),
         ]
 
     def __str__(self) -> str:  # pragma: no cover - repr sugar
         return self.name
+
+
+class TournamentHouse(models.Model):
+    """Which of the season's houses take part in ONE tournament (spec
+    2026-08-16 §D4).
+
+    Houses belong to the school year, not to an event — that is what lets a
+    year's sports day, inter-house league and march-past sum into a single
+    house table. But not every house necessarily enters every event, and
+    nothing before this could answer "which houses play in this tournament".
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="tournament_houses",
+    )
+    tournament = models.ForeignKey(
+        "tournaments.Tournament", on_delete=models.CASCADE,
+        related_name="houses",
+    )
+    group = models.ForeignKey(
+        TeamGroup, on_delete=models.CASCADE, related_name="tournament_entries",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "teams_tournament_house"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tournament", "group"], name="unique_house_per_tournament",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["tournament"], name="tournament_house_trn_idx"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - repr sugar
+        return f"{self.group_id} in {self.tournament_id}"
+
+
+class TeamGroupMembershipRole(models.TextChoices):
+    MANAGER = "manager", _("House manager")
+
+
+class TeamGroupMembership(models.Model):
+    """A user who may register students FOR one house (spec 2026-08-16 §D5).
+
+    The owner's flow: "the admin will add members so that the members who are
+    in the respective house can add students". Every existing scoping dimension
+    in the system is (user × org) or (user × tournament) — a `team_manager`
+    today can edit ANY institution's teams — so this is the first membership
+    that narrows a person to one competitor.
+
+    Season-scoped like the group itself, so a house captain appointed for the
+    year does not have to be re-added for each event.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="team_group_memberships",
+    )
+    group = models.ForeignKey(
+        TeamGroup, on_delete=models.CASCADE, related_name="memberships",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name="team_group_memberships",
+    )
+    role = models.CharField(
+        max_length=16, choices=TeamGroupMembershipRole.choices,
+        default=TeamGroupMembershipRole.MANAGER,
+    )
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="house_assignments_made",
+    )
+    revoked_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "teams_team_group_membership"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group", "user"],
+                condition=Q(revoked_at__isnull=True),
+                name="unique_active_house_member",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "revoked_at"], name="house_member_user_idx"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - repr sugar
+        return f"{self.user_id} manages {self.group_id}"
 
 
 class HousePointSource(models.TextChoices):
