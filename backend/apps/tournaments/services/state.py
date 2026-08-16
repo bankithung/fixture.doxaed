@@ -32,6 +32,7 @@ from apps.tournaments.models import (
     Tournament,
     TournamentMembership,
     TournamentMembershipStatus,
+    TournamentScope,
     TournamentStage,
     TournamentStatus,
 )
@@ -70,6 +71,28 @@ _ORDER = [
     G.FIXTURES,
     G.READY,
 ]
+# Stage two has one identity per scope (spec 2026-08-16 §D2). The funnel keeps
+# FIVE steps either way: an intra-school event does not skip institution
+# registration, it REPLACES it with house setup. Skipping would have dropped
+# `published` — _STAGE_STATUS below is its only producer — so every consumer of
+# `status == published` would never fire for a sports day.
+_INTRA_ORDER = [
+    G.SETUP,
+    G.HOUSE_SETUP,
+    G.TEAM_REGISTRATION,
+    G.FIXTURES,
+    G.READY,
+]
+_ORDER_BY_SCOPE: dict[str, list[str]] = {
+    TournamentScope.INTER_SCHOOL: _ORDER,
+    TournamentScope.INTRA_SCHOOL: _INTRA_ORDER,
+}
+#: The stage that occupies slot two, per scope — the ONE place the swap is
+#: declared. Everything else derives from the order lists.
+STAGE_TWO: dict[str, str] = {
+    TournamentScope.INTER_SCHOOL: G.ORG_REGISTRATION,
+    TournamentScope.INTRA_SCHOOL: G.HOUSE_SETUP,
+}
 _RANK = {s: i for i, s in enumerate(_ORDER)}
 # A retired stage sits BETWEEN two live ones, so it gets a fractional rank: a
 # tournament parked on one (none exist in production, but a long-lived DB or a
@@ -78,18 +101,40 @@ _RANK = {s: i for i, s in enumerate(_ORDER)}
 _RETIRED_RANK: dict[str, float] = {G.MEMBERS: _RANK[G.TEAM_REGISTRATION] + 0.5}
 
 
-#: The setup funnel, in order — the ONE list. Import this rather than
-#: re-declaring it (the assistant's prompt builder does); the stage payload's
-#: ``order`` is the same list, so screen and prompt can never drift.
+#: The setup funnel, in order — the ONE list, for the default (inter-school)
+#: scope. Import this rather than re-declaring it (the assistant's prompt
+#: builder does); the stage payload's ``order`` comes from ``flow_order``, so
+#: screen and prompt can never drift.
 FLOW_ORDER: list[str] = list(_ORDER)
 
 
-def _rank(stage: str) -> float:
-    """Flow position of ``stage``. Retired stages rank between their old
-    neighbours so ``to > from`` still means "forward"."""
-    if stage in _RANK:
-        return _RANK[stage]
-    return _RETIRED_RANK.get(stage, 0)
+def flow_order(t: Tournament | None = None) -> list[str]:
+    """The setup funnel for a tournament, in order. No argument (or an
+    inter-school tournament) yields the original five stages unchanged."""
+    scope = getattr(t, "scope", None) or TournamentScope.INTER_SCHOOL
+    return list(_ORDER_BY_SCOPE.get(scope, _ORDER))
+
+
+def _order_for(t: Tournament | None) -> list[str]:
+    return _ORDER_BY_SCOPE.get(
+        getattr(t, "scope", None) or TournamentScope.INTER_SCHOOL, _ORDER
+    )
+
+
+def _rank(stage: str, order: list[str] | None = None) -> float:
+    """Flow position of ``stage`` within ``order``. Retired stages rank between
+    their old neighbours so ``to > from`` still means "forward"; a stage that
+    belongs to the OTHER scope's funnel (only reachable if a row's scope was
+    changed under it) ranks at its slot in this one, so it is never a dead end."""
+    seq = order or _ORDER
+    if stage in seq:
+        return seq.index(stage)
+    if stage in _RETIRED_RANK:
+        return _RETIRED_RANK[stage]
+    # The other scope's stage two occupies slot one either way.
+    if stage in (G.ORG_REGISTRATION, G.HOUSE_SETUP):
+        return 1
+    return 0
 
 # PRD §5.2 lifecycle order (for forward-only coupling).
 _STATUS_ORDER = [
@@ -104,32 +149,45 @@ _STATUS_ORDER = [
 _STATUS_RANK = {s: i for i, s in enumerate(_STATUS_ORDER)}
 
 # Stage entered -> lifecycle status to apply (forward-only; see _lifecycle_for_stage).
+# HOUSE_SETUP carries the SAME lifecycle weight as the institution registration
+# it stands in for, so both scopes pass through `published` identically.
 _STAGE_STATUS = {
     G.ORG_REGISTRATION: S.PUBLISHED,
+    G.HOUSE_SETUP: S.PUBLISHED,
     G.TEAM_REGISTRATION: S.REGISTRATION_OPEN,  # triggers freeze_rules
     G.READY: S.SCHEDULED,  # engages TZ-lock
 }
 
 
-def _allowed(frm: str) -> set[str]:
+def _allowed(frm: str, order: list[str] | None = None) -> set[str]:
     """Forward one step, or back to any earlier stage. A retired stage's
     fractional rank makes ``ceil`` the next live stage and ``floor`` the
     earlier ones, so it is never a dead end."""
-    i = _rank(frm)
+    seq = order or _ORDER
+    i = _rank(frm, seq)
     nxt = math.floor(i) + 1  # the next live stage
-    fwd = {_ORDER[nxt]} if nxt < len(_ORDER) else set()
-    back = set(_ORDER[: math.ceil(i)])  # every live stage strictly before frm
+    fwd = {seq[nxt]} if nxt < len(seq) else set()
+    back = set(seq[: math.ceil(i)])  # every live stage strictly before frm
     return fwd | back
 
 
 # Retired stages get an entry too, so a tournament parked on one is not stuck.
+# This is the INTER-school table (the default scope); use
+# ``allowed_transitions(t)`` for a tournament, which honours its scope.
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     s: _allowed(s) for s in [*_ORDER, *_RETIRED_RANK]
 }
 
 
-def can_transition(frm: str, to: str) -> bool:
-    return to in ALLOWED_TRANSITIONS.get(frm, set())
+def allowed_transitions(t: Tournament) -> dict[str, set[str]]:
+    """The transition table for one tournament's funnel."""
+    seq = _order_for(t)
+    return {s: _allowed(s, seq) for s in [*seq, *_RETIRED_RANK]}
+
+
+def can_transition(frm: str, to: str, t: Tournament | None = None) -> bool:
+    table = allowed_transitions(t) if t is not None else ALLOWED_TRANSITIONS
+    return to in table.get(frm, set())
 
 
 def _lifecycle_for_stage(to_stage: str, current_status: str) -> str | None:
@@ -283,9 +341,10 @@ def preview_advance(t: Tournament, to_stage: str) -> dict:
     # exists — surface it so the advance isn't a surprise.
     if to_stage == G.TEAM_REGISTRATION and not _stage_forms(t, G.TEAM_REGISTRATION).exists():
         warnings.append({"code": "team_form_will_be_created"})
-    # Nudge the admin to pick sports before opening institution registration —
-    # the sports drive the generated forms + fixtures.
-    if to_stage == G.ORG_REGISTRATION and not (t.sports or []):
+    # Nudge the admin to pick sports before opening stage two (institution
+    # registration, or house setup) — the sports drive the generated forms +
+    # fixtures either way.
+    if to_stage in (G.ORG_REGISTRATION, G.HOUSE_SETUP) and not (t.sports or []):
         warnings.append({"code": "no_sports_selected"})
     # The READY gate is whole-tournament (>=1 match); per-competition coverage
     # is a warning — list category leaves that have teams but no draw yet
@@ -334,7 +393,7 @@ def preview_reopen(t: Tournament, to_stage: str) -> dict:
     if target_form is not None and target_form.status == FormStatus.CLOSED:
         warnings.append({"code": "form_will_reopen", "form_id": str(target_form.id)})
 
-    if to_stage in (G.ORG_REGISTRATION, G.TEAM_REGISTRATION) and matches > 0:
+    if to_stage in (G.ORG_REGISTRATION, G.HOUSE_SETUP, G.TEAM_REGISTRATION) and matches > 0:
         warnings.append(
             {"code": "downstream_artifacts_exist", "kind": "matches", "count": matches,
              "detail": "Generated fixtures exist. Editing teams may invalidate them."}
@@ -358,12 +417,13 @@ def preview_reopen(t: Tournament, to_stage: str) -> dict:
 def preview_transition(t: Tournament, to_stage: str) -> dict:
     if to_stage not in TournamentStage.values:
         raise ValidationError(f"Unknown stage: {to_stage}")
-    if to_stage not in ALLOWED_TRANSITIONS.get(t.stage, set()):
+    seq = _order_for(t)
+    if to_stage not in _allowed(t.stage, seq):
         return {
             "from_stage": t.stage, "to_stage": to_stage, "allowed": False,
             "blockers": ["illegal_transition"], "warnings": [],
         }
-    is_forward = _rank(to_stage) > _rank(t.stage)
+    is_forward = _rank(to_stage, seq) > _rank(t.stage, seq)
     return preview_advance(t, to_stage) if is_forward else preview_reopen(t, to_stage)
 
 
@@ -435,10 +495,11 @@ def transition_tournament(
     with transaction.atomic():
         locked = Tournament.objects.select_for_update().get(pk=tournament.pk)
         frm = locked.stage
-        if to_stage not in ALLOWED_TRANSITIONS.get(frm, set()):
+        seq = _order_for(locked)
+        if to_stage not in _allowed(frm, seq):
             raise ValidationError(f"Illegal stage transition: {frm} -> {to_stage}")
 
-        is_forward = _rank(to_stage) > _rank(frm)
+        is_forward = _rank(to_stage, seq) > _rank(frm, seq)
         consequences = (
             preview_advance(locked, to_stage)
             if is_forward
@@ -511,9 +572,10 @@ def build_stage_payload(t: Tournament, user) -> dict:
     )
 
     counts = _counts_for(t)
-    cur_rank = _rank(t.stage)
+    seq = _order_for(t)
+    cur_rank = _rank(t.stage, seq)
     stages = []
-    for i, s in enumerate(_ORDER):
+    for i, s in enumerate(seq):
         if i < cur_rank:
             st = "complete"
         elif i == cur_rank:
@@ -541,8 +603,8 @@ def build_stage_payload(t: Tournament, user) -> dict:
     return {
         "stage": t.stage,
         "status": t.status,
-        "order": list(_ORDER),
-        "allowed_to": sorted(ALLOWED_TRANSITIONS.get(t.stage, set())),
+        "order": list(seq),
+        "allowed_to": sorted(_allowed(t.stage, seq)),
         "can_manage": can_manage_tournament(user, t),
         # Organizer-only destructive rights (delete/deactivate) — the FE's
         # workspace-header Delete button gates on this, not can_manage.

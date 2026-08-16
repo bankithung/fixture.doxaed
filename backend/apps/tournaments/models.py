@@ -33,19 +33,43 @@ class TournamentStatus(models.TextChoices):
     ARCHIVED = "archived", _("Archived")
 
 
+class TournamentScope(models.TextChoices):
+    """WHO competes (spec 2026-08-16 §D1). Chosen at creation, immutable once the
+    tournament leaves ``setup`` — it decides which stages exist, and therefore
+    which registration data can exist.
+
+    - INTER_SCHOOL: the participant is an Institution. The original flow, and
+      the default: nothing about it changes.
+    - INTRA_SCHOOL: one host school, and the participant is a house/class/form
+      (``teams.TeamGroup``). Institution registration is replaced by house
+      setup — see ``TournamentStage``.
+    """
+
+    INTER_SCHOOL = "inter_school", _("Between schools")
+    INTRA_SCHOOL = "intra_school", _("Within one school")
+
+
 class TournamentStage(models.TextChoices):
     """Setup-workflow stages (spec 2026-06-08 §1). Orthogonal to TournamentStatus
     (the PRD §5.2 lifecycle): the lifecycle is draft→…→live→completed; the *stage*
     is the owner's 4-stage setup flow. Coupling is one-way and applied in
     ``services/state.py::transition_tournament``.
 
-    Forward order: SETUP < ORG_REGISTRATION < TEAM_REGISTRATION < MEMBERS <
-    FIXTURES < READY. Forward is one step at a time; backward (reopen) may jump to
-    any earlier stage. Advancing auto-closes the previous stage's bound form.
+    Forward order: SETUP < (ORG_REGISTRATION | HOUSE_SETUP) < TEAM_REGISTRATION <
+    FIXTURES < READY (MEMBERS retired 2026-08-14). Forward is one step at a time;
+    backward (reopen) may jump to any earlier stage. Advancing auto-closes the
+    previous stage's bound form.
+
+    Stage two has TWO identities, one per ``TournamentScope`` — the funnel keeps
+    its five steps in both. An intra-school event does not *skip* institution
+    registration: it replaces it. Skipping would have dropped the lifecycle's
+    ``published`` step, which that stage is the only producer of
+    (``services/state.py::_STAGE_STATUS``).
     """
 
     SETUP = "setup", _("Setup")
     ORG_REGISTRATION = "org_registration", _("Institution registration")
+    HOUSE_SETUP = "house_setup", _("Houses & members")
     TEAM_REGISTRATION = "team_registration", _("Team registration")
     MEMBERS = "members", _("Members & roles")
     FIXTURES = "fixtures", _("Fixtures")
@@ -106,6 +130,21 @@ class Tournament(models.Model):
         "teams.Season", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="tournaments",
     )
+    # WHO competes (spec 2026-08-16). A real column, not a `rules` key: rules
+    # freeze at registration_open (invariant 7) — exactly when an intra-school
+    # event is still opening registration — and merge_rules rejects any key
+    # outside DEFAULT_RULES. Immutable once the tournament leaves `setup`.
+    scope = models.CharField(
+        max_length=16,
+        choices=TournamentScope.choices,
+        default=TournamentScope.INTER_SCHOOL,
+        db_index=True,
+    )
+    # Which intra-institution grouping competes when scope=intra_school: a
+    # `teams.TeamGroupKind` value (house / class / form / department). The
+    # owner names the groups themselves — this only picks the noun the UI and
+    # the generated form use. Ignored when scope=inter_school.
+    group_kind = models.CharField(max_length=16, blank=True, default="")
     # Setup-workflow stage (orthogonal to `status`). Driven by
     # services/state.py::transition_tournament. See spec 2026-06-08 §1.
     stage = models.CharField(

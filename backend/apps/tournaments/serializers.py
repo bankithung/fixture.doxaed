@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from apps.teams.models import TeamGroupKind
 from apps.tournaments.models import (
     Tournament,
     TournamentMembership,
     TournamentMembershipRole,
     TournamentMembershipStatus,
+    TournamentScope,
     TournamentStage,
 )
 
@@ -36,6 +38,8 @@ class TournamentSerializer(serializers.ModelSerializer):
             "organization_slug",
             "sport_code",
             "sports",
+            "scope",
+            "group_kind",
             "scheduling_config",
             "time_zone",
             "starts_at",
@@ -68,6 +72,15 @@ class TournamentCreateSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=200)
     sport_code = serializers.CharField(required=False, allow_blank=True)
     event_id = serializers.UUIDField(required=False)
+    # Who competes (spec 2026-08-16). Absent = inter_school, the original flow.
+    scope = serializers.ChoiceField(
+        choices=TournamentScope.choices, required=False,
+    )
+    # Only meaningful with scope=intra_school; names the grouping the host
+    # competes by (house / class / form / department).
+    group_kind = serializers.ChoiceField(
+        choices=TeamGroupKind.choices, required=False,
+    )
 
 
 class TournamentInvitationCreateSerializer(serializers.Serializer):

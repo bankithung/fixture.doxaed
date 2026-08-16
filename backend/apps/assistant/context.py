@@ -16,7 +16,7 @@ from apps.fixtures.models import Venue
 from apps.fixtures.services.draw_config import effective_draw_config
 from apps.teams.models import Team, TeamStatus
 from apps.tournaments.services.sports import iter_leaves
-from apps.tournaments.services.state import FLOW_ORDER
+from apps.tournaments.services.state import FLOW_ORDER, flow_order
 
 FORMAT_LABELS = {
     "round_robin": "Round-robin (league)",
@@ -44,6 +44,8 @@ STAGE_ORDER = FLOW_ORDER
 STAGE_LABELS = {
     "setup": "Setup",
     "org_registration": "Institution registration",
+    # Stage two's other identity, in a within-school event (spec 2026-08-16).
+    "house_setup": "Houses & members",
     "team_registration": "Team registration",
     "fixtures": "Fixtures",
     "ready": "Ready",
@@ -133,6 +135,9 @@ def build_state(tournament) -> dict[str, Any]:
         "name": tournament.name,
         "status": tournament.status,
         "stage": getattr(tournament, "stage", "") or "",
+        # The funnel THIS tournament has — an intra-school event's stage two is
+        # house setup, so the prompt must not describe the school flow at it.
+        "stage_order": flow_order(tournament),
         "calendar": {
             "date_start": cal.get("date_start"),
             "date_end": cal.get("date_end"),
@@ -160,12 +165,13 @@ def render_state(state: dict[str, Any]) -> str:
     # --- Where you are (journey) ---------------------------------------
     status = STATUS_LABELS.get(state["status"], state["status"])
     stage = state["stage"]
-    if stage in STAGE_ORDER:
-        pos = STAGE_ORDER.index(stage) + 1
+    order = state.get("stage_order") or STAGE_ORDER
+    if stage in order:
+        pos = order.index(stage) + 1
         lines.append(
-            f"WHERE YOU ARE: Status is '{status}'. Setup step {pos} of {len(STAGE_ORDER)} "
+            f"WHERE YOU ARE: Status is '{status}'. Setup step {pos} of {len(order)} "
             f"- '{STAGE_LABELS[stage]}'. The other steps are: "
-            + " -> ".join(STAGE_LABELS[s] for s in STAGE_ORDER) + "."
+            + " -> ".join(STAGE_LABELS[s] for s in order) + "."
         )
     else:
         lines.append(f"WHERE YOU ARE: Status is '{status}'.")

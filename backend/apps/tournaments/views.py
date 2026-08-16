@@ -96,6 +96,8 @@ class TournamentListCreateView(GenericAPIView):
             name=ser.validated_data["name"],
             sport_code=ser.validated_data.get("sport_code") or None,
             event_id=ser.validated_data.get("event_id"),
+            scope=ser.validated_data.get("scope") or None,
+            group_kind=ser.validated_data.get("group_kind") or None,
             request=request,
         )
         return Response(TournamentSerializer(tournament).data, status=201)
