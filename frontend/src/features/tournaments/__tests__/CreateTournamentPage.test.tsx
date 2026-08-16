@@ -63,4 +63,41 @@ describe("CreateTournamentPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/required/i);
     expect(tournamentsApi.create).not.toHaveBeenCalled();
   });
+
+  // Participants-first (spec 2026-08-17) — asked here, and still switchable in
+  // Settings until the first team is registered.
+  it("defaults to typed names and can be switched to participants-first", async () => {
+    vi.mocked(tournamentsApi.create).mockResolvedValue({
+      id: "t1",
+      slug: "roster-cup",
+      name: "Roster Cup",
+      status: "draft",
+      organization_slug: "ws-1",
+      sport_code: null,
+      sports: [],
+      time_zone: "Asia/Kolkata",
+      created_at: "2026-06-05T00:00:00Z",
+    });
+
+    renderPage();
+    expect(screen.getByTestId("roster-mode-inline")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+
+    await userEvent.type(screen.getByLabelText(/tournament name/i), "Roster Cup");
+    await userEvent.click(screen.getByTestId("roster-mode-roster_first"));
+    await userEvent.click(
+      screen.getByRole("button", { name: /create tournament/i }),
+    );
+
+    await waitFor(() => expect(tournamentsApi.create).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(tournamentsApi.create).mock.calls[0][0].roster_mode).toBe(
+      "roster_first",
+    );
+    // The scope question is untouched by the new one.
+    expect(vi.mocked(tournamentsApi.create).mock.calls[0][0].scope).toBe(
+      "inter_school",
+    );
+  });
 });

@@ -612,9 +612,15 @@ class TeamAccessCodesView(GenericAPIView):
             raise PermissionDenied("not_tournament_manager")
         from apps.forms.models import Form
 
+        # Whichever competitor-scoped form is open right now: during the
+        # participants stage that is the sheet, later it is the team form. One
+        # code per institution unlocks both, so "resend" must not insist on the
+        # team form existing yet (spec 2026-08-17).
+        from apps.forms.constants import COMPETITOR_PURPOSES
+
         form = (
             Form.objects.filter(
-                tournament=t, purpose="team_registration",
+                tournament=t, purpose__in=sorted(COMPETITOR_PURPOSES),
                 deleted_at__isnull=True, status="open",
             )
             .order_by("-created_at")

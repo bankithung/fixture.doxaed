@@ -138,6 +138,17 @@ Up-front PRD decisions that shape the codebase. Do not relitigate; do not deviat
 - `readiness._courts_for_leaf` buckets supply per competition once any court is reserved; bucketing by sport alone was blind to the halved supply and would emit an unplayable day.
 - `ScheduleConfig.court_competitions` is keyed by the EXPANDED court name ("Hall · T2"); every other `venue_*` map is keyed by the base name.
 
+## Identity is DECLARED, not typed — participants-first (2026-08-17)
+
+`Tournament.roster_mode` (`inline` | `roster_first`) decides how players come into existence. Spec: `docs/superpowers/specs/2026-08-17-participants-first-registration-design.md`.
+
+- **The layer exists because a player's identity used to be a guess.** `register_school` reused a `Person` by `full_name__iexact` within the institution, so one child typed two ways became two people — and the scheduler's "these teams share a player, never overlap them" rule silently stopped protecting them. Under `roster_first` a school declares everyone ONCE (`RosterMember`), and the team form PICKS, so "is this student in two sports?" has an exact answer.
+- **A pick that does not resolve is refused, never guessed.** `register_school._resolve_members` scopes every `member_id`/`staff` id to the submitting institution and raises `participant_not_in_roster` for anything else. Falling back to the typed name would restore exactly the guess this removes.
+- **`roster_first` inserts ONE stage at slot 2** (`state.py::_order_for`); `flow_order(t)` stays the single list, so stepper, nav rail and server guards cannot drift. Everything is opt-in: an `inline` tournament has the identical funnel, forms and dedupe it always had.
+- **A roll of children never reaches the public schema.** Schema resolution happens before anyone proves who they are, so the `roster_students`/`roster_teachers` pickers ship empty and are filled from the `/team-access/` response (already code-verified, already institution-scoped). `COMPETITOR_PURPOSES` puts the participants sheet behind the same submit gate as the team list, and submit+map now share ONE transaction so an unmappable submission leaves nothing behind.
+- **The teacher rule is keyed on the teacher** (`TeamStaff`, many per team), not the school — which is exactly why a school that sends two teachers keeps both its courts. It, the shared-player rule and the blunt same-school rule are each their own constraint record, off unless authored.
+- Nobody is removed by omission: a re-submitted sheet updates in place (roll number, else name, *within one school*), and withdrawing a fielded participant is refused.
+
 ## Operations pages (frontend)
 
 - **`MatchRow`** (`features/controlroom/MatchRow.tsx`) is the shared dense match row: it is a **desktop table row** and overflows below `md`, so any page that lists matches on a phone needs its own card layout (see `MyTasksPage`'s `MyTaskCard`). It takes an optional `badges` slot for caller-owned chips. Finished matches carry `data-done` + a `success-muted` tint.

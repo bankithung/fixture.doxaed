@@ -132,6 +132,25 @@ def _open_form(t):
     return form
 
 
+def test_publishing_the_sheet_mails_each_school_its_code(mailoutbox):
+    """The sheet comes FIRST in the funnel, so publishing it has to be what
+    puts a code in each school's inbox — waiting for the team form would leave
+    the participants stage unusable."""
+    from rest_framework.test import APIClient
+
+    t = _tournament("publish@test.local")
+    inst = _inst(t)
+    form = generate_participants_form(tournament=t)
+    client = APIClient()
+    client.force_authenticate(user=t.created_by)
+
+    r = client.post(f"/api/forms/{form.id}:publish/")
+    assert r.status_code == 200, r.data
+    inst.refresh_from_db()
+    assert inst.team_code_hash
+    assert any(inst.contact_email in m.to for m in mailoutbox)
+
+
 def _access(client, form, inst, code):
     r = client.post(
         f"/api/forms/{form.id}/team-access/",
@@ -253,6 +272,54 @@ def test_a_school_cannot_write_another_schools_roll_without_its_code(mailoutbox)
     assert r.status_code == 400
     assert r.data["detail"] == "team_access_required"
     assert RosterMember.objects.filter(tournament=t).count() == 0
+
+
+def test_a_house_captain_gets_only_their_own_house_s_pickers():
+    """Within school there is no mailed code — authorization is house
+    MEMBERSHIP — so the pickers ride on the form payload, narrowed server-side."""
+    from rest_framework.test import APIClient
+
+    from apps.teams.services import houses as houses_svc
+    from apps.forms.services.generation import generate_team_form_template
+
+    t = _tournament(
+        "housepick@test.local",
+        scope=TournamentScope.INTRA_SCHOOL,
+        group_kind="house",
+    )
+    inst = Institution.objects.filter(tournament=t).first()
+    owner = t.created_by
+    blue = houses_svc.create_house(tournament=t, name="Blue", by=owner)
+    green = houses_svc.create_house(tournament=t, name="Green", by=owner)
+    captain = _user("housecaptain@test.local")
+    houses_svc.add_house_member(tournament=t, group=blue, user=captain, by=owner)
+    roster_svc.declare_member(
+        tournament=t, institution=inst, group=blue, full_name="Blue Child",
+    )
+    roster_svc.declare_member(
+        tournament=t, institution=inst, group=green, full_name="Green Child",
+    )
+    form = generate_team_form_template(tournament=t)
+    publish_form(form)
+
+    c = APIClient()
+    c.force_authenticate(user=captain)
+    r = c.get(f"/api/forms/{form.id}/public/")
+    assert r.status_code == 200, r.data
+    by_house = r.data["roster_by_house"]
+    assert set(by_house) == {str(blue.id)}
+    assert [o["label"] for o in by_house[str(blue.id)]["students"]] == ["Blue Child"]
+
+    # An anonymous visitor gets nothing at all.
+    anon = APIClient().get(f"/api/forms/{form.id}/public/")
+    assert "roster_by_house" not in anon.data
+    assert "Blue Child" not in str(anon.data)
+
+    # The organizer sees the whole event.
+    admin = APIClient()
+    admin.force_authenticate(user=owner)
+    all_houses = admin.get(f"/api/forms/{form.id}/public/").data["roster_by_house"]
+    assert set(all_houses) == {str(blue.id), str(green.id)}
 
 
 def test_the_pickers_arrive_only_after_the_code_verifies(mailoutbox):

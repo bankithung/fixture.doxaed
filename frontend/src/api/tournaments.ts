@@ -97,6 +97,9 @@ export interface SportCatalogItem {
 export type TournamentScope = "inter_school" | "intra_school";
 /** The intra-institution grouping a within-school event competes by. */
 export type GroupKind = "house" | "class" | "form" | "department";
+/** How players come into existence (spec 2026-08-17): typed on the team form,
+ * or declared once up front and then PICKED. */
+export type RosterMode = "inline" | "roster_first";
 
 /** One competing house/class in a within-school event. */
 export interface TournamentHouse {
@@ -123,10 +126,61 @@ export interface TournamentHouses {
   houses: TournamentHouse[];
 }
 
+/** One competition a declared participant ended up in. */
+export interface RosterEntry {
+  team_id: string;
+  team: string;
+  leaf_key: string;
+  /** "player", or the staff row's own role ("in_charge", "coach", …). */
+  role: string;
+}
+
+/** One person a school declared, before any team existed (spec 2026-08-17). */
+export interface RosterMember {
+  id: string;
+  full_name: string;
+  kind: "student" | "teacher";
+  class_section: string;
+  roll_no: string;
+  gender: string;
+  date_of_birth: string | null;
+  contact_email: string;
+  contact_phone: string;
+  attributes: Record<string, unknown>;
+  institution: { id: string; name: string } | null;
+  group: { id: string; name: string } | null;
+  entries: RosterEntry[];
+}
+
+export interface TournamentRoster {
+  can_manage: boolean;
+  roster_mode: string;
+  scope: TournamentScope;
+  group_kind: GroupKind | "";
+  counts: { students: number; teachers: number; multi_entry: number };
+  members: RosterMember[];
+}
+
+/** Fields a participant row accepts on create/edit. */
+export interface RosterMemberInput {
+  full_name?: string;
+  kind?: "student" | "teacher";
+  class_section?: string;
+  roll_no?: string;
+  gender?: string;
+  date_of_birth?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  institution_id?: string;
+  group_id?: string;
+}
+
 export interface Tournament {
   id: string;
   scope?: TournamentScope;
   group_kind?: GroupKind | "";
+  /** How players are entered (spec 2026-08-17). */
+  roster_mode?: RosterMode;
   slug: string;
   name: string;
   status: string;
@@ -621,6 +675,8 @@ export const tournamentsApi = {
     scope?: TournamentScope;
     /** Only with scope "intra_school": the grouping the host competes by. */
     group_kind?: GroupKind;
+    /** How players are entered (spec 2026-08-17). Omitted = typed inline. */
+    roster_mode?: RosterMode;
   }) => api.post<Tournament>("/api/tournaments/", payload),
   /** Houses & members — the within-school competitor list (spec 2026-08-16). */
   houses: (tournamentId: string) =>
@@ -649,6 +705,35 @@ export const tournamentsApi = {
     api.delete<void>(
       `/api/tournaments/${tournamentId}/houses/${houseId}/members/?user=${encodeURIComponent(userId)}`,
     ),
+  /** Participants — the people declared before any team exists, and every
+   * competition each of them is now in (spec 2026-08-17). */
+  roster: (
+    tournamentId: string,
+    params?: { institution?: string; kind?: string; group?: string; q?: string },
+  ) => {
+    const qs = new URLSearchParams(
+      Object.entries(params ?? {}).filter(([, v]) => Boolean(v)) as [
+        string,
+        string,
+      ][],
+    ).toString();
+    return api.get<TournamentRoster>(
+      `/api/tournaments/${tournamentId}/roster/${qs ? `?${qs}` : ""}`,
+    );
+  },
+  declareParticipant: (tournamentId: string, payload: RosterMemberInput) =>
+    api.post<RosterMember>(`/api/tournaments/${tournamentId}/roster/`, payload),
+  updateParticipant: (
+    tournamentId: string,
+    memberId: string,
+    payload: RosterMemberInput,
+  ) =>
+    api.patch<RosterMember>(
+      `/api/tournaments/${tournamentId}/roster/${memberId}/`,
+      payload,
+    ),
+  withdrawParticipant: (tournamentId: string, memberId: string) =>
+    api.delete<void>(`/api/tournaments/${tournamentId}/roster/${memberId}/`),
   /** Reserve a court for one or more competitions (leaf-key prefixes). */
   setCourtCompetitions: (
     tournamentId: string,
@@ -967,6 +1052,11 @@ export const tournamentsApi = {
    * stable). Manager-allowed; the server enforces the permission. */
   rename: (id: string, name: string) =>
     api.patch<Tournament>(`/api/tournaments/${id}/`, { name }),
+  /** Switch how players are entered (spec 2026-08-17). 409 `roster_mode_locked`
+   * once teams exist — by then the team form's pickers are already bound to
+   * the list, and the people declared would be stranded. */
+  setRosterMode: (id: string, roster_mode: RosterMode) =>
+    api.patch<Tournament>(`/api/tournaments/${id}/`, { roster_mode }),
 
   // --- Fixture generation + FET scheduling engine (WS6) ---
   constraintTypes: () =>

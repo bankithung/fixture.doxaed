@@ -375,4 +375,62 @@ describe("computeTournamentNav", () => {
     expect(items.find((i) => i.key === "fixtures")?.href).toBe(routes.tournamentFixtures(TID));
     expect(items.find((i) => i.key === "settings")?.href).toBe(routes.tournamentSettings(TID));
   });
+
+  // Participants (spec 2026-08-17). The rail follows the server's `order`, so
+  // it never has to know what turned the layer on.
+  const ROSTER_STAGE = {
+    ...STAGE,
+    order: [
+      "setup",
+      "org_registration",
+      "roster",
+      "team_registration",
+      "fixtures",
+      "ready",
+    ],
+    stages: [
+      { key: "setup", label: "Setup" },
+      { key: "org_registration", label: "Institution registration" },
+      { key: "roster", label: "Participants" },
+      { key: "team_registration", label: "Team registration" },
+      { key: "fixtures", label: "Fixtures" },
+      { key: "ready", label: "Ready" },
+    ],
+  };
+
+  it("shows Participants only when the funnel has that stage", () => {
+    const without = computeTournamentNav(TID, {
+      user: makeUser(["admin"], []),
+      slug: "acme",
+      stage: STAGE,
+    });
+    expect(flatKeys(without)).not.toContain("participants");
+
+    const withRoster = computeTournamentNav(TID, {
+      user: makeUser(["admin"], []),
+      slug: "acme",
+      stage: ROSTER_STAGE,
+    });
+    const keys = flatKeys(withRoster);
+    // It sits where the funnel puts it: after the schools, before the teams.
+    expect(keys.indexOf("participants")).toBe(keys.indexOf("teams") - 1);
+    const item = withRoster
+      .flatMap((g) => g.items)
+      .find((i) => i.key === "participants");
+    expect(item?.href).toBe(routes.tournamentParticipants(TID));
+  });
+
+  it("locks Participants until the tournament reaches that stage", () => {
+    const byKey = Object.fromEntries(
+      computeTournamentNav(TID, {
+        user: makeUser(["admin"], []),
+        slug: "acme",
+        stage: ROSTER_STAGE,
+      })
+        .flatMap((g) => g.items)
+        .map((i) => [i.key, i]),
+    );
+    expect(byKey.participants.locked).toBe(true);
+    expect(byKey.participants.lockLabel).toBe("Participants");
+  });
 });

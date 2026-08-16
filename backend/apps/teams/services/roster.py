@@ -62,6 +62,23 @@ def roster_for(tournament, institution=None, *, kind: str | None = None, group=N
     return qs.order_by("kind", "person__full_name")
 
 
+def _coerce(fields: dict) -> dict:
+    """Normalize the columns callers pass in.
+
+    A date arrives as a ``date`` from a service call and as ``"2012-03-04"``
+    from JSON; both must reach the model as a real date, because ``Person``'s
+    coarse ``dob_year`` is derived from it here rather than at save time.
+    """
+    raw = fields.get("date_of_birth")
+    if isinstance(raw, str):
+        from django.utils.dateparse import parse_date
+
+        fields = {**fields, "date_of_birth": parse_date(raw.strip()[:10])}
+        if fields["date_of_birth"] is None:
+            raise ValidationError("invalid_date_of_birth")
+    return fields
+
+
 def _match_existing(tournament, institution, full_name: str, roll_no: str):
     """An already-declared member this submission is plainly re-stating.
 
@@ -94,6 +111,7 @@ def declare_member(
         raise ValidationError("participant_name_required")
     if kind not in RosterMemberKind.values:
         raise ValidationError("invalid_participant_kind")
+    fields = _coerce(fields)
 
     existing = _match_existing(
         tournament, institution, name, str(fields.get("roll_no") or ""),
@@ -152,6 +170,54 @@ def declare_member(
         payload_after={"name": name, "kind": kind, "institution": str(institution.id)},
         request=request,
     )
+    return member
+
+
+@transaction.atomic
+def update_member(
+    *, member: RosterMember, full_name: str | None = None, kind: str | None = None,
+    attributes: dict | None = None, by=None, request=None, **fields,
+) -> RosterMember:
+    """Correct one declared person in place.
+
+    The organizer's editor, not a second way to declare: it never creates, so a
+    name fixed here keeps the same ``Person`` — and therefore every team the
+    participant is already on, and every scheduling edge that depends on them.
+    """
+    changed: list[str] = []
+    fields = _coerce(fields)
+    if full_name is not None:
+        name = full_name.strip()
+        if not name:
+            raise ValidationError("participant_name_required")
+        if member.person.full_name != name[:200]:
+            member.person.full_name = name[:200]
+            member.person.save(update_fields=["full_name"])
+    if kind is not None:
+        if kind not in RosterMemberKind.values:
+            raise ValidationError("invalid_participant_kind")
+        if member.kind != kind:
+            member.kind = kind
+            changed.append("kind")
+    for f in EDITABLE:
+        if f in fields and getattr(member, f) != fields[f]:
+            setattr(member, f, fields[f])
+            changed.append(f)
+    if attributes:
+        member.attributes = {**(member.attributes or {}), **attributes}
+        changed.append("attributes")
+    if changed:
+        member.save(update_fields=[*dict.fromkeys(changed), "updated_at"])
+        emit_audit(
+            actor_user=by,
+            actor_role=ActorRole.ADMIN,
+            event_type="roster_member_updated",
+            target_type="roster_member",
+            target_id=member.id,
+            organization_id=member.organization_id,
+            payload_after={f: str(getattr(member, f)) for f in dict.fromkeys(changed)},
+            request=request,
+        )
     return member
 
 

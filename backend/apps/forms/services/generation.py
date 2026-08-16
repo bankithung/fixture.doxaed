@@ -238,6 +238,15 @@ def build_team_form_schema(
         tournament is not None
         and getattr(tournament, "scope", "") == "intra_school"
     )
+    # Participants-first (spec 2026-08-17): the school already declared every
+    # student and teacher, so this form PICKS from that list instead of asking
+    # for the same names, classes and dates of birth a second time. The options
+    # are deliberately empty in the schema — a roll of children is PII and is
+    # served only to a caller that has proved it is this school.
+    roster = bool(
+        tournament is not None
+        and getattr(tournament, "roster_mode", "") == "roster_first"
+    )
     noun = (getattr(tournament, "group_kind", "") or "house") if intra else ""
     noun_label = {
         "house": "house", "class": "class", "form": "form",
@@ -324,25 +333,39 @@ def build_team_form_schema(
             "key": f"players_{slug}", "type": "group",
             "label": "Player", "repeatable": True,
             "fields": [
-                {"key": f"player_name_{slug}", "type": "short_text",
-                 "label": "Student name" if intra else "Player name",
-                 "required": True},
-                # School-internal identity. A within-school form asks the
-                # things a school actually knows a child by; asking for their
-                # "school" and "region" inside one school is noise.
                 *([
-                    {"key": f"player_class_{slug}", "type": "short_text",
-                     "label": "Class & section", "required": True,
-                     "help": "e.g. 9-B"},
-                    {"key": f"player_roll_{slug}", "type": "short_text",
-                     "label": "Roll number", "required": False},
-                ] if intra else []),
-                {"key": f"player_dob_{slug}", "type": "date",
-                 "label": "Date of birth", "required": True},
-                {"key": f"player_docs_{slug}", "type": "file_upload",
-                 "label": "Documents (ID / certificate)", "required": False,
-                 "multiple": True,
-                 "help": "Optional — upload one or more. Images are compressed automatically."},
+                    {"key": f"player_member_{slug}", "type": "dropdown",
+                     "label": "Student", "required": True, "options": [],
+                     "data_source": {"type": "roster_students"},
+                     "help": "Pick from the participants your school declared."},
+                    {"key": f"player_jersey_{slug}", "type": "number",
+                     "label": "Jersey number", "required": False},
+                ] if roster else []),
+                # Typed identity — only when nobody was declared up front.
+                # Asking a school to re-enter a name, class and date of birth
+                # it has already given is how the two lists drift apart.
+                *([] if roster else [
+                    {"key": f"player_name_{slug}", "type": "short_text",
+                     "label": "Student name" if intra else "Player name",
+                     "required": True},
+                    # School-internal identity. A within-school form asks the
+                    # things a school actually knows a child by; asking for
+                    # their "school" and "region" inside one school is noise.
+                    *([
+                        {"key": f"player_class_{slug}", "type": "short_text",
+                         "label": "Class & section", "required": True,
+                         "help": "e.g. 9-B"},
+                        {"key": f"player_roll_{slug}", "type": "short_text",
+                         "label": "Roll number", "required": False},
+                    ] if intra else []),
+                    {"key": f"player_dob_{slug}", "type": "date",
+                     "label": "Date of birth", "required": True},
+                    {"key": f"player_docs_{slug}", "type": "file_upload",
+                     "label": "Documents (ID / certificate)", "required": False,
+                     "multiple": True,
+                     "help": "Optional — upload one or more. Images are "
+                             "compressed automatically."},
+                ]),
             ],
         }
         if tournament is not None and getattr(tournament, "sports", None):
@@ -399,15 +422,35 @@ def build_team_form_schema(
                              "label": "Team logo", "required": False,
                              "accept": "image/*",
                              "help": "Optional — upload an image; it's compressed automatically."},
-                            {"key": f"coaches_{slug}", "type": "group",
-                             "label": "Coach", "repeatable": True, "fields": [
-                                 {"key": f"coach_name_{slug}", "type": "short_text",
-                                  "label": "Coach name", "required": True},
-                                 {"key": f"coach_docs_{slug}", "type": "file_upload",
-                                  "label": "Coach documents", "required": False,
-                                  "multiple": True,
-                                  "help": "Optional — upload one or more."},
-                             ]},
+                            # The teacher in charge: PICKED once the school has
+                            # declared its staff, because the draw keys its
+                            # keep-apart rule on that exact person. Typed
+                            # otherwise, exactly as before.
+                            ({"key": f"staff_{slug}", "type": "group",
+                              "label": "Teacher in charge", "repeatable": True,
+                              "fields": [
+                                  {"key": f"staff_member_{slug}",
+                                   "type": "dropdown", "label": "Teacher",
+                                   "required": True, "options": [],
+                                   "data_source": {"type": "roster_teachers"},
+                                   "help": "One teacher cannot be in two "
+                                           "places at once — the draw keeps "
+                                           "their matches apart."},
+                                  {"key": f"staff_role_{slug}",
+                                   "type": "short_text", "label": "Role",
+                                   "required": False,
+                                   "help": "Optional — e.g. coach, escort."},
+                              ]}
+                             if roster else
+                             {"key": f"coaches_{slug}", "type": "group",
+                              "label": "Coach", "repeatable": True, "fields": [
+                                  {"key": f"coach_name_{slug}", "type": "short_text",
+                                   "label": "Coach name", "required": True},
+                                  {"key": f"coach_docs_{slug}", "type": "file_upload",
+                                   "label": "Coach documents", "required": False,
+                                   "multiple": True,
+                                   "help": "Optional — upload one or more."},
+                              ]}),
                             players,
                         ],
                     }
@@ -425,6 +468,17 @@ def build_team_form_schema(
             "coaches_group": f"coaches_{slug}",
             "coach_name": f"coach_name_{slug}",
             "coach_docs": f"coach_docs_{slug}",
+            # Participants-first pointers (spec 2026-08-17). Present only on a
+            # form generated for a tournament that declares people first; the
+            # mapper reads a picked member id where it finds one and falls back
+            # to the typed name otherwise, so BOTH shapes keep working.
+            **({
+                "player_member": f"player_member_{slug}",
+                "player_jersey": f"player_jersey_{slug}",
+                "staff_group": f"staff_{slug}",
+                "staff_member": f"staff_member_{slug}",
+                "staff_role": f"staff_role_{slug}",
+            } if roster else {}),
             # Structural binding (spec 2026-06-10): mapping stamps these onto
             # the created Team rows so fixtures scope per leaf, not by string.
             "sport_key": extra.get("sport_key", ""),

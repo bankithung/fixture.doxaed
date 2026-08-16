@@ -61,6 +61,10 @@ from apps.streaming.views import (
     TournamentStreamLinkDetailView,
     TournamentStreamLinksView,
 )
+from apps.teams.views_roster import (
+    TournamentRosterDetailView,
+    TournamentRosterView,
+)
 from apps.teams.views_tournament_houses import (
     TournamentHouseDetailView,
     TournamentHouseListView,
@@ -402,6 +406,18 @@ urlpatterns = [
         "<uuid:tournament_id>/houses/<uuid:house_id>/members/",
         TournamentHouseMemberView.as_view(),
         name="tournament-house-members",
+    ),
+    # Participants (spec 2026-08-17): the people a school declares before any
+    # team exists, and every competition each of them ended up in.
+    path(
+        "<uuid:tournament_id>/roster/",
+        TournamentRosterView.as_view(),
+        name="tournament-roster",
+    ),
+    path(
+        "<uuid:tournament_id>/roster/<uuid:member_id>/",
+        TournamentRosterDetailView.as_view(),
+        name="tournament-roster-detail",
     ),
     path(
         "<uuid:tournament_id>/disputes/",

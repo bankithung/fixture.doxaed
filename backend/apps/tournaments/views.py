@@ -98,6 +98,7 @@ class TournamentListCreateView(GenericAPIView):
             event_id=ser.validated_data.get("event_id"),
             scope=ser.validated_data.get("scope") or None,
             group_kind=ser.validated_data.get("group_kind") or None,
+            roster_mode=ser.validated_data.get("roster_mode") or None,
             request=request,
         )
         return Response(TournamentSerializer(tournament).data, status=201)
@@ -184,7 +185,9 @@ class TournamentDetailView(GenericAPIView):
         tournament = _get_tournament_or_404(request.user, tournament_id)
         name = request.data.get("name")
         active = request.data.get("active")
-        basics_keys = ("starts_at", "ends_at", "season", "time_zone")
+        basics_keys = (
+            "starts_at", "ends_at", "season", "time_zone", "roster_mode",
+        )
         basics = {k: request.data[k] for k in basics_keys if k in request.data}
         if name is None and active is None and not basics:
             raise DRFValidationError({"detail": "nothing_to_update"})
@@ -268,6 +271,31 @@ class TournamentDetailView(GenericAPIView):
                 before_basics["time_zone"] = tournament.time_zone
                 tournament.time_zone = tz
                 fields.append("time_zone")
+            if "roster_mode" in basics:
+                # Participants-first is a choice about the FUNNEL, so it can be
+                # switched on or off for as long as the funnel is ahead of you.
+                # Once teams exist, flipping it would leave a team form whose
+                # pickers point at a list that is no longer being collected —
+                # and would strand the rows already declared.
+                from apps.teams.models import Team
+                from apps.tournaments.models import RosterMode, TournamentStage
+
+                mode = str(basics["roster_mode"] or "")
+                if mode not in RosterMode.values:
+                    raise DRFValidationError({"detail": "invalid_roster_mode"})
+                if mode != tournament.roster_mode and Team.objects.filter(
+                    tournament=tournament, deleted_at__isnull=True
+                ).exists():
+                    return Response({"detail": "roster_mode_locked"}, status=409)
+                # Nor while you are standing ON the stage you would remove.
+                if (
+                    mode != tournament.roster_mode
+                    and tournament.stage == TournamentStage.ROSTER
+                ):
+                    return Response({"detail": "roster_mode_locked"}, status=409)
+                before_basics["roster_mode"] = tournament.roster_mode
+                tournament.roster_mode = mode
+                fields.append("roster_mode")
             if fields:
                 tournament.save(update_fields=[*fields, "updated_at"])
                 emit_audit(

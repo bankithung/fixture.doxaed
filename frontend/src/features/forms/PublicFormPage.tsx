@@ -12,7 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import { formsApi } from "@/api/forms";
-import type { FileMeta } from "@/api/forms";
+import type { FileMeta, RosterPayload } from "@/api/forms";
 import { ApiError } from "@/types/api";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,10 +33,54 @@ import { t } from "@/lib/t";
 import { Centered, PublicShell } from "@/features/registration/PublicShell";
 import { ContactAdminDialog } from "./ContactAdminDialog";
 import { FieldRenderer } from "./fieldRenderers";
-import type { Field } from "./types";
+import type { Field, FormSchema } from "./types";
 
 const OVERLINE =
   "text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground";
+
+/** Which roster list a data-bound field draws from (spec 2026-08-17). */
+const ROSTER_SOURCES: Record<string, keyof Pick<RosterPayload, "students" | "teachers">> =
+  {
+    roster_students: "students",
+    roster_teachers: "teachers",
+  };
+
+/**
+ * Fill the person pickers from the school's own roster.
+ *
+ * These options are deliberately absent from the public schema — a roll of
+ * children is PII, and schema resolution happens before anyone proves who they
+ * are. They arrive with the access-code exchange instead, and are grafted on
+ * here so the renderer, the branching engine and the review step all see one
+ * ordinary schema.
+ */
+function withRoster(schema: FormSchema, roster: RosterPayload | null): FormSchema {
+  if (!roster?.enabled) return schema;
+  const fill = (fields: Field[]): Field[] =>
+    fields.map((f) => {
+      const list = ROSTER_SOURCES[f.data_source?.type ?? ""];
+      const next =
+        list !== undefined
+          ? {
+              ...f,
+              options: roster[list].map((o) => ({
+                value: o.value,
+                label: o.class_section
+                  ? `${o.label} · ${o.class_section}`
+                  : o.label,
+              })),
+            }
+          : f;
+      return next.fields ? { ...next, fields: fill(next.fields) } : next;
+    });
+  return {
+    ...schema,
+    sections: (schema.sections ?? []).map((s) => ({
+      ...s,
+      fields: fill(s.fields ?? []),
+    })),
+  };
+}
 
 /** Pull a DRF `{ errors: { field: msg } }` map off an ApiError, if present.
  * Nested-group errors arrive with dotted paths ("teams_u15.0.players_u15");
@@ -196,9 +240,28 @@ export function PublicFormPage(): React.ReactElement {
   const lockedSet = useMemo(() => new Set(data?.locked ?? []), [data?.locked]);
   const boundLabel = data?.bound?.label;
 
+  // The school's declared people, revealed by the access-code exchange (or,
+  // for a manager, by picking the school). Null until then — and for every
+  // tournament that types names, forever.
+  const [roster, setRoster] = useState<RosterPayload | null>(null);
+  const rawSchema = form?.schema ?? { version: 1, sections: [] };
+  // Within-school: there is no mailed code — authorization is house
+  // membership — so the pickers arrive with the form, already narrowed to the
+  // houses this caller may register for, and follow the house they pick.
+  const houseField = useMemo(() => {
+    for (const s of rawSchema.sections ?? [])
+      for (const f of s.fields ?? [])
+        if (f.data_source?.type === "house_list") return f;
+    return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form?.schema]);
+  const houseRoster = houseField
+    ? (data?.roster_by_house?.[String(answers[houseField.key] ?? "")] ?? null)
+    : null;
   const schema = useMemo(
-    () => form?.schema ?? { version: 1, sections: [] },
-    [form?.schema],
+    () => withRoster(rawSchema, houseRoster ?? roster),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [form?.schema, roster, houseRoster],
   );
 
   // --- Institution-aware competition scoping (team forms) ------------------
@@ -279,11 +342,13 @@ export function PublicFormPage(): React.ReactElement {
 
   const selectedInstValue = selectedInstOption?.value;
   useEffect(() => {
-    // Switching school invalidates any prior verification.
+    // Switching school invalidates any prior verification — including the
+    // person pickers, which belong to the school that proved itself.
     setAccessToken(null);
     setCodeInput("");
     setCodeError(null);
     setEditingPrior(false);
+    setRoster(null);
   }, [selectedInstValue]);
 
   const verifyCode = useMutation({
@@ -301,6 +366,7 @@ export function PublicFormPage(): React.ReactElement {
         setAnswers((a) => ({ ...a, ...res.prefill }));
       }
       if (res.file_meta) setAccessFileMeta((m) => ({ ...m, ...res.file_meta }));
+      if (res.roster) setRoster(res.roster);
     },
     onError: (e) =>
       setCodeError(
@@ -327,6 +393,7 @@ export function PublicFormPage(): React.ReactElement {
       setEditingPrior(res.editing);
       if (res.prefill) setAnswers((a) => ({ ...a, ...res.prefill }));
       if (res.file_meta) setAccessFileMeta((m) => ({ ...m, ...res.file_meta }));
+      if (res.roster) setRoster(res.roster);
     },
   });
   useEffect(() => {

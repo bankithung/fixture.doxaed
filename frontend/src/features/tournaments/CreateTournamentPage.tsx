@@ -4,9 +4,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Building2, Home, Trophy } from "lucide-react";
+import { Building2, Home, Trophy, type LucideIcon } from "lucide-react";
 import { BentoCard, BentoGrid } from "@/features/dashboard/BentoCard";
-import { tournamentsApi, type TournamentScope } from "@/api/tournaments";
+import {
+  tournamentsApi,
+  type RosterMode,
+  type TournamentScope,
+} from "@/api/tournaments";
+import { ROSTER_MODES } from "./rosterModes";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +31,7 @@ const SCOPES: {
   value: TournamentScope;
   label: string;
   hint: string;
-  icon: typeof Trophy;
+  icon: LucideIcon;
 }[] = [
   {
     value: "inter_school",
@@ -43,6 +48,64 @@ const SCOPES: {
 ];
 type FormValues = z.infer<typeof schema>;
 
+/** One radio card group. Both questions on this page are the same shape, so
+ * they render through one component rather than two copies of the markup. */
+function ChoiceCards<T extends string>({
+  legend,
+  name,
+  value,
+  onChange,
+  options,
+}: {
+  legend: string;
+  name: string;
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; label: string; hint: string; icon: LucideIcon }[];
+}): React.ReactElement {
+  return (
+    <fieldset className="flex flex-col gap-1.5">
+      <legend className="pb-1.5 text-sm font-medium">{legend}</legend>
+      <div className="grid gap-2">
+        {options.map((o) => {
+          const Icon = o.icon;
+          const on = value === o.value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              data-testid={`${name}-${o.value}`}
+              onClick={() => onChange(o.value)}
+              className={cn(
+                "flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+                on
+                  ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                  : "border-border hover:bg-secondary/40",
+              )}
+            >
+              <Icon
+                aria-hidden="true"
+                className={cn(
+                  "mt-0.5 h-4 w-4 shrink-0",
+                  on ? "text-primary" : "text-muted-foreground",
+                )}
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">{o.label}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {o.hint}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
 /**
  * Self-serve "Start a tournament" page. Posting auto-provisions the creator's
  * hidden personal workspace and makes them the tournament admin (no org concept
@@ -54,6 +117,7 @@ export function CreateTournamentPage(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [scope, setScope] = useState<TournamentScope>("inter_school");
+  const [rosterMode, setRosterMode] = useState<RosterMode>("inline");
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { name: "" },
@@ -67,6 +131,7 @@ export function CreateTournamentPage(): React.ReactElement {
         name: values.name,
         event_id: newEventId(),
         scope,
+        roster_mode: rosterMode,
       });
       // Refresh the list so the new tournament shows without a manual reload.
       await qc.invalidateQueries({ queryKey: ["tournaments"] });
@@ -128,45 +193,20 @@ export function CreateTournamentPage(): React.ReactElement {
               </p>
             ) : null}
           </div>
-          <fieldset className="flex flex-col gap-1.5">
-            <legend className="pb-1.5 text-sm font-medium">{t("Who is competing?")}</legend>
-            <div className="grid gap-2">
-              {SCOPES.map((s) => {
-                const Icon = s.icon;
-                const on = scope === s.value;
-                return (
-                  <button
-                    key={s.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={on}
-                    data-testid={`scope-${s.value}`}
-                    onClick={() => setScope(s.value)}
-                    className={cn(
-                      "flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
-                      on
-                        ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-                        : "border-border hover:bg-secondary/40",
-                    )}
-                  >
-                    <Icon
-                      aria-hidden="true"
-                      className={cn(
-                        "mt-0.5 h-4 w-4 shrink-0",
-                        on ? "text-primary" : "text-muted-foreground",
-                      )}
-                    />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium">{s.label}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {s.hint}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
+          <ChoiceCards
+            legend={t("Who is competing?")}
+            name="scope"
+            value={scope}
+            onChange={setScope}
+            options={SCOPES}
+          />
+          <ChoiceCards
+            legend={t("How are players entered?")}
+            name="roster-mode"
+            value={rosterMode}
+            onChange={setRosterMode}
+            options={ROSTER_MODES}
+          />
           <Button type="submit" disabled={submitting} size="lg" className="w-full">
             {submitting ? t("Creating...") : t("Create tournament")}
           </Button>

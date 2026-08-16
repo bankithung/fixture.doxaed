@@ -542,6 +542,14 @@ def _map_team_registration_multi(resp, form, b, a) -> FormResponse:
         players_group_key = cg.get("players_group")
         pname_key = cg.get("player_name")
         pdob_key = cg.get("player_dob")
+        # Participants-first: the row names a declared person instead of
+        # spelling one out. Absent on every form generated before the layer
+        # existed, so the typed path below is untouched.
+        pmember_key = cg.get("player_member")
+        pjersey_key = cg.get("player_jersey")
+        staff_group_key = cg.get("staff_group")
+        staff_member_key = cg.get("staff_member")
+        staff_role_key = cg.get("staff_role")
         category = cg.get("category") or ""
         leaf = cg.get("leaf_key") or category
         rows = a.get(group_key, []) or []
@@ -569,15 +577,42 @@ def _map_team_registration_multi(resp, form, b, a) -> FormResponse:
             players: list[dict] = []
             if players_group_key:
                 for pr in row.get(players_group_key, []) or []:
-                    if isinstance(pr, dict):
-                        pn = pr.get(pname_key)
-                        if pn:
-                            player = {"full_name": str(pn)}
-                            year = _dob_year(pr.get(pdob_key)) if pdob_key else None
-                            if year:
-                                player["dob_year"] = year
-                            players.append(player)
+                    if not isinstance(pr, dict):
+                        continue
+                    picked = str(pr.get(pmember_key) or "") if pmember_key else ""
+                    if picked:
+                        player = {"member_id": picked, "full_name": ""}
+                        jersey = pr.get(pjersey_key) if pjersey_key else None
+                        if jersey not in (None, ""):
+                            try:
+                                player["jersey_no"] = int(jersey)
+                            except (TypeError, ValueError):
+                                pass
+                        players.append(player)
+                        continue
+                    pn = pr.get(pname_key)
+                    if pn:
+                        player = {"full_name": str(pn)}
+                        year = _dob_year(pr.get(pdob_key)) if pdob_key else None
+                        if year:
+                            player["dob_year"] = year
+                        players.append(player)
+            staff: list[dict] = []
+            if staff_group_key and staff_member_key:
+                for sr in row.get(staff_group_key, []) or []:
+                    if not isinstance(sr, dict):
+                        continue
+                    mid = str(sr.get(staff_member_key) or "")
+                    if mid:
+                        staff.append({
+                            "member_id": mid,
+                            "role": str(
+                                (sr.get(staff_role_key) if staff_role_key else "")
+                                or "in_charge"
+                            ),
+                        })
             teams_payload.append({
+                "staff": staff,
                 "name": str(name),
                 # pool = human-readable label; sport/leaf_key = the structural
                 # competition binding fixtures scope by (spec 2026-06-10).

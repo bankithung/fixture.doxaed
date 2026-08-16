@@ -15,6 +15,7 @@ import {
   Tv,
   UserCog,
   Users,
+  UserSquare2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { User } from "@/types/user";
@@ -30,6 +31,7 @@ export const STAGE_WORK_ROUTE: Record<string, (id: string) => string> = {
   setup: routes.tournamentSports,
   org_registration: routes.tournamentInstitutions,
   house_setup: routes.tournamentHouses,
+  roster: routes.tournamentParticipants,
   team_registration: routes.tournamentTeams,
   fixtures: routes.tournamentFixtures,
   ready: routes.tournamentOverview,
@@ -45,6 +47,7 @@ export const STAGE_WORK_ROUTE: Record<string, (id: string) => string> = {
 export function pathStageKey(pathname: string): string | null {
   if (/\/sports(\/|$)/.test(pathname)) return "setup";
   if (/\/houses(\/|$)/.test(pathname)) return "house_setup";
+  if (/\/participants(\/|$)/.test(pathname)) return "roster";
   if (/\/(forms|institutions)(\/|$)/.test(pathname)) return "org_registration";
   if (/\/teams(\/|$)/.test(pathname)) return "team_registration";
   if (/\/fixtures(\/|$)/.test(pathname)) return "fixtures";
@@ -366,6 +369,19 @@ export function computeTournamentNav(
           icon: Building2,
           ...gate("org_registration"),
         },
+    // Participants (spec 2026-08-17) — present only for a tournament that
+    // declares its people before building teams. Derived from the server's
+    // `order`, like every other stage item, so the rail never has to know what
+    // turned the layer on.
+    order.includes("roster")
+      ? {
+          key: "participants",
+          label: t("Participants"),
+          href: routes.tournamentParticipants(tournamentId),
+          icon: UserSquare2,
+          ...gate("roster"),
+        }
+      : null,
     {
       key: "teams",
       label: t("Teams"),

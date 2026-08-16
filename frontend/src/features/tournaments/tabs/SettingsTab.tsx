@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Pencil, Power, ScrollText, Settings } from "lucide-react";
-import { tournamentsApi } from "@/api/tournaments";
+import { tournamentsApi, type RosterMode } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
+import { cn } from "@/lib/tailwind";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
@@ -11,6 +12,7 @@ import { qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 import { DeleteTournamentButton } from "@/features/tournaments/DeleteTournamentButton";
+import { ROSTER_MODES } from "@/features/tournaments/rosterModes";
 import { StarBorder } from "@/components/ui/StarBorder";
 import "@/components/ui/star-border.css";
 
@@ -68,6 +70,25 @@ export function SettingsTab(): React.ReactElement {
       toast.push({
         kind: "error",
         title: t("Could not rename the tournament"),
+        description: e instanceof ApiError ? (e.payload.detail ?? "") : "",
+      }),
+  });
+
+  const setRosterMode = useMutation({
+    mutationFn: (mode: RosterMode) => tournamentsApi.setRosterMode(id, mode),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tournament", id] });
+      // The funnel itself changed — the stepper and the nav rail read it.
+      qc.invalidateQueries({ queryKey: qk.stage(id) });
+      toast.push({ kind: "success", title: t("Saved") });
+    },
+    onError: (e) =>
+      toast.push({
+        kind: "error",
+        title:
+          e instanceof ApiError && e.payload.detail === "roster_mode_locked"
+            ? t("Teams are already registered — this can no longer change.")
+            : t("Could not update the tournament"),
         description: e instanceof ApiError ? (e.payload.detail ?? "") : "",
       }),
   });
@@ -144,6 +165,49 @@ export function SettingsTab(): React.ReactElement {
           </div>
         </section>
       </StarBorder>
+
+      {/* How players are entered (spec 2026-08-17) — a funnel choice, so it
+          stays changeable for as long as the funnel is ahead of you. */}
+      {canEdit ? (
+        <section
+          className="bento-card star-rim flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm"
+          aria-label={t("How players are entered")}
+        >
+          <div>
+            <h3 className="text-sm font-semibold">{t("How players are entered")}</h3>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "Switch this while you still can — once a team is registered it is fixed, because the team form's dropdowns are already bound to the list.",
+              )}
+            </p>
+          </div>
+          <div className="grid gap-2 sm:max-w-2xl">
+            {ROSTER_MODES.map((m) => {
+              const on = (tournament.data?.roster_mode ?? "inline") === m.value;
+              return (
+                <button
+                  key={m.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  data-testid={`roster-mode-${m.value}`}
+                  disabled={setRosterMode.isPending}
+                  onClick={() => setRosterMode.mutate(m.value)}
+                  className={cn(
+                    "flex flex-col items-start gap-0.5 rounded-lg border p-3 text-left transition-colors",
+                    on
+                      ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                      : "border-border hover:bg-secondary/40",
+                  )}
+                >
+                  <span className="text-sm font-medium">{m.label}</span>
+                  <span className="text-xs text-muted-foreground">{m.hint}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       {/* Audit log */}
       <Link

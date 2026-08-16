@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from apps.teams.models import TeamGroupKind
 from apps.tournaments.models import (
+    RosterMode,
     Tournament,
     TournamentMembership,
     TournamentMembershipRole,
@@ -40,6 +41,7 @@ class TournamentSerializer(serializers.ModelSerializer):
             "sports",
             "scope",
             "group_kind",
+            "roster_mode",
             "scheduling_config",
             "time_zone",
             "starts_at",
@@ -80,6 +82,11 @@ class TournamentCreateSerializer(serializers.Serializer):
     # competes by (house / class / form / department).
     group_kind = serializers.ChoiceField(
         choices=TeamGroupKind.choices, required=False,
+    )
+    # How players come into existence (spec 2026-08-17). Absent = inline, the
+    # original flow where names are typed on the team form.
+    roster_mode = serializers.ChoiceField(
+        choices=RosterMode.choices, required=False,
     )
 
 

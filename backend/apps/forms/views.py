@@ -12,6 +12,7 @@ import csv
 from typing import ClassVar
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -141,9 +142,11 @@ class FormPublishView(GenericAPIView):
             form = publish_form(form, user=request.user, request=request)
         except FormEditError as e:
             raise DRFValidationError({"detail": str(e)}) from e
-        # Opening Stage-2: email every registered institution its access
-        # code + the form link (idempotent — existing codes are kept).
-        if form.purpose == FormPurpose.TEAM_REGISTRATION:
+        # Opening a competitor-scoped form: email every registered institution
+        # its access code + the form link (idempotent — existing codes are
+        # kept, so the code a school got for the participants sheet is the same
+        # one that opens the team form later).
+        if form.purpose in COMPETITOR_PURPOSES:
             from apps.teams.services.access import issue_team_access_codes
 
             issue_team_access_codes(
@@ -452,6 +455,52 @@ def _public_payload(form, link=None):
     return data
 
 
+def _house_roster_payload(form, user) -> dict:
+    """Person pickers for a WITHIN-school form, keyed by house.
+
+    There is no mailed access code in that flow — authorization is house
+    MEMBERSHIP — so the pickers cannot ride on /team-access/ the way they do
+    between schools. They ride on the form payload instead, restricted to the
+    houses this caller may actually register for: a house captain sees their
+    own children and nobody else's, an organizer sees the event.
+    """
+    from apps.teams.models import Institution, RosterMemberKind
+    from apps.teams.services.houses import houses_for, manageable_house_ids
+    from apps.teams.services.roster import member_options
+    from apps.tournaments.models import RosterMode
+
+    t = form.tournament
+    bindings = (form.settings or {}).get("bindings", {})
+    if bindings.get("competitor_kind") != "house":
+        return {}
+    if getattr(t, "roster_mode", None) != RosterMode.ROSTER_FIRST:
+        return {}
+    if user is None or not getattr(user, "is_authenticated", False):
+        return {}
+    mine = manageable_house_ids(t, user)
+    inst = (
+        Institution.objects.filter(tournament=t, deleted_at__isnull=True)
+        .order_by("created_at")
+        .first()
+    )
+    if inst is None:
+        return {}
+    out: dict = {}
+    for g in houses_for(t):
+        if mine is not None and str(g.id) not in mine:
+            continue
+        out[str(g.id)] = {
+            "enabled": True,
+            "students": member_options(
+                t, inst, kind=RosterMemberKind.STUDENT, group=g,
+            ),
+            "teachers": member_options(
+                t, inst, kind=RosterMemberKind.TEACHER, group=g,
+            ),
+        }
+    return out
+
+
 def _roster_payload(tournament, institution, group=None) -> dict:
     """The declared students + teachers a team form's dropdowns pick from.
 
@@ -609,6 +658,11 @@ class PublicFormView(GenericAPIView):
             request.user.is_authenticated
             and can_access_module(request.user, form.tournament, "forms")
         )
+        # Within-school person pickers (spec 2026-08-17) — scoped to the houses
+        # this caller may register for; empty for everyone else.
+        houses = _house_roster_payload(form, request.user)
+        if houses:
+            payload["roster_by_house"] = houses
         return Response(payload)
 
     def post(self, request, form_id=None, token=None):
@@ -724,27 +778,42 @@ class PublicFormView(GenericAPIView):
                 )
                 if errs:
                     raise DRFValidationError({"errors": errs})
+        # Record + map as ONE unit. A submission the mapper cannot turn into
+        # domain rows (a participant withdrawn between opening the form and
+        # sending it, say) must not leave a recorded response behind that the
+        # respondent believes succeeded — and the domain error belongs to the
+        # respondent, so it answers 400 rather than escaping as a 500.
         try:
-            resp = submit_response(
-                form=form,
-                answers=answers,
-                event_id=event_id,
-                share_link=link,
-                upload_refs=ser.validated_data.get("upload_refs"),
-                file_labels=ser.validated_data.get("file_labels"),
-                request=request,
-            )
+            with transaction.atomic():
+                resp = submit_response(
+                    form=form,
+                    answers=answers,
+                    event_id=event_id,
+                    share_link=link,
+                    upload_refs=ser.validated_data.get("upload_refs"),
+                    file_labels=ser.validated_data.get("file_labels"),
+                    request=request,
+                )
+                # A code-authorized (re)submission REPLACES the institution's
+                # previous team registration instead of stacking a duplicate
+                # set. NOT so for a participants sheet: ``declare_member``
+                # updates in place, and dropping people by omission would strip
+                # a child already fielded on a team.
+                if (
+                    authorized_inst_id is not None
+                    and form.purpose == FormPurpose.TEAM_REGISTRATION
+                ):
+                    supersede_team_registration(
+                        form, authorized_inst_id,
+                        exclude_response_id=resp.id, request=request,
+                    )
+                map_response(resp)
         except AnswerError as e:
             raise DRFValidationError({"errors": e.errors}) from e
-        # A code-authorized (re)submission REPLACES the institution's previous
-        # team registration instead of stacking a duplicate set. NOT so for a
-        # participants sheet: ``declare_member`` updates in place, and dropping
-        # people by omission would strip a child already fielded on a team.
-        if authorized_inst_id is not None and form.purpose == FormPurpose.TEAM_REGISTRATION:
-            supersede_team_registration(
-                form, authorized_inst_id, exclude_response_id=resp.id, request=request
-            )
-        map_response(resp)
+        except DjangoValidationError as e:
+            raise DRFValidationError(
+                {"detail": (getattr(e, "messages", None) or [str(e)])[0]}
+            ) from e
         return Response(
             {"response_id": str(resp.id), "message": form.confirmation_message},
             status=201,

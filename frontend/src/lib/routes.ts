@@ -66,6 +66,10 @@ export const routes = {
    * in a between-schools one (spec 2026-08-16). */
   tournamentHouses: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/houses`,
+  /** Participants-first (spec 2026-08-17): everyone a school declared, before
+   * any team exists — and which competitions each of them ended up in. */
+  tournamentParticipants: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/participants`,
   tournamentTeams: (id: string) => `/tournaments/${encodeURIComponent(id)}/teams`,
   tournamentFixtures: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/fixtures`,

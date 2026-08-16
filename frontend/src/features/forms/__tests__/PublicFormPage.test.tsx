@@ -717,6 +717,112 @@ describe("PublicFormPage", () => {
     ).toBeNull();
   });
 
+  // Participants-first (spec 2026-08-17): a school's roll of children is PII,
+  // so the person pickers are empty in the public schema and arrive only with
+  // the access-code exchange.
+  it("fills the student picker from the school's own roster, after the code", async () => {
+    const teamSchema: FormSchema = {
+      version: 1,
+      sections: [
+        {
+          key: "institution",
+          title: "Your institution",
+          fields: [
+            {
+              key: "institution_id",
+              type: "dropdown",
+              label: "Select your institution",
+              required: true,
+              data_source: { type: "institution_list" },
+              options: [
+                { value: "i1", label: "Don Bosco", requires_code: true },
+              ],
+            },
+          ],
+        },
+        {
+          key: "cat",
+          title: "Teams — U15",
+          fields: [
+            {
+              key: "teams_u15",
+              type: "group",
+              label: "Team",
+              repeatable: true,
+              fields: [
+                {
+                  key: "players_u15",
+                  type: "group",
+                  label: "Player",
+                  repeatable: true,
+                  fields: [
+                    {
+                      key: "player_member_u15",
+                      type: "dropdown",
+                      label: "Student",
+                      required: true,
+                      options: [],
+                      data_source: { type: "roster_students" },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "Anpsa",
+      competition_fields: [],
+      form: {
+        id: "form1",
+        title: "Team registration",
+        description: "",
+        schema: teamSchema,
+        confirmation_message: "",
+      },
+    });
+    vi.mocked(formsApi.teamAccess).mockResolvedValue({
+      access_token: "signed-token",
+      expires_in: 7200,
+      editing: false,
+      prefill: { institution_id: "i1" },
+      roster: {
+        enabled: true,
+        students: [
+          { value: "p1", label: "Imli Jamir", class_section: "9-B" },
+          { value: "p2", label: "Toshi Ao", class_section: "9-A" },
+        ],
+        teachers: [],
+      },
+    });
+
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+    await userEvent.click(
+      screen.getByRole("button", { name: /select your institution/i }),
+    );
+    await userEvent.click(screen.getByRole("option", { name: "Don Bosco" }));
+
+    await userEvent.type(screen.getByLabelText("Access code"), "K7MWPX2A");
+    await userEvent.click(screen.getByRole("button", { name: /verify code/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /next/i }));
+
+    await userEvent.click(screen.getByRole("button", { name: /add team/i }));
+    await userEvent.click(screen.getByRole("button", { name: /add player/i }));
+
+    // The picker now offers this school's children — named as the school knows
+    // them, so two "Imli"s are told apart.
+    await userEvent.click(screen.getByRole("button", { name: /student/i }));
+    expect(
+      await screen.findByRole("option", { name: "Imli Jamir · 9-B" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Toshi Ao · 9-A" }),
+    ).toBeInTheDocument();
+  });
+
   it("links to the directory from a closed institution form", async () => {
     vi.mocked(formsApi.publicGet).mockResolvedValue({
       tournament_name: "Cup",

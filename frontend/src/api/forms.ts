@@ -16,6 +16,24 @@ export interface FileMeta {
   content_type: string;
 }
 
+/** One declared participant, as the team form's dropdowns show them. */
+export interface RosterOption {
+  value: string;
+  label: string;
+  class_section?: string;
+  roll_no?: string;
+  kind?: string;
+}
+
+/** A school's declared students + teachers (spec 2026-08-17). `enabled` is
+ * false for every tournament that types names instead — the pickers simply
+ * aren't part of its forms. */
+export interface RosterPayload {
+  enabled: boolean;
+  students: RosterOption[];
+  teachers: RosterOption[];
+}
+
 export interface PublicFormPayload {
   form?: {
     id: string;
@@ -48,6 +66,10 @@ export interface PublicFormPayload {
   /** True when an authenticated manager loaded the form — the access-code
    * gate is skipped (admin entry path). */
   can_manage?: boolean;
+  /** Within-school person pickers, keyed by house (spec 2026-08-17). There is
+   * no mailed code in that flow — authorization is house MEMBERSHIP — so the
+   * server sends only the houses this caller may register for. */
+  roster_by_house?: Record<string, RosterPayload>;
 }
 
 export interface CopyableItem {
@@ -200,6 +222,10 @@ export const formsApi = {
       editing: boolean;
       prefill: Record<string, unknown> | null;
       file_meta?: Record<string, FileMeta>;
+      // The person pickers, for a tournament that declares participants first.
+      // They ride on THIS response and never on the public schema: a school's
+      // roll of children is only ever shown to that school.
+      roster?: RosterPayload;
     }>(`/api/forms/${formId}/team-access/`, body),
   publicSubmit: (
     formId: string,
