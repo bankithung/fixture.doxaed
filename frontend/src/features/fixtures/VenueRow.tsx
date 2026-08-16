@@ -1,6 +1,7 @@
 import { Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
+import { CourtCompetitionTable } from "./CourtCompetitionTable";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
@@ -64,13 +65,11 @@ export function VenueRow({
 }): React.ReactElement {
   const set = (patch: Partial<VenueDraft>): void =>
     onChange({ ...value, ...patch });
-  const toggleCourtCompetition = (idx: number, key: string): void => {
+  /** Replace one court's reservations wholesale — the picker owns the cascade
+   * and hands back an already-compressed prefix list. */
+  const setCourtCompetitions = (idx: number, next: string[]): void => {
     const courts = [...(value.courts ?? [])];
     const at = courts.findIndex((c) => c.index === idx);
-    const current = at >= 0 ? courts[at].competitions : [];
-    const next = current.includes(key)
-      ? current.filter((k) => k !== key)
-      : [...current, key];
     if (at >= 0) courts[at] = { ...courts[at], competitions: next };
     else courts.push({ index: idx, competitions: next });
     set({ courts });
@@ -175,49 +174,14 @@ export function VenueRow({
       </button>
 
       {competitionOptions.length > 1 && value.count >= 1 ? (
-        <div className="flex w-full flex-col gap-1.5 border-t border-border/60 pt-2">
-          <span className="text-xs font-medium">
-            {t("Per-court categories")}
-            <span className="ml-1 font-normal text-muted-foreground">
-              {t("(leave a court empty and it takes anything)")}
-            </span>
-          </span>
-          {Array.from({ length: Math.max(1, value.count) }, (_, i) => i + 1).map(
-            (idx) => {
-              const court = (value.courts ?? []).find((c) => c.index === idx);
-              const picked = court?.competitions ?? [];
-              const label =
-                value.count <= 1 ? value.name || t("Court") : `${t("Court")} ${idx}`;
-              return (
-                <div key={idx} className="flex flex-wrap items-center gap-1.5">
-                  <span className="w-20 shrink-0 text-xs text-muted-foreground">
-                    {label}
-                  </span>
-                  {competitionOptions.map((c) => {
-                    const on = picked.includes(c.key);
-                    return (
-                      <button
-                        key={c.key}
-                        type="button"
-                        aria-pressed={on}
-                        data-testid={`venue-${index}-court-${idx}-comp-${c.key}`}
-                        onClick={() => toggleCourtCompetition(idx, c.key)}
-                        className={cn(
-                          "rounded-full border px-2.5 py-0.5 text-xs transition-colors",
-                          on
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border bg-card text-foreground hover:bg-muted",
-                        )}
-                      >
-                        {c.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              );
-            },
-          )}
-        </div>
+        <CourtCompetitionTable
+          options={competitionOptions}
+          count={value.count}
+          courts={value.courts ?? []}
+          onChange={setCourtCompetitions}
+          venueName={value.name}
+          testIdPrefix={`venue-${index}`}
+        />
       ) : null}
 
       {sportOptions.length > 1 ? (

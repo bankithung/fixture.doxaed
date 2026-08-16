@@ -657,27 +657,45 @@ export function GlobalSetupWizard({
       });
     },
     onSuccess: async (_data, opts) => {
-      invalidateTournament(qc, tournamentId);
-      if (opts.close) {
-        toast.push({ kind: "success", title: t("Step 1 saved") });
-        (onSaved ?? onClose)();
-        return;
+      // EVERYTHING here is post-save bookkeeping — every write already
+      // committed before this ran. React Query routes a throw from onSuccess to
+      // onError, so a stumble refetching (or in a parent's onSaved) used to
+      // report "Could not save" for a save that had fully landed: venues,
+      // courts and reservations were all in the database and the organiser was
+      // told to try again (owner 2026-08-16). Never let the refresh speak for
+      // the write.
+      try {
+        invalidateTournament(qc, tournamentId);
+        if (opts.close) {
+          toast.push({ kind: "success", title: t("Step 1 saved") });
+          (onSaved ?? onClose)();
+          return;
+        }
+        // Staying put: hold the wizard open on THIS step first (the save may
+        // have just satisfied the gate that opened it), then wait for the
+        // stored sources to come back before dropping the dirty flag and
+        // letting the reconcile block re-seed. Without the re-seed a freshly
+        // created venue would still have no id in the form and the next save
+        // would create it a second time.
+        onSavedInPlace?.(step);
+        await Promise.all([
+          venues.refetch(),
+          settings.refetch(),
+          drawConfig.refetch(),
+        ]);
+        setDirty(false);
+        setSeededSig(null);
+        toast.push({ kind: "success", title: t("Progress saved") });
+      } catch {
+        // Saved, but the refresh stumbled. Say what is true, and deliberately
+        // leave the form dirty so the next save re-sends rather than assuming
+        // the screen matches the server.
+        toast.push({
+          kind: "success",
+          title: t("Saved"),
+          description: t("Reload to see the latest."),
+        });
       }
-      // Staying put: hold the wizard open on THIS step first (the save may have
-      // just satisfied the gate that opened it), then wait for the stored
-      // sources to come back before dropping the dirty flag and letting the
-      // reconcile block re-seed. Without the re-seed a freshly created venue
-      // would still have no id in the form and the next save would create it a
-      // second time.
-      onSavedInPlace?.(step);
-      await Promise.all([
-        venues.refetch(),
-        settings.refetch(),
-        drawConfig.refetch(),
-      ]);
-      setDirty(false);
-      setSeededSig(null);
-      toast.push({ kind: "success", title: t("Progress saved") });
     },
     onError: (e) =>
       toast.push({

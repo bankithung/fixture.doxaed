@@ -67,23 +67,66 @@ describe("VenueRow — per-court categories", () => {
     );
   });
 
-  it("shows an existing reservation as pressed, and clears it on a second tap", async () => {
+  it("shows an existing reservation as checked, and clears it on a second tap", async () => {
     const value = draft({
       courts: [{ index: 2, competitions: ["table_tennis.u14.girls"] }],
     });
     const onChange = mount(value);
 
-    const chip = screen.getByTestId("venue-0-court-2-comp-table_tennis.u14.girls");
-    expect(chip).toHaveAttribute("aria-pressed", "true");
+    const box = screen.getByTestId("venue-0-court-2-comp-table_tennis.u14.girls");
+    expect(box).toBeChecked();
     // The other court is untouched — no reservation means it takes anything.
     expect(
       screen.getByTestId("venue-0-court-1-comp-table_tennis.u14.girls"),
-    ).toHaveAttribute("aria-pressed", "false");
+    ).not.toBeChecked();
 
-    await userEvent.click(chip);
+    await userEvent.click(box);
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ courts: [{ index: 2, competitions: [] }] }),
     );
+  });
+
+  it("groups the competitions instead of listing every leaf flat", () => {
+    mount(draft());
+    // The sport and the category are rows of their own now…
+    expect(screen.getByTestId("venue-0-court-1-comp-table_tennis")).toBeInTheDocument();
+    expect(screen.getByTestId("venue-0-court-1-comp-table_tennis.u14")).toBeInTheDocument();
+    // …and each row is named by its own segment, not the whole path.
+    expect(screen.getByText("Table Tennis")).toBeInTheDocument();
+    expect(screen.getByText("U14")).toBeInTheDocument();
+    expect(screen.getByText("Boys")).toBeInTheDocument();
+  });
+
+  it("checking a sport reserves the court for all of it, stored as the prefix", async () => {
+    const onChange = mount(draft());
+
+    await userEvent.click(screen.getByTestId("venue-0-court-1-comp-table_tennis"));
+
+    // Not two leaf keys — the prefix, which is what Court.competitions means.
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        courts: [{ index: 1, competitions: ["table_tennis"] }],
+      }),
+    );
+  });
+
+  it("a group reads partial while only some of it is reserved", () => {
+    mount(
+      draft({ courts: [{ index: 1, competitions: ["table_tennis.u14.boys"] }] }),
+    );
+    expect(
+      screen.getByTestId("venue-0-court-1-comp-table_tennis"),
+    ).toHaveAttribute("data-state", "partial");
+    expect(
+      screen.getByTestId("venue-0-court-1-comp-table_tennis.u14.boys"),
+    ).toHaveAttribute("data-state", "on");
+  });
+
+  it("expands a stored sport prefix down to its leaves", () => {
+    mount(draft({ courts: [{ index: 1, competitions: ["table_tennis"] }] }));
+    // Stored as one prefix, shown as every competition under it.
+    expect(screen.getByTestId("venue-0-court-1-comp-table_tennis.u14.boys")).toBeChecked();
+    expect(screen.getByTestId("venue-0-court-1-comp-table_tennis.u14.girls")).toBeChecked();
   });
 
   it("names a single-court venue by the venue itself", () => {
