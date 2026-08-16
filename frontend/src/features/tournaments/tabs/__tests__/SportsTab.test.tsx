@@ -319,6 +319,44 @@ describe("SportsTab", () => {
       ),
     );
   });
+
+  it("a WITHIN-SCHOOL event goes to house setup, not institution registration", async () => {
+    // Regression (owner report, live): the review step hardcoded
+    // `org_registration`, which does not exist in the intra-school funnel —
+    // "Illegal stage transition: setup -> org_registration". Stage two comes
+    // from the server's own order now.
+    vi.mocked(tournamentsApi.sports).mockResolvedValue({
+      sports: [
+        {
+          key: "football",
+          name: "Football",
+          custom: false,
+          categories: [{ name: "U-14", subcategories: [] }],
+        },
+      ],
+    });
+    vi.mocked(tournamentsApi.stage).mockResolvedValue({
+      ...SETUP_STAGE,
+      order: ["setup", "house_setup", "team_registration", "fixtures", "ready"],
+    } as never);
+    renderTab();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /next: set up categories/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: /review competitions/i }),
+    );
+    await userEvent.click(await screen.findByTestId("generate-institution-form"));
+
+    await waitFor(() =>
+      expect(tournamentsApi.transitionStage).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({ to_stage: "house_setup" }),
+      ),
+    );
+    // And no Stage-1 form is built: there are no institutions to register.
+    expect(formsApi.generateInstitutionForm).not.toHaveBeenCalled();
+  });
 });
 
 describe("SportsTab — copy categories across sports", () => {

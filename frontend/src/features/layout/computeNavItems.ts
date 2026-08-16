@@ -172,6 +172,8 @@ export function computeTournamentNav(
     canManage || modules === null || modules.has(moduleCode);
 
   // A section keyed to `stageKey` is locked until the tournament reaches it.
+  const stageTwo = order[1] ?? "org_registration";
+  const intraSchool = stageTwo === "house_setup";
   const gate = (stageKey: string | null): Pick<NavItem, "locked" | "lockLabel"> => {
     if (!stage || stageKey === null) return {};
     const rank = order.indexOf(stageKey);
@@ -343,16 +345,27 @@ export function computeTournamentNav(
           label: t("Forms"),
           href: routes.tournamentForms(tournamentId),
           icon: FileText,
-          ...gate("org_registration"),
+          ...gate(stageTwo),
         }
       : null,
-    {
-      key: "institutions",
-      label: t("Institutions"),
-      href: routes.tournamentInstitutions(tournamentId),
-      icon: Building2,
-      ...gate("org_registration"),
-    },
+    // Stage two has two identities: schools register in a between-schools
+    // event, houses are set up in a within-school one. The server's `order` is
+    // the one list, so the rail follows it rather than knowing the scope.
+    intraSchool
+      ? {
+          key: "houses",
+          label: t("Houses"),
+          href: routes.tournamentHouses(tournamentId),
+          icon: Building2,
+          ...gate("house_setup"),
+        }
+      : {
+          key: "institutions",
+          label: t("Institutions"),
+          href: routes.tournamentInstitutions(tournamentId),
+          icon: Building2,
+          ...gate("org_registration"),
+        },
     {
       key: "teams",
       label: t("Teams"),

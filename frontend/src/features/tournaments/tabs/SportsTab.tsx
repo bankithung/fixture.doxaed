@@ -632,6 +632,10 @@ export function SportsTab(): React.ReactElement {
     queryFn: () => tournamentsApi.stage(id),
     enabled: Boolean(id),
   });
+  // Stage two is whatever THIS tournament's funnel says it is — the server's
+  // `order` is the one list, so a screen never has to know the scope itself.
+  const stageTwo = stage.data?.order?.[1] ?? "org_registration";
+  const intraSchool = stageTwo === "house_setup";
   const orgForm =
     (forms.data ?? []).find((f) => f.stage === "org_registration") ??
     (forms.data ?? []).find((f) => f.purpose === "organization_registration");
@@ -684,6 +688,19 @@ export function SportsTab(): React.ReactElement {
   // becomes that stage's registration form — the proper end-to-end flow.
   const generate = useMutation({
     mutationFn: async () => {
+      // A WITHIN-SCHOOL event has no institutions to register: stage two is
+      // house setup, so there is no Stage-1 form to build and hardcoding
+      // `org_registration` here was an illegal transition in that funnel.
+      if (intraSchool) {
+        if (stage.data?.stage === "setup") {
+          await tournamentsApi.transitionStage(id, {
+            to_stage: stageTwo,
+            ack_warnings: true,
+            event_id: newEventId(),
+          });
+        }
+        return null;
+      }
       // A reused form generated from an OLDER category set is refreshed
       // first, so the published form always matches what was configured here.
       const form = orgForm
@@ -693,7 +710,7 @@ export function SportsTab(): React.ReactElement {
         : await formsApi.generateInstitutionForm(id);
       if (stage.data?.stage === "setup") {
         await tournamentsApi.transitionStage(id, {
-          to_stage: "org_registration",
+          to_stage: stageTwo,
           ack_warnings: true,
           event_id: newEventId(),
         });
@@ -705,9 +722,15 @@ export function SportsTab(): React.ReactElement {
       qc.invalidateQueries({ queryKey: ["forms", id] });
       toast.push({
         kind: "success",
-        title: t("Registration is set up · review and open it"),
+        title: intraSchool
+          ? t("Categories saved · set up your houses next")
+          : t("Registration is set up · review and open it"),
       });
-      navigate(routes.tournamentInstitutions(id));
+      navigate(
+        intraSchool
+          ? routes.tournamentHouses(id)
+          : routes.tournamentInstitutions(id),
+      );
     },
     onError: (e) =>
       toast.push({
@@ -1632,14 +1655,18 @@ export function SportsTab(): React.ReactElement {
           <div className="flex flex-col gap-3 border-t border-border pt-4">
             <div className="min-w-0">
               <h3 className="text-sm font-semibold">
-                {orgForm
-                  ? t("Continue to institute registration")
-                  : t("Generate form & start registration")}
+                {intraSchool
+                  ? t("Continue to houses & members")
+                  : orgForm
+                    ? t("Continue to institute registration")
+                    : t("Generate form & start registration")}
               </h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                {orgForm?.stale
-                  ? t("Your category changes aren't in the form yet. Continuing refreshes it.")
-                  : t("Builds the form and opens institute registration. You can edit it first.")}
+                {intraSchool
+                  ? t("No school registration in a within-school event — you name the houses and who runs each one.")
+                  : orgForm?.stale
+                    ? t("Your category changes aren't in the form yet. Continuing refreshes it.")
+                    : t("Builds the form and opens institute registration. You can edit it first.")}
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1663,7 +1690,9 @@ export function SportsTab(): React.ReactElement {
                   ? t("Setting up…")
                   : orgForm
                     ? t("Continue to registration")
-                    : t("Generate & start registration")}
+                    : intraSchool
+                      ? t("Continue to houses")
+                      : t("Generate & start registration")}
               </Button>
             </div>
           </div>
