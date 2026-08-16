@@ -323,3 +323,41 @@ def test_the_stored_venue_pool_carries_reservations_into_a_run():
         "venues": records,
     })
     assert cfg.court_competitions == {"Hall · T2": [GIRLS]}
+
+
+# --------------------------------------------------------- separation is a RULE
+@pytest.mark.django_db
+def test_the_opening_round_separation_is_a_record_not_a_hidden_rule():
+    """It ran on every draw with no stored record and no way off (owner
+    2026-08-17: no hard-coded rules). The default still behaves exactly as it
+    always did — absence of a record is not absence of the rule."""
+    from apps.fixtures.services.generate import (
+        SEPARATION_KEY_GROUP,
+        SEPARATION_KEY_INSTITUTION,
+        SEPARATION_OFF,
+        _separation_key,
+    )
+    from apps.tournaments.models import TournamentScope
+
+    t = create_tournament(user=_user("sep@courts.test"), name="Sep")
+    assert _separation_key(t) == SEPARATION_KEY_INSTITUTION
+
+    t.constraints = [
+        {"type": "opening_round_separation", "scope": "all",
+         "params": {"key": "none"}},
+    ]
+    assert _separation_key(t) == SEPARATION_OFF
+
+    t.constraints = [
+        {"type": "opening_round_separation", "scope": "all",
+         "params": {"key": "group"}},
+    ]
+    assert _separation_key(t) == SEPARATION_KEY_GROUP
+
+    # A within-school event separates by HOUSE without being told: every team
+    # shares the one host institution, so the old axis was a silent no-op.
+    meet = create_tournament(
+        user=_user("sepintra@courts.test"), name="Meet",
+        scope=TournamentScope.INTRA_SCHOOL,
+    )
+    assert _separation_key(meet) == SEPARATION_KEY_GROUP

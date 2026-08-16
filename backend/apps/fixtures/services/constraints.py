@@ -99,6 +99,30 @@ CONSTRAINT_TYPES: list[dict[str, Any]] = [
     {"type": "no_person_overlap", "label": "No person plays overlapping matches", "hard": True,
      "params_schema": {"min_gap_minutes": "int", "cross_venue_gap_minutes": "int"},
      "scopes": ["all"], "layer": "S"},
+    # The opening-round separation, promoted from an always-on code path to a
+    # record an organiser can see and change (owner 2026-08-17). Absent, it
+    # behaves exactly as it always has: keep the same institution apart.
+    # ``key``: "institution" | "group" (house) | "none".
+    {"type": "opening_round_separation", "hard": False,
+     "label": "Keep the same competitor apart in round one",
+     "params_schema": {"key": "str"}, "scopes": ["all"], "layer": "P"},
+    # Two teams sent by the SAME SCHOOL can't play at once when one adult
+    # travels with both (owner 2026-08-15: "the teacher in-charges of the
+    # school cannot be in two courts"). Keyed on the declared teacher, not on
+    # the school, so a school that sends two teachers can legitimately use two
+    # courts — a blanket school rule would have forbidden that. Enabling it
+    # with no roster declared is a no-op, never a silent block.
+    {"type": "no_staff_overlap", "hard": True,
+     "label": "A teacher in charge is only in one place",
+     "params_schema": {"min_gap_minutes": "int", "cross_venue_gap_minutes": "int"},
+     "scopes": ["all"], "layer": "S"},
+    # The blunter form of the rule above, for tournaments with no roster: no
+    # two teams of one institution play at the same moment. Off by default —
+    # it costs real schedule room, and the staff rule is the precise version.
+    {"type": "no_institution_overlap", "hard": True,
+     "label": "A school never plays two matches at once",
+     "params_schema": {"min_gap_minutes": "int", "cross_venue_gap_minutes": "int"},
+     "scopes": ["all"], "layer": "S"},
     # Directive: dates excluded at generation, reserved for the postponement
     # repair tool; scope sport: lets indoor sports keep playing.
     {"type": "reserve_days", "label": "Reserve days (kept free for repairs)", "hard": True,

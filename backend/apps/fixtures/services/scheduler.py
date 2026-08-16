@@ -131,6 +131,12 @@ class ScheduleConfig:
     # (linked teams use the team rest gap, venue-agnostic).
     person_min_gap: int | None = None
     person_cross_venue_gap: int | None = None
+    # Which relationships create a "these teams must not overlap" edge
+    # (spec 2026-08-17). "player" is the original shared-athlete link; "staff"
+    # is a shared teacher in charge; "institution" is the blunt same-school
+    # rule. EMPTY means the caller asked for none — the input builder then
+    # produces no edges at all, so every one of these is opt-in.
+    link_sources: set[str] = field(default_factory=set)
     # Reserve days the rain-day shift has put into use (repair seam,
     # increment D): persisted on ``tournament.scheduling_config`` as
     # ``activated_reserve_days`` and subtracted from every stored
@@ -485,9 +491,26 @@ def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> l
         elif ctype == "no_person_overlap":
             cfg.person_min_gap = int(p.get("min_gap_minutes") or 30)
             cfg.person_cross_venue_gap = int(p.get("cross_venue_gap_minutes") or 60)
+            cfg.link_sources.add("player")
             notes.append(
                 f"Shared-player gaps: {cfg.person_min_gap}' same venue, "
                 f"{cfg.person_cross_venue_gap}' across venues."
+            )
+        elif ctype in ("no_staff_overlap", "no_institution_overlap"):
+            # Both widen the SAME link graph the shared-player rule already
+            # drives: a second and third edge source, each switched on by its
+            # own record rather than baked into the engine (owner 2026-08-17:
+            # no hard-coded rules).
+            source = "staff" if ctype == "no_staff_overlap" else "institution"
+            cfg.link_sources.add(source)
+            if p.get("min_gap_minutes") is not None:
+                cfg.person_min_gap = int(p["min_gap_minutes"])
+            if p.get("cross_venue_gap_minutes") is not None:
+                cfg.person_cross_venue_gap = int(p["cross_venue_gap_minutes"])
+            notes.append(
+                "Teachers in charge are never in two places at once."
+                if source == "staff"
+                else "A school never plays two matches at the same time."
             )
         elif ctype in ("even_spacing", "avoid_back_to_back"):
             notes.append(f"'{ctype}' is optimised by the built-in day-spread scoring.")
@@ -2112,17 +2135,52 @@ def build_schedule_inputs(
             (m.sport, m.leaf_key),
         ))
 
-    # Teams sharing a rostered person (one student in two competitions) are
-    # linked: their matches must never overlap (W2-D).
-    from apps.teams.models import Player
+    # Teams that must never play at the same moment, because one PERSON is
+    # committed to both. One graph, several edge sources, each switched on by
+    # its own constraint record (spec 2026-08-17) — nothing here is implicit.
+    #
+    #   player      one student in two competitions (W2-D, the original)
+    #   staff       one teacher in charge of two teams
+    #   institution the blunt fallback: any two teams of one school
+    #
+    # The shared-player source stays on by default so tournaments that never
+    # authored a record keep exactly the protection they have today.
+    from apps.teams.models import Player, TeamStaff
 
-    by_person: dict[str, set[str]] = {}
-    for pid, tid in Player.objects.filter(
-        tournament=tournament, deleted_at__isnull=True
-    ).values_list("person_id", "team_id"):
-        by_person.setdefault(str(pid), set()).add(str(tid))
+    sources = cfg.link_sources or {"player"}
+    groups: list[set[str]] = []
+
+    if "player" in sources:
+        by_person: dict[str, set[str]] = {}
+        for pid, tid in Player.objects.filter(
+            tournament=tournament, deleted_at__isnull=True
+        ).values_list("person_id", "team_id"):
+            by_person.setdefault(str(pid), set()).add(str(tid))
+        groups.extend(by_person.values())
+
+    if "staff" in sources:
+        # A teacher declared on the school's roster and put in charge of more
+        # than one team cannot be at both. Keyed on the teacher, so a school
+        # that sends two teachers keeps both courts.
+        by_staff: dict[str, set[str]] = {}
+        for mid, tid in TeamStaff.objects.filter(
+            team__tournament=tournament, team__deleted_at__isnull=True,
+        ).values_list("member_id", "team_id"):
+            by_staff.setdefault(str(mid), set()).add(str(tid))
+        groups.extend(by_staff.values())
+
+    if "institution" in sources:
+        from apps.teams.models import Team as _Team
+
+        by_inst: dict[str, set[str]] = {}
+        for iid, tid in _Team.objects.filter(
+            tournament=tournament, deleted_at__isnull=True,
+        ).exclude(institution__isnull=True).values_list("institution_id", "id"):
+            by_inst.setdefault(str(iid), set()).add(str(tid))
+        groups.extend(by_inst.values())
+
     linked: dict[str, set[str]] = {}
-    for tids in by_person.values():
+    for tids in groups:
         if len(tids) > 1:
             for a in tids:
                 linked.setdefault(a, set()).update(tids - {a})

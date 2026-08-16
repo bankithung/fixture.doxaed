@@ -329,12 +329,57 @@ def _separate_by_key(
     return out
 
 
+#: Axes the opening-round separation can key on. Named constants so an
+#: organiser can state the choice in a record instead of discovering the
+#: behaviour by watching a draw come out differently.
+SEPARATION_KEY_INSTITUTION = "institution"
+SEPARATION_KEY_GROUP = "group"
+SEPARATION_OFF = "none"
+
+
+def _separation_key(tournament) -> str:
+    """Which competitor axis to keep apart in round one (owner 2026-08-17: no
+    hard-coded rules).
+
+    Defaults to the institution — exactly what this pass has always done, so a
+    tournament that never authored a record is unaffected. An
+    ``opening_round_separation`` record overrides it, including switching the
+    pass off; a within-school event keys on the HOUSE, because every team there
+    shares the one host institution and separating by it is a guaranteed no-op.
+    """
+    from apps.tournaments.models import TournamentScope
+
+    for c in (getattr(tournament, "constraints", None) or []):
+        if isinstance(c, dict) and c.get("type") == "opening_round_separation":
+            key = str((c.get("params") or {}).get("key") or "").strip()
+            if key in (
+                SEPARATION_KEY_INSTITUTION, SEPARATION_KEY_GROUP, SEPARATION_OFF
+            ):
+                return key
+    if getattr(tournament, "scope", None) == TournamentScope.INTRA_SCHOOL:
+        return SEPARATION_KEY_GROUP
+    return SEPARATION_KEY_INSTITUTION
+
+
 def _separate_institutions(
-    teams: list[Team], opening_pairs: list[tuple[int, int]] | None = None
+    teams: list[Team], opening_pairs: list[tuple[int, int]] | None = None,
+    key: str = SEPARATION_KEY_INSTITUTION,
 ) -> list[Team]:
-    """The built-in school pass (owner W2-D: "same schools should not be
-    playing against each other on the first matches") — always on, no stored
-    record needed. ``_separate_by_key`` with the institution as the key."""
+    """Keep the same competitor apart in the opening round (owner W2-D: "same
+    schools should not be playing against each other on the first matches").
+
+    No longer unconditional: the axis is resolved by ``_separation_key`` at the
+    DB-facing entry points, so an organiser can change it or switch it off —
+    and a within-school event keys on the house, where the old always-on
+    institution pass was silently a no-op.
+    """
+    if key == SEPARATION_OFF:
+        return list(teams)
+    if key == SEPARATION_KEY_GROUP:
+        return _separate_by_key(
+            teams, opening_pairs,
+            key_map={t.id: t.group_id for t in teams if t.group_id},
+        )
     return _separate_by_key(teams, opening_pairs)
 
 
@@ -809,6 +854,7 @@ def _plan_pool(
     min_matches_per_team: int | None = None,
     warnings: list | None = None,
     warn_records: bool = True,
+    separation_key: str = SEPARATION_KEY_INSTITUTION,
 ) -> list[MatchPlan]:
     """Circle-method plans for ONE round-robin pool (opening-pair repair,
     inputs_hash, small-group leg doubling). ``separators`` are the stored
@@ -817,7 +863,7 @@ def _plan_pool(
     ``warn_records=False`` (the grouped path reports the strictly-larger
     co-grouped pigeonhole set instead, so it isn't double-warned)."""
     pairs = _opening_pairs_circle(len(group))
-    group = _separate_institutions(group, pairs)
+    group = _separate_institutions(group, pairs, separation_key)
     for _record, key_map in separators or []:
         group = _separate_by_key(group, pairs, key_map)
     if warn_records:
@@ -857,6 +903,7 @@ def plan_round_robin(
     balance_groups: bool = False,
     min_matches_per_team: int | None = None,
     warnings: list | None = None,
+    separation_key: str = SEPARATION_KEY_INSTITUTION,
 ) -> list[MatchPlan]:
     """Pure pairing core for the grouped round-robin: seed order, institution
     spread, chunk/snake/balanced grouping, per-group circle pairing. Zero DB
@@ -871,7 +918,7 @@ def plan_round_robin(
     # pools — then the stored keep-apart keys (§4.6, applied last so the
     # explicit records win); each pool's circle pairing is repaired again in
     # _plan_pool once group membership is known.
-    teams = _separate_institutions(teams)
+    teams = _separate_institutions(teams, key=separation_key)
     for _record, key_map in separators or []:
         teams = _separate_by_key(teams, None, key_map)
     if seeding == "snake":
@@ -907,6 +954,7 @@ def plan_round_robin_pool(
     small_group_max: int = 0, start_ref: int = 0,
     separators: list[tuple[dict, dict]] | None = None,
     warnings: list | None = None,
+    separation_key: str = SEPARATION_KEY_INSTITUTION,
 ) -> list[MatchPlan]:
     """Pure pairing core for ONE category bucket (by-category round-robin):
     seed order within the bucket, opening-pair repair, circle pairing. Zero
@@ -997,6 +1045,7 @@ def plan_single_elimination(
     separators: list[tuple[dict, dict]] | None = None,
     warnings: list | None = None, label_prefix: str = "",
     bye_policy: str = "seeded_byes",
+    separation_key: str = SEPARATION_KEY_INSTITUTION,
 ) -> list[MatchPlan]:
     """Pure pairing core for a single-elimination bracket (byes, winner_of /
     loser_of pointers as plan refs, optional 3rd-place playoff — §4.4). Zero
@@ -1032,7 +1081,7 @@ def plan_single_elimination(
             if pair_all
             else _opening_pairs_bracket(n)
         )
-        teams = _separate_institutions(list(teams), pairs)
+        teams = _separate_institutions(list(teams), pairs, separation_key)
         for _record, key_map in separators or []:
             teams = _separate_by_key(teams, pairs, key_map)
         for record, key_map in separators or []:
@@ -1126,6 +1175,7 @@ def plan_double_elimination(
     seeding: str = "registration", seed: int | None = None,
     separators: list[tuple[dict, dict]] | None = None,
     warnings: list | None = None,
+    separation_key: str = SEPARATION_KEY_INSTITUTION,
 ) -> list[MatchPlan]:
     """Pure pairing core for DOUBLE elimination (increment Q). The winners
     bracket is the existing single-elim planner unchanged (stage="knockout");
@@ -1158,6 +1208,7 @@ def plan_double_elimination(
     plans = plan_single_elimination(
         list(teams), stage="knockout", leaf_key=leaf_key, sport=sport,
         seeding=seeding, seed=seed, separators=separators, warnings=warnings,
+        separation_key=separation_key,
     )
     rounds: dict[int, list[MatchPlan]] = {}
     for p in plans:
@@ -1769,6 +1820,7 @@ def generate_round_robin(
             tournament, teams, leaf_key or "", sport, warnings,
         ),
         warnings=warnings,
+        separation_key=_separation_key(tournament),
     )
     ih = compute_inputs_hash(tournament, leaf_key)  # v2 hash (§2.5)
     for p in plans:
@@ -1960,6 +2012,7 @@ def generate_single_elimination(
             tournament, list(teams), leaf_key or "", sport, warnings,
         ),
         warnings=warnings,
+        separation_key=_separation_key(tournament),
     )
     if plate:
         plans = plans + plan_plate_for_plans(
