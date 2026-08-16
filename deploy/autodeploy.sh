@@ -113,7 +113,32 @@ run(){                         # run <step-name> <command...>
   fi
   return "$rc"
 }
-fail(){ log "================ DEPLOY FAILED (step: $STEP) ================"; exit 1; }
+# ---- failure alerting --------------------------------------------------------
+# A blocked deploy used to retry every minute in total silence: on 2026-08-16 it
+# failed 278 times over hours while the site quietly served stale code. Email the
+# owner ONCE per outage (after ALERT_AFTER consecutive failures), then once more
+# when it recovers.
+FAILC="$LOGDIR/fail.count"
+ALERTED="$LOGDIR/alert.sent"
+ALERT_AFTER=${DEPLOY_ALERT_AFTER:-3}
+
+alert(){                       # alert <subject>
+  local body="$LOGDIR/alert.body"
+  { echo "$1"; echo; echo "host: $(hostname)   repo: $REPO"; echo "commit: $(git rev-parse --short HEAD 2>/dev/null)"; echo; echo "--- last 60 log lines ---"; tail -n 60 "$LOG"; } > "$body"
+  "$PY" "$REPO/deploy/deploy_guard.py" alert --subject "$1" --body-file "$body" >>"$LOG" 2>&1 \
+    && log ">>> alert emailed: $1" || log ">>> alert email FAILED (see log)"
+}
+
+fail(){
+  log "================ DEPLOY FAILED (step: $STEP) ================"
+  local n=$(( $(cat "$FAILC" 2>/dev/null || echo 0) + 1 ))
+  echo "$n" > "$FAILC"
+  if [ "$n" -ge "$ALERT_AFTER" ] && [ ! -f "$ALERTED" ]; then
+    alert "[fixture] deploy stuck: $n consecutive failures at '$STEP'"
+    touch "$ALERTED"
+  fi
+  exit 1
+}
 
 # ---- 1. bring the checkout up to date ---------------------------------------
 if ! git merge-base --is-ancestor "origin/$BRANCH" HEAD; then
@@ -146,12 +171,24 @@ if changed "^backend/.*/migrations/"; then
     fi
     # shellcheck disable=SC1090
     . "$ENVFILE"
+
+    # The PRD 5 guard refuses to migrate while any tournament is LIVE. That is
+    # right for an event being scored right now and WRONG for demo rows left
+    # live forever: a stale LIVE tournament used to dead-lock every deploy, so
+    # the box served old code indefinitely while the checkout sat on new code.
+    # Ask deploy_guard whether anything is genuinely in play; only override
+    # when nothing has been scored inside the window (exit 2 = unknown = wait).
+    LIVE_OVERRIDE=0
+    GUARD_MSG=$("$PY" "$REPO/deploy/deploy_guard.py" stale-live 2>&1); GUARD_RC=$?
+    log ">>> live guard: $GUARD_MSG"
+    [ "$GUARD_RC" -eq 0 ] && LIVE_OVERRIDE=1
+
     if ! run "django migrate (owner)" env DATABASE_URL="$FIXTURE_OWNER_DATABASE_URL" \
+        FIXTURE_ALLOW_LIVE_MIGRATE="$LIVE_OVERRIDE" \
         "$PY" "$BACKEND/manage.py" migrate --noinput; then
-      # Most likely the live-tournament guard (migrations are blocked while a
-      # tournament is LIVE, by design). Abort BEFORE restarting: old code +
-      # old schema stay consistent; the timer retries every minute and the
-      # deploy lands once no tournament is live.
+      # A real in-play event, or a genuinely broken migration. Abort BEFORE
+      # restarting: old code + old schema stay consistent; the timer retries
+      # every minute and the deploy lands once the event finishes.
       log "migrate blocked or failed; NOT restarting with unmigrated code"
       fail
     fi
@@ -168,9 +205,21 @@ if changed "^frontend/"; then
   OLD_BUNDLE=$(curl -sk https://127.0.0.1/ -H "Host: fixture.doxaed.com" | grep -o 'index-[^"]*\.js' | head -1)
   run "npm run build" npm --prefix "$FRONTEND" run build || fail
   NEW_BUNDLE=$(curl -sk https://127.0.0.1/ -H "Host: fixture.doxaed.com" | grep -o 'index-[^"]*\.js' | head -1)
-  log ">>> served bundle: ${OLD_BUNDLE:-none} -> ${NEW_BUNDLE:-none}"
-  if [ -n "$OLD_BUNDLE" ] && [ "$OLD_BUNDLE" = "$NEW_BUNDLE" ] && ! git diff --quiet "$OLDREV" HEAD -- frontend/src frontend/index.html 2>/dev/null; then
-    log "!!! bundle hash did not change after a frontend src change"
+  BUILT_BUNDLE=$(grep -o 'index-[^"]*\.js' "$FRONTEND/dist/index.html" | head -1)
+  log ">>> served bundle: ${OLD_BUNDLE:-none} -> ${NEW_BUNDLE:-none} (built ${BUILT_BUNDLE:-none})"
+  # The invariant is "nginx serves exactly what we just built", NOT "the hash
+  # changed". The old check compared the served hash against the last
+  # SUCCESSFUL deploy, so once a build landed and a later step failed, every
+  # retry rebuilt identical output, saw an unchanged hash and failed forever --
+  # a self-deadlock that ate 244 deploys on 2026-08-16 alone. Comparing disk to
+  # served still catches the real faults (build wrote nothing, nginx root stale
+  # or misconfigured) and is correct on a retry.
+  if [ -z "$BUILT_BUNDLE" ]; then
+    log "!!! build produced no index bundle in $FRONTEND/dist"
+    STEP="verify bundle hash"; fail
+  fi
+  if [ -n "$NEW_BUNDLE" ] && [ "$NEW_BUNDLE" != "$BUILT_BUNDLE" ]; then
+    log "!!! nginx serves $NEW_BUNDLE but the build produced $BUILT_BUNDLE"
     STEP="verify bundle hash"; fail
   fi
 fi
@@ -178,14 +227,30 @@ fi
 # ---- 6. backend restart --------------------------------------------------------
 if changed "^backend/\|^deploy/gunicorn"; then
   run "restart backend" sudo -n systemctl restart fixture || fail
-  sleep 3
-  CODE=$(curl -sk -o /dev/null -w "%{http_code}" https://127.0.0.1/api/me/ -H "Host: fixture.doxaed.com")
-  log ">>> backend health: HTTP $CODE on /api/me/"
+  # /api/me/ does not exist (it is /api/accounts/me/) so this check used to read
+  # 404 and pass -- it would have gone green with the whole API unrouted. The
+  # real endpoint answers 403 unauthenticated; 404 now means broken routing.
+  # Gunicorn drains SSE streams on stop (TimeoutStopSec=30), so poll instead of
+  # sleeping a fixed 3s and calling a still-draining worker a failure.
+  HEALTH_PATH=/api/accounts/me/
+  CODE=000
+  for _ in $(seq 1 20); do
+    sleep 3
+    CODE=$(curl -sk -o /dev/null -w "%{http_code}" "https://127.0.0.1$HEALTH_PATH" -H "Host: fixture.doxaed.com")
+    case "$CODE" in 5*|000) ;; *) break ;; esac
+  done
+  log ">>> backend health: HTTP $CODE on $HEALTH_PATH"
   case "$CODE" in
     5*|000) log "!!! backend not answering after restart"; STEP="verify backend"; fail ;;
+    404)    log "!!! $HEALTH_PATH returned 404 -- API routing is broken"; STEP="verify backend"; fail ;;
   esac
 fi
 
 git rev-parse HEAD > "$STATE"
 log "================ DEPLOY OK @ $(git rev-parse --short HEAD) ================"
+if [ -f "$ALERTED" ]; then
+  alert "[fixture] deploy recovered @ $(git rev-parse --short HEAD)"
+  rm -f "$ALERTED"
+fi
+echo 0 > "$FAILC"
 exit 0
