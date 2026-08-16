@@ -213,3 +213,71 @@ def test_the_stage_payload_reports_the_funnel_the_tournament_actually_has():
     assert [s["key"] for s in p_inter["stages"]] == p_inter["order"]
     assert p_inter["allowed_to"] == [G.ORG_REGISTRATION]
     assert p_intra["allowed_to"] == [G.HOUSE_SETUP]
+
+
+# ------------------------------------------------------------------ roster mode
+def test_the_funnel_is_unchanged_for_every_existing_tournament():
+    """Participants-first is opt-in (spec 2026-08-17). A tournament that does
+    not ask for it keeps the exact funnel it started in — which is what stops
+    a schema change reshaping events already in flight."""
+    from apps.tournaments.models import RosterMode
+
+    t = create_tournament(user=_admin("inline@test.local"), name="Typed Names")
+    assert t.roster_mode == RosterMode.INLINE
+    assert st.flow_order(t) == st.FLOW_ORDER
+    assert G.ROSTER not in st.flow_order(t)
+
+
+def test_participants_first_inserts_one_step_before_team_registration():
+    from apps.tournaments.models import RosterMode
+
+    t = create_tournament(
+        user=_admin("roster@test.local"), name="Roster First",
+        roster_mode=RosterMode.ROSTER_FIRST,
+    )
+    assert st.flow_order(t) == [
+        G.SETUP, G.ORG_REGISTRATION, G.ROSTER, G.TEAM_REGISTRATION,
+        G.FIXTURES, G.READY,
+    ]
+
+
+def test_participants_first_composes_with_the_within_school_funnel():
+    from apps.tournaments.models import RosterMode
+
+    t = create_tournament(
+        user=_admin("both@test.local"), name="Sports Day",
+        scope=TournamentScope.INTRA_SCHOOL, roster_mode=RosterMode.ROSTER_FIRST,
+    )
+    assert st.flow_order(t) == [
+        G.SETUP, G.HOUSE_SETUP, G.ROSTER, G.TEAM_REGISTRATION,
+        G.FIXTURES, G.READY,
+    ]
+
+
+def test_the_roster_step_is_walked_one_at_a_time_and_changes_no_lifecycle():
+    """It sits between two stages that DO drive the lifecycle, and must not
+    move it itself — the rule freeze stays exactly where it is today."""
+    from apps.tournaments.models import RosterMode
+
+    t = create_tournament(
+        user=_admin("walk@test.local"), name="Walk",
+        roster_mode=RosterMode.ROSTER_FIRST,
+    )
+    _advance(t, G.ORG_REGISTRATION)
+    t.refresh_from_db()
+    assert t.status == S.PUBLISHED
+
+    # Team registration is no longer one step away.
+    with pytest.raises(ValidationError, match="Illegal stage transition"):
+        _advance(t, G.TEAM_REGISTRATION)
+
+    _advance(t, G.ROSTER)
+    t.refresh_from_db()
+    assert t.stage == G.ROSTER
+    assert t.status == S.PUBLISHED  # unchanged by the roster step
+    assert t.rules_frozen_at is None
+
+    _advance(t, G.TEAM_REGISTRATION)
+    t.refresh_from_db()
+    assert t.status == S.REGISTRATION_OPEN
+    assert t.rules_frozen_at is not None

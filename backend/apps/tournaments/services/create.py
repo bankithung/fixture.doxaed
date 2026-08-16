@@ -18,6 +18,7 @@ from apps.organizations.services.workspace import (
 )
 from apps.teams.models import TeamGroupKind
 from apps.tournaments.models import (
+    RosterMode,
     Tournament,
     TournamentMembership,
     TournamentMembershipRole,
@@ -95,7 +96,7 @@ def _ensure_host_institution(tournament):
 
 def create_tournament(
     *, user, name, sport_code=None, workspace_org=None, event_id=None, request=None,
-    scope=None, group_kind=None,
+    scope=None, group_kind=None, roster_mode=None,
 ) -> Tournament:
     """Create a tournament, auto-provisioning the creator's workspace if needed.
 
@@ -105,6 +106,10 @@ def create_tournament(
     without — the season its houses hang off, and the one host school every
     team's ``institution`` FK resolves to — so the funnel can go straight from
     setup to house setup with nothing to register.
+
+    ``roster_mode`` (spec 2026-08-17) picks how players come into existence.
+    Defaults to INLINE — today's typed names — so this change is inert until a
+    caller asks for the participants-first layer.
 
     Returns the existing Tournament unchanged on an ``event_id`` replay.
     """
@@ -148,6 +153,7 @@ def create_tournament(
             time_zone=org.time_zone,
             scope=scope,
             group_kind=kind,
+            roster_mode=roster_mode or RosterMode.INLINE,
             created_by=user,
         )
         if intra:

@@ -49,6 +49,23 @@ class TournamentScope(models.TextChoices):
     INTRA_SCHOOL = "intra_school", _("Within one school")
 
 
+class RosterMode(models.TextChoices):
+    """How a school's players come into existence (spec 2026-08-17).
+
+    - INLINE: today's behaviour. Player names are typed free-text inside the
+      team form, and a Person is matched by name. Kept as the default for
+      EXISTING tournaments so nothing in flight changes shape.
+    - ROSTER_FIRST: the school declares every student and teacher once, then
+      builds teams by picking from that list. Identity is chosen, not guessed,
+      which is what makes "is this student in two sports?" answerable — and
+      therefore what lets two competitions run at once when the players really
+      do differ.
+    """
+
+    INLINE = "inline", _("Names typed on the team form")
+    ROSTER_FIRST = "roster_first", _("Participants first, then teams")
+
+
 class TournamentStage(models.TextChoices):
     """Setup-workflow stages (spec 2026-06-08 §1). Orthogonal to TournamentStatus
     (the PRD §5.2 lifecycle): the lifecycle is draft→…→live→completed; the *stage*
@@ -70,6 +87,7 @@ class TournamentStage(models.TextChoices):
     SETUP = "setup", _("Setup")
     ORG_REGISTRATION = "org_registration", _("Institution registration")
     HOUSE_SETUP = "house_setup", _("Houses & members")
+    ROSTER = "roster", _("Participants")
     TEAM_REGISTRATION = "team_registration", _("Team registration")
     MEMBERS = "members", _("Members & roles")
     FIXTURES = "fixtures", _("Fixtures")
@@ -145,6 +163,14 @@ class Tournament(models.Model):
     # owner names the groups themselves — this only picks the noun the UI and
     # the generated form use. Ignored when scope=inter_school.
     group_kind = models.CharField(max_length=16, blank=True, default="")
+    # Whether this tournament runs the participants-first registration layer.
+    # Defaults to INLINE so every existing row keeps the five-step funnel it
+    # started in; `create_tournament` opts NEW tournaments into ROSTER_FIRST.
+    roster_mode = models.CharField(
+        max_length=16,
+        choices=RosterMode.choices,
+        default=RosterMode.INLINE,
+    )
     # Setup-workflow stage (orthogonal to `status`). Driven by
     # services/state.py::transition_tournament. See spec 2026-06-08 §1.
     stage = models.CharField(

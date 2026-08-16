@@ -29,6 +29,7 @@ from apps.forms.services.forms import close_form, is_open, publish_form
 from apps.matches.models import Match
 from apps.teams.models import Team, TeamStatus
 from apps.tournaments.models import (
+    RosterMode,
     Tournament,
     TournamentMembership,
     TournamentMembershipStatus,
@@ -87,6 +88,11 @@ _ORDER_BY_SCOPE: dict[str, list[str]] = {
     TournamentScope.INTER_SCHOOL: _ORDER,
     TournamentScope.INTRA_SCHOOL: _INTRA_ORDER,
 }
+#: Participants-first (spec 2026-08-17): the school declares every student and
+#: teacher, THEN builds teams by picking from that list. A sixth step, added
+#: only for tournaments whose ``roster_mode`` asks for it — every existing row
+#: keeps the funnel it started in.
+_ROSTER_AT = 2  # straight after stage two, before team registration
 #: The stage that occupies slot two, per scope — the ONE place the swap is
 #: declared. Everything else derives from the order lists.
 STAGE_TWO: dict[str, str] = {
@@ -110,15 +116,17 @@ FLOW_ORDER: list[str] = list(_ORDER)
 
 def flow_order(t: Tournament | None = None) -> list[str]:
     """The setup funnel for a tournament, in order. No argument (or an
-    inter-school tournament) yields the original five stages unchanged."""
-    scope = getattr(t, "scope", None) or TournamentScope.INTER_SCHOOL
-    return list(_ORDER_BY_SCOPE.get(scope, _ORDER))
+    inter-school, name-typed tournament) yields the original five stages
+    unchanged."""
+    return list(_order_for(t))
 
 
 def _order_for(t: Tournament | None) -> list[str]:
-    return _ORDER_BY_SCOPE.get(
-        getattr(t, "scope", None) or TournamentScope.INTER_SCHOOL, _ORDER
-    )
+    scope = getattr(t, "scope", None) or TournamentScope.INTER_SCHOOL
+    seq = list(_ORDER_BY_SCOPE.get(scope, _ORDER))
+    if getattr(t, "roster_mode", None) == RosterMode.ROSTER_FIRST:
+        seq.insert(_ROSTER_AT, G.ROSTER)
+    return seq
 
 
 def _rank(stage: str, order: list[str] | None = None) -> float:

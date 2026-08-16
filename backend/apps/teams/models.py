@@ -179,6 +179,150 @@ class TeamGroup(models.Model):
         return self.name
 
 
+class RosterMemberKind(models.TextChoices):
+    """Who a school declares. Students compete; teachers travel with them and
+    can only be in one place at a time — which is a scheduling fact, not an
+    administrative one (owner 2026-08-15: "the teacher in-charges of the school
+    cannot be in two courts")."""
+
+    STUDENT = "student", _("Student")
+    TEACHER = "teacher", _("Teacher in charge")
+
+
+class RosterMemberStatus(models.TextChoices):
+    ACTIVE = "active", _("Active")
+    WITHDRAWN = "withdrawn", _("Withdrawn")
+
+
+class RosterMember(models.Model):
+    """One person a school has declared for a tournament, BEFORE any team
+    exists (spec 2026-08-17).
+
+    The layer that removes a guess. Until now a player's identity was inferred
+    from a typed string — ``register_school`` reused a ``Person`` by
+    ``full_name__iexact`` within the institution — so "Imliyanger Jamir" typed
+    two ways became two people, and the scheduler cheerfully double-booked the
+    child. Teams now PICK from this list, so ``Player.person`` is chosen rather
+    than matched, and "is this student in two sports?" is answerable exactly.
+
+    Per tournament + institution. ``Person`` stays the thin cross-tournament
+    identity; everything a school knows a child by (class, roll number, DOB,
+    documents) is per-event and lives here.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="roster_members",
+    )
+    tournament = models.ForeignKey(
+        "tournaments.Tournament", on_delete=models.CASCADE,
+        related_name="roster_members",
+    )
+    # String reference: Institution is declared further down this module.
+    institution = models.ForeignKey(
+        "teams.Institution", on_delete=models.CASCADE,
+        related_name="roster_members",
+    )
+    # Within-school events: which house this person belongs to. Null in an
+    # inter-school event, where the institution IS the competitor.
+    group = models.ForeignKey(
+        TeamGroup, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="roster_members",
+    )
+    person = models.ForeignKey(
+        Person, on_delete=models.PROTECT, related_name="roster_entries",
+    )
+    kind = models.CharField(
+        max_length=16, choices=RosterMemberKind.choices,
+        default=RosterMemberKind.STUDENT, db_index=True,
+    )
+    # School-internal identity — what a school actually knows a child by.
+    class_section = models.CharField(max_length=32, blank=True)
+    roll_no = models.CharField(max_length=32, blank=True)
+    gender = models.CharField(max_length=16, blank=True)
+    date_of_birth = models.DateField(null=True, blank=True)
+    # Contact details matter for teachers (they are the escort a scheduler
+    # needs to reach); optional for students.
+    contact_email = models.EmailField(blank=True)
+    contact_phone = models.CharField(max_length=32, blank=True)
+    # Free-form bag for anything else a tournament asks for, FET-style —
+    # the generated form's extra questions land here rather than growing
+    # columns per event.
+    attributes = models.JSONField(default=dict, blank=True)
+    status = models.CharField(
+        max_length=16, choices=RosterMemberStatus.choices,
+        default=RosterMemberStatus.ACTIVE, db_index=True,
+    )
+    # The submission that declared this person (bare UUID, no FK — avoids a
+    # teams -> forms cycle, mirroring Institution.source_response_id).
+    source_response_id = models.UUIDField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="roster_members_created",
+    )
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "teams_roster_member"
+        constraints = [
+            UniqueConstraint(
+                fields=["tournament", "institution", "person"],
+                condition=Q(deleted_at__isnull=True),
+                name="unique_roster_person_per_institution",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["tournament", "institution", "kind"],
+                name="roster_trn_inst_kind_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - repr sugar
+        return f"{self.person_id} ({self.kind})"
+
+
+class TeamStaff(models.Model):
+    """A teacher in charge of a team (spec 2026-08-17).
+
+    Many-per-team on purpose: one is the common case, but a school that sends
+    two teachers can legitimately run two courts at once — and a single FK
+    would have quietly forbidden that. Two teams sharing a staff member is the
+    edge the scheduler reads to keep their matches apart.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="team_staff",
+    )
+    team = models.ForeignKey(
+        "teams.Team", on_delete=models.CASCADE, related_name="staff",
+    )
+    member = models.ForeignKey(
+        RosterMember, on_delete=models.PROTECT, related_name="teams_in_charge",
+    )
+    role = models.CharField(max_length=32, blank=True, default="in_charge")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "teams_team_staff"
+        constraints = [
+            UniqueConstraint(
+                fields=["team", "member"], name="unique_staff_per_team",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["member"], name="team_staff_member_idx"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - repr sugar
+        return f"{self.member_id} in charge of {self.team_id}"
+
+
 class TournamentHouse(models.Model):
     """Which of the season's houses take part in ONE tournament (spec
     2026-08-16 §D4).
