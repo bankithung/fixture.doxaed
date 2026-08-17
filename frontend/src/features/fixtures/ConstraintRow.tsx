@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Trash2, X } from "lucide-react";
 import type { ConstraintRecord, ConstraintType } from "@/api/tournaments";
 import { Input } from "@/components/ui/input";
 import { Select, type SelectOption } from "@/components/ui/Select";
@@ -22,6 +22,21 @@ const PARAM_LABELS: Record<string, string> = {
   round: "Round (final / semi_final / number)",
   min_gap_minutes: "Min gap (minutes)",
   cross_venue_gap_minutes: "Cross-venue gap (minutes)",
+  order: "Order, most important first",
+  mode: "How strongly the order applies",
+  rounds_from_end: "How many closing rounds",
+  from_date: "First day they may play",
+  exclusive: "Closing days hold nothing else",
+};
+
+/** One line of help under a param, where the label alone cannot carry it. */
+const PARAM_HINTS: Record<string, string> = {
+  order:
+    "Anything you leave out is scheduled after everything you list. A sport covers all its categories.",
+  rounds_from_end:
+    "Counted back from each competition's own last round, so 2 means its final and semi-finals.",
+  exclusive:
+    "On, the closing days are kept for those rounds only. Off, earlier rounds may still fill the gaps.",
 };
 
 /** Readable names for enumerated param values, keyed "<param>:<value>". The
@@ -30,7 +45,14 @@ const PARAM_OPTION_LABELS: Record<string, string> = {
   "within:sport": "Same sport only",
   "within:leaf": "Same competition only",
   "within:any": "Any two of its matches",
+  "mode:sequential": "Finish one competition, then start the next",
+  "mode:within_round": "All progress together, priority goes first",
 };
+
+/** The literal the engine reads as "whatever the last scheduled day turns out
+ * to be" — so a host can say "the final plays on the last day" before the
+ * calendar is settled, and never has to restate it when the dates move. */
+const LAST_DAY = "last_day";
 
 const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
@@ -46,6 +68,157 @@ function asList(v: unknown): string[] {
 }
 
 /**
+ * A ranked list the host builds themselves: pick a competition, then move it
+ * up or down. The stored value is the ORDER, so the list has to read as one —
+ * numbered, one row per entry, with the moves next to the thing they move.
+ *
+ * Up/down buttons rather than drag: this is a keyboard- and touch-reachable
+ * control on a settings form, and a drag surface here would be neither.
+ * Anything not picked is stated in words rather than left to be inferred.
+ */
+function OrderedPicker({
+  value,
+  options,
+  onChange,
+  testId,
+  label,
+}: {
+  value: string[];
+  /** Everything pickable — competitions and whole sports. */
+  options: SelectOption[];
+  onChange: (next: string[]) => void;
+  testId: string;
+  label: string;
+}): React.ReactElement {
+  const labelOf = (v: string): string =>
+    options.find((o) => o.value === v)?.label ?? v;
+  const remaining = options.filter((o) => !value.includes(o.value));
+  const move = (i: number, to: number): void => {
+    if (to < 0 || to >= value.length) return;
+    const next = [...value];
+    const [row] = next.splice(i, 1);
+    next.splice(to, 0, row!);
+    onChange(next);
+  };
+
+  return (
+    <div className="flex w-full min-w-64 flex-col gap-1.5">
+      <span className="text-xs font-medium">{label}</span>
+      {value.length ? (
+        <ol data-testid={testId} className="flex flex-col gap-1">
+          {value.map((v, i) => (
+            <li
+              key={v}
+              data-testid={`${testId}-item-${i}`}
+              className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1"
+            >
+              <span className="w-4 shrink-0 font-tabular text-xs text-muted-foreground">
+                {i + 1}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-xs">{labelOf(v)}</span>
+              <button
+                type="button"
+                aria-label={`${t("Move up")}: ${labelOf(v)}`}
+                data-testid={`${testId}-up-${i}`}
+                disabled={i === 0}
+                onClick={() => move(i, i - 1)}
+                className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
+              >
+                <ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-label={`${t("Move down")}: ${labelOf(v)}`}
+                data-testid={`${testId}-down-${i}`}
+                disabled={i === value.length - 1}
+                onClick={() => move(i, i + 1)}
+                className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
+              >
+                <ArrowDown aria-hidden="true" className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-label={`${t("Remove")}: ${labelOf(v)}`}
+                data-testid={`${testId}-remove-${i}`}
+                onClick={() => onChange(value.filter((x) => x !== v))}
+                className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
+              >
+                <X aria-hidden="true" className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          {t("Nothing ranked yet, so the schedule keeps its usual order.")}
+        </p>
+      )}
+      {remaining.length ? (
+        <Select
+          aria-label={t("Add to the order")}
+          placeholder={t("Add a competition…")}
+          value=""
+          onChange={(v) => onChange([...value, v])}
+          options={remaining}
+          size="sm"
+          className="w-full"
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** The one-line explanation under a param, when the label cannot carry it. */
+function Hint({ text }: { text?: string }): React.ReactElement | null {
+  return text ? (
+    <span className="text-xs text-muted-foreground">{t(text)}</span>
+  ) : null;
+}
+
+/** A yes/no rule param. Reads as the two answers it has, matching the row's
+ * own Must/Prefer control rather than introducing a second idiom. */
+function BoolField({
+  on,
+  onChange,
+  testId,
+  label,
+}: {
+  on: boolean;
+  onChange: (next: boolean) => void;
+  testId: string;
+  label: string;
+}): React.ReactElement {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-medium">{label}</span>
+      <div
+        role="group"
+        aria-label={label}
+        className="inline-flex rounded-lg border border-border p-0.5"
+      >
+        {([true, false] as const).map((v) => (
+          <button
+            key={String(v)}
+            type="button"
+            aria-pressed={on === v}
+            data-testid={`${testId}-${v ? "on" : "off"}`}
+            onClick={() => onChange(v)}
+            className={cn(
+              "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+              on === v
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-accent",
+            )}
+          >
+            {v ? t("Yes") : t("No")}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * One typed scheduling rule (clarity rebuild §4.5): the param fields are
  * rendered from the catalog's `params_schema` (int→number, time→time,
  * dates→date chips, team_id→team Select, days→weekday chips), plus the scope
@@ -57,6 +230,7 @@ export function ConstraintRow({
   spec,
   scopeOptions,
   teams,
+  orderOptions = [],
   onChange,
   onRemove,
   badge,
@@ -69,6 +243,8 @@ export function ConstraintRow({
   scopeOptions: SelectOption[];
   /** Registered teams, for `team_id` params. */
   teams: { id: string; name: string }[];
+  /** Rankable competitions and sports, for an `order` param. */
+  orderOptions?: SelectOption[];
   onChange: (next: ConstraintRecord) => void;
   onRemove: () => void;
   /** Provenance badge ("From global setup" for wizard-owned records). */
@@ -80,6 +256,69 @@ export function ConstraintRow({
     onChange({ ...record, params: { ...record.params, [key]: value } });
 
   const renderParam = (key: string, kind: string): React.ReactElement => {
+    if (kind === "order") {
+      return (
+        <div key={key} className="flex w-full flex-col gap-1">
+          <OrderedPicker
+            label={paramLabel(key)}
+            value={asList(record.params[key])}
+            options={orderOptions}
+            onChange={(v) => setParam(key, v)}
+            testId={tid(key)}
+          />
+          <Hint text={PARAM_HINTS[key]} />
+        </div>
+      );
+    }
+    if (kind === "bool") {
+      return (
+        <div key={key} className="flex flex-col gap-1">
+          <BoolField
+            label={paramLabel(key)}
+            on={Boolean(record.params[key])}
+            onChange={(v) => setParam(key, v)}
+            testId={tid(key)}
+          />
+          <Hint text={PARAM_HINTS[key]} />
+        </div>
+      );
+    }
+    // A date that may instead be "whatever the last day turns out to be": the
+    // date box AND the standing answer, because a host setting this up before
+    // the calendar is final should not have to come back and restate it.
+    if (kind === "date_or_last_day") {
+      const isLast = record.params[key] === LAST_DAY;
+      return (
+        <div key={key} className="flex flex-col gap-1">
+          <span className="text-xs font-medium">{paramLabel(key)}</span>
+          <div className="flex items-center gap-1.5">
+            <Input
+              type="date"
+              aria-label={paramLabel(key)}
+              disabled={isLast}
+              value={isLast ? "" : String(record.params[key] ?? "")}
+              data-testid={tid(key)}
+              onChange={(e) => setParam(key, e.target.value)}
+              className="h-9 w-fit min-w-36 disabled:opacity-50"
+            />
+            <button
+              type="button"
+              aria-pressed={isLast}
+              data-testid={tid(`${key}-last-day`)}
+              onClick={() => setParam(key, isLast ? "" : LAST_DAY)}
+              className={cn(
+                "h-9 shrink-0 rounded-md border px-2.5 text-xs font-medium transition-colors",
+                isLast
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border text-muted-foreground hover:bg-accent",
+              )}
+            >
+              {t("Last day")}
+            </button>
+          </div>
+        </div>
+      );
+    }
     if (key === "team_id") {
       return (
         <label key={key} className="flex min-w-44 flex-col gap-1">
@@ -187,21 +426,25 @@ export function ConstraintRow({
     }
     const type = kind === "int" ? "number" : kind === "time" ? "time" : kind === "date" ? "date" : "text";
     return (
-      <label key={key} className="flex flex-col gap-1">
-        <span className="text-xs font-medium">{paramLabel(key)}</span>
-        <Input
-          type={type}
-          value={String(record.params[key] ?? "")}
-          data-testid={tid(key)}
-          onChange={(e) =>
-            setParam(
-              key,
-              kind === "int" ? Number(e.target.value) || 0 : e.target.value,
-            )
-          }
-          className={cn("h-9", kind === "int" ? "w-24" : "w-fit min-w-28")}
-        />
-      </label>
+      <div key={key} className="flex flex-col gap-1">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium">{paramLabel(key)}</span>
+          <Input
+            type={type}
+            min={kind === "int" ? 1 : undefined}
+            value={String(record.params[key] ?? "")}
+            data-testid={tid(key)}
+            onChange={(e) =>
+              setParam(
+                key,
+                kind === "int" ? Number(e.target.value) || 0 : e.target.value,
+              )
+            }
+            className={cn("h-9", kind === "int" ? "w-24" : "w-fit min-w-28")}
+          />
+        </label>
+        <Hint text={PARAM_HINTS[key]} />
+      </div>
     );
   };
 

@@ -31,6 +31,7 @@ from __future__ import annotations
 import random
 import time as _time
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -43,10 +44,12 @@ from apps.fixtures.services.scheduler import (
     ScopedRule,
     _score_soft,
     build_slots,
+    closing_round_ok,
     court_allows,
     exclusion_member,
     expand_venues,
     relaxed_venue_type_sports,
+    resolve_closing_rounds,
     resolve_pinned_rounds,
     validate_schedule,
 )
@@ -141,6 +144,7 @@ def _single_match_ok(
     scoped_blackout: list[ScopedRule], recurring_scoped: list[ScopedRule],
     reserve_scoped: list[ScopedRule], hard_windows: list[ScopedRule],
     relax_vtype: set[str] = frozenset(),
+    closing_windows: Sequence[tuple[ScopedRule, set[str], date | None]] = (),
 ) -> bool:
     """Every per-match hard constraint that does NOT depend on other in-run
     matches (mirrors the single-match half of ``schedule_matches.feasible``).
@@ -191,6 +195,11 @@ def _single_match_ok(
     for t in teams:
         if dt.date() in cfg.team_blackouts.get(t, ()):
             return False
+    # Closing-rounds window (owner 2026-08-17). Mirrors
+    # ``schedule_matches.feasible`` — the optimizer must not undo a placement
+    # rule the greedy pass respected.
+    if not closing_round_ok(m, dt.date(), closing_windows, cfg, tkey):
+        return False
     return True
 
 
@@ -213,6 +222,9 @@ def _candidates(
         r for r in rules
         if r.type in ("preferred_window", "category_session_window") and r.hard
     ]
+    closing_windows = resolve_closing_rounds(
+        matches, [r for r in rules if r.type == "closing_rounds_window"], cfg,
+    )
     out: dict[str, list[tuple[datetime, str]]] = {}
     for m in matches:
         dur = _dur(m, cfg)
@@ -223,7 +235,8 @@ def _candidates(
                 continue
             if _single_match_ok(m, start, venue, end, cfg, base_of,
                                  scoped_blackout, recurring_scoped,
-                                 reserve_scoped, hard_windows, relax_vtype):
+                                 reserve_scoped, hard_windows, relax_vtype,
+                                 closing_windows):
                 cand.append((start, venue))
         out[m.id] = cand
     return out

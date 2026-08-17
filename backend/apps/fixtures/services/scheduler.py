@@ -58,6 +58,14 @@ _INSTITUTION_WITHIN: dict[str, str] = {
     "any": "A school never plays two matches at the same time, in any sport.",
 }
 
+#: How hard a ``competition_priority`` order bites. Keys are the accepted
+#: ``mode`` values; the sentence lands in the generation notes so the host can
+#: read back what they chose. Data, not policy (owner 2026-08-17).
+_PRIORITY_MODES: dict[str, str] = {
+    "sequential": "one competition finishes before the next starts",
+    "within_round": "they progress together, priority decides who goes first",
+}
+
 
 # --------------------------------------------------------------------------- config
 @dataclass
@@ -551,6 +559,36 @@ def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> l
                 notes.append(
                     "Teachers in charge are never in two places at once."
                 )
+        elif ctype == "competition_priority":
+            order = [
+                str(x).strip() for x in (p.get("order") or [])
+                if isinstance(x, str) and str(x).strip()
+            ]
+            mode = str(p.get("mode") or "sequential").strip().lower()
+            if order and mode in _PRIORITY_MODES:
+                cfg.constraint_rules.append(ScopedRule(
+                    ctype, scope, False, weight,
+                    {"order": order, "mode": mode}, record=c))
+                notes.append(
+                    f"Competitions scheduled in the order you set "
+                    f"({len(order)} named, {_PRIORITY_MODES[mode]})."
+                )
+        elif ctype == "closing_rounds_window":
+            n = max(1, int(p.get("rounds_from_end") or 1))
+            raw = p.get("from_date")
+            from_date: Any = "last_day" if raw == "last_day" else _parse_date(raw)
+            if from_date is not None:
+                cfg.constraint_rules.append(ScopedRule(
+                    ctype, scope, True, weight, {
+                        "rounds_from_end": n,
+                        "from_date": from_date,
+                        "exclusive": bool(p.get("exclusive")),
+                    }, record=c))
+                notes.append(
+                    f"The last {n} round(s) of each competition play from "
+                    f"{from_date} onwards ({scope})"
+                    + (", and nothing else does." if p.get("exclusive") else ".")
+                )
         elif ctype in ("even_spacing", "avoid_back_to_back"):
             notes.append(f"'{ctype}' is optimised by the built-in day-spread scoring.")
         # keep_apart_until_round is a PAIRING-layer record — generate.py
@@ -937,6 +975,114 @@ def resolve_pinned_rounds(
     return pin_of
 
 
+def competition_rank(order: Sequence[str], sport: str, leaf_key: str) -> int:
+    """Where a match's competition sits in a host-authored priority ``order``.
+
+    An entry is a leaf key, a leaf-key PREFIX ("table_tennis.u_14" = both
+    genders) or a bare sport key, matched segment-aligned by the same helper
+    per-court reservations use — so one entry can name a whole sport or one
+    exact competition without the engine knowing anything about either.
+
+    The MOST SPECIFIC matching entry wins, so a host can write a broad rule and
+    then override one competition inside it regardless of which came first in
+    the list. Anything unlisted ranks last: naming two categories must not
+    silently demote or promote the rest into some invented order.
+    """
+    from apps.tournaments.services.sports import leaf_matches_prefix
+
+    best: tuple[int, int] | None = None  # (-specificity, position)
+    for i, key in enumerate(order):
+        if leaf_key and leaf_matches_prefix(key, leaf_key):
+            depth = key.count(".") + 1
+        elif sport and key == sport:
+            depth = 1
+        else:
+            continue
+        cand = (-depth, i)
+        if best is None or cand < best:
+            best = cand
+    return len(order) if best is None else best[1]
+
+
+def resolve_closing_rounds(
+    matches: Sequence[MatchSlotReq], rules: Sequence[ScopedRule],
+    cfg: ScheduleConfig,
+) -> list[tuple[ScopedRule, set[str], date | None]]:
+    """Resolve each ``closing_rounds_window`` rule to (rule, closing match ids,
+    first allowed date).
+
+    "The last N rounds" is resolved PER COMPETITION, not per rule scope: a
+    tournament whose categories have different bracket depths would otherwise
+    get one round number imposed on all of them, and a shallow category's
+    round 3 is not the same thing as a deep one's round 3. A competition with
+    a knockout resolves against its knockout rounds; one without falls back to
+    its own last rounds, so a pure league still has a closing day.
+
+    Shared by the greedy pass, the optimizer and ``validate_schedule`` so a
+    hand-moved final is judged by exactly the rule the draw was built under.
+    """
+    out: list[tuple[ScopedRule, set[str], date | None]] = []
+    for r in rules:
+        in_scope = [
+            m for m in matches
+            if scope_matches(
+                r.scope, sport=m.sport, leaf_key=m.leaf_key,
+                team_ids=tuple(t for t in (m.home, m.away) if t),
+                team_tags=cfg.team_tags,
+            )
+        ]
+        if not in_scope:
+            continue
+        n = max(1, int(r.params.get("rounds_from_end") or 1))
+        by_leaf: dict[str, list[MatchSlotReq]] = defaultdict(list)
+        for m in in_scope:
+            by_leaf[m.leaf_key].append(m)
+        closing: set[str] = set()
+        for cohort in by_leaf.values():
+            ko = [m for m in cohort if m.stage == "knockout"] or cohort
+            # Rank by (stage, round) so a multi-stage leaf counts back from its
+            # actual last round rather than restarting the count per stage.
+            steps = sorted({(m.stage_no, m.round_no) for m in ko})
+            late = set(steps[-n:])
+            closing |= {m.id for m in ko if (m.stage_no, m.round_no) in late}
+        fd = r.params.get("from_date")
+        if fd == "last_day":
+            fd = cfg.date_end
+        out.append((r, closing, fd if isinstance(fd, date) else None))
+    return out
+
+
+def closing_round_ok(
+    m: MatchSlotReq, day: date,
+    windows: Sequence[tuple[ScopedRule, set[str], date | None]],
+    cfg: ScheduleConfig, team_ids: tuple[str, ...] = (),
+) -> bool:
+    """May this match play on ``day`` under the resolved closing-round rules?
+
+    Two directions, and the second is the one that empties the early days of
+    finals: a closing round may not play before ``from_date``, and — when the
+    rule is ``exclusive`` — nothing that is NOT a closing round may play on or
+    after it. The single gate for the greedy pass, the optimizer's candidate
+    filter and ``validate_schedule`` (a hand-moved final is judged by the same
+    rule the draw was built under).
+    """
+    for r, closing, from_date in windows:
+        if from_date is None:
+            continue
+        if not scope_matches(
+            r.scope, sport=m.sport, leaf_key=m.leaf_key,
+            team_ids=team_ids or tuple(t for t in (m.home, m.away) if t),
+            team_tags=cfg.team_tags,
+        ):
+            continue
+        if m.id in closing:
+            if day < from_date:
+                return False
+        elif r.params.get("exclusive") and day >= from_date:
+            return False
+    return True
+
+
 def _pin_venue_ok(r: ScopedRule, venue: str, base_of: dict[str, str]) -> bool:
     """Finals venue pin (increment T): with ``venues`` named, the pinned
     match may only sit on one of them — a sub-venue counts through its
@@ -1011,6 +1157,10 @@ def schedule_matches(
     exclusion_rules = [r for r in rules if r.type == "no_concurrent_competitions"]
     pinned_rules = [r for r in rules if r.type == "round_pinned_to_window"]
     rotation_rules = [r for r in rules if r.type == "rotation_fairness"]
+    priority_rules = [r for r in rules if r.type == "competition_priority"]
+    closing_windows = resolve_closing_rounds(
+        matches, [r for r in rules if r.type == "closing_rounds_window"], cfg,
+    )
 
     # Sub-venue expansion (§2.3): display name -> base name, and the parallel
     # units of each expanded base.
@@ -1081,6 +1231,13 @@ def schedule_matches(
         return (dt.time() >= r.params["from"]
                 and end <= datetime.combine(dt.date(), r.params["to"]))
 
+    def _closing_ok(m: MatchSlotReq, dt: datetime,
+                    tkey: tuple[str, ...]) -> bool:
+        """The closing-rounds gate, shared by every caller through
+        ``closing_round_ok`` so the greedy, the optimizer and the validator
+        cannot drift apart."""
+        return closing_round_ok(m, dt.date(), closing_windows, cfg, tkey)
+
     def feasible(m: MatchSlotReq, dt: datetime, venue: str, wend: datetime,
                  dur: timedelta, teams: list[str]) -> bool:
         if m.venue_type and m.sport not in relax_vtype:
@@ -1141,6 +1298,12 @@ def schedule_matches(
         for r in hard_windows:
             if _scope_ok(r, m, tkey) and not _fits_window(r, dt, end):
                 return False
+        # Closing rounds keep the closing days (owner 2026-08-17). A closing
+        # round may not play BEFORE the date the host set; with `exclusive`,
+        # nothing else may play from that date on — which is what "the end
+        # days are only finals and semis" actually means.
+        if not _closing_ok(m, dt, tkey):
+            return False
         # Resource capacities (§2.4): officials/scorers cap concurrent
         # in-flight matches per sport (or tournament-wide for scope "all").
         for r in capacity_rules:
@@ -1305,6 +1468,30 @@ def schedule_matches(
         tkey = tuple(t for t in (m.home, m.away) if t)
         return any(_scope_ok(r, m, tkey) for r in rotation_rules)
 
+    # Host-authored competition priority (owner 2026-08-17). The default key
+    # carries NO competition term, so every category's round 1 competed for the
+    # early slots in draw-emission order — which is the "categories are mixed
+    # randomly" the host sees. `rank` gives the host that term; `seq` decides
+    # whether it outranks the round (drain a competition, then start the next)
+    # or sits inside it (all competitions progress together, priority breaks
+    # the tie). Both are the author's call; with no record, rank is a constant
+    # and every key below collapses to exactly what it was.
+    prio = max(
+        priority_rules,
+        key=lambda r: (scope_specificity(r.scope), len(r.params["order"])),
+        default=None,
+    )
+
+    def _rank(m: MatchSlotReq) -> int:
+        if prio is None:
+            return 0
+        tkey = tuple(t for t in (m.home, m.away) if t)
+        if not _scope_ok(prio, m, tkey):
+            return 0
+        return competition_rank(prio.params["order"], m.sport, m.leaf_key)
+
+    seq = prio is not None and prio.params.get("mode") == "sequential"
+
     if rotation_rules:
         fair_pos: dict[str, int] = {}
         cohorts: dict[str, list[MatchSlotReq]] = defaultdict(list)
@@ -1316,16 +1503,25 @@ def schedule_matches(
                 fair_pos[mid] = i
 
         def _order_key(m: MatchSlotReq) -> tuple:
+            r = _rank(m)
             if m.id in fair_pos:
-                return (0, m.stage_no, fair_pos[m.id], m.leaf_key, m.match_no)
-            return (1, m.stage_no, m.round_no, m.leaf_key, m.match_no)
+                return (0, m.stage_no, *((r, fair_pos[m.id]) if seq
+                                         else (fair_pos[m.id], r)),
+                        m.leaf_key, m.match_no)
+            return (1, m.stage_no, *((r, m.round_no) if seq
+                                     else (m.round_no, r)),
+                    m.leaf_key, m.match_no)
 
         by_order = sorted(matches, key=_order_key)
     else:
         # stage_no first: a multi-stage leaf's group rounds all precede its
         # knockout in time (a stage-1 bracket depends on stage-0 results). It is
         # 0 for every single-stage tournament, so this is a no-op there.
-        by_order = sorted(matches, key=lambda m: (m.stage_no, m.round_no, m.match_no))
+        by_order = sorted(matches, key=lambda m: (
+            m.stage_no,
+            *((_rank(m), m.round_no) if seq else (m.round_no, _rank(m))),
+            m.match_no,
+        ))
     ordered = [m for m in by_order if m.id in pin_of] + \
               [m for m in by_order if m.id not in pin_of]
     for m in ordered:
@@ -1686,6 +1882,30 @@ def validate_schedule(
                     "round": str(r.params.get("round")),
                     "allowed_venues": list(r.params.get("venues") or []),
                 })
+
+    # Closing-rounds window (owner 2026-08-17): before this, a repair verb
+    # could hand-move a final back onto day one, or drop a first-round match
+    # onto the finals day the host had cleared. Judged by the SAME resolver the
+    # draw was built under, so the greedy and the validator cannot disagree.
+    closing_windows = resolve_closing_rounds(
+        matches,
+        [r for r in cfg.constraint_rules if r.type == "closing_rounds_window"],
+        cfg,
+    )
+    if closing_windows:
+        for m in matches:
+            slot = assignments.get(m.id)
+            if slot is None:
+                continue
+            if closing_round_ok(m, slot[0].date(), closing_windows, cfg):
+                continue
+            is_closing = any(m.id in ids for _r, ids, _d in closing_windows)
+            violations.append({
+                "code": ("closing_round_too_early" if is_closing
+                         else "non_closing_round_too_late"),
+                "hard": True, "match_id": m.id, "other_match_id": None,
+                "date": slot[0].date().isoformat(),
+            })
 
     def overlap_pairs(
         items: list[Interval], gap: timedelta = timedelta(0),

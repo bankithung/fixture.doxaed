@@ -41,6 +41,7 @@ const INT_DEFAULTS: Record<string, number> = {
   minutes: 30,
   count: 1,
   until_round: 2,
+  rounds_from_end: 1,
   min_gap_minutes: 30,
   cross_venue_gap_minutes: 60,
 };
@@ -50,8 +51,15 @@ function defaultRecord(spec: ConstraintType): ConstraintRecord {
   for (const [key, kind] of Object.entries(spec.params_schema)) {
     if (kind === "int") params[key] = INT_DEFAULTS[key] ?? 1;
     else if (kind === "time") params[key] = key === "to" ? "17:00" : "09:00";
-    else if (kind === "list") params[key] = [];
-    else params[key] = "";
+    else if (kind === "list" || kind === "order") params[key] = [];
+    else if (kind === "bool") params[key] = false;
+    // A closing-round window with no day set does nothing, and the day a host
+    // means is almost always the last one — so start there rather than at a
+    // blank box that reads as a broken rule.
+    else if (kind === "date_or_last_day") params[key] = "last_day";
+    else if (spec.param_options?.[key]?.length) {
+      params[key] = spec.param_options[key]![0]!;
+    } else params[key] = "";
   }
   return { type: spec.type, scope: "all", hard: spec.hard, weight: 5, params };
 }
@@ -147,6 +155,19 @@ export function ConstraintBuilder({
     }
     return out;
   };
+
+  // What a priority order can rank: whole sports first (the broad stroke),
+  // then every configured competition. Values are the keys the engine matches
+  // segment-aligned, so a sport entry covers all its categories.
+  const orderOptions: SelectOption[] = [
+    ...(sports.data?.sports ?? []).map((s) => ({
+      value: s.key,
+      label: `${t("All of")} ${s.name}`,
+    })),
+    ...competitions
+      .filter((c) => c.leafKey)
+      .map((c) => ({ value: c.leafKey, label: c.label })),
+  ];
 
   const save = useMutation({
     mutationFn: async () => {
@@ -266,6 +287,7 @@ export function ConstraintBuilder({
                 spec={spec}
                 scopeOptions={scopeOptionsFor(spec)}
                 teams={teams}
+                orderOptions={orderOptions}
                 badge={
                   GLOBAL_SETUP_TYPES.has(record.type) &&
                   (!record.scope || record.scope === "all")

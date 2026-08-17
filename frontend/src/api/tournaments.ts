@@ -1345,8 +1345,9 @@ export interface ConstraintType {
   label: string;
   /** Default enforcement (records may toggle hard/soft individually). */
   hard: boolean;
-  /** Param key → kind ("int" | "time" | "date" | "list" | "str") — drives
-   * the ConstraintRow field renderer (redesign §3). */
+  /** Param key → kind ("int" | "time" | "date" | "date_or_last_day" | "list" |
+   * "bool" | "order" | "str") — drives the ConstraintRow field renderer
+   * (redesign §3). */
   params_schema: Record<string, string>;
   /** Param key → the fixed set of values it accepts. Present only for
    * enumerated params; the row renders a picker instead of a text box. */

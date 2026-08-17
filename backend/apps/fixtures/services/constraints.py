@@ -81,8 +81,8 @@ CONSTRAINT_TYPES: list[dict[str, Any]] = [
     # T): when present the pinned round lands ONLY on those venues (hard) —
     # "the final plays on Center Court".
     {"type": "round_pinned_to_window", "label": "Pin a round to a window", "hard": True,
-     "params_schema": {"round": "str", "date": "date", "from": "time", "to": "time",
-                       "venues": "list"},
+     "params_schema": {"round": "str", "date": "date_or_last_day",
+                       "from": "time", "to": "time", "venues": "list"},
      "scopes": ["leaf"], "layer": "S"},
     # Soft = per-competition window scoring; the hard toggle = grid filter
     # (U14 mornings, U17 afternoons — §9 A8).
@@ -146,6 +146,47 @@ CONSTRAINT_TYPES: list[dict[str, Any]] = [
      "label": "Competitions that can't run at the same time",
      "params_schema": {"members": "list", "gap_minutes": "int"},
      "scopes": ["all"], "layer": "S"},
+    # Which competition gets the early slots (owner 2026-08-17: "the host can
+    # set up which category should be scheduled first and which is the next
+    # priority"). Without it the placement order is (stage, round, match) with
+    # NO competition term, so every category's round 1 interleaves in whatever
+    # order the draw emitted — which reads as random.
+    #
+    # It is an ORDERING directive, never a filter: it changes which match asks
+    # for a slot first, so it can reshape a day but can never make one
+    # infeasible, and it reports no violations. ``order`` is the host's own
+    # list, most important first — a leaf key, a leaf-key PREFIX
+    # ("table_tennis.u_14" = both genders) or a whole sport key, matched
+    # segment-aligned like a court reservation. Anything unlisted simply
+    # sorts last, so a host can name only the two categories they care about.
+    #
+    # ``mode`` decides how hard the order bites: "sequential" drains a
+    # competition before the next one is attempted (finish U-14 boys, then
+    # start the opens); "within_round" keeps every competition progressing
+    # together and only decides who goes first inside each round.
+    {"type": "competition_priority", "hard": False,
+     "label": "Which competition is scheduled first",
+     "params_schema": {"order": "order", "mode": "str"},
+     "param_options": {"mode": ["sequential", "within_round"]},
+     "scopes": ["all", "sport"], "layer": "S"},
+    # Keep the closing rounds for the closing days (owner 2026-08-17: "for the
+    # finals or semi finals we can have an option to be held on the next day,
+    # so the first few days all categories play and on the end days we play
+    # only the finals and semis").
+    #
+    # ``rounds_from_end`` counts back from each competition's OWN last round,
+    # resolved per competition — 1 = the final, 2 = final + semi-finals. So one
+    # record covers a tournament whose categories have different bracket
+    # depths, which naming literal round numbers could never do.
+    # ``from_date`` is the first day those rounds may play ("last_day" resolves
+    # to the schedule's last date). ``exclusive`` closes the other direction:
+    # from that day on, ONLY closing rounds may play.
+    {"type": "closing_rounds_window", "hard": True,
+     "label": "Finals and semi-finals play on the closing days",
+     "params_schema": {"rounds_from_end": "int",
+                       "from_date": "date_or_last_day",
+                       "exclusive": "bool"},
+     "scopes": ["all", "sport", "leaf"], "layer": "S"},
 ]
 
 _BY_TYPE = {c["type"]: c for c in CONSTRAINT_TYPES}
