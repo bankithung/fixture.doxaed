@@ -505,7 +505,7 @@ export type GridLine =
       label: string;
     };
 
-const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+export const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
 /** Humanize a stored blackout label ("daily_break" -> "Daily break",
  * "opening" -> "Opening ceremony"). */

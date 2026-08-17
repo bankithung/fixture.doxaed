@@ -338,6 +338,44 @@ describe("DryRunPreviewPage", () => {
     expect(screen.getByText(/10:30 AM to 11:30 AM/)).toBeInTheDocument();
   });
 
+  it("Courts view names when each court is free and what each competition costs", async () => {
+    vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
+      ...PREVIEW,
+      matches: [
+        {
+          ref: "g1", leaf_key: "football.u15", stage: "group", group_label: "A",
+          round_no: 1, home: { team_id: "tm1" }, away: { team_id: "tm2" },
+          scheduled_at: "2026-06-20T09:00:00", venue: "Court 1", duration_minutes: 30,
+        },
+        {
+          ref: "g2", leaf_key: "football.u15", stage: "group", group_label: "A",
+          round_no: 2, home: { team_id: "tm1" }, away: { team_id: "tm2" },
+          scheduled_at: "2026-06-20T11:30:00", venue: "Court 1", duration_minutes: 30,
+        },
+      ],
+    });
+    withDailyBreak("10:30", "11:30");
+    mount();
+    await userEvent.click(await screen.findByTestId("preview-view-courts"));
+
+    // The court's own day, with its timeline and its readings.
+    const row = await screen.findByTestId("court-row-2026-06-20|Court 1");
+    expect(row).toHaveTextContent("Court 1");
+    expect(row).toHaveTextContent("2 matches");
+    // Day 09:00-17:00 = 480 min; 60 played, 60 in the configured break.
+    expect(screen.getByTestId("court-stat-used")).toHaveTextContent("1h");
+    expect(screen.getByTestId("court-stat-breaks")).toHaveTextContent("1h");
+    expect(screen.getByTestId("court-stat-free")).toHaveTextContent("6h");
+    // The free stretches are spelled out, not left to the picture alone.
+    expect(row).toHaveTextContent("9:30 AM to 10:30 AM");
+
+    // The other half of the tab: minutes per competition.
+    await userEvent.click(screen.getByTestId("court-tab-time"));
+    const load = screen.getByTestId("load-row-football.u15");
+    expect(load).toHaveTextContent("1h");
+    expect(screen.getByTestId("load-total")).toHaveTextContent("1h");
+  });
+
   it("moves between the sheet, the group stage and the knockout", async () => {
     vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue(MULTISTAGE_PREVIEW);
     mount();
