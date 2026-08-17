@@ -189,6 +189,7 @@ class TournamentDetailView(GenericAPIView):
             "starts_at", "ends_at", "season", "time_zone", "roster_mode",
         )
         basics = {k: request.data[k] for k in basics_keys if k in request.data}
+        roster_switch: dict | None = None
         if name is None and active is None and not basics:
             raise DRFValidationError({"detail": "nothing_to_update"})
 
@@ -272,30 +273,30 @@ class TournamentDetailView(GenericAPIView):
                 tournament.time_zone = tz
                 fields.append("time_zone")
             if "roster_mode" in basics:
-                # Participants-first is a choice about the FUNNEL, so it can be
-                # switched on or off for as long as the funnel is ahead of you.
-                # Once teams exist, flipping it would leave a team form whose
-                # pickers point at a list that is no longer being collected —
-                # and would strand the rows already declared.
-                from apps.teams.models import Team
-                from apps.tournaments.models import RosterMode, TournamentStage
+                # Participants-first is a choice about the FUNNEL, and a
+                # tournament already mid-setup is exactly who wants to adopt
+                # it (owner 2026-08-18: a clone of last year's event). So the
+                # switch MIGRATES rather than refusing — every registered
+                # player is declared, and the generated team form is rebuilt to
+                # pick instead of type. Its own service, because it is several
+                # writes that must land together.
+                from apps.tournaments.services.roster_mode import (
+                    switch_roster_mode,
+                )
 
-                mode = str(basics["roster_mode"] or "")
-                if mode not in RosterMode.values:
-                    raise DRFValidationError({"detail": "invalid_roster_mode"})
-                if mode != tournament.roster_mode and Team.objects.filter(
-                    tournament=tournament, deleted_at__isnull=True
-                ).exists():
-                    return Response({"detail": "roster_mode_locked"}, status=409)
-                # Nor while you are standing ON the stage you would remove.
-                if (
-                    mode != tournament.roster_mode
-                    and tournament.stage == TournamentStage.ROSTER
-                ):
-                    return Response({"detail": "roster_mode_locked"}, status=409)
-                before_basics["roster_mode"] = tournament.roster_mode
-                tournament.roster_mode = mode
-                fields.append("roster_mode")
+                try:
+                    roster_switch = switch_roster_mode(
+                        tournament=tournament,
+                        mode=str(basics["roster_mode"] or ""),
+                        by=request.user,
+                        request=request,
+                    )
+                except DjangoValidationError as exc:
+                    detail = (exc.messages or ["invalid_roster_mode"])[0]
+                    raise DRFValidationError({"detail": detail}) from exc
+                # It saved itself (and everything it dragged along), so it must
+                # NOT ride along in the basics `update_fields` below.
+                tournament.refresh_from_db(fields=["roster_mode"])
             if fields:
                 tournament.save(update_fields=[*fields, "updated_at"])
                 emit_audit(
@@ -344,7 +345,12 @@ class TournamentDetailView(GenericAPIView):
                     payload_after={"status": tournament.status},
                     request=request,
                 )
-        return Response(TournamentSerializer(tournament).data)
+        data = TournamentSerializer(tournament).data
+        # What the roster-mode switch actually carried across, so the UI can say
+        # it out loud rather than leaving the organizer to guess.
+        if roster_switch is not None:
+            data = {**data, "roster_switch": roster_switch}
+        return Response(data)
 
 
 class TournamentInvitationCreateView(GenericAPIView):

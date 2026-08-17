@@ -106,15 +106,58 @@ describe("SettingsTab — how players are entered", () => {
     );
   });
 
-  it("explains the lock in words, not a code", async () => {
-    vi.mocked(tournamentsApi.setRosterMode).mockRejectedValue(
-      new ApiError(409, { detail: "roster_mode_locked" }),
-    );
+  it("says what the switch carried across, not just 'Saved'", async () => {
+    // Owner 2026-08-18: switching on a tournament that already has teams
+    // MIGRATES. The organizer has to be told their squads survived.
+    vi.mocked(tournamentsApi.setRosterMode).mockResolvedValue({
+      ...tournament("roster_first"),
+      roster_switch: {
+        mode: "roster_first",
+        changed: true,
+        seeded: 12,
+        team_form_id: "f1",
+        team_form_kept: false,
+      },
+    });
     renderTab();
 
     await userEvent.click(await screen.findByTestId("roster-mode-roster_first"));
     expect(
-      await screen.findByText(/teams are already registered/i),
+      await screen.findByText(/12 players already registered were added/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/team form now picks from that list/i),
+    ).toBeInTheDocument();
+  });
+
+  it("flags a hand-built team form it refused to overwrite", async () => {
+    vi.mocked(tournamentsApi.setRosterMode).mockResolvedValue({
+      ...tournament("roster_first"),
+      roster_switch: {
+        mode: "roster_first",
+        changed: true,
+        seeded: 0,
+        team_form_id: null,
+        team_form_kept: true,
+      },
+    });
+    renderTab();
+
+    await userEvent.click(await screen.findByTestId("roster-mode-roster_first"));
+    expect(
+      await screen.findByText(/hand-built team form was left untouched/i),
+    ).toBeInTheDocument();
+  });
+
+  it("explains the one remaining refusal in words, not a code", async () => {
+    vi.mocked(tournamentsApi.setRosterMode).mockRejectedValue(
+      new ApiError(400, { detail: "leave_the_participants_stage_first" }),
+    );
+    renderTab();
+
+    await userEvent.click(await screen.findByTestId("roster-mode-inline"));
+    expect(
+      await screen.findByText(/move off the participants step first/i),
     ).toBeInTheDocument();
   });
 

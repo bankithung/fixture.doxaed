@@ -123,10 +123,30 @@ school that sends two teachers keeps both its courts.
   than one. That is the owner's question, answered as data.
   House-scoped for a house captain (`manageable_house_ids`), whole-event for a
   manager.
-- **Create tournament** asks the question; **Settings** keeps it changeable until
-  the first team is registered (409 `roster_mode_locked` after that — by then the
-  team form's dropdowns are bound to the list and the declared people would be
-  stranded).
+- **Create tournament** asks the question; **Settings** switches it at any time.
+
+### Adopting it mid-event (owner 2026-08-18)
+
+The first cut refused the switch once teams existed. That was wrong: an
+organizer who cloned last year's tournament went looking for the participants
+step, found none, and could not turn it on either. A tournament mid-setup is
+exactly who wants this, so `services/roster_mode.py::switch_roster_mode`
+migrates instead of blocking:
+
+- every already-registered `Player` becomes a declared `RosterMember` for that
+  team's institution (and house), idempotent on (institution, person) — so the
+  team form's dropdowns are filled from the school's own squad rather than empty;
+- the **generated** team form is rebuilt for the new mode, because leaving it
+  asking for typed names is the exact trap that was reported. A **hand-built**
+  form is never overwritten — the response returns `team_form_kept` and the UI
+  says so;
+- the response reports `{changed, seeded, team_form_id, team_form_kept}` so
+  Settings can tell the organizer what happened instead of a bare "Saved".
+
+Nothing is deleted in either direction: switching back to `inline` leaves the
+declared people in place (they carry the identities the teams already point at).
+The one remaining refusal is switching *off* while parked on the roster stage,
+which would leave the tournament outside its own funnel.
 
 ## 4. What deliberately did NOT change
 
