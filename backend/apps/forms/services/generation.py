@@ -531,7 +531,8 @@ def build_team_form_schema(
                         "fields": [
                             {"key": tkey, "type": "short_text", "label": "Team name",
                              "required": False,
-                             "help": "Defaults to your institution's name. Edit it if you want another."},
+                             "help": "Defaults to your institution's name. "
+                                     "Edit it if you want another."},
                             # Asked ONCE, up on the participants sheet, when
                             # there is one (owner 2026-08-17). A typed-name
                             # form has no such sheet, so it keeps its own.
@@ -539,7 +540,8 @@ def build_team_form_schema(
                                 {"key": f"team_logo_{slug}", "type": "file_upload",
                                  "label": "Team logo", "required": False,
                                  "accept": "image/*",
-                                 "help": "Optional — upload an image; it's compressed automatically."},
+                                 "help": "Optional — upload an image; it is "
+                                         "compressed automatically."},
                             ]),
                             # The teacher in charge: PICKED once the school has
                             # declared its staff, because the draw keys its
