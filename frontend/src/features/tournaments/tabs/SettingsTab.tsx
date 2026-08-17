@@ -76,18 +76,40 @@ export function SettingsTab(): React.ReactElement {
 
   const setRosterMode = useMutation({
     mutationFn: (mode: RosterMode) => tournamentsApi.setRosterMode(id, mode),
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["tournament", id] });
       // The funnel itself changed — the stepper and the nav rail read it.
       qc.invalidateQueries({ queryKey: qk.stage(id) });
-      toast.push({ kind: "success", title: t("Saved") });
+      qc.invalidateQueries({ queryKey: ["tournament-roster", id] });
+      qc.invalidateQueries({ queryKey: qk.forms(id) });
+      // Say what the switch carried across, rather than a bare "Saved" that
+      // leaves the organizer wondering whether their squads survived.
+      const sw = data.roster_switch;
+      const bits: string[] = [];
+      if (sw?.seeded) {
+        bits.push(
+          `${sw.seeded} ${sw.seeded === 1 ? t("player already registered was added to the participants list") : t("players already registered were added to the participants list")}`,
+        );
+      }
+      if (sw?.team_form_id) bits.push(t("the team form now picks from that list"));
+      if (sw?.team_form_kept) {
+        bits.push(
+          t("your hand-built team form was left untouched — update it yourself"),
+        );
+      }
+      toast.push({
+        kind: "success",
+        title: t("Saved"),
+        description: bits.join(" · "),
+      });
     },
     onError: (e) =>
       toast.push({
         kind: "error",
         title:
-          e instanceof ApiError && e.payload.detail === "roster_mode_locked"
-            ? t("Teams are already registered — this can no longer change.")
+          e instanceof ApiError &&
+          e.payload.detail === "leave_the_participants_stage_first"
+            ? t("Move off the Participants step first, then switch this off.")
             : t("Could not update the tournament"),
         description: e instanceof ApiError ? (e.payload.detail ?? "") : "",
       }),
@@ -177,7 +199,7 @@ export function SettingsTab(): React.ReactElement {
             <h3 className="text-sm font-semibold">{t("How players are entered")}</h3>
             <p className="text-xs text-muted-foreground">
               {t(
-                "Switch this while you still can — once a team is registered it is fixed, because the team form's dropdowns are already bound to the list.",
+                "Switch any time, including mid-setup: every player already registered is added to the participants list, and the generated team form is rebuilt to match. Nothing is deleted either way.",
               )}
             </p>
           </div>

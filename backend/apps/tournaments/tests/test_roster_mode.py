@@ -1,10 +1,11 @@
 """Choosing how players are entered (spec 2026-08-17).
 
 A funnel choice, not a rule: it decides whether the setup flow has a
-participants step at all. So it is offered at creation AND remains editable for
-as long as the funnel is still ahead of you — which stops once teams exist,
-because by then the team form's dropdowns are bound to the declared list and
-the people already declared would be stranded.
+participants step at all. So it is offered at creation AND stays switchable
+afterwards — including on a tournament that already has teams, which is exactly
+who wants to adopt it (owner 2026-08-18, a clone of last year's event). The
+switch MIGRATES: every registered player becomes a declared participant and the
+generated team form is rebuilt to pick instead of type.
 """
 from __future__ import annotations
 
@@ -96,48 +97,119 @@ def test_it_can_be_switched_on_afterwards():
     assert "roster" not in flow_order(t)
 
 
-def test_it_locks_once_a_team_is_registered():
+def test_switching_on_MIGRATES_a_tournament_that_already_has_teams():
+    """Owner 2026-08-18: a clone of last year's event is exactly who wants to
+    adopt this. Refusing the switch left them with no way in at all, so it
+    carries the existing squads across instead."""
+    from apps.forms.constants import FormPurpose
+    from apps.forms.models import Form
+    from apps.forms.services.generation import generate_team_form_template
+    from apps.teams.models import Person, Player, RosterMember
+
     admin = _verified("a@test.local")
-    t = create_tournament(
-        user=admin, name="Cup", roster_mode=RosterMode.ROSTER_FIRST,
-    )
+    t = create_tournament(user=admin, name="Clone")
+    t.sports = [{
+        "key": "sepak_takraw", "name": "Sepak Takraw",
+        "categories": [{"key": "u14", "name": "U14",
+                        "children": [{"key": "boys", "name": "Boys"}]}],
+    }]
+    t.save(update_fields=["sports"])
     inst = Institution.objects.create(
         organization=t.organization, tournament=t, slug="grace",
         name="Grace School", status=InstitutionStatus.REGISTERED,
     )
-    Team.objects.create(
+    team = Team.objects.create(
         organization=t.organization, tournament=t, institution=inst,
-        slug="grace-a", name="Grace A", status=TeamStatus.REGISTERED,
+        slug="grace-a", name="Grace A", leaf_key="sepak_takraw.u14.boys",
+        sport="sepak_takraw", status=TeamStatus.REGISTERED,
     )
-    r = _client(admin).patch(
-        f"/api/tournaments/{t.id}/", {"roster_mode": "inline"}, format="json",
-    )
-    assert r.status_code == 409
-    assert r.data["detail"] == "roster_mode_locked"
-    t.refresh_from_db()
-    assert t.roster_mode == RosterMode.ROSTER_FIRST
+    for nm in ("Imli Jamir", "Toshi Ao"):
+        Player.objects.create(
+            organization=t.organization, tournament=t, team=team,
+            person=Person.objects.create(full_name=nm),
+        )
+    # A generated team form, as the funnel would have left it.
+    form = generate_team_form_template(tournament=t)
+    assert "player_member" not in (form.settings or {})["bindings"]["category_groups"][0]
 
-
-def test_re_sending_the_same_mode_is_not_a_lock():
-    """Idempotent: a settings screen that PATCHes everything it shows must not
-    trip the guard just for restating what is already true."""
-    admin = _verified("a@test.local")
-    t = create_tournament(
-        user=admin, name="Cup", roster_mode=RosterMode.ROSTER_FIRST,
-    )
-    inst = Institution.objects.create(
-        organization=t.organization, tournament=t, slug="grace",
-        name="Grace School", status=InstitutionStatus.REGISTERED,
-    )
-    Team.objects.create(
-        organization=t.organization, tournament=t, institution=inst,
-        slug="grace-a", name="Grace A", status=TeamStatus.REGISTERED,
-    )
     r = _client(admin).patch(
         f"/api/tournaments/{t.id}/", {"roster_mode": "roster_first"},
         format="json",
     )
-    assert r.status_code == 200
+    assert r.status_code == 200, r.data
+    t.refresh_from_db()
+    assert t.roster_mode == RosterMode.ROSTER_FIRST
+
+    # Every already-registered player is now a declared participant, so the
+    # team form's dropdowns are not empty.
+    declared = RosterMember.objects.filter(tournament=t, deleted_at__isnull=True)
+    assert {m.person.full_name for m in declared} == {"Imli Jamir", "Toshi Ao"}
+    assert all(m.institution_id == inst.id for m in declared)
+    assert r.data["roster_switch"]["seeded"] == 2
+
+    # …and the team form now PICKS instead of asking for typed names.
+    form.refresh_from_db()
+    cg = (form.settings or {})["bindings"]["category_groups"][0]
+    assert "player_member" in cg
+    keys = str(form.schema)
+    assert cg["player_member"] in keys
+    assert cg["player_name"] not in keys
+    assert r.data["roster_switch"]["team_form_id"] == str(form.id)
+    assert Form.objects.filter(
+        tournament=t, purpose=FormPurpose.TEAM_REGISTRATION,
+        deleted_at__isnull=True,
+    ).count() == 1  # rebuilt in place, never duplicated
+
+
+def test_the_migration_is_idempotent():
+    from apps.teams.models import Person, Player, RosterMember
+
+    admin = _verified("a@test.local")
+    t = create_tournament(user=admin, name="Twice")
+    inst = Institution.objects.create(
+        organization=t.organization, tournament=t, slug="grace",
+        name="Grace School", status=InstitutionStatus.REGISTERED,
+    )
+    team = Team.objects.create(
+        organization=t.organization, tournament=t, institution=inst,
+        slug="grace-a", name="Grace A", status=TeamStatus.REGISTERED,
+    )
+    Player.objects.create(
+        organization=t.organization, tournament=t, team=team,
+        person=Person.objects.create(full_name="Imli Jamir"),
+    )
+    c = _client(admin)
+    c.patch(f"/api/tournaments/{t.id}/", {"roster_mode": "roster_first"}, format="json")
+    c.patch(f"/api/tournaments/{t.id}/", {"roster_mode": "inline"}, format="json")
+    r = c.patch(f"/api/tournaments/{t.id}/", {"roster_mode": "roster_first"},
+                format="json")
+    assert r.status_code == 200, r.data
+    assert RosterMember.objects.filter(tournament=t, deleted_at__isnull=True).count() == 1
+    assert r.data["roster_switch"]["seeded"] == 0  # nothing new to declare
+
+
+def test_a_hand_built_team_form_is_never_overwritten():
+    """The organizer's own work is theirs. Flagged, not rewritten."""
+    from apps.forms.constants import FormPurpose
+    from apps.forms.services.forms import create_form
+
+    admin = _verified("a@test.local")
+    t = create_tournament(user=admin, name="Handmade")
+    hand = create_form(
+        tournament=t, title="Our own team form",
+        purpose=FormPurpose.TEAM_REGISTRATION, stage="team_registration",
+        schema={"version": 1, "sections": [{"key": "s", "title": "S", "fields": [
+            {"key": "who", "type": "short_text", "label": "Who"},
+        ]}]},
+    )
+    r = _client(admin).patch(
+        f"/api/tournaments/{t.id}/", {"roster_mode": "roster_first"}, format="json",
+    )
+    assert r.status_code == 200, r.data
+    assert r.data["roster_switch"]["team_form_kept"] is True
+    assert r.data["roster_switch"]["team_form_id"] is None
+    hand.refresh_from_db()
+    assert hand.schema["sections"][0]["fields"][0]["key"] == "who"
 
 
 def test_it_locks_while_standing_on_the_stage_it_would_remove():
@@ -150,8 +222,8 @@ def test_it_locks_while_standing_on_the_stage_it_would_remove():
     r = _client(admin).patch(
         f"/api/tournaments/{t.id}/", {"roster_mode": "inline"}, format="json",
     )
-    assert r.status_code == 409
-    assert r.data["detail"] == "roster_mode_locked"
+    assert r.status_code == 400
+    assert r.data["detail"] == "leave_the_participants_stage_first"
 
 
 def test_a_stranger_cannot_change_it():

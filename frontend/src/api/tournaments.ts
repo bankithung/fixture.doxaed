@@ -101,6 +101,19 @@ export type GroupKind = "house" | "class" | "form" | "department";
  * or declared once up front and then PICKED. */
 export type RosterMode = "inline" | "roster_first";
 
+/** What switching `roster_mode` carried across (owner 2026-08-18). Switching a
+ * tournament that already has teams MIGRATES rather than being refused. */
+export interface RosterSwitch {
+  mode: RosterMode;
+  changed: boolean;
+  /** Players already registered that became declared participants. */
+  seeded: number;
+  /** The generated team form rebuilt to match the new mode, if any. */
+  team_form_id: string | null;
+  /** True when a HAND-BUILT team form was left alone — it needs your edit. */
+  team_form_kept: boolean;
+}
+
 /** One competing house/class in a within-school event. */
 export interface TournamentHouse {
   id: string;
@@ -1056,7 +1069,10 @@ export const tournamentsApi = {
    * once teams exist — by then the team form's pickers are already bound to
    * the list, and the people declared would be stranded. */
   setRosterMode: (id: string, roster_mode: RosterMode) =>
-    api.patch<Tournament>(`/api/tournaments/${id}/`, { roster_mode }),
+    api.patch<Tournament & { roster_switch?: RosterSwitch }>(
+      `/api/tournaments/${id}/`,
+      { roster_mode },
+    ),
 
   // --- Fixture generation + FET scheduling engine (WS6) ---
   constraintTypes: () =>
