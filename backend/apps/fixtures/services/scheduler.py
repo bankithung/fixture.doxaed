@@ -150,6 +150,9 @@ class ScheduleConfig:
     # which is exactly why courts of one hall were indistinguishable before.
     # Empty/absent = that court takes any competition.
     court_competitions: dict[str, list[str]] = field(default_factory=dict)
+    # Court display name -> is its reservation a LOCK (True) or a preference
+    # (False)? Absent = locked, which is what every court did before this.
+    court_exclusive: dict[str, bool] = field(default_factory=dict)
     # no_person_overlap gaps in minutes (§2.4/§9 A3): None = legacy behavior
     # (linked teams use the team rest gap, venue-agnostic).
     person_min_gap: int | None = None
@@ -248,6 +251,7 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
     venue_unavailable: dict[str, set[date]] = {}
     venue_sports: dict[str, list[str]] = {}
     court_competitions: dict[str, list[str]] = {}
+    court_exclusive: dict[str, bool] = {}
     for v in d.get("venues") or []:
         if isinstance(v, dict):
             name = str(v.get("name") or "").strip()
@@ -286,6 +290,8 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
                     continue
                 display = name if count <= 1 else court_venue_name(name, idx)
                 court_competitions[display] = comps
+                if not c.get("exclusive", True):
+                    court_exclusive[display] = False
             off = {
                 x for x in (
                     _parse_date(u) for u in v.get("unavailable_dates") or []
@@ -338,6 +344,7 @@ def config_from_dict(d: dict[str, Any]) -> ScheduleConfig:
         venue_unavailable_dates=venue_unavailable,
         venue_sports=venue_sports,
         court_competitions=court_competitions,
+        court_exclusive=court_exclusive,
         activated_reserve_days=activated,
         optimize=bool(d.get("optimize", False)),
         optimize_engine=str(d.get("optimize_engine") or "local"),
@@ -632,6 +639,26 @@ def court_base_of(venue: str, venues: Sequence[str]) -> str:
     return venue
 
 
+def court_open_to(cfg, venue: str, leaf_key: str) -> bool:
+    """May this match be PLACED here at all?
+
+    A locked court refuses anything outside its reservation. A preference
+    court (owner 2026-08-17) refuses nothing — it would rather host a waiting
+    match than stand empty — and ``court_preferred`` is what keeps its own
+    competitions ahead of the queue for it.
+    """
+    if court_allows(cfg, venue, leaf_key):
+        return True
+    exclusive = getattr(cfg, "court_exclusive", None) or {}
+    return exclusive.get(venue, True) is False
+
+
+def court_preferred(cfg, venue: str, leaf_key: str) -> bool:
+    """Is this court's reservation actually satisfied by this match? False on
+    an overflow placement, which is what the slot scorer penalises."""
+    return court_allows(cfg, venue, leaf_key)
+
+
 def court_allows(cfg_or_map, venue: str, leaf_key: str) -> bool:
     """May a match in competition ``leaf_key`` be played on court ``venue``?
 
@@ -710,7 +737,7 @@ def relaxed_venue_type_sports(
             (not (allowed := cfg.venue_sports.get(v)) or sport in allowed)
             and cfg.venue_types.get(v, "") in ("", vtype)
             and any(
-                court_allows(cfg, court, leaf)
+                court_open_to(cfg, court, leaf)
                 for court in courts_of.get(v, [v])
                 for leaf in leaves
             )
@@ -1252,7 +1279,7 @@ def schedule_matches(
         # Competition allow-list per court (spec 2026-08-16): court 1 boys,
         # court 2 girls. Narrower than the venue's sport list and checked
         # against the match's leaf, so it binds at any depth of the tree.
-        if not court_allows(cfg, venue, m.leaf_key):
+        if not court_open_to(cfg, venue, m.leaf_key):
             return False
         end = dt + dur
         if end > wend:
@@ -1372,6 +1399,11 @@ def schedule_matches(
                    dur: timedelta, teams: list[str]) -> float:
         score = 0.0
         tkey = tuple(teams)
+        # Overflow onto someone else's preference court is allowed but last
+        # (owner 2026-08-17): better than leaving it empty, worse than any
+        # court that is actually meant for this competition.
+        if not court_preferred(cfg, venue, m.leaf_key):
+            score -= 100.0
         if cfg.preferred_windows and any(
             w_start <= dt.time() and dt.time() < w_end
             for w_start, w_end in cfg.preferred_windows
@@ -1454,6 +1486,9 @@ def schedule_matches(
         bool(cfg.preferred_windows) or cfg.balance_venues
         or bool(soft_windows) or bool(soft_rest_rules) or bool(balance_rules)
         or bool(rotation_rules)
+        # A preference court is scored, never gated, so without this the greedy
+        # would take the first feasible slot and hand it whatever came first.
+        or any(v is False for v in cfg.court_exclusive.values())
     )
     window_sat = [0.0, 0.0]  # achieved, achievable (weighted windows)
     violations: list[dict[str, Any]] = []
@@ -1960,7 +1995,7 @@ def validate_schedule(
                     "venue": venue, "sport": m_ex.sport,
                     "allowed": list(allowed_sports),
                 })
-            if not court_allows(cfg, venue, m_ex.leaf_key):
+            if not court_open_to(cfg, venue, m_ex.leaf_key):
                 violations.append({
                     "code": "court_competition_mismatch", "hard": True,
                     "match_id": mid, "venue": venue, "leaf_key": m_ex.leaf_key,

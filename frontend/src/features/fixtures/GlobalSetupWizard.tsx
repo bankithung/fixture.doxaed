@@ -112,8 +112,17 @@ async function saveCourtCompetitions(
     const want = (draft.courts ?? []).find((c) => c.index === court.index);
     const next = want?.competitions ?? [];
     const have = court.competitions ?? [];
-    if (JSON.stringify(next) === JSON.stringify(have)) continue;
-    await tournamentsApi.setCourtCompetitions(tournamentId, court.id, next);
+    const wantExcl = want?.exclusive !== false;
+    const haveExcl = court.exclusive !== false;
+    if (
+      JSON.stringify(next) === JSON.stringify(have) &&
+      wantExcl === haveExcl
+    ) {
+      continue;
+    }
+    await tournamentsApi.setCourtCompetitions(
+      tournamentId, court.id, next, wantExcl,
+    );
   }
 }
 
@@ -130,6 +139,7 @@ function venueDraft(v: VenueRecord): VenueDraft {
       id: c.id,
       index: c.index,
       competitions: c.competitions ?? [],
+      exclusive: c.exclusive !== false,
     })),
     break_from: v.breaks?.[0]?.from ?? "",
     break_to: v.breaks?.[0]?.to ?? "",

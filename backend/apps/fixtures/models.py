@@ -105,6 +105,17 @@ class Court(models.Model):
     # in ONE hall running different categories; ``Venue.sports`` stays as the
     # coarser filter above it and a match must satisfy both.
     competitions = models.JSONField(default=list, blank=True)
+    # Is that reservation a LOCK or a preference (owner 2026-08-17)?
+    #
+    # True (the original behaviour, and still the default): nothing else may
+    # ever use this court. Right for a court taped out for one sport.
+    #
+    # False: its own competitions still get first claim — the scheduler scores
+    # them onto it ahead of anyone else — but when they have nothing left to
+    # play, a waiting match may use it instead of leaving it empty. That is the
+    # case the owner hit: the girls table finishing at 13:00 and standing idle
+    # for two hours while boys matches spilled to the next day.
+    exclusive = models.BooleanField(default=True)
     deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

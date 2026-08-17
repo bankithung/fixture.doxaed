@@ -62,14 +62,17 @@ export function CourtCompetitionTable({
   count,
   courts,
   onChange,
+  onExclusive,
   venueName,
   testIdPrefix,
 }: {
   options: { key: string; label: string }[];
   /** How many courts this venue runs. */
   count: number;
-  courts: { index: number; competitions: string[] }[];
+  courts: { index: number; competitions: string[]; exclusive?: boolean }[];
   onChange: (courtIndex: number, competitions: string[]) => void;
+  /** Flip a court between a LOCK and a preference (owner 2026-08-17). */
+  onExclusive?: (courtIndex: number, exclusive: boolean) => void;
   venueName: string;
   testIdPrefix: string;
 }): React.ReactElement {
@@ -132,6 +135,36 @@ export function CourtCompetitionTable({
                         ? t("Any")
                         : `${n} ${n === 1 ? t("competition") : t("competitions")}`}
                     </span>
+                    {/* Only meaningful once the court IS reserved: an
+                        unrestricted court already takes anything. */}
+                    {n > 0 && onExclusive ? (
+                      <button
+                        type="button"
+                        data-testid={`court-exclusive-${idx}`}
+                        aria-pressed={
+                          courts.find((c) => c.index === idx)?.exclusive !== false
+                        }
+                        onClick={() =>
+                          onExclusive(
+                            idx,
+                            courts.find((c) => c.index === idx)?.exclusive === false,
+                          )
+                        }
+                        title={t(
+                          "Only these: nothing else may use this court. Prefer these: its own competitions come first, but a waiting match may use it rather than leave it empty.",
+                        )}
+                        className={cn(
+                          "mt-1 block w-full rounded border px-1 py-0.5 text-[0.625rem] font-medium transition-colors",
+                          courts.find((c) => c.index === idx)?.exclusive === false
+                            ? "border-info/40 bg-info-muted text-info"
+                            : "border-border text-muted-foreground hover:bg-accent",
+                        )}
+                      >
+                        {courts.find((c) => c.index === idx)?.exclusive === false
+                          ? t("Prefer these")
+                          : t("Only these")}
+                      </button>
+                    ) : null}
                   </th>
                 );
               })}

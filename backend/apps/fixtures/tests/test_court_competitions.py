@@ -316,7 +316,11 @@ def test_the_stored_venue_pool_carries_reservations_into_a_run():
     courts[1].save(update_fields=["competitions"])
 
     records = stored_venue_records(t)
-    assert records[0]["courts"] == [{"index": 2, "competitions": [GIRLS]}]
+    # `exclusive` rides along so a stored-pool run knows whether the
+    # reservation is a lock or a preference (owner 2026-08-17).
+    assert records[0]["courts"] == [
+        {"index": 2, "competitions": [GIRLS], "exclusive": True},
+    ]
 
     cfg = config_from_dict({
         "date_start": "2026-08-01", "date_end": "2026-08-01",
@@ -361,3 +365,99 @@ def test_the_opening_round_separation_is_a_record_not_a_hidden_rule():
         scope=TournamentScope.INTRA_SCHOOL,
     )
     assert _separation_key(meet) == SEPARATION_KEY_GROUP
+
+
+# ------------------------------------------------------- preference courts
+def _cfg_two_courts(exclusive: bool):
+    """One hall, two courts: T1 reserved for boys, T2 for girls."""
+    from apps.fixtures.services.scheduler import config_from_dict
+
+    return config_from_dict({
+        "date_start": "2026-08-01", "date_end": "2026-08-01",
+        "daily_start": "09:00", "daily_end": "17:00", "slot_minutes": 60,
+        "rest_minutes": 0, "max_per_team_per_day": 99,
+        "venues": [{
+            "name": "Hall", "count": 2,
+            "courts": [
+                {"index": 1, "competitions": [BOYS], "exclusive": exclusive},
+                {"index": 2, "competitions": [GIRLS], "exclusive": exclusive},
+            ],
+        }],
+    })
+
+
+def _boys(n: int):
+    from apps.fixtures.services.scheduler import MatchSlotReq
+
+    return [
+        MatchSlotReq(id=f"b{i}", round_no=1, match_no=i,
+                     home=f"b{i}h", away=f"b{i}a",
+                     sport="table_tennis", leaf_key=BOYS)
+        for i in range(1, n + 1)
+    ]
+
+
+def test_a_locked_court_leaves_itself_empty_rather_than_take_another_competition():
+    """Today's behaviour, and still the default: a court taped out for one
+    competition refuses everything else, whatever the cost."""
+    from apps.fixtures.services.scheduler import schedule_matches
+
+    # 09:00-17:00 at 60 minutes is 8 slots per court, so 12 boys matches need
+    # more than T1 alone can hold.
+    cfg = _cfg_two_courts(exclusive=True)
+    res = schedule_matches(_boys(12), cfg)
+    used = {v for _dt, v in res.assignments.values()}
+    assert used == {"Hall · T1"}      # the girls court sits idle regardless
+    assert len(res.unscheduled) == 4  # …and four matches simply do not fit
+
+
+def test_a_preference_court_takes_the_overflow_instead_of_standing_idle():
+    """Owner 2026-08-17: the girls table finishing early should be usable by
+    the boys still waiting, rather than empty for two hours."""
+    from apps.fixtures.services.scheduler import schedule_matches
+
+    cfg = _cfg_two_courts(exclusive=False)
+    res = schedule_matches(_boys(12), cfg)
+    used = {v for _dt, v in res.assignments.values()}
+    assert used == {"Hall · T1", "Hall · T2"}
+    # The four that did not fit before now play, because the idle court took them.
+    assert res.unscheduled == []
+    # …and it is genuinely overflow, not a free-for-all: T1 is the court that
+    # is actually meant for them, so it fills first.
+    on_t1 = sum(1 for _dt, v in res.assignments.values() if v == "Hall · T1")
+    on_t2 = sum(1 for _dt, v in res.assignments.values() if v == "Hall · T2")
+    assert on_t1 >= on_t2
+
+
+def test_the_court_that_owns_a_slot_still_gets_first_claim_of_it():
+    """A preference court is a preference, not an invitation: when both
+    competitions want the same hour, each takes its own court."""
+    from apps.fixtures.services.scheduler import MatchSlotReq, schedule_matches
+
+    cfg = _cfg_two_courts(exclusive=False)
+    matches = [
+        MatchSlotReq(id="b1", round_no=1, match_no=1, home="bh", away="ba",
+                     sport="table_tennis", leaf_key=BOYS),
+        MatchSlotReq(id="g1", round_no=1, match_no=1, home="gh", away="ga",
+                     sport="table_tennis", leaf_key=GIRLS),
+    ]
+    res = schedule_matches(matches, cfg)
+    assert res.assignments["b1"][1] == "Hall · T1"
+    assert res.assignments["g1"][1] == "Hall · T2"
+
+
+def test_the_validator_accepts_an_overflow_but_still_refuses_a_locked_court():
+    from datetime import datetime
+
+    from apps.fixtures.services.scheduler import validate_schedule
+
+    matches = _boys(1)
+    slot = {"b1": (datetime(2026, 8, 1, 9, 0), "Hall · T2")}  # the girls court
+
+    open_cfg = _cfg_two_courts(exclusive=False)
+    assert [v for v in validate_schedule(slot, matches, open_cfg)
+            if v["code"] == "court_competition_mismatch"] == []
+
+    locked_cfg = _cfg_two_courts(exclusive=True)
+    codes = [v["code"] for v in validate_schedule(slot, matches, locked_cfg)]
+    assert "court_competition_mismatch" in codes

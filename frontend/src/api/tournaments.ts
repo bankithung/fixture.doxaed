@@ -750,15 +750,18 @@ export const tournamentsApi = {
     ),
   withdrawParticipant: (tournamentId: string, memberId: string) =>
     api.delete<void>(`/api/tournaments/${tournamentId}/roster/${memberId}/`),
-  /** Reserve a court for one or more competitions (leaf-key prefixes). */
+  /** Reserve a court for one or more competitions (leaf-key prefixes), and
+   * say whether that reservation LOCKS the court or merely gives its own
+   * competitions first claim of it (owner 2026-08-17). */
   setCourtCompetitions: (
     tournamentId: string,
     courtId: string,
     competitions: string[],
+    exclusive?: boolean,
   ) =>
-    api.patch<{ id: string; competitions: string[] }>(
+    api.patch<{ id: string; competitions: string[]; exclusive: boolean }>(
       `/api/tournaments/${tournamentId}/courts/${courtId}/`,
-      { competitions },
+      { competitions, ...(exclusive === undefined ? {} : { exclusive }) },
     ),
   /** Invite anyone by email to this tournament with a tournament role. */
   invite: (
@@ -1395,7 +1398,15 @@ export interface VenueRecord {
   breaks?: { from: string; to: string }[];
   /** One row per playing surface, with the competitions reserved to it
    * (leaf-key prefixes; empty = takes anything). Spec 2026-08-16. */
-  courts?: { id: string; index: number; name: string; competitions: string[] }[];
+  courts?: {
+    id: string;
+    index: number;
+    name: string;
+    competitions: string[];
+    /** False = a preference, not a lock: the court takes a waiting match
+     * rather than standing idle (owner 2026-08-17). */
+    exclusive?: boolean;
+  }[];
 }
 
 /** `POST …/fixtures/next-round/` response (Swiss, increment P). */

@@ -28,7 +28,14 @@ export interface VenueDraft {
    * -> leaf-key prefixes. "court 1 boys, court 2 girls", which the venue-wide
    * sport list above cannot express because both courts share one hall.
    * Absent/empty for a court = it takes anything. */
-  courts?: { id?: string; index: number; competitions: string[] }[];
+  courts?: {
+    id?: string;
+    index: number;
+    competitions: string[];
+    /** False = its competitions come first, but a waiting match may use the
+     * court rather than leave it idle (owner 2026-08-17). */
+    exclusive?: boolean;
+  }[];
 }
 
 const TYPE_OPTIONS = [
@@ -72,6 +79,14 @@ export function VenueRow({
     const at = courts.findIndex((c) => c.index === idx);
     if (at >= 0) courts[at] = { ...courts[at], competitions: next };
     else courts.push({ index: idx, competitions: next });
+    set({ courts });
+  };
+
+  const setCourtExclusive = (idx: number, exclusive: boolean): void => {
+    const courts = [...(value.courts ?? [])];
+    const at = courts.findIndex((c) => c.index === idx);
+    if (at >= 0) courts[at] = { ...courts[at], exclusive };
+    else courts.push({ index: idx, competitions: [], exclusive });
     set({ courts });
   };
   const toggleSport = (key: string): void =>
@@ -179,6 +194,7 @@ export function VenueRow({
           count={value.count}
           courts={value.courts ?? []}
           onChange={setCourtCompetitions}
+          onExclusive={setCourtExclusive}
           venueName={value.name}
           testIdPrefix={`venue-${index}`}
         />

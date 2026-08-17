@@ -45,7 +45,7 @@ from apps.fixtures.services.scheduler import (
     _score_soft,
     build_slots,
     closing_round_ok,
-    court_allows,
+    court_open_to,
     exclusion_member,
     expand_venues,
     relaxed_venue_type_sports,
@@ -173,7 +173,7 @@ def _single_match_ok(
     # Per-court competition reservation (spec 2026-08-16). Mirrors
     # ``schedule_matches.feasible`` — the optimizer must not undo a placement
     # rule the greedy pass respected.
-    if not court_allows(cfg, venue, m.leaf_key):
+    if not court_open_to(cfg, venue, m.leaf_key):
         return False
     teams = _teams(m)
     tkey = tuple(teams)

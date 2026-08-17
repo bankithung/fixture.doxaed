@@ -967,7 +967,8 @@ def _venue_payload(v: Venue) -> dict:
         # a category without a second round trip (spec 2026-08-16).
         "courts": [
             {"id": str(c.id), "index": c.index, "name": c.name,
-             "competitions": list(c.competitions or [])}
+             "competitions": list(c.competitions or []),
+             "exclusive": bool(c.exclusive)}
             for c in v.courts.filter(deleted_at__isnull=True).order_by("index")
         ],
     }
@@ -1131,6 +1132,9 @@ def _court_payload(c: Court) -> dict:
         "name": c.name,
         "index": c.index,
         "competitions": list(c.competitions or []),
+        # False = its competitions get first claim, but a waiting match may use
+        # the court rather than leave it empty (owner 2026-08-17).
+        "exclusive": bool(c.exclusive),
     }
 
 
@@ -1216,9 +1220,15 @@ class TournamentCourtDetailView(GenericAPIView):
         )
         if c is None:
             raise NotFound("court_not_found")
+        fields: list[str] = []
         if "competitions" in request.data:
             c.competitions = _clean_competitions(request.data["competitions"], t)
-            c.save(update_fields=["competitions", "updated_at"])
+            fields.append("competitions")
+        if "exclusive" in request.data:
+            c.exclusive = bool(request.data["exclusive"])
+            fields.append("exclusive")
+        if fields:
+            c.save(update_fields=[*fields, "updated_at"])
         return Response(_court_payload(c))
 
 

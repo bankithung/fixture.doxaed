@@ -72,9 +72,11 @@ def stored_venue_records(tournament) -> list[dict[str, Any]]:
         venue__in=venues, deleted_at__isnull=True
     ).order_by("venue_id", "index"):
         if c.competitions:
-            courts.setdefault(str(c.venue_id), []).append(
-                {"index": c.index, "competitions": list(c.competitions)}
-            )
+            courts.setdefault(str(c.venue_id), []).append({
+                "index": c.index,
+                "competitions": list(c.competitions),
+                "exclusive": bool(c.exclusive),
+            })
     return [
         {"name": v.name, "venue_type": v.venue_type,
          "windows": v.windows, "count": v.count,
