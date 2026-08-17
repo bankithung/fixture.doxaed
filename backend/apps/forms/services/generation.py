@@ -182,23 +182,26 @@ def _leaf_options(tournament) -> list[tuple[str, str, dict]]:
 
 
 def _event_options(tournament) -> list[dict]:
-    """What a participant can say they are here for: a whole sport, or one
-    exact competition (owner 2026-08-17 — "either select sport or select per
-    category, can have any option").
+    """Which SPORT a participant is here for (owner 2026-08-17: "we don't have
+    to ask all sub-categories, we just have to ask which sport — in the next
+    stage they select the per category").
 
-    Both granularities in one list, sport first, because a school often knows
-    "she plays table tennis" long before it knows which category. The values
-    are the same keys the engine matches on, so the competition steps can
-    pre-fill from them without a second mapping.
+    Listing every competition here made a two-line question into a twelve-item
+    list, and asked the school to decide the category before it had opened the
+    category's own step. The sport is the part a school knows up front; it then
+    narrows each competition's picker to the people who play that sport, so the
+    category choice happens where the category is.
+
+    It stays multi-select on purpose: a child who plays table tennis AND sepak
+    is exactly the case the draw has to keep apart, so the form must be able to
+    say so.
     """
     out: list[dict] = []
     for sport in getattr(tournament, "sports", None) or []:
         key = sport.get("key")
         if not key:
             continue
-        out.append({"value": key, "label": f"All of {sport.get('name') or key}"})
-    for value, label, _extra in _leaf_options(tournament):
-        out.append({"value": value, "label": label})
+        out.append({"value": key, "label": sport.get("name") or key})
     return out
 
 
@@ -391,7 +394,7 @@ def build_team_form_schema(
                         {"key": "participant_events", "type": "multi_choice",
                          "label": "Playing in", "required": False,
                          "directory": False,
-                         "help": "Pick a sport, or the exact competitions.",
+                         "help": "Used to shortlist them in each competition below.",
                          "options": _event_options(tournament)},
                     ],
                 },
@@ -414,7 +417,7 @@ def build_team_form_schema(
                         {"key": "staff_events", "type": "multi_choice",
                          "label": "In charge of", "required": False,
                          "directory": False,
-                         "help": "Pick a sport, or the exact competitions.",
+                         "help": "Used to shortlist them in each competition below.",
                          "options": _event_options(tournament)},
                     ],
                 },

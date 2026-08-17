@@ -517,6 +517,16 @@ def _schedule_and_payload(
         result = schedule_matches(
             reqs, sched_cfg, preoccupied=preoccupied, linked=linked,
         )
+        # The optimization pass runs HERE too (owner 2026-08-17). ``apply_schedule``
+        # always ran it and the preview never did, so with `optimize` on the
+        # schedule you approved was not the schedule that would be published —
+        # the one thing preview must never do (§9 A1, preview = commit).
+        if sched_cfg.optimize:
+            from apps.fixtures.services.optimizer import optimize_schedule
+
+            result = optimize_schedule(
+                result, reqs, sched_cfg, preoccupied=preoccupied, linked=linked,
+            )
         assignments = result.assignments
         unscheduled = result.unscheduled
         violations = result.violations

@@ -117,9 +117,21 @@ def assignment_quality(
         achieved += m_hit
         achievable += m_achievable
 
+    # Court occupancy, so a proposal that closes a gap actually scores better
+    # than the seed it came from — the optimizer had no reason to pack a day
+    # before this (owner 2026-08-17).
+    venue_busy: dict[str, list[tuple[datetime, datetime]]] = defaultdict(list)
+    for mid, (dt, venue) in assignments.items():
+        m = by_id.get(mid)
+        if m:
+            venue_busy[venue].append((dt, dt + _dur(m, cfg)))
+    for booking in preoccupied or []:
+        venue_busy[booking[0]].append((booking[1], booking[2]))
+
     window_sat = [achieved, achievable] if achievable > 0 else None
     score, _notes = _score_soft(
-        assignments, team_busy, cfg, len(matches), window_sat
+        assignments, team_busy, cfg, len(matches), window_sat,
+        venue_busy=venue_busy,
     )
     return score
 

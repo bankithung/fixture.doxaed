@@ -1582,8 +1582,10 @@ def schedule_matches(
                           hard_windows, cfg, _scope_ok)
     )
 
+    # `venue_busy` is the greedy's own court ledger, so the packing term is
+    # measured on exactly what it placed.
     soft, notes = _score_soft(assignments, team_busy, cfg, len(matches),
-                              window_sat=window_sat)
+                              window_sat=window_sat, venue_busy=venue_busy)
     explanation = [
         f"{len(assignments)}/{len(matches)} matches scheduled across "
         f"{len(cfg.venues)} venue(s), {cfg.date_start}..{cfg.date_end}.",
@@ -1704,12 +1706,109 @@ def _build_violations(
     return out
 
 
+def unplayable_minutes(cfg: ScheduleConfig, venue: str, start: datetime,
+                      end: datetime) -> float:
+    """Minutes inside ``[start, end)`` on one court that NO match could have
+    used: the tournament's own all-scope closures (a daily break, a Sunday
+    window, a ceremony on its date). ``build_slots`` already cuts these from
+    the grid, so counting them as a gap would blame the schedule for a hole
+    the organizer put there.
+    """
+    if end <= start:
+        return 0.0
+    day = start.date()
+    cuts: list[tuple[datetime, datetime]] = []
+    for r in cfg.constraint_rules:
+        if not r.hard or r.scope != "all":
+            continue
+        if r.type == "recurring_blackout_window":
+            days = r.params.get("days")
+            if days and start.weekday() not in days:
+                continue
+        elif r.type == "ceremony_block":
+            if r.params.get("date") != day:
+                continue
+            allowed = r.params.get("venues")
+            if allowed and venue not in allowed:
+                continue
+        else:
+            continue
+        cuts.append((
+            datetime.combine(day, r.params["from"]),
+            datetime.combine(day, r.params["to"]),
+        ))
+    total = 0.0
+    for cs, ce in _merge_spans(cuts):
+        lo, hi = max(cs, start), min(ce, end)
+        if hi > lo:
+            total += (hi - lo).total_seconds() / 60.0
+    return total
+
+
+def _merge_spans(
+    spans: list[tuple[datetime, datetime]],
+) -> list[tuple[datetime, datetime]]:
+    """Overlapping intervals collapsed into disjoint ones."""
+    out: list[tuple[datetime, datetime]] = []
+    for s, e in sorted(spans):
+        if out and s <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], e))
+        else:
+            out.append((s, e))
+    return out
+
+
+def court_packing(
+    venue_busy: dict[str, list[tuple[datetime, datetime]]],
+    cfg: ScheduleConfig,
+) -> tuple[float, float]:
+    """(minutes played, minutes standing idle) across every court-day in use.
+
+    Idle is measured only BETWEEN a court's first and last match of that day —
+    a court that starts late or finishes early is not "idle" outside its own
+    working stretch, it is simply not needed then — and configured closures are
+    deducted, so the number is a gap the schedule could actually have filled.
+
+    This is what "fill the gaps" measures: 300 played against 60 idle is a
+    tighter day than 300 played against 240, whatever else is equal.
+    """
+    per_day: dict[tuple[str, date], list[tuple[datetime, datetime]]] = defaultdict(list)
+    for venue, spans in venue_busy.items():
+        for s, e in spans:
+            per_day[(venue, s.date())].append((s, e))
+    busy = idle = 0.0
+    for (venue, _day), spans in per_day.items():
+        merged = _merge_spans(spans)
+        played = sum((e - s).total_seconds() for s, e in merged) / 60.0
+        window = (merged[-1][1] - merged[0][0]).total_seconds() / 60.0
+        closed = unplayable_minutes(cfg, venue, merged[0][0], merged[-1][1])
+        busy += played
+        idle += max(0.0, window - played - closed)
+    return busy, idle
+
+
 def _score_soft(assignments, team_busy, cfg, total,
-                window_sat: list[float] | None = None) -> tuple[float, list[str]]:
-    """Cheap soft score in [0,1]: reward even spacing (no team forced into
-    same-day clusters beyond the cap). When weighted soft windows are active
-    (``window_sat`` = [achieved, achievable]) their satisfaction ratio joins
-    the blend — constraint ``weight`` is the multiplier (spec §2.2)."""
+                window_sat: list[float] | None = None,
+                venue_busy: dict[str, list[tuple[datetime, datetime]]] | None = None,
+                ) -> tuple[float, list[str]]:
+    """Cheap soft score in [0,1].
+
+    Four things, and they pull in different directions on purpose:
+
+    * ``placed`` — how much of the draw got a time at all. Dominant: a schedule
+      that leaves matches unplaced is not a better schedule.
+    * ``spread`` — teams not forced into same-day clusters. This is about the
+      PLAYERS' day.
+    * ``satisfaction`` — weighted soft windows (constraint ``weight`` is the
+      multiplier, spec §2.2).
+    * ``packing`` — how little of each court's working stretch is a hole
+      (owner 2026-08-17: "make an algorithm that fills all the gaps"). This is
+      about the COURTS' day, which is why it does not simply restate spread:
+      a team can rest between matches while the court it left keeps playing.
+
+    ``venue_busy`` is what makes packing measurable; without it the blend falls
+    back to the original three terms, so every existing caller keeps working.
+    """
     if not assignments:
         return 0.0, []
     notes: list[str] = []
@@ -1725,11 +1824,32 @@ def _score_soft(assignments, team_busy, cfg, total,
     if clustered:
         notes.append(f"{clustered} team(s) have multiple matches on a single day.")
     placed_ratio = len(assignments) / total if total else 1.0
-    if window_sat and window_sat[1] > 0:
+
+    packing: float | None = None
+    if venue_busy:
+        played, idle = court_packing(venue_busy, cfg)
+        if played + idle > 0:
+            packing = played / (played + idle)
+            if idle >= 60:
+                notes.append(
+                    f"{int(idle)} minutes of court time sit idle between "
+                    f"matches."
+                )
+
+    if packing is None:
+        if window_sat and window_sat[1] > 0:
+            satisfaction = window_sat[0] / window_sat[1]
+            score = round(0.6 * placed_ratio + 0.2 * spread + 0.2 * satisfaction, 3)
+        else:
+            score = round(0.7 * placed_ratio + 0.3 * spread, 3)
+    elif window_sat and window_sat[1] > 0:
         satisfaction = window_sat[0] / window_sat[1]
-        score = round(0.6 * placed_ratio + 0.2 * spread + 0.2 * satisfaction, 3)
+        score = round(
+            0.5 * placed_ratio + 0.15 * spread + 0.15 * satisfaction
+            + 0.20 * packing, 3,
+        )
     else:
-        score = round(0.7 * placed_ratio + 0.3 * spread, 3)
+        score = round(0.55 * placed_ratio + 0.2 * spread + 0.25 * packing, 3)
     return score, notes
 
 

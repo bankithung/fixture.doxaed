@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Dices,
   SlidersHorizontal,
+  Wand2,
 } from "lucide-react";
 import {
   tournamentsApi,
@@ -76,7 +77,13 @@ const WARNING_LABELS: Record<string, string> = {
  * (draw_config["*"].calendar). Preview AND Publish send the SAME payload so
  * preview ≡ commit (§9 A1); venues stay omitted — both paths fall back to
  * the stored venue pool. */
-function schedulePayloadFrom(cal: DrawCalendar | null | undefined): ScheduleRequest | null {
+function schedulePayloadFrom(
+  cal: DrawCalendar | null | undefined,
+  /** Run the optimization pass: search for an arrangement with fewer holes
+   * than the greedy seed, adopted only when it is hard-legal and scores no
+   * worse (owner 2026-08-17: "an algorithm that fills all the gaps"). */
+  pack = false,
+): ScheduleRequest | null {
   if (!cal?.date_start) return null;
   return {
     date_start: cal.date_start,
@@ -84,6 +91,7 @@ function schedulePayloadFrom(cal: DrawCalendar | null | undefined): ScheduleRequ
     daily_start: cal.daily_start ?? "09:00",
     daily_end: cal.daily_end ?? "18:00",
     slot_minutes: cal.slot_minutes ?? 90,
+    ...(pack ? { optimize: true, optimize_seconds: 20 } : {}),
   };
 }
 
@@ -146,6 +154,10 @@ export function DryRunPreviewPage(): React.ReactElement {
   // persisted — publish replays it together with the previewed seeds so what
   // was previewed is what commits.
   const [roll, setRoll] = useState(0);
+  // Pack the days: re-simulate through the optimization pass. Off by default
+  // so the first preview is the fast greedy one; the toggle is the owner's
+  // "make the best possible fixture" and it re-runs in place.
+  const [packed, setPacked] = useState(false);
   const drawOverride = roll > 0 ? { seeding: "random" as const } : undefined;
   const [stale, setStale] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -185,14 +197,14 @@ export function DryRunPreviewPage(): React.ReactElement {
   });
 
   const schedule = useMemo(
-    () => schedulePayloadFrom(drawConfig.data?.draw_config["*"]?.calendar),
-    [drawConfig.data],
+    () => schedulePayloadFrom(drawConfig.data?.draw_config["*"]?.calendar, packed),
+    [drawConfig.data, packed],
   );
 
   // The simulate itself: a read-only POST (D6) — modelled as a query so the
   // result is stable while the page is open; gcTime 0 so a revisit re-runs.
   const preview = useQuery({
-    queryKey: ["t-fixture-preview", id, isAll ? "all" : leaf, roll],
+    queryKey: ["t-fixture-preview", id, isAll ? "all" : leaf, roll, packed],
     enabled: drawConfig.data !== undefined && schedule !== null,
     staleTime: Infinity,
     gcTime: 0,
@@ -611,6 +623,25 @@ export function DryRunPreviewPage(): React.ReactElement {
                   </button>
                 ))}
               </div>
+              {/* "Fill the gaps": re-simulate through the optimization pass.
+                  It is validator-gated, so the worst case is the schedule you
+                  already have (owner 2026-08-17). */}
+              <button
+                type="button"
+                data-testid="pack-days-toggle"
+                aria-pressed={packed}
+                onClick={() => setPacked((v) => !v)}
+                title={t("Search for an arrangement with fewer idle gaps. Never returns a worse schedule.")}
+                className={cn(
+                  "inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs font-medium transition-colors",
+                  packed
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border hover:bg-secondary",
+                )}
+              >
+                <Wand2 aria-hidden="true" className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{t("Fill the gaps")}</span>
+              </button>
               <button
                 type="button"
                 data-testid="advanced-details-toggle"

@@ -33,7 +33,7 @@ import { t } from "@/lib/t";
 import { Centered, PublicShell } from "@/features/registration/PublicShell";
 import { ContactAdminDialog } from "./ContactAdminDialog";
 import { FieldRenderer } from "./fieldRenderers";
-import { prefillForSection } from "./prefillTeams";
+import { eventCovers, leafOfSection } from "./prefillTeams";
 import type { Field, FormSchema } from "./types";
 
 const OVERLINE =
@@ -98,10 +98,24 @@ function withFormGroups(
   schema: FormSchema,
   values: Record<string, unknown>,
 ): FormSchema {
-  const optionsFor = (ds: NonNullable<Field["data_source"]>) => {
+  const optionsFor = (
+    ds: NonNullable<Field["data_source"]>,
+    leafKey: string,
+  ) => {
     const rows = values[ds.group ?? ""];
     if (!Array.isArray(rows)) return [];
+    const eventsKey =
+      ds.group === "participant_staff" ? "staff_events" : "participant_events";
     return rows
+      .filter((row) => {
+        // Narrowed to the people who said they play this sport (owner
+        // 2026-08-17). Someone who declared nothing stays offered — a blank
+        // answer must never hide a child the school means to enter.
+        if (!leafKey) return true;
+        const declared = (row as Record<string, unknown>)?.[eventsKey];
+        if (!Array.isArray(declared) || declared.length === 0) return true;
+        return declared.some((d) => eventCovers(String(d), leafKey));
+      })
       .map((row) => {
         const r = (row ?? {}) as Record<string, unknown>;
         const value = String(r[ds.value_field ?? ""] ?? "");
@@ -111,19 +125,21 @@ function withFormGroups(
       })
       .filter((o) => o.value && o.label);
   };
-  const fill = (fields: Field[]): Field[] =>
+  const fill = (fields: Field[], leafKey: string): Field[] =>
     fields.map((f) => {
       const next =
         f.data_source?.type === "form_group"
-          ? { ...f, options: optionsFor(f.data_source) }
+          ? { ...f, options: optionsFor(f.data_source, leafKey) }
           : f;
-      return next.fields ? { ...next, fields: fill(next.fields) } : next;
+      return next.fields
+        ? { ...next, fields: fill(next.fields, leafKey) }
+        : next;
     });
   return {
     ...schema,
     sections: (schema.sections ?? []).map((s) => ({
       ...s,
-      fields: fill(s.fields ?? []),
+      fields: fill(s.fields ?? [], leafOfSection(s)),
     })),
   };
 }
@@ -494,20 +510,6 @@ export function PublicFormPage(): React.ReactElement {
   const clamped = Math.min(stepIndex, reviewIndex);
   const isReview = sections.length > 0 && clamped >= reviewIndex;
   const current = isReview ? undefined : sections[clamped];
-
-  // Opening a competition step fills it with the people who said they play it
-  // (owner 2026-08-17). Seeded ONCE per section and only into an empty group,
-  // so a school that edits or clears a team is never fought by the form.
-  const seeded = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (!current || seeded.current.has(current.key)) return;
-    const patch = prefillForSection(current, answers);
-    seeded.current.add(current.key);
-    if (patch) setAnswers((a) => ({ ...a, [patch.key]: patch.value }));
-    // `answers` is read, not tracked: re-running on every keystroke would
-    // re-seed a group the moment the school emptied it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.key]);
 
   const setAnswer = (key: string, value: unknown) => {
     setAnswers((a) => ({ ...a, [key]: value }));
