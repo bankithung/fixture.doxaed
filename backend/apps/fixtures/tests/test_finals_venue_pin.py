@@ -213,3 +213,54 @@ def test_finals_on_center_court_end_to_end():
     assert any(v["code"] == "pinned_round_venue" for v in warnings)
     final.refresh_from_db()
     assert final.venue == "Main Ground"
+
+
+# --------------------------------------------- every final on one show court
+def test_one_record_puts_every_competition_final_on_the_same_court():
+    """Owner 2026-08-17: "in the final, all the final matches will play in only
+    one court". Scoped to the whole tournament, "final" has to mean each
+    competition's OWN last round — a 2-round bracket and a 3-round bracket do
+    not share a round number."""
+    from datetime import date
+
+    from apps.fixtures.services.scheduler import (
+        MatchSlotReq,
+        config_from_dict,
+        merge_stored_constraints,
+        resolve_pinned_rounds,
+        schedule_matches,
+    )
+
+    cfg = config_from_dict({
+        "date_start": "2026-08-01", "date_end": "2026-08-01",
+        "daily_start": "09:00", "daily_end": "18:00", "slot_minutes": 60,
+        "rest_minutes": 0, "max_per_team_per_day": 99,
+        "venues": ["Show Court", "Side Court"],
+    })
+    merge_stored_constraints(cfg, [{
+        "type": "round_pinned_to_window", "scope": "all",
+        "params": {"round": "final", "date": "last_day",
+                   "venues": ["Show Court"]},
+    }])
+
+    def m(mid, leaf, rnd):
+        return MatchSlotReq(id=mid, round_no=rnd, match_no=1,
+                            home=f"{mid}h", away=f"{mid}a",
+                            sport="table_tennis", leaf_key=leaf,
+                            stage="knockout")
+
+    # A DEEP bracket (3 rounds) and a SHALLOW one (2 rounds).
+    matches = [
+        m("d1", "tt.boys", 1), m("d2", "tt.boys", 2), m("d3", "tt.boys", 3),
+        m("s1", "tt.girls", 1), m("s2", "tt.girls", 2),
+    ]
+    pins = resolve_pinned_rounds(matches, cfg.constraint_rules, cfg)
+    # Each competition's own last round, not the deepest bracket's.
+    assert set(pins) == {"d3", "s2"}
+
+    res = schedule_matches(matches, cfg)
+    assert res.assignments["d3"][1] == "Show Court"
+    assert res.assignments["s2"][1] == "Show Court"
+    assert res.assignments["d3"][0].date() == date(2026, 8, 1)
+    # The two finals share one court, so they cannot be at the same time.
+    assert res.assignments["d3"][0] != res.assignments["s2"][0]

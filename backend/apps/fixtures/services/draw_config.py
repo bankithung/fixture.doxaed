@@ -65,6 +65,14 @@ DEFAULT_DRAW_CONFIG: dict[str, Any] = {
     # from inputs_hash. None = inherit (sport override → SPORT_PROFILES → global
     # slot_minutes). Resolved by scheduler.duration_for().
     "match_duration_minutes": None,
+    # Per-competition REST between a team's own matches (minutes), set beside
+    # match length on the formats step (owner 2026-08-17: "for this we need per
+    # game, add that too"). Layered exactly like the duration: "*" default,
+    # "sport:<k>", "<leaf>" override. Scheduling-only, so out of inputs_hash.
+    # None = inherit the tournament-wide value from Step 1 · Pace. Turned into
+    # a scoped `min_rest_minutes` rule by the scheduler, so precedence and
+    # validation are the ones the rule layer already has.
+    "rest_minutes": None,
     # Composable MULTI-STAGE plan (owner ask 2026-06-27). None/[] = single-stage
     # (derive from `format`, back-compat). A non-empty ordered list is the
     # authoritative stage plan: each element a StageSpec (see _validate_stages).
@@ -287,6 +295,11 @@ def _validate_layer(layer: dict[str, Any]) -> None:
             and (not _is_int(layer["match_duration_minutes"])
                  or layer["match_duration_minutes"] < 1):
         raise ValueError("match_duration_minutes must be a positive integer")
+    if "rest_minutes" in layer \
+            and layer["rest_minutes"] is not None \
+            and (not _is_int(layer["rest_minutes"])
+                 or layer["rest_minutes"] < 0):
+        raise ValueError("rest_minutes must be a non-negative integer")
     if "balance_groups" in layer and not isinstance(layer["balance_groups"], bool):
         raise ValueError("balance_groups must be a boolean")
     if "stages" in layer:

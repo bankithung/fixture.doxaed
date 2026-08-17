@@ -197,7 +197,9 @@ export function TTConsole({
   const prevWon = setsWon(setRows.slice(0, -1), match.scoring ?? null);
   const currentRowWon = homeSets + awaySets > prevWon[0] + prevWon[1];
   const rulesKnown = (match.scoring?.points ?? 0) > 0;
-  const inPlay = live || match.status === "scheduled";
+  // Not started is not in play (owner 2026-08-17): a scheduled match showed a
+  // live-looking board whose Point buttons and shortcut keys were both armed.
+  const inPlay = live;
   // The explicit between-games step: the finished game locks the Point
   // buttons until "Start game N+1" is pressed (no stray 12-5s, no magic).
   const awaitingNext = inPlay && rulesKnown && currentRowWon && !decided;

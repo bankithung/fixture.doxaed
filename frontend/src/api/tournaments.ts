@@ -958,6 +958,14 @@ export const tournamentsApi = {
     matchId: string,
     payload: { set_scores: number[][]; event_id: string },
   ) => api.post<MatchRow>(`/api/matches/${matchId}/score/`, payload),
+  /** Who is running a match: every assigned official plus the scorer seat.
+   * Readable by anyone who can reach the match — the pre-match check shows a
+   * scorer who is on court, and a scorer may not assign (owner 2026-08-17). */
+  matchOfficials: (matchId: string) =>
+    api.get<{
+      officials: MatchOfficialRow[];
+      scorer: { id: string; name: string } | null;
+    }>(`/api/matches/${matchId}/officials/`),
   /** Assign an official (referee/assistant/etc.) to a match. Returns the full
    * officials list + a soft double-booking warning when the person clashes. */
   assignOfficial: (
@@ -1469,6 +1477,9 @@ export interface DrawConfig {
    * "*" = tournament default, "<leaf>" = override. null = inherit. Scheduling-
    * only (excluded from inputs_hash). */
   match_duration_minutes?: number | null;
+  /** Rest a TEAM gets before its next match (minutes), layered like the
+   * duration. null = inherit the tournament value (owner 2026-08-17). */
+  rest_minutes?: number | null;
   /** Composable multi-stage plan (owner ask 2026-06-27). null/[] = single-stage
    * (the flat `format` governs); a non-empty ordered list supersedes it. */
   stages?: DrawStage[] | null;

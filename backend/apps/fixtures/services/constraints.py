@@ -83,7 +83,11 @@ CONSTRAINT_TYPES: list[dict[str, Any]] = [
     {"type": "round_pinned_to_window", "label": "Pin a round to a window", "hard": True,
      "params_schema": {"round": "str", "date": "date_or_last_day",
                        "from": "time", "to": "time", "venues": "list"},
-     "scopes": ["leaf"], "layer": "S"},
+     # Scoped to a sport or the whole tournament, ONE record puts every
+     # competition's final on the show court (owner 2026-08-17). "final" is
+     # resolved per competition, so a 3-round bracket and a 5-round bracket
+     # each pin their own last round.
+     "scopes": ["all", "sport", "leaf"], "layer": "S"},
     # Soft = per-competition window scoring; the hard toggle = grid filter
     # (U14 mornings, U17 afternoons — §9 A8).
     {"type": "category_session_window", "label": "Competition session window", "hard": False,

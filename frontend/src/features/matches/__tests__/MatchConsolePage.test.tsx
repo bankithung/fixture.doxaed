@@ -158,16 +158,40 @@ describe("MatchConsolePage", () => {
     expect(payload.player_id).toBe("p1");
   });
 
-  it("starts the match from scheduled", async () => {
+  it("starts the match through the pre-match check, not one stray tap", async () => {
+    // Owner 2026-08-17: Start is the first thing on the page, and pressing it
+    // shows who is on court before anything begins.
     vi.mocked(liveApi.snapshot).mockResolvedValue(snap("scheduled"));
     vi.mocked(liveApi.transition).mockResolvedValue({} as never);
     renderConsole();
-    const startBtn = await screen.findByRole("button", { name: /start match/i });
 
-    await userEvent.click(startBtn);
+    await userEvent.click(await screen.findByTestId("start-match"));
+    // The first press commits nothing — it opens the check.
+    expect(liveApi.transition).not.toHaveBeenCalled();
+    expect(screen.getByText("Check who is on court")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("confirm-start-match"));
     await waitFor(() =>
       expect(liveApi.transition).toHaveBeenCalledWith("m1", "live"),
     );
+  });
+
+  it("leaves the board inert until the match is started", async () => {
+    // The complaint that prompted this: a scheduled match showed a live-looking
+    // board whose Point buttons and Q/P shortcuts were armed.
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      snap("scheduled", {
+        sport: "badminton",
+        scoring: { type: "sets", best_of: 3, points: 11, win_by: 2 },
+        set_scores: [],
+      }),
+    );
+    renderConsole();
+    await screen.findByTestId("pre-match-gate");
+    // Nothing that records a score is reachable before kickoff — the paper
+    // result path opens once the match is started, like every other control.
+    expect(screen.queryByTestId("edit-scores")).toBeNull();
+    expect(screen.queryByTestId("home-point")).toBeNull();
   });
 
   it("requires a confirm before completing (P7a mistake-proofing)", async () => {
@@ -348,12 +372,13 @@ describe("MatchConsolePage", () => {
     expect(liveApi.recordSetScores).not.toHaveBeenCalled();
   });
 
-  it("tap scoring stays local while the match has not started", async () => {
+  it("a paper result is typed once the match is live, and is not pushed per keystroke", async () => {
     vi.mocked(liveApi.snapshot).mockResolvedValue(
-      snap("scheduled", {
+      snap("live", {
         sport: "badminton",
         scoring: { type: "sets", best_of: 3, points: 11, win_by: 2 },
         set_scores: [],
+        started_at: null,
       }),
     );
     renderConsole();
@@ -362,9 +387,6 @@ describe("MatchConsolePage", () => {
     await userEvent.click(screen.getByTestId("edit-scores"));
     await userEvent.click(screen.getByTestId("set-0-home-plus"));
     expect(screen.getByLabelText("Set 1 Alpha")).toHaveValue("1");
-    // No live push before kickoff: the result is recorded at the end.
-    await new Promise((r) => setTimeout(r, 700));
-    expect(liveApi.recordSetProgress).not.toHaveBeenCalled();
   });
 
   it("shows the on-court cap and warns when starters exceed it", async () => {

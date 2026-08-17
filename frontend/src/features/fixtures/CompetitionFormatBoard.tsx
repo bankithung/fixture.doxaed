@@ -317,6 +317,22 @@ export function CompetitionFormatBoard({
       staged[leafKey]?.match_duration_minutes ??
         dc?.draw_config[leafKey]?.match_duration_minutes,
     );
+  // Rest is the gap a TEAM gets after playing — not the court turnaround —
+  // and a 25-minute sepak match earns more of it than a 15-minute table
+  // tennis one, so it belongs on the same layer as match length (owner
+  // 2026-08-17). Blank inherits the tournament value from Step 1 · Pace.
+  const starRest = num(
+    staged["*"]?.rest_minutes ?? dc?.draw_config["*"]?.rest_minutes,
+  );
+  const sportOwnRest = (sp: string): number =>
+    num(
+      staged[`sport:${sp}`]?.rest_minutes ??
+        dc?.draw_config[`sport:${sp}`]?.rest_minutes,
+    );
+  const stageRest = (layerKey: string, raw: string): void =>
+    stage(layerKey, {
+      rest_minutes: raw.trim() === "" ? null : Math.max(0, Math.floor(Number(raw) || 0)),
+    });
   /** Stage a duration; null clears the override (the PATCH carries it, so an
    * emptied field truly inherits again — unlike the sparse modal wizard). */
   const stageDuration = (layerKey: string, raw: string): void =>
@@ -879,6 +895,24 @@ export function CompetitionFormatBoard({
                           ? t("applies to every category, override one below")
                           : t("leave blank to use the tournament default")}
                       </span>
+                      <label className="flex flex-col gap-1.5 border-t border-border/60 pt-2">
+                        <span className="text-[0.8125rem] font-medium text-foreground">
+                          {t("Rest after a match (minutes)")}
+                        </span>
+                        <Input
+                          type="number"
+                          min={0}
+                          data-testid={`format-sport-${sp}-rest`}
+                          className="h-9 w-32 font-tabular"
+                          placeholder={starRest ? String(starRest) : t("Default")}
+                          value={sportOwnRest(sp) || ""}
+                          aria-label={`${t("Rest after a match for")} ${sportName(sp)}`}
+                          onChange={(e) => stageRest(`sport:${sp}`, e.target.value)}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {t("The break a team gets before it plays again, not the gap between matches on a court.")}
+                        </span>
+                      </label>
                     </div>
                   </SubCard>
 

@@ -980,25 +980,41 @@ def resolve_pinned_rounds(
                 team_tags=cfg.team_tags,
             )
         ]
-        ko = [mm for mm in in_scope if mm.stage == "knockout"] or in_scope
-        if not ko:
+        if not in_scope:
             continue
-        rounds = sorted({mm.round_no for mm in ko})
+        # Resolved PER COMPETITION (owner 2026-08-17: "in the final, all the
+        # final matches play on only one court"). A rule scoped to a sport or
+        # to the whole tournament spans leaves of different bracket depths, and
+        # pooling them made "final" mean the deepest bracket's last round —
+        # every shallower competition's final then matched nothing.
+        by_leaf: dict[str, list[MatchSlotReq]] = defaultdict(list)
+        for mm in in_scope:
+            by_leaf[mm.leaf_key].append(mm)
         rnd = r.params.get("round")
-        if rnd == "final":
-            target = rounds[-1]
-        elif rnd == "semi_final":
-            if len(rounds) < 2:
+        for cohort in by_leaf.values():
+            ko = [mm for mm in cohort if mm.stage == "knockout"] or cohort
+            if not ko:
                 continue
-            target = rounds[-2]
-        else:
-            try:
-                target = int(str(rnd))
-            except (TypeError, ValueError):
-                continue
-        for mm in ko:
-            if mm.round_no == target:
-                pin_of[mm.id] = r
+            steps = sorted({(mm.stage_no, mm.round_no) for mm in ko})
+            if rnd == "final":
+                target = steps[-1]
+            elif rnd == "semi_final":
+                if len(steps) < 2:
+                    continue
+                target = steps[-2]
+            else:
+                try:
+                    want = int(str(rnd))
+                except (TypeError, ValueError):
+                    continue
+                target = next(
+                    (st for st in steps if st[1] == want), None,
+                )
+                if target is None:
+                    continue
+            for mm in ko:
+                if (mm.stage_no, mm.round_no) == target:
+                    pin_of[mm.id] = r
     return pin_of
 
 
@@ -2637,6 +2653,19 @@ def build_schedule_inputs(
             if r.duration_minutes:
                 grid = gcd(grid, int(r.duration_minutes))
         cfg.grid_step_minutes = max(grid, 5)
+
+    # Per-competition rest (owner 2026-08-17): set beside match length on the
+    # formats step, and expressed HERE as an ordinary scoped rule rather than a
+    # second mechanism — so the most-specific-wins resolver, the validator and
+    # the optimizer all treat it exactly like a rule an organiser typed.
+    for lk in sorted({r.leaf_key for r in reqs if r.leaf_key}):
+        rest = effective_draw_config(tournament, lk).get("rest_minutes")
+        if rest is None:
+            continue
+        cfg.constraint_rules.append(ScopedRule(
+            "min_rest_minutes", f"leaf:{lk}", True, DEFAULT_WEIGHT,
+            {"minutes": int(rest)},
+        ))
 
     return reqs, preoccupied, linked
 

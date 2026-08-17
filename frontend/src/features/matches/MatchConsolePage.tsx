@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Download, Printer, Radio, Undo2 } from "lucide-react";
 import { routes } from "@/lib/routes";
 import { liveApi, type LiveTeam, type MiniPlayer } from "@/api/live";
+import { tournamentsApi } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -30,11 +31,16 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { ApiError } from "@/types/api";
 import { LineupPanel } from "./LineupPanel";
+import { PreMatchGate } from "./PreMatchGate";
 import { resolveConsole } from "./console/registry";
 import { competitionLabel, statusMeta } from "./console/shared";
 
 const STATE_ACTIONS: Record<string, { label: string; to: string }[]> = {
-  scheduled: [{ label: "Start match", to: "live" }],
+  // `scheduled` is deliberately empty: starting a match now goes through the
+  // PreMatchGate, which shows who is on court and asks once (owner
+  // 2026-08-17). Leaving it here too would give two ways to start, one of them
+  // a single tap at the bottom of a board nothing else on which is usable.
+  scheduled: [],
   live: [
     { label: "Half time", to: "half_time" },
     { label: "Complete", to: "completed" },
@@ -189,6 +195,13 @@ export function MatchConsolePage(): React.ReactElement {
   const { connected: socketLive } = useMatchSocket(matchId || null, () => {
     qc.invalidateQueries({ queryKey: ["live", matchId] });
   });
+  const officialsQ = useQuery({
+    queryKey: ["match-officials", matchId],
+    queryFn: () => tournamentsApi.matchOfficials(matchId),
+    enabled: Boolean(matchId),
+    retry: false,
+  });
+
   const query = useQuery({
     queryKey: ["live", matchId],
     queryFn: () => liveApi.snapshot(matchId),
@@ -607,6 +620,29 @@ export function MatchConsolePage(): React.ReactElement {
   // `lg` up (owner 2026-07-26), where the 5% gutters replace page padding.
   return (
     <div className="mx-auto flex w-full flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4 lg:w-[90%] lg:px-0">
+      {/* Before kickoff the gate leads the page (owner 2026-08-17): the Start
+          control belongs where it is seen, not at the foot of a board whose
+          every other control is inert until the match is live. */}
+      {match.status === "scheduled" ? (
+        <PreMatchGate
+          match={match}
+          officials={[
+            ...(officialsQ.data?.scorer
+              ? [{
+                  id: officialsQ.data.scorer.id,
+                  name: officialsQ.data.scorer.name,
+                  role: t("scorer"),
+                }]
+              : []),
+            ...(officialsQ.data?.officials ?? []).map((o) => ({
+              id: o.id, name: o.name, role: o.role,
+            })),
+          ]}
+          pending={tr.isPending}
+          onStart={() => tr.mutate("live")}
+        />
+      ) : null}
+
       {/* A sport module carries this context as its OWN heading inside the
           board (owner 2026-07-26), so the chassis renders this floating
           header only for the football surface. */}

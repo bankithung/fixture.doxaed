@@ -427,6 +427,28 @@ class AssignOfficialsView(GenericAPIView):
         ):
             raise PermissionDenied("not_allowed_to_assign_officials")
 
+    def get(self, request, match_id):
+        """Who is running this match — the officials and the scorer seat.
+
+        READ is not gated on ``match.assign_officials`` the way writing is: the
+        pre-match check (owner 2026-08-17) shows the scorer who is on court
+        before they start it, and a scorer is precisely someone who may NOT
+        assign. Reaching the match at all is the access check, and
+        ``_match_or_404`` already made it.
+        """
+        match = _match_or_404(request.user, match_id)
+        scorer = getattr(match, "scorer", None)
+        return Response({
+            "officials": _officials_payload(match),
+            "scorer": (
+                {
+                    "id": str(scorer.id),
+                    "name": scorer.get_full_name() or scorer.email,
+                }
+                if scorer else None
+            ),
+        })
+
     def post(self, request, match_id):
         match = _match_or_404(request.user, match_id)
         self._gate(request, match)

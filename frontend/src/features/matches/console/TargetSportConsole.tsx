@@ -217,7 +217,12 @@ export function TargetSportConsole({
   const prevWon = setsWon(setRows.slice(0, -1), match.scoring ?? null);
   const currentRowWon = homeSets + awaySets > prevWon[0] + prevWon[1];
   const rulesKnown = (match.scoring?.points ?? 0) > 0;
-  const inPlay = live || match.status === "scheduled";
+  // A match that has not been started is NOT in play (owner 2026-08-17:
+  // "if the match is not started then nothing should be clickable"). Treating
+  // `scheduled` as in-play left a live-looking board on a match nobody had
+  // begun — points could be tapped before the umpire said go, and the shortcut
+  // keys were armed.
+  const inPlay = live;
   // The explicit between-sets step: the finished set locks the Point
   // buttons until "Start set N+1" is pressed.
   const awaitingNext = inPlay && rulesKnown && currentRowWon && !decided;

@@ -120,3 +120,34 @@ def test_grid_step_unchanged_when_uniform():
     cfg = config_from_dict({**CFG, "slot_minutes": 30})
     build_schedule_inputs(t, cfg)
     assert cfg.grid_step_minutes == 30  # gcd(30, 30, 30)
+
+
+# ------------------------------------------------- per-competition REST
+def test_rest_can_be_set_per_competition_beside_match_length():
+    """Owner 2026-08-17: rest is the gap a TEAM gets after playing, and a
+    25-minute sepak match needs more of it than a 15-minute table-tennis one.
+    Set on the same layer as match length, and resolved by the same
+    most-specific-wins rule the constraint layer already had."""
+    from apps.fixtures.services.scheduler import (
+        MatchSlotReq,
+        config_from_dict,
+        effective_rest_gap,
+    )
+
+    cfg = config_from_dict({
+        "date_start": "2026-08-01", "date_end": "2026-08-01",
+        "daily_start": "09:00", "daily_end": "18:00", "rest_minutes": 5,
+    })
+    from apps.fixtures.services.scheduler import DEFAULT_WEIGHT, ScopedRule
+
+    cfg.constraint_rules.append(ScopedRule(
+        "min_rest_minutes", "leaf:sepak_takraw.u14.boys", True, DEFAULT_WEIGHT,
+        {"minutes": 45},
+    ))
+    sepak = MatchSlotReq(id="s", round_no=1, match_no=1, home="a", away="b",
+                         sport="sepak_takraw", leaf_key="sepak_takraw.u14.boys")
+    tt = MatchSlotReq(id="t", round_no=1, match_no=1, home="a", away="b",
+                      sport="table_tennis", leaf_key="table_tennis.u14.boys")
+    assert effective_rest_gap(cfg, sepak, "a").total_seconds() / 60 == 45
+    # Everything else keeps the tournament-wide value.
+    assert effective_rest_gap(cfg, tt, "a").total_seconds() / 60 == 5
