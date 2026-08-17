@@ -36,6 +36,7 @@ import {
 import { FairnessPanel } from "./FairnessPanel";
 import { InputsChangedBanner } from "./InputsChangedBanner";
 import { LeafLabel } from "./LeafLabel";
+import { CourtLoadView } from "./CourtLoadView";
 import { GroupCompositionView } from "./GroupCompositionView";
 import { MatchesSpreadsheet } from "./MatchesSpreadsheet";
 import { PreviewToolbar } from "./PreviewToolbar";
@@ -152,8 +153,10 @@ export function DryRunPreviewPage(): React.ReactElement {
   const [filters, setFilters] = useState<GridFilters>(EMPTY_FILTERS);
   const [sort, setSort] = useState<GridSort | null>(null);
   const [groupBy, setGroupBy] = useState<GroupBy>("day_venue");
-  // "sheet" = the spreadsheet; "draw" = the structure (groups + brackets).
-  const [viewMode, setViewMode] = useState<"sheet" | "draw">("sheet");
+  // "sheet" = the spreadsheet; "draw" = the structure (groups + brackets);
+  // "courts" = court occupancy and the time each competition consumes (owner
+  // 2026-08-17). All three read the SAME filtered rows.
+  const [viewMode, setViewMode] = useState<"sheet" | "draw" | "courts">("sheet");
 
   const drawConfig = useQuery({
     queryKey: qk.drawConfig(id),
@@ -587,6 +590,7 @@ export function DryRunPreviewPage(): React.ReactElement {
                   [
                     ["sheet", t("Sheet")],
                     ["draw", t("Draw")],
+                    ["courts", t("Courts")],
                   ] as const
                 ).map(([mode, lbl]) => (
                   <button
@@ -746,6 +750,27 @@ export function DryRunPreviewPage(): React.ReactElement {
               ))}
             </div>
           </div>
+        ) : viewMode === "courts" ? (
+          <>
+            <PreviewToolbar
+              rows={allRows}
+              filters={filters}
+              onFilters={setFilters}
+              groupBy={groupBy}
+              onGroupBy={setGroupBy}
+              visible={rows.length}
+              onExportCsv={onExportCsv}
+              onExportPdf={onExportPdf}
+            />
+            <div className="max-h-[65vh] overflow-auto">
+              <CourtLoadView
+                rows={rows}
+                dayStart={schedule?.daily_start ?? "09:00"}
+                dayEnd={schedule?.daily_end ?? "18:00"}
+                blackouts={blackouts}
+              />
+            </div>
+          </>
         ) : viewMode === "sheet" ? (
           <>
             <PreviewToolbar
