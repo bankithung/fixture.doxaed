@@ -150,6 +150,25 @@ Up-front PRD decisions that shape the codebase. Do not relitigate; do not deviat
 - Nobody is removed by omission: a re-submitted sheet updates in place (roll number, else name, *within one school*), and withdrawing a fielded participant is refused.
 - **The switch MIGRATES, it does not lock** (`services/roster_mode.py`, owner 2026-08-18). Refusing it once teams existed left an organizer who had cloned last year's event with no way in at all — which is precisely who wants the layer. Turning it on declares every already-registered player (idempotent, keyed on (institution, person)) and rebuilds the GENERATED team form so it picks instead of types; a hand-built form is flagged (`team_form_kept`), never overwritten. The one remaining refusal is switching *off* while parked on the roster stage. Nothing is deleted in either direction.
 
+## Scheduling ORDER is authored, not baked in (2026-08-17)
+
+Placement order used to be `(stage_no, round_no, match_no)` with **no competition term**, so every category's round 1 competed for the early slots in draw-emission order — the "categories are mixed randomly" an organizer sees. Two catalog records give the host that control; neither hardcodes a policy.
+
+- **`competition_priority`** (soft, ordering only). `order` is the host's list, most important first; an entry is a leaf key, a leaf-key **prefix** (`table_tennis.u_14` = both genders) or a bare sport key, matched segment-aligned by `sports.leaf_matches_prefix` — the same helper court reservations use. **Most specific entry wins** regardless of list position, and anything unlisted sorts **last** (naming two categories must not invent an order for the rest). `mode` = `sequential` (drain a competition, then start the next) or `within_round` (all progress together, priority breaks the tie). It only reorders *who asks for a slot first*, so it can reshape a day but never make one infeasible, and it emits no violations.
+- **`closing_rounds_window`** (hard). `rounds_from_end` counts back from **each competition's own last round**, resolved per leaf — one record covers categories of different bracket depths, which a literal round number never could. `from_date` accepts a date or `last_day`. `exclusive` closes the other direction: from that day on, **only** closing rounds may play (that is what "the end days are only finals and semis" means).
+- Both bind through ONE resolver in three places that must agree: `schedule_matches.feasible`, `optimizer._single_match_ok` (it must not undo what the greedy respected) and `validate_schedule` (a hand-moved final is judged by the rule the draw was built under). Codes: `closing_round_too_early`, `non_closing_round_too_late`.
+- UI: `ConstraintRow` gained real param kinds — `order` (a numbered list with up/down/remove, never a comma-separated key box), `bool`, and `date_or_last_day` (date input + a "Last day" toggle; `round_pinned_to_window` now uses it too, since its backend always understood `last_day`).
+
+## Preview has a third view: Courts (2026-08-17)
+
+`DryRunPreviewPage`'s `viewMode` is `sheet | draw | courts`, all reading the SAME filtered rows. `courtLoad.ts` is the pure model. The sheet is ordered by match, so it cannot answer "when is court 2 free" or "how many hours does U-14 boys singles take" — Courts does both. It splits idle time into **breaks you configured** vs **court standing free**; the sheet deliberately stays quiet about unexplained gaps, so this is the only surface that counts them. Unplaced matches hold no court and are charged no minutes.
+
+## Participation workbench (2026-08-17)
+
+`features/tournaments/ParticipationPage.tsx` (`/tournaments/:id/participation`, nav item beside Teams, only when `roster_mode = roster_first`) answers the question the draw needs first: **who is in more than one event**. `participation.ts` separates "in two categories of one sport" from "in two sports", because two entries only collide if they can be scheduled together — exactly what `no_person_overlap` and `no_institution_overlap`'s `within` key on. Stat chips ARE the filters; Sheet + Matrix views (a row with two ticks IS the clash); CSV writes the matrix. It **reads only** — `ParticipantsPage` owns adding/withdrawing.
+
+**`switch_roster_mode` CONVERGES, it does not merely transition** (owner 2026-08-18). Re-selecting the mode a tournament already has **repairs a stale generated team form** (`team_form_matches_mode`, keyed on the `roster_students` data_source). Without this, a tournament flipped by an older build carried the flag with a typed-name form and had no way out of the UI at all. A form that already matches is left strictly alone — regenerating a live form drops the rosters inside existing responses.
+
 ## Operations pages (frontend)
 
 - **`MatchRow`** (`features/controlroom/MatchRow.tsx`) is the shared dense match row: it is a **desktop table row** and overflows below `md`, so any page that lists matches on a phone needs its own card layout (see `MyTasksPage`'s `MyTaskCard`). It takes an optional `badges` slot for caller-owned chips. Finished matches carry `data-done` + a `success-muted` tint.
