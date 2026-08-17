@@ -335,7 +335,7 @@ describe("GlobalSetupWizard", () => {
     expect(screen.getByTestId("closing-date")).toHaveValue("2026-08-05");
   });
 
-  it("ceremonies set the first and last match times on their own day", async () => {
+  it("a ceremony bounds its OWN day and leaves the window alone", async () => {
     wrap(<GlobalSetupWizard tournamentId="t1" onClose={() => {}} />);
     fireEvent.change(await screen.findByLabelText("First match day"), {
       target: { value: "2026-08-16" },
@@ -344,42 +344,45 @@ describe("GlobalSetupWizard", () => {
       target: { value: "2026-08-17" },
     });
 
-    // Opening seeds at the start of play and moves the first match to its end.
+    // Opening seeds at the start of play; its day starts when it ends.
     await userEvent.click(screen.getByTestId("opening-add"));
     expect(screen.getByLabelText("Opening ceremony from")).toHaveValue("09:00");
     expect(screen.getByTestId("opening-note")).toHaveTextContent(
-      "First match set to 10:00, when this ends.",
+      "On Aug 16 the first match starts at 10:00, when this ends. " +
+        "Other days start at 09:00.",
     );
 
     // Closing seeds at the END of play, so by default it costs no play time.
     await userEvent.click(screen.getByTestId("closing-add"));
     expect(screen.getByLabelText("Closing ceremony from")).toHaveValue("18:00");
 
-    // Moved into the afternoon, it ends play when it starts.
     fireEvent.change(screen.getByLabelText("Closing ceremony from"), {
       target: { value: "16:00" },
     });
     expect(screen.getByTestId("closing-note")).toHaveTextContent(
-      "Last match must finish by 16:00, when this starts.",
+      "On Aug 17 the last match finishes by 16:00, when this starts. " +
+        "Other days run to 18:00.",
     );
 
-    // The play times themselves are updated — not just annotated.
+    // The tournament-wide window is UNTOUCHED — a one-day ceremony must not
+    // shorten every other day (owner 2026-08-18).
     await toStep(2);
     expect(
       screen.getByLabelText("First match of the day starts at"),
-    ).toHaveValue("10:00");
+    ).toHaveValue("09:00");
     expect(screen.getByLabelText("Last match must start by")).toHaveValue(
-      "16:00",
+      "18:00",
     );
     const notes = screen.getByTestId("ceremony-day-times");
     expect(notes).toHaveTextContent(
-      "First match 10:00, set by the opening ceremony on Aug 16.",
+      "Aug 16 only: first match 10:00, after the opening ceremony.",
     );
     expect(notes).toHaveTextContent(
-      "Last match finishes by 16:00, set by the closing ceremony on Aug 17.",
+      "Aug 17 only: last match finishes by 16:00, before the closing ceremony.",
     );
 
-    // Saving stores them, so the schedule is built from these times.
+    // And what is saved is what the organiser typed. The engine cuts the
+    // ceremony out of its own day by itself (scheduler `ceremony_window`).
     await toStep(1);
     await userEvent.click(screen.getByTestId("save-global-setup"));
     await waitFor(() =>
@@ -388,13 +391,65 @@ describe("GlobalSetupWizard", () => {
         expect.objectContaining({
           config: {
             calendar: expect.objectContaining({
-              daily_start: "10:00",
-              daily_end: "16:00",
+              daily_start: "09:00",
+              daily_end: "18:00",
             }),
           },
         }),
       ),
     );
+  });
+
+  it("an 8-9am opening on day one does not push day two to 9am", async () => {
+    // The owner's report (2026-08-18), exactly: opening ceremony 08:00-09:00
+    // on Aug 17 of an Aug 17-18 event. Day two must still start at 08:00, and
+    // the play time must be typeable back down.
+    wrap(<GlobalSetupWizard tournamentId="t1" onClose={() => {}} />);
+    fireEvent.change(await screen.findByLabelText("First match day"), {
+      target: { value: "2026-08-17" },
+    });
+    fireEvent.change(screen.getByLabelText("Last match day"), {
+      target: { value: "2026-08-18" },
+    });
+
+    await toStep(2);
+    fireEvent.change(
+      screen.getByLabelText("First match of the day starts at"),
+      { target: { value: "08:00" } },
+    );
+    expect(
+      screen.getByLabelText("First match of the day starts at"),
+    ).toHaveValue("08:00");
+
+    // Add the ceremony over that first hour.
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    await userEvent.click(screen.getByTestId("opening-add"));
+    fireEvent.change(screen.getByLabelText("Opening ceremony from"), {
+      target: { value: "08:00" },
+    });
+    fireEvent.change(screen.getByLabelText("Opening ceremony to"), {
+      target: { value: "09:00" },
+    });
+
+    // The window is still 08:00 — only Aug 17 gives up its first hour.
+    await toStep(2);
+    expect(
+      screen.getByLabelText("First match of the day starts at"),
+    ).toHaveValue("08:00");
+    expect(screen.getByTestId("ceremony-day-times")).toHaveTextContent(
+      "Aug 17 only: first match 09:00, after the opening ceremony.",
+    );
+
+    // …and it is still editable afterwards, which it was not before: the
+    // narrowed value used to be saved and re-seeded as the floor.
+    fireEvent.change(
+      screen.getByLabelText("First match of the day starts at"),
+      { target: { value: "07:30" } },
+    );
+    expect(
+      screen.getByLabelText("First match of the day starts at"),
+    ).toHaveValue("07:30");
   });
 
   it("a ceremony off the match days does not set the play times", async () => {
@@ -423,10 +478,9 @@ describe("GlobalSetupWizard", () => {
     expect(screen.queryByTestId("ceremony-day-times")).toBeNull();
   });
 
-  it("re-derives the play times of a tournament set up before this", async () => {
-    // Stored: ceremonies inside a 09:00-18:00 window (what the wizard wrote
-    // before it could set the times). Opening it shows the real first/last
-    // match time straight away.
+  it("shows a stored window exactly as saved, ceremonies or not", async () => {
+    // The saved window is the organiser's, full stop — a ceremony inside it
+    // never re-writes it on the way in (owner 2026-08-18).
     vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
       draw_config: {
         "*": {
@@ -462,9 +516,13 @@ describe("GlobalSetupWizard", () => {
     await toStep(2);
     expect(
       screen.getByLabelText("First match of the day starts at"),
-    ).toHaveValue("10:00");
+    ).toHaveValue("09:00");
     expect(screen.getByLabelText("Last match must start by")).toHaveValue(
-      "16:00",
+      "18:00",
+    );
+    // The ceremonies still explain what happens on their own days.
+    expect(screen.getByTestId("ceremony-day-times")).toHaveTextContent(
+      "Aug 16 only: first match 10:00, after the opening ceremony.",
     );
   });
 

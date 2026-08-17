@@ -24,6 +24,14 @@ const PARAM_LABELS: Record<string, string> = {
   cross_venue_gap_minutes: "Cross-venue gap (minutes)",
 };
 
+/** Readable names for enumerated param values, keyed "<param>:<value>". The
+ * catalog supplies the values; this only makes them read like English. */
+const PARAM_OPTION_LABELS: Record<string, string> = {
+  "within:sport": "Same sport only",
+  "within:leaf": "Same competition only",
+  "within:any": "Any two of its matches",
+};
+
 const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
 function paramLabel(key: string): string {
@@ -152,6 +160,27 @@ export function ConstraintRow({
               )
             }
             className="h-9"
+          />
+        </label>
+      );
+    }
+    // A param the catalog gives a fixed set of values for becomes a picker
+    // rather than a free-text box — no per-param code here, so any future
+    // enumerated param gets one for free.
+    const choices = spec.param_options?.[key];
+    if (choices?.length) {
+      return (
+        <label key={key} className="flex min-w-44 flex-col gap-1">
+          <span className="text-xs font-medium">{paramLabel(key)}</span>
+          <Select
+            aria-label={`${paramLabel(key)}, ${t("rule")} ${index + 1}`}
+            value={String(record.params[key] ?? choices[0])}
+            onChange={(v) => setParam(key, v)}
+            options={choices.map((c) => ({
+              value: c,
+              label: t(PARAM_OPTION_LABELS[`${key}:${c}`] ?? c),
+            }))}
+            size="sm"
           />
         </label>
       );

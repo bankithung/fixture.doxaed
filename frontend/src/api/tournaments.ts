@@ -1348,6 +1348,9 @@ export interface ConstraintType {
   /** Param key → kind ("int" | "time" | "date" | "list" | "str") — drives
    * the ConstraintRow field renderer (redesign §3). */
   params_schema: Record<string, string>;
+  /** Param key → the fixed set of values it accepts. Present only for
+   * enumerated params; the row renders a picker instead of a text box. */
+  param_options?: Record<string, string[]>;
   /** Scope kinds this type meaningfully accepts ("all"|"sport"|"leaf"|"team"|"tag"). */
   scopes: string[];
   /** "S" = slot-time (scheduler), "P" = pairing-time (generator). */

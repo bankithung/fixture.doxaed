@@ -119,10 +119,18 @@ CONSTRAINT_TYPES: list[dict[str, Any]] = [
     # The blunter form of the rule above, for tournaments with no roster: no
     # two teams of one institution play at the same moment. Off by default —
     # it costs real schedule room, and the staff rule is the precise version.
+    # Same-school keep-apart (owner 2026-08-18): "if one school is playing
+    # under-14 sepak the same school should not be scheduled on the other court
+    # for girls … if they are different sports it's fine". So `within` decides
+    # how far the rule reaches — sport (the default, and the owner's rule),
+    # leaf (one exact competition), or any (the blunt original). Scope narrows
+    # it further, e.g. `sport:sepak_takraw` to bind sepak and nothing else.
     {"type": "no_institution_overlap", "hard": True,
      "label": "A school never plays two matches at once",
-     "params_schema": {"min_gap_minutes": "int", "cross_venue_gap_minutes": "int"},
-     "scopes": ["all"], "layer": "S"},
+     "params_schema": {"within": "str", "min_gap_minutes": "int",
+                       "cross_venue_gap_minutes": "int"},
+     "param_options": {"within": ["sport", "leaf", "any"]},
+     "scopes": ["all", "sport", "leaf"], "layer": "S"},
     # Directive: dates excluded at generation, reserved for the postponement
     # repair tool; scope sport: lets indoor sports keep playing.
     {"type": "reserve_days", "label": "Reserve days (kept free for repairs)", "hard": True,

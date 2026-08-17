@@ -99,6 +99,38 @@ def test_ceremony_block_removes_grid_for_its_venues():
     assert time(9, 0) in b_starts  # other venue keeps its morning
 
 
+def test_an_opening_ceremony_shortens_ONLY_its_own_day():
+    """Owner 2026-08-18: an 08:00-09:00 opening on day one must not push day
+    two to 09:00. The engine has always cut only the day a ceremony is dated
+    on — the wizard was narrowing the tournament-wide window on top of it, and
+    that is what stole the hour."""
+    cfg = _cfg(date_start=SAT, date_end=SUN, daily_start=time(8, 0))
+    merge_stored_constraints(cfg, [
+        {"type": "ceremony_block",
+         "params": {"date": "2026-08-01", "from": "08:00", "to": "09:00",
+                    "label": "opening"}},
+    ])
+    slots = build_slots(cfg)
+    day_one = sorted(dt.time() for dt, _v, _w in slots if dt.date() == SAT)
+    day_two = sorted(dt.time() for dt, _v, _w in slots if dt.date() == SUN)
+    assert day_one[0] == time(9, 0)   # the ceremony owns the first hour…
+    assert day_two[0] == time(8, 0)   # …and only on its own day
+
+
+def test_a_closing_ceremony_ends_ONLY_its_own_day_early():
+    cfg = _cfg(date_start=SAT, date_end=SUN)
+    merge_stored_constraints(cfg, [
+        {"type": "ceremony_block",
+         "params": {"date": "2026-08-02", "from": "16:00", "to": "17:00",
+                    "label": "closing"}},
+    ])
+    slots = build_slots(cfg)
+    day_one = sorted(dt.time() for dt, _v, _w in slots if dt.date() == SAT)
+    day_two = sorted(dt.time() for dt, _v, _w in slots if dt.date() == SUN)
+    assert day_one[-1] >= time(17, 0)  # untouched
+    assert day_two[-1] < time(16, 0)   # stops for the ceremony
+
+
 def test_ceremony_block_without_venues_blocks_everything():
     cfg = _cfg()
     merge_stored_constraints(cfg, [

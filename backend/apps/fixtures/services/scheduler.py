@@ -43,6 +43,21 @@ from apps.fixtures.services.constraints import (
     scope_specificity,
 )
 
+#: How wide the same-school keep-apart rule reaches, and the sentence each
+#: choice earns in the generation notes. The KEYS are the accepted values of
+#: ``no_institution_overlap``'s ``within`` param — data, so the UI can offer
+#: them without the engine hardcoding a policy (owner 2026-08-18).
+_INSTITUTION_WITHIN: dict[str, str] = {
+    "sport": (
+        "A school never plays two matches at once IN THE SAME SPORT — its "
+        "different sports may still run in parallel."
+    ),
+    "leaf": (
+        "A school never plays two matches at once within one competition."
+    ),
+    "any": "A school never plays two matches at the same time, in any sport.",
+}
+
 
 # --------------------------------------------------------------------------- config
 @dataclass
@@ -137,6 +152,20 @@ class ScheduleConfig:
     # rule. EMPTY means the caller asked for none — the input builder then
     # produces no edges at all, so every one of these is opt-in.
     link_sources: set[str] = field(default_factory=set)
+    # How WIDE the same-school rule reaches (owner 2026-08-18: "if one school
+    # is playing under-14 sepak the same school should not be scheduled on the
+    # other court for girls … if they are different sports it's fine").
+    #   "sport" one school's teams IN ONE SPORT never overlap (the default —
+    #           its sepak boys and sepak girls clash, its table tennis does not)
+    #   "leaf"  only within one exact competition
+    #   "any"   the blunt original: a school plays one match at a time, full stop
+    # Meaningful for the institution source alone: a shared player or teacher is
+    # one human being, and no sport boundary makes them two.
+    institution_link_within: str = "sport"
+    # Scope expressions from the same-school records ("sport:sepak_takraw"),
+    # so the rule can be authored for one sport and left off everywhere else.
+    # Empty (or containing "all") = every team takes part.
+    institution_link_scopes: list[str] = field(default_factory=list)
     # Reserve days the rain-day shift has put into use (repair seam,
     # increment D): persisted on ``tournament.scheduling_config`` as
     # ``activated_reserve_days`` and subtracted from every stored
@@ -507,11 +536,21 @@ def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> l
                 cfg.person_min_gap = int(p["min_gap_minutes"])
             if p.get("cross_venue_gap_minutes") is not None:
                 cfg.person_cross_venue_gap = int(p["cross_venue_gap_minutes"])
-            notes.append(
-                "Teachers in charge are never in two places at once."
-                if source == "staff"
-                else "A school never plays two matches at the same time."
-            )
+            if source == "institution":
+                # How far the rule reaches, and over which teams. Both are the
+                # author's call; an unknown `within` falls back to the default
+                # rather than silently widening the rule to every sport.
+                within = str(p.get("within") or "").strip().lower()
+                if within in _INSTITUTION_WITHIN:
+                    cfg.institution_link_within = within
+                cfg.institution_link_scopes.append(
+                    normalize_scope(c.get("scope"))
+                )
+                notes.append(_INSTITUTION_WITHIN[cfg.institution_link_within])
+            else:
+                notes.append(
+                    "Teachers in charge are never in two places at once."
+                )
         elif ctype in ("even_spacing", "avoid_back_to_back"):
             notes.append(f"'{ctype}' is optimised by the built-in day-spread scoring.")
         # keep_apart_until_round is a PAIRING-layer record — generate.py
@@ -2171,12 +2210,37 @@ def build_schedule_inputs(
 
     if "institution" in sources:
         from apps.teams.models import Team as _Team
+        from apps.tournaments.services.sports import LEAF_SEP
 
-        by_inst: dict[str, set[str]] = {}
-        for iid, tid in _Team.objects.filter(
+        within = cfg.institution_link_within
+        # Scope the rule to the teams the author aimed it at. "all" (or no
+        # scope at all) means every team; a `sport:`/`leaf:` record narrows it
+        # so a school can be pinned together in sepak and left free elsewhere.
+        scopes = [s for s in (cfg.institution_link_scopes or []) if s]
+        wide = not scopes or "all" in scopes
+
+        by_inst: dict[tuple, set[str]] = {}
+        for iid, tid, sport, leaf in _Team.objects.filter(
             tournament=tournament, deleted_at__isnull=True,
-        ).exclude(institution__isnull=True).values_list("institution_id", "id"):
-            by_inst.setdefault(str(iid), set()).add(str(tid))
+        ).exclude(institution__isnull=True).values_list(
+            "institution_id", "id", "sport", "leaf_key",
+        ):
+            # `sport` was added after `leaf_key` and is blank on older rows;
+            # the leaf key is sport-prefixed, so it is the reliable source.
+            sport = (sport or "") or str(leaf or "").split(LEAF_SEP, 1)[0]
+            if not wide and not any(
+                scope_matches(s, sport=sport, leaf_key=str(leaf or ""),
+                              team_ids=[str(tid)])
+                for s in scopes
+            ):
+                continue
+            if within == "sport":
+                key = (str(iid), sport)
+            elif within == "leaf":
+                key = (str(iid), str(leaf or ""))
+            else:
+                key = (str(iid),)
+            by_inst.setdefault(key, set()).add(str(tid))
         groups.extend(by_inst.values())
 
     linked: dict[str, set[str]] = {}

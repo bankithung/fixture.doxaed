@@ -51,11 +51,6 @@ interface Form {
   venues: VenueDraft[];
   daily_start: string;
   daily_end: string;
-  /** The play window the organiser typed, before any ceremony narrows it.
-   * Kept so a ceremony that stops applying (moved off the match days, deleted)
-   * gives the day back instead of leaving its bound behind forever. */
-  base_start: string;
-  base_end: string;
   slot_minutes: number;
   rest_minutes: number;
   max_per_day: number;
@@ -77,8 +72,6 @@ const EMPTY_FORM: Form = {
   venues: [],
   daily_start: "09:00",
   daily_end: "18:00",
-  base_start: "09:00",
-  base_end: "18:00",
   // Start-grid step + fallback when a competition sets no length of its own.
   // Match LENGTHS are now set per competition on the format step; this is just
   // the scheduling granularity, so a fine default keeps schedules tight.
@@ -162,69 +155,49 @@ function plusHour(hhmm: string): string {
   return `${String(h + 1).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-/** The ceremonies WRITE the play times (owner 2026-08-15), the way the match
- * days write the ceremony dates: the tournament opens with the opening
- * ceremony, so the first match starts when it ends, and closes with the
- * closing one, so the last match is done when it starts. Applied whenever a
- * ceremony is added or retimed, and when the stored form is seeded — never a
- * second thing to fill in. Still editable after: widening the window back
- * only affects the other days, because the engine keeps bounding the ceremony
- * day itself (scheduler `ceremony_window`). A ceremony that would invert the
- * window is left alone — `ceremonyEffect` warns instead. */
-function withCeremonyBounds(f: Form): Form {
-  // Always re-derived from the organiser's own window, never from the last
-  // derived value — otherwise a bound could only ever tighten.
-  let daily_start = f.base_start || f.daily_start;
-  let daily_end = f.base_end || f.daily_end;
-  // A ceremony OFF the match days bounds nothing (owner 2026-08-15): the
-  // engine only cuts the day a ceremony sits on, so letting a ceremony dated
-  // before the tournament push the first match time silently shortened every
-  // playing day for a ceremony that was never going to happen on one.
-  const onMatchDay = (c: CeremonyValue | null): boolean =>
-    Boolean(
-      c?.date &&
-        (!f.date_start || c.date >= f.date_start) &&
-        (!f.date_end || c.date <= f.date_end),
-    );
-  const open_to = onMatchDay(f.opening) ? f.opening!.to : "";
-  const close_from = onMatchDay(f.closing) ? f.closing!.from : "";
-  if (open_to && open_to > daily_start && open_to < daily_end) {
-    daily_start = open_to;
-  }
-  if (close_from && close_from < daily_end && close_from > daily_start) {
-    daily_end = close_from;
-  }
-  return daily_start === f.daily_start && daily_end === f.daily_end
-    ? f
-    : { ...f, daily_start, daily_end };
+/** A ceremony bounds ITS OWN DAY, never the tournament (owner 2026-08-18).
+ *
+ * This used to push the tournament-wide `daily_start` to the opening
+ * ceremony's end time. With an 08:00–09:00 opening on day one that made EVERY
+ * day start at 09:00 — day two lost an hour it was never asked to give up —
+ * and because the narrowed value was saved and then re-seeded as the base on
+ * reload, the organiser could not type 08:00 back in. Worse, the clamp bought
+ * nothing: the engine already cuts the ceremony out of the day it is dated on
+ * (scheduler `ceremony_window`), so day one starts at 09:00 either way.
+ *
+ * The window is now exactly what the organiser typed; `ceremonyEffect` says,
+ * per day, what the ceremony does to it.
+ */
+function onMatchDay(f: Form, c: CeremonyValue | null): boolean {
+  return Boolean(
+    c?.date &&
+      (!f.date_start || c.date >= f.date_start) &&
+      (!f.date_end || c.date <= f.date_end),
+  );
 }
 
-/** The first/last match time a ceremony produces on its own day, for the line
- * that says so under the ceremony, the play times and the review. Null when
- * there is no such ceremony; `empty` when it would swallow the whole day (the
- * one case `withCeremonyBounds` refuses to apply). */
+/** What a ceremony does to the play window ON ITS OWN DAY.
+ *
+ * `time` is that day's first (or last) match time; `empty` means the ceremony
+ * swallows the whole day, so nothing can be played on it. Null when there is
+ * no such ceremony, when it falls outside the match days, or when it sits
+ * entirely outside the play window and therefore costs no playing time.
+ */
 function ceremonyEffect(
   form: Form,
   which: "opening" | "closing",
 ): { day: string; time: string; empty: boolean } | null {
   const c = which === "opening" ? form.opening : form.closing;
   if (!c?.date) return null;
-  // Off the match days it sets no play time at all (the ceremony's own note
-  // says so instead) — never claim a first/last match it does not produce.
-  if (
-    (form.date_start && c.date < form.date_start) ||
-    (form.date_end && c.date > form.date_end)
-  ) {
-    return null;
-  }
-  // `<`/`>`, not `<=`/`>=`: once the bounds are applied the ceremony's edge IS
-  // the play time, and that is exactly when the line has to stay on screen to
-  // explain the number in the field.
+  // Off the match days it changes nothing (the ceremony's own note says so
+  // instead) — never claim a first/last match it does not produce.
+  if (!onMatchDay(form, c)) return null;
   if (which === "opening") {
-    if (c.to < form.daily_start) return null;
+    // Ends before play begins → the day starts as usual.
+    if (c.to <= form.daily_start) return null;
     return { day: c.date, time: c.to, empty: c.to >= form.daily_end };
   }
-  if (c.from > form.daily_end) return null;
+  if (c.from >= form.daily_end) return null;
   return { day: c.date, time: c.from, empty: c.from <= form.daily_start };
 }
 
@@ -393,30 +366,20 @@ export function GlobalSetupWizard({
   const set = <K extends keyof Form>(k: K, v: Form[K]): void => {
     setDirty(true);
     setForm((f) => {
-      // The play times the organiser types ARE the base window; the dates can
-      // move a ceremony in or out of range. Both re-derive the effective
-      // window (see `withCeremonyBounds`).
-      if (k === "daily_start") {
-        return withCeremonyBounds({ ...f, base_start: v as string });
-      }
-      if (k === "daily_end") {
-        return withCeremonyBounds({ ...f, base_end: v as string });
-      }
-      if (k === "date_start" || k === "date_end") {
-        return withCeremonyBounds({ ...f, [k]: v });
-      }
+      // The play times the organiser types ARE the window — nothing rewrites
+      // them behind their back. A ceremony only bounds its own day, and the
+      // engine does that itself (see `ceremonyEffect`).
       return { ...f, [k]: v };
     });
   };
-  // A ceremony edit re-derives the play times from it (see
-  // `withCeremonyBounds`) — the owner's ask: setting the ceremonies IS setting
-  // when the first and last match of that day are.
+  // A ceremony bounds its own day and nothing else — it never rewrites the
+  // organiser's play window (owner 2026-08-18).
   const setCeremony = (
     which: "opening" | "closing",
     v: CeremonyValue | null,
   ): void => {
     setDirty(true);
-    setForm((f) => withCeremonyBounds({ ...f, [which]: v }));
+    setForm((f) => ({ ...f, [which]: v }));
   };
   // Switching break mode clears the OTHER side so the two never coexist (the
   // engine would otherwise apply both) — a true overall-OR-per-venue choice.
@@ -488,10 +451,11 @@ export function GlobalSetupWizard({
           isAll(c) &&
           c.params?.label === "daily_break",
       );
-      // Bounds applied on the way in too, so a tournament whose ceremonies
-      // were set before this existed shows the real first/last match time the
-      // moment it is opened (and stores it on the next save).
-      setForm(withCeremonyBounds({
+      // The stored window is shown exactly as saved. A tournament whose
+      // window was narrowed by the old ceremony clamp keeps that value until
+      // the organiser widens it — we cannot know what they originally typed,
+      // but they can now type it back and it will stick.
+      setForm({
         date_start: String(cal?.date_start ?? ""),
         date_end: String(cal?.date_end ?? ""),
         blackouts: (one("blackout_dates")?.params.dates as string[]) ?? [],
@@ -505,11 +469,6 @@ export function GlobalSetupWizard({
         venues: venues.data.venues.map(venueDraft),
         daily_start: String(cal?.daily_start ?? "09:00"),
         daily_end: String(cal?.daily_end ?? "18:00"),
-        // The stored window IS the organiser's base until they type another:
-        // a ceremony narrows it from here, and dropping the ceremony restores
-        // exactly this.
-        base_start: String(cal?.daily_start ?? "09:00"),
-        base_end: String(cal?.daily_end ?? "18:00"),
         slot_minutes: Number(cal?.slot_minutes ?? 30),
         rest_minutes: Number(one("min_rest_minutes")?.params.minutes ?? 60),
         max_per_day: Number(
@@ -523,7 +482,7 @@ export function GlobalSetupWizard({
           : "overall",
         daily_break_from: String(dailyBreak?.params.from ?? ""),
         daily_break_to: String(dailyBreak?.params.to ?? ""),
-      }));
+      });
       setSeededSig(sig);
     }
   }
@@ -715,9 +674,8 @@ export function GlobalSetupWizard({
   const isLast = step === WIZARD_STEPS.length - 1;
   const datesSet = form.date_start !== "" && form.date_end !== "";
 
-  // The ceremonies WRITE the play times (see `withCeremonyBounds`); these
-  // lines say so wherever the numbers show, so the filled-in 10:00 is never a
-  // mystery. Same text under the ceremony, on Play times and in the review.
+  // What each ceremony does to ITS OWN day, said wherever the play times
+  // show, so a day that starts later than the window is never a mystery.
   const openEffect = ceremonyEffect(form, "opening");
   const closeEffect = ceremonyEffect(form, "closing");
   // A ceremony dated outside the match days changes nothing — the engine only
@@ -738,25 +696,27 @@ export function GlobalSetupWizard({
     : openEffect
     ? openEffect.empty
       ? t(`This covers all of ${fmtDay(openEffect.day)}. Set it inside the play window or no matches can run.`)
-      : t(`First match set to ${openEffect.time}, when this ends.`)
+      : t(`On ${fmtDay(openEffect.day)} the first match starts at ${openEffect.time}, when this ends. Other days start at ${form.daily_start}.`)
     : undefined;
   const closeNote = closeOff
     ? t(`This is not a match day (your matches run ${fmtDay(form.date_start)} to ${fmtDay(form.date_end)}), so it does not set the last match time.`)
     : closeEffect
     ? closeEffect.empty
       ? t(`This covers all of ${fmtDay(closeEffect.day)}. Set it inside the play window or no matches can run.`)
-      : t(`Last match must finish by ${closeEffect.time}, when this starts.`)
+      : t(`On ${fmtDay(closeEffect.day)} the last match finishes by ${closeEffect.time}, when this starts. Other days run to ${form.daily_end}.`)
     : undefined;
-  // Away from the ceremony fields, "this" needs naming.
+  // Away from the ceremony fields, "this" needs naming — and the day has to be
+  // named too, because the window below applies to every OTHER day (owner
+  // 2026-08-18: an 8-9am opening on day one must not push day two to 9am).
   const openLine = openEffect
     ? openEffect.empty
       ? t(`The opening ceremony covers all of ${fmtDay(openEffect.day)}. No matches can run.`)
-      : t(`First match ${openEffect.time}, set by the opening ceremony on ${fmtDay(openEffect.day)}.`)
+      : t(`${fmtDay(openEffect.day)} only: first match ${openEffect.time}, after the opening ceremony.`)
     : undefined;
   const closeLine = closeEffect
     ? closeEffect.empty
       ? t(`The closing ceremony covers all of ${fmtDay(closeEffect.day)}. No matches can run.`)
-      : t(`Last match finishes by ${closeEffect.time}, set by the closing ceremony on ${fmtDay(closeEffect.day)}.`)
+      : t(`${fmtDay(closeEffect.day)} only: last match finishes by ${closeEffect.time}, before the closing ceremony.`)
     : undefined;
 
   /** The header / footer primary action (single set — Next while stepping,
@@ -1128,9 +1088,9 @@ export function GlobalSetupWizard({
               </Field>
             </div>
             {openLine || closeLine ? (
-              /* Where the two times above came from: the ceremonies set them,
-                 so this step can never read as if play starts at 09:00 on a
-                 morning the opening ceremony owns. */
+              /* The times above are every day's window. A ceremony bends ONE
+                 day inside it, so that day is named here rather than quietly
+                 shortening the whole tournament (owner 2026-08-18). */
               <div
                 data-testid="ceremony-day-times"
                 className="flex flex-col gap-1 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground"
