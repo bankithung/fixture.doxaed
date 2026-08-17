@@ -39,6 +39,7 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { FilePlus2 } from "lucide-react";
 import { TeamCalendarLinkButton } from "@/features/fixtures/TeamCalendarLinkButton";
+import { ParticipationWorkbench } from "@/features/tournaments/ParticipationPage";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
@@ -65,7 +66,13 @@ export function TeamsTab(): React.ReactElement {
   const [codesOpen, setCodesOpen] = useState(false);
   // Teams table vs the per-category counts view (same switch the
   // institutions page has — owner 2026-07-05).
-  const [view, setView] = useState<"teams" | "categories">("teams");
+  // "participants" = everyone the SCHOOLS entered on their team form (owner
+  // 2026-08-17). It lives here rather than as its own funnel stage, because
+  // this is the stage those people arrive in — and it is read-only, since the
+  // institutions enter them, not the host.
+  const [view, setView] = useState<"teams" | "categories" | "participants">(
+    "teams",
+  );
   // Master-detail (owner 2026-07-05, ChMS-style): the school list on the
   // left drives which school's teams show on the right.
   const [selectedSchoolKey, setSelectedSchoolKey] = useState<string | null>(null);
@@ -290,6 +297,7 @@ export function TeamsTab(): React.ReactElement {
             options={[
               { value: "teams", label: t("Teams") },
               { value: "categories", label: t("By category") },
+              { value: "participants", label: t("Participants") },
             ]}
             value={view}
             onChange={(v) => setView(v as typeof view)}
@@ -377,6 +385,8 @@ export function TeamsTab(): React.ReactElement {
             title={t("No institutions yet")}
             hint={t("Register an institution first, then collect its teams.")}
           />
+        ) : view === "participants" ? (
+          <ParticipationWorkbench tournamentId={id} embedded />
         ) : view === "categories" ? (
           <CategoryReport
             teams={teams.data ?? []}

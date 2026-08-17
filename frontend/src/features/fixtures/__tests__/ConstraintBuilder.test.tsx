@@ -112,9 +112,14 @@ describe("ConstraintBuilder", () => {
   it("adds a typed record from the catalog and saves the full list via the settings PATCH", async () => {
     mount();
     await screen.findByText("Recurring blocked window");
-    await userEvent.click(screen.getByRole("button", { name: "Add a rule" }));
+    // Rules are grouped by the question they answer (owner 2026-08-17), so the
+    // add control lives in the group that owns the rule — "Minimum rest" is a
+    // workload question, not a loose entry in one flat list of fourteen.
+    await userEvent.click(
+      screen.getByRole("button", { name: "Add a rule to Rest & workload" }),
+    );
     // Concurrent-match capacity is owned by the "Clashes & sessions" section now,
-    // so it's not offered in the advanced builder.
+    // so it's not offered here at all.
     expect(
       screen.queryByRole("option", {
         name: "Concurrent-match capacity (officials)",

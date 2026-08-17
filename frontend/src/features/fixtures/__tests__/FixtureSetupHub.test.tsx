@@ -420,12 +420,14 @@ describe("FixtureSetupHub", () => {
     expect(screen.queryByTestId("format-sport-football")).toBeNull();
     expect(screen.getByTestId("subpage-back")).toBeInTheDocument();
 
-    // Next → the How-each-competition-plays page (formats), NOT clashes.
+    // Next → the Rules page, then on to formats. Clashes is left behind.
+    await userEvent.click(screen.getByTestId("subpage-next"));
+    expect(await screen.findByTestId("rule-group-order")).toBeInTheDocument();
+    expect(screen.queryByTestId("add-clash-rule")).toBeNull();
     await userEvent.click(screen.getByTestId("subpage-next"));
     expect(
       await screen.findByTestId("format-sport-football"),
     ).toBeInTheDocument();
-    expect(screen.queryByTestId("add-clash-rule")).toBeNull();
 
     // Back to setup → the When & where step (the wizard owns the page again).
     await userEvent.click(screen.getByTestId("subpage-back"));
@@ -434,8 +436,14 @@ describe("FixtureSetupHub", () => {
     ).toBeInTheDocument();
     expect(screen.queryByTestId("format-sport-football")).toBeNull();
 
-    // Step 3 jumps straight to the formats page.
+    // Step 3 is now the Rules page (owner 2026-08-17) — every rule settled
+    // before a draw is generated around it.
     await userEvent.click(screen.getByTestId("journey-step-3"));
+    expect(await screen.findByTestId("rule-group-order")).toBeInTheDocument();
+    expect(screen.queryByTestId("format-sport-football")).toBeNull();
+
+    // Step 4 jumps straight to the formats page.
+    await userEvent.click(screen.getByTestId("journey-step-4"));
     expect(
       await screen.findByTestId("format-sport-football"),
     ).toBeInTheDocument();
@@ -798,7 +806,7 @@ describe("FixtureSetupHub", () => {
     expect(await screen.findByText("1 matches scheduled")).toBeInTheDocument();
   });
 
-  it("keeps the rules, history and tables behind the closed Advanced disclosure", async () => {
+  it("keeps history and tables behind the closed Advanced disclosure", async () => {
     vi.mocked(tournamentsApi.matches).mockResolvedValue([groupMatch()]);
     vi.mocked(tournamentsApi.standings).mockResolvedValue({
       groups: [
@@ -818,21 +826,14 @@ describe("FixtureSetupHub", () => {
     // closed by default — no panels mounted
     const toggle = await screen.findByTestId("advanced-tools-toggle");
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByTestId("hub-tab-constraints")).toBeNull();
+    expect(screen.queryByTestId("hub-tab-changes")).toBeNull();
 
     await userEvent.click(toggle);
-    // Scheduling rules is the default tab; the other panels are NOT mounted
-    expect(screen.getByTestId("hub-tab-constraints")).toHaveTextContent(
-      "Scheduling rules",
-    );
-    expect(await screen.findByTestId("mark-reviewed")).toBeInTheDocument();
-    expect(screen.queryByTestId("schedule-changes-panel")).toBeNull();
-
-    await userEvent.click(screen.getByTestId("hub-tab-changes"));
+    // The rules are their own journey step now, so they are NOT a tab here.
+    expect(screen.queryByTestId("hub-tab-constraints")).toBeNull();
     expect(
       await screen.findByTestId("schedule-changes-panel"),
     ).toBeInTheDocument();
-    expect(screen.queryByTestId("mark-reviewed")).toBeNull();
 
     await userEvent.click(screen.getByTestId("hub-tab-standings"));
     expect(await screen.findByText("Group A")).toBeInTheDocument();

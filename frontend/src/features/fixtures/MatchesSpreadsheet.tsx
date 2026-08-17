@@ -111,14 +111,14 @@ const COLUMNS: Column[] = [
   },
   {
     key: "home",
-    label: "Home",
+    label: "Team 1",
     width: "w-56",
     phone: true,
     cell: (r) => <span className="truncate font-medium">{r.home}</span>,
   },
   {
     key: "away",
-    label: "Away",
+    label: "Team 2",
     width: "w-56",
     phone: true,
     cell: (r) => <span className="truncate font-medium">{r.away}</span>,

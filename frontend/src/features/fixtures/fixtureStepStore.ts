@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { JourneyStep } from "./setupJourney";
 
-type VisibleStep = 1 | 2 | 3 | 4;
+type VisibleStep = 1 | 2 | 3 | 4 | 5;
 
 interface FixtureStepBarState {
   /** True while the Fixture Setup hub wants the AppShell sticky bar shown (it

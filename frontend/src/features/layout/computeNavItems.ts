@@ -15,7 +15,6 @@ import {
   Tv,
   UserCog,
   Users,
-  TableProperties,
   UserSquare2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -390,19 +389,6 @@ export function computeTournamentNav(
       icon: Users,
       ...gate("team_registration"),
     },
-    // Who is playing what (owner 2026-08-17) — it reads the roster, so it only
-    // exists where a roster does, and it sits BESIDE Teams because that is the
-    // stage you ask its question in: which people are in two events, before
-    // the draw is built around them.
-    order.includes("roster")
-      ? {
-          key: "participation",
-          label: t("Who plays what"),
-          href: routes.tournamentParticipation(tournamentId),
-          icon: TableProperties,
-          ...gate("team_registration"),
-        }
-      : null,
     {
       key: "fixtures",
       label: t("Fixtures"),

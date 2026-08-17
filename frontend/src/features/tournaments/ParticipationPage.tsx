@@ -152,6 +152,19 @@ function Chips({ row }: { row: ParticipationRow }): React.ReactElement {
 
 export function ParticipationPage(): React.ReactElement {
   const { id = "" } = useParams();
+  return <ParticipationWorkbench tournamentId={id} />;
+}
+
+export function ParticipationWorkbench({
+  tournamentId,
+  /** Embedded inside another page: drop the outer page padding and the back
+   * link, since the host page already frames it. */
+  embedded = false,
+}: {
+  tournamentId: string;
+  embedded?: boolean;
+}): React.ReactElement {
+  const id = tournamentId;
   const { isMobile } = useBreakpoint();
   const [filters, setFilters] = useState<ParticipationFilters>(
     EMPTY_PARTICIPATION_FILTERS,
@@ -289,24 +302,31 @@ export function ParticipationPage(): React.ReactElement {
   );
 
   return (
-    <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+    <div
+      className={cn(
+        "flex w-full flex-col gap-6",
+        embedded ? "" : "px-4 py-6 sm:px-6 lg:px-8",
+      )}
+    >
       <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         {/* Heading, back link, readings and controls all inside ONE panel. */}
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
           <div className="min-w-0">
-            <Link
-              to={routes.tournamentParticipants(id)}
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeft aria-hidden="true" className="h-3 w-3" />
-              {t("Back to participants")}
-            </Link>
+            {embedded ? null : (
+              <Link
+                to={routes.tournamentParticipants(id)}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <ArrowLeft aria-hidden="true" className="h-3 w-3" />
+                {t("Back to participants")}
+              </Link>
+            )}
             <h1 className="pt-1 text-xl font-semibold tracking-tight">
               {t("Who is playing what")}
             </h1>
             <p className="text-sm text-muted-foreground">
               {t(
-                "Every declared person and the competitions they are entered in. Anyone in two is someone the draw has to keep apart, so start from that number.",
+                "Everyone the schools entered on their team form, and the competitions each is in. Anyone in two is someone the draw has to keep apart, so start from that number.",
               )}
             </p>
           </div>

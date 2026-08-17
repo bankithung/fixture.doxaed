@@ -4,22 +4,26 @@ import userEvent from "@testing-library/user-event";
 import { SetupJourneyHeader } from "../SetupJourneyHeader";
 
 describe("SetupJourneyHeader", () => {
-  it("renders the four steps with Clashes & sessions as the optional step 2", () => {
-    // readiness step 2 = "no draw yet" → required pointer is "How each plays" (3)
+  it("renders five steps, with Clashes and Rules both optional", () => {
+    // readiness step 2 = "no draw yet" → required pointer is "How each plays" (4)
     render(<SetupJourneyHeader step={2} />);
     expect(screen.getByText("When & where")).toBeInTheDocument();
     expect(screen.getByText("Clashes & sessions")).toBeInTheDocument();
+    // Rules gets its own step so the whole rule set is settled before a draw
+    // is generated around it (owner 2026-08-17).
+    expect(screen.getByText("Rules")).toBeInTheDocument();
     expect(screen.getByText("How each competition plays")).toBeInTheDocument();
     expect(screen.getByText("Preview & publish")).toBeInTheDocument();
-    expect(screen.getByText("(optional)")).toBeInTheDocument();
+    expect(screen.getAllByText("(optional)")).toHaveLength(2);
     expect(screen.getByTestId("journey-next")).toHaveTextContent(
-      "Next: set any clashes (optional), then choose how each competition plays.",
+      "Next: set any clashes and rules (both optional), then choose how each competition plays.",
     );
-    // step 1 done (check, no number); 2 optional; 3 current; 4 upcoming
+    // step 1 done (check, no number); 2 and 3 optional; 4 current; 5 upcoming
     expect(screen.getByTestId("journey-step-1")).not.toHaveTextContent("1");
     expect(screen.getByTestId("journey-step-2")).toHaveTextContent("2");
     expect(screen.getByTestId("journey-step-3")).toHaveTextContent("3");
     expect(screen.getByTestId("journey-step-4")).toHaveTextContent("4");
+    expect(screen.getByTestId("journey-step-5")).toHaveTextContent("5");
   });
 
   it("step 1 says set dates and venues; done celebrates", () => {
@@ -33,10 +37,10 @@ describe("SetupJourneyHeader", () => {
     );
   });
 
-  it("highlights steps 3 and 4 together in the mixed state", () => {
+  it("highlights the formats and publish steps together in the mixed state", () => {
     render(<SetupJourneyHeader step={3} />);
-    expect(screen.getByTestId("journey-step-3")).toHaveTextContent("3");
     expect(screen.getByTestId("journey-step-4")).toHaveTextContent("4");
+    expect(screen.getByTestId("journey-step-5")).toHaveTextContent("5");
     expect(screen.getByTestId("journey-next")).toHaveTextContent(
       "Next: preview the schedule and publish it.",
     );
@@ -56,13 +60,15 @@ describe("SetupJourneyHeader", () => {
   it("completed, current and optional steps deep-link; upcoming steps do not", async () => {
     const onStepClick = vi.fn();
     render(<SetupJourneyHeader step={2} onStepClick={onStepClick} />);
-    expect(screen.getByTestId("journey-step-4")).toBeDisabled();
+    expect(screen.getByTestId("journey-step-5")).toBeDisabled();
     await userEvent.click(screen.getByTestId("journey-step-1"));
     expect(onStepClick).toHaveBeenCalledWith(1);
     await userEvent.click(screen.getByTestId("journey-step-2"));
     expect(onStepClick).toHaveBeenCalledWith(2);
     await userEvent.click(screen.getByTestId("journey-step-3"));
     expect(onStepClick).toHaveBeenCalledWith(3);
+    await userEvent.click(screen.getByTestId("journey-step-4"));
+    expect(onStepClick).toHaveBeenCalledWith(4);
   });
 
   it("page-nav mode: completed steps tick, the active page is current, every step navigates", async () => {
@@ -100,7 +106,7 @@ describe("SetupJourneyHeader", () => {
   it("renders the single current-step label for mobile", () => {
     render(<SetupJourneyHeader step={2} />);
     expect(
-      screen.getByText("Step 3 of 4: How each competition plays"),
+      screen.getByText("Step 4 of 5: How each competition plays"),
     ).toBeInTheDocument();
   });
 });

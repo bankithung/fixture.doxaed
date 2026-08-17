@@ -85,11 +85,10 @@ function groupOf(c: Competition, globalsUnset: boolean): GroupKey {
   return s === "live" ? "drawn" : s;
 }
 
-type TabKey = "constraints" | "changes" | "standings";
+type TabKey = "changes" | "standings";
 
 /** §7.8 labels for the Advanced-tools panels. */
 const TAB_LABELS: Record<TabKey, string> = {
-  constraints: "Scheduling rules",
   changes: "Change history",
   standings: "Group tables",
 };
@@ -312,7 +311,7 @@ export function FixtureSetupHub({
     needs_teams: false,
   });
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [tab, setTab] = useState<TabKey>("constraints");
+  const [tab, setTab] = useState<TabKey>("changes");
   // The §6.3 celebrate banner, dismissible per session.
   const [doneDismissed, setDoneDismissed] = useState(false);
   // Owner: never stack the setup sections on one page. "Clashes & sessions"
@@ -324,7 +323,7 @@ export function FixtureSetupHub({
   // 2026-07-09); the `view` value itself is derived below once the journey
   // data is in (no param = the furthest step still in progress).
   const [searchParams, setSearchParams] = useSearchParams();
-  const setView = (v: "overview" | "clashes" | "formats"): void => {
+  const setView = (v: "overview" | "clashes" | "rules" | "formats"): void => {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -472,14 +471,9 @@ export function FixtureSetupHub({
     if (fix === "settings") setSetup({ step: SETUP_STEP.calendar });
     else if (fix === "venues") setSetup({ step: SETUP_STEP.venues });
     else if (fix === "constraints") {
-      // The rules live behind the Advanced disclosure — open it, then jump.
-      setAdvancedOpen(true);
-      setTab("constraints");
-      setTimeout(() => {
-        document
-          .getElementById("constraint-builder")
-          ?.scrollIntoView?.({ behavior: "smooth", block: "start" });
-      }, 0);
+      // The rules are their own step now (owner 2026-08-17), so a readiness
+      // deep-link opens that page instead of digging through Advanced tools.
+      setView("rules");
     } else if (fix === "teams") navigate(routes.tournamentTeams(id));
     else if (fix === "format") {
       // Same destination as a card's "Change format": the How-each-plays page.
@@ -549,8 +543,9 @@ export function FixtureSetupHub({
   // the first stage not done yet — Step 1 done means open Clashes, never
   // skip ahead to Preview & publish until the draws are done).
   const viewParam = searchParams.get("view");
-  const view: "overview" | "clashes" | "formats" =
-    viewParam === "clashes" || viewParam === "formats" || viewParam === "overview"
+  const view: "overview" | "clashes" | "rules" | "formats" =
+    viewParam === "clashes" || viewParam === "rules" ||
+    viewParam === "formats" || viewParam === "overview"
       ? viewParam
       : journey === "done"
         ? "overview"
@@ -592,30 +587,33 @@ export function FixtureSetupHub({
   /** Which page the body is currently showing — so the stepper highlights the
    * page you're on (Step 1 wizard / gate → 1, sub-pages → 2/3, the competition
    * list → 4, the Preview & publish surface). */
-  const activeStep: 1 | 2 | 3 | 4 =
+  const activeStep: 1 | 2 | 3 | 4 | 5 =
     globalsUnset || setupView
       ? 1
       : view === "clashes"
         ? 2
-        : view === "formats"
+        : view === "rules"
           ? 3
-          : 4;
+          : view === "formats"
+            ? 4
+            : 5;
 
   /** Real completion per step → the stepper ticks (not mere position). Step 2
    * (Clashes & sessions) is optional; it ticks once any clash rule or session
    * window exists. Step 3 ticks when no competition is still on the implicit
    * league default. Step 4 ticks when every eligible competition is drawn. */
-  const doneSteps: Partial<Record<1 | 2 | 3 | 4, boolean>> = {
+  const rulesConfigured = constraints.some((c) => !CLASH_TYPES.has(c.type));
+  const doneSteps: Partial<Record<1 | 2 | 3 | 4 | 5, boolean>> = {
     1: !globalsUnset,
     2: clashesConfigured,
-    3: formatsChosen,
-    4: journey === "done",
+    3: rulesConfigured,
+    4: formatsChosen,
+    5: journey === "done",
   };
 
   /** Panels behind the Advanced disclosure — only the ones that render today. */
   const matchCount = (matches.data ?? []).length;
   const tabs: TabKey[] = [
-    ...(canManage ? (["constraints"] as const) : []),
     ...(matchCount > 0 ? (["changes"] as const) : []),
     ...((standings.data?.groups.length ?? 0) > 0
       ? (["standings"] as const)
@@ -655,7 +653,7 @@ export function FixtureSetupHub({
    * Step 1 opens the inline When & where wizard; 2 and 3 swap the body to the
    * Clashes and Formats pages; 4 returns to the competition list (Preview &
    * publish), where each competition's Preview button lives. */
-  const onStepClick = (n: 1 | 2 | 3 | 4): void => {
+  const onStepClick = (n: 1 | 2 | 3 | 4 | 5): void => {
     // Stepper navigation is not a per-sport deep-link — clear any card focus.
     setFormatsFocus(null);
     if (n === 1) {
@@ -676,7 +674,12 @@ export function FixtureSetupHub({
       // Leaving Step 1 for a later page closes the inline wizard if it's open
       // (e.g. a receipt edit), so the page actually swaps.
       setSetup(null);
-      setView(n === 2 ? "clashes" : n === 3 ? "formats" : "overview");
+      setView(
+        n === 2 ? "clashes"
+          : n === 3 ? "rules"
+            : n === 4 ? "formats"
+              : "overview",
+      );
     }
   };
 
@@ -780,8 +783,8 @@ export function FixtureSetupHub({
         /* Journey Step 2 — its OWN page (owner: not stacked with formats). */
         <SetupSubPage
           onBack={() => onStepClick(1)}
-          nextLabel={t("Next: How each competition plays")}
-          onNext={() => setView("formats")}
+          nextLabel={t("Next: Rules")}
+          onNext={() => setView("rules")}
         >
           {canManage && competitions.length > 0 ? (
             <ClashesSection
@@ -802,8 +805,37 @@ export function FixtureSetupHub({
             />
           )}
         </SetupSubPage>
+      ) : view === "rules" ? (
+        /* Journey Step 3 — every remaining rule, grouped, on its own page
+           (owner 2026-08-17). It sits BEFORE formats and the draw so the whole
+           rule set is settled before a schedule is generated around it, and it
+           replaces the old "Advanced tools > Scheduling rules" tab, where the
+           one control an organizer wanted was three levels down. */
+        <SetupSubPage
+          onBack={() => setView("clashes")}
+          nextLabel={t("Next: How each competition plays")}
+          onNext={() => setView("formats")}
+        >
+          {canManage ? (
+            <ConstraintBuilder
+              tournamentId={id}
+              competitions={competitions
+                .filter((c) => c.leafKey)
+                .map((c) => ({ leafKey: c.leafKey, label: c.label }))}
+              teams={(teams.data ?? [])
+                .filter((tm) => tm.status === "registered")
+                .map((tm) => ({ id: tm.id, name: tm.name }))}
+            />
+          ) : (
+            <EmptyState
+              icon={<CalendarClock className="h-8 w-8" />}
+              title={t("Rules are set by the organizers")}
+              hint={t("You can see the schedule once it is published.")}
+            />
+          )}
+        </SetupSubPage>
       ) : view === "formats" ? (
-        /* Journey Step 3 — its OWN page (owner: not stacked with clashes). */
+        /* Journey Step 4 — its OWN page (owner: not stacked with clashes). */
         <SetupSubPage
           onBack={() => onStepClick(1)}
           nextLabel={t("Done · review competitions")}
@@ -1096,17 +1128,6 @@ export function FixtureSetupHub({
                       </button>
                     ))}
                   </div>
-                  {activeTab === "constraints" && canManage ? (
-                    <ConstraintBuilder
-                      tournamentId={id}
-                      competitions={competitions
-                        .filter((c) => c.leafKey)
-                        .map((c) => ({ leafKey: c.leafKey, label: c.label }))}
-                      teams={(teams.data ?? [])
-                        .filter((tm) => tm.status === "registered")
-                        .map((tm) => ({ id: tm.id, name: tm.name }))}
-                    />
-                  ) : null}
                   {activeTab === "changes" && matchCount > 0 ? (
                     <ScheduleChangesPanel
                       tournamentId={id}

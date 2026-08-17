@@ -15,6 +15,7 @@ import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { t } from "@/lib/t";
 import { ConstraintRow } from "./ConstraintRow";
+import { groupRules } from "./ruleGroups";
 
 /** Records the GlobalSetupWizard owns at scope:"all" — they appear here with
  * a provenance badge (the seeded Nagaland defaults among them). */
@@ -25,15 +26,6 @@ const GLOBAL_SETUP_TYPES = new Set([
   "ceremony_block",
   "min_rest_minutes",
   "max_matches_per_team_per_day",
-]);
-
-/** Competition-centric types owned by the friendlier "Clashes & sessions"
- * section (ClashesSection) — hidden here so they aren't edited in two places
- * with a generic row, but still preserved verbatim in this builder's save. */
-const OWNED_BY_CLASHES = new Set([
-  "no_concurrent_competitions",
-  "category_session_window",
-  "official_capacity",
 ]);
 
 /** Sensible starting values for int params when a record is added. */
@@ -169,6 +161,8 @@ export function ConstraintBuilder({
       .map((c) => ({ value: c.leafKey, label: c.label })),
   ];
 
+  const grouped = groupRules(rows, catalog.data ?? []);
+
   const save = useMutation({
     mutationFn: async () => {
       const body = {
@@ -265,62 +259,82 @@ export function ConstraintBuilder({
         </div>
       </div>
 
-      <div className="flex flex-col gap-2.5 px-4 py-3" aria-busy={loading}>
+      <div className="flex flex-col gap-3 px-4 py-3" aria-busy={loading}>
         {loading ? (
           <div className="h-16 animate-pulse rounded-lg bg-muted/40" />
-        ) : rows.every((r) => OWNED_BY_CLASHES.has(r.type)) ? (
-          <p className="text-sm text-muted-foreground">
-            {t("No extra rules yet. Step 1 added the common ones. Add anything sharper here.")}
-          </p>
         ) : (
-          rows.map((record, i) => {
-            // Clash/session rows are edited in the "Clashes & sessions" section
-            // above; keep them in the saved list but don't render them here.
-            if (OWNED_BY_CLASHES.has(record.type)) return null;
-            const spec = byType.get(record.type);
-            if (!spec) return null;
-            return (
-              <ConstraintRow
-                key={`${record.type}-${i}`}
-                index={i}
-                record={record}
-                spec={spec}
-                scopeOptions={scopeOptionsFor(spec)}
-                teams={teams}
-                orderOptions={orderOptions}
-                badge={
-                  GLOBAL_SETUP_TYPES.has(record.type) &&
-                  (!record.scope || record.scope === "all")
-                    ? t("From Step 1")
-                    : undefined
-                }
-                onChange={(next) =>
-                  setRows(rows.map((r, j) => (j === i ? next : r)))
-                }
-                onRemove={() => setRows(rows.filter((_, j) => j !== i))}
-              />
-            );
-          })
+          /* Grouped by the QUESTION each rule answers (owner 2026-08-17), so a
+             rule is found by knowing what you want, not by knowing its name.
+             Every group is always shown — an empty one is how you discover the
+             rule you did not know existed. */
+          grouped.map(({ group, rows: idxs, addable }) => (
+            <section
+              key={group.key}
+              data-testid={`rule-group-${group.key}`}
+              className="flex flex-col gap-2 rounded-lg border border-border bg-background/40 p-3"
+            >
+              <div className="min-w-0">
+                <h4 className="text-xs font-semibold uppercase tracking-wide">
+                  {t(group.title)}
+                </h4>
+                <p className="text-xs text-muted-foreground">{t(group.blurb)}</p>
+              </div>
+
+              {idxs.map((i) => {
+                const record = rows[i]!;
+                const spec = byType.get(record.type);
+                if (!spec) return null;
+                return (
+                  <ConstraintRow
+                    key={`${record.type}-${i}`}
+                    index={i}
+                    record={record}
+                    spec={spec}
+                    scopeOptions={scopeOptionsFor(spec)}
+                    teams={teams}
+                    orderOptions={orderOptions}
+                    badge={
+                      GLOBAL_SETUP_TYPES.has(record.type) &&
+                      (!record.scope || record.scope === "all")
+                        ? t("From Step 1")
+                        : undefined
+                    }
+                    onChange={(next) =>
+                      setRows(rows.map((r, j) => (j === i ? next : r)))
+                    }
+                    onRemove={() => setRows(rows.filter((_, j) => j !== i))}
+                  />
+                );
+              })}
+
+              {idxs.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  {t("Nothing set here yet.")}
+                </p>
+              ) : null}
+
+              {addable.length ? (
+                <Select
+                  aria-label={`${t("Add a rule to")} ${t(group.title)}`}
+                  placeholder={t("Add a rule…")}
+                  value=""
+                  onChange={(type) => {
+                    const spec = byType.get(type);
+                    if (spec) setRows([...rows, defaultRecord(spec)]);
+                  }}
+                  options={addable.map((c) => ({
+                    value: c.type,
+                    label: t(c.label),
+                  }))}
+                  size="sm"
+                  className="w-full max-w-sm"
+                />
+              ) : null}
+            </section>
+          ))
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          <Select
-            aria-label={t("Add a rule")}
-            placeholder={t("Add a rule…")}
-            value=""
-            onChange={(type) => {
-              const spec = byType.get(type);
-              if (spec) setRows([...rows, defaultRecord(spec)]);
-            }}
-            options={(catalog.data ?? [])
-              .filter((c) => !OWNED_BY_CLASHES.has(c.type))
-              .map((c) => ({
-                value: c.type,
-                label: t(c.label),
-              }))}
-            size="sm"
-            className="w-72"
-          />
           <Button
             size="sm"
             disabled={!dirty || save.isPending}

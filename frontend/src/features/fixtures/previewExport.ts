@@ -70,8 +70,8 @@ const PDF_COLUMNS: [string, (r: PreviewRow) => string, string][] = [
   [t("Category"), (r) => r.categoryLabel, "muted"],
   [t("Stage"), (r) => r.group || r.stageLabel, ""],
   [t("Rd"), (r) => (r.round ? `R${r.round}` : "·"), "num"],
-  [t("Home"), (r) => r.home, "team"],
-  [t("Away"), (r) => r.away, "team"],
+  [t("Team 1"), (r) => r.home, "team"],
+  [t("Team 2"), (r) => r.away, "team"],
   [t("Status"), (r) => (r.placed ? t("Scheduled") : t("No time")), ""],
 ];
 

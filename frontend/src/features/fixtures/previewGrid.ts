@@ -596,8 +596,8 @@ const CSV_COLUMNS: [string, (r: PreviewRow) => string][] = [
   ["Stage", (r) => r.stageLabel],
   ["Group", (r) => r.group],
   ["Round", (r) => (r.round ? String(r.round) : "")],
-  ["Home", (r) => r.home],
-  ["Away", (r) => r.away],
+  ["Team 1", (r) => r.home],
+  ["Team 2", (r) => r.away],
   ["Status", (r) => (r.placed ? "Scheduled" : "No time")],
   ["Ref", (r) => r.ref],
 ];

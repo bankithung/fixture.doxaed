@@ -7,27 +7,30 @@ import type { JourneyStep } from "./setupJourney";
  * meaningful positions; "Clashes & sessions" (2) is an OPTIONAL step inserted
  * after the gate, so it never blocks and the required pointer skips over it
  * (readiness "no draw yet" points straight at "How each competition plays"). */
-type VisibleStep = 1 | 2 | 3 | 4;
+type VisibleStep = 1 | 2 | 3 | 4 | 5;
 
 const STEPS: { n: VisibleStep; label: string; optional?: boolean }[] = [
   { n: 1, label: "When & where" },
   { n: 2, label: "Clashes & sessions", optional: true },
-  { n: 3, label: "How each competition plays" },
-  { n: 4, label: "Preview & publish" },
+  // Every other rule, grouped, on its own page (owner 2026-08-17) — so the
+  // whole rule set is settled BEFORE a draw is generated around it.
+  { n: 3, label: "Rules", optional: true },
+  { n: 4, label: "How each competition plays" },
+  { n: 5, label: "Preview & publish" },
 ];
 
 /** Readiness pointer → the REQUIRED visible step it highlights (the optional
  * clashes step is never a required pointer). */
 const VISIBLE_POINTER: Record<"1" | "2" | "3" | "done", VisibleStep> = {
   "1": 1,
-  "2": 3,
-  "3": 3,
-  done: 4,
+  "2": 4,
+  "3": 4,
+  done: 5,
 };
 
 const NEXT_LINE: Record<"1" | "2" | "3" | "done", string> = {
   "1": "Next: set your tournament dates and venues.",
-  "2": "Next: set any clashes (optional), then choose how each competition plays.",
+  "2": "Next: set any clashes and rules (both optional), then choose how each competition plays.",
   "3": "Next: preview the schedule and publish it.",
   done: "All set. Your schedule is published.",
 };
@@ -37,9 +40,10 @@ const NEXT_LINE: Record<"1" | "2" | "3" | "done", string> = {
  * not the readiness pointer (which tracks draw generation, a later concern). */
 const ACTIVE_NEXT: Record<VisibleStep, string> = {
   1: "Set your dates and venues.",
-  2: "Optional: stop competitions clashing, or skip to formats.",
-  3: "Choose how each competition plays.",
-  4: "Preview each draw below, then publish.",
+  2: "Optional: stop competitions clashing, or skip ahead.",
+  3: "Optional: set the order competitions are scheduled in, and any other rules.",
+  4: "Choose how each competition plays.",
+  5: "Preview each draw below, then publish.",
 };
 
 /** Required dots are done strictly before the pointer; in the mixed step-3
@@ -59,16 +63,17 @@ function dotState(
   if (activeStep != null) {
     if (n === activeStep) return "current";
     if (doneSteps?.[n]) return "done";
-    if (n === 2) return "optional";
+    if (n === 2 || n === 3) return "optional";
     return "todo";
   }
-  if (n === 2) return step === 1 ? "todo" : "optional";
+  // Both optional steps (clashes, rules) sit between the gate and the formats.
+  if (n === 2 || n === 3) return step === 1 ? "todo" : "optional";
   if (step === "done") return "done";
-  if (step === 3) return n === 1 ? "done" : "current"; // 3 and 4 together
+  if (step === 3) return n === 1 ? "done" : "current"; // 4 and 5 together
   if (step === 1) return n === 1 ? "current" : "todo";
   // readiness "no draw yet" → required pointer is "How each competition plays"
   if (n === 1) return "done";
-  if (n === 3) return "current";
+  if (n === 4) return "current";
   return "todo";
 }
 
@@ -168,7 +173,7 @@ export function SetupJourneyHeader({
       </ol>
       {step !== "done" ? (
         <p className="text-xs text-muted-foreground sm:hidden">
-          {t(`Step ${shownStep} of 4: ${shownLabel}`)}
+          {t(`Step ${shownStep} of 5: ${shownLabel}`)}
         </p>
       ) : null}
       <p data-testid="journey-next" className="text-xs text-muted-foreground">
