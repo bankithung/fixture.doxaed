@@ -18,6 +18,8 @@ const ORDER_OPTIONS = [
   { value: "table_tennis", label: "All of Table Tennis" },
   { value: "table_tennis.u_14.boys", label: "U-14 · Boys" },
   { value: "table_tennis.u_14.girls", label: "U-14 · Girls" },
+  { value: "sepak_takraw", label: "All of Sepak Takraw" },
+  { value: "sepak_takraw.u_14.boys", label: "Sepak · U-14 · Boys" },
 ];
 
 function mount(record: ConstraintRecord, spec: ConstraintType) {
@@ -246,6 +248,27 @@ describe("ConstraintRow", () => {
         }),
       }),
     );
+  });
+
+  it("ranks within the rule's own sport, since sports run in parallel", async () => {
+    // Owner 2026-08-17: ordering table tennis against sepak says nothing when
+    // they are on separate courts, so a sport-scoped rule offers only its own.
+    mount(
+      { type: "competition_priority", scope: "sport:table_tennis", hard: false,
+        weight: 5, params: { order: [], mode: "sequential" } },
+      PRIORITY_SPEC,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Add to the order" }));
+    expect(
+      screen.getByRole("option", { name: "U-14 · Boys" }),
+    ).toBeInTheDocument();
+    // Another sport's competitions are not on offer here.
+    expect(screen.queryByRole("option", { name: /Sepak/ })).toBeNull();
+    expect(
+      screen.getByText(
+        "Ranked within this sport only. Other sports play in parallel on their own courts, so add a separate rule per sport.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("says plainly that an empty order changes nothing", () => {

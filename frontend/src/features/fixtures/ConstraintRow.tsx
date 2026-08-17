@@ -257,16 +257,34 @@ export function ConstraintRow({
 
   const renderParam = (key: string, kind: string): React.ReactElement => {
     if (kind === "order") {
+      // Ranked WITHIN the rule's scope (owner 2026-08-17): sports on separate
+      // courts run at the same time, so ordering table tennis against sepak
+      // says nothing. A rule scoped to one sport offers only that sport's
+      // competitions — one order per sport, which is how a day is actually run.
+      const scoped = record.scope?.startsWith("sport:")
+        ? record.scope.slice("sport:".length)
+        : "";
+      const options = scoped
+        ? orderOptions.filter(
+            (o) => o.value === scoped || o.value.startsWith(`${scoped}.`),
+          )
+        : orderOptions;
       return (
         <div key={key} className="flex w-full flex-col gap-1">
           <OrderedPicker
             label={paramLabel(key)}
             value={asList(record.params[key])}
-            options={orderOptions}
+            options={options}
             onChange={(v) => setParam(key, v)}
             testId={tid(key)}
           />
-          <Hint text={PARAM_HINTS[key]} />
+          <Hint
+            text={
+              scoped
+                ? "Ranked within this sport only. Other sports play in parallel on their own courts, so add a separate rule per sport."
+                : PARAM_HINTS[key]
+            }
+          />
         </div>
       );
     }
