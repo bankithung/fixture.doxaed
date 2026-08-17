@@ -99,7 +99,10 @@ export function SettingsTab(): React.ReactElement {
       }
       toast.push({
         kind: "success",
-        title: t("Saved"),
+        // A repair is not a change of mind: the mode was already right and the
+        // team form was not. Saying "Saved" there reads as "nothing happened",
+        // which is exactly the dead end this repairs.
+        title: sw?.repaired ? t("Team form brought up to date") : t("Saved"),
         description: bits.join(" · "),
       });
     },

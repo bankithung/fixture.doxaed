@@ -188,6 +188,77 @@ def test_the_migration_is_idempotent():
     assert r.data["roster_switch"]["seeded"] == 0  # nothing new to declare
 
 
+def test_reselecting_the_mode_repairs_a_form_an_older_build_left_typed():
+    """Owner 2026-08-18, live tournament: the flag was flipped by a build that
+    did not rebuild the form, so the funnel showed Participants while the public
+    team form still asked for typed names — and re-selecting the mode reported
+    "nothing to do", because the flag was already right. The switch has to
+    CONVERGE, not merely transition."""
+    from apps.forms.services.generation import generate_team_form_template
+    from apps.tournaments.services.roster_mode import team_form_matches_mode
+
+    admin = _verified("a@test.local")
+    t = create_tournament(user=admin, name="Stranded")
+    t.sports = [{
+        "key": "sepak_takraw", "name": "Sepak Takraw",
+        "categories": [{"key": "u14", "name": "U14",
+                        "children": [{"key": "boys", "name": "Boys"}]}],
+    }]
+    t.save(update_fields=["sports"])
+    # Exactly the stranded shape: a form generated while inline, then the flag
+    # set behind its back (what the older build did).
+    form = generate_team_form_template(tournament=t)
+    t.roster_mode = RosterMode.ROSTER_FIRST
+    t.save(update_fields=["roster_mode"])
+    assert team_form_matches_mode(t) is False
+
+    r = _client(admin).patch(
+        f"/api/tournaments/{t.id}/", {"roster_mode": "roster_first"},
+        format="json",
+    )
+    assert r.status_code == 200, r.data
+    # The flag did not move — the repair is the point.
+    assert r.data["roster_switch"]["changed"] is False
+    assert r.data["roster_switch"]["repaired"] is True
+    assert r.data["roster_switch"]["team_form_id"] == str(form.id)
+
+    form.refresh_from_db()
+    cg = (form.settings or {})["bindings"]["category_groups"][0]
+    assert "player_member" in cg
+    assert cg["player_name"] not in str(form.schema)
+    t.refresh_from_db()
+    assert team_form_matches_mode(t) is True
+
+
+def test_a_matching_form_is_left_alone_when_the_mode_is_reselected():
+    """The other half of converging: regenerating a form that is ALREADY right
+    would drop the rosters inside existing responses, so it must not happen."""
+    from apps.forms.services.generation import generate_team_form_template
+    from apps.tournaments.services.roster_mode import team_form_matches_mode
+
+    admin = _verified("a@test.local")
+    t = create_tournament(user=admin, name="Fine", roster_mode="roster_first")
+    t.sports = [{
+        "key": "sepak_takraw", "name": "Sepak Takraw",
+        "categories": [{"key": "u14", "name": "U14",
+                        "children": [{"key": "boys", "name": "Boys"}]}],
+    }]
+    t.save(update_fields=["sports"])
+    form = generate_team_form_template(tournament=t)
+    assert team_form_matches_mode(t) is True
+    before = form.updated_at
+
+    r = _client(admin).patch(
+        f"/api/tournaments/{t.id}/", {"roster_mode": "roster_first"},
+        format="json",
+    )
+    assert r.status_code == 200, r.data
+    assert r.data["roster_switch"]["repaired"] is False
+    assert r.data["roster_switch"]["team_form_id"] is None
+    form.refresh_from_db()
+    assert form.updated_at == before  # untouched
+
+
 def test_a_hand_built_team_form_is_never_overwritten():
     """The organizer's own work is theirs. Flagged, not rewritten."""
     from apps.forms.constants import FormPurpose

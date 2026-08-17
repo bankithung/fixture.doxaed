@@ -70,6 +70,10 @@ export const routes = {
    * any team exists — and which competitions each of them ended up in. */
   tournamentParticipants: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/participants`,
+  /** Who is playing what (owner 2026-08-17): the read-only workbench that
+   * answers "is this student in more than one event?" before the draw. */
+  tournamentParticipation: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/participation`,
   tournamentTeams: (id: string) => `/tournaments/${encodeURIComponent(id)}/teams`,
   tournamentFixtures: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/fixtures`,

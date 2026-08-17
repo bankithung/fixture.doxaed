@@ -44,6 +44,7 @@ import { MyProfilePage } from "@/features/roles/MyProfilePage";
 import { NotificationPrefsPage } from "@/features/roles/NotificationPrefsPage";
 import { HousesPage } from "@/features/tournaments/HousesPage";
 import { ParticipantsPage } from "@/features/tournaments/ParticipantsPage";
+import { ParticipationPage } from "@/features/tournaments/ParticipationPage";
 import { routes } from "@/lib/routes";
 import { t } from "@/lib/t";
 
@@ -254,6 +255,7 @@ export default function App(): React.ReactElement {
                   <Route path="institutions" element={<InstitutionsTab />} />
                   <Route path="houses" element={<HousesPage />} />
                   <Route path="participants" element={<ParticipantsPage />} />
+                  <Route path="participation" element={<ParticipationPage />} />
                   <Route path="teams" element={<TeamsTab />} />
                   <Route path="members" element={<TournamentMembersPage />} />
                   <Route path="fixtures" element={<FixturesTab />} />

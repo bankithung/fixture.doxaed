@@ -72,6 +72,66 @@ def _seed_from_teams(tournament, by=None) -> int:
     return len(new)
 
 
+def _generated_team_form(tournament):
+    """The generated team form, or None when there isn't one to touch.
+
+    "Generated" is the same gate ``:regenerate/`` uses — a hand-built form is
+    the organizer's own work and is never rewritten by any of this.
+    """
+    from apps.forms.constants import FormPurpose
+    from apps.forms.models import Form
+
+    form = (
+        Form.objects.filter(
+            tournament=tournament,
+            purpose=FormPurpose.TEAM_REGISTRATION,
+            deleted_at__isnull=True,
+        )
+        .order_by("created_at")
+        .first()
+    )
+    if form is None:
+        return None
+    settings = form.settings or {}
+    generated = (
+        settings.get("generated_from_sports")
+        or settings.get("generated_from")
+        or settings.get("bindings", {}).get("category_groups")
+    )
+    return form if generated else None
+
+
+def _asks_the_roster(form) -> bool:
+    """Does this schema PICK people from the declared roster? True exactly when
+    a player row is bound to ``roster_students`` — the one field that separates
+    a participants-first team form from a typed-name one."""
+    for section in (form.schema or {}).get("sections", []):
+        stack = list(section.get("fields", []))
+        while stack:
+            field = stack.pop()
+            if not isinstance(field, dict):
+                continue
+            if (field.get("data_source") or {}).get("type") == "roster_students":
+                return True
+            stack.extend(field.get("fields") or [])
+    return False
+
+
+def team_form_matches_mode(tournament) -> bool | None:
+    """Is the generated team form asking the questions this mode implies?
+
+    None when there is nothing to judge (no form, or a hand-built one). This is
+    what makes the switch CONVERGE rather than merely transition: a tournament
+    flipped to ``roster_first`` by an older build carries the flag but still
+    asks for typed names, and re-selecting the mode it already has has to
+    repair that instead of reporting "nothing to do" (owner 2026-08-18).
+    """
+    form = _generated_team_form(tournament)
+    if form is None:
+        return None
+    return _asks_the_roster(form) == (tournament.roster_mode == RosterMode.ROSTER_FIRST)
+
+
 def _rebuild_team_form(tournament, by=None, request=None) -> str | None:
     """Rebuild the generated team form for the new mode. Returns its id, or
     None when there is nothing to rebuild.
@@ -139,7 +199,37 @@ def switch_roster_mode(*, tournament, mode: str, by=None, request=None) -> dict:
         raise ValidationError("invalid_roster_mode")
     before = tournament.roster_mode
     if mode == before:
-        return {"mode": mode, "changed": False, "seeded": 0,
+        # Already in this mode — but "already" is not the same as "correct". A
+        # tournament flipped by an older build carries the flag with a team
+        # form that still asks for typed names, and that organizer has no way
+        # back in: the flag is right, so nothing would move. Re-selecting the
+        # mode repairs it (owner 2026-08-18). A form that already matches is
+        # left strictly alone — regenerating a live form would drop the
+        # rosters inside existing responses.
+        if team_form_matches_mode(tournament) is False:
+            seeded = (
+                _seed_from_teams(tournament, by=by)
+                if mode == RosterMode.ROSTER_FIRST else 0
+            )
+            form_id = _rebuild_team_form(tournament, by=by, request=request)
+            emit_audit(
+                actor_user=by,
+                actor_role=ActorRole.ADMIN,
+                event_type="tournament_roster_mode_repaired",
+                target_type="tournament",
+                target_id=tournament.id,
+                organization_id=tournament.organization_id,
+                payload_before={"roster_mode": mode, "team_form_stale": True},
+                payload_after={
+                    "roster_mode": mode, "participants_seeded": seeded,
+                    "team_form_rebuilt": form_id,
+                },
+                request=request,
+            )
+            return {"mode": mode, "changed": False, "repaired": True,
+                    "seeded": seeded, "team_form_id": form_id,
+                    "team_form_kept": False}
+        return {"mode": mode, "changed": False, "repaired": False, "seeded": 0,
                 "team_form_id": None, "team_form_kept": False}
     # Standing ON the stage that is about to stop existing would park the
     # tournament outside its own funnel. Step back first — the one case we
@@ -176,5 +266,5 @@ def switch_roster_mode(*, tournament, mode: str, by=None, request=None) -> dict:
         },
         request=request,
     )
-    return {"mode": mode, "changed": True, "seeded": seeded,
+    return {"mode": mode, "changed": True, "repaired": False, "seeded": seeded,
             "team_form_id": form_id, "team_form_kept": kept}

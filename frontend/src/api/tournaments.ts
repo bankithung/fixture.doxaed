@@ -106,6 +106,9 @@ export type RosterMode = "inline" | "roster_first";
 export interface RosterSwitch {
   mode: RosterMode;
   changed: boolean;
+  /** The mode was already right but the team form was not, and was rebuilt —
+   * re-selecting the mode you already have repairs it (owner 2026-08-18). */
+  repaired?: boolean;
   /** Players already registered that became declared participants. */
   seeded: number;
   /** The generated team form rebuilt to match the new mode, if any. */

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, UserSquare2 } from "lucide-react";
+import { Plus, TableProperties, Trash2, UserSquare2 } from "lucide-react";
 import {
   tournamentsApi,
   type RosterMember,
@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/toast";
 import { ApiError } from "@/types/api";
 import { humanizeLeaf } from "@/features/controlroom/format";
 import { useBreakpoint } from "@/lib/useBreakpoint";
+import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
@@ -163,7 +164,19 @@ export function ParticipantsPage(): React.ReactElement {
             </p>
           </div>
           {counts ? (
-            <ul className="flex flex-wrap gap-2" data-testid="roster-counts">
+            <ul className="flex flex-wrap items-center gap-2" data-testid="roster-counts">
+              {/* The counts say HOW MANY are in more than one; the workbench
+                  says WHO, which is the question a draw actually needs. */}
+              <li>
+                <Link
+                  to={routes.tournamentParticipation(id)}
+                  data-testid="open-participation"
+                  className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-accent"
+                >
+                  <TableProperties aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t("Who is playing what")}
+                </Link>
+              </li>
               {[
                 { key: "students", label: t("students"), n: counts.students },
                 { key: "teachers", label: t("teachers"), n: counts.teachers },
