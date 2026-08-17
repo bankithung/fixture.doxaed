@@ -110,7 +110,16 @@ def test_the_player_row_picks_instead_of_asking_again():
 
     picker = keys[cg["player_member"]]
     assert picker["type"] == "dropdown"
-    assert picker["data_source"] == {"type": "roster_students"}
+    # Bound to the participants sheet at the top of THIS form (owner
+    # 2026-08-17), so the list is what the school just typed — no second form
+    # to publish and no roster to wait for.
+    assert picker["data_source"] == {
+        "type": "form_group",
+        "group": "participant_students",
+        "value_field": "participant_id",
+        "label_field": "participant_name",
+        "hint_field": "participant_class",
+    }
     # The questions the participants sheet already answered are gone.
     assert cg["player_name"] not in keys
     assert cg["player_dob"] not in keys
@@ -120,7 +129,12 @@ def test_the_teacher_in_charge_is_picked_too():
     _t, _inst, form = _fixture("staff")
     keys = {f["key"]: f for f in _all_fields(form.schema)}
     cg = _cg(form)
-    assert keys[cg["staff_member"]]["data_source"] == {"type": "roster_teachers"}
+    assert keys[cg["staff_member"]]["data_source"] == {
+        "type": "form_group",
+        "group": "participant_staff",
+        "value_field": "staff_id",
+        "label_field": "staff_full_name",
+    }
     # It REPLACES the free-text coach group — asking for both would collect the
     # same teacher twice, under two identities.
     assert cg["coach_name"] not in keys

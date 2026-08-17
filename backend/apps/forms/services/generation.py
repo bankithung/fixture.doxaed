@@ -317,6 +317,82 @@ def build_team_form_schema(
         }
     ]
 
+    # THE PARTICIPANTS SHEET, INSIDE THIS FORM (owner 2026-08-17).
+    #
+    # Participants-first used to mean a SECOND form: a separate sheet an
+    # organizer had to publish, each school code-verified again, before the
+    # pickers here had anything in them. In practice that left a team form whose
+    # every dropdown was empty and no way to fill it from where you were
+    # standing. The school now declares its people in step one of THIS form and
+    # picks them in the steps that follow — one visit, one gate, one submission.
+    #
+    # Each row carries a generated ``row_key`` id. The pickers store that id
+    # rather than the typed name, which is the whole point: two children with
+    # the same name stay two children, and the mapper can tell which one a team
+    # meant. Names are still what a human reads, so the id never surfaces.
+    participants_section: list[dict] = []
+    if roster:
+        participants_section = [{
+            "key": "participants",
+            "title": "Your participants",
+            "description": (
+                "Enter everyone taking part for your institution, once. "
+                "The teams you enter next pick from this list."
+            ),
+            "fields": [
+                {
+                    "key": "participant_students",
+                    "type": "group",
+                    "label": "Student",
+                    "repeatable": True,
+                    "row_key": "participant_id",
+                    "help": (
+                        "Every student who will play in any competition. "
+                        "Enter each one once, even if they play in several."
+                    ),
+                    "fields": [
+                        {"key": "participant_id", "type": "hidden", "label": ""},
+                        {"key": "participant_name", "type": "short_text",
+                         "label": "Full name", "required": True},
+                        {"key": "participant_class", "type": "short_text",
+                         "label": "Class & section", "required": False},
+                        {"key": "participant_roll", "type": "short_text",
+                         "label": "Roll number", "required": False,
+                         "help": "Used to tell two same-named students apart."},
+                        {"key": "participant_dob", "type": "date",
+                         "label": "Date of birth", "required": False},
+                        {"key": "participant_gender", "type": "dropdown",
+                         "label": "Gender", "required": False,
+                         "options": [
+                             {"value": "male", "label": "Male"},
+                             {"value": "female", "label": "Female"},
+                             {"value": "other", "label": "Other"},
+                         ]},
+                    ],
+                },
+                {
+                    "key": "participant_staff",
+                    "type": "group",
+                    "label": "Teacher in charge",
+                    "repeatable": True,
+                    "row_key": "staff_id",
+                    "help": (
+                        "The teachers travelling with your teams. A teacher "
+                        "cannot be in two places at once, so the draw keeps "
+                        "their matches apart."
+                    ),
+                    "fields": [
+                        {"key": "staff_id", "type": "hidden", "label": ""},
+                        {"key": "staff_full_name", "type": "short_text",
+                         "label": "Full name", "required": True},
+                        {"key": "staff_phone", "type": "phone",
+                         "label": "Phone", "required": False},
+                    ],
+                },
+            ],
+        }]
+        sections.extend(participants_section)
+
     category_groups: list[dict] = []
     used_slugs: set[str] = set()
     for v, lbl, extra in cat_opts:
@@ -336,8 +412,17 @@ def build_team_form_schema(
                 *([
                     {"key": f"player_member_{slug}", "type": "dropdown",
                      "label": "Student", "required": True, "options": [],
-                     "data_source": {"type": "roster_students"},
-                     "help": "Pick from the participants your school declared."},
+                     # Bound to the sheet at the top of THIS form, so the list
+                     # is whatever the school just typed — no second form, no
+                     # second code, nothing to publish first.
+                     "data_source": {
+                         "type": "form_group",
+                         "group": "participant_students",
+                         "value_field": "participant_id",
+                         "label_field": "participant_name",
+                         "hint_field": "participant_class",
+                     },
+                     "help": "Pick from the participants you entered in step 1."},
                     {"key": f"player_jersey_{slug}", "type": "number",
                      "label": "Jersey number", "required": False},
                 ] if roster else []),
@@ -432,7 +517,12 @@ def build_team_form_schema(
                                   {"key": f"staff_member_{slug}",
                                    "type": "dropdown", "label": "Teacher",
                                    "required": True, "options": [],
-                                   "data_source": {"type": "roster_teachers"},
+                                   "data_source": {
+                                       "type": "form_group",
+                                       "group": "participant_staff",
+                                       "value_field": "staff_id",
+                                       "label_field": "staff_full_name",
+                                   },
                                    "help": "One teacher cannot be in two "
                                            "places at once — the draw keeps "
                                            "their matches apart."},
@@ -552,6 +642,24 @@ def build_team_form_schema(
         "contact_email": "contact_email",
         "contact_phone": "contact_phone",
         "category_groups": category_groups,
+        # The in-form participants sheet (owner 2026-08-17). Present only when
+        # the tournament declares people first; the mapper creates these rows
+        # BEFORE the teams, then resolves each pick against them by row id.
+        **({
+            "participants": {
+                "students_group": "participant_students",
+                "student_id": "participant_id",
+                "student_name": "participant_name",
+                "student_class": "participant_class",
+                "student_roll": "participant_roll",
+                "student_dob": "participant_dob",
+                "student_gender": "participant_gender",
+                "staff_group": "participant_staff",
+                "staff_id": "staff_id",
+                "staff_name": "staff_full_name",
+                "staff_phone": "staff_phone",
+            },
+        } if roster else {}),
     }
     return schema, bindings
 

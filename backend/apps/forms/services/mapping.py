@@ -427,6 +427,49 @@ def _selected_leaves(settings: dict, answers: dict) -> list[str]:
     return leaves
 
 
+def _participants_from(bindings: dict, answers: dict) -> list[dict]:
+    """The participants sheet at the top of a team form, as flat rows.
+
+    Owner 2026-08-17: the school declares its people HERE, in the same
+    submission as its teams, and every player/teacher dropdown below picks a
+    row of this list by its generated ``row_id``. Returns [] for a form
+    generated before the sheet existed, which is what keeps every older form
+    mapping exactly as it did.
+    """
+    p = bindings.get("participants") or {}
+    if not p:
+        return []
+    out: list[dict] = []
+    for row in answers.get(p.get("students_group", ""), []) or []:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get(p.get("student_name", "")) or "").strip()
+        if not name:
+            continue  # a half-typed row is not a person
+        out.append({
+            "row_id": str(row.get(p.get("student_id", "")) or ""),
+            "kind": "student",
+            "full_name": name,
+            "class_section": str(row.get(p.get("student_class", "")) or "").strip(),
+            "roll_no": str(row.get(p.get("student_roll", "")) or "").strip(),
+            "date_of_birth": row.get(p.get("student_dob", "")) or None,
+            "gender": str(row.get(p.get("student_gender", "")) or "").strip(),
+        })
+    for row in answers.get(p.get("staff_group", ""), []) or []:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get(p.get("staff_name", "")) or "").strip()
+        if not name:
+            continue
+        out.append({
+            "row_id": str(row.get(p.get("staff_id", "")) or ""),
+            "kind": "teacher",
+            "full_name": name,
+            "contact_phone": str(row.get(p.get("staff_phone", "")) or "").strip(),
+        })
+    return out
+
+
 def _map_team_registration(resp: FormResponse) -> FormResponse:
     form = resp.form
     b = (form.settings or {}).get("bindings", {})
@@ -631,6 +674,7 @@ def _map_team_registration_multi(resp, form, b, a) -> FormResponse:
         event_id=derived_event_id,
         institution_id=institution_id,
         group_id=group_id,
+        participants=_participants_from(b, a),
     ) if teams_payload else []
     resp.mapped_entities = {"team_ids": [str(t.id) for t in teams]}
     resp.save(update_fields=["mapped_entities"])

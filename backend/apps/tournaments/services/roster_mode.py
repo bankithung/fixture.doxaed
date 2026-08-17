@@ -102,16 +102,22 @@ def _generated_team_form(tournament):
 
 
 def _asks_the_roster(form) -> bool:
-    """Does this schema PICK people from the declared roster? True exactly when
-    a player row is bound to ``roster_students`` — the one field that separates
-    a participants-first team form from a typed-name one."""
+    """Does this schema PICK people rather than ask for typed names?
+
+    True when a player row is bound to a person list — either the sheet at the
+    top of this same form (``form_group``, owner 2026-08-17) or the separately
+    declared roster (``roster_students``, the original shape). Both count:
+    what makes a form participants-first is that the player is CHOSEN, not
+    which list it is chosen from.
+    """
+    picks = {"roster_students", "form_group"}
     for section in (form.schema or {}).get("sections", []):
         stack = list(section.get("fields", []))
         while stack:
             field = stack.pop()
             if not isinstance(field, dict):
                 continue
-            if (field.get("data_source") or {}).get("type") == "roster_students":
+            if (field.get("data_source") or {}).get("type") in picks:
                 return True
             stack.extend(field.get("fields") or [])
     return False

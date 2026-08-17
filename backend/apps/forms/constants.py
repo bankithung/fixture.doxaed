@@ -56,6 +56,8 @@ FIELD_TYPES = frozenset({
     "short_text", "long_text", "single_choice", "multi_choice", "dropdown",
     "email", "phone", "number", "date", "time", "rating", "linear_scale",
     "address", "file_upload", "section_text", "yes_no", "group",
+    # Generated row identity, submitted but never shown (owner 2026-08-17).
+    "hidden",
 })
 
 # Field types that carry an `options` array.

@@ -25,7 +25,10 @@ export type FieldType =
   | "file_upload"
   | "section_text"
   | "yes_no"
-  | "group";
+  | "group"
+  // A generated row id: submitted, but never rendered and never typed. It is
+  // the identity a picker elsewhere in the form points at (owner 2026-08-17).
+  | "hidden";
 
 export type VisibilityOp =
   | "equals"
@@ -83,6 +86,7 @@ export type FieldRole = "title" | "email" | "phone" | "name";
 export interface Field {
   key: string;
   type: FieldType;
+  /** Empty only on `hidden` fields, which name nothing anyone can see. */
   label: string;
   help?: string;
   required?: boolean;
@@ -109,9 +113,21 @@ export interface Field {
   /** false = keep this choice field OUT of the public directory's
    * filters/breakdown (the generator opts chain questions out). */
   directory?: boolean;
-  /** Live-bound options resolved by the server at fetch time
-   * (e.g. {type: "institution_list"}). */
-  data_source?: { type: string };
+  /** Live-bound options. Some are resolved by the server at fetch time
+   * (`institution_list`), some arrive with the access-code exchange
+   * (`roster_students`), and `form_group` is resolved from THIS form's own
+   * answers — the participants the school is typing right now (owner
+   * 2026-08-17), named by `group`/`value_field`/`label_field`. */
+  data_source?: {
+    type: string;
+    group?: string;
+    value_field?: string;
+    label_field?: string;
+    hint_field?: string;
+  };
+  /** Repeatable group whose new rows get a generated id in this child key, so
+   * a picker elsewhere can reference one row and survive reordering. */
+  row_key?: string;
   /** `type: "file_upload"` → allow several files (value becomes an array of
    * upload refs) and/or constrain the picker's accepted types. */
   multiple?: boolean;

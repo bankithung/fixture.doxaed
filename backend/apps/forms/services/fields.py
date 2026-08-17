@@ -155,6 +155,10 @@ _HANDLERS: dict[str, Callable[[dict, Any], Any]] = {
     "email": _email, "phone": _phone, "number": _number,
     "date": _date, "time": _time, "rating": _rating, "linear_scale": _linear_scale,
     "address": _address, "yes_no": _yes_no, "file_upload": _file_upload,
+    # A generated row id (owner 2026-08-17). Never rendered and never typed, but
+    # it IS submitted — it is the identity a picker elsewhere in the form points
+    # at — so it validates as the opaque string it is.
+    "hidden": _text,
 }
 
 

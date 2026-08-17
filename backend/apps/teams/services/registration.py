@@ -24,6 +24,7 @@ from apps.teams.models import (
     Player,
     RegistrationLink,
     RosterMember,
+    RosterMemberKind,
     RosterMemberStatus,
     Team,
     TeamStaff,
@@ -142,7 +143,90 @@ def _staff_ref(entry) -> tuple[str, str]:
     return str(entry or ""), "in_charge"
 
 
-def _resolve_members(tournament, institution, teams: list[dict]) -> dict[str, RosterMember]:
+def _declare_participants(
+    tournament, institution, group, rows: list[dict], by=None,
+) -> dict[str, RosterMember]:
+    """Turn the form's own participants sheet into declared people.
+
+    Returns ``{row_id: RosterMember}`` — the map the team picks below resolve
+    against, since a pick made in this form names a row of this form.
+
+    **Idempotent within a school**, on the same identity rule the layer already
+    used: a roll number if the school gives one, else the name. A school that
+    resubmits its sheet updates its people in place instead of doubling them,
+    and a person already declared through any other route is reused rather than
+    duplicated — which is the entire reason this layer exists.
+    """
+    if not rows:
+        return {}
+    existing = list(
+        RosterMember.objects.filter(
+            tournament=tournament, institution=institution,
+            deleted_at__isnull=True,
+        ).select_related("person")
+    )
+    by_roll = {
+        m.roll_no.strip().lower(): m for m in existing if (m.roll_no or "").strip()
+    }
+    by_name = {m.person.full_name.strip().lower(): m for m in existing}
+
+    out: dict[str, RosterMember] = {}
+    for row in rows:
+        name = str(row.get("full_name") or "").strip()
+        if not name:
+            continue
+        roll = str(row.get("roll_no") or "").strip()
+        kind = (
+            RosterMemberKind.TEACHER
+            if row.get("kind") == "teacher" else RosterMemberKind.STUDENT
+        )
+        # A roll number is the school's OWN discriminator, so when one is given
+        # it decides alone. Falling back to the name here would merge the two
+        # same-named children this layer exists to keep apart — they differ by
+        # roll and by nothing else.
+        member = (
+            by_roll.get(roll.lower()) if roll else by_name.get(name.lower())
+        )
+        if member is None:
+            person = Person.objects.create(full_name=name)
+            member = RosterMember(
+                organization_id=tournament.organization_id,
+                tournament=tournament,
+                institution=institution,
+                group=group,
+                person=person,
+                kind=kind,
+                status=RosterMemberStatus.ACTIVE,
+                created_by=by,
+            )
+        else:
+            member.person.full_name = name
+            member.person.save(update_fields=["full_name"])
+            member.kind = kind
+        member.roll_no = roll[:40]
+        member.class_section = str(row.get("class_section") or "").strip()[:60]
+        member.gender = str(row.get("gender") or "").strip()[:20]
+        member.contact_phone = str(row.get("contact_phone") or "").strip()[:40]
+        dob = row.get("date_of_birth") or None
+        if dob:
+            member.date_of_birth = dob
+        member.save()
+        if roll:
+            by_roll[roll.lower()] = member
+        by_name[name.lower()] = member
+        row_id = str(row.get("row_id") or "").strip()
+        if row_id:
+            out[row_id] = member
+        # A pick may also carry the member's real id (an older form, or an
+        # organizer editing), so accept that spelling too.
+        out[str(member.id)] = member
+    return out
+
+
+def _resolve_members(
+    tournament, institution, teams: list[dict],
+    extra: dict[str, RosterMember] | None = None,
+) -> dict[str, RosterMember]:
     """Every declared participant the submission PICKS, keyed by id.
 
     Scoped to the submitting institution on purpose: a school fielding another
@@ -162,8 +246,11 @@ def _resolve_members(tournament, institution, teams: list[dict]) -> dict[str, Ro
                 wanted.add(mid)
     if not wanted:
         return {}
-    valid = [m for m in wanted if _is_uuid(m)]
-    found = {
+    # Rows declared by THIS submission resolve first — their ids are the
+    # form's own row keys, which no database lookup could ever find.
+    found = {k: v for k, v in (extra or {}).items() if k in wanted}
+    valid = [m for m in wanted - set(found) if _is_uuid(m)]
+    found.update({
         str(m.id): m
         for m in RosterMember.objects.filter(
             id__in=valid,
@@ -172,7 +259,7 @@ def _resolve_members(tournament, institution, teams: list[dict]) -> dict[str, Ro
             deleted_at__isnull=True,
             status=RosterMemberStatus.ACTIVE,
         ).select_related("person")
-    }
+    })
     missing = sorted(wanted - set(found))
     if missing:
         raise ValidationError(f"participant_not_in_roster:{missing[0]}")
@@ -208,6 +295,11 @@ def register_school(
     # working; `group` is what actually distinguishes the competitors.
     group=None,
     group_id=None,
+    # The participants sheet carried IN this submission (owner 2026-08-17):
+    # [{row_id, kind, full_name, class_section?, roll_no?, date_of_birth?,
+    # gender?, contact_phone?}]. Declared before the teams are built, so a
+    # team's pick can name a person this same submission introduced.
+    participants: list[dict] | None = None,
 ) -> list[Team]:
     """Create the school's teams + players. Returns the created Team rows.
 
@@ -307,7 +399,14 @@ def register_school(
             # Participants-first (spec 2026-08-17): identities the submission
             # PICKS rather than types. Resolved once, up front, so a bad id
             # fails the whole submission before any row is written.
-            picked = _resolve_members(tournament, resolved, teams)
+            # The sheet at the top of the form comes first: its rows BECOME
+            # declared participants, and the map it returns is what the picks
+            # below resolve against.
+            in_form = _declare_participants(
+                tournament, resolved, resolved_group, participants or [],
+                by=submitted_by,
+            )
+            picked = _resolve_members(tournament, resolved, teams, extra=in_form)
 
             for td in teams:
                 team = Team.objects.create(

@@ -43,7 +43,9 @@ def _check_field(field: dict) -> None:
     ftype = field.get("type")
     if ftype not in FIELD_TYPES:
         raise SchemaError(f"unknown field type: {ftype}")
-    if not field.get("label"):
+    # A hidden field is machinery (a generated row id), never rendered — a
+    # label on it would name nothing anyone can see.
+    if not field.get("label") and ftype != "hidden":
         raise SchemaError(f"field {field.get('key')} missing label")
     if "role" in field and field["role"] not in PROMOTED_ROLES:
         raise SchemaError(f"unknown role: {field['role']}")

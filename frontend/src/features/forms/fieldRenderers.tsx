@@ -54,6 +54,13 @@ const ADDRESS_PARTS: { key: string; label: string }[] = [
   { key: "pincode", label: "PIN code" },
 ];
 
+/** A short, collision-free id for a new repeatable row. It only has to be
+ * unique inside one submission, and it must not depend on row position — the
+ * whole point is that it survives an edit or a reorder. */
+function newRowId(): string {
+  return `r${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+}
+
 function asString(v: unknown): string {
   return v === undefined || v === null ? "" : String(v);
 }
@@ -275,7 +282,7 @@ export function FieldRenderer({
   disabled,
   optionExtra,
   hideLabel,
-}: FieldRenderProps): React.ReactElement {
+}: FieldRenderProps): React.ReactElement | null {
   const id = useId();
   const labelId = `${id}-label`;
   const describedBy = field.help ? `${id}-help` : undefined;
@@ -312,6 +319,10 @@ export function FieldRenderer({
     choiceSearch && visibleOptions.length === 0 ? (
       <p className="text-sm text-muted-foreground">{t("No matches.")}</p>
     ) : null;
+
+  // A generated row id. It is real submitted data — it is what a picker below
+  // points at — but it is machinery, so it never appears on screen.
+  if (field.type === "hidden") return null;
 
   // section_text is display-only: render a static block with no control.
   if (field.type === "section_text") {
@@ -670,7 +681,15 @@ export function FieldRenderer({
                   variant="outline"
                   size="sm"
                   className="w-fit"
-                  onClick={() => onChange([...rows, {}])}
+                  onClick={() =>
+                    onChange([
+                      ...rows,
+                      // A row a picker can point at needs an identity of its
+                      // own: minted here, at creation, so it survives editing
+                      // and reordering (two same-named students stay two).
+                      field.row_key ? { [field.row_key]: newRowId() } : {},
+                    ])
+                  }
                 >
                   <Plus aria-hidden="true" className="h-4 w-4" />
                   {t(`Add ${rowLabel}`)}

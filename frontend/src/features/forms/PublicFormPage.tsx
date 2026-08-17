@@ -82,6 +82,51 @@ function withRoster(schema: FormSchema, roster: RosterPayload | null): FormSchem
   };
 }
 
+/**
+ * Fill the person pickers from the participants sheet at the top of THIS form.
+ *
+ * Owner 2026-08-17: a school declares its people in step one and picks them in
+ * the steps that follow, so the options are whatever it has typed a moment ago
+ * — there is no second form to publish and no roster to wait for. Grafted onto
+ * the schema exactly like `withRoster`, so the renderer, the branching engine
+ * and the review step all still see one ordinary schema.
+ *
+ * A row with no name yet is not offered: half a typed row is not a person.
+ */
+function withFormGroups(
+  schema: FormSchema,
+  values: Record<string, unknown>,
+): FormSchema {
+  const optionsFor = (ds: NonNullable<Field["data_source"]>) => {
+    const rows = values[ds.group ?? ""];
+    if (!Array.isArray(rows)) return [];
+    return rows
+      .map((row) => {
+        const r = (row ?? {}) as Record<string, unknown>;
+        const value = String(r[ds.value_field ?? ""] ?? "");
+        const label = String(r[ds.label_field ?? ""] ?? "").trim();
+        const hint = String(r[ds.hint_field ?? ""] ?? "").trim();
+        return { value, label: hint ? `${label} · ${hint}` : label };
+      })
+      .filter((o) => o.value && o.label);
+  };
+  const fill = (fields: Field[]): Field[] =>
+    fields.map((f) => {
+      const next =
+        f.data_source?.type === "form_group"
+          ? { ...f, options: optionsFor(f.data_source) }
+          : f;
+      return next.fields ? { ...next, fields: fill(next.fields) } : next;
+    });
+  return {
+    ...schema,
+    sections: (schema.sections ?? []).map((s) => ({
+      ...s,
+      fields: fill(s.fields ?? []),
+    })),
+  };
+}
+
 /** Pull a DRF `{ errors: { field: msg } }` map off an ApiError, if present.
  * Nested-group errors arrive with dotted paths ("teams_u15.0.players_u15");
  * they're mapped onto their TOP-LEVEL field key so the failing group
@@ -258,10 +303,12 @@ export function PublicFormPage(): React.ReactElement {
   const houseRoster = houseField
     ? (data?.roster_by_house?.[String(answers[houseField.key] ?? "")] ?? null)
     : null;
+  // The in-form participants sheet is filled LAST, so a school that typed its
+  // people a moment ago sees them in every picker below without a reload.
   const schema = useMemo(
-    () => withRoster(rawSchema, houseRoster ?? roster),
+    () => withFormGroups(withRoster(rawSchema, houseRoster ?? roster), answers),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [form?.schema, roster, houseRoster],
+    [form?.schema, roster, houseRoster, answers],
   );
 
   // --- Institution-aware competition scoping (team forms) ------------------
