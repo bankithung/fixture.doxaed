@@ -181,6 +181,27 @@ def _leaf_options(tournament) -> list[tuple[str, str, dict]]:
     return out
 
 
+def _event_options(tournament) -> list[dict]:
+    """What a participant can say they are here for: a whole sport, or one
+    exact competition (owner 2026-08-17 — "either select sport or select per
+    category, can have any option").
+
+    Both granularities in one list, sport first, because a school often knows
+    "she plays table tennis" long before it knows which category. The values
+    are the same keys the engine matches on, so the competition steps can
+    pre-fill from them without a second mapping.
+    """
+    out: list[dict] = []
+    for sport in getattr(tournament, "sports", None) or []:
+        key = sport.get("key")
+        if not key:
+            continue
+        out.append({"value": key, "label": f"All of {sport.get('name') or key}"})
+    for value, label, _extra in _leaf_options(tournament):
+        out.append({"value": value, "label": label})
+    return out
+
+
 def build_team_form_schema(
     org_form: Form | None, tournament=None
 ) -> tuple[dict, dict]:
@@ -335,10 +356,7 @@ def build_team_form_schema(
         participants_section = [{
             "key": "participants",
             "title": "Your participants",
-            "description": (
-                "Enter everyone taking part for your institution, once. "
-                "The teams you enter next pick from this list."
-            ),
+            "description": "Enter your people once. The teams you enter next pick from this list.",
             "fields": [
                 {
                     "key": "participant_students",
@@ -346,10 +364,7 @@ def build_team_form_schema(
                     "label": "Student",
                     "repeatable": True,
                     "row_key": "participant_id",
-                    "help": (
-                        "Every student who will play in any competition. "
-                        "Enter each one once, even if they play in several."
-                    ),
+                    "help": "Add each student once, even if they play in several competitions.",
                     "fields": [
                         {"key": "participant_id", "type": "hidden", "label": ""},
                         {"key": "participant_name", "type": "short_text",
@@ -357,8 +372,7 @@ def build_team_form_schema(
                         {"key": "participant_class", "type": "short_text",
                          "label": "Class & section", "required": False},
                         {"key": "participant_roll", "type": "short_text",
-                         "label": "Roll number", "required": False,
-                         "help": "Used to tell two same-named students apart."},
+                         "label": "Roll number", "required": False},
                         {"key": "participant_dob", "type": "date",
                          "label": "Date of birth", "required": False},
                         {"key": "participant_gender", "type": "dropdown",
@@ -368,25 +382,40 @@ def build_team_form_schema(
                              {"value": "female", "label": "Female"},
                              {"value": "other", "label": "Other"},
                          ]},
+                        # What this person is here for (owner 2026-08-17). A
+                        # whole sport or one exact competition — the school
+                        # says whichever it actually knows. The competition
+                        # steps below pre-fill from these answers, so the list
+                        # is typed once and lands where it belongs; every
+                        # pre-filled row stays editable.
+                        {"key": "participant_events", "type": "multi_choice",
+                         "label": "Playing in", "required": False,
+                         "directory": False,
+                         "help": "Pick a sport, or the exact competitions.",
+                         "options": _event_options(tournament)},
                     ],
                 },
+                {"key": "team_logo", "type": "file_upload",
+                 "label": "Your logo", "required": False, "accept": "image/*",
+                 "help": "Optional. Used for every team you enter."},
                 {
                     "key": "participant_staff",
                     "type": "group",
                     "label": "Teacher in charge",
                     "repeatable": True,
                     "row_key": "staff_id",
-                    "help": (
-                        "The teachers travelling with your teams. A teacher "
-                        "cannot be in two places at once, so the draw keeps "
-                        "their matches apart."
-                    ),
+                    "help": "Their matches are kept apart, so one teacher is never in two places.",
                     "fields": [
                         {"key": "staff_id", "type": "hidden", "label": ""},
                         {"key": "staff_full_name", "type": "short_text",
                          "label": "Full name", "required": True},
                         {"key": "staff_phone", "type": "phone",
                          "label": "Phone", "required": False},
+                        {"key": "staff_events", "type": "multi_choice",
+                         "label": "In charge of", "required": False,
+                         "directory": False,
+                         "help": "Pick a sport, or the exact competitions.",
+                         "options": _event_options(tournament)},
                     ],
                 },
             ],
@@ -502,11 +531,16 @@ def build_team_form_schema(
                         "fields": [
                             {"key": tkey, "type": "short_text", "label": "Team name",
                              "required": False,
-                             "help": "Leave blank to use your institution's name."},
-                            {"key": f"team_logo_{slug}", "type": "file_upload",
-                             "label": "Team logo", "required": False,
-                             "accept": "image/*",
-                             "help": "Optional — upload an image; it's compressed automatically."},
+                             "help": "Defaults to your institution's name. Edit it if you want another."},
+                            # Asked ONCE, up on the participants sheet, when
+                            # there is one (owner 2026-08-17). A typed-name
+                            # form has no such sheet, so it keeps its own.
+                            *([] if roster else [
+                                {"key": f"team_logo_{slug}", "type": "file_upload",
+                                 "label": "Team logo", "required": False,
+                                 "accept": "image/*",
+                                 "help": "Optional — upload an image; it's compressed automatically."},
+                            ]),
                             # The teacher in charge: PICKED once the school has
                             # declared its staff, because the draw keys its
                             # keep-apart rule on that exact person. Typed
@@ -554,7 +588,7 @@ def build_team_form_schema(
             # captured on the response + uploads for the admin to review).
             "player_dob": f"player_dob_{slug}",
             "player_docs": f"player_docs_{slug}",
-            "team_logo": f"team_logo_{slug}",
+            "team_logo": "team_logo" if roster else f"team_logo_{slug}",
             "coaches_group": f"coaches_{slug}",
             "coach_name": f"coach_name_{slug}",
             "coach_docs": f"coach_docs_{slug}",
@@ -654,10 +688,12 @@ def build_team_form_schema(
                 "student_roll": "participant_roll",
                 "student_dob": "participant_dob",
                 "student_gender": "participant_gender",
+                "student_events": "participant_events",
                 "staff_group": "participant_staff",
                 "staff_id": "staff_id",
                 "staff_name": "staff_full_name",
                 "staff_phone": "staff_phone",
+                "staff_events": "staff_events",
             },
         } if roster else {}),
     }

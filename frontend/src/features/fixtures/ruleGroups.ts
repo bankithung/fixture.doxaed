@@ -20,6 +20,15 @@ export interface RuleGroup {
   /** What this group is for, in one line — the question it answers. */
   blurb: string;
   types: string[];
+  /** The rule this group mainly exists for. While no record of it is saved the
+   * group offers it as a NAMED action rather than an entry in a dropdown —
+   * the owner asked twice where the ordering control was, which is what a
+   * dropdown of fourteen does to the one rule you came for. */
+  primary?: string;
+  /** What to call that action. */
+  primaryLabel?: string;
+  /** What the group does when nothing is set, in the group's own terms. */
+  emptyHint?: string;
 }
 
 /** Rule types owned by the "Clashes & sessions" step, which has its own
@@ -37,6 +46,10 @@ export const RULE_GROUPS: RuleGroup[] = [
     title: "Order & priority",
     blurb:
       "Which competition gets the early slots, and which rounds are held back for the closing days.",
+    primary: "competition_priority",
+    primaryLabel: "Set which competition is scheduled first",
+    emptyHint:
+      "Competitions currently take slots in whatever order the draw produced them. Rank them to decide which plays first.",
     types: [
       "competition_priority",
       "closing_rounds_window",

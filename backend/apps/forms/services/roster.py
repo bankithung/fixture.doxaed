@@ -89,7 +89,14 @@ def _parse_teams(resp: FormResponse, inst_name: str) -> list[dict]:
                     "name": str(cname),
                     "documents": _files(cr.get(cg.get("coach_docs")), meta),
                 })
-            logo = _files(row.get(cg.get("team_logo")), meta)
+            # The logo is asked ONCE on the participants sheet now (owner
+            # 2026-08-17), so it lives at the top level; a form generated
+            # before that still carries one per team row.
+            logo_key = cg.get("team_logo")
+            logo = _files(
+                row.get(logo_key, a.get(logo_key)) if logo_key else None,
+                meta,
+            )
             teams.append({
                 "leaf_key": leaf,
                 "name": name,

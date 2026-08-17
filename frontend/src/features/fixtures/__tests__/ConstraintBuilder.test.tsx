@@ -38,6 +38,10 @@ const CATALOG: ConstraintType[] = [
   { type: "official_capacity", label: "Concurrent-match capacity (officials)",
     hard: true, params_schema: { count: "int" }, scopes: ["sport", "all"],
     layer: "S" },
+  { type: "competition_priority", label: "Which competition is scheduled first",
+    hard: false, params_schema: { order: "order", mode: "str" },
+    param_options: { mode: ["sequential", "within_round"] },
+    scopes: ["all", "sport"], layer: "S" },
 ];
 
 const SETTINGS = {
@@ -147,6 +151,33 @@ describe("ConstraintBuilder", () => {
       { type: "min_rest_minutes", scope: "sport:football", hard: true,
         weight: 5, params: { minutes: 30 } },
     ]);
+  });
+
+  it("offers the ordering rule as a named button, not an entry in a dropdown", async () => {
+    // Owner asked twice where the ordering control was — a dropdown of
+    // fourteen is what hid it, so the group names the action outright.
+    mount();
+    await screen.findByText("Recurring blocked window");
+    const cta = screen.getByTestId("add-primary-order");
+    expect(cta).toHaveTextContent("Set which competition is scheduled first");
+    // And the group says what it does while nothing is set.
+    expect(
+      screen.getByText(
+        "Competitions currently take slots in whatever order the draw produced them. Rank them to decide which plays first.",
+      ),
+    ).toBeInTheDocument();
+
+    await userEvent.click(cta);
+    // One click adds the record, so the ranked list is right there, empty and
+    // saying so rather than silently doing nothing.
+    expect(
+      screen.getByText("Nothing ranked yet, so the schedule keeps its usual order."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Add to the order" }),
+    ).toBeInTheDocument();
+    // …and the button is gone, since the rule now exists.
+    expect(screen.queryByTestId("add-primary-order")).toBeNull();
   });
 
   it("normalizes an empty days picker to null (catalog: null = every day)", async () => {

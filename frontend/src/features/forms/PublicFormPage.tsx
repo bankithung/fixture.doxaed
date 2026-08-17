@@ -33,6 +33,7 @@ import { t } from "@/lib/t";
 import { Centered, PublicShell } from "@/features/registration/PublicShell";
 import { ContactAdminDialog } from "./ContactAdminDialog";
 import { FieldRenderer } from "./fieldRenderers";
+import { prefillForSection } from "./prefillTeams";
 import type { Field, FormSchema } from "./types";
 
 const OVERLINE =
@@ -493,6 +494,20 @@ export function PublicFormPage(): React.ReactElement {
   const clamped = Math.min(stepIndex, reviewIndex);
   const isReview = sections.length > 0 && clamped >= reviewIndex;
   const current = isReview ? undefined : sections[clamped];
+
+  // Opening a competition step fills it with the people who said they play it
+  // (owner 2026-08-17). Seeded ONCE per section and only into an empty group,
+  // so a school that edits or clears a team is never fought by the form.
+  const seeded = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!current || seeded.current.has(current.key)) return;
+    const patch = prefillForSection(current, answers);
+    seeded.current.add(current.key);
+    if (patch) setAnswers((a) => ({ ...a, [patch.key]: patch.value }));
+    // `answers` is read, not tracked: re-running on every keystroke would
+    // re-seed a group the moment the school emptied it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.key]);
 
   const setAnswer = (key: string, value: unknown) => {
     setAnswers((a) => ({ ...a, [key]: value }));

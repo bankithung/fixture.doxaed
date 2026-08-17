@@ -83,7 +83,11 @@ def test_the_team_form_carries_its_own_participants_sheet():
     )
     section = next(s for s in form.schema["sections"] if s["key"] == "participants")
     groups = {g["key"]: g for g in section["fields"]}
-    assert set(groups) == {"participant_students", "participant_staff"}
+    # The logo is asked ONCE here rather than on every team (owner 2026-08-17).
+    assert set(groups) == {
+        "participant_students", "participant_staff", "team_logo",
+    }
+    assert groups["team_logo"]["type"] == "file_upload"
     # Each row mints its own identity, which is what a pick points at.
     assert groups["participant_students"]["row_key"] == "participant_id"
     assert groups["participant_staff"]["row_key"] == "staff_id"

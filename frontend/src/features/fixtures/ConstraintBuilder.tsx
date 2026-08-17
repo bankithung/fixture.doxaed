@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCheck, Save } from "lucide-react";
+import { ArrowUpDown, CheckCheck, Save } from "lucide-react";
 import {
   tournamentsApi,
   type ConstraintDraft,
@@ -309,8 +309,29 @@ export function ConstraintBuilder({
 
               {idxs.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  {t("Nothing set here yet.")}
+                  {t(group.emptyHint ?? "Nothing set here yet.")}
                 </p>
+              ) : null}
+
+              {/* The rule this group exists for gets a NAMED button while it
+                  is unset. Hiding it inside "Add a rule…" is what made the
+                  ordering control unfindable twice over. */}
+              {group.primary &&
+              byType.has(group.primary) &&
+              !rows.some((r) => r.type === group.primary) ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  data-testid={`add-primary-${group.key}`}
+                  className="w-fit"
+                  onClick={() => {
+                    const spec = byType.get(group.primary!);
+                    if (spec) setRows([...rows, defaultRecord(spec)]);
+                  }}
+                >
+                  <ArrowUpDown aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t(group.primaryLabel ?? "Set this up")}
+                </Button>
               ) : null}
 
               {addable.length ? (
