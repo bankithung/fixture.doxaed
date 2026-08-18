@@ -493,25 +493,6 @@ def build_team_form_schema(
                 {"key": "team_logo", "type": "file_upload",
                  "label": "Your logo", "required": False, "accept": "image/*",
                  "help": "Optional. Used for every team you enter."},
-                # A teacher in charge belongs to a SPORT, not to each of its
-                # categories (owner 2026-08-18): a school sends one teacher
-                # with its table tennis squad, not one per age group. Asked
-                # here once, and every competition of that sport starts with
-                # them already filled in.
-                *[
-                    {"key": f"sport_staff_{sp['key']}", "type": "dropdown",
-                     "label": f"Teacher in charge for {sp.get('name') or sp['key']}",
-                     "required": False, "options": [],
-                     "directory": False,
-                     "data_source": {
-                         "type": "form_group",
-                         "group": "participant_staff",
-                         "value_field": "staff_id",
-                         "label_field": "staff_full_name",
-                     }}
-                    for sp in (getattr(tournament, "sports", None) or [])
-                    if sp.get("key")
-                ],
                 {
                     "key": "participant_staff",
                     "type": "group",
@@ -735,10 +716,15 @@ def build_team_form_schema(
                             ({"key": f"staff_{slug}", "type": "group",
                               "label": "Teacher in charge", "repeatable": True,
                               "row_title": f"staff_member_{slug}",
-                              # Filled from the sport's own answer above, and
-                              # still editable when one category differs.
-                              "default_from_group": f"sport_staff_{v.split('.')[0]}",
-                              "default_field": f"staff_member_{slug}",
+                              # Seeded from the Teachers sheet (owner
+                              # 2026-08-18: "merge with the table"): every
+                              # teacher whose "In charge of" ticks cover this
+                              # competition's sport starts filled in here, and
+                              # stays editable when one category differs.
+                              "seed_from_group": "participant_staff",
+                              "seed_events": "staff_events",
+                              "seed_row_id": "staff_id",
+                              "seed_field": f"staff_member_{slug}",
                               "fields": [
                                   {"key": f"staff_member_{slug}",
                                    "type": "dropdown", "label": "Teacher",

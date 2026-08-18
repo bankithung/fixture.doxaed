@@ -109,6 +109,11 @@ function FileUploadField({
   error?: string;
 }): React.ReactElement {
   const multiple = field.multiple === true;
+  // A single image-only field is a LOGO slot (owner 2026-08-18): it gets a
+  // real preview card with a Change control, never a bare "Uploaded file"
+  // line. The accept type says it is an image, so the preview never depends
+  // on recognising a filename a restored draft may not have kept.
+  const singleImage = !multiple && (field.accept ?? "").startsWith("image");
   // A multi-file field may cap how many it takes (owner 2026-08-18: three
   // documents per student). Enforced here AND in the server validator — a
   // limit only the picker knows is a suggestion, not a rule.
@@ -202,7 +207,58 @@ function FileUploadField({
             // then drops to a muted second line.
             const primary = docLabel || fileName;
             const url = meta?.url ?? previews[ref];
-            const showImg = !!url && isImageFile(fileName, meta?.content_type);
+            const showImg =
+              !!url && (singleImage || isImageFile(fileName, meta?.content_type));
+            if (singleImage) {
+              return (
+                <li
+                  key={ref}
+                  data-testid="logo-card"
+                  className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-3"
+                >
+                  {url ? (
+                    <img
+                      src={url}
+                      alt={t(field.label)}
+                      className="h-16 w-16 shrink-0 rounded-md border border-border bg-card object-contain"
+                    />
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      className="grid h-16 w-16 shrink-0 place-items-center rounded-md border border-border bg-card text-muted-foreground"
+                    >
+                      <Star className="h-5 w-5 opacity-40" />
+                    </span>
+                  )}
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate text-sm font-medium">
+                      {names[ref] ?? meta?.name ?? t("Logo uploaded")}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {t("Shown on every team you enter.")}
+                    </span>
+                  </div>
+                  {!disabled ? (
+                    <label
+                      htmlFor={id}
+                      className="inline-flex h-8 shrink-0 cursor-pointer items-center rounded-md border border-input bg-background px-3 text-xs font-medium transition-colors hover:bg-accent"
+                    >
+                      {t("Change")}
+                    </label>
+                  ) : null}
+                  {!disabled ? (
+                    <button
+                      type="button"
+                      aria-label={t("Remove file")}
+                      onClick={() => onChange(null)}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <Trash2 aria-hidden="true" className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                </li>
+              );
+            }
             return (
               <li
                 key={ref}
@@ -263,7 +319,9 @@ function FileUploadField({
           })}
         </ul>
       ) : null}
-      {!disabled && (multiple || refs.length === 0) && refs.length < maxFiles ? (
+      {!disabled &&
+      (multiple || refs.length === 0 || singleImage) &&
+      (refs.length < maxFiles || singleImage) ? (
         <input
           id={id}
           type="file"
@@ -277,7 +335,11 @@ function FileUploadField({
             e.target.value = ""; // allow re-picking the same file
             void handleFiles(files);
           }}
-          className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium file:text-secondary-foreground hover:file:bg-secondary/80"
+          className={cn(
+            "block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium file:text-secondary-foreground hover:file:bg-secondary/80",
+            // With a logo in place the picker hides behind the Change button.
+            singleImage && refs.length > 0 && "sr-only",
+          )}
         />
       ) : null}
       {!disabled && refs.length >= maxFiles && maxFiles !== Infinity ? (
@@ -306,17 +368,13 @@ const MONTHS = [
 ];
 
 /**
- * A date of birth as three pickers rather than a calendar (owner 2026-08-18:
- * "allow separate, first month then date then year, that way it will be
- * easier").
+ * A date of birth as a DRILL-DOWN calendar (owner 2026-08-18: "first ask the
+ * year, then month, then date, like the calendar views"). One compact button
+ * opens a popover that walks year -> month -> day, so a birthday decades back
+ * is three taps and the closed field takes one input's worth of space — the
+ * three side-by-side selects were crowding the sheet cells.
  *
- * A birth date is decades away from today, so a calendar widget makes the
- * respondent page back through hundreds of months. Three lists reach any year
- * in three taps, and on a phone they are native pickers rather than a grid of
- * tap targets a thumb keeps missing.
- *
- * The stored value stays an ISO date, so nothing downstream knows or cares.
- * A partial answer stores nothing: two thirds of a birthday is not a date.
+ * The stored value stays an ISO date; Clear empties an optional answer.
  */
 function DateParts({
   value,
@@ -337,72 +395,181 @@ function DateParts({
 }): React.ReactElement {
   const iso = typeof value === "string" ? value : "";
   const [y, m, d] = iso.split("-");
-  const year = y ?? "";
-  const month = m ?? "";
-  const day = d ?? "";
+  const [open, setOpen] = useState(false);
+  const [stage, setStage] = useState<"year" | "month" | "day">("year");
+  const [draftY, setDraftY] = useState<number | null>(y ? Number(y) : null);
+  const [draftM, setDraftM] = useState<number | null>(m ? Number(m) : null);
 
-  // Old enough for the oldest competitor, recent enough for the youngest.
   const thisYear = new Date().getFullYear();
-  const years = Array.from({ length: 80 }, (_, i) => String(thisYear - i));
-  const daysInMonth =
-    year && month
-      ? new Date(Number(year), Number(month), 0).getDate()
-      : 31;
-  const days = Array.from({ length: daysInMonth }, (_, i) =>
-    String(i + 1).padStart(2, "0"),
-  );
+  const years = Array.from({ length: 80 }, (_, i) => thisYear - i);
 
-  const emit = (nextY: string, nextM: string, nextD: string): void => {
-    if (!nextY || !nextM || !nextD) {
-      onChange("");
-      return;
-    }
-    // A day that does not exist in the newly chosen month is clamped rather
-    // than silently emitting an invalid date (31 February).
-    const max = new Date(Number(nextY), Number(nextM), 0).getDate();
-    const safe = String(Math.min(Number(nextD), max)).padStart(2, "0");
-    onChange(`${nextY}-${nextM}-${safe}`);
+  const openPicker = (): void => {
+    setDraftY(y ? Number(y) : null);
+    setDraftM(m ? Number(m) : null);
+    setStage("year");
+    setOpen(true);
   };
+  const close = (): void => setOpen(false);
+
+  const shown = iso
+    ? `${Number(d)} ${t(MONTHS[Number(m) - 1] ?? "")} ${y}`
+    : "";
+
+  const daysInMonth =
+    draftY && draftM ? new Date(draftY, draftM, 0).getDate() : 31;
+  // Monday-first offset for the calendar-shaped day grid.
+  const firstDow =
+    draftY && draftM ? (new Date(draftY, draftM - 1, 1).getDay() + 6) % 7 : 0;
 
   return (
-    <div
-      className="grid grid-cols-3 gap-2"
-      role="group"
-      aria-labelledby={describedBy}
-      aria-label={label}
-    >
-      <Select
-        aria-label={`${label}: ${t("month")}`}
-        value={month}
-        onChange={(v) => emit(year, v, day)}
-        options={MONTHS.map((name, i) => ({
-          value: String(i + 1).padStart(2, "0"),
-          label: t(name),
-        }))}
-        placeholder={t("Month")}
+    <div className="relative">
+      <button
+        type="button"
+        id={id}
         disabled={disabled}
-        size="sm"
-      />
-      <Select
-        aria-label={`${label}: ${t("day")}`}
-        value={day}
-        onChange={(v) => emit(year, month, v)}
-        options={days.map((n) => ({ value: n, label: String(Number(n)) }))}
-        placeholder={t("Day")}
-        disabled={disabled}
-        size="sm"
-      />
-      <Select
-        aria-label={`${label}: ${t("year")}`}
-        value={year}
-        onChange={(v) => emit(v, month, day)}
-        options={years.map((n) => ({ value: n, label: n }))}
-        placeholder={t("Year")}
-        disabled={disabled}
-        searchable
-        size="sm"
-      />
-      <input type="hidden" id={id} value={iso} aria-invalid={!!error} />
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-describedby={describedBy}
+        aria-invalid={!!error}
+        aria-label={label}
+        onClick={() => (open ? close() : openPicker())}
+        className={cn(
+          "flex h-10 w-full min-w-[9.5rem] items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          !shown && "text-muted-foreground",
+        )}
+      >
+        <span className="truncate">{shown || t("Set date")}</span>
+        <span aria-hidden="true" className="shrink-0 text-muted-foreground">
+          ▾
+        </span>
+      </button>
+      {open ? (
+        <>
+          {/* Click-away backdrop; the popover itself sits above it. */}
+          <div
+            aria-hidden="true"
+            className="fixed inset-0 z-20"
+            onClick={close}
+          />
+          <div
+            role="dialog"
+            aria-label={label}
+            className="absolute left-0 top-11 z-30 w-64 rounded-lg border border-border bg-popover p-2 shadow-md"
+          >
+            <div className="flex items-center justify-between px-1 pb-2">
+              <span className="text-xs font-semibold">
+                {stage === "year"
+                  ? t("Year")
+                  : stage === "month"
+                    ? `${draftY}`
+                    : `${t(MONTHS[(draftM ?? 1) - 1])} ${draftY}`}
+              </span>
+              <div className="flex items-center gap-2">
+                {stage !== "year" ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setStage(stage === "day" ? "month" : "year")
+                    }
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    {t("Back")}
+                  </button>
+                ) : null}
+                {iso && !disabled ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange("");
+                      close();
+                    }}
+                    className="text-xs text-muted-foreground hover:text-destructive"
+                  >
+                    {t("Clear")}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            {stage === "year" ? (
+              <div className="grid max-h-52 grid-cols-4 gap-1 overflow-y-auto">
+                {years.map((yy) => (
+                  <button
+                    key={yy}
+                    type="button"
+                    onClick={() => {
+                      setDraftY(yy);
+                      setStage("month");
+                    }}
+                    className={cn(
+                      "rounded-md px-1 py-1.5 font-tabular text-xs transition-colors hover:bg-accent",
+                      draftY === yy && "bg-primary text-primary-foreground",
+                    )}
+                  >
+                    {yy}
+                  </button>
+                ))}
+              </div>
+            ) : stage === "month" ? (
+              <div className="grid grid-cols-3 gap-1">
+                {MONTHS.map((name, idx) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => {
+                      setDraftM(idx + 1);
+                      setStage("day");
+                    }}
+                    className={cn(
+                      "rounded-md px-1 py-2 text-xs transition-colors hover:bg-accent",
+                      draftM === idx + 1 &&
+                        "bg-primary text-primary-foreground",
+                    )}
+                  >
+                    {t(name).slice(0, 3)}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-7 gap-0.5">
+                {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((dw) => (
+                  <span
+                    key={dw}
+                    className="py-1 text-center text-[0.625rem] font-medium text-muted-foreground"
+                  >
+                    {t(dw)}
+                  </span>
+                ))}
+                {Array.from({ length: firstDow }, (_, i) => (
+                  <span key={`pad-${i}`} />
+                ))}
+                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(
+                  (dd) => (
+                    <button
+                      key={dd}
+                      type="button"
+                      onClick={() => {
+                        onChange(
+                          `${draftY}-${String(draftM).padStart(2, "0")}-${String(dd).padStart(2, "0")}`,
+                        );
+                        close();
+                      }}
+                      className={cn(
+                        "rounded-md py-1 text-center font-tabular text-xs transition-colors hover:bg-accent",
+                        iso ===
+                          `${draftY}-${String(draftM).padStart(2, "0")}-${String(dd).padStart(2, "0")}` &&
+                          "bg-primary text-primary-foreground",
+                      )}
+                    >
+                      {dd}
+                    </button>
+                  ),
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      ) : null}
+      <input type="hidden" value={iso} readOnly />
     </div>
   );
 }
@@ -411,11 +578,6 @@ function DateParts({
 /**
  * A multi_choice drawn as a TICK-MARK TABLE (owner 2026-08-18: "like the
  * public directory page where we show a list and then tick mark").
- *
- * A school reading eight table-tennis competitions as a flat column has to
- * reconstruct the structure in its head; as a grid, the age groups are rows
- * and the gender/format pairs are columns, and the shape is the same one the
- * public directory shows back to them afterwards.
  *
  * Rows and columns come from each option's own `row`/`col`, so the engine
  * never parses a key. A combination the tournament does not run simply has no
@@ -451,8 +613,6 @@ function MatrixChoice({
   const toggle = (v: string, on: boolean): void =>
     onChange(on ? [...picked, v] : [...picked].filter((x) => x !== v));
 
-  /** Tick every competition in a row, or clear it. A school entering a whole
-   * age group should not click eight boxes. */
   const rowValues = (r: string): string[] =>
     cols
       .map((c) => cell.get(`${r}\u0000${c}`)?.value)
@@ -518,18 +678,13 @@ function MatrixChoice({
                         className="border-b border-border bg-muted/30 px-2 py-2 text-center text-xs text-muted-foreground"
                       >
                         <span aria-hidden="true">·</span>
-                        <span className="sr-only">
-                          {t("Not offered")}
-                        </span>
+                        <span className="sr-only">{t("Not offered")}</span>
                       </td>
                     );
                   }
                   const on = picked.has(String(o.value));
                   return (
-                    <td
-                      key={c}
-                      className="border-b border-border px-2 py-2 text-center"
-                    >
+                    <td key={c} className="border-b border-border px-2 py-2 text-center">
                       <label className="inline-flex cursor-pointer items-center justify-center">
                         <input
                           type="checkbox"
@@ -537,9 +692,7 @@ function MatrixChoice({
                           disabled={disabled}
                           value={String(o.value)}
                           aria-label={t(o.label)}
-                          onChange={(e) =>
-                            toggle(String(o.value), e.target.checked)
-                          }
+                          onChange={(e) => toggle(String(o.value), e.target.checked)}
                           className="h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         />
                       </label>
@@ -669,7 +822,7 @@ function InlineChecks({
 /** How much horizontal room a sheet column needs, by what it holds. */
 function sheetColWidth(c: Field): string {
   if (c.type === "file_upload") return "min-w-[16rem]";
-  if (c.type === "date") return "min-w-[15rem]";
+  if (c.type === "date") return "min-w-[10rem]";
   if (c.type === "multi_choice") return "min-w-[10rem]";
   if (c.type === "dropdown") return "min-w-[9rem]";
   return "min-w-[11rem]";
@@ -742,8 +895,45 @@ function SheetGroup({
   const setCell = (i: number, key: string, v: unknown): void =>
     onChange(rows.map((r, k) => (k === i ? { ...r, [key]: v } : r)));
 
+  const legendToneOf = (sport: string): string => {
+    const idx = sportBands.findIndex((b) => b.sport === sport);
+    return BAND_TONES[(idx < 0 ? 0 : idx) % BAND_TONES.length];
+  };
+
   return (
     <div className="flex flex-col gap-2">
+      {/* Every short code spelled out (owner 2026-08-18: "show all the full
+          form too, so the user can read"), exactly like the directory
+          matrix's legend. */}
+      {exploded ? (
+        <div
+          data-testid={`sheet-legend-${field.key}`}
+          className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/20 p-2.5"
+        >
+          <p className="text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
+            {t("Competition legend")}
+          </p>
+          <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+            {cols
+              .filter((c): c is Extract<Col, { kind: "option" }> => c.kind === "option")
+              .map((c) => (
+                <span key={c.option.value} className="flex items-center gap-2 text-xs">
+                  <span
+                    className={cn(
+                      "shrink-0 rounded px-1.5 py-0.5 font-tabular text-[0.6875rem] font-semibold",
+                      legendToneOf(c.option.sport ?? ""),
+                    )}
+                  >
+                    {c.option.code}
+                  </span>
+                  <span className="min-w-0 truncate text-muted-foreground">
+                    {c.option.sport} · {t(c.option.label)}
+                  </span>
+                </span>
+              ))}
+          </div>
+        </div>
+      ) : null}
       <div className="overflow-x-auto rounded-lg border border-border">
         <table
           data-testid={`sheet-${field.key}`}

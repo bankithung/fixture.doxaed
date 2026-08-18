@@ -1191,19 +1191,25 @@ describe("PublicFormPage · date of birth and live checks", () => {
     await screen.findByRole("heading", { name: /team registration/i });
   }
 
-  it("asks for month, day and year separately, not a calendar", async () => {
+  it("drills year, then month, then day, never a native calendar", async () => {
+    // Owner 2026-08-18: "first ask the year, then month, then date". A birth
+    // date is decades back, so the drill reaches any day in three taps and
+    // the closed field takes one input's worth of space.
     await mountDob();
-    // Three pickers, and NO native date input.
-    expect(
-      screen.getByRole("button", { name: /Date of birth: month/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Date of birth: day/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Date of birth: year/i }),
-    ).toBeInTheDocument();
     expect(document.querySelector('input[type="date"]')).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Date of birth" }));
+    // Year grid first.
+    await userEvent.click(await screen.findByRole("button", { name: "2012" }));
+    // Then the month.
+    await userEvent.click(await screen.findByRole("button", { name: "Mar" }));
+    // Then the day, laid out as a calendar month.
+    await userEvent.click(await screen.findByRole("button", { name: "4" }));
+
+    // Closed again, reading as the date it holds.
+    expect(
+      screen.getByRole("button", { name: "Date of birth" }),
+    ).toHaveTextContent("4 March 2012");
   });
 
   it("clears a required message the moment the field is filled", async () => {

@@ -595,51 +595,119 @@ export function PublicFormPage(): React.ReactElement {
   //
   // Only an UNTOUCHED field is filled (`undefined`, never `""`), so clearing
   // the box stays cleared instead of the default fighting the typist.
-  // A teacher in charge is chosen once per SPORT and appears in every
-  // category of it (owner 2026-08-18). The per-competition group keeps its own
-  // rows, so one category can still differ; this only seeds an EMPTY one.
+  // The teacher in charge comes off the Teachers SHEET (owner 2026-08-18:
+  // "merge with the table"): every teacher whose "In charge of" ticks cover a
+  // competition's sport starts filled into that competition's staff group.
+  // The group keeps its own rows, so one category can still differ; only an
+  // untouched group is seeded.
   useEffect(() => {
     const schema = data?.form?.schema;
     if (!schema) return;
-    const seeds: { group: string; from: string; field: string }[] = [];
-    const walk = (fields: Field[] | undefined): void => {
-      for (const f of fields ?? []) {
-        if (f.default_from_group && f.default_field) {
-          seeds.push({
-            group: f.key,
-            from: f.default_from_group,
-            field: f.default_field,
-          });
-        }
-        walk(f.fields);
-      }
+    type Seed = {
+      group: string;
+      leaf: string;
+      from: string;
+      events: string;
+      rowId: string;
+      field: string;
     };
-    for (const sec of schema.sections ?? []) walk(sec.fields);
+    const seeds: Seed[] = [];
+    for (const sec of schema.sections ?? []) {
+      const leaf = leafOfSection(sec);
+      if (!leaf) continue;
+      const walk = (fields: Field[] | undefined): void => {
+        for (const f of fields ?? []) {
+          if (f.seed_from_group && f.seed_field && f.seed_events && f.seed_row_id) {
+            seeds.push({
+              group: f.key,
+              leaf,
+              from: f.seed_from_group,
+              events: f.seed_events,
+              rowId: f.seed_row_id,
+              field: f.seed_field,
+            });
+          }
+          walk(f.fields);
+        }
+      };
+      walk(sec.fields);
+    }
     if (!seeds.length) return;
 
     setAnswers((prev) => {
       let touched = false;
       const next = { ...prev };
-      for (const { group, from, field } of seeds) {
-        const pick = prev[from];
-        if (typeof pick !== "string" || !pick) continue;
-        const rows = next[group];
-        // Only an untouched group is seeded: a category the school has already
-        // answered for is theirs, even if they emptied it.
-        if (Array.isArray(rows) && rows.length > 0) continue;
-        next[group] = [{ [field]: pick }];
+      for (const { group, leaf, from, events, rowId, field } of seeds) {
+        const existing = next[group];
+        // Only an untouched group is seeded: a category the school has
+        // already answered for is theirs, even if they emptied it.
+        if (Array.isArray(existing) && existing.length > 0) continue;
+        const sheet = prev[from];
+        if (!Array.isArray(sheet)) continue;
+        const rows = sheet
+          .filter((r) => {
+            const row = (r ?? {}) as Record<string, unknown>;
+            const declared = Array.isArray(row[events])
+              ? (row[events] as unknown[]).map(String)
+              : [];
+            return (
+              Boolean(row[rowId]) &&
+              declared.some((d) => eventCovers(d, leaf))
+            );
+          })
+          .map((r) => ({
+            [field]: String((r as Record<string, unknown>)[rowId]),
+          }));
+        if (rows.length === 0) continue;
+        next[group] = rows;
         touched = true;
       }
       return touched ? next : prev;
     });
   }, [answers, data]);
 
-  /** How many competitions the school has ticked, per sport. Mirrors the
-   * directory's per-game band: the same reading on both pages. */
+  /** The band mirrors the directory's per-game counts, and it counts what
+   * was actually ENTERED (owner 2026-08-18: it read "Table Tennis 8" off the
+   * step-one selection while zero students were in, which is wrong data).
+   * With a participants sheet present it tallies the students' own ticks per
+   * sport; before the sheet exists it falls back to the selection. */
   const entrySummary = useMemo(() => {
-    const sportsField = (data?.form?.schema?.sections ?? [])
-      .flatMap((sec) => sec.fields ?? [])
-      .find((f) => f.key === "sports");
+    const allFields = (data?.form?.schema?.sections ?? []).flatMap(
+      (sec) => sec.fields ?? [],
+    );
+    // The sheet's per-competition tick column, and the group holding it.
+    for (const g of allFields) {
+      if (g.type !== "group") continue;
+      const events = (g.fields ?? []).find((c) => c.layout === "columns");
+      if (!events) continue;
+      const sportOf = new Map(
+        (events.options ?? []).map((o) => [String(o.value), o.sport ?? ""]),
+      );
+      const counts = new Map<string, number>();
+      // Every sport with a column shows, zeros included, like the directory.
+      for (const sport of sportOf.values()) {
+        if (!counts.has(sport)) counts.set(sport, 0);
+      }
+      const rows = answers[g.key];
+      if (Array.isArray(rows)) {
+        for (const r of rows) {
+          const ticks = (r as Record<string, unknown> | null)?.[events.key];
+          if (!Array.isArray(ticks)) continue;
+          for (const v of ticks) {
+            const sport = sportOf.get(String(v));
+            if (sport !== undefined) {
+              counts.set(sport, (counts.get(sport) ?? 0) + 1);
+            }
+          }
+        }
+      }
+      return [...counts.entries()].map(([name, count]) => ({
+        key: name,
+        name,
+        count,
+      }));
+    }
+    const sportsField = allFields.find((f) => f.key === "sports");
     const chosen = Array.isArray(answers.sports)
       ? (answers.sports as unknown[]).map(String)
       : [];
@@ -651,7 +719,6 @@ export function PublicFormPage(): React.ReactElement {
           sportsField?.options?.find((o) => String(o.value) === key)?.label ??
             key,
         ),
-        // A sport with no sub-categories counts as the one entry it is.
         count: Array.isArray(picked) ? picked.length : 1,
       };
     });

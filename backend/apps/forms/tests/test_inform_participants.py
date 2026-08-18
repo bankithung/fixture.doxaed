@@ -91,11 +91,10 @@ def test_the_team_form_carries_its_own_participants_sheet():
     keys = [g["key"] for g in section["fields"]]
     assert keys[0] == "team_logo"
     assert keys[-2:] == ["participant_staff", "participant_students"]
-    # One teacher-in-charge question per SPORT (owner 2026-08-18), so a school
-    # answers once and every category of that sport starts filled in.
-    assert [k for k in keys if k.startswith("sport_staff_")] == [
-        f"sport_staff_{sp['key']}" for sp in t.sports
-    ]
+    # No standalone teacher-in-charge pickers (owner 2026-08-18, "merge with
+    # the table"): the Teachers sheet's own "In charge of" ticks carry that
+    # answer, and each competition's staff group seeds from them.
+    assert not any(k.startswith("sport_staff_") for k in keys)
     assert {"participant_students", "participant_staff", "team_logo"} <= set(groups)
     assert groups["team_logo"]["type"] == "file_upload"
     # Each row mints its own identity, which is what a pick points at.
@@ -429,3 +428,17 @@ def test_a_sport_asks_for_its_competitions_once_not_a_cascade():
         for s in form.schema["sections"] if s["key"].startswith("cat_")
     }
     assert gates <= {f"categories_{sp['key']}" for sp in t.sports}
+
+
+def test_the_competition_staff_group_seeds_from_the_teachers_sheet():
+    """A teacher ticked for a sport starts filled into every competition of
+    it, straight off the sheet, with no second question asked."""
+    t = _tournament()
+    form = generate_team_form_template(tournament=t)
+    cat = next(s for s in form.schema["sections"] if s["key"].startswith("cat_"))
+    team = cat["fields"][0]
+    staff = next(f for f in team["fields"] if f["key"].startswith("staff_"))
+    assert staff["seed_from_group"] == "participant_staff"
+    assert staff["seed_events"] == "staff_events"
+    assert staff["seed_row_id"] == "staff_id"
+    assert staff["seed_field"].startswith("staff_member_")
