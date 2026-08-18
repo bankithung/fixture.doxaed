@@ -714,6 +714,100 @@ export function PublicFormPage(): React.ReactElement {
     });
   }, [answers, data]);
 
+  /** The review's team read-back (owner 2026-08-18: "all the following
+   * should also be in a proper table sheet-like view"). Every built team as
+   * one row — competition, team name, the players and the teacher by NAME,
+   * resolved off the sheets — instead of ten collapsed sections where empty
+   * competitions still printed headings. */
+  const reviewTeams = useMemo(() => {
+    const schema = data?.form?.schema;
+    if (!schema) return [];
+    const out: {
+      competition: string;
+      team: string;
+      players: string[];
+      staff: string[];
+    }[] = [];
+    const nameOf = (
+      sheetKey: string,
+      idField: string,
+      labelField: string,
+      id: string,
+    ): string => {
+      const rows = answers[sheetKey];
+      if (!Array.isArray(rows)) return id;
+      const hit = rows.find(
+        (r) => String((r as Record<string, unknown>)?.[idField] ?? "") === id,
+      ) as Record<string, unknown> | undefined;
+      return String(hit?.[labelField] ?? "").trim() || id;
+    };
+    for (const sec of reachableSections(schema, answers)) {
+      if (!sec.auto) continue;
+      const teamGroup = (sec.fields ?? []).find(
+        (f) => f.type === "group" && f.repeatable,
+      );
+      if (!teamGroup) continue;
+      const rows = answers[teamGroup.key];
+      if (!Array.isArray(rows) || rows.length === 0) continue;
+      const nameChild = (teamGroup.fields ?? []).find(
+        (c) => c.default_from === "institution",
+      );
+      const playersChild = (teamGroup.fields ?? []).find((g) =>
+        g.fields?.some((c) => c.data_source?.type === "form_group"),
+      );
+      const pick = playersChild?.fields?.find(
+        (c) => c.data_source?.type === "form_group",
+      );
+      const staffChild = (teamGroup.fields ?? []).find((g) => g.seed_from_group);
+      const staffPick = staffChild?.fields?.find(
+        (c) => c.data_source?.type === "form_group",
+      );
+      const competition = t(sec.title).replace(/^Teams\s*·\s*/, "");
+      for (const r of rows) {
+        const row = (r ?? {}) as Record<string, unknown>;
+        const players = (
+          Array.isArray(row[playersChild?.key ?? ""])
+            ? (row[playersChild!.key] as Record<string, unknown>[])
+            : []
+        )
+          .map((pr) =>
+            pick?.data_source
+              ? nameOf(
+                  pick.data_source.group ?? "",
+                  pick.data_source.value_field ?? "",
+                  pick.data_source.label_field ?? "",
+                  String(pr?.[pick.key] ?? ""),
+                )
+              : "",
+          )
+          .filter(Boolean);
+        const staff = (
+          Array.isArray(row[staffChild?.key ?? ""])
+            ? (row[staffChild!.key] as Record<string, unknown>[])
+            : []
+        )
+          .map((sr) =>
+            staffPick?.data_source
+              ? nameOf(
+                  staffPick.data_source.group ?? "",
+                  staffPick.data_source.value_field ?? "",
+                  staffPick.data_source.label_field ?? "",
+                  String(sr?.[staffPick.key] ?? ""),
+                )
+              : "",
+          )
+          .filter(Boolean);
+        out.push({
+          competition,
+          team: String(row[nameChild?.key ?? ""] ?? "").trim(),
+          players,
+          staff,
+        });
+      }
+    }
+    return out;
+  }, [answers, data]);
+
   /** The band mirrors the directory's per-game counts, and it counts what
    * was actually ENTERED (owner 2026-08-18: it read "Table Tennis 8" off the
    * step-one selection while zero students were in, which is wrong data).
@@ -1671,6 +1765,9 @@ export function PublicFormPage(): React.ReactElement {
                 className="flex flex-col gap-6 px-5 py-5 sm:px-6"
               >
                 {sections.map((s, i) => {
+                  // The built competitions read back as ONE table below,
+                  // never as a stack of collapsed sections.
+                  if (s.auto) return null;
                   const fields = renderGrouped(s.fields, true);
                   if (fields.length === 0) return null;
                   return (
@@ -1687,6 +1784,66 @@ export function PublicFormPage(): React.ReactElement {
                     </div>
                   );
                 })}
+                {reviewTeams.length > 0 ? (
+                  <div className="flex flex-col gap-4 border-t border-border pt-5">
+                    <h3 className="text-sm font-semibold text-muted-foreground">
+                      {t("Your teams")}
+                    </h3>
+                    <div className="overflow-x-auto rounded-lg border border-border">
+                      <table
+                        data-testid="review-teams"
+                        className="w-full border-separate border-spacing-0 text-sm"
+                      >
+                        <caption className="sr-only">
+                          {t("The teams this registration will create")}
+                        </caption>
+                        <thead>
+                          <tr>
+                            {[
+                              t("Competition"),
+                              t("Team"),
+                              t("Players"),
+                              t("Teacher in charge"),
+                            ].map((h) => (
+                              <th
+                                key={h}
+                                scope="col"
+                                className="border-b border-r border-border bg-muted px-3 py-2 text-left text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground last:border-r-0"
+                              >
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reviewTeams.map((row, i) => (
+                            <tr
+                              key={`${row.competition}-${i}`}
+                              className={i % 2 ? "bg-muted/20" : "bg-card"}
+                            >
+                              <td className="border-b border-r border-border px-3 py-2 text-xs text-muted-foreground">
+                                {row.competition}
+                              </td>
+                              <td className="border-b border-r border-border px-3 py-2 font-medium">
+                                {row.team || t("(named on submit)")}
+                              </td>
+                              <td className="border-b border-r border-border px-3 py-2">
+                                {row.players.join(", ") || (
+                                  <span className="text-destructive">
+                                    {t("No players")}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="border-b border-border px-3 py-2 text-muted-foreground">
+                                {row.staff.join(", ") || "·"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : current ? (
               <div className="flex flex-col gap-5 px-5 py-5 sm:px-6">
