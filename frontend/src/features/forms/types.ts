@@ -132,6 +132,11 @@ export interface Field {
    * filled row can collapse to that name instead of staying a wall of inputs
    * (owner 2026-08-18). Falls back to the first plain-text child. */
   row_title?: string;
+  /** Prefill this field from something the form already knows. "institution"
+   * = the school picked at the top, so a team is named after its school
+   * unless the respondent says otherwise (owner 2026-08-18). Applied only to
+   * an UNTOUCHED field, so a cleared box stays cleared. */
+  default_from?: string;
   /** `type: "file_upload"` → allow several files (value becomes an array of
    * upload refs) and/or constrain the picker's accepted types. */
   multiple?: boolean;

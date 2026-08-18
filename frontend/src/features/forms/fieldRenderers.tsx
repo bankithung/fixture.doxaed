@@ -339,6 +339,18 @@ function RepeatableGroup({
    * you less than the row itself. Groups without it behave exactly as before. */
   const titleKey = field.row_title;
   const collapsible = Boolean(titleKey);
+  const titleChild = children.find((c) => c.key === titleKey);
+
+  /** What a saved row is called. A picker stores an id, so the row has to be
+   * named by the OPTION's label — collapsing a squad to a column of uuids
+   * would be worse than leaving it open. */
+  const titleOf = (row: Record<string, unknown>): string => {
+    const raw = (row ?? {})[titleKey ?? ""];
+    if (raw == null || raw === "") return "";
+    const opts = titleChild?.options ?? [];
+    const hit = opts.find((o) => String(o.value) === String(raw));
+    return String(hit ? t(hit.label) : raw).trim();
+  };
 
   /** Rows are identified by their own minted id where they have one, so a
    * removal in the middle does not re-open somebody else's row. */
@@ -359,7 +371,7 @@ function RepeatableGroup({
     <div className="flex flex-col gap-2">
       {rows.map((row, i) => {
         const id = idOf(row, i);
-        const title = String((row ?? {})[titleKey ?? ""] ?? "").trim();
+        const title = titleOf(row);
         const open = !collapsible || openIds.has(id);
         const remove = (
           <button

@@ -444,6 +444,50 @@ export function PublicFormPage(): React.ReactElement {
     !data?.can_manage;
 
   const selectedInstValue = selectedInstOption?.value;
+
+  // A team is named after its school unless the respondent says otherwise
+  // (owner 2026-08-18). The SERVER has always defaulted a blank team name to
+  // the institution, so the help text promised something the form never
+  // showed — the value now actually appears, and can be typed over.
+  //
+  // Only an UNTOUCHED field is filled (`undefined`, never `""`), so clearing
+  // the box stays cleared instead of the default fighting the typist.
+  const schoolName = selectedInstOption ? t(selectedInstOption.label) : "";
+  useEffect(() => {
+    const schema = data?.form?.schema;
+    if (!schoolName || !schema) return;
+    // Which group holds which institution-defaulted child.
+    const targets: { group: string; field: string }[] = [];
+    const walk = (fields: Field[] | undefined, group: string): void => {
+      for (const f of fields ?? []) {
+        if (f.default_from === "institution" && group) {
+          targets.push({ group, field: f.key });
+        }
+        walk(f.fields, f.type === "group" ? f.key : group);
+      }
+    };
+    for (const sec of schema.sections ?? []) walk(sec.fields, "");
+    if (!targets.length) return;
+
+    setAnswers((prev) => {
+      let touched = false;
+      const next = { ...prev };
+      for (const { group, field } of targets) {
+        const rows = next[group];
+        if (!Array.isArray(rows)) continue;
+        const filled = rows.map((r) => {
+          if (r && typeof r === "object" && !(field in (r as object))) {
+            touched = true;
+            return { ...(r as Record<string, unknown>), [field]: schoolName };
+          }
+          return r;
+        });
+        if (touched) next[group] = filled;
+      }
+      return touched ? next : prev;
+    });
+  }, [schoolName, data, answers]);
+
   useEffect(() => {
     // Switching school invalidates any prior verification — including the
     // person pickers, which belong to the school that proved itself.

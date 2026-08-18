@@ -161,6 +161,18 @@ def _category_chain(
     return fields, keys, leaf_fields
 
 
+#: What a teacher is doing for a team. A picker, never free text (owner
+#: 2026-08-18): two schools typing "incharge" and "In-Charge" are the same
+#: role to a human and two roles to every report that groups by it.
+_STAFF_ROLES: list[dict] = [
+    {"value": "in_charge", "label": "Teacher in charge"},
+    {"value": "coach", "label": "Coach"},
+    {"value": "manager", "label": "Manager"},
+    {"value": "escort", "label": "Escort"},
+    {"value": "physio", "label": "Physio"},
+]
+
+
 def _event_options(tournament) -> list[dict]:
     """Which SPORT a participant is here for (owner 2026-08-17, restated
     2026-08-18: "select sports not the categories, just the sports").
@@ -449,6 +461,10 @@ def build_team_form_schema(
         players: dict = {
             "key": f"players_{slug}", "type": "group",
             "label": "Player", "repeatable": True,
+            # A picked player names their own row, so a squad reads as a list
+            # of people rather than a stack of open forms (owner 2026-08-18).
+            **({"row_title": f"player_member_{slug}"} if roster else
+               {"row_title": f"player_name_{slug}"}),
             "fields": [
                 *([
                     {"key": f"player_member_{slug}", "type": "dropdown",
@@ -540,9 +556,16 @@ def build_team_form_schema(
                         "type": "group",
                         "label": "Team",
                         "repeatable": True,
+                        "row_title": tkey,
                         "fields": [
                             {"key": tkey, "type": "short_text", "label": "Team name",
                              "required": False,
+                             # Filled in with the school's name as soon as one
+                             # is picked (owner 2026-08-18). The server has
+                             # always defaulted a BLANK name to the
+                             # institution; the form just never showed it, so
+                             # the help text promised something invisible.
+                             "default_from": "institution",
                              "help": "Defaults to your institution's name. "
                                      "Edit it if you want another."},
                             # Asked ONCE, up on the participants sheet, when
@@ -561,6 +584,7 @@ def build_team_form_schema(
                             # otherwise, exactly as before.
                             ({"key": f"staff_{slug}", "type": "group",
                               "label": "Teacher in charge", "repeatable": True,
+                              "row_title": f"staff_member_{slug}",
                               "fields": [
                                   {"key": f"staff_member_{slug}",
                                    "type": "dropdown", "label": "Teacher",
@@ -575,9 +599,10 @@ def build_team_form_schema(
                                            "places at once — the draw keeps "
                                            "their matches apart."},
                                   {"key": f"staff_role_{slug}",
-                                   "type": "short_text", "label": "Role",
+                                   "type": "dropdown", "label": "Role",
                                    "required": False,
-                                   "help": "Optional — e.g. coach, escort."},
+                                   "options": _STAFF_ROLES,
+                                   "help": "What they are doing for this team."},
                               ]}
                              if roster else
                              {"key": f"coaches_{slug}", "type": "group",
@@ -639,6 +664,7 @@ def build_team_form_schema(
                         "repeatable": True,
                         "fields": [
                             {"key": "team_name_all", "type": "short_text",
+                             "default_from": "institution",
                              "label": "Team name", "required": False,
                              "help": "Leave blank to use your institution's name."},
                             {"key": "team_logo_all", "type": "file_upload",
