@@ -161,6 +161,27 @@ def _category_chain(
     return fields, keys, leaf_fields
 
 
+def _event_options(tournament) -> list[dict]:
+    """Which SPORT a participant is here for (owner 2026-08-17, restated
+    2026-08-18: "select sports not the categories, just the sports").
+
+    Listing every competition here made a two-line question into a twelve-item
+    list and asked the school to decide the category before it had opened the
+    category's own step. The sport is the part a school knows up front; the
+    category is decided on the team steps, where the category is.
+
+    Multi-select on purpose: a child who plays table tennis AND sepak is
+    exactly the case the draw has to keep apart, so the form must say so.
+    """
+    out: list[dict] = []
+    for sport in getattr(tournament, "sports", None) or []:
+        key = sport.get("key")
+        if not key:
+            continue
+        out.append({"value": key, "label": sport.get("name") or key})
+    return out
+
+
 def _leaf_options(tournament) -> list[tuple[str, str, dict]]:
     """(value, label, extra) category options straight from the tournament's
     sports config: value = stable leaf key, label = 'Sport — path', extra
@@ -361,12 +382,25 @@ def build_team_form_schema(
                              {"value": "female", "label": "Female"},
                              {"value": "other", "label": "Other"},
                          ]},
-                        # No sport is asked for here (owner 2026-08-18). The
-                        # sheet answers "who is in this school", and asking a
-                        # clerk to also predict every competition each child
-                        # will enter turned one list into a second draw. Every
-                        # declared person is offered to every competition
-                        # below; the team steps are where entries are decided.
+                        # SPORTS ONLY, never categories (owner 2026-08-18).
+                        # The category is chosen on the team steps, where the
+                        # category's own questions are.
+                        {"key": "participant_events", "type": "multi_choice",
+                         "label": "Playing in", "required": False,
+                         "directory": False,
+                         "help": "Pick the sports only. Categories are chosen "
+                                 "when you enter the teams.",
+                         "options": _event_options(tournament)},
+                        # Age proof, ID, medical consent — the papers a school
+                        # is asked for per child (owner 2026-08-18). Capped at
+                        # three so one entry cannot become a folder, and photos
+                        # are downscaled before upload; a PDF is sent as it is.
+                        {"key": "participant_docs", "type": "file_upload",
+                         "label": "Documents", "required": False,
+                         "multiple": True, "max_items": 3,
+                         "accept": "application/pdf,image/*",
+                         "help": "Up to 3 files per student. PDF, or a photo "
+                                 "we will shrink for you."},
                     ],
                 },
                 {"key": "team_logo", "type": "file_upload",
@@ -385,6 +419,11 @@ def build_team_form_schema(
                          "label": "Full name", "required": True},
                         {"key": "staff_phone", "type": "phone",
                          "label": "Phone", "required": False},
+                        {"key": "staff_events", "type": "multi_choice",
+                         "label": "In charge of", "required": False,
+                         "directory": False,
+                         "help": "Pick the sports only.",
+                         "options": _event_options(tournament)},
                     ],
                 },
             ],
@@ -659,10 +698,13 @@ def build_team_form_schema(
                 "student_roll": "participant_roll",
                 "student_dob": "participant_dob",
                 "student_gender": "participant_gender",
+                "student_events": "participant_events",
+                "student_docs": "participant_docs",
                 "staff_group": "participant_staff",
                 "staff_id": "staff_id",
                 "staff_name": "staff_full_name",
                 "staff_phone": "staff_phone",
+                "staff_events": "staff_events",
             },
         } if roster else {}),
     }

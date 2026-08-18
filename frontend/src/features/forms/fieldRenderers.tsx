@@ -102,6 +102,13 @@ function FileUploadField({
   error?: string;
 }): React.ReactElement {
   const multiple = field.multiple === true;
+  // A multi-file field may cap how many it takes (owner 2026-08-18: three
+  // documents per student). Enforced here AND in the server validator — a
+  // limit only the picker knows is a suggestion, not a rule.
+  const maxFiles =
+    multiple && typeof field.max_items === "number" && field.max_items > 0
+      ? field.max_items
+      : Infinity;
   // Multi-file fields are document fields ("ID / certificate", "Coach docs") —
   // let the respondent name each upload so the admin knows what it is. Local
   // edits layer over any name carried in from a prior submission (fileMeta).
@@ -134,6 +141,19 @@ function FileUploadField({
   const handleFiles = async (files: File[]): Promise<void> => {
     if (files.length === 0) return;
     setUploadErr(null);
+    // Take only what still fits, and say so rather than dropping the rest in
+    // silence — a school that picked five would otherwise never learn why two
+    // never appeared.
+    const room = maxFiles - refs.length;
+    if (multiple && files.length > room) {
+      setUploadErr(
+        `${t("Only")} ${maxFiles} ${t("files are allowed here, so")} ${
+          room > 0 ? room : t("none")
+        } ${t("of those were added.")}`,
+      );
+      files = room > 0 ? files.slice(0, room) : [];
+      if (files.length === 0) return;
+    }
     if (!onUpload) {
       onChange(multiple ? files.map((f) => f.name) : files[0].name);
       return;
@@ -236,7 +256,7 @@ function FileUploadField({
           })}
         </ul>
       ) : null}
-      {!disabled && (multiple || refs.length === 0) ? (
+      {!disabled && (multiple || refs.length === 0) && refs.length < maxFiles ? (
         <input
           id={id}
           type="file"
@@ -252,6 +272,11 @@ function FileUploadField({
           }}
           className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium file:text-secondary-foreground hover:file:bg-secondary/80"
         />
+      ) : null}
+      {!disabled && refs.length >= maxFiles && maxFiles !== Infinity ? (
+        <span className="text-xs text-muted-foreground">
+          {maxFiles} {t("files added, the most allowed here. Remove one to add another.")}
+        </span>
       ) : null}
       {busy ? (
         <span className="text-xs text-muted-foreground">{t("Uploading…")}</span>
@@ -790,5 +815,6 @@ export function FieldRenderer({
 const ERROR_MESSAGES: Record<string, string> = {
   too_few_items: "Add the minimum number of entries (check the squad size).",
   too_many_items: "Too many entries. Remove some (check the squad size).",
+  too_many_files: "Too many files. Remove one before adding another.",
   required_in_rows: "Complete the required details in every entry.",
 };

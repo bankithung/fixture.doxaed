@@ -75,6 +75,22 @@ def _option_selected(fld: dict, option: dict, answers: dict) -> bool:
     return a is not None and str(a) == str(val)
 
 
+def _check_file_bounds(fld: dict, raw: Any, path: str, errors: dict) -> None:
+    """Cap a multi-file upload at ``max_items`` (owner 2026-08-18: three
+    documents per student).
+
+    ``max_items`` used to bind only on repeatable GROUPS, so a per-student
+    document field advertised a limit the server never enforced — a hint, not
+    a rule, and anything the client could simply not send would sail past it.
+    """
+    mx = fld.get("max_items")
+    if not (fld.get("multiple") and isinstance(mx, int) and mx > 0):
+        return
+    refs = raw if isinstance(raw, list) else ([] if raw in (None, "") else [raw])
+    if len(refs) > mx:
+        errors[path] = "too_many_files"
+
+
 def _check_group_bounds(fld: dict, raw: Any, path: str, errors: dict) -> None:
     """Enforce repeatable-group row bounds (min_items/max_items), recursing
     into child groups inside each row (W2-B: a 1v1 category's players group
@@ -96,22 +112,22 @@ def _check_group_bounds(fld: dict, raw: Any, path: str, errors: dict) -> None:
         elif isinstance(mx, int) and mx > 0 and len(rows) > mx:
             errors[path] = "too_many_items"
         for child in fld.get("fields") or []:
-            if child.get("type") != "group":
-                continue
             for i, row in enumerate(rows):
-                if isinstance(row, dict):
-                    _check_group_bounds(
-                        child, row.get(child["key"]),
-                        f"{path}.{i}.{child['key']}", errors,
-                    )
+                if not isinstance(row, dict):
+                    continue
+                sub, spath = row.get(child["key"]), f"{path}.{i}.{child['key']}"
+                if child.get("type") == "group":
+                    _check_group_bounds(child, sub, spath, errors)
+                elif child.get("type") == "file_upload":
+                    _check_file_bounds(child, sub, spath, errors)
     else:
         row = raw if isinstance(raw, dict) else {}
         for child in fld.get("fields") or []:
+            sub, spath = row.get(child["key"]), f"{path}.{child['key']}"
             if child.get("type") == "group":
-                _check_group_bounds(
-                    child, row.get(child["key"]),
-                    f"{path}.{child['key']}", errors,
-                )
+                _check_group_bounds(child, sub, spath, errors)
+            elif child.get("type") == "file_upload":
+                _check_file_bounds(child, sub, spath, errors)
 
 
 def _validate_group_rows(fld: dict, raw: Any, path: str, errors: dict) -> None:

@@ -298,3 +298,81 @@ def test_resubmitting_the_sheet_updates_people_instead_of_doubling_them():
     members = RosterMember.objects.filter(tournament=t, deleted_at__isnull=True)
     assert members.count() == 1
     assert members.first().class_section == "8-B"
+
+
+# ------------------------------------- sports only, and papers per student
+def test_a_student_is_asked_for_sports_only_never_categories():
+    """Owner 2026-08-18: "select sports not the categories, just the sports".
+
+    Listing every competition turned a two-line question into a twelve-item
+    list and made the school decide the category before opening the category's
+    own step.
+    """
+    t = _tournament()
+    form = generate_team_form_template(tournament=t)
+    section = next(s for s in form.schema["sections"] if s["key"] == "participants")
+    students = next(
+        g for g in section["fields"] if g["key"] == "participant_students"
+    )
+    events = next(
+        f for f in students["fields"] if f["key"] == "participant_events"
+    )
+    values = {o["value"] for o in events["options"]}
+    # Exactly the tournament's sport keys — nothing with a category segment.
+    assert values == {sp["key"] for sp in t.sports}
+    assert not any("." in v for v in values)
+    assert events["type"] == "multi_choice"
+
+
+def test_each_student_may_attach_up_to_three_documents():
+    t = _tournament()
+    form = generate_team_form_template(tournament=t)
+    section = next(s for s in form.schema["sections"] if s["key"] == "participants")
+    students = next(
+        g for g in section["fields"] if g["key"] == "participant_students"
+    )
+    docs = next(f for f in students["fields"] if f["key"] == "participant_docs")
+    assert docs["type"] == "file_upload"
+    assert docs["multiple"] is True
+    assert docs["max_items"] == 3
+    assert "application/pdf" in docs["accept"]
+    # Papers are optional: a school missing one certificate must still submit.
+    assert docs["required"] is False
+
+
+def _errors_for(form, docs, institution):
+    """Validation errors for one student carrying `docs` files."""
+    from apps.forms.services.validation import AnswerError, validate_answers
+
+    answers = {
+        "institution_id": str(institution.id),
+        "sports": [form.tournament.sports[0]["key"]],
+        "participant_students": [
+            {"participant_name": "Aben Kikon", "participant_docs": docs},
+        ],
+    }
+    try:
+        validate_answers(form.schema, answers)
+        return {}
+    except AnswerError as e:
+        return e.errors
+
+
+def test_a_fourth_document_on_one_student_is_refused_by_the_server():
+    """The cap has to bind on the SERVER: a limit only the picker knows is a
+    suggestion, and anything the client simply does not send sails past it."""
+    t = _tournament()
+    form = generate_team_form_template(tournament=t)
+    inst = _school(t)
+    errors = _errors_for(form, ["f1", "f2", "f3", "f4"], inst)
+    doc_errs = {k: v for k, v in errors.items() if "participant_docs" in k}
+    assert doc_errs, errors
+    assert "too_many_files" in doc_errs.values()
+
+
+def test_three_documents_are_accepted():
+    t = _tournament()
+    form = generate_team_form_template(tournament=t)
+    inst = _school(t)
+    errors = _errors_for(form, ["f1", "f2", "f3"], inst)
+    assert not any("participant_docs" in k for k in errors), errors
