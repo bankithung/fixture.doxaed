@@ -228,7 +228,11 @@ def test_the_funnel_is_unchanged_for_every_existing_tournament():
     assert G.ROSTER not in st.flow_order(t)
 
 
-def test_participants_first_inserts_one_step_before_team_registration():
+def test_participants_first_adds_no_step_to_the_funnel():
+    """The roster stage is RETIRED (owner 2026-08-18): the participants sheet
+    is a tab inside the team registration form, so a standalone stage was the
+    same work asked for twice. `roster_first` changes how the team form is
+    generated, never the funnel's length."""
     from apps.tournaments.models import RosterMode
 
     t = create_tournament(
@@ -236,7 +240,7 @@ def test_participants_first_inserts_one_step_before_team_registration():
         roster_mode=RosterMode.ROSTER_FIRST,
     )
     assert st.flow_order(t) == [
-        G.SETUP, G.ORG_REGISTRATION, G.ROSTER, G.TEAM_REGISTRATION,
+        G.SETUP, G.ORG_REGISTRATION, G.TEAM_REGISTRATION,
         G.FIXTURES, G.READY,
     ]
 
@@ -249,14 +253,14 @@ def test_participants_first_composes_with_the_within_school_funnel():
         scope=TournamentScope.INTRA_SCHOOL, roster_mode=RosterMode.ROSTER_FIRST,
     )
     assert st.flow_order(t) == [
-        G.SETUP, G.HOUSE_SETUP, G.ROSTER, G.TEAM_REGISTRATION,
+        G.SETUP, G.HOUSE_SETUP, G.TEAM_REGISTRATION,
         G.FIXTURES, G.READY,
     ]
 
 
-def test_the_roster_step_is_walked_one_at_a_time_and_changes_no_lifecycle():
-    """It sits between two stages that DO drive the lifecycle, and must not
-    move it itself — the rule freeze stays exactly where it is today."""
+def test_a_roster_first_funnel_walks_straight_into_team_registration():
+    """With the roster stage retired, team registration IS one step away and
+    the lifecycle coupling (freeze on entry) is untouched."""
     from apps.tournaments.models import RosterMode
 
     t = create_tournament(
@@ -266,16 +270,6 @@ def test_the_roster_step_is_walked_one_at_a_time_and_changes_no_lifecycle():
     _advance(t, G.ORG_REGISTRATION)
     t.refresh_from_db()
     assert t.status == S.PUBLISHED
-
-    # Team registration is no longer one step away.
-    with pytest.raises(ValidationError, match="Illegal stage transition"):
-        _advance(t, G.TEAM_REGISTRATION)
-
-    _advance(t, G.ROSTER)
-    t.refresh_from_db()
-    assert t.stage == G.ROSTER
-    assert t.status == S.PUBLISHED  # unchanged by the roster step
-    assert t.rules_frozen_at is None
 
     _advance(t, G.TEAM_REGISTRATION)
     t.refresh_from_db()

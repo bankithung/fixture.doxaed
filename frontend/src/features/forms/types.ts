@@ -52,6 +52,10 @@ export interface Option {
    * left-hand heading, `col` the column heading. */
   row?: string;
   col?: string;
+  /** `layout: "columns"` fields: the sport band this option sits under and
+   * the short code heading its column (the directory matrix's initials). */
+  sport?: string;
+  code?: string;
   /** Optional per-option image/logo (a compressed data URL set in the builder),
    * shown beside the option on the public form. */
   image?: string;
@@ -154,8 +158,15 @@ export interface Field {
   add_label?: string;
   /** "matrix" renders a multi_choice as a TICK-MARK TABLE, using each
    * option's `row`/`col` (owner 2026-08-18): the same reading as the public
-   * directory's registration matrix. */
+   * directory's registration matrix. "sheet" renders a repeatable group as
+   * an Excel-style table, one column per child field (owner 2026-08-18). */
   layout?: string;
+  /** Sheet groups: the tab this sheet sits behind when several sheets share
+   * one surface (Students / Teachers). */
+  tab_label?: string;
+  /** Filter this field's options to the competitions the selected school
+   * registered at Stage 1 (owner 2026-08-18). */
+  scope_to_institution?: boolean;
   /** `type: "file_upload"` → allow several files (value becomes an array of
    * upload refs) and/or constrain the picker's accepted types. */
   multiple?: boolean;

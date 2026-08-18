@@ -375,41 +375,19 @@ def _advance(t, stage, capture):
         )
 
 
-def test_entering_the_stage_leaves_a_ready_draft(django_capture_on_commit_callbacks):
+def test_the_funnel_has_no_roster_stage(django_capture_on_commit_callbacks):
+    """RETIRED (owner 2026-08-18): the participants sheet is a tab inside the
+    team registration form, so the standalone stage is gone. Advancing to it
+    is an illegal transition, and the stage payload never lists it."""
+    import pytest
+    from django.core.exceptions import ValidationError
+    from apps.tournaments.services.state import build_stage_payload
+
     t = _tournament("stage@test.local")
     _inst(t)
     t = _advance(t, TournamentStage.ORG_REGISTRATION, django_capture_on_commit_callbacks)
-    t = _advance(t, TournamentStage.ROSTER, django_capture_on_commit_callbacks)
-    assert t.stage == TournamentStage.ROSTER
-    form = Form.objects.get(
-        tournament=t, purpose=FormPurpose.PARTICIPANT_REGISTRATION,
-    )
-    assert form.status == FormStatus.DRAFT
-    assert form.stage == "roster"
-
-
-def test_re_entering_the_stage_never_duplicates_the_sheet(
-    django_capture_on_commit_callbacks,
-):
-    cap = django_capture_on_commit_callbacks
-    t = _tournament("dupe@test.local")
-    _inst(t)
-    t = _advance(t, TournamentStage.ORG_REGISTRATION, cap)
-    t = _advance(t, TournamentStage.ROSTER, cap)
-    t = _advance(t, TournamentStage.ORG_REGISTRATION, cap)
-    t = _advance(t, TournamentStage.ROSTER, cap)
-    assert Form.objects.filter(
-        tournament=t, purpose=FormPurpose.PARTICIPANT_REGISTRATION,
-    ).count() == 1
-
-
-def test_the_stepper_counts_the_people_declared():
-    from apps.tournaments.services.state import build_stage_payload
-
-    t = _tournament("count@test.local")
-    inst = _inst(t)
-    roster_svc.declare_member(tournament=t, institution=inst, full_name="Imli")
+    with pytest.raises(ValidationError):
+        _advance(t, TournamentStage.ROSTER, django_capture_on_commit_callbacks)
     payload = build_stage_payload(t, t.created_by)
-    step = next(s for s in payload["stages"] if s["key"] == "roster")
-    assert step["counts"] == {"participants": 1}
-    assert payload["order"].index("roster") == 2
+    assert "roster" not in payload["order"]
+    assert all(s["key"] != "roster" for s in payload["stages"])

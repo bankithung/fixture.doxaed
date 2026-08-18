@@ -192,6 +192,45 @@ def sport_short(sport: dict) -> str:
     return (words[0][:3].upper() if words else "")
 
 
+def _event_leaf_options(tournament) -> list[dict]:
+    """One option per COMPETITION for the student sheet's tick columns (owner
+    2026-08-18: "the whole table with all the sports categories, so in one go
+    they can fill all").
+
+    Each option carries what the sheet header needs: ``sport`` for the grouped
+    band, ``code`` for the narrow column heading (the same initials scheme the
+    public directory's matrix legend uses), ``label`` for the tooltip and
+    screen readers. Codes are deduplicated within a sport so two categories
+    can never share a column heading.
+    """
+    from apps.tournaments.services.sports import iter_leaves
+
+    out: list[dict] = []
+    for sport in getattr(tournament, "sports", None) or []:
+        if not sport.get("key"):
+            continue
+        used: set[str] = set()
+        for lf in iter_leaves([sport]):
+            if not lf.get("leaf_key") or not lf.get("path"):
+                continue
+            segs = [w for w in str(lf["label"]).split(" \u00b7 ") if w]
+            code = "".join(
+                next((ch for ch in seg if ch.isalnum()), "") for seg in segs
+            ).upper() or "?"
+            base, n = code, 2
+            while code in used:
+                code = f"{base}{n}"
+                n += 1
+            used.add(code)
+            out.append({
+                "value": lf["leaf_key"],
+                "label": lf["label"],
+                "sport": sport.get("name") or sport["key"],
+                "code": code,
+            })
+    return out
+
+
 def _event_options(tournament) -> list[dict]:
     """Which SPORT a participant is here for (owner 2026-08-17, restated
     2026-08-18: "select sports not the categories, just the sports").
@@ -476,6 +515,10 @@ def build_team_form_schema(
                 {
                     "key": "participant_staff",
                     "type": "group",
+                    # Excel-style sheet behind the Teachers tab (owner
+                    # 2026-08-18): one row per person, one column per detail.
+                    "layout": "sheet",
+                    "tab_label": "Teachers",
                     "row_title": "staff_full_name",
                     "label": "Teacher in charge",
                     "repeatable": True,
@@ -496,6 +539,8 @@ def build_team_form_schema(
                 {
                     "key": "participant_students",
                     "type": "group",
+                    "layout": "sheet",
+                    "tab_label": "Students",
                     "row_title": "participant_name",
                     "label": "Student",
                     "repeatable": True,
@@ -517,11 +562,17 @@ def build_team_form_schema(
                         # SPORTS ONLY, never categories (owner 2026-08-18).
                         # The category is chosen on the team steps, where the
                         # category's own questions are.
+                        # One tick column PER COMPETITION (owner 2026-08-18):
+                        # the student's whole entry happens on their row, and
+                        # the per-competition steps pre-fill from these ticks.
+                        # Scoped client-side to what the school selected at
+                        # Stage 1, so a school only sees its own columns.
                         {"key": "participant_events", "type": "multi_choice",
                          "label": "Playing in", "required": False,
                          "directory": False,
-                         "help": "Sports only. Categories come later.",
-                         "options": _event_options(tournament)},
+                         "layout": "columns",
+                         "scope_to_institution": True,
+                         "options": _event_leaf_options(tournament)},
                         # Age proof, ID, medical consent — the papers a school
                         # is asked for per child (owner 2026-08-18). Capped at
                         # three so one entry cannot become a folder, and photos

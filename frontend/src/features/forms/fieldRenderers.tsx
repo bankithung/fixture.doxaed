@@ -616,6 +616,351 @@ function GroupFields({
   );
 }
 
+
+/** A multi_choice squeezed into a sheet cell: small inline checkboxes, no
+ * search box, no bordered rows. The options here are two or three sports. */
+function InlineChecks({
+  field,
+  value,
+  onChange,
+  disabled,
+}: {
+  field: Field;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  disabled?: boolean;
+}): React.ReactElement {
+  const picked = asArray(value);
+  return (
+    <div
+      role="group"
+      aria-label={t(field.label)}
+      className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-1"
+    >
+      {(field.options ?? []).map((o) => {
+        const on = picked.includes(String(o.value));
+        return (
+          <label
+            key={o.value}
+            className="flex cursor-pointer items-center gap-1.5 text-xs"
+          >
+            <input
+              type="checkbox"
+              checked={on}
+              disabled={disabled}
+              value={String(o.value)}
+              onChange={(e) =>
+                onChange(
+                  e.target.checked
+                    ? [...picked, String(o.value)]
+                    : picked.filter((v) => v !== String(o.value)),
+                )
+              }
+              className="h-4 w-4 shrink-0 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            {t(o.label)}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+/** How much horizontal room a sheet column needs, by what it holds. */
+function sheetColWidth(c: Field): string {
+  if (c.type === "file_upload") return "min-w-[16rem]";
+  if (c.type === "date") return "min-w-[15rem]";
+  if (c.type === "multi_choice") return "min-w-[10rem]";
+  if (c.type === "dropdown") return "min-w-[9rem]";
+  return "min-w-[11rem]";
+}
+
+/**
+ * A repeatable group as an EXCEL-STYLE SHEET (owner 2026-08-18): one row per
+ * person, one labelled column per detail, the documents upload a column of
+ * its own. The collapsible-card layout made a roll of forty students a stack
+ * of forms to open one by one; a school filling a roll reads and types row
+ * by row, which is a spreadsheet.
+ *
+ * Cells reuse FieldRenderer (with the label sr-only and the help dropped), so
+ * every control the form knows — the three-part date, the capped document
+ * upload, the pickers — works in a cell without a second implementation. Wide
+ * content scrolls inside the table, never the page.
+ */
+function SheetGroup({
+  field,
+  rows,
+  onChange,
+  disabled,
+  onUpload,
+  fileMeta,
+  onFileLabel,
+  errorPaths,
+  path,
+}: {
+  field: Field;
+  rows: Record<string, unknown>[];
+  onChange: (next: unknown) => void;
+  disabled?: boolean;
+  onUpload?: FieldRenderProps["onUpload"];
+  fileMeta?: FieldRenderProps["fileMeta"];
+  onFileLabel?: FieldRenderProps["onFileLabel"];
+  errorPaths?: Record<string, string>;
+  path?: string;
+}): React.ReactElement {
+  const children = (field.fields ?? []).filter((c) => c.type !== "hidden");
+  // A `layout: "columns"` child explodes into ONE COLUMN PER OPTION (owner
+  // 2026-08-18): the student's competitions are tick cells on their row, in
+  // sport-grouped bands exactly like the public directory's matrix.
+  type Col =
+    | { kind: "field"; child: Field }
+    | { kind: "option"; child: Field; option: Option };
+  const cols: Col[] = children.flatMap((c): Col[] =>
+    c.layout === "columns" && (c.options?.length ?? 0) > 0
+      ? (c.options ?? []).map((option) => ({ kind: "option", child: c, option }))
+      : [{ kind: "field", child: c }],
+  );
+  const exploded = cols.some((c) => c.kind === "option");
+  /** Consecutive option columns of one sport, for the grouped header band. */
+  const sportBands: { sport: string; span: number }[] = [];
+  for (const c of cols) {
+    if (c.kind !== "option") continue;
+    const sport = c.option.sport ?? "";
+    const last = sportBands[sportBands.length - 1];
+    if (last && last.sport === sport) last.span += 1;
+    else sportBands.push({ sport, span: 1 });
+  }
+  const BAND_TONES = [
+    "bg-primary text-primary-foreground",
+    "bg-info text-info-foreground",
+  ];
+  const rowLabel = t(field.label) || t("Item");
+  const minRows = typeof field.min_items === "number" ? field.min_items : 0;
+  const maxRows =
+    typeof field.max_items === "number" ? field.max_items : Infinity;
+  const canRemove = !disabled && rows.length > minRows;
+  const setCell = (i: number, key: string, v: unknown): void =>
+    onChange(rows.map((r, k) => (k === i ? { ...r, [key]: v } : r)));
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table
+          data-testid={`sheet-${field.key}`}
+          className="w-full border-separate border-spacing-0 text-sm"
+        >
+          <caption className="sr-only">{t(field.label)}</caption>
+          <thead>
+            <tr>
+              <th
+                scope="col"
+                rowSpan={exploded ? 2 : 1}
+                className="w-10 border-b border-r border-border bg-muted px-2 py-2 text-right font-tabular text-[0.6875rem] font-medium text-muted-foreground"
+              >
+                #
+              </th>
+              {(() => {
+                const out: React.ReactNode[] = [];
+                let bandAt = 0;
+                for (let k = 0; k < cols.length; k++) {
+                  const c = cols[k];
+                  if (c.kind === "field") {
+                    out.push(
+                      <th
+                        key={c.child.key}
+                        scope="col"
+                        rowSpan={exploded ? 2 : 1}
+                        className={cn(
+                          "border-b border-r border-border bg-muted px-3 py-2 text-left text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground",
+                          sheetColWidth(c.child),
+                        )}
+                      >
+                        {t(c.child.label)}
+                        {c.child.required ? (
+                          <span aria-hidden="true" className="ml-0.5 text-destructive">
+                            *
+                          </span>
+                        ) : null}
+                      </th>,
+                    );
+                  } else if (k === 0 || cols[k - 1].kind === "field" ||
+                             (cols[k - 1] as { option: Option }).option.sport !==
+                               c.option.sport) {
+                    const band = sportBands[bandAt];
+                    out.push(
+                      <th
+                        key={`band-${band.sport}-${k}`}
+                        scope="colgroup"
+                        colSpan={band.span}
+                        className={cn(
+                          "border-b border-r border-border px-2 py-1.5 text-center text-[0.6875rem] font-semibold uppercase tracking-wide",
+                          BAND_TONES[bandAt % BAND_TONES.length],
+                        )}
+                      >
+                        {band.sport}
+                      </th>,
+                    );
+                    bandAt += 1;
+                  }
+                }
+                return out;
+              })()}
+              {!disabled ? (
+                <th
+                  scope="col"
+                  rowSpan={exploded ? 2 : 1}
+                  className="w-10 border-b border-border bg-muted"
+                >
+                  <span className="sr-only">{t("Remove")}</span>
+                </th>
+              ) : null}
+            </tr>
+            {exploded ? (
+              <tr>
+                {cols
+                  .filter((c) => c.kind === "option")
+                  .map((c) => (
+                    <th
+                      key={(c as { option: Option }).option.value}
+                      scope="col"
+                      title={t((c as { option: Option }).option.label)}
+                      className="w-12 border-b border-border bg-muted px-2 py-1.5 text-center font-tabular text-[0.6875rem] font-semibold"
+                    >
+                      {(c as { option: Option }).option.code ??
+                        t((c as { option: Option }).option.label)}
+                      <span className="sr-only">
+                        {" "}
+                        {t((c as { option: Option }).option.label)}
+                      </span>
+                    </th>
+                  ))}
+              </tr>
+            ) : null}
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={cols.length + 2}
+                  className="px-3 py-6 text-center text-sm text-muted-foreground"
+                >
+                  {t("Nothing here yet. Add the first row below.")}
+                </td>
+              </tr>
+            ) : null}
+            {rows.map((row, i) => (
+              <tr
+                key={field.row_key ? String((row ?? {})[field.row_key] ?? i) : i}
+                className={i % 2 ? "bg-muted/20" : "bg-card"}
+              >
+                <td className="border-b border-r border-border px-2 py-2 text-right align-top font-tabular text-[0.6875rem] text-muted-foreground">
+                  {i + 1}
+                </td>
+                {cols.map((col) => {
+                  if (col.kind === "option") {
+                    const { child, option } = col;
+                    const picked = asArray((row ?? {})[child.key]);
+                    const on = picked.includes(String(option.value));
+                    return (
+                      <td
+                        key={`${child.key}-${option.value}`}
+                        className="w-12 border-b border-r border-border px-2 py-2 text-center align-middle last:border-r-0"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          disabled={disabled}
+                          aria-label={`${t(option.label)}, ${rowLabel} ${i + 1}`}
+                          onChange={(e) =>
+                            setCell(
+                              i,
+                              child.key,
+                              e.target.checked
+                                ? [...picked, String(option.value)]
+                                : picked.filter((v) => v !== String(option.value)),
+                            )
+                          }
+                          className="h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        />
+                      </td>
+                    );
+                  }
+                  const c = col.child;
+                  const cellPath = `${path ?? field.key}.${i}.${c.key}`;
+                  return (
+                    <td
+                      key={c.key}
+                      className={cn(
+                        "border-b border-r border-border px-2 py-1.5 align-top last:border-r-0",
+                        sheetColWidth(c),
+                      )}
+                    >
+                      {c.type === "multi_choice" ? (
+                        <InlineChecks
+                          field={c}
+                          value={(row ?? {})[c.key]}
+                          disabled={disabled}
+                          onChange={(v) => setCell(i, c.key, v)}
+                        />
+                      ) : (
+                        <FieldRenderer
+                          field={{ ...c, help: undefined }}
+                          hideLabel
+                          value={(row ?? {})[c.key]}
+                          disabled={disabled}
+                          error={errorPaths?.[cellPath]}
+                          errorPaths={errorPaths}
+                          path={cellPath}
+                          onUpload={onUpload}
+                          fileMeta={fileMeta}
+                          onFileLabel={onFileLabel}
+                          onChange={(v) => setCell(i, c.key, v)}
+                        />
+                      )}
+                    </td>
+                  );
+                })}
+                {!disabled ? (
+                  <td className="border-b border-border px-1 py-1.5 text-center align-top">
+                    {canRemove ? (
+                      <button
+                        type="button"
+                        onClick={() => onChange(rows.filter((_, k) => k !== i))}
+                        aria-label={t(`Remove ${rowLabel} ${i + 1}`)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <Trash2 aria-hidden="true" className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                  </td>
+                ) : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!disabled && rows.length < maxRows ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-fit"
+          data-testid={`row-add-${field.key}`}
+          onClick={() =>
+            onChange([
+              ...rows,
+              field.row_key ? { [field.row_key]: newRowId() } : {},
+            ])
+          }
+        >
+          <Plus aria-hidden="true" className="h-4 w-4" />
+          {field.add_label ? t(field.add_label) : t(`Add ${rowLabel}`)}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * A repeatable group whose filled rows COLLAPSE to their name (owner
  * 2026-08-18: "when saved no need to expand, we can only show the name, and
@@ -1244,6 +1589,21 @@ export function FieldRenderer({
         // works because each child renders through FieldRenderer, so a nested
         // repeatable group (e.g. players inside a team) renders its own rows.
         if (field.repeatable) {
+          if (field.layout === "sheet") {
+            return (
+              <SheetGroup
+                field={field}
+                rows={Array.isArray(value) ? (value as Record<string, unknown>[]) : []}
+                onChange={onChange}
+                disabled={disabled}
+                errorPaths={errorPaths}
+                path={path}
+                onUpload={onUpload}
+                fileMeta={fileMeta}
+                onFileLabel={onFileLabel}
+              />
+            );
+          }
           return (
             <RepeatableGroup
               field={field}

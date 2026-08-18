@@ -247,6 +247,79 @@ function serverErrorPaths(e: unknown): Record<string, string> {
   return out;
 }
 
+
+/**
+ * Two sheets behind one pair of tabs (owner 2026-08-18: "two tabs, one for
+ * teachers and one for the students"). Every panel stays mounted, just
+ * hidden, so uploads in the background tab survive switching; a tab whose
+ * sheet holds a validation problem carries a dot, so an error can never hide
+ * behind the other tab.
+ */
+function SheetTabs({
+  fields,
+  render,
+  countOf,
+  errorOn,
+}: {
+  fields: Field[];
+  render: (f: Field) => React.ReactNode;
+  countOf: (f: Field) => number;
+  errorOn: (f: Field) => boolean;
+}): React.ReactElement {
+  const [active, setActive] = useState(fields[0]?.key ?? "");
+  const current = fields.some((f) => f.key === active)
+    ? active
+    : (fields[0]?.key ?? "");
+  return (
+    <div className="flex flex-col gap-3">
+      <div
+        role="tablist"
+        aria-label={t("Your participants")}
+        className="flex items-center gap-0.5 self-start rounded-lg bg-secondary p-0.5"
+      >
+        {fields.map((f) => {
+          const on = f.key === current;
+          return (
+            <button
+              key={f.key}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              data-testid={`people-tab-${f.key}`}
+              onClick={() => setActive(f.key)}
+              className={cn(
+                "relative inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors",
+                on
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {t(f.tab_label ?? f.label)}
+              <span className="font-tabular">{countOf(f)}</span>
+              {errorOn(f) ? (
+                <span
+                  data-testid={`people-tab-error-${f.key}`}
+                  aria-label={t("Needs attention")}
+                  className="h-1.5 w-1.5 rounded-full bg-destructive"
+                />
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+      {fields.map((f) => (
+        <div
+          key={f.key}
+          role="tabpanel"
+          className={f.key === current ? undefined : "hidden"}
+        >
+          {render(f)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
  * Standalone PUBLIC form renderer reached by a school via a shared link
  * (`/f/:formId` for an open public form, `/r/:token` for a personalised share
@@ -1034,6 +1107,36 @@ export function PublicFormPage(): React.ReactElement {
       const f = fields[i];
       if (gaters.has(f.key)) {
         i += 1;
+        continue;
+      }
+      // Consecutive sheets with tab labels share one tabbed surface.
+      if (!f.group && f.layout === "sheet" && f.tab_label) {
+        const tabs: Field[] = [];
+        while (
+          i < fields.length &&
+          !fields[i].group &&
+          fields[i].layout === "sheet" &&
+          fields[i].tab_label
+        ) {
+          tabs.push(fields[i]);
+          i += 1;
+        }
+        out.push(
+          <SheetTabs
+            key={`tabs-${tabs[0].key}`}
+            fields={tabs}
+            render={(fld) => renderField(fld, readOnly)}
+            countOf={(fld) =>
+              Array.isArray(answers[fld.key])
+                ? (answers[fld.key] as unknown[]).length
+                : 0
+            }
+            errorOn={(fld) =>
+              Boolean(errors[fld.key]) ||
+              Object.keys(errorPaths).some((k) => k.startsWith(`${fld.key}.`))
+            }
+          />,
+        );
         continue;
       }
       if (!f.group) {

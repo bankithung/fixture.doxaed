@@ -51,7 +51,7 @@ def test_created_without_asking_keeps_the_original_funnel():
     assert "roster" not in flow_order(t)
 
 
-def test_asking_for_participants_first_adds_the_stage():
+def test_asking_for_participants_first_adds_no_stage():
     admin = _verified("a@test.local")
     r = _client(admin).post(
         "/api/tournaments/",
@@ -62,9 +62,9 @@ def test_asking_for_participants_first_adds_the_stage():
     from apps.tournaments.models import Tournament
 
     t = Tournament.objects.get(id=r.data["id"])
-    order = flow_order(t)
-    assert order.index("roster") == 2
-    assert order.index("roster") < order.index("team_registration")
+    # The stage is retired (owner 2026-08-18): the sheet is a tab inside the
+    # team form, so the mode changes the FORM, never the funnel's length.
+    assert "roster" not in flow_order(t)
 
 
 def test_an_unknown_mode_is_refused():
@@ -86,7 +86,7 @@ def test_it_can_be_switched_on_afterwards():
     assert r.status_code == 200, r.data
     t.refresh_from_db()
     assert t.roster_mode == RosterMode.ROSTER_FIRST
-    assert "roster" in flow_order(t)
+    assert "roster" not in flow_order(t)  # the mode never adds a stage
 
     # …and back off again while nothing depends on it.
     back = _client(admin).patch(

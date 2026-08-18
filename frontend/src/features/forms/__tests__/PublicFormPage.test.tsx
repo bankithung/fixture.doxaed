@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -1422,5 +1422,77 @@ describe("PublicFormPage · the sport heading is the choice", () => {
     // Unticking closes it again, so the card is the one control.
     await userEvent.click(screen.getByRole("checkbox", { name: "Table Tennis" }));
     expect(screen.queryByLabelText("U-14 · Boys")).toBeNull();
+  });
+});
+
+describe("PublicFormPage · the participants are a two-tab sheet", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  const twoSheets: FormSchema = {
+    version: 1,
+    sections: [{
+      key: "participants", title: "Your participants",
+      fields: [
+        { key: "participant_staff", type: "group", label: "Teacher in charge",
+          repeatable: true, row_key: "staff_id", layout: "sheet",
+          tab_label: "Teachers",
+          fields: [
+            { key: "staff_id", type: "hidden", label: "" },
+            { key: "staff_full_name", type: "short_text", label: "Full name",
+              required: true },
+            { key: "staff_phone", type: "phone", label: "Phone" },
+          ] },
+        { key: "participant_students", type: "group", label: "Student",
+          repeatable: true, row_key: "participant_id", layout: "sheet",
+          tab_label: "Students",
+          fields: [
+            { key: "participant_id", type: "hidden", label: "" },
+            { key: "participant_name", type: "short_text", label: "Full name",
+              required: true },
+            { key: "participant_gender", type: "dropdown", label: "Gender",
+              options: [{ value: "female", label: "Female" }] },
+          ] },
+      ],
+    }],
+  };
+
+  it("renders an Excel-style table per tab, rows added inline", async () => {
+    // Owner 2026-08-18: "like an excel sheet table view, two tabs, one for
+    // teachers and one for the students".
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "ANPSA Dimapur",
+      form: { id: "form1", title: "Team registration", description: "",
+        schema: twoSheets, confirmation_message: "Thanks" },
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+
+    // Two tabs, Teachers leading; Students' sheet is hidden, not unmounted.
+    expect(screen.getByRole("tab", { name: /Teachers/ })).toHaveAttribute(
+      "aria-selected", "true",
+    );
+    // The Teachers sheet is a real table with one column per detail.
+    const sheet = screen.getByTestId("sheet-participant_staff");
+    expect(within(sheet).getByRole("columnheader", { name: /Full name/ }))
+      .toBeInTheDocument();
+    expect(within(sheet).getByRole("columnheader", { name: "Phone" }))
+      .toBeInTheDocument();
+
+    // A row is typed straight into the table, no card to open.
+    await userEvent.click(screen.getByTestId("row-add-participant_staff"));
+    await userEvent.type(
+      within(sheet).getByLabelText(/full name/i), "Mr Lima",
+    );
+    expect(screen.getByTestId("people-tab-participant_staff")).toHaveTextContent(
+      "Teachers1",
+    );
+
+    // Switch to Students: its own sheet, its own columns.
+    await userEvent.click(screen.getByRole("tab", { name: /Students/ }));
+    // jsdom loads no CSS, so visibility is asserted on the panel's own class.
+    const panelOf = (id: string): Element =>
+      screen.getByTestId(id).closest('[role="tabpanel"]')!;
+    expect(panelOf("sheet-participant_students").className).not.toContain("hidden");
+    expect(panelOf("sheet-participant_staff").className).toContain("hidden");
   });
 });

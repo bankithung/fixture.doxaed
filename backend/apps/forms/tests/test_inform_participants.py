@@ -306,13 +306,10 @@ def test_resubmitting_the_sheet_updates_people_instead_of_doubling_them():
 
 
 # ------------------------------------- sports only, and papers per student
-def test_a_student_is_asked_for_sports_only_never_categories():
-    """Owner 2026-08-18: "select sports not the categories, just the sports".
-
-    Listing every competition turned a two-line question into a twelve-item
-    list and made the school decide the category before opening the category's
-    own step.
-    """
+def test_a_student_row_carries_one_tick_column_per_competition():
+    """Owner 2026-08-18: "the whole table with all the sports categories, so
+    in one go they can fill all". Each option is a competition column, with
+    the sport band and the short code the sheet header draws."""
     t = _tournament()
     form = generate_team_form_template(tournament=t)
     section = next(s for s in form.schema["sections"] if s["key"] == "participants")
@@ -322,11 +319,18 @@ def test_a_student_is_asked_for_sports_only_never_categories():
     events = next(
         f for f in students["fields"] if f["key"] == "participant_events"
     )
-    values = {o["value"] for o in events["options"]}
-    # Exactly the tournament's sport keys — nothing with a category segment.
-    assert values == {sp["key"] for sp in t.sports}
-    assert not any("." in v for v in values)
-    assert events["type"] == "multi_choice"
+    assert events["layout"] == "columns"
+    # Scoped client-side to the school's Stage-1 selection.
+    assert events["scope_to_institution"] is True
+    values = [o["value"] for o in events["options"]]
+    # Every option is a full competition leaf, never a bare sport.
+    assert values and all("." in v for v in values)
+    for o in events["options"]:
+        assert o["sport"] and o["code"]
+    # Codes never collide within a sport, or two columns would share a head.
+    from collections import Counter
+    per_sport = Counter((o["sport"], o["code"]) for o in events["options"])
+    assert max(per_sport.values()) == 1
 
 
 def test_each_student_may_attach_up_to_three_documents():

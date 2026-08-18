@@ -104,7 +104,11 @@ _RANK = {s: i for i, s in enumerate(_ORDER)}
 # tournament parked on one (none exist in production, but a long-lived DB or a
 # replayed fixture could) still compares, renders, and moves forward instead of
 # raising KeyError. MEMBERS used to sit after team registration.
-_RETIRED_RANK: dict[str, float] = {G.MEMBERS: _RANK[G.TEAM_REGISTRATION] + 0.5}
+_RETIRED_RANK: dict[str, float] = {
+    G.MEMBERS: _RANK[G.TEAM_REGISTRATION] + 0.5,
+    # Sat between stage two and team registration while it existed.
+    G.ROSTER: _RANK[G.TEAM_REGISTRATION] - 0.5,
+}
 
 
 #: The setup funnel, in order — the ONE list, for the default (inter-school)
@@ -122,11 +126,14 @@ def flow_order(t: Tournament | None = None) -> list[str]:
 
 
 def _order_for(t: Tournament | None) -> list[str]:
+    # The roster stage is RETIRED from the funnel (owner 2026-08-18): the
+    # participants sheet lives inside the team registration form as its own
+    # tab, so a standalone stage for it was the same work asked for twice.
+    # ``roster_first`` still changes how the TEAM form is generated; it just
+    # no longer adds a step. The stage keeps a retired rank below, so any row
+    # historically parked on it still ranks forward instead of dead-ending.
     scope = getattr(t, "scope", None) or TournamentScope.INTER_SCHOOL
-    seq = list(_ORDER_BY_SCOPE.get(scope, _ORDER))
-    if getattr(t, "roster_mode", None) == RosterMode.ROSTER_FIRST:
-        seq.insert(_ROSTER_AT, G.ROSTER)
-    return seq
+    return list(_ORDER_BY_SCOPE.get(scope, _ORDER))
 
 
 def _rank(stage: str, order: list[str] | None = None) -> float:
