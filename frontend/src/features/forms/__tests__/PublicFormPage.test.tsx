@@ -1269,3 +1269,54 @@ describe("PublicFormPage · a row is compact", () => {
     expect(header.querySelector('[data-testid="row-save-staff-0"]')).not.toBeNull();
   });
 });
+
+describe("PublicFormPage · the form reads like the directory", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("carries the same per-sport tally band once a sport is ticked", async () => {
+    // Owner 2026-08-18: the registration form and the public directory should
+    // read as one product; the directory's summary band is the tell.
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "ANPSA Dimapur",
+      form: {
+        id: "form1", title: "Team registration", description: "",
+        confirmation_message: "Thanks",
+        schema: {
+          version: 1,
+          sections: [{
+            key: "institution", title: "Your institution",
+            fields: [
+              { key: "sports", type: "multi_choice", label: "Which sports?",
+                required: true,
+                options: [
+                  { value: "table_tennis", label: "Table Tennis" },
+                  { value: "sepak_takraw", label: "Sepak Takraw" },
+                ] },
+              { key: "categories_table_tennis", type: "multi_choice",
+                label: "Table Tennis competitions", required: true,
+                visibility: { field: "sports", op: "includes", value: "table_tennis" },
+                options: [
+                  { value: "table_tennis.u_14.boys", label: "U-14 · Boys" },
+                  { value: "table_tennis.u_14.girls", label: "U-14 · Girls" },
+                ] },
+            ],
+          }],
+        } as FormSchema,
+      },
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+
+    // Nothing ticked: no band, exactly as the directory shows none with no data.
+    expect(screen.queryByTestId("entry-summary")).toBeNull();
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Table Tennis" }));
+    const band = await screen.findByTestId("entry-summary");
+    expect(band).toHaveTextContent("Table Tennis");
+
+    // Ticking competitions counts them, like the directory's per-game counts.
+    await userEvent.click(screen.getByRole("checkbox", { name: "U-14 · Boys" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "U-14 · Girls" }));
+    expect(screen.getByTestId("entry-summary")).toHaveTextContent("2");
+  });
+});

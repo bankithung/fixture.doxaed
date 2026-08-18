@@ -4,11 +4,13 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Building2,
   CheckCircle2,
+  ClipboardList,
   Info,
   KeyRound,
   Lock,
   MessageCircle,
   ShieldCheck,
+  Trophy,
   Users,
 } from "lucide-react";
 import { formsApi } from "@/api/forms";
@@ -35,9 +37,6 @@ import { ContactAdminDialog } from "./ContactAdminDialog";
 import { FieldRenderer } from "./fieldRenderers";
 import { eventCovers, leafOfSection } from "./prefillTeams";
 import type { Field, FormSchema } from "./types";
-
-const OVERLINE =
-  "text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-foreground";
 
 /** Which roster list a data-bound field draws from (spec 2026-08-17). */
 const ROSTER_SOURCES: Record<string, keyof Pick<RosterPayload, "students" | "teachers">> =
@@ -542,6 +541,29 @@ export function PublicFormPage(): React.ReactElement {
         touched = true;
       }
       return touched ? next : prev;
+    });
+  }, [answers, data]);
+
+  /** How many competitions the school has ticked, per sport. Mirrors the
+   * directory's per-game band: the same reading on both pages. */
+  const entrySummary = useMemo(() => {
+    const sportsField = (data?.form?.schema?.sections ?? [])
+      .flatMap((sec) => sec.fields ?? [])
+      .find((f) => f.key === "sports");
+    const chosen = Array.isArray(answers.sports)
+      ? (answers.sports as unknown[]).map(String)
+      : [];
+    return chosen.map((key) => {
+      const picked = answers[`categories_${key}`];
+      return {
+        key,
+        name: t(
+          sportsField?.options?.find((o) => String(o.value) === key)?.label ??
+            key,
+        ),
+        // A sport with no sub-categories counts as the one entry it is.
+        count: Array.isArray(picked) ? picked.length : 1,
+      };
     });
   }, [answers, data]);
 
@@ -1100,7 +1122,11 @@ export function PublicFormPage(): React.ReactElement {
           never covers the Back/Next/Submit footer (notably on narrow screens). */}
       {/* Roughly 70% of a desk, capped so a line of text never runs too long
           to track (owner 2026-08-18). A phone still gets the full width. */}
-      <BentoGrid className="mx-auto flex w-full max-w-3xl flex-col px-4 pb-28 pt-8 sm:px-6 lg:max-w-[70%] xl:max-w-5xl">
+      {/* Same frame as the public directory (owner 2026-08-18): 90% of a
+          desk, a page header above the panel, and one bordered panel with a
+          toolbar band. The two pages are the same product and were reading
+          as two different ones. */}
+      <BentoGrid className="mx-auto flex w-full flex-col gap-4 px-4 pb-28 pt-6 sm:px-6 lg:w-[90%] lg:max-w-none">
         <ContactAdminDialog
           formId={form?.id ?? formId ?? ""}
           open={contactOpen}
@@ -1124,27 +1150,37 @@ export function PublicFormPage(): React.ReactElement {
             organiser's instructions, who you are registering as, the step you
             are on, the questions themselves and the Back/Next footer are bands
             of a single card, not a stack of them. */}
+        <header className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
+              {t("Registration")}
+            </p>
+            <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
+              {t(form.title)}
+            </h1>
+            {/* The shell already names the tournament above this, so the
+                subtitle says what this form is FOR instead of repeating it. */}
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t("Enter your school's teams for this tournament.")}
+            </p>
+          </div>
+          <a
+            href={`/f/${form.id}/directory`}
+            className={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "h-8 shrink-0 px-2.5 text-xs",
+            )}
+          >
+            <Users aria-hidden="true" className="h-3.5 w-3.5" />
+            {t("Registered")}
+          </a>
+        </header>
+
         <StarBorder>
           <section
             data-testid="registration-panel"
-            className="bento-card flex w-full flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+            className="bento-card panel flex w-full flex-col divide-y divide-border overflow-hidden"
           >
-            <header className="flex items-start justify-between gap-3 px-5 py-4 sm:px-6">
-              <div className="min-w-0">
-                <p className={OVERLINE}>{t("Registration")}</p>
-                <h1 className="page-title mt-1">{t(form.title)}</h1>
-              </div>
-              <a
-                href={`/f/${form.id}/directory`}
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "h-8 shrink-0 px-2.5 text-xs",
-                )}
-              >
-                <Users aria-hidden="true" className="h-3.5 w-3.5" />
-                {t("Registered")}
-              </a>
-            </header>
 
             {/* Instructions — dates, age cut-off, rules — where they are read. */}
             {form.description ? (
@@ -1204,8 +1240,9 @@ export function PublicFormPage(): React.ReactElement {
               </div>
             ) : null}
 
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 bg-muted/30 px-5 py-3 sm:px-6">
-              <h2 className="text-base font-semibold">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border p-3">
+              <ClipboardList aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
+              <h2 className="text-sm font-semibold">
                 {isReview
                   ? t("Review your registration")
                   : current
@@ -1213,14 +1250,16 @@ export function PublicFormPage(): React.ReactElement {
                     : t("Questions")}
               </h2>
               {sections.length >= 1 ? (
-                <span
-                  className="font-tabular text-xs text-muted-foreground"
-                  aria-live="polite"
-                >
-                  {t("Step")} {clamped + 1} {t("of")} {sections.length + 1}
-                  {sections.length - clamped > 0
-                    ? ` · ${sections.length - clamped} ${t("left")}`
-                    : ""}
+                <span className="flex items-baseline gap-1 pl-1" aria-live="polite">
+                  <span className="font-tabular text-base font-semibold leading-none">
+                    {clamped + 1}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("of")} {sections.length + 1}
+                    {sections.length - clamped > 0
+                      ? ` · ${sections.length - clamped} ${t("left")}`
+                      : ""}
+                  </span>
                 </span>
               ) : null}
               <p className="w-full text-sm text-muted-foreground">
@@ -1231,6 +1270,34 @@ export function PublicFormPage(): React.ReactElement {
                     : ""}
               </p>
             </div>
+
+            {/* Per-sport tally, exactly the band the public directory carries
+                under its toolbar (owner 2026-08-18: the two pages should read
+                as one product). It says what the school has entered so far,
+                and appears as soon as a sport is ticked. */}
+            {entrySummary.length > 0 ? (
+              <section
+                aria-label={t("Your entry so far")}
+                data-testid="entry-summary"
+                className="flex flex-wrap gap-x-4 gap-y-1.5 border-b border-border px-3 py-2"
+              >
+                {entrySummary.map((g) => (
+                  <span
+                    key={g.key}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 text-xs text-muted-foreground",
+                      g.count === 0 && "opacity-60",
+                    )}
+                  >
+                    <Trophy aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
+                    {g.name}
+                    <span className="font-tabular text-sm font-semibold text-foreground">
+                      {g.count}
+                    </span>
+                  </span>
+                ))}
+              </section>
+            ) : null}
 
             {/* The questions themselves. */}
             {isReview ? (
