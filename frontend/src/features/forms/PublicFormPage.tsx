@@ -201,6 +201,21 @@ function serverFieldErrors(e: unknown): Record<string, string> {
   return out;
 }
 
+/** The SAME errors keyed by their full dotted path
+ * ("teams_x.0.staff_x.1.staff_role_x"), so a nested field can show its own
+ * message instead of the whole group carrying one detached line at the bottom
+ * (owner 2026-08-18: "the user will never know" which answer is wrong). */
+function serverErrorPaths(e: unknown): Record<string, string> {
+  if (!(e instanceof ApiError)) return {};
+  const raw = e.payload.errors;
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    out[k] = Array.isArray(v) ? String(v[0]) : String(v);
+  }
+  return out;
+}
+
 /**
  * Standalone PUBLIC form renderer reached by a school via a shared link
  * (`/f/:formId` for an open public form, `/r/:token` for a personalised share
@@ -244,6 +259,9 @@ export function PublicFormPage(): React.ReactElement {
   );
   const [stepIndex, setStepIndex] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // The same failures keyed by full dotted path, so the exact row and field
+  // can carry the message rather than the group carrying one detached line.
+  const [errorPaths, setErrorPaths] = useState<Record<string, string>>({});
   const [eventId] = useState(newEventId); // stable across retries (idempotency)
   const [done, setDone] = useState<string | null>(null);
 
@@ -665,6 +683,7 @@ export function PublicFormPage(): React.ReactElement {
     },
     onError: (e) => {
       const fieldErrs = serverFieldErrors(e);
+      setErrorPaths(serverErrorPaths(e));
       if (Object.keys(fieldErrs).length) {
         setErrors(fieldErrs);
         // Jump to the first reachable section that owns a failing field.
@@ -718,6 +737,7 @@ export function PublicFormPage(): React.ReactElement {
 
   function onBack() {
     setErrors({});
+    setErrorPaths({});
     setStepIndex((i) => Math.max(i - 1, 0));
   }
 
@@ -955,6 +975,8 @@ export function PublicFormPage(): React.ReactElement {
           field={f}
           value={answers[f.key]}
           error={readOnly ? undefined : (errors[f.key] ?? dupErrors[f.key])}
+          errorPaths={readOnly ? undefined : errorPaths}
+          path={f.key}
           onChange={(v) => setAnswer(f.key, v)}
           onUpload={readOnly ? undefined : handleUpload}
           fileMeta={displayFileMeta}

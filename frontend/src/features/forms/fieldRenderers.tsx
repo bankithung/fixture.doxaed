@@ -15,6 +15,13 @@ export interface FieldRenderProps {
   onChange: (value: unknown) => void;
   /** Field-level error code/message to surface inline. */
   error?: string;
+  /** Every failure keyed by its full dotted path, so a nested field inside a
+   * repeatable row can surface its OWN message. Without it a group carried one
+   * detached line and the respondent could not tell which answer was rejected
+   * (owner 2026-08-18). */
+  errorPaths?: Record<string, string>;
+  /** This field's dotted path, the prefix its children extend. */
+  path?: string;
   /** Upload handler for file fields; resolves to an `upload_ref`. */
   onUpload?: (field: Field, file: File) => Promise<string>;
   /** Display metadata for already-stored uploads (filename + signed view URL +
@@ -319,14 +326,29 @@ function isWide(f: Field): boolean {
 function GroupFields({
   children,
   render,
+  wideKey,
 }: {
   children: Field[];
   render: (f: Field) => React.ReactNode;
+  /** A row's naming field (its `row_title`) takes the full width: it is the
+   * thing the row IS, and half a row of "Full name" beside a gap reads as a
+   * layout fault. */
+  wideKey?: string;
 }): React.ReactElement {
+  // A hidden field renders nothing, so giving it a grid cell left a HOLE and
+  // pushed the next field into the far column (owner 2026-08-18: "the name
+  // input is going to the right leaving gaps"). Every group here starts with a
+  // hidden row id, so this hit every student and every teacher.
+  const shown = children.filter((c) => c.type !== "hidden");
   return (
     <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
-      {children.map((child) => (
-        <div key={child.key} className={cn(isWide(child) && "sm:col-span-2")}>
+      {shown.map((child) => (
+        <div
+          key={child.key}
+          className={cn(
+            (isWide(child) || child.key === wideKey) && "sm:col-span-2",
+          )}
+        >
           {render(child)}
         </div>
       ))}
@@ -357,9 +379,13 @@ function RepeatableGroup({
   onUpload,
   fileMeta,
   onFileLabel,
+  errorPaths,
+  path,
 }: {
   field: Field;
   rows: Record<string, unknown>[];
+  errorPaths?: Record<string, string>;
+  path?: string;
   onChange: (next: unknown) => void;
   disabled?: boolean;
   onUpload?: FieldRenderProps["onUpload"];
@@ -400,6 +426,16 @@ function RepeatableGroup({
   const idOf = (row: Record<string, unknown>, i: number): string =>
     field.row_key ? String(row?.[field.row_key] ?? `i${i}`) : `i${i}`;
 
+  /** Any failure reported anywhere inside row `i`. A saved row that hides a
+   * rejected answer is exactly how a submit fails with nothing to look at. */
+  const rowError = (i: number): string | undefined => {
+    const prefix = `${path ?? field.key}.${i}.`;
+    for (const [k, v] of Object.entries(errorPaths ?? {})) {
+      if (k.startsWith(prefix)) return v;
+    }
+    return undefined;
+  };
+
   // Rows already present when this mounts are filled work — they open closed.
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const setOpen = (id: string, open: boolean): void =>
@@ -415,7 +451,10 @@ function RepeatableGroup({
       {rows.map((row, i) => {
         const id = idOf(row, i);
         const title = titleOf(row);
-        const open = !collapsible || openIds.has(id);
+        const err = rowError(i);
+        // A row carrying a rejected answer opens itself: the message belongs
+        // beside the field, not at the bottom of the page.
+        const open = !collapsible || openIds.has(id) || Boolean(err);
         const remove = (
           <button
             type="button"
@@ -468,13 +507,26 @@ function RepeatableGroup({
               </span>
               {canRemove ? remove : null}
             </div>
+            {err ? (
+              <p
+                role="alert"
+                data-testid={`row-error-${field.key}-${i}`}
+                className="rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive"
+              >
+                {t(ERROR_MESSAGES[err] ?? err)}
+              </p>
+            ) : null}
             <GroupFields
               children={children}
+              wideKey={titleKey}
               render={(child) => (
                 <FieldRenderer
                   field={child}
                   value={(row ?? {})[child.key]}
                   disabled={disabled}
+                  error={errorPaths?.[`${path ?? field.key}.${i}.${child.key}`]}
+                  errorPaths={errorPaths}
+                  path={`${path ?? field.key}.${i}.${child.key}`}
                   onUpload={onUpload}
                   fileMeta={fileMeta}
                   onFileLabel={onFileLabel}
@@ -563,6 +615,8 @@ export function FieldRenderer({
   disabled,
   optionExtra,
   hideLabel,
+  errorPaths,
+  path,
 }: FieldRenderProps): React.ReactElement | null {
   const id = useId();
   const labelId = `${id}-label`;
@@ -906,6 +960,8 @@ export function FieldRenderer({
               rows={Array.isArray(value) ? (value as Record<string, unknown>[]) : []}
               onChange={onChange}
               disabled={disabled}
+              errorPaths={errorPaths}
+              path={path}
               onUpload={onUpload}
               fileMeta={fileMeta}
               onFileLabel={onFileLabel}
@@ -926,6 +982,9 @@ export function FieldRenderer({
                   field={child}
                   value={obj[child.key]}
                   disabled={disabled}
+                  error={errorPaths?.[`${path ?? field.key}.${child.key}`]}
+                  errorPaths={errorPaths}
+                  path={`${path ?? field.key}.${child.key}`}
                   onUpload={onUpload}
                   fileMeta={fileMeta}
                   onFileLabel={onFileLabel}

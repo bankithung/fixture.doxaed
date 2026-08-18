@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PublicFormPage } from "../PublicFormPage";
 import { formsApi } from "@/api/forms";
+import { ApiError } from "@/types/api";
 import type { FormSchema } from "../types";
 
 vi.mock("@/api/forms");
@@ -1059,5 +1060,69 @@ describe("PublicFormPage · progress", () => {
       "aria-valuenow",
       "2",
     );
+  });
+});
+
+describe("PublicFormPage · a row's fields line up", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("gives no grid cell to a hidden field, so the name starts the row", async () => {
+    // Every generated person group opens with a hidden row id. Giving it a
+    // cell left a hole and pushed the name into the far column (owner
+    // 2026-08-18: "the name input is going to the right leaving gaps").
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "ANPSA Dimapur",
+      form: { id: "form1", title: "Team registration", description: "",
+        schema: rowSchema, confirmation_message: "Thanks" },
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+    await userEvent.click(screen.getByTestId("row-add-participant_students"));
+
+    const cells = Array.from(
+      screen.getByTestId("row-open-participant_students-0")
+        .querySelectorAll(":scope > div.grid > div"),
+    );
+    // Two visible fields (name, class) — the hidden id gets no cell at all.
+    expect(cells).toHaveLength(2);
+    // And the name, being what the row IS, takes the whole row.
+    expect(cells[0]!.className).toContain("sm:col-span-2");
+    expect(cells[0]!.textContent).toContain("Full name");
+  });
+});
+
+describe("PublicFormPage · a rejected answer says which one", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("puts the message on the failing row and opens it", async () => {
+    // Owner 2026-08-18: a nested failure printed one detached line at the
+    // bottom, so "not an allowed option" named nothing.
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "ANPSA Dimapur",
+      form: { id: "form1", title: "Team registration", description: "",
+        schema: rowSchema, confirmation_message: "Thanks" },
+    });
+    vi.mocked(formsApi.publicSubmit).mockRejectedValue(
+      new ApiError(400, {
+        errors: { "participant_students.0.participant_class": "not_an_allowed_option" },
+      }),
+    );
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+    await userEvent.click(screen.getByTestId("row-add-participant_students"));
+    await userEvent.type(screen.getByLabelText(/full name/i), "Aben Kikon");
+    await userEvent.click(screen.getByTestId("row-save-participant_students-0"));
+    // Saved, so the offending answer is out of sight.
+    expect(screen.getByTestId("row-saved-participant_students-0")).toBeInTheDocument();
+
+    // One section, so the next step IS the review, then submit.
+    await userEvent.click(screen.getByRole("button", { name: /review/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^submit/i }));
+
+    // The row reopens itself and carries the message.
+    expect(
+      await screen.findByTestId("row-error-participant_students-0"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("row-open-participant_students-0")).toBeInTheDocument();
   });
 });
