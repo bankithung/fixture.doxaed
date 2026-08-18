@@ -1002,15 +1002,71 @@ export function PublicFormPage(): React.ReactElement {
   // the option that revealed it (owner 2026-07-05: pick a sport, its
   // sub-options unfold right below, level by level) — driven purely by each
   // field's visibility pointer, nothing sport-specific.
+  /** A short answer that can share a row: one line of text, a date, a pick.
+   * Choice lists, uploads and groups are tall and keep the full width. */
+  const isCompact = (f: Field): boolean =>
+    ["short_text", "email", "phone", "number", "date", "time", "dropdown"].includes(
+      f.type,
+    ) && !f.data_source;
+
   const renderGrouped = (
     fields: Field[],
     readOnly = false,
   ): React.ReactNode[] => {
     const out: React.ReactNode[] = [];
+    // Which field decides whether each group appears. Its options ARE the
+    // group headings, so asking it separately ("Which sport(s) are you
+    // entering teams for?") and then heading each card with the same name was
+    // the same question twice (owner 2026-08-18). The heading carries the
+    // checkbox instead, and the question itself is not drawn.
+    const gateOf = new Map<string, { field: string; value: string }>();
+    for (const f of fields) {
+      const v = f.visibility;
+      if (f.group && v?.op === "includes" && typeof v.value === "string") {
+        if (!gateOf.has(f.group)) {
+          gateOf.set(f.group, { field: v.field, value: v.value });
+        }
+      }
+    }
+    const gaters = new Set([...gateOf.values()].map((g) => g.field));
     let i = 0;
     while (i < fields.length) {
       const f = fields[i];
+      if (gaters.has(f.key)) {
+        i += 1;
+        continue;
+      }
       if (!f.group) {
+        // Consecutive SHORT answers pack two to a row (owner 2026-08-18): the
+        // contact block is a name, an email and a phone, and stacked full
+        // width they read as three unrelated questions instead of one card of
+        // details about the school. Anything tall keeps its own row.
+        const compact: Field[] = [];
+        while (i < fields.length && !fields[i].group && isCompact(fields[i])) {
+          compact.push(fields[i]);
+          i += 1;
+        }
+        if (compact.length > 1) {
+          out.push(
+            <div
+              key={`pack-${compact[0].key}`}
+              className={cn(
+                "grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2",
+                // Three short answers are one line of one record (owner
+                // 2026-08-18: the contact person, email and phone on a
+                // single row). Pairs stay two-up; only a full trio spreads.
+                compact.length % 3 === 0 && "lg:grid-cols-3",
+              )}
+            >
+              {compact.map((c) => (
+                <div key={c.key}>{renderField(c, readOnly)}</div>
+              ))}
+            </div>,
+          );
+          continue;
+        }
+        for (const c of compact) out.push(renderField(c, readOnly));
+        if (compact.length) continue;
         out.push(renderField(f, readOnly));
         i += 1;
         continue;
@@ -1024,7 +1080,10 @@ export function PublicFormPage(): React.ReactElement {
       const visible = chunk.filter(
         (c) => isVisible(c.visibility, answers) && !lockedSet.has(c.key),
       );
-      if (!visible.length) continue;
+      // An UNTICKED group has nothing visible inside it, but its card must
+      // still be drawn: the header checkbox is what reveals the rest, and
+      // skipping the card would leave no way to tick it.
+      if (!visible.length && !gateOf.has(group)) continue;
 
       // Wire each field to the option that reveals it (visibility points at
       // the parent field + value). Fields gated from OUTSIDE the chunk (e.g.
@@ -1068,9 +1127,37 @@ export function PublicFormPage(): React.ReactElement {
           key={`group-${group}`}
           className="flex flex-col gap-4 rounded-lg border border-border bg-muted/20 p-4"
         >
-          <h3 className="text-sm font-semibold">
-            {t(chunk[0].group_label ?? group)}
-          </h3>
+          {(() => {
+            const gate = gateOf.get(group);
+            const name = t(chunk[0].group_label ?? group);
+            if (!gate) {
+              return <h3 className="text-sm font-semibold">{name}</h3>;
+            }
+            const chosen = Array.isArray(answers[gate.field])
+              ? (answers[gate.field] as unknown[]).map(String)
+              : [];
+            const on = chosen.includes(gate.value);
+            return (
+              <label className="flex cursor-pointer items-center gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={on}
+                  disabled={readOnly}
+                  aria-label={name}
+                  onChange={(e) =>
+                    setAnswer(
+                      gate.field,
+                      e.target.checked
+                        ? [...chosen, gate.value]
+                        : chosen.filter((v) => v !== gate.value),
+                    )
+                  }
+                  className="h-4 w-4 shrink-0 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <h3 className="text-sm font-semibold">{name}</h3>
+              </label>
+            );
+          })()}
           {roots.map((c) => renderChain(c, false))}
         </div>,
       );
@@ -1167,37 +1254,39 @@ export function PublicFormPage(): React.ReactElement {
             organiser's instructions, who you are registering as, the step you
             are on, the questions themselves and the Back/Next footer are bands
             of a single card, not a stack of them. */}
-        <header className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
-              {t("Registration")}
-            </p>
-            <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
-              {t(form.title)}
-            </h1>
-            {/* The shell already names the tournament above this, so the
-                subtitle says what this form is FOR instead of repeating it. */}
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t("Enter your school's teams for this tournament.")}
-            </p>
-          </div>
-          <a
-            href={`/f/${form.id}/directory`}
-            className={cn(
-              buttonVariants({ variant: "outline", size: "sm" }),
-              "h-8 shrink-0 px-2.5 text-xs",
-            )}
-          >
-            <Users aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("Registered")}
-          </a>
-        </header>
-
         <StarBorder>
           <section
             data-testid="registration-panel"
             className="bento-card panel flex w-full flex-col divide-y divide-border overflow-hidden"
           >
+            {/* The page header lives INSIDE the panel (owner 2026-08-18):
+                eyebrow, title, purpose and the Registered link are the card's
+                own first band, not a floater above it. */}
+            <header className="flex flex-wrap items-end justify-between gap-3 px-5 py-4 sm:px-6">
+              <div className="min-w-0">
+                <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
+                  {t("Registration")}
+                </p>
+                <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
+                  {t(form.title)}
+                </h1>
+                {/* The shell already names the tournament above this, so the
+                    subtitle says what this form is FOR instead of repeating it. */}
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {t("Enter your school's teams for this tournament.")}
+                </p>
+              </div>
+              <a
+                href={`/f/${form.id}/directory`}
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "h-8 shrink-0 px-2.5 text-xs",
+                )}
+              >
+                <Users aria-hidden="true" className="h-3.5 w-3.5" />
+                {t("Registered")}
+              </a>
+            </header>
 
             {/* Instructions — dates, age cut-off, rules — where they are read. */}
             {form.description ? (
