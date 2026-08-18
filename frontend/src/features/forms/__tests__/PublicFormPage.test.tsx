@@ -952,3 +952,86 @@ describe("PublicFormPage · participants-first pickers", () => {
     ).toBeInTheDocument();
   });
 });
+
+/**
+ * A saved row collapses to its name (owner 2026-08-18). A school entering
+ * forty students was reading forty open forms at once.
+ */
+const rowSchema: FormSchema = {
+  version: 1,
+  sections: [
+    {
+      key: "participants",
+      title: "Your participants",
+      fields: [
+        {
+          key: "participant_students",
+          type: "group",
+          label: "Student",
+          repeatable: true,
+          row_key: "participant_id",
+          row_title: "participant_name",
+          fields: [
+            { key: "participant_id", type: "hidden", label: "" },
+            { key: "participant_name", type: "short_text", label: "Full name", required: true },
+            { key: "participant_class", type: "short_text", label: "Class & section" },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+describe("PublicFormPage · saved rows collapse to a name", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  async function mountRows() {
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "ANPSA Dimapur",
+      form: { id: "form1", title: "Team registration", description: "",
+        schema: rowSchema, confirmation_message: "Thanks" },
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+  }
+
+  it("opens a new row, saves it to one line, and reopens it to edit", async () => {
+    await mountRows();
+    await userEvent.click(screen.getByTestId("row-add-participant_students"));
+    // A row you just asked for opens ready to type in.
+    expect(screen.getByTestId("row-open-participant_students-0")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/full name/i), "Aben Kikon");
+    await userEvent.click(screen.getByTestId("row-save-participant_students-0"));
+
+    // Saved: one line carrying the name, no fields.
+    const saved = screen.getByTestId("row-saved-participant_students-0");
+    expect(saved).toHaveTextContent("Aben Kikon");
+    expect(screen.queryByLabelText(/class & section/i)).not.toBeInTheDocument();
+
+    // Edit puts it back exactly as it was, answers intact.
+    await userEvent.click(screen.getByTestId("row-edit-participant_students-0"));
+    expect(screen.getByLabelText(/full name/i)).toHaveValue("Aben Kikon");
+  });
+
+  it("will not collapse a row that has no name to show", async () => {
+    await mountRows();
+    await userEvent.click(screen.getByTestId("row-add-participant_students"));
+    // Nothing typed: saving would leave an unidentifiable strip.
+    expect(screen.getByTestId("row-save-participant_students-0")).toBeDisabled();
+  });
+
+  it("keeps each row's open state to itself", async () => {
+    await mountRows();
+    await userEvent.click(screen.getByTestId("row-add-participant_students"));
+    await userEvent.type(screen.getByLabelText(/full name/i), "Aben Kikon");
+    await userEvent.click(screen.getByTestId("row-save-participant_students-0"));
+    await userEvent.click(screen.getByTestId("row-add-participant_students"));
+
+    // The second is open for typing; the first stays saved.
+    expect(screen.getByTestId("row-open-participant_students-1")).toBeInTheDocument();
+    expect(screen.getByTestId("row-saved-participant_students-0")).toHaveTextContent(
+      "Aben Kikon",
+    );
+  });
+});

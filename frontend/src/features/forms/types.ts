@@ -128,6 +128,10 @@ export interface Field {
   /** Repeatable group whose new rows get a generated id in this child key, so
    * a picker elsewhere can reference one row and survive reordering. */
   row_key?: string;
+  /** Repeatable group: which child field names a row once it is saved, so a
+   * filled row can collapse to that name instead of staying a wall of inputs
+   * (owner 2026-08-18). Falls back to the first plain-text child. */
+  row_title?: string;
   /** `type: "file_upload"` → allow several files (value becomes an array of
    * upload refs) and/or constrain the picker's accepted types. */
   multiple?: boolean;

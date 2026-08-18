@@ -84,6 +84,12 @@ def test_the_team_form_carries_its_own_participants_sheet():
     section = next(s for s in form.schema["sections"] if s["key"] == "participants")
     groups = {g["key"]: g for g in section["fields"]}
     # The logo is asked ONCE here rather than on every team (owner 2026-08-17).
+    # ORDER matters (owner 2026-08-18): the school-level questions come first,
+    # then the long roll of students — a clerk should not have to scroll past
+    # forty children to reach the two questions about the school itself.
+    assert [g["key"] for g in section["fields"]] == [
+        "team_logo", "participant_staff", "participant_students",
+    ]
     assert set(groups) == {
         "participant_students", "participant_staff", "team_logo",
     }
@@ -336,8 +342,19 @@ def test_each_student_may_attach_up_to_three_documents():
     assert docs["multiple"] is True
     assert docs["max_items"] == 3
     assert "application/pdf" in docs["accept"]
-    # Papers are optional: a school missing one certificate must still submit.
-    assert docs["required"] is False
+    # Mandatory (owner 2026-08-18): a child with no papers is not entered.
+    assert docs["required"] is True
+
+
+def test_a_saved_row_knows_which_field_names_it():
+    """Owner 2026-08-18: a filled row collapses to its name. The renderer has
+    to be told WHICH child that is, or forty students stay forty open forms."""
+    t = _tournament()
+    form = generate_team_form_template(tournament=t)
+    section = next(s for s in form.schema["sections"] if s["key"] == "participants")
+    groups = {g["key"]: g for g in section["fields"]}
+    assert groups["participant_students"]["row_title"] == "participant_name"
+    assert groups["participant_staff"]["row_title"] == "staff_full_name"
 
 
 def _errors_for(form, docs, institution):

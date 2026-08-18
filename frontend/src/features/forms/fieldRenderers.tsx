@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import type { SyntheticEvent } from "react";
-import { ExternalLink, Plus, Search, Star, Trash2 } from "lucide-react";
+import { Check, ExternalLink, Pencil, Plus, Search, Star, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -289,6 +289,203 @@ function FileUploadField({
     </div>
   );
 }
+
+
+/**
+ * A repeatable group whose filled rows COLLAPSE to their name (owner
+ * 2026-08-18: "when saved no need to expand, we can only show the name, and
+ * on pressing edit allow edit").
+ *
+ * A school entering forty students was reading forty open forms at once — the
+ * page became unnavigable long before the roll was finished. A saved row is
+ * therefore one line: its name, an Edit and a Remove. Editing reopens exactly
+ * that row.
+ *
+ * Save is a display action, not a submit: the answers are already in the form
+ * state as they are typed, so collapsing loses nothing and there is no second
+ * source of truth to keep. It is disabled until the row has a name, because a
+ * row that collapsed to a blank strip could not be told from any other.
+ */
+function RepeatableGroup({
+  field,
+  rows,
+  onChange,
+  disabled,
+  onUpload,
+  fileMeta,
+  onFileLabel,
+}: {
+  field: Field;
+  rows: Record<string, unknown>[];
+  onChange: (next: unknown) => void;
+  disabled?: boolean;
+  onUpload?: FieldRenderProps["onUpload"];
+  fileMeta?: FieldRenderProps["fileMeta"];
+  onFileLabel?: FieldRenderProps["onFileLabel"];
+}): React.ReactElement {
+  const children = field.fields ?? [];
+  const rowLabel = t(field.label) || t("Item");
+  // Roster bounds (W2-B): a category's format can pin squad size — Add stops
+  // at max_items, Remove stops at min_items. Server enforces the same bounds.
+  const minRows = typeof field.min_items === "number" ? field.min_items : 0;
+  const maxRows =
+    typeof field.max_items === "number" ? field.max_items : Infinity;
+  const atMax = rows.length >= maxRows;
+  const canRemove = !disabled && rows.length > minRows;
+
+  /** Collapsing is OPT-IN, via an authored `row_title` naming the child that
+   * labels a saved row. Inferring one would collapse rows that cannot say what
+   * they are — a player row is a dropdown and a number, and "Player 1" tells
+   * you less than the row itself. Groups without it behave exactly as before. */
+  const titleKey = field.row_title;
+  const collapsible = Boolean(titleKey);
+
+  /** Rows are identified by their own minted id where they have one, so a
+   * removal in the middle does not re-open somebody else's row. */
+  const idOf = (row: Record<string, unknown>, i: number): string =>
+    field.row_key ? String(row?.[field.row_key] ?? `i${i}`) : `i${i}`;
+
+  // Rows already present when this mounts are filled work — they open closed.
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+  const setOpen = (id: string, open: boolean): void =>
+    setOpenIds((s) => {
+      const next = new Set(s);
+      if (open) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+
+  return (
+    <div className="flex flex-col gap-2">
+      {rows.map((row, i) => {
+        const id = idOf(row, i);
+        const title = String((row ?? {})[titleKey ?? ""] ?? "").trim();
+        const open = !collapsible || openIds.has(id);
+        const remove = (
+          <button
+            type="button"
+            onClick={() => onChange(rows.filter((_, k) => k !== i))}
+            aria-label={t(`Remove ${rowLabel} ${i + 1}`)}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Trash2 aria-hidden="true" className="h-4 w-4" />
+          </button>
+        );
+
+        if (!open) {
+          return (
+            <div
+              key={id}
+              data-testid={`row-saved-${field.key}-${i}`}
+              className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2"
+            >
+              <span className="w-5 shrink-0 font-tabular text-xs text-muted-foreground">
+                {i + 1}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                {title || `${rowLabel} ${i + 1}`}
+              </span>
+              {!disabled ? (
+                <button
+                  type="button"
+                  onClick={() => setOpen(id, true)}
+                  data-testid={`row-edit-${field.key}-${i}`}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium transition-colors hover:bg-accent"
+                >
+                  <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t("Edit")}
+                </button>
+              ) : null}
+              {canRemove ? remove : null}
+            </div>
+          );
+        }
+
+        return (
+          <div
+            key={id}
+            data-testid={`row-open-${field.key}-${i}`}
+            className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">
+                {rowLabel} {i + 1}
+              </span>
+              {canRemove ? remove : null}
+            </div>
+            {children.map((child) => (
+              <FieldRenderer
+                key={child.key}
+                field={child}
+                value={(row ?? {})[child.key]}
+                disabled={disabled}
+                onUpload={onUpload}
+                fileMeta={fileMeta}
+                onFileLabel={onFileLabel}
+                onChange={(v) =>
+                  onChange(
+                    rows.map((r, k) => (k === i ? { ...r, [child.key]: v } : r)),
+                  )
+                }
+              />
+            ))}
+            {!disabled && collapsible ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-fit"
+                disabled={!title}
+                data-testid={`row-save-${field.key}-${i}`}
+                onClick={() => setOpen(id, false)}
+              >
+                <Check aria-hidden="true" className="h-4 w-4" />
+                {t("Save")}
+              </Button>
+            ) : null}
+          </div>
+        );
+      })}
+      {!disabled && !atMax ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-fit"
+          data-testid={`row-add-${field.key}`}
+          onClick={() => {
+            // A row a picker can point at needs an identity of its own: minted
+            // here, at creation, so it survives editing and reordering (two
+            // same-named students stay two).
+            const id = newRowId();
+            onChange([...rows, field.row_key ? { [field.row_key]: id } : {}]);
+            // A row you just asked for opens ready to type in.
+            if (collapsible) setOpen(field.row_key ? id : `i${rows.length}`, true);
+          }}
+        >
+          <Plus aria-hidden="true" className="h-4 w-4" />
+          {t(`Add ${rowLabel}`)}
+        </Button>
+      ) : null}
+      {minRows > 0 || maxRows !== Infinity ? (
+        <p
+          className={cn(
+            "font-tabular text-xs",
+            rows.length < minRows ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
+          {rows.length}
+          {maxRows !== Infinity ? ` / ${maxRows}` : ""}{" "}
+          {rowLabel.toLowerCase()}
+          {minRows > 0 && rows.length < minRows
+            ? ` · ${t("at least")} ${minRows} ${t("required")}`
+            : ""}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 
 /**
  * One renderer per field type, shared by the builder preview and the public
@@ -644,102 +841,16 @@ export function FieldRenderer({
         // works because each child renders through FieldRenderer, so a nested
         // repeatable group (e.g. players inside a team) renders its own rows.
         if (field.repeatable) {
-          const rows: Record<string, unknown>[] = Array.isArray(value)
-            ? (value as Record<string, unknown>[])
-            : [];
-          const rowLabel = t(field.label) || t("Item");
-          // Roster bounds (W2-B): a category's format can pin squad size —
-          // Add stops at max_items, Remove stops at min_items, and the
-          // counter shows where you stand. Server enforces the same bounds.
-          const minRows = typeof field.min_items === "number" ? field.min_items : 0;
-          const maxRows =
-            typeof field.max_items === "number" ? field.max_items : Infinity;
-          const atMax = rows.length >= maxRows;
-          const canRemove = !disabled && rows.length > minRows;
           return (
-            <div className="flex flex-col gap-2">
-              {rows.map((row, i) => (
-                <div
-                  key={i}
-                  className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {rowLabel} {i + 1}
-                    </span>
-                    {canRemove ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onChange(rows.filter((_, k) => k !== i))
-                        }
-                        aria-label={t(`Remove ${rowLabel} ${i + 1}`)}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <Trash2 aria-hidden="true" className="h-4 w-4" />
-                      </button>
-                    ) : null}
-                  </div>
-                  {children.map((child) => (
-                    <FieldRenderer
-                      key={child.key}
-                      field={child}
-                      value={(row ?? {})[child.key]}
-                      disabled={disabled}
-                      onUpload={onUpload}
-                      fileMeta={fileMeta}
-                      onFileLabel={onFileLabel}
-                      onChange={(v) =>
-                        onChange(
-                          rows.map((r, k) =>
-                            k === i ? { ...r, [child.key]: v } : r,
-                          ),
-                        )
-                      }
-                    />
-                  ))}
-                </div>
-              ))}
-              {!disabled && !atMax ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-fit"
-                  onClick={() =>
-                    onChange([
-                      ...rows,
-                      // A row a picker can point at needs an identity of its
-                      // own: minted here, at creation, so it survives editing
-                      // and reordering (two same-named students stay two).
-                      field.row_key ? { [field.row_key]: newRowId() } : {},
-                    ])
-                  }
-                >
-                  <Plus aria-hidden="true" className="h-4 w-4" />
-                  {t(`Add ${rowLabel}`)}
-                </Button>
-              ) : null}
-              {minRows > 0 || maxRows !== Infinity ? (
-                <p
-                  className={cn(
-                    "font-tabular text-xs",
-                    rows.length < minRows
-                      ? "text-destructive"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {rows.length}
-                  {maxRows !== Infinity
-                    ? ` / ${maxRows}`
-                    : ""}{" "}
-                  {rowLabel.toLowerCase()}
-                  {minRows > 0 && rows.length < minRows
-                    ? ` · ${t("at least")} ${minRows} ${t("required")}`
-                    : ""}
-                </p>
-              ) : null}
-            </div>
+            <RepeatableGroup
+              field={field}
+              rows={Array.isArray(value) ? (value as Record<string, unknown>[]) : []}
+              onChange={onChange}
+              disabled={disabled}
+              onUpload={onUpload}
+              fileMeta={fileMeta}
+              onFileLabel={onFileLabel}
+            />
           );
         }
         // Non-repeatable group → a single object of child values.
