@@ -1,7 +1,8 @@
 import { useEffect, useId, useState } from "react";
 import type { SyntheticEvent } from "react";
-import { Check, ExternalLink, Pencil, Plus, Search, Star, Trash2 } from "lucide-react";
+import { Check, ExternalLink, Paperclip, Pencil, Plus, Search, Star, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
@@ -214,7 +215,9 @@ function FileUploadField({
                 <li
                   key={ref}
                   data-testid="logo-card"
-                  className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-3"
+                  // A logo is an avatar, not a banner: the card hugs its
+                  // content instead of stretching the row (owner 2026-08-18).
+                  className="flex w-fit min-w-[16rem] max-w-full items-center gap-3 rounded-lg border border-border bg-muted/40 p-3"
                 >
                   {url ? (
                     <img
@@ -894,6 +897,17 @@ function SheetGroup({
   const canRemove = !disabled && rows.length > minRows;
   const setCell = (i: number, key: string, v: unknown): void =>
     onChange(rows.map((r, k) => (k === i ? { ...r, [key]: v } : r)));
+  // Documents live behind a side drawer (owner 2026-08-18): the inline upload
+  // UI made the Documents column the tallest thing on every row. The cell is
+  // a count button; the drawer holds the full upload UX with previews, the
+  // name-this-document boxes and per-file delete.
+  const [docsAt, setDocsAt] = useState<{ row: number; key: string } | null>(null);
+  const rowName = (i: number): string => {
+    const titled = field.row_title
+      ? String((rows[i] ?? {})[field.row_title] ?? "").trim()
+      : "";
+    return titled || `${rowLabel} ${i + 1}`;
+  };
 
   const legendToneOf = (sport: string): string => {
     const idx = sportBands.findIndex((b) => b.sport === sport);
@@ -1077,6 +1091,34 @@ function SheetGroup({
                   }
                   const c = col.child;
                   const cellPath = `${path ?? field.key}.${i}.${c.key}`;
+                  if (c.type === "file_upload") {
+                    const refs = (rows[i] ?? {})[c.key];
+                    const n = Array.isArray(refs) ? refs.length : refs ? 1 : 0;
+                    const cellErr = errorPaths?.[cellPath];
+                    return (
+                      <td
+                        key={c.key}
+                        className="border-b border-r border-border px-2 py-2 align-middle last:border-r-0"
+                      >
+                        <button
+                          type="button"
+                          data-testid={`docs-open-${field.key}-${i}`}
+                          aria-haspopup="dialog"
+                          aria-label={`${t(c.label)}, ${rowName(i)}`}
+                          onClick={() => setDocsAt({ row: i, key: c.key })}
+                          className={cn(
+                            "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-input bg-background px-2.5 text-xs font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            cellErr && "border-destructive text-destructive",
+                          )}
+                        >
+                          <Paperclip aria-hidden="true" className="h-3.5 w-3.5" />
+                          {n > 0
+                            ? `${n} ${n === 1 ? t("file") : t("files")}`
+                            : t("Add")}
+                        </button>
+                      </td>
+                    );
+                  }
                   return (
                     <td
                       key={c.key}
@@ -1146,6 +1188,57 @@ function SheetGroup({
           <Plus aria-hidden="true" className="h-4 w-4" />
           {field.add_label ? t(field.add_label) : t(`Add ${rowLabel}`)}
         </Button>
+      ) : null}
+      {docsAt ? (
+        <Dialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setDocsAt(null);
+          }}
+          ariaLabel={`${rowName(docsAt.row)} · ${t("Documents")}`}
+          variant="side"
+        >
+          {(() => {
+            const child = children.find((c) => c.key === docsAt.key);
+            if (!child) return null;
+            const cellPath = `${path ?? field.key}.${docsAt.row}.${child.key}`;
+            return (
+              <div className="flex h-full flex-col gap-4 p-4">
+                <DialogHeader>
+                  <DialogTitle>{rowName(docsAt.row)}</DialogTitle>
+                  <p className="text-sm text-muted-foreground">
+                    {t(child.label)}
+                    {child.help ? ` · ${t(child.help)}` : ""}
+                  </p>
+                </DialogHeader>
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <FieldRenderer
+                    field={{ ...child, help: undefined }}
+                    hideLabel
+                    value={(rows[docsAt.row] ?? {})[child.key]}
+                    disabled={disabled}
+                    error={errorPaths?.[cellPath]}
+                    errorPaths={errorPaths}
+                    path={cellPath}
+                    onUpload={onUpload}
+                    fileMeta={fileMeta}
+                    onFileLabel={onFileLabel}
+                    onChange={(v) => setCell(docsAt.row, child.key, v)}
+                  />
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    data-testid="docs-done"
+                    onClick={() => setDocsAt(null)}
+                  >
+                    {t("Done")}
+                  </Button>
+                </DialogFooter>
+              </div>
+            );
+          })()}
+        </Dialog>
       ) : null}
     </div>
   );

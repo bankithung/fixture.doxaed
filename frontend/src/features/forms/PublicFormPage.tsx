@@ -1347,7 +1347,7 @@ export function PublicFormPage(): React.ReactElement {
     },
   ): React.ReactNode => {
     if (!isVisible(raw.visibility, answers) || lockedSet.has(raw.key)) return null;
-    const f =
+    let f =
       instLeaves && compFieldKeys.has(raw.key)
         ? {
             ...raw,
@@ -1356,6 +1356,25 @@ export function PublicFormPage(): React.ReactElement {
             ),
           }
         : raw;
+    // The sheet's per-competition tick columns are scoped the same way
+    // (owner 2026-08-18: "based on what the institute selected during
+    // institute registration"). The flag lives on the CHILD inside the
+    // group, so the children are filtered here before the sheet draws them.
+    if (instLeaves && f.fields?.some((c) => c.scope_to_institution)) {
+      f = {
+        ...f,
+        fields: f.fields.map((c) =>
+          c.scope_to_institution
+            ? {
+                ...c,
+                options: (c.options ?? []).filter((o) =>
+                  compAllowed(String(o.value)),
+                ),
+              }
+            : c,
+        ),
+      };
+    }
     const nested: React.ReactNode[] = [];
     for (const o of f.options ?? []) {
       if (o.fields?.length && optionSelected(f, o.value, answers)) {
