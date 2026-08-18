@@ -872,8 +872,7 @@ const pickerSchema: FormSchema = {
     },
     {
       key: "teams",
-      title: "Teams — Table Tennis · U-14 · Boys",
-      leaf_key: "tt.u14.boys",
+      title: "Teams · Table Tennis · U-14 · Boys",
       fields: [
         {
           key: "teams_tt",
@@ -921,7 +920,7 @@ describe("PublicFormPage · participants-first pickers", () => {
     await screen.findByRole("heading", { name: /team registration/i });
     // Straight to the teams step without declaring anyone.
     await userEvent.click(screen.getByRole("button", { name: /next/i }));
-    await screen.findByText(/Teams — Table Tennis/);
+    await screen.findByText(/Teams · Table Tennis/);
     await userEvent.click(screen.getByRole("button", { name: "Add Team" }));
     // The picker names the step that feeds it, rather than sitting empty.
     expect(
@@ -940,7 +939,7 @@ describe("PublicFormPage · participants-first pickers", () => {
       "Aben Kikon",
     );
     await userEvent.click(screen.getByRole("button", { name: /next/i }));
-    await screen.findByText(/Teams — Table Tennis/);
+    await screen.findByText(/Teams · Table Tennis/);
     await userEvent.click(screen.getByRole("button", { name: "Add Team" }));
 
     expect(
