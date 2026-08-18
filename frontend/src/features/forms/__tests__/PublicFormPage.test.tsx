@@ -1373,3 +1373,54 @@ describe("PublicFormPage · competitions are a tick-mark table", () => {
     expect(screen.getByLabelText("Open · Boys · Singles")).not.toBeChecked();
   });
 });
+
+describe("PublicFormPage · the sport heading is the choice", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  const sportSchema: FormSchema = {
+    version: 1,
+    sections: [{
+      key: "institution", title: "Your institution",
+      fields: [
+        { key: "sports", type: "multi_choice", label: "Which sport(s)?",
+          required: true,
+          options: [
+            { value: "table_tennis", label: "Table Tennis" },
+            { value: "sepak_takraw", label: "Sepak Takraw" },
+          ] },
+        { key: "categories_table_tennis", type: "multi_choice",
+          label: "Which competitions?", required: true,
+          group: "table_tennis", group_label: "Table Tennis",
+          short_label: "Which competitions?",
+          visibility: { field: "sports", op: "includes", value: "table_tennis" },
+          options: [{ value: "tt.u14.boys", label: "U-14 · Boys" }] },
+      ],
+    }],
+  };
+
+  it("asks the sport once, on its own card, and reveals its competitions", async () => {
+    // Owner 2026-08-18: a separate "Which sport(s)?" question and then a card
+    // headed with the same sport name asked the same thing twice.
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "ANPSA Dimapur",
+      form: { id: "form1", title: "Team registration", description: "",
+        schema: sportSchema, confirmation_message: "Thanks" },
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+
+    // The standalone question is gone; the sport is a checkbox on its heading.
+    expect(screen.queryByText("Which sport(s)?")).toBeNull();
+    const tick = screen.getByRole("checkbox", { name: "Table Tennis" });
+    expect(tick).not.toBeChecked();
+    // Its competitions stay hidden until the sport is ticked.
+    expect(screen.queryByLabelText("U-14 · Boys")).toBeNull();
+
+    await userEvent.click(tick);
+    expect(await screen.findByLabelText("U-14 · Boys")).toBeInTheDocument();
+
+    // Unticking closes it again, so the card is the one control.
+    await userEvent.click(screen.getByRole("checkbox", { name: "Table Tennis" }));
+    expect(screen.queryByLabelText("U-14 · Boys")).toBeNull();
+  });
+});
