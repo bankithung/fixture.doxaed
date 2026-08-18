@@ -1050,7 +1050,13 @@ export function PublicFormPage(): React.ReactElement {
           out.push(
             <div
               key={`pack-${compact[0].key}`}
-              className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2"
+              className={cn(
+                "grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2",
+                // Three short answers are one line of one record (owner
+                // 2026-08-18: the contact person, email and phone on a
+                // single row). Pairs stay two-up; only a full trio spreads.
+                compact.length % 3 === 0 && "lg:grid-cols-3",
+              )}
             >
               {compact.map((c) => (
                 <div key={c.key}>{renderField(c, readOnly)}</div>
