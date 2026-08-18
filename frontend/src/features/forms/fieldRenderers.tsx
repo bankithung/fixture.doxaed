@@ -426,7 +426,11 @@ const WIDE_TYPES = new Set([
 ]);
 
 function isWide(f: Field): boolean {
-  return WIDE_TYPES.has(f.type) || (f.options?.length ?? 0) > 4;
+  // Option COUNT is not width: a dropdown is one control whether it holds
+  // three names or three hundred, and treating a long list as wide stacked
+  // "Teacher" and "Role" that plainly belong side by side (owner 2026-08-18).
+  // Only genuinely tall types take the whole row.
+  return WIDE_TYPES.has(f.type);
 }
 
 /** Lay a group's children out as a two-column record on a desk, one column on
@@ -609,11 +613,27 @@ function RepeatableGroup({
             data-testid={`row-open-${field.key}-${i}`}
             className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3"
           >
-            <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground">
                 {rowLabel} {i + 1}
               </span>
-              {canRemove ? remove : null}
+              {!disabled && collapsible ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="ml-auto h-7"
+                  disabled={!title}
+                  data-testid={`row-save-${field.key}-${i}`}
+                  onClick={() => setOpen(id, false)}
+                >
+                  <Check aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t("Save")}
+                </Button>
+              ) : null}
+              {canRemove ? (
+                <span className={cn(!collapsible && "ml-auto")}>{remove}</span>
+              ) : null}
             </div>
             {err ? (
               <p
@@ -648,20 +668,7 @@ function RepeatableGroup({
                 />
               )}
             />
-            {!disabled && collapsible ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="w-fit"
-                disabled={!title}
-                data-testid={`row-save-${field.key}-${i}`}
-                onClick={() => setOpen(id, false)}
-              >
-                <Check aria-hidden="true" className="h-4 w-4" />
-                {t("Save")}
-              </Button>
-            ) : null}
+
           </div>
         );
       })}

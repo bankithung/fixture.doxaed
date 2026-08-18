@@ -1219,3 +1219,53 @@ describe("PublicFormPage · date of birth and live checks", () => {
     );
   });
 });
+
+describe("PublicFormPage · a row is compact", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("pairs pickers on one line however many options they hold", async () => {
+    // Owner 2026-08-18: "Teacher" and "Role" were stacked because the option
+    // COUNT was being read as width. A dropdown is one control either way.
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      value: `p${i}`,
+      label: `Person ${i}`,
+    }));
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "ANPSA Dimapur",
+      form: {
+        id: "form1", title: "Team registration", description: "",
+        confirmation_message: "Thanks",
+        schema: {
+          version: 1,
+          sections: [{
+            key: "s", title: "Teams",
+            fields: [{
+              key: "staff", type: "group", label: "Teacher in charge",
+              repeatable: true, row_key: "sid", row_title: "who",
+              fields: [
+                { key: "sid", type: "hidden", label: "" },
+                { key: "who", type: "dropdown", label: "Teacher", options: many },
+                { key: "role", type: "dropdown", label: "Role",
+                  options: [{ value: "coach", label: "Coach" }] },
+              ],
+            }],
+          }],
+        } as FormSchema,
+      },
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+    await userEvent.click(screen.getByTestId("row-add-staff"));
+
+    const cells = Array.from(
+      screen.getByTestId("row-open-staff-0")
+        .querySelectorAll(":scope > div.grid > div"),
+    );
+    // Teacher spans the row (it names the row); Role sits beside, not under.
+    expect(cells).toHaveLength(2);
+    expect(cells[1]!.className).not.toContain("col-span-2");
+    // Save shares the header line rather than costing a row of its own.
+    const header = screen.getByTestId("row-open-staff-0").firstElementChild!;
+    expect(header.querySelector('[data-testid="row-save-staff-0"]')).not.toBeNull();
+  });
+});
