@@ -455,7 +455,14 @@ export function PublicFormPage(): React.ReactElement {
     if (!instField || compFieldKeys.size === 0) return;
     const v = String(answers[instField.key] ?? "");
     if (!v || v === lastScopedInst.current) return;
+    // SWITCHING school replaces the selection, so a change can never leave
+    // another school's categories ticked. The FIRST pass on page load must
+    // not, because a restored draft is the respondent's own work and this
+    // effect would otherwise race it (owner 2026-08-18: ten registered
+    // competitions showing as two).
+    const switching = lastScopedInst.current !== null;
     lastScopedInst.current = v;
+
     const leaves =
       instField.options?.find((o) => String(o.value) === v)?.leaves ?? [];
     if (leaves.length === 0) return;
@@ -463,6 +470,16 @@ export function PublicFormPage(): React.ReactElement {
     for (const s of schema.sections ?? []) {
       for (const f of s.fields ?? []) {
         if (!compFieldKeys.has(f.key)) continue;
+        // A restored draft is the respondent's own work: only an EMPTY field
+        // is filled in for them. Without this the draft restore and this
+        // effect raced, and whichever landed second won, so a school could
+        // open its form and see two competitions ticked out of ten (owner
+        // 2026-08-18).
+        const existing = answers[f.key];
+        const answered = Array.isArray(existing)
+          ? existing.length > 0
+          : existing != null && existing !== "";
+        if (!switching && answered) continue;
         const sel = (f.options ?? [])
           .map((o) => String(o.value))
           .filter((ov) => leaves.some((l) => l === ov || l.startsWith(`${ov}.`)));

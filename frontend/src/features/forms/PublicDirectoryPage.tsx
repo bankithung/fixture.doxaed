@@ -339,20 +339,50 @@ export function PublicDirectoryPage(): React.ReactElement {
           and was being squeezed into a 72rem column with dead margins; a phone
           still gets the full width minus its gutters. */}
       <div className="mx-auto flex w-full flex-col gap-4 px-4 pb-24 pt-6 sm:px-6 lg:w-[90%] lg:max-w-none lg:pb-8">
-        {/* Page header: the tournament leads; the register CTA lives in the
-            panel toolbar beside Filters. */}
-        <header className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
-              {t("Registered institutions")}
-            </p>
-            <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
-              {d.tournament_name}
-            </h1>
-            <p className="mt-1 truncate text-sm text-muted-foreground" title={d.form_title}>
-              {d.form_title}
+        {/* The masthead the owner designed (2026-08-18): a deep brand band
+            that ends in a curve, carrying the tournament, what this page is,
+            and how many schools are in. A registration matrix is something an
+            organiser prints and pins up, so the page opens like the sheet it
+            becomes rather than like an admin screen. */}
+        <header className="relative isolate overflow-hidden rounded-xl bg-gradient-to-br from-primary via-primary to-primary-hover text-primary-foreground">
+          {/* Two soft discs, bled off the top-right corner. */}
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full bg-primary-foreground/10"
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-32 top-10 h-56 w-56 rounded-full bg-primary-foreground/[0.07]"
+          />
+          <div className="relative flex flex-wrap items-end justify-between gap-x-6 gap-y-4 px-5 pb-12 pt-7 sm:px-8 sm:pb-14 sm:pt-9">
+            <div className="min-w-0 max-w-3xl">
+              <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-primary-foreground/80">
+                {t("Registered institutions")}
+              </p>
+              <h1 className="mt-2 text-balance text-xl font-semibold uppercase leading-tight tracking-tight sm:text-3xl">
+                {d.tournament_name}
+              </h1>
+              <span className="mt-4 inline-flex rounded-full bg-primary-foreground/15 px-3.5 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-[0.12em]">
+                {d.form_title}
+              </span>
+            </div>
+            <p className="font-tabular text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-primary-foreground/90">
+              {total} {total === 1 ? t("school registered") : t("schools registered")}
             </p>
           </div>
+          {/* The curve the band ends on. Decorative, so it is hidden from AT
+              and never intercepts a click. */}
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 1440 80"
+            preserveAspectRatio="none"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-8 w-full text-background sm:h-10"
+          >
+            <path
+              fill="currentColor"
+              d="M0 80h1440V26c-240 36-520 54-840 34C393 47 175 30 0 0v80z"
+            />
+          </svg>
         </header>
 
         {/* ONE panel (owner 2026-07-05): toolbar with the total + view tabs,
