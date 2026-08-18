@@ -26,6 +26,7 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       deleteVenue: vi.fn(),
       settings: vi.fn(),
       updateSettings: vi.fn(),
+      sports: vi.fn(),
     },
   };
 });
@@ -61,6 +62,7 @@ beforeEach(() => {
     defaults: DEFAULTS,
   });
   vi.mocked(tournamentsApi.venues).mockResolvedValue({ venues: [] });
+  vi.mocked(tournamentsApi.sports).mockResolvedValue({ sports: [] } as never);
   vi.mocked(tournamentsApi.settings).mockResolvedValue(SETTINGS);
   vi.mocked(tournamentsApi.updateSettings).mockResolvedValue(SETTINGS);
   vi.mocked(tournamentsApi.updateDrawConfig).mockResolvedValue({
@@ -815,5 +817,77 @@ describe("GlobalSetupWizard", () => {
     ).toBe("team:abc");
     // The venue keeps its own break (unchanged, so no write at all).
     expect(tournamentsApi.updateVenue).not.toHaveBeenCalled();
+  });
+});
+
+describe("GlobalSetupWizard · rest per sport on Play times", () => {
+  /** A two-sport meet parked on the Play times step. The per-sport boxes only
+   * appear when there is more than one sport — with one, the field above it
+   * already IS that sport's rest. */
+  async function openPlayTimes(layers: Record<string, unknown> = {}) {
+    vi.mocked(tournamentsApi.sports).mockResolvedValue({
+      sports: [
+        { key: "table_tennis", name: "Table Tennis" },
+        { key: "sepak_takraw", name: "Sepak Takraw" },
+      ],
+    } as never);
+    vi.mocked(tournamentsApi.drawConfig).mockResolvedValue({
+      draw_config: {
+        "*": { calendar: { date_start: "2026-08-17", date_end: "2026-08-18" } },
+        ...layers,
+      },
+      defaults: DEFAULTS,
+    } as never);
+    wrap(<GlobalSetupWizard tournamentId="t1" onClose={() => {}} />);
+    await screen.findByLabelText("First match day");
+    await toStep(2);
+    await screen.findByTestId("play-times-rest-table_tennis");
+  }
+
+  it("shows a rest box per sport, seeded from that sport's own layer", async () => {
+    // Owner 2026-08-18: rest was only reachable on the formats step, which is
+    // not where anyone looks for the pace of the day.
+    await openPlayTimes({ "sport:sepak_takraw": { rest_minutes: 30 } });
+
+    // Sepak carries its own value; table tennis is blank and shows the
+    // tournament default as its placeholder, so blank reads as "inherit".
+    expect(screen.getByTestId("play-times-rest-sepak_takraw")).toHaveValue(30);
+    const tt = screen.getByTestId("play-times-rest-table_tennis");
+    expect(tt).toHaveValue(null);
+    expect(tt).toHaveAttribute("placeholder");
+  });
+
+  it("saves a sport's rest onto the layer the formats step also edits", async () => {
+    await openPlayTimes();
+    fireEvent.change(screen.getByTestId("play-times-rest-sepak_takraw"), {
+      target: { value: "30" },
+    });
+    await userEvent.click(screen.getByTestId("save-step"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({
+          leaf_key: "sport:sepak_takraw",
+          config: { rest_minutes: 30 },
+        }),
+      ),
+    );
+  });
+
+  it("clearing a sport's box sends null, so it truly inherits again", async () => {
+    await openPlayTimes({ "sport:sepak_takraw": { rest_minutes: 30 } });
+    fireEvent.change(screen.getByTestId("play-times-rest-sepak_takraw"), {
+      target: { value: "" },
+    });
+    await userEvent.click(screen.getByTestId("save-step"));
+    await waitFor(() =>
+      expect(tournamentsApi.updateDrawConfig).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({
+          leaf_key: "sport:sepak_takraw",
+          config: { rest_minutes: null },
+        }),
+      ),
+    );
   });
 });

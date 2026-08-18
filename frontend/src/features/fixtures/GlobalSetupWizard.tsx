@@ -53,6 +53,11 @@ interface Form {
   daily_end: string;
   slot_minutes: number;
   rest_minutes: number;
+  /** Per-SPORT rest override, keyed by sport key; "" = inherit the default
+   * above. Stored on the SAME draw-config layer the formats step edits, so a
+   * meet's pace has two doors onto one value rather than two settings that
+   * disagree (owner 2026-08-18). */
+  sport_rest: Record<string, number | "">;
   max_per_day: number;
   sunday_church: boolean;
   /** How breaks are set: one window for every venue, or per-venue rows. */
@@ -77,6 +82,7 @@ const EMPTY_FORM: Form = {
   // the scheduling granularity, so a fine default keeps schedules tight.
   slot_minutes: 30,
   rest_minutes: 60,
+  sport_rest: {},
   max_per_day: 1,
   sunday_church: true,
   break_mode: "overall",
@@ -481,6 +487,14 @@ export function GlobalSetupWizard({
         daily_end: String(cal?.daily_end ?? "18:00"),
         slot_minutes: Number(cal?.slot_minutes ?? 30),
         rest_minutes: Number(one("min_rest_minutes")?.params.minutes ?? 60),
+        // Read each sport's OWN layer (never the merged value), so a blank box
+        // means "inherit" rather than silently pinning the default.
+        sport_rest: Object.fromEntries(
+          (sportsQ.data?.sports ?? []).map((sp) => {
+            const v = drawConfig.data?.draw_config[`sport:${sp.key}`]?.rest_minutes;
+            return [sp.key, typeof v === "number" ? v : ""];
+          }),
+        ),
         max_per_day: Number(
           one("max_matches_per_team_per_day")?.params.count ?? 1,
         ),
@@ -608,6 +622,22 @@ export function GlobalSetupWizard({
         } else {
           throw e;
         }
+      }
+
+      // 3a) Per-sport rest → the draw-config sport layer the formats step owns.
+      // Sent for every sport, including cleared ones: null is what makes a
+      // sport fall back to the tournament default, and a sparse patch could
+      // never express that.
+      for (const sp of sportOptions) {
+        const raw = form.sport_rest[sp.key];
+        const before = drawConfig.data?.draw_config[`sport:${sp.key}`]?.rest_minutes;
+        const next = raw === "" || raw === undefined ? null : Math.max(0, Number(raw));
+        if (next === (typeof before === "number" ? before : null)) continue;
+        await tournamentsApi.updateDrawConfig(tournamentId, {
+          leaf_key: `sport:${sp.key}`,
+          config: { rest_minutes: next },
+          event_id: newEventId(),
+        });
       }
 
       // 3) Calendar → draw_config["*"].calendar (§5.1 "wizard-saved dates").
@@ -1114,7 +1144,7 @@ export function GlobalSetupWizard({
             </h4>
             <p className="-mt-1 text-xs text-muted-foreground">
               {t(
-                "Match length and rest are both set per competition on the “How each competition plays” step. What you set here is the tournament-wide default they fall back to.",
+                "Match length is set per competition on the “How each competition plays” step, where a single category can also override the rest below.",
               )}
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -1139,6 +1169,51 @@ export function GlobalSetupWizard({
                 />
               </Field>
             </div>
+
+            {/* Rest per SPORT, where the pace of the day is set (owner
+                2026-08-18: it was only reachable on the formats step, which is
+                not where anyone looks for it). A 25-minute sepak match earns
+                more recovery than a 15-minute table-tennis one, so one number
+                for the whole meet is the wrong shape. Blank inherits the
+                default above; this writes the same value the formats step
+                edits, so the two screens can never disagree. */}
+            {sportOptions.length > 1 ? (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium">
+                  {t("Rest for a particular sport (optional)")}
+                </span>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {sportOptions.map((sp) => (
+                    <label
+                      key={sp.key}
+                      className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2.5 py-1.5"
+                    >
+                      <span className="min-w-0 truncate text-xs">{sp.name}</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        data-testid={`play-times-rest-${sp.key}`}
+                        aria-label={`${t("Rest after a match for")} ${sp.name}`}
+                        className="h-8 w-24 shrink-0 font-tabular"
+                        placeholder={String(form.rest_minutes)}
+                        value={form.sport_rest[sp.key] ?? ""}
+                        onChange={(e) =>
+                          set("sport_rest", {
+                            ...form.sport_rest,
+                            [sp.key]:
+                              e.target.value === "" ? "" : Number(e.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {t("Leave blank to use the break above. One category can differ on the “How each competition plays” step.")}
+                </span>
+              </div>
+            ) : null}
+
             <p className="text-xs text-muted-foreground">
               {t("Break timings are set on the Venues step.")}
             </p>
