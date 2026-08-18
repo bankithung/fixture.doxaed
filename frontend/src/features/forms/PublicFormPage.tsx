@@ -595,71 +595,119 @@ export function PublicFormPage(): React.ReactElement {
   //
   // Only an UNTOUCHED field is filled (`undefined`, never `""`), so clearing
   // the box stays cleared instead of the default fighting the typist.
-  // The teacher in charge comes off the Teachers SHEET (owner 2026-08-18:
-  // "merge with the table"): every teacher whose "In charge of" ticks cover a
-  // competition's sport starts filled into that competition's staff group.
-  // The group keeps its own rows, so one category can still differ; only an
-  // untouched group is seeded.
+  // The competition sections BUILD THEMSELVES from the sheet (owner
+  // 2026-08-18): a tick on a student's row is the entry, so each auto
+  // section's team group is synthesized — players chunked into squads of the
+  // format's size, in row order, and every teacher whose "In charge of"
+  // ticks cover the sport attached to each team. Only an untouched group is
+  // written, so a hand-edited competition stays the school's own. Team names
+  // stay unset here; the institution-name effect fills them "<School> <TAG>-n".
   useEffect(() => {
     const schema = data?.form?.schema;
     if (!schema) return;
-    type Seed = {
-      group: string;
-      leaf: string;
-      from: string;
-      events: string;
-      rowId: string;
-      field: string;
+    type Build = {
+      teamKey: string;
+      playersKey: string;
+      pickKey: string;
+      cap: number;
+      members: string[];
+      staffKey?: string;
+      staffPickKey?: string;
+      staffIds: string[];
     };
-    const seeds: Seed[] = [];
+    const builds: Build[] = [];
     for (const sec of schema.sections ?? []) {
+      if (!sec.auto) continue;
       const leaf = leafOfSection(sec);
       if (!leaf) continue;
-      const walk = (fields: Field[] | undefined): void => {
-        for (const f of fields ?? []) {
-          if (f.seed_from_group && f.seed_field && f.seed_events && f.seed_row_id) {
-            seeds.push({
-              group: f.key,
-              leaf,
-              from: f.seed_from_group,
-              events: f.seed_events,
-              rowId: f.seed_row_id,
-              field: f.seed_field,
-            });
-          }
-          walk(f.fields);
+      const teamGroup = (sec.fields ?? []).find(
+        (f) => f.type === "group" && f.repeatable,
+      );
+      if (!teamGroup) continue;
+      const playersChild = (teamGroup.fields ?? []).find((g) =>
+        g.fields?.some((c) => c.data_source?.type === "form_group"),
+      );
+      const pick = playersChild?.fields?.find(
+        (c) => c.data_source?.type === "form_group",
+      );
+      if (!playersChild || !pick?.data_source?.group) continue;
+      const sheetKey = pick.data_source.group;
+      const idField = pick.data_source.value_field ?? "";
+      const sheet = answers[sheetKey];
+      if (!Array.isArray(sheet)) continue;
+      // The sheet's tick column names who is in THIS competition.
+      const ticksChild = (schema.sections ?? [])
+        .flatMap((x) => x.fields ?? [])
+        .find((g) => g.key === sheetKey)
+        ?.fields?.find((c) => c.layout === "columns");
+      if (!ticksChild) continue;
+      const members = sheet
+        .filter((r) => {
+          const row = (r ?? {}) as Record<string, unknown>;
+          const declared = Array.isArray(row[ticksChild.key])
+            ? (row[ticksChild.key] as unknown[]).map(String)
+            : [];
+          return Boolean(row[idField]) && declared.some((d) => eventCovers(d, leaf));
+        })
+        .map((r) => String((r as Record<string, unknown>)[idField]));
+      const staffChild = (teamGroup.fields ?? []).find((g) => g.seed_from_group);
+      let staffIds: string[] = [];
+      if (staffChild?.seed_from_group && staffChild.seed_events && staffChild.seed_row_id) {
+        const staffSheet = answers[staffChild.seed_from_group];
+        if (Array.isArray(staffSheet)) {
+          staffIds = staffSheet
+            .filter((r) => {
+              const row = (r ?? {}) as Record<string, unknown>;
+              const declared = Array.isArray(row[staffChild.seed_events!])
+                ? (row[staffChild.seed_events!] as unknown[]).map(String)
+                : [];
+              return (
+                Boolean(row[staffChild.seed_row_id!]) &&
+                declared.some((d) => eventCovers(d, leaf))
+              );
+            })
+            .map((r) =>
+              String((r as Record<string, unknown>)[staffChild.seed_row_id!]),
+            );
         }
-      };
-      walk(sec.fields);
+      }
+      builds.push({
+        teamKey: teamGroup.key,
+        playersKey: playersChild.key,
+        pickKey: pick.key,
+        cap:
+          typeof playersChild.max_items === "number" && playersChild.max_items > 0
+            ? playersChild.max_items
+            : Number.MAX_SAFE_INTEGER,
+        members,
+        staffKey: staffChild?.key,
+        staffPickKey: staffChild?.seed_field,
+        staffIds,
+      });
     }
-    if (!seeds.length) return;
+    if (!builds.length) return;
 
     setAnswers((prev) => {
       let touched = false;
       const next = { ...prev };
-      for (const { group, leaf, from, events, rowId, field } of seeds) {
-        const existing = next[group];
-        // Only an untouched group is seeded: a category the school has
-        // already answered for is theirs, even if they emptied it.
+      for (const b of builds) {
+        const existing = prev[b.teamKey];
         if (Array.isArray(existing) && existing.length > 0) continue;
-        const sheet = prev[from];
-        if (!Array.isArray(sheet)) continue;
-        const rows = sheet
-          .filter((r) => {
-            const row = (r ?? {}) as Record<string, unknown>;
-            const declared = Array.isArray(row[events])
-              ? (row[events] as unknown[]).map(String)
-              : [];
-            return (
-              Boolean(row[rowId]) &&
-              declared.some((d) => eventCovers(d, leaf))
-            );
-          })
-          .map((r) => ({
-            [field]: String((r as Record<string, unknown>)[rowId]),
-          }));
-        if (rows.length === 0) continue;
-        next[group] = rows;
+        if (b.members.length === 0) continue;
+        const teams: Record<string, unknown>[] = [];
+        for (let at = 0; at < b.members.length; at += b.cap) {
+          const squad = b.members.slice(at, at + b.cap);
+          const row: Record<string, unknown> = {
+            [b.playersKey]: squad.map((id) => ({ [b.pickKey]: id })),
+          };
+          if (b.staffKey && b.staffPickKey && b.staffIds.length) {
+            row[b.staffKey] = b.staffIds.map((id) => ({
+              [b.staffPickKey!]: id,
+            }));
+          }
+          teams.push(row);
+        }
+        next[b.teamKey] = teams;
         touched = true;
       }
       return touched ? next : prev;
@@ -863,13 +911,35 @@ export function PublicFormPage(): React.ReactElement {
     () => reachableSections(schema, answers),
     [schema, answers],
   );
-  // A virtual final "review" step (index === sections.length) lets the
+  // Sections the sheet already answered stay OUT of the walk (owner
+  // 2026-08-18: "everything will be done here in the current table" — the
+  // per-competition pages were the same ticks asked again). An auto section
+  // rejoins the walk only while it holds a validation problem, so a squad the
+  // server refuses can still be fixed by hand. Review renders ALL sections,
+  // so the built teams are read back before submitting.
+  const errSectionKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const sec of sections) {
+      const owns = sectionActiveFields(sec, answers).some(
+        (f) =>
+          Boolean(errors[f.key]) ||
+          Object.keys(errorPaths).some((k) => k.startsWith(`${f.key}.`)),
+      );
+      if (owns) keys.add(sec.key);
+    }
+    return keys;
+  }, [sections, answers, errors, errorPaths]);
+  const steps = useMemo(
+    () => sections.filter((sec) => !sec.auto || errSectionKeys.has(sec.key)),
+    [sections, errSectionKeys],
+  );
+  // A virtual final "review" step (index === steps.length) lets the
   // respondent read everything back before committing — they Submit there, not
   // from the last question section.
-  const reviewIndex = sections.length;
+  const reviewIndex = steps.length;
   const clamped = Math.min(stepIndex, reviewIndex);
-  const isReview = sections.length > 0 && clamped >= reviewIndex;
-  const current = isReview ? undefined : sections[clamped];
+  const isReview = steps.length > 0 && clamped >= reviewIndex;
+  const current = isReview ? undefined : steps[clamped];
 
   const setAnswer = (key: string, value: unknown) => {
     setAnswers((a) => ({ ...a, [key]: value }));
@@ -946,7 +1016,7 @@ export function PublicFormPage(): React.ReactElement {
       if (Object.keys(fieldErrs).length) {
         setErrors(fieldErrs);
         // Jump to the first reachable section that owns a failing field.
-        const idx = sections.findIndex((s) =>
+        const idx = steps.findIndex((s) =>
           sectionActiveFields(s, answers).some((f) => fieldErrs[f.key]),
         );
         if (idx >= 0) setStepIndex(idx);
@@ -1023,7 +1093,7 @@ export function PublicFormPage(): React.ReactElement {
   function onSubmit() {
     if (needsCode && !accessToken) {
       setCodeError(t("Enter your school's access code to continue."));
-      const idx = sections.findIndex((s) =>
+      const idx = steps.findIndex((s) =>
         s.fields.some((f) => f.key === instField?.key),
       );
       if (idx >= 0) setStepIndex(idx);
@@ -1036,7 +1106,7 @@ export function PublicFormPage(): React.ReactElement {
         ...all,
         __form: t("Please answer the required questions highlighted below."),
       });
-      const idx = sections.findIndex((s) =>
+      const idx = steps.findIndex((s) =>
         sectionActiveFields(s, answers).some((f) => all[f.key]),
       );
       if (idx >= 0) setStepIndex(idx);
@@ -1516,20 +1586,20 @@ export function PublicFormPage(): React.ReactElement {
             {/* How far through, and how much is left. A tournament with ten
                 competitions is a ten-step form, and "Step 3 of 13" alone does
                 not show how much is still ahead (owner 2026-08-18). */}
-            {sections.length > 1 ? (
+            {steps.length > 1 ? (
               <div
                 className="h-1 w-full bg-muted"
                 role="progressbar"
                 aria-label={t("Registration progress")}
                 aria-valuemin={1}
-                aria-valuemax={sections.length + 1}
+                aria-valuemax={steps.length + 1}
                 aria-valuenow={clamped + 1}
                 data-testid="form-progress"
               >
                 <div
                   className="h-full bg-primary transition-[width] duration-300"
                   style={{
-                    width: `${((clamped + 1) / (sections.length + 1)) * 100}%`,
+                    width: `${((clamped + 1) / (steps.length + 1)) * 100}%`,
                   }}
                 />
               </div>
@@ -1544,15 +1614,15 @@ export function PublicFormPage(): React.ReactElement {
                     ? t(current.title)
                     : t("Questions")}
               </h2>
-              {sections.length >= 1 ? (
+              {steps.length >= 1 ? (
                 <span className="flex items-baseline gap-1 pl-1" aria-live="polite">
                   <span className="font-tabular text-base font-semibold leading-none">
                     {clamped + 1}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {t("of")} {sections.length + 1}
-                    {sections.length - clamped > 0
-                      ? ` · ${sections.length - clamped} ${t("left")}`
+                    {t("of")} {steps.length + 1}
+                    {steps.length - clamped > 0
+                      ? ` · ${steps.length - clamped} ${t("left")}`
                       : ""}
                   </span>
                 </span>

@@ -56,6 +56,10 @@ export interface Option {
    * the short code heading its column (the directory matrix's initials). */
   sport?: string;
   code?: string;
+  /** Facts a sheet cell locks on: the competition's gender node and the age
+   * rule its path carries. */
+  gender?: string;
+  age?: { op: "under" | "over" | "between"; age?: number; min?: number; max?: number };
   /** Optional per-option image/logo (a compressed data URL set in the builder),
    * shown beside the option on the public form. */
   image?: string;
@@ -179,6 +183,9 @@ export interface Field {
 export interface Section {
   key: string;
   title: string;
+  /** Built from the participants sheet's ticks and skipped in the walk;
+   * it re-enters only while it holds a validation problem. */
+  auto?: boolean;
   description?: string;
   visibility?: Visibility | null;
   /** Branching: explicit next-section key (overridden by an option `goto`). */

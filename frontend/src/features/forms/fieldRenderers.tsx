@@ -1,5 +1,6 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { SyntheticEvent } from "react";
+import { createPortal } from "react-dom";
 import { Check, ExternalLink, Paperclip, Pencil, Plus, Search, Star, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -402,6 +403,33 @@ function DateParts({
   const [stage, setStage] = useState<"year" | "month" | "day">("year");
   const [draftY, setDraftY] = useState<number | null>(y ? Number(y) : null);
   const [draftM, setDraftM] = useState<number | null>(m ? Number(m) : null);
+  // The popover PORTALS to <body> with fixed positioning, exactly as the
+  // Select does: inside the sheet the field sits in an overflow-x container,
+  // and an absolutely-positioned panel was clipped into the table (owner
+  // 2026-08-18). No z-index wins against overflow clipping; escaping the
+  // container does.
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = (): void => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const H = 300;
+      const below = window.innerHeight - r.bottom;
+      setPos({
+        top: below < H && r.top > H ? r.top - H + 4 : r.bottom + 4,
+        left: Math.max(8, Math.min(r.left, window.innerWidth - 256 - 8)),
+      });
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open]);
 
   const thisYear = new Date().getFullYear();
   const years = Array.from({ length: 80 }, (_, i) => thisYear - i);
@@ -428,6 +456,7 @@ function DateParts({
     <div className="relative">
       <button
         type="button"
+        ref={btnRef}
         id={id}
         disabled={disabled}
         aria-haspopup="dialog"
@@ -446,18 +475,20 @@ function DateParts({
           ▾
         </span>
       </button>
-      {open ? (
+      {open && pos
+        ? createPortal(
         <>
           {/* Click-away backdrop; the popover itself sits above it. */}
           <div
             aria-hidden="true"
-            className="fixed inset-0 z-20"
+            className="fixed inset-0 z-[59]"
             onClick={close}
           />
           <div
             role="dialog"
             aria-label={label}
-            className="absolute left-0 top-11 z-30 w-64 rounded-lg border border-border bg-popover p-2 shadow-md"
+            style={{ position: "fixed", top: pos.top, left: pos.left }}
+            className="z-[60] w-64 rounded-lg border border-border bg-popover p-2 shadow-md"
           >
             <div className="flex items-center justify-between px-1 pb-2">
               <span className="text-xs font-semibold">
@@ -570,8 +601,10 @@ function DateParts({
               </div>
             )}
           </div>
-        </>
-      ) : null}
+        </>,
+        document.body,
+      )
+        : null}
       <input type="hidden" value={iso} readOnly />
     </div>
   );
@@ -890,6 +923,60 @@ function SheetGroup({
     "bg-primary text-primary-foreground",
     "bg-info text-info-foreground",
   ];
+  // Which sibling answers a competition cell locks on (owner 2026-08-18):
+  // the row's gender against the column's gender node, and the row's date of
+  // birth against the column's age rule. Both siblings are found by SHAPE
+  // (the male/female dropdown, the date field), never by key.
+  const genderChild = children.find(
+    (c) =>
+      c.type === "dropdown" &&
+      (c.options ?? []).some((o) => String(o.value) === "male"),
+  );
+  const dobChild = children.find((c) => c.type === "date");
+  const GENDER_OF: Record<string, string> = { male: "boys", female: "girls" };
+  const ageAt = (isoDob: string): number | null => {
+    const [yy, mm, dd] = isoDob.split("-").map(Number);
+    if (!yy || !mm || !dd) return null;
+    const now = new Date();
+    let age = now.getFullYear() - yy;
+    if (now.getMonth() + 1 < mm || (now.getMonth() + 1 === mm && now.getDate() < dd)) {
+      age -= 1;
+    }
+    return age;
+  };
+  /** Why this cell is locked for this row, or null when it is open. */
+  const lockReason = (
+    row: Record<string, unknown>,
+    option: Option,
+  ): string | null => {
+    if (option.gender) {
+      const g = genderChild
+        ? GENDER_OF[String(row[genderChild.key] ?? "")]
+        : undefined;
+      if (g && g !== option.gender) {
+        return option.gender === "boys"
+          ? t("A boys' competition")
+          : t("A girls' competition");
+      }
+    }
+    if (option.age && dobChild) {
+      const dob = String(row[dobChild.key] ?? "");
+      const age = dob ? ageAt(dob) : null;
+      if (age != null) {
+        const a = option.age;
+        if (a.op === "under" && a.age != null && age >= a.age) {
+          return `${t("Over the age limit")} (${t("under")} ${a.age})`;
+        }
+        if (a.op === "over" && a.age != null && age < a.age) {
+          return `${t("Under the age limit")} (${t("over")} ${a.age})`;
+        }
+        if (a.op === "between" && ((a.min != null && age < a.min) || (a.max != null && age > a.max))) {
+          return `${t("Outside the age limit")} (${a.min ?? "?"}-${a.max ?? "?"})`;
+        }
+      }
+    }
+    return null;
+  };
   const rowLabel = t(field.label) || t("Item");
   const minRows = typeof field.min_items === "number" ? field.min_items : 0;
   const maxRows =
@@ -1065,15 +1152,27 @@ function SheetGroup({
                     const { child, option } = col;
                     const picked = asArray((row ?? {})[child.key]);
                     const on = picked.includes(String(option.value));
+                    const lock = lockReason(
+                      (row ?? {}) as Record<string, unknown>,
+                      option,
+                    );
                     return (
                       <td
                         key={`${child.key}-${option.value}`}
-                        className="w-12 border-b border-r border-border px-2 py-2 text-center align-middle last:border-r-0"
+                        title={lock ?? undefined}
+                        className={cn(
+                          "w-12 border-b border-r border-border px-2 py-2 text-center align-middle last:border-r-0",
+                          lock && !on && "bg-muted/40",
+                        )}
                       >
                         <input
                           type="checkbox"
                           checked={on}
-                          disabled={disabled}
+                          // A locked cell cannot be ticked; a tick that BECAME
+                          // conflicting (the gender or birthday changed after)
+                          // stays clickable so it can be unticked, and shows
+                          // as the problem it is.
+                          disabled={disabled || (Boolean(lock) && !on)}
                           aria-label={`${t(option.label)}, ${rowLabel} ${i + 1}`}
                           onChange={(e) =>
                             setCell(
@@ -1084,7 +1183,11 @@ function SheetGroup({
                                 : picked.filter((v) => v !== String(option.value)),
                             )
                           }
-                          className="h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className={cn(
+                            "h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            lock && !on && "opacity-35",
+                            lock && on && "outline outline-2 outline-destructive",
+                          )}
                         />
                       </td>
                     );

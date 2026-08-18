@@ -1502,3 +1502,67 @@ describe("PublicFormPage · the participants are a two-tab sheet", () => {
     expect(panelOf("sheet-participant_staff").className).toContain("hidden");
   });
 });
+
+describe("PublicFormPage · the sheet locks impossible cells", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("locks the other gender's columns and over-age categories", async () => {
+    // Owner 2026-08-18: "cannot select both boys and girls; U-14 based on the
+    // selected [birthday] should be locked".
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "ANPSA Dimapur",
+      form: {
+        id: "form1", title: "Team registration", description: "",
+        confirmation_message: "Thanks",
+        schema: {
+          version: 1,
+          sections: [{
+            key: "participants", title: "Your participants",
+            fields: [{
+              key: "participant_students", type: "group", label: "Student",
+              repeatable: true, row_key: "participant_id", layout: "sheet",
+              tab_label: "Students",
+              fields: [
+                { key: "participant_id", type: "hidden", label: "" },
+                { key: "participant_name", type: "short_text",
+                  label: "Full name", required: true },
+                { key: "participant_dob", type: "date", label: "Date of birth" },
+                { key: "participant_gender", type: "dropdown", label: "Gender",
+                  options: [
+                    { value: "male", label: "Male" },
+                    { value: "female", label: "Female" },
+                  ] },
+                { key: "participant_events", type: "multi_choice",
+                  label: "Playing in", layout: "columns",
+                  options: [
+                    { value: "tt.u14.boys", label: "U-14 · Boys",
+                      sport: "Table Tennis", code: "UB", gender: "boys",
+                      age: { op: "under", age: 14 } },
+                    { value: "tt.u14.girls", label: "U-14 · Girls",
+                      sport: "Table Tennis", code: "UG", gender: "girls",
+                      age: { op: "under", age: 14 } },
+                    { value: "tt.open.girls", label: "Open · Girls",
+                      sport: "Table Tennis", code: "OG", gender: "girls" },
+                  ] },
+              ],
+            }],
+          }],
+        } as FormSchema,
+      },
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+    await userEvent.click(screen.getByTestId("row-add-participant_students"));
+
+    // No gender picked yet: every column is open.
+    expect(screen.getByLabelText(/U-14 · Boys, Student 1/)).toBeEnabled();
+
+    // A girl: the boys' column locks, the girls' stay open.
+    const gender = screen.getByRole("button", { name: /gender/i });
+    await userEvent.click(gender);
+    await userEvent.click(screen.getByRole("option", { name: "Female" }));
+    expect(screen.getByLabelText(/U-14 · Boys, Student 1/)).toBeDisabled();
+    expect(screen.getByLabelText(/U-14 · Girls, Student 1/)).toBeEnabled();
+    expect(screen.getByLabelText(/Open · Girls, Student 1/)).toBeEnabled();
+  });
+});

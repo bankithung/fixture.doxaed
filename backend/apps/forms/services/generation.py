@@ -203,7 +203,11 @@ def _event_leaf_options(tournament) -> list[dict]:
     screen readers. Codes are deduplicated within a sport so two categories
     can never share a column heading.
     """
-    from apps.tournaments.services.sports import iter_leaves
+    from apps.tournaments.services.sports import (
+        _leaf_path_nodes,
+        iter_leaves,
+        leaf_age_rule,
+    )
 
     out: list[dict] = []
     for sport in getattr(tournament, "sports", None) or []:
@@ -222,12 +226,29 @@ def _event_leaf_options(tournament) -> list[dict]:
                 code = f"{base}{n}"
                 n += 1
             used.add(code)
-            out.append({
+            # The facts the sheet locks cells on (owner 2026-08-18: a girl
+            # cannot be ticked into a boys' competition, an over-age student
+            # not into U-14): the gender-kind node's own name, and the age
+            # rule the path carries. Data off the category tree, never a
+            # parse of the label.
+            gender = ""
+            for node in _leaf_path_nodes([sport], lf["leaf_key"]):
+                if node.get("kind") == "gender":
+                    name = str(node.get("name") or "").strip().lower()
+                    if name in ("boys", "girls"):
+                        gender = name
+            entry = {
                 "value": lf["leaf_key"],
                 "label": lf["label"],
                 "sport": sport.get("name") or sport["key"],
                 "code": code,
-            })
+            }
+            if gender:
+                entry["gender"] = gender
+            age = leaf_age_rule([sport], lf["leaf_key"])
+            if age:
+                entry["age"] = age
+            out.append(entry)
     return out
 
 
@@ -486,12 +507,12 @@ def build_team_form_schema(
         participants_section = [{
             "key": "participants",
             "title": "Your participants",
-            "description": "Your logo and the teacher in charge first, then "
+            "description": "School logo and the teacher in charge first, then "
                            "enter your people once. The teams you enter next "
                            "pick from this list.",
             "fields": [
                 {"key": "team_logo", "type": "file_upload",
-                 "label": "Your logo", "required": False, "accept": "image/*",
+                 "label": "School logo", "required": False, "accept": "image/*",
                  "help": "Optional. Used for every team you enter."},
                 {
                     "key": "participant_staff",
@@ -663,6 +684,10 @@ def build_team_form_schema(
         sections.append(
             {
                 "key": f"cat_{slug}",
+                # Built from the participants sheet's ticks and skipped
+                # in the public walk (owner 2026-08-18); it re-enters only
+                # while it holds a validation problem.
+                **({"auto": True} if roster else {}),
                 "title": f"Teams · {lbl}",
                 **(
                     {"description": f"Age limit: {age_line}."}
