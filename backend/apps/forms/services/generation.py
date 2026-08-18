@@ -392,7 +392,6 @@ def build_team_form_schema(
                         {"key": "staff_events", "type": "multi_choice",
                          "label": "In charge of", "required": False,
                          "directory": False,
-                         "help": "Pick the sports only.",
                          "options": _event_options(tournament)},
                     ],
                 },
@@ -563,8 +562,7 @@ def build_team_form_schema(
                              # always defaulted a BLANK name to the
                              # institution; the form just never showed it, so
                              # the help text promised something invisible.
-                             "default_from": "institution",
-                             "help": "Edit if it should differ from your school."},
+                             "default_from": "institution"},
                             # Asked ONCE, up on the participants sheet, when
                             # there is one (owner 2026-08-17). A typed-name
                             # form has no such sheet, so it keeps its own.
@@ -592,7 +590,7 @@ def build_team_form_schema(
                                        "value_field": "staff_id",
                                        "label_field": "staff_full_name",
                                    },
-                                   "help": "The draw keeps their matches apart."},
+                                   },
                                   {"key": f"staff_role_{slug}",
                                    "type": "dropdown", "label": "Role",
                                    "required": False,
