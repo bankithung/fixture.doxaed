@@ -213,6 +213,53 @@ def _event_options(tournament) -> list[dict]:
     return out
 
 
+def _category_flat(sport: dict) -> tuple[dict | None, dict[str, str]]:
+    """ONE question per sport, listing that sport's actual competitions.
+
+    It used to be a CHAIN: one multi_choice per level of the category tree,
+    each revealing the next. On a real tournament that produced a stack of
+    seven questions per sport whose headings restated the path they were
+    already under ("Categories", then "U-14", then "U-14 · Boys"), and a
+    school had to click through three levels to say one thing (owner
+    2026-08-18, twice, about this screen).
+
+    A school knows which competitions it is entering. So it is asked exactly
+    that, once, with the competition names spelled out and the sport already
+    established by the question above.
+
+    Returns the field (None when the sport has no sub-categories, where
+    ticking the sport IS the entry) and leaf_key -> field_key for the gates
+    that reveal each competition's own step.
+    """
+    from apps.tournaments.services.sports import iter_leaves
+
+    skey, sname = sport.get("key"), sport.get("name") or sport.get("key")
+    leaves = [
+        lf for lf in iter_leaves([sport])
+        if lf.get("leaf_key") and lf.get("path")
+    ]
+    if not leaves:
+        return None, {}
+    fkey = f"categories_{_slug(str(skey), 'sport')}"
+    field = {
+        "key": fkey,
+        "type": "multi_choice",
+        "required": True,
+        "label": f"{sname} competitions",
+        # The sport is the card's title, so the question inside it does not
+        # repeat the sport's name.
+        "group": skey,
+        "group_label": sname,
+        "short_label": "Which competitions?",
+        "directory": False,
+        "visibility": {"field": "sports", "op": "includes", "value": skey},
+        "options": [
+            {"value": lf["leaf_key"], "label": lf["label"]} for lf in leaves
+        ],
+    }
+    return field, {lf["leaf_key"]: fkey for lf in leaves}
+
+
 def _leaf_options(tournament) -> list[tuple[str, str, dict]]:
     """(value, label, extra) category options straight from the tournament's
     sports config: value = stable leaf key, label = 'Sport — path', extra
@@ -252,7 +299,6 @@ def build_team_form_schema(
         active = [s for s in tournament.sports
                   if s.get("name") and s.get("key")]
         if active:
-            used: set[str] = set()
             chain_fields.append({
                 "key": "sports", "type": "multi_choice", "required": True,
                 "label": "Which sport(s) are you entering teams for?",
@@ -260,8 +306,9 @@ def build_team_form_schema(
                             for s in active],
             })
             for s in active:
-                cfields, _ckeys, leaf_fields = _category_chain(s, used=used)
-                chain_fields.extend(cfields)
+                field, leaf_fields = _category_flat(s)
+                if field is not None:
+                    chain_fields.append(field)
                 for lk, fk in leaf_fields.items():
                     leaf_gate[lk] = {"field": fk, "op": "includes", "value": lk}
                 if not leaf_fields:

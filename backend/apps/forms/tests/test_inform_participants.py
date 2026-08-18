@@ -392,3 +392,36 @@ def test_three_documents_are_accepted():
     inst = _school(t)
     errors = _errors_for(form, ["f1", "f2", "f3"], inst)
     assert not any("participant_docs" in k for k in errors), errors
+
+
+def test_a_sport_asks_for_its_competitions_once_not_a_cascade():
+    """Owner 2026-08-18, twice, about this screen.
+
+    It used to emit one multi_choice per LEVEL of the category tree, each
+    revealing the next, so a school saw a stack of questions whose headings
+    restated the path they were already under ("Categories", then "U-14",
+    then "U-14 · Boys") and clicked three times to say one thing.
+    """
+    t = _tournament()
+    form = generate_team_form_template(tournament=t)
+    inst_sec = form.schema["sections"][0]
+    cats = [f for f in inst_sec["fields"] if f["key"].startswith("categories_")]
+
+    # Exactly ONE question per sport, no intermediate levels.
+    assert [f["key"] for f in cats] == [
+        f"categories_{sp['key']}" for sp in t.sports
+    ]
+    # Its options are the competitions themselves, named in full.
+    tt = next(f for f in cats if f["key"] == "categories_table_tennis")
+    assert all(o["value"].startswith("table_tennis.") for o in tt["options"])
+    assert all(o["value"].count(".") >= 2 for o in tt["options"])
+    # It is revealed by the sport question and nothing else.
+    assert tt["visibility"] == {
+        "field": "sports", "op": "includes", "value": "table_tennis",
+    }
+    # Every competition's own step is gated on that single question.
+    gates = {
+        s["visibility"]["field"]
+        for s in form.schema["sections"] if s["key"].startswith("cat_")
+    }
+    assert gates <= {f"categories_{sp['key']}" for sp in t.sports}

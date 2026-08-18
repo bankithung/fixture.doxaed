@@ -189,8 +189,7 @@ def test_a_picked_squad_becomes_players_and_staff(mailoutbox):
         "answers": {
             "institution_id": str(inst.id),
             "sports": ["table_tennis"],
-            "categories_table_tennis": ["table_tennis.u14"],
-            "categories_table_tennis_u14": [LEAF],
+            "categories_table_tennis": [LEAF],
             cg["group"]: [{
                 cg["team_name"]: "Grace A",
                 cg["staff_group"]: [{cg["staff_member"]: str(teacher.id)}],
@@ -242,8 +241,7 @@ def test_two_teams_under_one_teacher_reach_the_scheduler(mailoutbox):
     answers = {
         "institution_id": str(inst.id),
         "sports": ["table_tennis"],
-        "categories_table_tennis": ["table_tennis.u14"],
-        "categories_table_tennis_u14": [
+        "categories_table_tennis": [
             "table_tennis.u14.boys", "table_tennis.u14.girls",
         ],
     }
@@ -295,8 +293,7 @@ def test_a_stale_pick_is_refused_rather_than_silently_dropped(mailoutbox):
         "answers": {
             "institution_id": str(inst.id),
             "sports": ["table_tennis"],
-            "categories_table_tennis": ["table_tennis.u14"],
-            "categories_table_tennis_u14": [LEAF],
+            "categories_table_tennis": [LEAF],
             cg["group"]: [{
                 cg["team_name"]: "Grace A",
                 cg["players_group"]: [{cg["player_member"]: str(m.id)}],
