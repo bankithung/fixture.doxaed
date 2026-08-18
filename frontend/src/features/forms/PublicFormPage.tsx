@@ -536,6 +536,11 @@ export function PublicFormPage(): React.ReactElement {
   // registration (each chain level), replacing prior selections so a switch
   // of school can't leave stale categories ticked.
   const lastScopedInst = useRef<string | null>(null);
+  // Set by the school-switch wipe so the manager-prefill effect refetches and
+  // re-merges the new school's details AFTER the wipe, whatever the ordering
+  // (owner 2026-08-18: "even after selecting school the contact details are
+  // not getting appended").
+  const wantPrefill = useRef(false);
   useEffect(() => {
     if (!instField || compFieldKeys.size === 0) return;
     const v = String(answers[instField.key] ?? "");
@@ -574,6 +579,7 @@ export function PublicFormPage(): React.ReactElement {
       setErrors({});
       setErrorPaths({});
       setSheetTab(null);
+      wantPrefill.current = true;
     }
   }, [answers, instField, compFieldKeys, schema]);
 
@@ -980,11 +986,16 @@ export function PublicFormPage(): React.ReactElement {
   useEffect(() => {
     if (!data?.can_manage || !instField) return;
     const v = String(selectedInstValue ?? "");
-    if (!v || v === lastManagerInst.current) return;
+    if (!v) return;
+    // A wipe demands a fresh merge even for a school fetched before: the
+    // fetched details were just erased with the rest of the previous
+    // school's answers.
+    if (v === lastManagerInst.current && !wantPrefill.current) return;
+    wantPrefill.current = false;
     lastManagerInst.current = v;
     managerPrefill.mutate(v);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, instField, selectedInstValue]);
+  }, [data, instField, selectedInstValue, answers]);
 
   // Inline duplicate-name guard (team forms): two rows of one team group
   // sharing a name show an error AS YOU TYPE and block Next/Submit — the
