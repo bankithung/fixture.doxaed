@@ -155,7 +155,7 @@ describe("PublicFormPage", () => {
 
     // Final section: confirm → Review → Submit.
     await userEvent.click(screen.getByLabelText(/^yes$/i));
-    await userEvent.click(screen.getByRole("button", { name: /^review$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /confirm & review/i }));
     await userEvent.click(screen.getByRole("button", { name: /submit/i }));
 
     await waitFor(() => expect(formsApi.publicSubmit).toHaveBeenCalled());
@@ -574,7 +574,7 @@ describe("PublicFormPage", () => {
     await userEvent.click(screen.getByRole("button", { name: /next/i }));
     expect(screen.getByLabelText(/team name/i)).toHaveValue("Don Bosco Blue");
 
-    await userEvent.click(screen.getByRole("button", { name: /^review$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /confirm & review/i }));
     await userEvent.click(screen.getByRole("button", { name: /submit/i }));
     await waitFor(() => expect(formsApi.publicSubmit).toHaveBeenCalled());
     expect(vi.mocked(formsApi.publicSubmit).mock.calls[0][1].access_token).toBe(
@@ -705,7 +705,7 @@ describe("PublicFormPage", () => {
       await screen.findByText(/two teams here have the same name/i),
     ).toBeInTheDocument();
     // ...and advancing past this section (to Review) is blocked client-side.
-    await userEvent.click(screen.getByRole("button", { name: /^review$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /confirm & review/i }));
     expect(formsApi.publicSubmit).not.toHaveBeenCalled();
     expect(
       screen.queryByRole("button", { name: /submit/i }),
@@ -1500,6 +1500,34 @@ describe("PublicFormPage · the participants are a two-tab sheet", () => {
       screen.getByTestId(id).closest('[role="tabpanel"]')!;
     expect(panelOf("sheet-participant_students").className).not.toContain("hidden");
     expect(panelOf("sheet-participant_staff").className).toContain("hidden");
+  });
+
+  it("opens Students on Next, and only the last tab confirms to the review", async () => {
+    // Owner 2026-08-18: pressing Next from the Teachers tab left the step, so
+    // the Students sheet got missed.
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "ANPSA Dimapur",
+      form: { id: "form1", title: "Team registration", description: "",
+        schema: twoSheets, confirmation_message: "Thanks" },
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+    expect(screen.getByRole("tab", { name: /Teachers/ })).toHaveAttribute(
+      "aria-selected", "true",
+    );
+    // While a tab remains, the button is a plain Next...
+    await userEvent.click(screen.getByRole("button", { name: /^next$/i }));
+    // ...and it switches tabs instead of leaving the step.
+    expect(screen.getByRole("tab", { name: /Students/ })).toHaveAttribute(
+      "aria-selected", "true",
+    );
+    // On the last tab the button reads as the confirm into the preview.
+    await userEvent.click(
+      screen.getByRole("button", { name: /confirm & review/i }),
+    );
+    expect(
+      await screen.findByRole("button", { name: /^submit/i }),
+    ).toBeInTheDocument();
   });
 });
 

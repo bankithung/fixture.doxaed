@@ -260,15 +260,22 @@ function SheetTabs({
   render,
   countOf,
   errorOn,
+  active,
+  onActive,
 }: {
   fields: Field[];
   render: (f: Field) => React.ReactNode;
   countOf: (f: Field) => number;
   errorOn: (f: Field) => boolean;
+  /** Controlled tab, so the page's Next button can walk the tabs. */
+  active?: string | null;
+  onActive?: (key: string) => void;
 }): React.ReactElement {
-  const [active, setActive] = useState(fields[0]?.key ?? "");
-  const current = fields.some((f) => f.key === active)
-    ? active
+  const [own, setOwn] = useState(fields[0]?.key ?? "");
+  const activeKey = active ?? own;
+  const setActive = onActive ?? setOwn;
+  const current = fields.some((f) => f.key === activeKey)
+    ? activeKey
     : (fields[0]?.key ?? "");
   return (
     <div className="flex flex-col gap-3">
@@ -362,6 +369,11 @@ export function PublicFormPage(): React.ReactElement {
     {},
   );
   const [stepIndex, setStepIndex] = useState(0);
+  // Which tab of a tabbed participants surface is showing. Page-owned so
+  // Next can WALK the tabs: Teachers, then Students, and only then the
+  // review — a sheet behind an unvisited tab was getting missed (owner
+  // 2026-08-18).
+  const [sheetTab, setSheetTab] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   // The same failures keyed by full dotted path, so the exact row and field
   // can carry the message rather than the group carrying one detached line.
@@ -528,38 +540,41 @@ export function PublicFormPage(): React.ReactElement {
     if (!instField || compFieldKeys.size === 0) return;
     const v = String(answers[instField.key] ?? "");
     if (!v || v === lastScopedInst.current) return;
-    // SWITCHING school replaces the selection, so a change can never leave
-    // another school's categories ticked. The FIRST pass on page load must
-    // not, because a restored draft is the respondent's own work and this
-    // effect would otherwise race it (owner 2026-08-18: ten registered
-    // competitions showing as two).
+    // A NEW SCHOOL IS A NEW SUBMISSION (owner 2026-08-18: "why is the same
+    // data showing for all the schools" — the sheets, logo and teams of the
+    // previous school were surviving the switch). Switching wipes everything
+    // but the school itself; the contact prefill and this scoping then
+    // rebuild the rest from that school's own registration.
     const switching = lastScopedInst.current !== null;
     lastScopedInst.current = v;
 
     const leaves =
       instField.options?.find((o) => String(o.value) === v)?.leaves ?? [];
-    if (leaves.length === 0) return;
     const next: Record<string, unknown> = {};
     for (const s of schema.sections ?? []) {
       for (const f of s.fields ?? []) {
         if (!compFieldKeys.has(f.key)) continue;
-        // A restored draft is the respondent's own work: only an EMPTY field
-        // is filled in for them. Without this the draft restore and this
-        // effect raced, and whichever landed second won, so a school could
-        // open its form and see two competitions ticked out of ten (owner
-        // 2026-08-18).
-        const existing = answers[f.key];
-        const answered = Array.isArray(existing)
-          ? existing.length > 0
-          : existing != null && existing !== "";
-        if (!switching && answered) continue;
+        // The selection is DERIVED from the school's Stage-1 registration and
+        // is re-marked every time a school lands here — a stale draft holding
+        // last week's unticked sports left Grace's competitions unmarked
+        // (owner 2026-08-18), and predictability beats preserving edits to a
+        // field the sheet's own ticks now supersede.
         const sel = (f.options ?? [])
           .map((o) => String(o.value))
           .filter((ov) => leaves.some((l) => l === ov || l.startsWith(`${ov}.`)));
         next[f.key] = f.type === "multi_choice" ? sel : (sel[0] ?? "");
       }
     }
-    setAnswers((a) => ({ ...a, ...next }));
+    if (leaves.length === 0 && !switching) return;
+    setAnswers((a) => {
+      const base = switching ? { [instField.key]: v } : { ...a };
+      return { ...base, ...(leaves.length ? next : {}) };
+    });
+    if (switching) {
+      setErrors({});
+      setErrorPaths({});
+      setSheetTab(null);
+    }
   }, [answers, instField, compFieldKeys, schema]);
 
   // --- School access code (team forms) --------------------------------------
@@ -1167,12 +1182,57 @@ export function PublicFormPage(): React.ReactElement {
     !accessToken &&
     section.fields.some((f) => f.key === instField?.key);
 
+  /** The tabbed sheets of one section, in render order. */
+  const tabRunOf = (sec: typeof current): Field[] =>
+    (sec?.fields ?? []).filter((f) => f.layout === "sheet" && f.tab_label);
+
   function onNext() {
     if (codeGateOpen(current)) {
-      setCodeError(t("Enter your school's access code to continue."));
+      // Pressing Next must visibly react (owner 2026-08-18: "nothing
+      // happens") — a school with no code minted cannot proceed at all, and
+      // the page has to say WHY right where the button was pressed.
+      const noCode = selectedInstOption?.has_code === false;
+      const msg = noCode
+        ? t("This school has no access code yet, so it cannot register. Ask the organizer to send one.")
+        : t("Enter your school's access code to continue.");
+      setCodeError(msg);
+      // The code panel already carries the enter-your-code prompt; only the
+      // no-code DEAD END needs the form-level banner, because there the panel
+      // text was static and pressing Next visibly did nothing.
+      if (noCode) setErrors((e) => ({ ...e, __form: msg }));
       return;
     }
-    if (!validateCurrent()) return;
+    // A tabbed sheet walks tab by tab, so nothing behind a tab is skipped:
+    // Next moves Teachers -> Students, and only the LAST tab's press leads on
+    // to the review (owner 2026-08-18).
+    const tabs = tabRunOf(current);
+    if (tabs.length > 1) {
+      const curKey =
+        sheetTab && tabs.some((f) => f.key === sheetTab)
+          ? sheetTab
+          : tabs[0].key;
+      const at = tabs.findIndex((f) => f.key === curKey);
+      if (at < tabs.length - 1) {
+        setSheetTab(tabs[at + 1].key);
+        if (typeof window !== "undefined")
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+    }
+    if (!validateCurrent()) {
+      // The failing answer may live behind the other tab — open it.
+      if (tabs.length > 1) {
+        const all = { ...dupErrors, ...validateRequired(schema, answers) };
+        const bad = tabs.find(
+          (f) =>
+            all[f.key] ||
+            Object.keys(all).some((k) => k.startsWith(`${f.key}.`)),
+        );
+        if (bad) setSheetTab(bad.key);
+      }
+      return;
+    }
+    setSheetTab(null);
     setStepIndex((i) => Math.min(i + 1, reviewIndex));
     if (typeof window !== "undefined")
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1181,6 +1241,7 @@ export function PublicFormPage(): React.ReactElement {
   function onBack() {
     setErrors({});
     setErrorPaths({});
+    setSheetTab(null);
     setStepIndex((i) => Math.max(i - 1, 0));
   }
 
@@ -1356,6 +1417,8 @@ export function PublicFormPage(): React.ReactElement {
           <SheetTabs
             key={`tabs-${tabs[0].key}`}
             fields={tabs}
+            active={sheetTab}
+            onActive={setSheetTab}
             render={(fld) => renderField(fld, readOnly)}
             countOf={(fld) =>
               Array.isArray(answers[fld.key])
@@ -1968,9 +2031,20 @@ export function PublicFormPage(): React.ReactElement {
                   disabled={!current}
                   onClick={onNext}
                 >
-                  {sections.length > 0 && clamped === sections.length - 1
-                    ? t("Review")
-                    : t("Next")}
+                  {(() => {
+                    const tabs = tabRunOf(current);
+                    const curKey =
+                      sheetTab && tabs.some((f) => f.key === sheetTab)
+                        ? sheetTab
+                        : tabs[0]?.key;
+                    const pending =
+                      tabs.length > 1 &&
+                      tabs.findIndex((f) => f.key === curKey) < tabs.length - 1;
+                    if (pending) return t("Next");
+                    return steps.length > 0 && clamped === steps.length - 1
+                      ? t("Confirm & review")
+                      : t("Next");
+                  })()}
                 </Button>
               )}
             </div>
