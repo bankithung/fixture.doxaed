@@ -254,7 +254,14 @@ export function FilterPanel({
         </div>
       ) : null}
 
-      {filters.map((f) => (
+      {/* A filter with nothing to choose from is dead controls. The
+          directory ships one per form question, and a question nobody has
+          answered yet (or one whose options are resolved elsewhere, like the
+          institution picker) arrives with an empty list — rendering it gave a
+          rail of boxes offering only "All" (owner 2026-08-18). */}
+      {filters
+        .filter((f) => (f.options?.length ?? 0) > 1)
+        .map((f) => (
         <label
           key={f.key}
           className="flex flex-col gap-1 border-t border-border pt-3"

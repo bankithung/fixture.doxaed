@@ -33,7 +33,12 @@ export function PublicShell({
         <div
           className={cn(
             "mx-auto flex w-full items-center gap-2 px-4 py-3 sm:px-6",
-            wide ? "max-w-6xl" : "max-w-3xl lg:max-w-[70%] xl:max-w-5xl",
+            // A directory matrix is schools down and every competition
+            // across, so it wants the monitor it is being read on
+            // (owner 2026-08-18: "no need to be so congested").
+            wide
+              ? "max-w-6xl xl:max-w-[92%] 2xl:max-w-[1700px]"
+              : "max-w-3xl lg:max-w-[70%] xl:max-w-5xl",
           )}
         >
           {/* Home link: `/` shows the landing page for anonymous visitors
