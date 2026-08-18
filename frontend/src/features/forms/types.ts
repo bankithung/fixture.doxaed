@@ -137,6 +137,17 @@ export interface Field {
    * unless the respondent says otherwise (owner 2026-08-18). Applied only to
    * an UNTOUCHED field, so a cleared box stays cleared. */
   default_from?: string;
+  /** Repeatable group: the single-answer field elsewhere on the form that
+   * seeds this group's FIRST row (owner 2026-08-18: a teacher in charge is
+   * chosen once per sport and appears in every category of it). */
+  default_from_group?: string;
+  /** Which child of this group receives that value. */
+  default_field?: string;
+  /** Appended to a `default_from` value, plus the row number, so a team is
+   * named "<School> <SPORT>-<n>" (owner 2026-08-18). */
+  default_suffix?: string;
+  /** Overrides the add button's text when "Add <label>" reads wrong. */
+  add_label?: string;
   /** `type: "file_upload"` → allow several files (value becomes an array of
    * upload refs) and/or constrain the picker's accepted types. */
   multiple?: boolean;

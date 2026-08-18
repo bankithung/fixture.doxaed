@@ -294,6 +294,10 @@ export function PublicFormPage(): React.ReactElement {
   // The same failures keyed by full dotted path, so the exact row and field
   // can carry the message rather than the group carrying one detached line.
   const [errorPaths, setErrorPaths] = useState<Record<string, string>>({});
+  // Once a check has run, errors go LIVE: they are recomputed as the answers
+  // change, so fixing a field clears its message immediately instead of the
+  // respondent having to press Next again to find out (owner 2026-08-18).
+  const [liveCheck, setLiveCheck] = useState(false);
   const [eventId] = useState(newEventId); // stable across retries (idempotency)
   const [done, setDone] = useState<string | null>(null);
 
@@ -502,16 +506,55 @@ export function PublicFormPage(): React.ReactElement {
   //
   // Only an UNTOUCHED field is filled (`undefined`, never `""`), so clearing
   // the box stays cleared instead of the default fighting the typist.
+  // A teacher in charge is chosen once per SPORT and appears in every
+  // category of it (owner 2026-08-18). The per-competition group keeps its own
+  // rows, so one category can still differ; this only seeds an EMPTY one.
+  useEffect(() => {
+    const schema = data?.form?.schema;
+    if (!schema) return;
+    const seeds: { group: string; from: string; field: string }[] = [];
+    const walk = (fields: Field[] | undefined): void => {
+      for (const f of fields ?? []) {
+        if (f.default_from_group && f.default_field) {
+          seeds.push({
+            group: f.key,
+            from: f.default_from_group,
+            field: f.default_field,
+          });
+        }
+        walk(f.fields);
+      }
+    };
+    for (const sec of schema.sections ?? []) walk(sec.fields);
+    if (!seeds.length) return;
+
+    setAnswers((prev) => {
+      let touched = false;
+      const next = { ...prev };
+      for (const { group, from, field } of seeds) {
+        const pick = prev[from];
+        if (typeof pick !== "string" || !pick) continue;
+        const rows = next[group];
+        // Only an untouched group is seeded: a category the school has already
+        // answered for is theirs, even if they emptied it.
+        if (Array.isArray(rows) && rows.length > 0) continue;
+        next[group] = [{ [field]: pick }];
+        touched = true;
+      }
+      return touched ? next : prev;
+    });
+  }, [answers, data]);
+
   const schoolName = selectedInstOption ? t(selectedInstOption.label) : "";
   useEffect(() => {
     const schema = data?.form?.schema;
     if (!schoolName || !schema) return;
     // Which group holds which institution-defaulted child.
-    const targets: { group: string; field: string }[] = [];
+    const targets: { group: string; field: string; suffix: string }[] = [];
     const walk = (fields: Field[] | undefined, group: string): void => {
       for (const f of fields ?? []) {
         if (f.default_from === "institution" && group) {
-          targets.push({ group, field: f.key });
+          targets.push({ group, field: f.key, suffix: f.default_suffix ?? "" });
         }
         walk(f.fields, f.type === "group" ? f.key : group);
       }
@@ -522,13 +565,18 @@ export function PublicFormPage(): React.ReactElement {
     setAnswers((prev) => {
       let touched = false;
       const next = { ...prev };
-      for (const { group, field } of targets) {
+      for (const { group, field, suffix } of targets) {
         const rows = next[group];
         if (!Array.isArray(rows)) continue;
-        const filled = rows.map((r) => {
+        const filled = rows.map((r, i) => {
           if (r && typeof r === "object" && !(field in (r as object))) {
             touched = true;
-            return { ...(r as Record<string, unknown>), [field]: schoolName };
+            // "<School> <SPORT>-<n>", numbered per row so a school entering
+            // two squads in one competition gets two distinct names.
+            const name = suffix
+              ? `${schoolName} ${suffix}-${i + 1}`
+              : schoolName;
+            return { ...(r as Record<string, unknown>), [field]: name };
           }
           return r;
         });
@@ -736,6 +784,7 @@ export function PublicFormPage(): React.ReactElement {
 
   /** Validate ONLY the current section's required fields before advancing. */
   function validateCurrent(): boolean {
+    setLiveCheck(true);
     if (!current) return true;
     const all = validateRequired(schema, answers);
     const here: Record<string, string> = {};
@@ -747,6 +796,25 @@ export function PublicFormPage(): React.ReactElement {
     setErrors(here);
     return Object.keys(here).length === 0;
   }
+
+  // Live re-check: after the first check, every keystroke re-runs the SAME
+  // rules, so a message disappears the moment its field is satisfied and a
+  // newly-emptied required field says so straight away. Server-reported
+  // failures are left alone here; only the server can clear those.
+  useEffect(() => {
+    if (!liveCheck || !current) return;
+    const all = validateRequired(schema, answers);
+    const here: Record<string, string> = {};
+    for (const f of sectionActiveFields(current, answers)) {
+      if (all[f.key]) here[f.key] = all[f.key];
+      else if (dupErrors[f.key]) here[f.key] = dupErrors[f.key];
+    }
+    setErrors((prev) =>
+      JSON.stringify(prev) === JSON.stringify(here) ? prev : here,
+    );
+    // `current` and `dupErrors` derive from answers; answers is the real input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answers, liveCheck, schema]);
 
   /** True when the visible section contains the institution picker and the
    * selected school still has to verify its access code. */

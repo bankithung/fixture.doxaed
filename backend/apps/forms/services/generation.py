@@ -173,6 +173,25 @@ _STAFF_ROLES: list[dict] = [
 ]
 
 
+def sport_short(sport: dict) -> str:
+    """A short tag for a sport, for naming teams ("Grace Academy TT-1").
+
+    The sport may carry its own ``short``; otherwise it is derived, and the
+    derivation is deliberately dumb so it never surprises: initials for a
+    multi-word name (Table Tennis -> TT), the first three letters for a single
+    word (Football -> FOO). A host who wants something else sets ``short`` on
+    the sport rather than the engine guessing harder (owner 2026-08-18).
+    """
+    explicit = str(sport.get("short") or "").strip()
+    if explicit:
+        return explicit.upper()[:6]
+    name = str(sport.get("name") or sport.get("key") or "").replace("_", " ")
+    words = [w for w in name.split() if w]
+    if len(words) > 1:
+        return "".join(w[0] for w in words).upper()[:6]
+    return (words[0][:3].upper() if words else "")
+
+
 def _event_options(tournament) -> list[dict]:
     """Which SPORT a participant is here for (owner 2026-08-17, restated
     2026-08-18: "select sports not the categories, just the sports").
@@ -375,6 +394,25 @@ def build_team_form_schema(
                 {"key": "team_logo", "type": "file_upload",
                  "label": "Your logo", "required": False, "accept": "image/*",
                  "help": "Optional. Used for every team you enter."},
+                # A teacher in charge belongs to a SPORT, not to each of its
+                # categories (owner 2026-08-18): a school sends one teacher
+                # with its table tennis squad, not one per age group. Asked
+                # here once, and every competition of that sport starts with
+                # them already filled in.
+                *[
+                    {"key": f"sport_staff_{sp['key']}", "type": "dropdown",
+                     "label": f"Teacher in charge for {sp.get('name') or sp['key']}",
+                     "required": False, "options": [],
+                     "directory": False,
+                     "data_source": {
+                         "type": "form_group",
+                         "group": "participant_staff",
+                         "value_field": "staff_id",
+                         "label_field": "staff_full_name",
+                     }}
+                    for sp in (getattr(tournament, "sports", None) or [])
+                    if sp.get("key")
+                ],
                 {
                     "key": "participant_staff",
                     "type": "group",
@@ -549,9 +587,20 @@ def build_team_form_schema(
                         "label": "Team",
                         "repeatable": True,
                         "row_title": tkey,
+                        # "Add Team" read as a second team to people who were
+                        # trying to add players (owner 2026-08-18).
+                        "add_label": "Add players to this category",
                         "fields": [
                             {"key": tkey, "type": "short_text", "label": "Team name",
                              "required": False,
+                             # "<School> <SPORT>-<n>" (owner 2026-08-18), the
+                             # number added per row so a school entering two
+                             # squads gets two distinct names.
+                             "default_suffix": sport_short(
+                                 next((sp for sp in
+                                       (getattr(tournament, "sports", None) or [])
+                                       if sp.get("key") == v.split(".")[0]), {})
+                             ),
                              # Filled in with the school's name as soon as one
                              # is picked (owner 2026-08-18). The server has
                              # always defaulted a BLANK name to the
@@ -575,6 +624,10 @@ def build_team_form_schema(
                             ({"key": f"staff_{slug}", "type": "group",
                               "label": "Teacher in charge", "repeatable": True,
                               "row_title": f"staff_member_{slug}",
+                              # Filled from the sport's own answer above, and
+                              # still editable when one category differs.
+                              "default_from_group": f"sport_staff_{v.split('.')[0]}",
+                              "default_field": f"staff_member_{slug}",
                               "fields": [
                                   {"key": f"staff_member_{slug}",
                                    "type": "dropdown", "label": "Teacher",

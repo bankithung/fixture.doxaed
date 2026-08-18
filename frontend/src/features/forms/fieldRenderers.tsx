@@ -683,7 +683,7 @@ function RepeatableGroup({
           }}
         >
           <Plus aria-hidden="true" className="h-4 w-4" />
-          {t(`Add ${rowLabel}`)}
+          {field.add_label ? t(field.add_label) : t(`Add ${rowLabel}`)}
         </Button>
       ) : null}
       {minRows > 0 || maxRows !== Infinity ? (
@@ -781,19 +781,22 @@ export function FieldRenderer({
 
   const control = (() => {
     switch (field.type) {
+      // NOTE: "date" is deliberately NOT here. It falls through to the
+      // three-part picker below (owner 2026-08-18); leaving it in this group
+      // rendered the native calendar and made that branch dead code.
       case "short_text":
       case "email":
       case "phone":
       case "number":
-      case "date":
       case "time": {
         const inputType =
           field.type === "short_text" ? "text" : field.type;
-        // For native date/time inputs the calendar only opens from the tiny
-        // built-in glyph. Open the picker when the user clicks (or focuses)
-        // anywhere on the field. showPicker() must run inside a user gesture
-        // and isn't available on every browser, so guard + swallow errors.
-        const isPicker = field.type === "date" || field.type === "time";
+        // For a native TIME input the picker only opens from the tiny
+        // built-in glyph. Open it when the user clicks (or focuses) anywhere
+        // on the field. showPicker() must run inside a user gesture and isn't
+        // available on every browser, so guard + swallow errors. (Dates use
+        // the three-part picker below and never reach this branch.)
+        const isPicker = field.type === "time";
         const openPicker = isPicker
           ? (e: SyntheticEvent<HTMLInputElement>) => {
               const el = e.currentTarget;

@@ -1163,3 +1163,59 @@ describe("PublicFormPage · a person picker counts their entries", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("PublicFormPage · date of birth and live checks", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  const dobSchema: FormSchema = {
+    version: 1,
+    sections: [
+      {
+        key: "who",
+        title: "Who",
+        fields: [
+          { key: "dob", type: "date", label: "Date of birth" },
+          { key: "name", type: "short_text", label: "Full name", required: true },
+        ],
+      },
+    ],
+  };
+
+  async function mountDob() {
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "ANPSA Dimapur",
+      form: { id: "form1", title: "Team registration", description: "",
+        schema: dobSchema, confirmation_message: "Thanks" },
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+  }
+
+  it("asks for month, day and year separately, not a calendar", async () => {
+    await mountDob();
+    // Three pickers, and NO native date input.
+    expect(
+      screen.getByRole("button", { name: /Date of birth: month/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Date of birth: day/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Date of birth: year/i }),
+    ).toBeInTheDocument();
+    expect(document.querySelector('input[type="date"]')).toBeNull();
+  });
+
+  it("clears a required message the moment the field is filled", async () => {
+    await mountDob();
+    // First check fails on the empty required name.
+    await userEvent.click(screen.getByRole("button", { name: /review|next/i }));
+    expect(await screen.findByText(/required/i)).toBeInTheDocument();
+
+    // Typing fixes it live, with no second press of Next.
+    await userEvent.type(screen.getByLabelText(/full name/i), "Aben Kikon");
+    await waitFor(() =>
+      expect(screen.queryByText(/required/i)).not.toBeInTheDocument(),
+    );
+  });
+});

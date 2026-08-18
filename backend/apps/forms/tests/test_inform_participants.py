@@ -87,12 +87,16 @@ def test_the_team_form_carries_its_own_participants_sheet():
     # ORDER matters (owner 2026-08-18): the school-level questions come first,
     # then the long roll of students — a clerk should not have to scroll past
     # forty children to reach the two questions about the school itself.
-    assert [g["key"] for g in section["fields"]] == [
-        "team_logo", "participant_staff", "participant_students",
+    # School-level questions first, then the per-sport teacher, then the roll.
+    keys = [g["key"] for g in section["fields"]]
+    assert keys[0] == "team_logo"
+    assert keys[-2:] == ["participant_staff", "participant_students"]
+    # One teacher-in-charge question per SPORT (owner 2026-08-18), so a school
+    # answers once and every category of that sport starts filled in.
+    assert [k for k in keys if k.startswith("sport_staff_")] == [
+        f"sport_staff_{sp['key']}" for sp in t.sports
     ]
-    assert set(groups) == {
-        "participant_students", "participant_staff", "team_logo",
-    }
+    assert {"participant_students", "participant_staff", "team_logo"} <= set(groups)
     assert groups["team_logo"]["type"] == "file_upload"
     # Each row mints its own identity, which is what a pick points at.
     assert groups["participant_students"]["row_key"] == "participant_id"
