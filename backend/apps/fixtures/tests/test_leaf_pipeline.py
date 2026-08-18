@@ -150,19 +150,24 @@ def test_team_form_sections_come_from_sports_config_not_field_order():
     team_form = generate_team_form_template(tournament=t, created_by=admin)
     fields = {f["key"]: f for sec in team_form.schema["sections"]
               for f in sec["fields"]}
-    # W2-A: the selector is the progressive sport→category chain.
+    # The selector is a sport question + ONE flat competitions question per
+    # sport (owner 2026-08-18: the per-level cascade asked seven questions to
+    # say one thing).
     assert [o["value"] for o in fields["sports"]["options"]] == [
         "football", "table_tennis",
     ]
-    deep = fields["categories_football_u15_girls"]
-    assert [o["value"] for o in deep["options"]] == [LEAF_5V5]
-    # Each leaf's team section gates on the DEEPEST field carrying that leaf.
+    flat = fields["categories_football"]
+    assert [o["value"] for o in flat["options"]] == [LEAF_5V5, LEAF_U17]
+    assert flat["visibility"] == {
+        "field": "sports", "op": "includes", "value": "football",
+    }
+    # Each leaf's team section gates on that single per-sport field.
     by_vis = {
         (s.get("visibility") or {}).get("value"): s
         for s in team_form.schema["sections"]
         if s.get("visibility")
     }
-    assert by_vis[LEAF_5V5]["visibility"]["field"] == "categories_football_u15_girls"
+    assert by_vis[LEAF_5V5]["visibility"]["field"] == "categories_football"
     assert by_vis[LEAF_U17]["visibility"]["field"] == "categories_football"
     # Sport-level leaf: ticking the sport reveals its team section.
     assert by_vis[LEAF_TT]["visibility"]["field"] == "sports"
