@@ -171,6 +171,12 @@ def _declare_participants(
     by_name = {m.person.full_name.strip().lower(): m for m in existing}
 
     out: dict[str, RosterMember] = {}
+    # Members already claimed by an earlier row of THIS submission. Two rows
+    # are two people by construction: a school that lists "Imli Jamir" twice is
+    # telling us there are two of them (owner 2026-08-18 removed the roll-number
+    # box, and without this the second row would silently match the first and
+    # the pair would collapse into one child).
+    claimed: set = set()
     for row in rows:
         name = str(row.get("full_name") or "").strip()
         if not name:
@@ -187,6 +193,8 @@ def _declare_participants(
         member = (
             by_roll.get(roll.lower()) if roll else by_name.get(name.lower())
         )
+        if member is not None and member.pk in claimed:
+            member = None
         if member is None:
             person = Person.objects.create(full_name=name)
             member = RosterMember(
@@ -211,6 +219,7 @@ def _declare_participants(
         if dob:
             member.date_of_birth = dob
         member.save()
+        claimed.add(member.pk)
         if roll:
             by_roll[roll.lower()] = member
         by_name[name.lower()] = member

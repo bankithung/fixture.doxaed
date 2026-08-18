@@ -1126,3 +1126,40 @@ describe("PublicFormPage · a rejected answer says which one", () => {
     expect(screen.getByTestId("row-open-participant_students-0")).toBeInTheDocument();
   });
 });
+
+describe("PublicFormPage · a person picker counts their entries", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("says how many times each student is already assigned", async () => {
+    // Owner 2026-08-18: "how will I know if a student is in multiple
+    // categories, it is hard to tell".
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "ANPSA Dimapur",
+      form: { id: "form1", title: "Team registration", description: "",
+        schema: pickerSchema, confirmation_message: "Thanks" },
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+
+    await userEvent.click(screen.getByRole("button", { name: "Add Student" }));
+    await userEvent.type(await screen.findByLabelText(/full name/i), "Aben Kikon");
+    await userEvent.click(screen.getByRole("button", { name: /review|next/i }));
+    await screen.findByText(/Teams · Table Tennis/);
+
+    // Not yet picked anywhere: the name stands alone.
+    await userEvent.click(screen.getByRole("button", { name: "Add Team" }));
+    await userEvent.click(screen.getByRole("button", { name: /student/i }));
+    expect(
+      await screen.findByRole("option", { name: "Aben Kikon" }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("option", { name: "Aben Kikon" }));
+
+    // Picked once, so the next picker says so.
+    await userEvent.click(screen.getByRole("button", { name: "Add Team" }));
+    const pickers = screen.getAllByRole("button", { name: /student/i });
+    await userEvent.click(pickers[pickers.length - 1]!);
+    expect(
+      await screen.findByRole("option", { name: /Aben Kikon · 1 entry/ }),
+    ).toBeInTheDocument();
+  });
+});

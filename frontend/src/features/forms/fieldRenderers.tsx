@@ -299,6 +299,114 @@ function FileUploadField({
 
 
 
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/**
+ * A date of birth as three pickers rather than a calendar (owner 2026-08-18:
+ * "allow separate, first month then date then year, that way it will be
+ * easier").
+ *
+ * A birth date is decades away from today, so a calendar widget makes the
+ * respondent page back through hundreds of months. Three lists reach any year
+ * in three taps, and on a phone they are native pickers rather than a grid of
+ * tap targets a thumb keeps missing.
+ *
+ * The stored value stays an ISO date, so nothing downstream knows or cares.
+ * A partial answer stores nothing: two thirds of a birthday is not a date.
+ */
+function DateParts({
+  value,
+  onChange,
+  disabled,
+  id,
+  describedBy,
+  error,
+  label,
+}: {
+  value: unknown;
+  onChange: (v: unknown) => void;
+  disabled?: boolean;
+  id: string;
+  describedBy?: string;
+  error?: string;
+  label: string;
+}): React.ReactElement {
+  const iso = typeof value === "string" ? value : "";
+  const [y, m, d] = iso.split("-");
+  const year = y ?? "";
+  const month = m ?? "";
+  const day = d ?? "";
+
+  // Old enough for the oldest competitor, recent enough for the youngest.
+  const thisYear = new Date().getFullYear();
+  const years = Array.from({ length: 80 }, (_, i) => String(thisYear - i));
+  const daysInMonth =
+    year && month
+      ? new Date(Number(year), Number(month), 0).getDate()
+      : 31;
+  const days = Array.from({ length: daysInMonth }, (_, i) =>
+    String(i + 1).padStart(2, "0"),
+  );
+
+  const emit = (nextY: string, nextM: string, nextD: string): void => {
+    if (!nextY || !nextM || !nextD) {
+      onChange("");
+      return;
+    }
+    // A day that does not exist in the newly chosen month is clamped rather
+    // than silently emitting an invalid date (31 February).
+    const max = new Date(Number(nextY), Number(nextM), 0).getDate();
+    const safe = String(Math.min(Number(nextD), max)).padStart(2, "0");
+    onChange(`${nextY}-${nextM}-${safe}`);
+  };
+
+  return (
+    <div
+      className="grid grid-cols-3 gap-2"
+      role="group"
+      aria-labelledby={describedBy}
+      aria-label={label}
+    >
+      <Select
+        aria-label={`${label}: ${t("month")}`}
+        value={month}
+        onChange={(v) => emit(year, v, day)}
+        options={MONTHS.map((name, i) => ({
+          value: String(i + 1).padStart(2, "0"),
+          label: t(name),
+        }))}
+        placeholder={t("Month")}
+        disabled={disabled}
+        size="sm"
+      />
+      <Select
+        aria-label={`${label}: ${t("day")}`}
+        value={day}
+        onChange={(v) => emit(year, month, v)}
+        options={days.map((n) => ({ value: n, label: String(Number(n)) }))}
+        placeholder={t("Day")}
+        disabled={disabled}
+        size="sm"
+      />
+      <Select
+        aria-label={`${label}: ${t("year")}`}
+        value={year}
+        onChange={(v) => emit(v, month, day)}
+        options={years.map((n) => ({ value: n, label: n }))}
+        placeholder={t("Year")}
+        disabled={disabled}
+        searchable
+        size="sm"
+      />
+      <input type="hidden" id={id} value={iso} aria-invalid={!!error} />
+    </div>
+  );
+}
+
 /** Which fields deserve the full width of a row.
  *
  * A person is a handful of short answers (name, class, roll, date, gender) and
@@ -836,6 +944,18 @@ export function FieldRenderer({
           </div>
         );
       }
+      case "date":
+        return (
+          <DateParts
+            value={value}
+            onChange={onChange}
+            disabled={disabled}
+            id={id}
+            describedBy={describedBy}
+            error={error}
+            label={t(field.label)}
+          />
+        );
       case "dropdown":
         return (
           <Select

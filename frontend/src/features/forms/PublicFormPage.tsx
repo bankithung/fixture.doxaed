@@ -98,12 +98,39 @@ function withFormGroups(
   schema: FormSchema,
   values: Record<string, unknown>,
 ): FormSchema {
+  /** How many times each declared person is ALREADY picked somewhere on this
+   * form (owner 2026-08-18: "how will I know if a student is in multiple
+   * categories, it is hard to tell").
+   *
+   * Counted by walking the answers for the row's own id, skipping the sheet
+   * that declares them (where the id is the row's identity, not a pick). It is
+   * schema-agnostic on purpose: any picker bound to that group contributes,
+   * so a new competition needs no wiring here. */
+  const pickCounts = (group: string): Map<string, number> => {
+    const counts = new Map<string, number>();
+    const walk = (v: unknown): void => {
+      if (typeof v === "string") {
+        counts.set(v, (counts.get(v) ?? 0) + 1);
+      } else if (Array.isArray(v)) {
+        v.forEach(walk);
+      } else if (v && typeof v === "object") {
+        Object.values(v as Record<string, unknown>).forEach(walk);
+      }
+    };
+    for (const [k, v] of Object.entries(values)) {
+      if (k === group) continue; // the sheet itself is not an assignment
+      walk(v);
+    }
+    return counts;
+  };
+
   const optionsFor = (
     ds: NonNullable<Field["data_source"]>,
     leafKey: string,
   ) => {
     const rows = values[ds.group ?? ""];
     if (!Array.isArray(rows)) return [];
+    const counts = pickCounts(ds.group ?? "");
     const eventsKey =
       ds.group === "participant_staff" ? "staff_events" : "participant_events";
     return rows
@@ -121,7 +148,12 @@ function withFormGroups(
         const value = String(r[ds.value_field ?? ""] ?? "");
         const label = String(r[ds.label_field ?? ""] ?? "").trim();
         const hint = String(r[ds.hint_field ?? ""] ?? "").trim();
-        return { value, label: hint ? `${label} · ${hint}` : label };
+        const n = counts.get(value) ?? 0;
+        // Say how many entries they already have, so a school can see at a
+        // glance who is being spread across competitions.
+        const used = n > 0 ? `${n} ${n === 1 ? t("entry") : t("entries")}` : "";
+        const suffix = [hint, used].filter(Boolean).join(" · ");
+        return { value, label: suffix ? `${label} · ${suffix}` : label };
       })
       .filter((o) => o.value && o.label);
   };

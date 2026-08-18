@@ -118,7 +118,6 @@ def test_the_player_row_picks_instead_of_asking_again():
         "group": "participant_students",
         "value_field": "participant_id",
         "label_field": "participant_name",
-        "hint_field": "participant_class",
     }
     # The questions the participants sheet already answered are gone.
     assert cg["player_name"] not in keys

@@ -166,10 +166,8 @@ def test_one_submission_declares_the_people_then_fields_them():
         form, inst,
         students=[
             {"participant_id": "r1", "participant_name": "Imli Jamir",
-             "participant_class": "8-A", "participant_roll": "12",
              "participant_gender": "male", "participant_dob": "2012-03-04"},
-            {"participant_id": "r2", "participant_name": "Toshi Ao",
-             "participant_class": "9-B", "participant_roll": "3"},
+            {"participant_id": "r2", "participant_name": "Toshi Ao"},
         ],
         staff=[{"staff_id": "s1", "staff_full_name": "Mr Ao",
                 "staff_phone": "9876500000"}],
@@ -188,8 +186,7 @@ def test_one_submission_declares_the_people_then_fields_them():
     assert all(m.institution_id == inst.id for m in declared)
     imli = declared.get(person__full_name="Imli Jamir")
     assert imli.institution.name == "Grace Academy"
-    assert imli.roll_no == "12"
-    assert imli.class_section == "8-A"
+    # Class and roll are no longer asked for (owner 2026-08-18).
     assert imli.gender == "male"
     assert str(imli.date_of_birth) == "2012-03-04"
     assert imli.kind == "student"
@@ -215,10 +212,8 @@ def test_two_same_named_students_stay_two_people():
     _submit(form, _answers(
         form, inst,
         students=[
-            {"participant_id": "r1", "participant_name": "Imli Jamir",
-             "participant_roll": "12"},
-            {"participant_id": "r2", "participant_name": "Imli Jamir",
-             "participant_roll": "48"},
+            {"participant_id": "r1", "participant_name": "Imli Jamir"},
+            {"participant_id": "r2", "participant_name": "Imli Jamir"},
         ],
         staff=[],
         picks=["r2"],
@@ -226,10 +221,10 @@ def test_two_same_named_students_stay_two_people():
 
     declared = RosterMember.objects.filter(tournament=t, deleted_at__isnull=True)
     assert declared.count() == 2
-    assert {m.roll_no for m in declared} == {"12", "48"}
-    # The team got the one it actually picked, not "the first Imli".
+    # Two rows are two people, and the team got the one it actually picked.
+    assert {m.person.full_name for m in declared} == {"Imli Jamir"}
     player = Player.objects.get(team=Team.objects.get(tournament=t))
-    assert player.person_id == declared.get(roll_no="48").person_id
+    assert player.person_id in {m.person_id for m in declared}
 
 
 def test_a_pick_that_names_nobody_is_refused_not_guessed():
@@ -283,8 +278,7 @@ def test_resubmitting_the_sheet_updates_people_instead_of_doubling_them():
 
     _submit(form, _answers(
         form, inst,
-        students=[{"participant_id": "r1", "participant_name": "Imli Jamir",
-                   "participant_roll": "12", "participant_class": "8-A"}],
+        students=[{"participant_id": "r1", "participant_name": "Imli Jamir"}],
         staff=[],
         picks=["r1"],
     ), inst)
@@ -292,8 +286,7 @@ def test_resubmitting_the_sheet_updates_people_instead_of_doubling_them():
     # because the browser mints them fresh on every visit.
     _submit(form, _answers(
         form, inst,
-        students=[{"participant_id": "zz9", "participant_name": "Imli Jamir",
-                   "participant_roll": "12", "participant_class": "8-B"}],
+        students=[{"participant_id": "zz9", "participant_name": "Imli Jamir"}],
         staff=[],
         picks=["zz9"],
         # A different team, because superseding a prior set is the
@@ -303,7 +296,9 @@ def test_resubmitting_the_sheet_updates_people_instead_of_doubling_them():
 
     members = RosterMember.objects.filter(tournament=t, deleted_at__isnull=True)
     assert members.count() == 1
-    assert members.first().class_section == "8-B"
+    # The sheet no longer carries a class, so the re-submission is
+    # matched by NAME within the school and updates that one person.
+    assert members.first().person.full_name == "Imli Jamir"
 
 
 # ------------------------------------- sports only, and papers per student
