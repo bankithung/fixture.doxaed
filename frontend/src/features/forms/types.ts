@@ -48,6 +48,10 @@ export interface Visibility {
 export interface Option {
   value: string;
   label: string;
+  /** `layout: "matrix"` fields: which cell this option is. `row` is the
+   * left-hand heading, `col` the column heading. */
+  row?: string;
+  col?: string;
   /** Optional per-option image/logo (a compressed data URL set in the builder),
    * shown beside the option on the public form. */
   image?: string;
@@ -148,6 +152,10 @@ export interface Field {
   default_suffix?: string;
   /** Overrides the add button's text when "Add <label>" reads wrong. */
   add_label?: string;
+  /** "matrix" renders a multi_choice as a TICK-MARK TABLE, using each
+   * option's `row`/`col` (owner 2026-08-18): the same reading as the public
+   * directory's registration matrix. */
+  layout?: string;
   /** `type: "file_upload"` → allow several files (value becomes an array of
    * upload refs) and/or constrain the picker's accepted types. */
   multiple?: boolean;

@@ -253,8 +253,21 @@ def _category_flat(sport: dict) -> tuple[dict | None, dict[str, str]]:
         "short_label": "Which competitions?",
         "directory": False,
         "visibility": {"field": "sports", "op": "includes", "value": skey},
+        # Rendered as a TICK-MARK TABLE, like the public directory's matrix
+        # (owner 2026-08-18). Each option carries where it sits: `row` is the
+        # first level of the category path (the age group), `col` is the rest
+        # (gender and format). A flat column of checkboxes hid the structure
+        # the school is actually reading.
+        "layout": "matrix",
         "options": [
-            {"value": lf["leaf_key"], "label": lf["label"]} for lf in leaves
+            {
+                "value": lf["leaf_key"],
+                "label": lf["label"],
+                "row": (lf["label"].split(" \u00b7 ")[0]).strip(),
+                "col": (" \u00b7 ".join(lf["label"].split(" \u00b7 ")[1:])
+                        or lf["label"]).strip(),
+            }
+            for lf in leaves
         ],
     }
     return field, {lf["leaf_key"]: fkey for lf in leaves}

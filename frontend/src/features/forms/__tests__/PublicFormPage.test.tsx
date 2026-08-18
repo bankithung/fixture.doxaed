@@ -1320,3 +1320,56 @@ describe("PublicFormPage · the form reads like the directory", () => {
     expect(screen.getByTestId("entry-summary")).toHaveTextContent("2");
   });
 });
+
+describe("PublicFormPage · competitions are a tick-mark table", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("lays the competitions out as rows and columns, and ticks a whole row", async () => {
+    // Owner 2026-08-18: "like the public directory page where we show a list
+    // and then tick mark". A flat column of eight checkboxes hid the structure.
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "ANPSA Dimapur",
+      form: {
+        id: "form1", title: "Team registration", description: "",
+        confirmation_message: "Thanks",
+        schema: {
+          version: 1,
+          sections: [{
+            key: "institution", title: "Your institution",
+            fields: [{
+              key: "categories_table_tennis", type: "multi_choice",
+              label: "Table Tennis competitions", required: true,
+              layout: "matrix",
+              options: [
+                { value: "tt.u14.boys.singles", label: "U-14 · Boys · Singles",
+                  row: "U-14", col: "Boys · Singles" },
+                { value: "tt.u14.boys.doubles", label: "U-14 · Boys · Doubles",
+                  row: "U-14", col: "Boys · Doubles" },
+                { value: "tt.open.boys.singles", label: "Open · Boys · Singles",
+                  row: "Open", col: "Boys · Singles" },
+              ],
+            }],
+          }],
+        } as FormSchema,
+      },
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+
+    // It is a real table: column headers and row headers, not a list.
+    expect(screen.getByRole("columnheader", { name: "Boys · Singles" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Boys · Doubles" })).toBeInTheDocument();
+
+    // A combination the tournament does not run has no checkbox at all.
+    expect(screen.queryByLabelText("Open · Boys · Doubles")).toBeNull();
+
+    // One cell ticks one competition.
+    await userEvent.click(screen.getByLabelText("U-14 · Boys · Singles"));
+    expect(screen.getByLabelText("U-14 · Boys · Singles")).toBeChecked();
+
+    // The row header ticks the whole age group in one click.
+    await userEvent.click(screen.getByLabelText("All of U-14"));
+    expect(screen.getByLabelText("U-14 · Boys · Doubles")).toBeChecked();
+    expect(screen.getByLabelText("Open · Boys · Singles")).not.toBeChecked();
+  });
+});

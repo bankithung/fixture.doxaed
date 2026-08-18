@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import type { Field } from "./types";
+import type { Field, Option } from "./types";
 
 export interface FieldRenderProps {
   field: Field;
@@ -403,6 +403,154 @@ function DateParts({
         size="sm"
       />
       <input type="hidden" id={id} value={iso} aria-invalid={!!error} />
+    </div>
+  );
+}
+
+
+/**
+ * A multi_choice drawn as a TICK-MARK TABLE (owner 2026-08-18: "like the
+ * public directory page where we show a list and then tick mark").
+ *
+ * A school reading eight table-tennis competitions as a flat column has to
+ * reconstruct the structure in its head; as a grid, the age groups are rows
+ * and the gender/format pairs are columns, and the shape is the same one the
+ * public directory shows back to them afterwards.
+ *
+ * Rows and columns come from each option's own `row`/`col`, so the engine
+ * never parses a key. A combination the tournament does not run simply has no
+ * cell, which is how an uneven category tree stays truthful.
+ */
+function MatrixChoice({
+  field,
+  options,
+  value,
+  onChange,
+  disabled,
+  labelId,
+}: {
+  field: Field;
+  options: Option[];
+  value: unknown;
+  onChange: (v: unknown) => void;
+  disabled?: boolean;
+  labelId: string;
+}): React.ReactElement {
+  const picked = new Set(asArray(value));
+  const rows: string[] = [];
+  const cols: string[] = [];
+  const cell = new Map<string, Option>();
+  for (const o of options) {
+    const r = o.row ?? "";
+    const c = o.col ?? t(o.label);
+    if (!rows.includes(r)) rows.push(r);
+    if (!cols.includes(c)) cols.push(c);
+    cell.set(`${r}\u0000${c}`, o);
+  }
+
+  const toggle = (v: string, on: boolean): void =>
+    onChange(on ? [...picked, v] : [...picked].filter((x) => x !== v));
+
+  /** Tick every competition in a row, or clear it. A school entering a whole
+   * age group should not click eight boxes. */
+  const rowValues = (r: string): string[] =>
+    cols
+      .map((c) => cell.get(`${r}\u0000${c}`)?.value)
+      .filter((v): v is string => Boolean(v));
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full border-separate border-spacing-0 text-sm">
+        <caption className="sr-only">{t(field.label)}</caption>
+        <thead>
+          <tr>
+            <th
+              scope="col"
+              className="sticky left-0 z-10 border-b border-r border-border bg-muted px-3 py-2 text-left text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground"
+            >
+              {t("Category")}
+            </th>
+            {cols.map((c) => (
+              <th
+                key={c}
+                scope="col"
+                className="border-b border-border bg-muted px-2 py-2 text-center text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground"
+              >
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody aria-labelledby={labelId}>
+          {rows.map((r, i) => {
+            const inRow = rowValues(r);
+            const all = inRow.length > 0 && inRow.every((v) => picked.has(v));
+            return (
+              <tr key={r} className={i % 2 ? "bg-muted/20" : "bg-card"}>
+                <th
+                  scope="row"
+                  className="sticky left-0 z-10 border-b border-r border-border bg-inherit px-3 py-2 text-left font-medium"
+                >
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={all}
+                      disabled={disabled}
+                      aria-label={`${t("All of")} ${r || t(field.label)}`}
+                      onChange={(e) =>
+                        onChange(
+                          e.target.checked
+                            ? [...new Set([...picked, ...inRow])]
+                            : [...picked].filter((v) => !inRow.includes(v)),
+                        )
+                      }
+                      className="h-4 w-4 shrink-0 accent-[hsl(var(--primary))]"
+                    />
+                    <span className="text-[0.8125rem]">{r || t(field.label)}</span>
+                  </label>
+                </th>
+                {cols.map((c) => {
+                  const o = cell.get(`${r}\u0000${c}`);
+                  if (!o) {
+                    return (
+                      <td
+                        key={c}
+                        className="border-b border-border bg-muted/30 px-2 py-2 text-center text-xs text-muted-foreground"
+                      >
+                        <span aria-hidden="true">·</span>
+                        <span className="sr-only">
+                          {t("Not offered")}
+                        </span>
+                      </td>
+                    );
+                  }
+                  const on = picked.has(String(o.value));
+                  return (
+                    <td
+                      key={c}
+                      className="border-b border-border px-2 py-2 text-center"
+                    >
+                      <label className="inline-flex cursor-pointer items-center justify-center">
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          disabled={disabled}
+                          value={String(o.value)}
+                          aria-label={t(o.label)}
+                          onChange={(e) =>
+                            toggle(String(o.value), e.target.checked)
+                          }
+                          className="h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        />
+                      </label>
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -902,6 +1050,18 @@ export function FieldRenderer({
         );
       }
       case "multi_choice": {
+        if (field.layout === "matrix" && options.length > 0) {
+          return (
+            <MatrixChoice
+              field={field}
+              options={options}
+              value={value}
+              onChange={onChange}
+              disabled={disabled}
+              labelId={labelId}
+            />
+          );
+        }
         const arr = asArray(value);
         return (
           <div role="group" aria-labelledby={labelId} className="flex flex-col gap-2">
