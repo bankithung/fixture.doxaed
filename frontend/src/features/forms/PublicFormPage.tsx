@@ -1254,37 +1254,39 @@ export function PublicFormPage(): React.ReactElement {
             organiser's instructions, who you are registering as, the step you
             are on, the questions themselves and the Back/Next footer are bands
             of a single card, not a stack of them. */}
-        <header className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
-              {t("Registration")}
-            </p>
-            <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
-              {t(form.title)}
-            </h1>
-            {/* The shell already names the tournament above this, so the
-                subtitle says what this form is FOR instead of repeating it. */}
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t("Enter your school's teams for this tournament.")}
-            </p>
-          </div>
-          <a
-            href={`/f/${form.id}/directory`}
-            className={cn(
-              buttonVariants({ variant: "outline", size: "sm" }),
-              "h-8 shrink-0 px-2.5 text-xs",
-            )}
-          >
-            <Users aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("Registered")}
-          </a>
-        </header>
-
         <StarBorder>
           <section
             data-testid="registration-panel"
             className="bento-card panel flex w-full flex-col divide-y divide-border overflow-hidden"
           >
+            {/* The page header lives INSIDE the panel (owner 2026-08-18):
+                eyebrow, title, purpose and the Registered link are the card's
+                own first band, not a floater above it. */}
+            <header className="flex flex-wrap items-end justify-between gap-3 px-5 py-4 sm:px-6">
+              <div className="min-w-0">
+                <p className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-primary">
+                  {t("Registration")}
+                </p>
+                <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
+                  {t(form.title)}
+                </h1>
+                {/* The shell already names the tournament above this, so the
+                    subtitle says what this form is FOR instead of repeating it. */}
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {t("Enter your school's teams for this tournament.")}
+                </p>
+              </div>
+              <a
+                href={`/f/${form.id}/directory`}
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "h-8 shrink-0 px-2.5 text-xs",
+                )}
+              >
+                <Users aria-hidden="true" className="h-3.5 w-3.5" />
+                {t("Registered")}
+              </a>
+            </header>
 
             {/* Instructions — dates, age cut-off, rules — where they are read. */}
             {form.description ? (
