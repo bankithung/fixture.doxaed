@@ -1910,6 +1910,29 @@ export function PublicFormPage(): React.ReactElement {
               </div>
             ) : current ? (
               <div className="flex flex-col gap-5 px-5 py-5 sm:px-6">
+                {/* While a school's prior registration is loading, neither the
+                    EMPTY fields nor the previous school's answers may show —
+                    both read as the truth and both are wrong (owner
+                    2026-08-18). The skeleton stands in until the merge lands. */}
+                {managerPrefill.isPending || verifyCode.isPending ? (
+                  <div
+                    aria-busy="true"
+                    data-testid="prefill-skeleton"
+                    className="flex flex-col gap-3"
+                  >
+                    {Array.from({ length: 6 }, (_, i) => (
+                      <div
+                        key={i}
+                        className="h-9 animate-pulse rounded-md bg-muted/50"
+                        style={{ animationDelay: `${i * 70}ms` }}
+                      />
+                    ))}
+                    <p role="status" className="text-xs text-muted-foreground">
+                      {t("Loading this school's registration…")}
+                    </p>
+                  </div>
+                ) : (
+                  <>
                 {/* Until the access code is verified, the ONLY things on screen
                     are the school picker and the code panel · no prefilled
                     contacts, sports or categories leak to someone without the
@@ -1987,6 +2010,8 @@ export function PublicFormPage(): React.ReactElement {
                     )}
                   </div>
                 ) : null}
+                  </>
+                )}
               </div>
             ) : (
               <p className="px-5 py-5 text-sm text-muted-foreground sm:px-6">

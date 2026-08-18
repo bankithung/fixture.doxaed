@@ -948,7 +948,23 @@ function SheetGroup({
   const lockReason = (
     row: Record<string, unknown>,
     option: Option,
+    eventsChild?: Field,
   ): string | null => {
+    // Age brackets are exclusive within a sport (owner 2026-08-18): a tick
+    // in U-14 locks that sport's Open Category cells for this student, and
+    // the other way round. The bracket is the option's own `row` fact.
+    if (eventsChild && option.row && option.sport) {
+      const ticked = asArray(row[eventsChild.key]);
+      const clash = (eventsChild.options ?? []).some(
+        (o) =>
+          ticked.includes(String(o.value)) &&
+          o.sport === option.sport &&
+          (o.row ?? "") !== option.row,
+      );
+      if (clash && !ticked.includes(String(option.value))) {
+        return t("One age category per sport");
+      }
+    }
     if (option.gender) {
       const g = genderChild
         ? GENDER_OF[String(row[genderChild.key] ?? "")]
@@ -1155,6 +1171,7 @@ function SheetGroup({
                     const lock = lockReason(
                       (row ?? {}) as Record<string, unknown>,
                       option,
+                      child,
                     );
                     return (
                       <td

@@ -242,6 +242,11 @@ def _event_leaf_options(tournament) -> list[dict]:
                 "label": lf["label"],
                 "sport": sport.get("name") or sport["key"],
                 "code": code,
+                # The age bracket (the path's first level, "U-14" / "Open
+                # Category"): brackets are exclusive per sport on the sheet
+                # (owner 2026-08-18), and the cell needs the fact, not a
+                # parse of the label.
+                "row": segs[0] if segs else "",
             }
             if gender:
                 entry["gender"] = gender
