@@ -1527,21 +1527,62 @@ def schedule_matches(
     # or sits inside it (all competitions progress together, priority breaks
     # the tie). Both are the author's call; with no record, rank is a constant
     # and every key below collapses to exactly what it was.
-    prio = max(
-        priority_rules,
-        key=lambda r: (scope_specificity(r.scope), len(r.params["order"])),
-        default=None,
-    )
+    def _prio_for(m: MatchSlotReq) -> ScopedRule | None:
+        """The priority rule governing ONE match: the most specific in scope.
 
-    def _rank(m: MatchSlotReq) -> int:
-        if prio is None:
-            return 0
+        Resolved per match, not once per run (owner 2026-08-18: "we will also
+        have the main one but also per game"). A tournament-wide order and a
+        per-sport order therefore coexist — each sport follows its own list,
+        and anything no sport rule covers falls back to the main one. Picking a
+        single winning rule for the whole run, as this did, silently threw the
+        other orders away.
+        """
         tkey = tuple(t for t in (m.home, m.away) if t)
-        if not _scope_ok(prio, m, tkey):
-            return 0
-        return competition_rank(prio.params["order"], m.sport, m.leaf_key)
+        best: tuple[int, ScopedRule] | None = None
+        for r in priority_rules:
+            if not _scope_ok(r, m, tkey):
+                continue
+            spec = scope_specificity(r.scope)
+            if best is None or spec > best[0]:
+                best = (spec, r)
+        return best[1] if best else None
 
-    seq = prio is not None and prio.params.get("mode") == "sequential"
+    def _rank(m: MatchSlotReq) -> tuple[int, ...]:
+        """This match's place in the authored order, as a PATH of ranks from
+        the broadest matching rule to the narrowest.
+
+        The two granularities compose rather than compete (owner 2026-08-18).
+        A tournament-wide list ranks the sports; each sport's own list then
+        ranks its categories. Flattening both to one integer made "first in
+        table tennis" and "first overall" the same number, so a sport the main
+        list put last could still lead the day.
+        """
+        tkey = tuple(t for t in (m.home, m.away) if t)
+        scoped = sorted(
+            (r for r in priority_rules if _scope_ok(r, m, tkey)),
+            key=lambda r: scope_specificity(r.scope),
+        )
+        return tuple(
+            competition_rank(r.params["order"], m.sport, m.leaf_key)
+            for r in scoped
+        )
+
+    def _pace(m: MatchSlotReq, within: int) -> tuple[tuple[int, ...], tuple[int, ...]]:
+        """The two ordering slots for one match, in this match's own pacing.
+
+        Both slots are TUPLES so the key stays comparable even when two sports
+        pace differently: a rank path and a round number are never compared
+        against each other, only slot-for-slot.
+        """
+        rank, step = _rank(m), (within,)
+        return (rank, step) if _seq(m) else (step, rank)
+
+    def _seq(m: MatchSlotReq) -> bool:
+        """Whether THIS match's governing rule drains its competition before
+        the next starts. Per match for the same reason as the rank: two sports
+        on their own courts may legitimately want different pacing."""
+        r = _prio_for(m)
+        return r is not None and r.params.get("mode") == "sequential"
 
     if rotation_rules:
         fair_pos: dict[str, int] = {}
@@ -1554,13 +1595,10 @@ def schedule_matches(
                 fair_pos[mid] = i
 
         def _order_key(m: MatchSlotReq) -> tuple:
-            r = _rank(m)
             if m.id in fair_pos:
-                return (0, m.stage_no, *((r, fair_pos[m.id]) if seq
-                                         else (fair_pos[m.id], r)),
+                return (0, m.stage_no, *_pace(m, fair_pos[m.id]),
                         m.leaf_key, m.match_no)
-            return (1, m.stage_no, *((r, m.round_no) if seq
-                                     else (m.round_no, r)),
+            return (1, m.stage_no, *_pace(m, m.round_no),
                     m.leaf_key, m.match_no)
 
         by_order = sorted(matches, key=_order_key)
@@ -1569,9 +1607,7 @@ def schedule_matches(
         # knockout in time (a stage-1 bracket depends on stage-0 results). It is
         # 0 for every single-stage tournament, so this is a no-op there.
         by_order = sorted(matches, key=lambda m: (
-            m.stage_no,
-            *((_rank(m), m.round_no) if seq else (m.round_no, _rank(m))),
-            m.match_no,
+            m.stage_no, *_pace(m, m.round_no), m.match_no,
         ))
     ordered = [m for m in by_order if m.id in pin_of] + \
               [m for m in by_order if m.id not in pin_of]

@@ -181,30 +181,6 @@ def _leaf_options(tournament) -> list[tuple[str, str, dict]]:
     return out
 
 
-def _event_options(tournament) -> list[dict]:
-    """Which SPORT a participant is here for (owner 2026-08-17: "we don't have
-    to ask all sub-categories, we just have to ask which sport — in the next
-    stage they select the per category").
-
-    Listing every competition here made a two-line question into a twelve-item
-    list, and asked the school to decide the category before it had opened the
-    category's own step. The sport is the part a school knows up front; it then
-    narrows each competition's picker to the people who play that sport, so the
-    category choice happens where the category is.
-
-    It stays multi-select on purpose: a child who plays table tennis AND sepak
-    is exactly the case the draw has to keep apart, so the form must be able to
-    say so.
-    """
-    out: list[dict] = []
-    for sport in getattr(tournament, "sports", None) or []:
-        key = sport.get("key")
-        if not key:
-            continue
-        out.append({"value": key, "label": sport.get("name") or key})
-    return out
-
-
 def build_team_form_schema(
     org_form: Form | None, tournament=None
 ) -> tuple[dict, dict]:
@@ -385,17 +361,12 @@ def build_team_form_schema(
                              {"value": "female", "label": "Female"},
                              {"value": "other", "label": "Other"},
                          ]},
-                        # What this person is here for (owner 2026-08-17). A
-                        # whole sport or one exact competition — the school
-                        # says whichever it actually knows. The competition
-                        # steps below pre-fill from these answers, so the list
-                        # is typed once and lands where it belongs; every
-                        # pre-filled row stays editable.
-                        {"key": "participant_events", "type": "multi_choice",
-                         "label": "Playing in", "required": False,
-                         "directory": False,
-                         "help": "Used to shortlist them in each competition below.",
-                         "options": _event_options(tournament)},
+                        # No sport is asked for here (owner 2026-08-18). The
+                        # sheet answers "who is in this school", and asking a
+                        # clerk to also predict every competition each child
+                        # will enter turned one list into a second draw. Every
+                        # declared person is offered to every competition
+                        # below; the team steps are where entries are decided.
                     ],
                 },
                 {"key": "team_logo", "type": "file_upload",
@@ -414,11 +385,6 @@ def build_team_form_schema(
                          "label": "Full name", "required": True},
                         {"key": "staff_phone", "type": "phone",
                          "label": "Phone", "required": False},
-                        {"key": "staff_events", "type": "multi_choice",
-                         "label": "In charge of", "required": False,
-                         "directory": False,
-                         "help": "Used to shortlist them in each competition below.",
-                         "options": _event_options(tournament)},
                     ],
                 },
             ],
@@ -693,12 +659,10 @@ def build_team_form_schema(
                 "student_roll": "participant_roll",
                 "student_dob": "participant_dob",
                 "student_gender": "participant_gender",
-                "student_events": "participant_events",
                 "staff_group": "participant_staff",
                 "staff_id": "staff_id",
                 "staff_name": "staff_full_name",
                 "staff_phone": "staff_phone",
-                "staff_events": "staff_events",
             },
         } if roster else {}),
     }

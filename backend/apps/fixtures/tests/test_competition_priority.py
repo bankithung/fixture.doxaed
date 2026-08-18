@@ -334,3 +334,68 @@ def test_config_from_dict_carries_both_records_into_the_engine():
     assert {r.type for r in cfg.constraint_rules} == {
         "competition_priority", "closing_rounds_window",
     }
+
+
+# ------------------------------------------- a main order AND a per-game one
+def test_a_tournament_wide_order_and_a_per_sport_order_both_apply():
+    """Owner 2026-08-18: "we will also have the main one but also per game".
+
+    Each sport runs on its own courts, so its own list has to bind for its own
+    matches while the tournament-wide list still covers everything else.
+    """
+    # ONE court, so the order is visible in the times: with two, sepak and
+    # table tennis correctly run in parallel and nothing is being ranked.
+    cfg = _cfg()
+    merge_stored_constraints(cfg, [
+        # The main order: sepak before table tennis.
+        {"type": "competition_priority",
+         "params": {"order": ["sepak_takraw", "table_tennis"],
+                    "mode": "within_round"}},
+        # Table tennis runs its own categories in its own order.
+        {"type": "competition_priority", "scope": "sport:table_tennis",
+         "params": {"order": [TT_GIRLS, TT_BOYS], "mode": "within_round"}},
+    ])
+    matches = [
+        _req("b1", leaf_key=TT_BOYS),
+        _req("g1", leaf_key=TT_GIRLS),
+        _req("s1", leaf_key=SPK),
+    ]
+    res = schedule_matches(matches, cfg)
+    placed = _order(res, matches)
+    # The per-sport rule decides INSIDE table tennis...
+    assert placed.index("g1") < placed.index("b1")
+    # ...and the main rule still puts sepak first, because no sport rule covers
+    # it. Before this, one rule won the whole run and the other was discarded.
+    assert placed[0] == "s1"
+
+
+def test_each_sport_may_pace_itself_differently():
+    cfg = _cfg(venues=["A", "B"])
+    merge_stored_constraints(cfg, [
+        {"type": "competition_priority", "scope": "sport:table_tennis",
+         "params": {"order": [TT_GIRLS, TT_BOYS], "mode": "sequential"}},
+        {"type": "competition_priority", "scope": "sport:sepak_takraw",
+         "params": {"order": [SPK], "mode": "within_round"}},
+    ])
+    matches = [
+        _req("b1", leaf_key=TT_BOYS, round_no=1),
+        _req("g1", leaf_key=TT_GIRLS, round_no=1),
+        _req("g2", leaf_key=TT_GIRLS, round_no=2),
+        _req("s1", leaf_key=SPK, round_no=1),
+    ]
+    res = schedule_matches(matches, cfg)
+    placed = _order(res, matches)
+    # Table tennis drains the girls' rounds before the boys start.
+    assert placed.index("g1") < placed.index("g2") < placed.index("b1")
+
+
+def test_a_sport_rule_does_not_reorder_another_sport():
+    cfg = _cfg(venues=["A", "B"])
+    merge_stored_constraints(cfg, [
+        {"type": "competition_priority", "scope": "sport:table_tennis",
+         "params": {"order": [TT_GIRLS, TT_BOYS], "mode": "sequential"}},
+    ])
+    matches = [_req("s1", leaf_key=SPK), _req("s2", leaf_key=SPK, match_no=2)]
+    res = schedule_matches(matches, cfg)
+    # Out of scope entirely: sepak keeps its declared order, unranked.
+    assert _order(res, matches) == ["s1", "s2"]

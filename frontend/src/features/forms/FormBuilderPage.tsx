@@ -456,6 +456,13 @@ export function FormBuilderPage(): React.ReactElement {
   }
 
   const form = query.data;
+  // "Generated" is the same test the server applies (FormSerializer.get_stale):
+  // a hand-built form is the organiser's own work and is never rebuilt.
+  const isGenerated = Boolean(
+    (form?.settings as Record<string, unknown> | undefined)?.generated_from_sports ??
+      (form?.settings as Record<string, unknown> | undefined)?.generated_from,
+  );
+
   const status = form.status;
   // Back goes to the page that OWNS this form (where "Edit form" was clicked) —
   // the stage's own page — not the generic Forms list (owner: go to the main
@@ -590,10 +597,27 @@ export function FormBuilderPage(): React.ReactElement {
         </div>
       </div>
 
-      {form.stale ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning-muted px-3 py-2">
+      {/* Rebuilding is offered on ANY generated form, not only when the
+          categories drifted (owner 2026-08-18). The questions this form asks
+          also change when the generator itself improves — dropping a question,
+          turning typed names into pickers — and gating the control on drift
+          left a host looking at an out-of-date form with no way to adopt any
+          of it. Drift keeps its louder warning; otherwise it is a quiet
+          offer, with the cost stated because rebuilding replaces the
+          questions and answers already collected keep only what still fits. */}
+      {form.stale || isGenerated ? (
+        <div
+          className={cn(
+            "flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2",
+            form.stale
+              ? "border-warning/40 bg-warning-muted"
+              : "border-border bg-muted/30",
+          )}
+        >
           <p className="text-sm">
-            {t("Sports or categories changed since this was generated; it may be missing competitions.")}
+            {form.stale
+              ? t("Sports or categories changed since this was generated; it may be missing competitions.")
+              : t("Rebuild to pick up the latest generated questions. Answers already submitted keep only what still fits.")}
           </p>
           <Button
             size="sm"
