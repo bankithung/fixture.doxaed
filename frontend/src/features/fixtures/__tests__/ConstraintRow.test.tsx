@@ -355,3 +355,52 @@ describe("ConstraintRow", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("ConstraintRow · a scoped order still reads as itself", () => {
+  const SCOPED: ConstraintType = { ...PRIORITY_SPEC, scopes: ["all", "sport"] };
+
+  it("names an entry left outside the rule's sport, and flags it as inert", () => {
+    // Ranked while the rule was tournament-wide, then the rule was scoped to
+    // Table Tennis: the sepak entries can no longer be added, but they are
+    // still stored — and a raw leaf key in the list is what made this look
+    // broken (owner 2026-08-18).
+    mount(
+      {
+        type: "competition_priority",
+        scope: "sport:table_tennis",
+        hard: false,
+        weight: 5,
+        params: {
+          order: ["table_tennis.u_14.boys", "sepak_takraw.u_14.girls"],
+          mode: "within_round",
+        },
+      },
+      SCOPED,
+    );
+    expect(screen.getByTestId("constraint-0-order-item-0")).toHaveTextContent(
+      "U-14 · Boys",
+    );
+    // Not in orderOptions at all -> humanized, never the raw key.
+    const stray = screen.getByTestId("constraint-0-order-item-1");
+    expect(stray).toHaveTextContent("Sepak Takraw · U 14 · Girls");
+    expect(stray).not.toHaveTextContent("sepak_takraw.u_14.girls");
+    // And it says why it does nothing.
+    expect(screen.getByTestId("constraint-0-order-inert-1")).toHaveTextContent(
+      "not in this sport",
+    );
+  });
+
+  it("leaves an in-scope entry unflagged", () => {
+    mount(
+      {
+        type: "competition_priority",
+        scope: "sport:table_tennis",
+        hard: false,
+        weight: 5,
+        params: { order: ["table_tennis.u_14.boys"], mode: "within_round" },
+      },
+      SCOPED,
+    );
+    expect(screen.queryByTestId("constraint-0-order-inert-0")).toBeNull();
+  });
+});

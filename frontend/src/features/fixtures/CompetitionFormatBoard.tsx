@@ -329,6 +329,12 @@ export function CompetitionFormatBoard({
       staged[`sport:${sp}`]?.rest_minutes ??
         dc?.draw_config[`sport:${sp}`]?.rest_minutes,
     );
+  // A competition may need more rest than its sport's default — singles turn
+  // around faster than doubles, and a U-14 category is not an open one (owner
+  // 2026-08-18). Same three layers as match length, so the two settings that
+  // sit next to each other behave the same way.
+  const leafOwnRest = (leafKey: string): number =>
+    num(staged[leafKey]?.rest_minutes ?? dc?.draw_config[leafKey]?.rest_minutes);
   const stageRest = (layerKey: string, raw: string): void =>
     stage(layerKey, {
       rest_minutes: raw.trim() === "" ? null : Math.max(0, Math.floor(Number(raw) || 0)),
@@ -468,6 +474,7 @@ export function CompetitionFormatBoard({
   const leafDiverges = (c: Comp): boolean =>
     leafOwnFormat(c.leafKey) !== "" ||
     leafOwnDuration(c.leafKey) > 0 ||
+    leafOwnRest(c.leafKey) > 0 ||
     layerStages(c.leafKey).length > 0 ||
     effLeafScoring(c.leafKey) != null ||
     effLeafTbs(c.leafKey) != null;
@@ -1089,6 +1096,26 @@ export function CompetitionFormatBoard({
                                     value={leafOwnDuration(c.leafKey) || ""}
                                     aria-label={`${t("Match length for")} ${c.label}`}
                                     onChange={(e) => stageDuration(c.leafKey, e.target.value)}
+                                  />
+                                </label>
+
+                                <label className="flex flex-col gap-1.5">
+                                  <span className="text-xs font-medium text-foreground">
+                                    {t("Rest")}
+                                  </span>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    data-testid={`format-leaf-${c.leafKey}-rest`}
+                                    className="h-9 w-24 font-tabular"
+                                    placeholder={
+                                      sportOwnRest(sp) || starRest
+                                        ? String(sportOwnRest(sp) || starRest)
+                                        : t("Default")
+                                    }
+                                    value={leafOwnRest(c.leafKey) || ""}
+                                    aria-label={`${t("Rest after a match for")} ${c.label}`}
+                                    onChange={(e) => stageRest(c.leafKey, e.target.value)}
                                   />
                                 </label>
 

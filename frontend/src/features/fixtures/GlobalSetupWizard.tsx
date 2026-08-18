@@ -1114,7 +1114,7 @@ export function GlobalSetupWizard({
             </h4>
             <p className="-mt-1 text-xs text-muted-foreground">
               {t(
-                "Match length is set per competition on the “How each competition plays” step.",
+                "Match length and rest are both set per competition on the “How each competition plays” step. What you set here is the tournament-wide default they fall back to.",
               )}
             </p>
             <div className="grid gap-3 sm:grid-cols-2">

@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Select, type SelectOption } from "@/components/ui/Select";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { humanizeLeaf } from "@/features/controlroom/format";
 import { BlackoutDatesField } from "./BlackoutDatesField";
 
 /** Human labels for known catalog param keys (fallback: humanized key). */
@@ -79,6 +80,7 @@ function asList(v: unknown): string[] {
 function OrderedPicker({
   value,
   options,
+  labelOptions,
   onChange,
   testId,
   label,
@@ -86,12 +88,23 @@ function OrderedPicker({
   value: string[];
   /** Everything pickable — competitions and whole sports. */
   options: SelectOption[];
+  /** Every competition in the tournament, for NAMING a ranked entry. A rule
+   * scoped to one sport narrows what can be added, but an entry ranked before
+   * that scope was set still has to read as itself. */
+  labelOptions?: SelectOption[];
   onChange: (next: string[]) => void;
   testId: string;
   label: string;
 }): React.ReactElement {
+  // Never render a raw leaf key: it is an internal code, and one leaking into
+  // the list is what made a scoped rule look broken (owner 2026-08-18).
   const labelOf = (v: string): string =>
-    options.find((o) => o.value === v)?.label ?? v;
+    (labelOptions ?? options).find((o) => o.value === v)?.label ??
+    humanizeLeaf(v);
+  // An entry outside this rule's scope is inert — the engine will never match
+  // it. Saying so beats leaving the host to wonder why it changes nothing.
+  const inScope = (v: string): boolean =>
+    !options.length || options.some((o) => o.value === v);
   const remaining = options.filter((o) => !value.includes(o.value));
   const move = (i: number, to: number): void => {
     if (to < 0 || to >= value.length) return;
@@ -115,7 +128,17 @@ function OrderedPicker({
               <span className="w-4 shrink-0 font-tabular text-xs text-muted-foreground">
                 {i + 1}
               </span>
-              <span className="min-w-0 flex-1 truncate text-xs">{labelOf(v)}</span>
+              <span className="min-w-0 flex-1 truncate text-xs">
+                {labelOf(v)}
+                {inScope(v) ? null : (
+                  <span
+                    data-testid={`${testId}-inert-${i}`}
+                    className="ml-1.5 rounded bg-warning-muted px-1 py-0.5 text-[0.625rem] font-medium text-warning"
+                  >
+                    {t("not in this sport")}
+                  </span>
+                )}
+              </span>
               <button
                 type="button"
                 aria-label={`${t("Move up")}: ${labelOf(v)}`}
@@ -275,6 +298,7 @@ export function ConstraintRow({
             label={paramLabel(key)}
             value={asList(record.params[key])}
             options={options}
+            labelOptions={orderOptions}
             onChange={(v) => setParam(key, v)}
             testId={tid(key)}
           />
