@@ -838,3 +838,118 @@ describe("PublicFormPage", () => {
     expect(link).toHaveAttribute("href", "/f/form-1/directory");
   });
 });
+
+/**
+ * The participants-first team form (owner 2026-08-17): a school declares its
+ * people in step one, then PICKS them per competition. The picker resolves
+ * from this same form's answers, so before anything is typed it is genuinely
+ * empty — and an empty box that says nothing reads as "the form did not
+ * change" (owner 2026-08-18, on a live tournament that had switched
+ * correctly). It has to name the step to go and fill.
+ */
+const pickerSchema: FormSchema = {
+  version: 1,
+  sections: [
+    {
+      key: "participants",
+      title: "Your participants",
+      next: "teams",
+      fields: [
+        {
+          key: "participant_students",
+          type: "group",
+          label: "Student",
+          repeatable: true,
+          row_key: "participant_id",
+          fields: [
+            { key: "participant_id", type: "hidden", label: "" },
+            { key: "participant_name", type: "short_text", label: "Full name" },
+            { key: "participant_events", type: "multi_choice", label: "Playing in",
+              options: [{ value: "tt.u14.boys", label: "TT U14 Boys" }] },
+          ],
+        },
+      ],
+    },
+    {
+      key: "teams",
+      title: "Teams — Table Tennis · U-14 · Boys",
+      leaf_key: "tt.u14.boys",
+      fields: [
+        {
+          key: "teams_tt",
+          type: "group",
+          label: "Team",
+          repeatable: true,
+          fields: [
+            {
+              key: "player_member_tt",
+              type: "dropdown",
+              label: "Student",
+              data_source: {
+                type: "form_group",
+                group: "participant_students",
+                value_field: "participant_id",
+                label_field: "participant_name",
+              },
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+describe("PublicFormPage · participants-first pickers", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  function mountPicker() {
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "ANPSA Dimapur",
+      form: {
+        id: "form1",
+        title: "Team registration",
+        description: "",
+        schema: pickerSchema,
+        confirmation_message: "Thanks",
+      },
+    });
+    renderPage();
+  }
+
+  it("tells the school where to add people when the picker is still empty", async () => {
+    mountPicker();
+    await screen.findByRole("heading", { name: /team registration/i });
+    // Straight to the teams step without declaring anyone.
+    await userEvent.click(screen.getByRole("button", { name: /next/i }));
+    await screen.findByText(/Teams — Table Tennis/);
+    await userEvent.click(screen.getByRole("button", { name: "Add Team" }));
+    // The picker names the step that feeds it, rather than sitting empty.
+    expect(
+      await screen.findByText(
+        'Add your people in "Your participants" first, then pick them here.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("offers the people the school typed, and drops the hint once it can", async () => {
+    mountPicker();
+    await screen.findByRole("heading", { name: /team registration/i });
+    await userEvent.click(screen.getByRole("button", { name: "Add Student" }));
+    await userEvent.type(
+      await screen.findByLabelText(/full name/i),
+      "Aben Kikon",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /next/i }));
+    await screen.findByText(/Teams — Table Tennis/);
+    await userEvent.click(screen.getByRole("button", { name: "Add Team" }));
+
+    expect(
+      screen.queryByText(/first, then pick them here/),
+    ).not.toBeInTheDocument();
+    // The declared student is a real choice on the team row.
+    await userEvent.click(screen.getByRole("button", { name: /student/i }));
+    expect(
+      await screen.findByRole("option", { name: "Aben Kikon" }),
+    ).toBeInTheDocument();
+  });
+});

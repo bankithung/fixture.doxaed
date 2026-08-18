@@ -5,9 +5,10 @@ import { t } from "@/lib/t";
 /**
  * How players come into existence (spec 2026-08-17).
  *
- * Asked at creation and again in Settings — one list, so the two screens can
- * never describe the same choice differently. Unlike `scope` this is
- * reversible until the first team is registered, so the copy sells the
+ * Asked at creation and again in Settings, from one list, so the two screens
+ * can never describe the same choice differently. Unlike `scope` it stays
+ * switchable for as long as the funnel is ahead of you: switching MIGRATES
+ * the players already registered (owner 2026-08-18), so the copy sells the
  * trade-off rather than warning about permanence.
  */
 export const ROSTER_MODES: {
@@ -26,7 +27,7 @@ export const ROSTER_MODES: {
     value: "roster_first",
     label: t("Participants first, then teams"),
     hint: t(
-      "Each school enters all its students and teachers once; teams are then picked from that list — so the draw can see who is in two events.",
+      "Each school enters all its students and teachers once, then picks teams from that list, so the draw can see who is in two events.",
     ),
     icon: UserSquare2,
   },

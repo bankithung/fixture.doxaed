@@ -125,12 +125,51 @@ function withFormGroups(
       })
       .filter((o) => o.value && o.label);
   };
+  // Which section each pickable group lives in, so an empty picker can NAME
+  // the step to go and fill instead of showing a silent empty list. Read off
+  // the schema, never a hardcoded list of group keys — a form the generator
+  // reshapes must not need this file changed with it.
+  const sectionOfGroup = new Map<string, string>();
+  const index = (fields: Field[] | undefined, title: string): void => {
+    for (const f of fields ?? []) {
+      if (f.key) sectionOfGroup.set(f.key, title);
+      index(f.fields, title);
+    }
+  };
+  for (const s of schema.sections ?? []) index(s.fields, s.title);
+
+  /** Why a picker is empty, in the school's own words. Two different reasons,
+   * and telling them apart is the whole point: nobody declared yet, versus
+   * nobody declared for THIS competition. */
+  const emptyHint = (
+    ds: NonNullable<Field["data_source"]>,
+    hasRows: boolean,
+  ): string => {
+    const where = sectionOfGroup.get(ds.group ?? "") ?? t("the first step");
+    return hasRows
+      ? `${t("Nobody in")} "${where}" ${t("is entered for this competition yet.")}`
+      : `${t("Add your people in")} "${where}" ${t("first, then pick them here.")}`;
+  };
+
   const fill = (fields: Field[], leafKey: string): Field[] =>
     fields.map((f) => {
-      const next =
-        f.data_source?.type === "form_group"
-          ? { ...f, options: optionsFor(f.data_source, leafKey) }
-          : f;
+      let next = f;
+      if (f.data_source?.type === "form_group") {
+        const options = optionsFor(f.data_source, leafKey);
+        const hasRows = Array.isArray(values[f.data_source.group ?? ""])
+          && (values[f.data_source.group ?? ""] as unknown[]).length > 0;
+        next = {
+          ...f,
+          options,
+          // The author's own help still leads; the reason is appended, so a
+          // picker never sits there empty with nothing to say for itself.
+          help: options.length
+            ? f.help
+            : [f.help, emptyHint(f.data_source, hasRows)]
+                .filter(Boolean)
+                .join(" "),
+        };
+      }
       return next.fields
         ? { ...next, fields: fill(next.fields, leafKey) }
         : next;

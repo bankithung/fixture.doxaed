@@ -516,7 +516,7 @@ def build_team_form_schema(
         sections.append(
             {
                 "key": f"cat_{slug}",
-                "title": f"Teams — {lbl}",
+                "title": f"Teams · {lbl}",
                 **(
                     {"description": f"Age limit: {age_line}."}
                     if age_line
