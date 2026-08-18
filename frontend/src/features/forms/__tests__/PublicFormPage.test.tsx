@@ -1035,3 +1035,29 @@ describe("PublicFormPage · saved rows collapse to a name", () => {
     );
   });
 });
+
+describe("PublicFormPage · progress", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("shows how far through the form you are, and how much is left", async () => {
+    vi.mocked(formsApi.publicGet).mockResolvedValue({
+      tournament_name: "ANPSA Dimapur",
+      form: { id: "form1", title: "Team registration", description: "",
+        schema: pickerSchema, confirmation_message: "Thanks" },
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+
+    // Two sections plus the review step: three in total.
+    const bar = screen.getByTestId("form-progress");
+    expect(bar).toHaveAttribute("aria-valuenow", "1");
+    expect(bar).toHaveAttribute("aria-valuemax", "3");
+    expect(screen.getByText(/2 left/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /next/i }));
+    expect(screen.getByTestId("form-progress")).toHaveAttribute(
+      "aria-valuenow",
+      "2",
+    );
+  });
+});

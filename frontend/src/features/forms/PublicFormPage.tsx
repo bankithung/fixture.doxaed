@@ -976,7 +976,9 @@ export function PublicFormPage(): React.ReactElement {
     <PublicShell tournamentName={data?.tournament_name}>
       {/* Extra bottom padding reserves room for the floating contact button so it
           never covers the Back/Next/Submit footer (notably on narrow screens). */}
-      <BentoGrid className="mx-auto flex w-full max-w-3xl flex-col px-4 pb-28 pt-8 sm:px-6">
+      {/* Roughly 70% of a desk, capped so a line of text never runs too long
+          to track (owner 2026-08-18). A phone still gets the full width. */}
+      <BentoGrid className="mx-auto flex w-full max-w-3xl flex-col px-4 pb-28 pt-8 sm:px-6 lg:max-w-[70%] xl:max-w-5xl">
         <ContactAdminDialog
           formId={form?.id ?? formId ?? ""}
           open={contactOpen}
@@ -1058,6 +1060,28 @@ export function PublicFormPage(): React.ReactElement {
 
             {/* Where you are, and what this step is — said ONCE (the section
                 used to repeat its own title as a second heading). */}
+            {/* How far through, and how much is left. A tournament with ten
+                competitions is a ten-step form, and "Step 3 of 13" alone does
+                not show how much is still ahead (owner 2026-08-18). */}
+            {sections.length > 1 ? (
+              <div
+                className="h-1 w-full bg-muted"
+                role="progressbar"
+                aria-label={t("Registration progress")}
+                aria-valuemin={1}
+                aria-valuemax={sections.length + 1}
+                aria-valuenow={clamped + 1}
+                data-testid="form-progress"
+              >
+                <div
+                  className="h-full bg-primary transition-[width] duration-300"
+                  style={{
+                    width: `${((clamped + 1) / (sections.length + 1)) * 100}%`,
+                  }}
+                />
+              </div>
+            ) : null}
+
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 bg-muted/30 px-5 py-3 sm:px-6">
               <h2 className="text-base font-semibold">
                 {isReview
@@ -1072,6 +1096,9 @@ export function PublicFormPage(): React.ReactElement {
                   aria-live="polite"
                 >
                   {t("Step")} {clamped + 1} {t("of")} {sections.length + 1}
+                  {sections.length - clamped > 0
+                    ? ` · ${sections.length - clamped} ${t("left")}`
+                    : ""}
                 </span>
               ) : null}
               <p className="w-full text-sm text-muted-foreground">

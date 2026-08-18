@@ -291,6 +291,49 @@ function FileUploadField({
 }
 
 
+
+/** Which fields deserve the full width of a row.
+ *
+ * A person is a handful of short answers (name, class, roll, date, gender) and
+ * they read as ONE record when they sit side by side. Stacked full-width they
+ * become a column of unrelated boxes, which is what made a roll of forty
+ * students unreadable (owner 2026-08-18). Choice lists, uploads and nested
+ * groups keep the full row because they are tall by nature.
+ */
+const WIDE_TYPES = new Set([
+  "multi_choice",
+  "single_choice",
+  "long_text",
+  "file_upload",
+  "group",
+  "rating",
+  "info",
+]);
+
+function isWide(f: Field): boolean {
+  return WIDE_TYPES.has(f.type) || (f.options?.length ?? 0) > 4;
+}
+
+/** Lay a group's children out as a two-column record on a desk, one column on
+ * a phone. Wide fields span both. */
+function GroupFields({
+  children,
+  render,
+}: {
+  children: Field[];
+  render: (f: Field) => React.ReactNode;
+}): React.ReactElement {
+  return (
+    <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+      {children.map((child) => (
+        <div key={child.key} className={cn(isWide(child) && "sm:col-span-2")}>
+          {render(child)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
  * A repeatable group whose filled rows COLLAPSE to their name (owner
  * 2026-08-18: "when saved no need to expand, we can only show the name, and
@@ -425,22 +468,26 @@ function RepeatableGroup({
               </span>
               {canRemove ? remove : null}
             </div>
-            {children.map((child) => (
-              <FieldRenderer
-                key={child.key}
-                field={child}
-                value={(row ?? {})[child.key]}
-                disabled={disabled}
-                onUpload={onUpload}
-                fileMeta={fileMeta}
-                onFileLabel={onFileLabel}
-                onChange={(v) =>
-                  onChange(
-                    rows.map((r, k) => (k === i ? { ...r, [child.key]: v } : r)),
-                  )
-                }
-              />
-            ))}
+            <GroupFields
+              children={children}
+              render={(child) => (
+                <FieldRenderer
+                  field={child}
+                  value={(row ?? {})[child.key]}
+                  disabled={disabled}
+                  onUpload={onUpload}
+                  fileMeta={fileMeta}
+                  onFileLabel={onFileLabel}
+                  onChange={(v) =>
+                    onChange(
+                      rows.map((r, k) =>
+                        k === i ? { ...r, [child.key]: v } : r,
+                      ),
+                    )
+                  }
+                />
+              )}
+            />
             {!disabled && collapsible ? (
               <Button
                 type="button"
@@ -872,18 +919,20 @@ export function FieldRenderer({
             : {};
         return (
           <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3">
-            {children.map((child) => (
-              <FieldRenderer
-                key={child.key}
-                field={child}
-                value={obj[child.key]}
-                disabled={disabled}
-                onUpload={onUpload}
-                fileMeta={fileMeta}
-                onFileLabel={onFileLabel}
-                onChange={(v) => onChange({ ...obj, [child.key]: v })}
-              />
-            ))}
+            <GroupFields
+              children={children}
+              render={(child) => (
+                <FieldRenderer
+                  field={child}
+                  value={obj[child.key]}
+                  disabled={disabled}
+                  onUpload={onUpload}
+                  fileMeta={fileMeta}
+                  onFileLabel={onFileLabel}
+                  onChange={(v) => onChange({ ...obj, [child.key]: v })}
+                />
+              )}
+            />
             {children.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 {t("No fields in this group yet.")}

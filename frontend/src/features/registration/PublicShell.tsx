@@ -33,7 +33,7 @@ export function PublicShell({
         <div
           className={cn(
             "mx-auto flex w-full items-center gap-2 px-4 py-3 sm:px-6",
-            wide ? "max-w-6xl" : "max-w-3xl",
+            wide ? "max-w-6xl" : "max-w-3xl lg:max-w-[70%] xl:max-w-5xl",
           )}
         >
           {/* Home link: `/` shows the landing page for anonymous visitors

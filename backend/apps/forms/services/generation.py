@@ -427,8 +427,7 @@ def build_team_form_schema(
                         {"key": "participant_events", "type": "multi_choice",
                          "label": "Playing in", "required": False,
                          "directory": False,
-                         "help": "Pick the sports only. Categories are chosen "
-                                 "when you enter the teams.",
+                         "help": "Sports only. Categories come later.",
                          "options": _event_options(tournament)},
                         # Age proof, ID, medical consent — the papers a school
                         # is asked for per child (owner 2026-08-18). Capped at
@@ -438,8 +437,7 @@ def build_team_form_schema(
                          "label": "Documents", "required": True,
                          "multiple": True, "max_items": 3,
                          "accept": "application/pdf,image/*",
-                         "help": "Up to 3 files per student. PDF, or a photo "
-                                 "we will shrink for you."},
+                         "help": "PDF or photo. Up to 3."},
                     ],
                 },
             ],
@@ -479,7 +477,7 @@ def build_team_form_schema(
                          "label_field": "participant_name",
                          "hint_field": "participant_class",
                      },
-                     "help": "Pick from the participants you entered in step 1."},
+                     },
                     {"key": f"player_jersey_{slug}", "type": "number",
                      "label": "Jersey number", "required": False},
                 ] if roster else []),
@@ -505,7 +503,7 @@ def build_team_form_schema(
                     {"key": f"player_docs_{slug}", "type": "file_upload",
                      "label": "Documents (ID / certificate)", "required": False,
                      "multiple": True,
-                     "help": "Optional — upload one or more. Images are "
+                     "help": "Optional. Images are "
                              "compressed automatically."},
                 ]),
             ],
@@ -566,8 +564,7 @@ def build_team_form_schema(
                              # institution; the form just never showed it, so
                              # the help text promised something invisible.
                              "default_from": "institution",
-                             "help": "Defaults to your institution's name. "
-                                     "Edit it if you want another."},
+                             "help": "Edit if it should differ from your school."},
                             # Asked ONCE, up on the participants sheet, when
                             # there is one (owner 2026-08-17). A typed-name
                             # form has no such sheet, so it keeps its own.
@@ -575,7 +572,7 @@ def build_team_form_schema(
                                 {"key": f"team_logo_{slug}", "type": "file_upload",
                                  "label": "Team logo", "required": False,
                                  "accept": "image/*",
-                                 "help": "Optional — upload an image; it is "
+                                 "help": "Optional. It is "
                                          "compressed automatically."},
                             ]),
                             # The teacher in charge: PICKED once the school has
@@ -595,14 +592,11 @@ def build_team_form_schema(
                                        "value_field": "staff_id",
                                        "label_field": "staff_full_name",
                                    },
-                                   "help": "One teacher cannot be in two "
-                                           "places at once — the draw keeps "
-                                           "their matches apart."},
+                                   "help": "The draw keeps their matches apart."},
                                   {"key": f"staff_role_{slug}",
                                    "type": "dropdown", "label": "Role",
                                    "required": False,
-                                   "options": _STAFF_ROLES,
-                                   "help": "What they are doing for this team."},
+                                   "options": _STAFF_ROLES},
                               ]}
                              if roster else
                              {"key": f"coaches_{slug}", "type": "group",
@@ -612,7 +606,7 @@ def build_team_form_schema(
                                   {"key": f"coach_docs_{slug}", "type": "file_upload",
                                    "label": "Coach documents", "required": False,
                                    "multiple": True,
-                                   "help": "Optional — upload one or more."},
+                                   "help": "Optional."},
                               ]}),
                             players,
                         ],
@@ -670,14 +664,14 @@ def build_team_form_schema(
                             {"key": "team_logo_all", "type": "file_upload",
                              "label": "Team logo", "required": False,
                              "accept": "image/*",
-                             "help": "Optional — upload an image; it's compressed automatically."},
+                             "help": "Optional. Compressed automatically."},
                             {"key": "coaches_all", "type": "group", "label": "Coach",
                              "repeatable": True, "fields": [
                                  {"key": "coach_name_all", "type": "short_text",
                                   "label": "Coach name", "required": True},
                                  {"key": "coach_docs_all", "type": "file_upload",
                                   "label": "Coach documents", "required": False,
-                                  "multiple": True, "help": "Optional — upload one or more."},
+                                  "multiple": True, "help": "Optional."},
                              ]},
                             {"key": "players_all", "type": "group",
                              "label": "Player", "repeatable": True,
@@ -689,7 +683,7 @@ def build_team_form_schema(
                                  {"key": "player_docs_all", "type": "file_upload",
                                   "label": "Documents (ID / certificate)",
                                   "required": False, "multiple": True,
-                                  "help": "Optional — upload one or more."},
+                                  "help": "Optional."},
                              ]},
                         ],
                     }
@@ -834,7 +828,7 @@ def build_institution_form_schema(sports: list[dict]) -> tuple[dict, dict]:
                      "Sports with categories will ask follow-up questions. "
                      + ", ".join(no_cat)
                      + (" has" if len(no_cat) == 1 else " have")
-                     + " no categories — ticking it is your full entry."
+                     + " no categories. Ticking it is your full entry."
                  )}
                  if no_cat
                  else {}
@@ -997,7 +991,7 @@ def _participant_fields(kind: str, *, intra: bool) -> list[dict]:
              "label": "Email", "bind": "contact_email"},
             {"key": "teacher_docs", "type": "file_upload", "required": False,
              "multiple": True, "label": "ID / authorization letter",
-             "help": "Optional — upload one or more."},
+             "help": "Optional."},
         ]
     return [
         {"key": "student_name", "type": "short_text", "required": True,
@@ -1006,7 +1000,7 @@ def _participant_fields(kind: str, *, intra: bool) -> list[dict]:
          "label": "Class & section", "bind": "class_section", "help": "e.g. 9-B"},
         {"key": "student_roll", "type": "short_text", "required": False,
          "label": "Roll number", "bind": "roll_no",
-         "help": "Your school's own number — it keeps a re-submitted list from "
+         "help": "Your school's own number. It keeps a re-submitted list from "
                  "duplicating this student."},
         {"key": "student_gender", "type": "single_choice", "required": False,
          "label": "Gender", "bind": "gender",
@@ -1021,7 +1015,7 @@ def _participant_fields(kind: str, *, intra: bool) -> list[dict]:
         ]),
         {"key": "student_docs", "type": "file_upload", "required": False,
          "multiple": True, "label": "Documents (ID / birth certificate)",
-         "help": "Optional — upload one or more. Images are compressed automatically."},
+         "help": "Optional. Images are compressed automatically."},
     ]
 
 
@@ -1074,7 +1068,7 @@ def build_participants_form_schema(tournament) -> tuple[dict, dict]:
     ]
     for kind, gkey, title, label, description in (
         ("student", "students", "Students", "Student",
-         "Everyone who will compete, in any sport. Enter each student once — "
+         "Everyone who will compete, in any sport. Enter each student once, "
          "you pick them per team on the next form."),
         ("teacher", "teachers", "Teachers in charge", "Teacher",
          "The staff travelling with the team. A teacher can only be in one "
