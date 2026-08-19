@@ -342,3 +342,34 @@ def test_an_unknown_answer_falls_back_to_letting_them_share():
     }]))
     rule = [r for r in cfg.constraint_rules if r.type == "phased_finish"][0]
     assert rule.params["one_at_a_time"] == "none"
+
+
+# ------------------------------------------- trying harder for a full house
+def test_a_reserved_pass_is_only_used_when_it_places_more():
+    # The retry must never trade a placed match for a tidier one: a schedule
+    # that already fits is returned by the first pass, untouched.
+    matches = _bracket("g", GIRLS) + _bracket("b", BOYS)
+    cfg = _rules(["semi_final", "third_place", "final"])
+    res = schedule_matches(matches, cfg)
+    assert not res.unscheduled
+    assert not any("Held time" in e for e in res.explanation)
+
+
+def test_the_deadline_never_leaves_a_match_with_no_time_at_all():
+    # Holding room for the closing phases is a PREFERENCE: an ordinary match
+    # that cannot fit before the deadline still gets a slot rather than being
+    # dropped to make room.
+    from apps.fixtures.services.scheduler import _schedule_once
+
+    matches = _bracket("g", GIRLS) + _bracket("b", BOYS) + _bracket("s", SPK_G)
+    cfg = _rules(["semi_final", "third_place", "final"])
+    tight = _schedule_once(matches, cfg, reserve_phases=True)
+    loose = _schedule_once(matches, cfg)
+    assert len(tight.unscheduled) <= len(loose.unscheduled)
+
+
+def test_without_a_phase_rule_the_retry_does_not_run():
+    # Nothing is deferred, so holding room back would only take it away.
+    matches = _bracket("g", GIRLS)
+    res = schedule_matches(matches, _cfg(venues=["A"], date_end=D1))
+    assert not any("Held time" in e for e in res.explanation)

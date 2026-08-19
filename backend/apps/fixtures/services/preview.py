@@ -9,6 +9,7 @@ included), so an Accept with the returned ``seed`` +
 """
 from __future__ import annotations
 
+import time as _time
 from collections import defaultdict
 from dataclasses import replace
 from datetime import datetime, timedelta
@@ -52,6 +53,18 @@ from apps.tournaments.services.sports import (
     sport_for_leaf,
 )
 
+#: How many times a whole-tournament preview will re-draw looking for a
+#: fixture that places every match (owner 2026-08-19: "maybe max 10 times till
+#: it gets the best 100% placed"). Each attempt is a full draw + schedule, so
+#: this is the ceiling on the work, not a target — it stops the moment a draw
+#: places everything, and it never runs at all when the first one does.
+MAX_DRAW_ATTEMPTS = 10
+
+#: And the wall clock those attempts may spend. A preview is one HTTP request
+#: against a 60s worker timeout, so a big tournament must stop trying before it
+#: costs the host their answer entirely. The fallback draw is always allowed
+#: past this — it is the one that rescues a re-draw nothing else could place.
+MAX_DRAW_SECONDS = 25.0
 
 def stored_venue_records(tournament) -> list[dict[str, Any]]:
     """The workspace's stored Venue pool as scheduler venue records — the
@@ -618,38 +631,121 @@ def preview_all_fixtures(
     ``draw`` overrides apply to EVERY leaf — that is how "try another draw"
     asks for a random re-draw of the whole tournament ({"seeding": "random"})
     without touching the stored config; publish-all replays the same override
-    plus the returned per-leaf seeds."""
-    leaves = iter_leaves(tournament.sports or [])
-    warnings: list[dict[str, Any]] = []
-    all_plans: list[MatchPlan] = []
-    per_leaf_seed: dict[str, int | None] = {}
-    base = 0
-    for lf in leaves:
-        lk = lf["leaf_key"]
-        cfg = effective_draw_config(tournament, lk, overrides=draw)
-        seeding = str(cfg.get("seeding") or "registration")
-        seed = int(cfg["seed"]) if cfg.get("seed") is not None else None
-        if seeding == "random" and seed is None:
-            seed = _new_seed()
-        try:
-            plans = _plan_for_config(
-                tournament, lk, cfg, seed=seed, warnings=warnings,
-            )
-        except (ValueError, TypeError):
-            # e.g. fewer than 2 registered teams — nothing to draw for this
-            # competition yet. Surface it (C11): a silently absent competition
-            # let organizers publish believing everything was drawn.
-            warnings.append({"code": "skipped_leaf", "leaf_key": lk})
-            continue
-        per_leaf_seed[lk] = seed
-        all_plans.extend(_rebase_plans(plans, base))
-        base += len(plans)
+    plus the returned per-leaf seeds.
 
-    payload = _schedule_and_payload(
-        tournament, all_plans, schedule=schedule,
-        include_schedule=include_schedule, warnings=warnings,
-        seed=None, leaf_key=None,
-    )
+    **It draws more than once when it has to** (owner 2026-08-19: "it should
+    keep on trying to generate the fixture with all the rules and give the
+    best 100% placed one — maybe max 10 times"). Whether every match gets a
+    time is partly luck of the draw: one arrangement of a bracket leaves the
+    finals room and another does not, and the scheduler cannot un-draw a
+    bracket to fix that. So a draw that leaves matches unplaced is drawn again
+    — up to ``MAX_DRAW_ATTEMPTS`` times — and the BEST attempt is returned:
+    most matches placed, then the better quality. The winning attempt's own
+    per-leaf seeds go back with it, so publishing replays exactly the fixture
+    that was previewed.
+
+    Only re-drawable competitions are re-drawn. A leaf whose seeding is fixed
+    (registration order, or a seed the host pinned) is the host's decision and
+    is drawn the same way every time, so if none of them can be re-drawn the
+    first attempt is also the last."""
+    leaves = iter_leaves(tournament.sports or [])
+
+    def draw_once(
+        fresh: bool, overrides: dict[str, Any] | None = ...,
+    ) -> tuple[list[MatchPlan], dict, list, bool]:
+        """One whole-tournament draw. ``fresh`` re-rolls the seed of every leaf
+        that is drawn at random; returns whether anything could be re-rolled,
+        so the caller knows a retry would differ at all. ``overrides`` defaults
+        to the caller's ``draw``; pass None to draw the tournament exactly as
+        it is configured."""
+        use = draw if overrides is ... else overrides
+        warnings: list[dict[str, Any]] = []
+        all_plans: list[MatchPlan] = []
+        per_leaf_seed: dict[str, int | None] = {}
+        base = 0
+        redrawable = False
+        for lf in leaves:
+            lk = lf["leaf_key"]
+            cfg = effective_draw_config(tournament, lk, overrides=use)
+            seeding = str(cfg.get("seeding") or "registration")
+            seed = int(cfg["seed"]) if cfg.get("seed") is not None else None
+            if seeding == "random":
+                if seed is None or fresh:
+                    seed = _new_seed()
+                redrawable = True
+            try:
+                plans = _plan_for_config(
+                    tournament, lk, cfg, seed=seed, warnings=warnings,
+                )
+            except (ValueError, TypeError):
+                # e.g. fewer than 2 registered teams — nothing to draw for this
+                # competition yet. Surface it (C11): a silently absent
+                # competition let organizers publish believing everything was
+                # drawn.
+                warnings.append({"code": "skipped_leaf", "leaf_key": lk})
+                continue
+            per_leaf_seed[lk] = seed
+            all_plans.extend(_rebase_plans(plans, base))
+            base += len(plans)
+        return all_plans, per_leaf_seed, warnings, redrawable
+
+    def unplaced_of(body: dict[str, Any]) -> int:
+        return sum(1 for m in body.get("matches", []) if not m.get("scheduled_at"))
+
+    best: dict[str, Any] | None = None
+    best_seeds: dict[str, int | None] = {}
+    best_key: tuple[int, float] = (0, 0.0)
+    tried = 0
+    deadline = _time.monotonic() + MAX_DRAW_SECONDS
+    for attempt in range(MAX_DRAW_ATTEMPTS):
+        if attempt and _time.monotonic() > deadline:
+            break
+        all_plans, per_leaf_seed, warnings, redrawable = draw_once(attempt > 0)
+        tried += 1
+        body = _schedule_and_payload(
+            tournament, all_plans, schedule=schedule,
+            include_schedule=include_schedule, warnings=warnings,
+            seed=None, leaf_key=None,
+        )
+        # Fewest without a time wins; a tie goes to the better quality.
+        key = (-unplaced_of(body), float(body.get("soft_score") or 0.0))
+        if best is None or key > best_key:
+            best, best_seeds, best_key = body, per_leaf_seed, key
+        if not include_schedule or unplaced_of(body) == 0 or not redrawable:
+            break
+
+    # A re-draw the host asked for must not cost them a working fixture: when
+    # no shuffled arrangement placed everything, fall back to the draw the
+    # tournament is configured for and keep it if it does better (owner
+    # 2026-08-19: "try another draw always gives unplaced"). Its own seeds go
+    # back with it, so publishing replays exactly what was previewed.
+    if include_schedule and draw and best_key[0] < 0:
+        all_plans, per_leaf_seed, warnings, _redrawable = draw_once(
+            False, overrides=None,
+        )
+        tried += 1
+        body = _schedule_and_payload(
+            tournament, all_plans, schedule=schedule,
+            include_schedule=include_schedule, warnings=warnings,
+            seed=None, leaf_key=None,
+        )
+        key = (-unplaced_of(body), float(body.get("soft_score") or 0.0))
+        if key > best_key:
+            best, best_seeds, best_key = body, per_leaf_seed, key
+
+    payload = best or {}
+    per_leaf_seed = best_seeds
+    if include_schedule and tried > 1:
+        if best_key[0] < 0:
+            payload.setdefault("explanation", []).append(
+                f"Tried {tried} draws and kept the one that placed the most "
+                f"matches; {-best_key[0]} still have no time."
+            )
+        else:
+            payload.setdefault("explanation", []).append(
+                f"Tried {tried} draws and kept the one that gave every match a "
+                "time."
+            )
     payload["per_leaf_seed"] = per_leaf_seed
     # Drift guard inputs for publish-all (C11): the stored-state hash per
     # previewed leaf, so Accept can 409 when anything changed since preview

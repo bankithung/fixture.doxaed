@@ -1327,6 +1327,58 @@ def finish_phase_bounds(
     return lo, hi
 
 
+def finish_phase_deadlines(
+    plans: Sequence[FinishPlan], matches: Sequence[MatchSlotReq],
+    last_end: datetime, courts: int, slot_minutes: int,
+) -> tuple[dict[str, datetime], datetime | None]:
+    """Latest end time each match may take if the phases after it are to fit.
+
+    A phase barrier defers the finals to the end of the calendar, and a greedy
+    pass that fills the day in front of them leaves them nowhere to go — which
+    is why "try another draw" kept returning with every final unplaced (owner
+    2026-08-19). Nothing about the draw was wrong; the day was simply spent
+    before its most important matches asked for it.
+
+    So each phase gets a deadline: the end of the calendar, minus the time the
+    phases AFTER it need. A phase needs its matches spread over the courts —
+    ``ceil(matches / courts)`` rounds of its longest match — which is a lower
+    bound, never an over-estimate, so this reserves the least it can get away
+    with. Returns (per-match deadline, the deadline for everything the rule
+    does not defer).
+    """
+    by_id = {m.id: m for m in matches}
+    per_match: dict[str, datetime] = {}
+    ordinary: datetime | None = None
+    for plan in plans:
+        blocks: dict[int, tuple[int, int]] = {}
+        for mid, key in plan.key_of.items():
+            m = by_id.get(mid)
+            if m is None:
+                continue
+            n, dur = blocks.get(key[0], (0, 0))
+            blocks[key[0]] = (
+                n + 1,
+                max(dur, m.duration_minutes or slot_minutes),
+            )
+        positions = sorted(blocks)
+        # Time the phases from `p` onwards need, counting back from the end.
+        after: dict[int, int] = {}
+        running = 0
+        for p in reversed(positions):
+            after[p] = running
+            n, dur = blocks[p]
+            running += -(-n // max(1, courts)) * dur
+        for mid, key in plan.key_of.items():
+            dl = last_end - timedelta(minutes=after.get(key[0], 0))
+            cur = per_match.get(mid)
+            if cur is None or dl < cur:
+                per_match[mid] = dl
+        whole = last_end - timedelta(minutes=running)
+        if ordinary is None or whole < ordinary:
+            ordinary = whole
+    return per_match, ordinary
+
+
 def finish_solo_busy(
     m: MatchSlotReq, plans: Sequence[FinishPlan],
     placed: Mapping[str, tuple[datetime, datetime]],
@@ -1359,12 +1411,74 @@ def _pin_venue_ok(r: ScopedRule, venue: str, base_of: dict[str, str]) -> bool:
 
 
 # --------------------------------------------------------------------------- engine
-def schedule_matches(
+def _spread_conflicts(
+    order: list[MatchSlotReq], linked: dict[str, set[str]] | None,
+) -> list[MatchSlotReq]:
+    """Reorder equally-ranked matches so two that CANNOT overlap do not ask
+    for a slot back to back.
+
+    Teams of one school (and teams sharing a player) must clear a gap from
+    each other, so when the queue hands the placer two such matches in a row
+    the second is pushed past the gap, the third past that, and a day with
+    room everywhere finishes over an hour late — which is what left every
+    final unplaced on a random draw, while the registration draw, whose order
+    happens to alternate schools, fit comfortably (owner 2026-08-19).
+
+    Only matches the ORDER ALREADY TIES are moved: same phase, stage, priority
+    rank and round. Everything the host authored about order is untouched —
+    this decides only what a tie means, which until now was the arbitrary
+    order the draw emitted them in.
+    """
+    if not linked or len(order) < 3:
+        return order
+
+    def group(m: MatchSlotReq) -> set[str]:
+        """Every team this match ties up: its own, and everything linked to
+        them (same school within the sport, or a shared player)."""
+        out: set[str] = set()
+        for t in (m.home, m.away):
+            if not t:
+                continue
+            out.add(str(t))
+            out |= {str(x) for x in linked.get(str(t), ())}
+        return out
+
+    groups = [group(m) for m in order]
+    if not any(groups):
+        return order
+    placed: list[MatchSlotReq] = []
+    # Where each team was last tied up, so the next pick can prefer whoever
+    # has waited longest.
+    last: dict[str, int] = {}
+    remaining = list(range(len(order)))
+    while remaining:
+        best_at, best_score = 0, None
+        for at, i in enumerate(remaining):
+            recent = max((last.get(t, -1) for t in groups[i]), default=-1)
+            # Least recently tied up first; ties keep the incoming order, so
+            # the result stays deterministic.
+            score = (recent, i)
+            if best_score is None or score < best_score:
+                best_at, best_score = at, score
+        i = remaining.pop(best_at)
+        for t in groups[i]:
+            last[t] = len(placed)
+        placed.append(order[i])
+    return placed
+
+
+def _schedule_once(
     matches: list[MatchSlotReq], cfg: ScheduleConfig,
     preoccupied: Preoccupied | None = None,
     linked: dict[str, set[str]] | None = None,
+    *,
+    reserve_phases: bool = False,
 ) -> ScheduleResult:
-    """Greedy constructive scheduler honouring HARD constraints:
+    """ONE greedy constructive pass. ``schedule_matches`` runs it more than
+    once and keeps the best; ``reserve_tail`` is the knob it varies (see
+    there).
+
+    Greedy constructive scheduler honouring HARD constraints:
 
       * a venue hosts one match at a time (interval overlap, not slot equality
         — durations differ per sport)
@@ -1440,6 +1554,18 @@ def schedule_matches(
     phase_lo: datetime | None = None
     phase_hi: datetime | None = None
     phase_busy: list[tuple[datetime, datetime]] = []
+    # Room held for the phases a barrier defers: each match's latest end if
+    # everything after it is still to fit.
+    phase_deadline: dict[str, datetime] = {}
+    ordinary_deadline: datetime | None = None
+    if reserve_phases and slots and finish_plans:
+        phase_deadline, ordinary_deadline = finish_phase_deadlines(
+            finish_plans,
+            matches,
+            max(wend for _dt, _v, wend in slots),
+            len({v for _dt, v, _w in slots}) or 1,
+            cfg.slot_minutes,
+        )
 
     # Sub-venue expansion (§2.3): display name -> base name, and the parallel
     # units of each expanded base.
@@ -1518,7 +1644,8 @@ def schedule_matches(
         return closing_round_ok(m, dt.date(), closing_windows, cfg, tkey)
 
     def feasible(m: MatchSlotReq, dt: datetime, venue: str, wend: datetime,
-                 dur: timedelta, teams: list[str]) -> bool:
+                 dur: timedelta, teams: list[str],
+                 honour_deadline: bool = False) -> bool:
         if m.venue_type and m.sport not in relax_vtype:
             vt = cfg.venue_types.get(base_of.get(venue, venue), "")
             if vt and vt != m.venue_type:
@@ -1594,6 +1721,16 @@ def schedule_matches(
         # another of the same sport, though the other hall may run its own.
         for bstart, bend in phase_busy:
             if dt < bend and bstart < end:
+                return False
+        # Room held back for the phases still to come: this match should not
+        # run past the point where everything after it would stop fitting.
+        # It is a PREFERENCE, not a wall — the scan below asks with it first
+        # and, only if nothing fits, asks again without. Enforcing it would
+        # trade the finals it saves for ordinary matches it drops, which is
+        # not a better schedule by any reading.
+        if honour_deadline:
+            dl = phase_deadline.get(m.id, ordinary_deadline)
+            if dl is not None and end > dl:
                 return False
         # Resource capacities (§2.4): officials/scorers cap concurrent
         # in-flight matches per sport (or tournament-wide for scope "all").
@@ -1871,6 +2008,21 @@ def schedule_matches(
         by_order = sorted(matches, key=lambda m: (
             _phase_sort(m), m.stage_no, *_pace(m, m.round_no), m.match_no,
         ))
+    # Within each tie of the authored order, hand the placer matches of
+    # DIFFERENT schools in turn: two of one school back to back serialize on
+    # their own gap and stretch the day past its finish.
+    spread: list[MatchSlotReq] = []
+    bucket: list[MatchSlotReq] = []
+    bucket_key: tuple | None = None
+    for m in by_order:
+        key = (_phase_sort(m), m.stage_no, *_pace(m, m.round_no))
+        if bucket_key is not None and key != bucket_key:
+            spread.extend(_spread_conflicts(bucket, linked))
+            bucket = []
+        bucket_key = key
+        bucket.append(m)
+    spread.extend(_spread_conflicts(bucket, linked))
+    by_order = spread
     ordered = [m for m in by_order if m.id in pin_of] + \
               [m for m in by_order if m.id not in pin_of]
     for m in ordered:
@@ -1897,19 +2049,35 @@ def schedule_matches(
             phase_lo = phase_hi = None
             phase_busy = []
         pin = pin_of.get(m.id)
-        chosen: tuple[datetime, str] | None = None
-        best_score = float("-inf")
-        for dt, venue, wend in slots:
-            if pin is not None and not _pin_ok(pin, dt, dt + dur, venue):
-                continue
-            if not feasible(m, dt, venue, wend, dur, teams):
-                continue
-            if not soft_active:
-                chosen = (dt, venue)
-                break
-            score = preference(m, dt, venue, dur, teams)
-            if score > best_score:
-                best_score, chosen = score, (dt, venue)
+
+        def scan(
+            honour: bool,
+            m: MatchSlotReq = m,
+            dur: timedelta = dur,
+            teams: list[str] = teams,
+            pin: ScopedRule | None = pin,
+        ) -> tuple[datetime, str] | None:
+            """This match's best legal slot. Bound as defaults so the closure
+            reads THIS iteration's match, not the loop's last one."""
+            found: tuple[datetime, str] | None = None
+            best = float("-inf")
+            for dt, venue, wend in slots:
+                if pin is not None and not _pin_ok(pin, dt, dt + dur, venue):
+                    continue
+                if not feasible(m, dt, venue, wend, dur, teams, honour):
+                    continue
+                if not soft_active:
+                    return (dt, venue)
+                score = preference(m, dt, venue, dur, teams)
+                if score > best:
+                    best, found = score, (dt, venue)
+            return found
+
+        # Ask for a slot that leaves the later phases their room; take any
+        # legal slot rather than leave the match with no time at all.
+        chosen = scan(True) if reserve_phases else None
+        if chosen is None:
+            chosen = scan(False)
         if chosen is None:
             unscheduled.append(m.id)
             unscheduled_ids.add(m.id)
@@ -1968,6 +2136,59 @@ def schedule_matches(
         )
     return ScheduleResult(assignments, unscheduled, soft, explanation,
                           violations=violations)
+
+
+def schedule_matches(
+    matches: list[MatchSlotReq], cfg: ScheduleConfig,
+    preoccupied: Preoccupied | None = None,
+    linked: dict[str, set[str]] | None = None,
+) -> ScheduleResult:
+    """Schedule every match, trying more than once for a full house.
+
+    One greedy pass takes the earliest slot that works for each match in turn,
+    which is right until a PHASE BARRIER is in play: the ordinary rounds then
+    fill the last day to its edge, and the finals the barrier deferred arrive
+    to find nothing left (owner 2026-08-19: "make the logic so it tries to give
+    the best 100% placed"). Nothing is wrong with any single decision — the day
+    was simply spent before its most important matches asked for it.
+
+    So a pass that leaves matches unplaced is run again with a DEADLINE on
+    every match: the end of the calendar, minus the time the phases after it
+    need. The better result wins — most matches placed, then the better soft
+    score — and the first pass is kept whenever it already placed everything,
+    so a schedule that fits pays nothing for this.
+    """
+    first = _schedule_once(matches, cfg, preoccupied, linked)
+    if not first.unscheduled:
+        return first
+    plans = resolve_finish_phases(
+        matches,
+        [r for r in cfg.constraint_rules if r.type == "phased_finish"],
+        cfg,
+    )
+    if not plans:
+        # Nothing is being deferred, so holding room back would only take it
+        # away. The honest answer is the one the pass already gave.
+        return first
+
+    second = _schedule_once(
+        matches, cfg, preoccupied, linked, reserve_phases=True,
+    )
+    better = (
+        len(second.unscheduled) < len(first.unscheduled)
+        or (
+            len(second.unscheduled) == len(first.unscheduled)
+            and second.soft_score > first.soft_score
+        )
+    )
+    if not better:
+        return first
+    second.explanation.append(
+        "Held time at the end of the calendar for each closing phase, which "
+        f"placed {len(first.unscheduled) - len(second.unscheduled)} more "
+        "match(es)."
+    )
+    return second
 
 
 def _build_violations(

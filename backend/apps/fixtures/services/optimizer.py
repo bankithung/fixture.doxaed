@@ -344,7 +344,13 @@ def _local_search(
     under a fixed ``rng`` + ``iters``; ``seconds`` (>0) adds a wall-clock cap."""
     cur = dict(seed)
     best = dict(cur)
+    # PLACED FIRST, then quality (owner 2026-08-19: "make the logic so it
+    # tries to give the best 100% placed"). Blending them let a tidier
+    # schedule beat a fuller one: one more match is worth ~0.005 of the blend,
+    # which court packing can outweigh — so the search would decline to place
+    # a match if doing so cost it a tighter day.
     best_q = assignment_quality(best, matches, cfg, preoccupied=preoccupied)
+    best_key = (len(best), best_q)
     placeable = [mid for mid in movable if candidates.get(mid)]
     if not placeable:
         return best
@@ -360,9 +366,10 @@ def _local_search(
         cur[mid] = slot
         if _legal(cur, matches, cfg, preoccupied=preoccupied, linked=linked):
             q = assignment_quality(cur, matches, cfg, preoccupied=preoccupied)
-            if q >= best_q:
-                if q > best_q:
-                    best_q = q
+            key = (len(cur), q)
+            if key >= best_key:
+                if key > best_key:
+                    best_key = key
                     best = dict(cur)
                 continue  # keep the (equal-or-better) move as the new current
         # reject: restore
@@ -591,23 +598,31 @@ def optimize_schedule(
 
     best = seed_assign
     best_q = seed_q
+    best_key = (len(seed_assign), seed_q)
     for prop in proposals:
         if not _legal(prop, matches, cfg, preoccupied=preoccupied, linked=linked):
             continue
         q = assignment_quality(prop, matches, cfg, preoccupied=preoccupied)
-        if q > best_q:
-            best, best_q = prop, q
+        if (len(prop), q) > best_key:
+            best, best_q, best_key = prop, q, (len(prop), q)
 
-    if best is seed_assign or best_q <= seed_q:
+    if best is seed_assign or best_key <= (len(seed_assign), seed_q):
         return seed
 
     unscheduled = [m.id for m in matches if m.id not in best]
     explanation = list(seed.explanation)
     gain = round((best_q - seed_q) * 100)
-    explanation.append(
-        f"Optimizer improved the schedule quality by {gain} point(s) "
-        f"({cfg.optimize_engine})."
-    )
+    filled = len(best) - len(seed_assign)
+    if filled > 0:
+        explanation.append(
+            f"Optimizer found times for {filled} more match(es) "
+            f"({cfg.optimize_engine})."
+        )
+    else:
+        explanation.append(
+            f"Optimizer improved the schedule quality by {gain} point(s) "
+            f"({cfg.optimize_engine})."
+        )
     return ScheduleResult(
         assignments=best,
         unscheduled=unscheduled,
