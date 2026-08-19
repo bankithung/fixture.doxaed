@@ -373,3 +373,46 @@ def test_without_a_phase_rule_the_retry_does_not_run():
     matches = _bracket("g", GIRLS)
     res = schedule_matches(matches, _cfg(venues=["A"], date_end=D1))
     assert not any("Held time" in e for e in res.explanation)
+
+
+# ------------------------------- a per-sport gap belongs to that sport only
+def test_each_sport_keeps_its_own_link_gap():
+    """Owner 2026-08-19: table tennis was being held to sepak's 40-minute
+    same-school gap because the engine kept ONE pair of numbers and the last
+    record read won. Twenty extra minutes on every table tennis match emptied
+    whole mornings."""
+    from apps.fixtures.services.scheduler import effective_link_gaps
+
+    cfg = _cfg()
+    merge_stored_constraints(cfg, validate_constraints([
+        {"type": "no_institution_overlap", "scope": "sport:table_tennis",
+         "hard": True, "params": {"within": "sport", "min_gap_minutes": 20,
+                                  "cross_venue_gap_minutes": 60}},
+        {"type": "no_institution_overlap", "scope": "sport:sepak_takraw",
+         "hard": True, "params": {"within": "sport", "min_gap_minutes": 40,
+                                  "cross_venue_gap_minutes": 60}},
+    ]))
+    tt = _req("t", leaf_key=GIRLS, round_no=1)
+    spk = _req("s", leaf_key=SPK_G, round_no=1)
+    assert effective_link_gaps(cfg, tt) == (20, 60)
+    assert effective_link_gaps(cfg, spk) == (40, 60)
+
+
+def test_one_record_governs_everything_as_before():
+    from apps.fixtures.services.scheduler import effective_link_gaps
+
+    cfg = _cfg()
+    merge_stored_constraints(cfg, validate_constraints([
+        {"type": "no_institution_overlap", "scope": "all", "hard": True,
+         "params": {"within": "sport", "min_gap_minutes": 25,
+                    "cross_venue_gap_minutes": 45}},
+    ]))
+    assert effective_link_gaps(cfg, _req("t", leaf_key=GIRLS, round_no=1)) == (25, 45)
+
+
+def test_no_record_leaves_the_gap_unset():
+    from apps.fixtures.services.scheduler import effective_link_gaps
+
+    assert effective_link_gaps(_cfg(), _req("t", leaf_key=GIRLS, round_no=1)) == (
+        None, None,
+    )

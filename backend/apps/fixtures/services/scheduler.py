@@ -552,6 +552,19 @@ def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> l
                 cfg.person_min_gap = int(p["min_gap_minutes"])
             if p.get("cross_venue_gap_minutes") is not None:
                 cfg.person_cross_venue_gap = int(p["cross_venue_gap_minutes"])
+            # Keep the RECORD too, scope and all. Collapsing every record into
+            # one pair of numbers meant the last one read won: a 40-minute
+            # sepak gap was being applied to table tennis, whose own record
+            # says 20, and the extra twenty minutes per match emptied whole
+            # mornings (owner 2026-08-19: "this one can play at 9:10").
+            cfg.constraint_rules.append(ScopedRule(
+                ctype, scope, True, weight,
+                {
+                    "min_gap_minutes": p.get("min_gap_minutes"),
+                    "cross_venue_gap_minutes": p.get("cross_venue_gap_minutes"),
+                },
+                record=c,
+            ))
             if source == "institution":
                 # How far the rule reaches, and over which teams. Both are the
                 # author's call; an unknown `within` falls back to the default
@@ -1781,25 +1794,43 @@ def _schedule_once(
             # no_person_overlap record the gaps are tunable and venue-aware
             # (changing venues costs travel time); otherwise the legacy
             # rest-gap behavior applies.
+            link_same, link_cross = effective_link_gaps(cfg, m)
             for lt in (linked or {}).get(t, ()):
-                if cfg.person_min_gap is None:
+                if link_same is None:
                     if _overlaps(team_busy[lt], dt, end, gap=gap):
                         return False
                 else:
                     for s, e, v in team_busy_v.get(lt, ()):
                         same = base_of.get(v, v) == base_of.get(venue, venue)
                         g = timedelta(minutes=(
-                            cfg.person_min_gap if same
-                            else cfg.person_cross_venue_gap or cfg.person_min_gap
+                            link_same if same else link_cross or link_same
                         ))
                         if dt < e + g and s < end + g:
                             return False
         return True
 
+    # The whole calendar, for the earliness term below.
+    _span_start = min((dt for dt, _v, _w in slots), default=None)
+    _span_end = max((w for _dt, _v, w in slots), default=None)
+    _span = (
+        (_span_end - _span_start).total_seconds() / 60.0
+        if _span_start and _span_end else 0.0
+    ) or 1.0
+
     def preference(m: MatchSlotReq, dt: datetime, venue: str,
                    dur: timedelta, teams: list[str]) -> float:
         score = 0.0
         tkey = tuple(teams)
+        # EARLIER IS BETTER, all else equal (owner 2026-08-19: "this one can
+        # play at 9:10"). Without this the placer had no time term at all, so
+        # any two legal slots tied and it kept whichever it happened to see
+        # first — leaving a court standing empty until noon while the match
+        # that could have filled it waited. Capped at 1.0 so it decides ties
+        # and nothing more: a preferred window (2.0) and a court reservation
+        # (100.0) both still outrank it.
+        if _span_start is not None:
+            late = (dt - _span_start).total_seconds() / 60.0
+            score += 1.0 * (1.0 - min(1.0, max(0.0, late / _span)))
         # Overflow onto someone else's preference court is allowed but last
         # (owner 2026-08-17): better than leaving it empty, worse than any
         # court that is actually meant for this competition.
@@ -1968,11 +1999,18 @@ def _schedule_once(
         an earlier phase is placed (and its end time known) before any match
         of a later one is even attempted. A match no rule lists sorts first;
         it waits for nothing and nothing waits for it.
+
+        The FIRST listed phase sorts first too, because nothing comes before
+        it: the barrier only binds from the second phase on. Pushing it back
+        cost whole mornings — a four-team category's round 1 IS its
+        semi-final, so it was queued behind every deep category's
+        quarter-finals and its court stood empty until noon (owner
+        2026-08-19: "this one can play at 9:30").
         """
         best: tuple[int, int] | None = None
         for plan in finish_plans:
             k = plan.key_of.get(m.id)
-            if k is not None and (best is None or k > best):
+            if k is not None and k[0] > 0 and (best is None or k > best):
                 best = k
         return best if best is not None else (-1, 0)
 
@@ -2442,6 +2480,42 @@ def _score_soft(assignments, team_busy, cfg, total,
 # the greedy placer AND ``validate_schedule`` — they used to diverge, letting the
 # optimizer adopt a schedule that broke a scoped hard rest/cap the greedy honored
 # (review 2026-06-25). Most-specific scope wins; larger minutes break rest ties.
+def effective_link_gaps(
+    cfg: ScheduleConfig, match: MatchSlotReq | None,
+) -> tuple[int | None, int | None]:
+    """The (same-venue, cross-venue) gap a LINKED pair must clear for this
+    match, resolved by scope like every other per-match rule.
+
+    A tournament may set one gap for table tennis and another for sepak; the
+    engine held a single pair of numbers, so whichever record was read last
+    governed both sports. Most specific scope wins; the wider default is the
+    fallback so a tournament with one record behaves exactly as before.
+    """
+    same, cross = cfg.person_min_gap, cfg.person_cross_venue_gap
+    if match is None:
+        return same, cross
+    best: int | None = None
+    for r in cfg.constraint_rules:
+        if r.type not in ("no_person_overlap", "no_institution_overlap",
+                          "no_staff_overlap"):
+            continue
+        if not scope_matches(
+            r.scope, sport=match.sport, leaf_key=match.leaf_key,
+            team_ids=tuple(t for t in (match.home, match.away) if t),
+            team_tags=cfg.team_tags,
+        ):
+            continue
+        spec = scope_specificity(r.scope)
+        if best is not None and spec <= best:
+            continue
+        best = spec
+        if r.params.get("min_gap_minutes") is not None:
+            same = int(r.params["min_gap_minutes"])
+        if r.params.get("cross_venue_gap_minutes") is not None:
+            cross = int(r.params["cross_venue_gap_minutes"])
+    return same, cross
+
+
 def effective_rest_gap(
     cfg: ScheduleConfig, match: MatchSlotReq | None, team: str
 ) -> timedelta:
