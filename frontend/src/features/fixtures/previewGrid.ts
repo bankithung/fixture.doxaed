@@ -420,6 +420,43 @@ const GROUP_OF: Record<GroupBy, (r: PreviewRow) => { key: string; label: string;
   }),
 };
 
+/** How many competitions a court heading spells out before it counts the rest. */
+const COURT_SUB_MAX = 3;
+
+/**
+ * What a court actually hosts, for its heading (owner 2026-08-19: "when group
+ * by court, in the heading of the court name can add the sport name and
+ * category too").
+ *
+ * A court name alone says nothing about what is played on it, and the
+ * reservation feature means a court often holds ONE sport and a couple of
+ * categories — which is exactly the thing worth reading at the top of the
+ * band. Sports lead; their categories follow in the order they first appear,
+ * and a long list ends in a count rather than running off the row.
+ */
+export function courtSummary(rows: readonly PreviewRow[]): string {
+  const bySport = new Map<string, string[]>();
+  for (const r of rows) {
+    const sport = r.sportLabel || r.sportKey;
+    if (!sport) continue;
+    const cats = bySport.get(sport) ?? [];
+    // The CATEGORY, not the whole competition label — the sport is already
+    // the heading of its own list, and repeating it in every entry is noise.
+    if (r.categoryLabel && !cats.includes(r.categoryLabel)) {
+      cats.push(r.categoryLabel);
+    }
+    bySport.set(sport, cats);
+  }
+  return [...bySport.entries()]
+    .map(([sport, cats]) => {
+      if (!cats.length) return sport;
+      const shown = cats.slice(0, COURT_SUB_MAX).join(", ");
+      const rest = cats.length - COURT_SUB_MAX;
+      return `${sport}: ${shown}${rest > 0 ? ` +${rest}` : ""}`;
+    })
+    .join(" · ");
+}
+
 /** Split sorted rows into bands, preserving the incoming row order. */
 export function groupRows(
   rows: readonly PreviewRow[],
@@ -438,7 +475,13 @@ export function groupRows(
     }
     band.rows.push(r);
   }
-  return [...map.values()];
+  const bands = [...map.values()];
+  // The court heading names what is played there — knowable only once the
+  // band is whole, so it is written here rather than per row.
+  if (by === "venue") {
+    for (const band of bands) band.sub = courtSummary(band.rows);
+  }
+  return bands;
 }
 
 /** Busy [startMin, endMin) intervals per `${day}|${venue}` across EVERY

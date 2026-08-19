@@ -384,13 +384,28 @@ def _separate_institutions(
 
 
 def _bracket_permit_round(until_round, rounds: int) -> int:
-    """First round a keep-apart key ALLOWS a meeting in. ``None``/0 = as late
-    as mathematically possible — only the final is late enough. Legacy records
-    wrote ``until_round=1`` for the historical opening-round repair, so 1
-    aliases 2 (apart through round 1). Values beyond the bracket depth stay
-    unclamped: the record demands more separation than the bracket has, so
-    EVERY same-key pair reads as a (warned) violation."""
-    n = int(until_round or 0)
+    """First round a keep-apart key ALLOWS a meeting in.
+
+    ``"final"`` / ``None`` / 0 = as late as mathematically possible — only the
+    final is late enough. ``"semi_final"`` = from that competition's own
+    semi-finals on ("they can meet at the semi or the final, but not at the
+    very early stages" — owner 2026-08-19); resolved against THIS bracket's
+    depth, so one record covers a four-team category and a sixteen-team one,
+    which a literal round number never could. Legacy records wrote
+    ``until_round=1`` for the historical opening-round repair, so 1 aliases 2
+    (apart through round 1). Values beyond the bracket depth stay unclamped:
+    the record demands more separation than the bracket has, so EVERY same-key
+    pair reads as a (warned) violation.
+    """
+    named = str(until_round or "").strip().lower()
+    if named == "semi_final":
+        return max(1, rounds - 1)
+    if named == "final":
+        return max(1, rounds)
+    try:
+        n = int(until_round or 0)
+    except (TypeError, ValueError):
+        n = 0
     if n <= 0:
         return max(1, rounds)
     return max(2, n)

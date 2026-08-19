@@ -12,7 +12,6 @@ const PARAM_LABELS: Record<string, string> = {
   minutes: "Minutes",
   count: "Count",
   key: "Group by",
-  until_round: "Until round",
   dates: "Dates",
   team_id: "Team",
   days: "Days",
@@ -23,6 +22,7 @@ const PARAM_LABELS: Record<string, string> = {
   round: "Round (final / semi_final / number)",
   final_order: "Which of them plays first",
   one_at_a_time: "Two of them at once",
+  until_round: "They may first meet",
   min_gap_minutes: "Min gap (minutes)",
   cross_venue_gap_minutes: "Cross-venue gap (minutes)",
   order: "Order, most important first",
@@ -44,6 +44,8 @@ const PARAM_HINTS: Record<string, string> = {
     "Orders the last phase only. One entry can be a whole sport, one category, or a word from the category name such as girls.",
   one_at_a_time:
     "Applies to the last phase. Within a sport keeps two finals off the same slot; other sports still play at that time, in their own hall.",
+  until_round:
+    "Read against each competition's own bracket, so one rule covers a four-team category and a sixteen-team one.",
 };
 
 /** The phase list's own hint — keyed by KIND, because `phased_finish` stores
@@ -70,6 +72,11 @@ const PARAM_OPTION_LABELS: Record<string, string> = {
   "one_at_a_time:none": "Allowed, any number together",
   "one_at_a_time:sport": "One at a time within a sport",
   "one_at_a_time:all": "One at a time, whole tournament",
+  "until_round:semi_final": "From the semi-finals on",
+  "until_round:final": "Only in the final",
+  "key:school": "Same school",
+  "key:district": "Same district",
+  "key:seed_pot": "Same seeding pot",
 };
 
 /** The literal the engine reads as "whatever the last scheduled day turns out

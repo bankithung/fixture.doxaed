@@ -45,9 +45,17 @@ CONSTRAINT_TYPES: list[dict[str, Any]] = [
      "params_schema": {}, "scopes": ["all"], "layer": "S"},
     {"type": "max_matches_per_team_per_day", "label": "Max matches per team per day", "hard": True,
      "params_schema": {"count": "int"}, "scopes": ["all", "sport", "leaf"], "layer": "S"},
+    # ``until_round`` is the first round a meeting is ALLOWED in. It takes a
+    # round number, or — because a round number means a different thing in a
+    # four-team category than in a sixteen-team one — the tokens "semi_final"
+    # and "final", resolved against each competition's own bracket depth
+    # (owner 2026-08-19: same-school teams "can meet, but not at the very
+    # early stages").
     {"type": "keep_apart_until_round", "hard": True,
      "label": "Keep matching participants apart until a round",
-     "params_schema": {"key": "str", "until_round": "int"},
+     "params_schema": {"key": "str", "until_round": "str"},
+     "param_options": {"key": ["school", "district", "seed_pot"],
+                       "until_round": ["semi_final", "final"]},
      "scopes": ["all", "sport", "leaf"], "layer": "P"},
     {"type": "blackout_dates", "label": "Dates no matches may be scheduled", "hard": True,
      "params_schema": {"dates": "list"}, "scopes": ["all", "sport", "leaf"], "layer": "S"},

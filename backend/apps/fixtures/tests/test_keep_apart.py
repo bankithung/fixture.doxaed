@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from apps.fixtures.services.generate import (
     _bracket_order,
+    _bracket_permit_round,
     _keep_apart_key_map,
     _opening_pairs_bracket,
     _repair_same_institution_pairs,
@@ -396,3 +397,55 @@ def test_scheduler_no_longer_emits_the_pairing_noop_note():
                                                       "until_round": 1}},
     ])
     assert notes == []  # pairing-layer record: silently out of scope here
+
+
+# --------------------------------- "not at the very early stages" (2026-08-19)
+def test_semi_final_token_resolves_against_each_brackets_own_depth():
+    """Owner 2026-08-19: same-school teams "can meet, but not at the very
+    early stages". A round NUMBER cannot say that — round 2 is the semi of a
+    four-team category and the second round of a sixteen-team one. The token
+    is resolved per bracket."""
+    # 4 teams -> 2 rounds: the semi is round 1.
+    assert _bracket_permit_round("semi_final", 2) == 1
+    # 8 teams -> 3 rounds: the semi is round 2.
+    assert _bracket_permit_round("semi_final", 3) == 2
+    # 16 teams -> 4 rounds: the semi is round 3.
+    assert _bracket_permit_round("semi_final", 4) == 3
+
+
+def test_final_token_and_the_default_both_mean_only_the_final():
+    assert _bracket_permit_round("final", 4) == 4
+    assert _bracket_permit_round(None, 4) == 4
+    assert _bracket_permit_round(0, 4) == 4
+
+
+def test_a_number_still_means_exactly_that_round():
+    assert _bracket_permit_round(2, 4) == 2
+    assert _bracket_permit_round(3, 4) == 3
+    # and the legacy 1 still aliases 2
+    assert _bracket_permit_round(1, 4) == 2
+
+
+def test_an_unreadable_value_falls_back_to_the_safest_answer():
+    # Nonsense must not crash a draw, and must not silently allow an early
+    # meeting either — it reads as "only the final".
+    assert _bracket_permit_round("whenever", 4) == 4
+
+
+def test_semi_final_lets_a_pair_meet_in_the_semi_but_not_before():
+    teams = [_T(i) for i in range(8)]  # 8 teams -> 3 rounds, semi = round 2
+    km = {3: "x", 4: "x"}  # seeds 4+5: they would meet in round 1
+    out, conflicts = _separate_bracket_by_key(
+        teams, km, _bracket_permit_round("semi_final", 3),
+    )
+    assert conflicts == []
+    assert _bracket_meet(out, km, "x") >= 2
+
+
+def test_semi_final_leaves_a_legal_semi_pairing_untouched():
+    teams = [_T(i) for i in range(8)]
+    km = {0: "x", 3: "x"}  # seeds 1+4: already first meet in round 2
+    out, conflicts = _separate_bracket_by_key(
+        teams, km, _bracket_permit_round("semi_final", 3),
+    )
+    assert out == teams and conflicts == []

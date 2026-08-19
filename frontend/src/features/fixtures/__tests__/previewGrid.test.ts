@@ -3,7 +3,9 @@ import type { PreviewMatch } from "@/api/tournaments";
 import {
   applyFilters,
   buildRows,
+  courtSummary,
   EMPTY_FILTERS,
+  groupRows,
   facetsFor,
   linesWithBreaks,
   occupancyByCourt,
@@ -196,5 +198,77 @@ describe("toCsv", () => {
     expect(head).toContain("Start,End,Minutes,Venue");
     expect(row).toContain('"Hall A, upstairs"');
     expect(row).toContain("Amazing School");
+  });
+});
+
+
+describe("a court heading says what is played on it", () => {
+  // Owner 2026-08-19: "when group by court, in the heading of the court name
+  // can add the sport name and category too". A court name alone says nothing.
+  /** One match per (leaf, label) pair, all on the same court — the payload
+   * shape a knockout actually has: a middot label carrying its sport. */
+  const onCourt = (
+    labels: [leaf: string, label: string][],
+  ): ReturnType<typeof buildRows> =>
+    buildRows(
+      labels.map(([leaf, label], i) =>
+        m({ ref: `c${i}`, venue: "Audi · T1", leaf_key: leaf, group_label: label }),
+      ),
+      NAMES,
+    );
+  const TT = "table_tennis";
+
+  it("names the sport and each competition on that court", () => {
+    const rows = onCourt([
+      [`${TT}.u_14.boys.singles`, "Table Tennis · U-14 · Boys · Singles"],
+      [`${TT}.open.boys.doubles`, "Table Tennis · Open Category · Boys · Doubles"],
+    ]);
+    const [band] = groupRows(rows, "venue");
+    expect(band!.label).toBe("Audi · T1");
+    expect(band!.sub).toContain("Table Tennis:");
+    expect(band!.sub).toContain("U-14 · Boys · Singles");
+    expect(band!.sub).toContain("Open Category · Boys · Doubles");
+    // The sport heads its own list; it is not repeated per category.
+    expect(band!.sub.match(/Table Tennis/g)).toHaveLength(1);
+  });
+
+  it("says a competition once however many matches it has there", () => {
+    const rows = onCourt([
+      [`${TT}.u_14.boys.singles`, "Table Tennis · U-14 · Boys · Singles"],
+      [`${TT}.u_14.boys.singles`, "Table Tennis · U-14 · Boys · Singles"],
+    ]);
+    const sub = groupRows(rows, "venue")[0]!.sub;
+    expect(sub.match(/U-14 · Boys · Singles/g)).toHaveLength(1);
+  });
+
+  it("counts the rest rather than running off the row", () => {
+    const rows = onCourt([
+      [`${TT}.a`, "Table Tennis · A"],
+      [`${TT}.b`, "Table Tennis · B"],
+      [`${TT}.c`, "Table Tennis · C"],
+      [`${TT}.d`, "Table Tennis · D"],
+      [`${TT}.e`, "Table Tennis · E"],
+    ]);
+    expect(groupRows(rows, "venue")[0]!.sub).toContain("+2");
+  });
+
+  it("keeps two sports on one court apart, each with its own list", () => {
+    const sub = courtSummary(
+      onCourt([
+        [`${TT}.u_14.boys.singles`, "Table Tennis · U-14 · Boys · Singles"],
+        ["sepak_takraw.u_14.girls", "Sepak Takraw · U-14 · Girls"],
+      ]),
+    );
+    expect(sub).toContain("Table Tennis:");
+    expect(sub).toContain("Sepak Takraw:");
+  });
+
+  it("leaves the other groupings' headings alone", () => {
+    const rows = onCourt([
+      [`${TT}.u_14.boys.singles`, "Table Tennis · U-14 · Boys · Singles"],
+    ]);
+    expect(groupRows(rows, "day")[0]!.sub).toBe("");
+    // Day-and-court still reads day over court, as it always did.
+    expect(groupRows(rows, "day_venue")[0]!.sub).toBe("Audi · T1");
   });
 });
