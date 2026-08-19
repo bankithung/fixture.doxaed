@@ -721,6 +721,8 @@ def preview_all_fixtures(
     # tournament is configured for and keep it if it does better (owner
     # 2026-08-19: "try another draw always gives unplaced"). Its own seeds go
     # back with it, so publishing replays exactly what was previewed.
+    kept_configured = False
+    shuffled_short = -best_key[0]
     if include_schedule and draw and best_key[0] < 0:
         all_plans, per_leaf_seed, warnings, _redrawable = draw_once(
             False, overrides=None,
@@ -734,11 +736,30 @@ def preview_all_fixtures(
         key = (-unplaced_of(body), float(body.get("soft_score") or 0.0))
         if key > best_key:
             best, best_seeds, best_key = body, per_leaf_seed, key
+            kept_configured = True
 
     payload = best or {}
     per_leaf_seed = best_seeds
     if include_schedule and tried > 1:
-        if best_key[0] < 0:
+        if kept_configured:
+            # Say it plainly rather than hand back the same fixture with no
+            # word of why (owner 2026-08-19: "it keeps on drawing the same
+            # matches, no changes at all"). A re-draw that silently returns
+            # the arrangement you already had looks broken; the reason is
+            # that no shuffle of it could be given times.
+            payload.setdefault("warnings", []).append({
+                "code": "redraw_kept_configured",
+                "tried": tried,
+                "shuffled_unplaced": shuffled_short,
+            })
+            payload.setdefault("explanation", []).append(
+                f"Every one of the {tried - 1} shuffled draws left matches "
+                f"without a time (best was {shuffled_short}), so your "
+                "tournament's own draw was kept — it places all of them. For a "
+                "genuinely different draw, give the last day more time or "
+                "loosen the finishing-order rule."
+            )
+        elif best_key[0] < 0:
             payload.setdefault("explanation", []).append(
                 f"Tried {tried} draws and kept the one that placed the most "
                 f"matches; {-best_key[0]} still have no time."

@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   Dices,
+  Info,
   SlidersHorizontal,
   Wand2,
 } from "lucide-react";
@@ -544,6 +545,15 @@ export function DryRunPreviewPage(): React.ReactElement {
         (w) => w?.code === "skipped_leaf" && w.leaf_key,
       )
     : [];
+  // A re-draw that came back with the arrangement you already had, and why.
+  // It goes ABOVE the sheet, not into Advanced details: the whole point is
+  // that the fixture looks unchanged, so the reason has to be where the eye
+  // lands (owner 2026-08-19).
+  const keptConfigured = ((p?.warnings ?? []) as {
+    code?: string;
+    tried?: number;
+    shuffled_unplaced?: number;
+  }[]).find((w) => w?.code === "redraw_kept_configured");
   const unplacedCount = p?.unscheduled.length ?? 0;
   const filtersOn = rows.length !== allRows.length;
 
@@ -712,6 +722,35 @@ export function DryRunPreviewPage(): React.ReactElement {
               <InputsChangedBanner context="accept" onRePreview={rePreview} />
             ) : null}
             {p ? (
+              <>
+              {keptConfigured ? (
+                <div
+                  role="status"
+                  data-testid="redraw-kept-configured"
+                  className="mb-2 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-muted/40 px-3 py-2"
+                >
+                  <Info
+                    aria-hidden="true"
+                    className="mt-0.5 h-4 w-4 shrink-0 text-warning"
+                  />
+                  <div className="min-w-0 text-xs">
+                    <p className="font-medium">
+                      {t("This is the same draw as before, on purpose.")}
+                    </p>
+                    <p className="pt-0.5 text-muted-foreground">
+                      {t(
+                        "Every shuffled draw left matches with no time, so the one that places all of them was kept.",
+                      )}{" "}
+                      {keptConfigured.shuffled_unplaced
+                        ? `${t("The best shuffle still left")} ${keptConfigured.shuffled_unplaced} ${t("without a time.")}`
+                        : ""}{" "}
+                      {t(
+                        "For a genuinely different draw, give the last day more time or loosen the finishing-order rule.",
+                      )}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
               <PreviewNotices
                 violations={p.violations}
                 unplacedCount={unplacedCount}
@@ -733,6 +772,7 @@ export function DryRunPreviewPage(): React.ReactElement {
                   setViewMode("sheet");
                 }}
               />
+              </>
             ) : null}
           </div>
         ) : null}
