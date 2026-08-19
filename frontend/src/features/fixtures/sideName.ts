@@ -8,11 +8,21 @@ import { groupPositionLabel } from "./groupSlotLabel";
 export function sideName(
   side: PreviewSide,
   teamNames: ReadonlyMap<string, string>,
+  /** Plan ref -> what that match is called on the page ("Semi-final 2").
+   * Without it a pointer falls back to the raw ref, which is an internal
+   * code the reader cannot look up anywhere (owner 2026-08-19: "Winner of
+   * p109 — the name is confusing"). */
+  refLabels?: ReadonlyMap<string, string>,
 ): string {
   if (side.team_id) return teamNames.get(side.team_id) ?? t("TBD");
   const src = side.source;
-  if (src?.type === "winner_of" && src.ref) return `${t("Winner of")} ${src.ref}`;
-  if (src?.type === "loser_of" && src.ref) return `${t("Loser of")} ${src.ref}`;
+  const named = (ref: string): string => refLabels?.get(ref) ?? ref;
+  if (src?.type === "winner_of" && src.ref) {
+    return `${t("Winner of")} ${named(src.ref)}`;
+  }
+  if (src?.type === "loser_of" && src.ref) {
+    return `${t("Loser of")} ${named(src.ref)}`;
+  }
   // Group placeholders render as a CLEAN short chip ("Group A #1"), never the
   // raw em-dash legacy label — same helper the FIFA bracket uses so they agree.
   if (src?.type === "group_position") {

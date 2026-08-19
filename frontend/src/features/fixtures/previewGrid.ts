@@ -181,6 +181,61 @@ export function categoryOf(m: PreviewMatch): string {
   return (segs.length > 1 ? segs.slice(1) : segs).join(" · ");
 }
 
+/**
+ * What each match is CALLED, so a bracket pointer can name it.
+ *
+ * "Winner of p109" is an internal plan reference: there is no p109 anywhere on
+ * the page to look up, which is exactly the complaint (owner 2026-08-19). A
+ * knockout round has a name people already use — the last round is the final,
+ * the one before it the semi-finals — and within a round the matches number
+ * from one. So p109 becomes "Semi-final 2", which the reader can find by
+ * eye in the same competition.
+ *
+ * Rounds deeper than the quarter-finals keep their number ("Round 2 · 3"),
+ * because inventing names for them would be less clear, not more.
+ */
+export function matchRefLabels(
+  matches: readonly PreviewMatch[],
+): Map<string, string> {
+  const depth = new Map<string, number>();
+  for (const m of matches) {
+    if (m.stage !== "knockout") continue;
+    depth.set(m.leaf_key, Math.max(depth.get(m.leaf_key) ?? 0, m.round_no ?? 0));
+  }
+  // Position within its own round, so two semi-finals read 1 and 2.
+  const order = new Map<string, number>();
+  const seen = new Map<string, number>();
+  for (const m of [...matches].sort(
+    (a, b) => (a.round_no ?? 0) - (b.round_no ?? 0) || a.ref.localeCompare(b.ref),
+  )) {
+    const key = `${m.leaf_key}|${m.round_no}`;
+    const n = (seen.get(key) ?? 0) + 1;
+    seen.set(key, n);
+    order.set(m.ref, n);
+  }
+  const out = new Map<string, string>();
+  for (const m of matches) {
+    const last = depth.get(m.leaf_key) ?? 0;
+    const n = order.get(m.ref) ?? 1;
+    const inRound = seen.get(`${m.leaf_key}|${m.round_no}`) ?? 1;
+    const suffix = inRound > 1 ? ` ${n}` : "";
+    let label: string;
+    if (m.stage !== "knockout" || !last) {
+      label = `${t("Round")} ${m.round_no}${suffix}`;
+    } else if (m.round_no === last) {
+      label = t("the final");
+    } else if (m.round_no === last - 1) {
+      label = `${t("semi-final")}${suffix}`;
+    } else if (m.round_no === last - 2) {
+      label = `${t("quarter-final")}${suffix}`;
+    } else {
+      label = `${t("round")} ${m.round_no}${suffix}`;
+    }
+    out.set(m.ref, label);
+  }
+  return out;
+}
+
 /** Flatten previewed matches into spreadsheet rows. */
 export function buildRows(
   matches: readonly PreviewMatch[],
@@ -188,6 +243,7 @@ export function buildRows(
   unscheduled: readonly string[] = [],
 ): PreviewRow[] {
   const unplaced = new Set(unscheduled);
+  const refLabels = matchRefLabels(matches);
   return matches.map((m) => {
     const day = m.scheduled_at ? m.scheduled_at.slice(0, 10) : "";
     const start = clockOf(m.scheduled_at);
@@ -211,8 +267,8 @@ export function buildRows(
       stageLabel: t(STAGE_LABELS[m.stage] ?? m.stage),
       group: isGroup ? `${t("Group")} ${shortGroupName(m.group_label)}` : "",
       round: m.round_no ?? 0,
-      home: sideName(m.home, teamNames),
-      away: sideName(m.away, teamNames),
+      home: sideName(m.home, teamNames, refLabels),
+      away: sideName(m.away, teamNames, refLabels),
       placed: Boolean(m.scheduled_at) && !unplaced.has(m.ref),
       match: m,
     };

@@ -5,6 +5,7 @@ import {
   buildRows,
   buildCourtGrid,
   courtSummary,
+  matchRefLabels,
   EMPTY_FILTERS,
   groupRows,
   facetsFor,
@@ -78,8 +79,10 @@ describe("buildRows", () => {
     expect(r.placed).toBe(false);
     expect(r.start).toBe("");
     expect(r.dayLabel).toBe("No date yet");
-    // Typed pointers still read in plain words.
-    expect(r.away).toBe("Winner of p1");
+    // Typed pointers read in plain words — and name a match on the page,
+    // never the internal plan ref (owner 2026-08-19).
+    expect(r.away).toBe("Winner of Round 1");
+    expect(r.away).not.toContain("p1");
     // A knockout row never mislabels its leaf tail as a group.
     expect(r.group).toBe("");
     expect(r.stageLabel).toBe("Knockout");
@@ -318,5 +321,46 @@ describe("the court grid: time down, courts across", () => {
       ["a"],
     );
     expect(buildCourtGrid(rows)).toEqual([]);
+  });
+});
+
+describe("a bracket pointer names a match you can find", () => {
+  // Owner 2026-08-19: "Winner of p109 — the name is confusing". p109 is an
+  // internal plan reference; there is no p109 anywhere on the page.
+  const ko = (ref: string, round: number): PreviewMatch =>
+    m({ ref, round_no: round, stage: "knockout", group_label: "" });
+
+  it("calls the last round the final and the one before it the semi-final", () => {
+    const labels = matchRefLabels([
+      ko("p1", 1), ko("p2", 1), ko("p3", 2), ko("p4", 2), ko("p5", 3),
+    ]);
+    expect(labels.get("p5")).toBe("the final");
+    expect(labels.get("p3")).toBe("semi-final 1");
+    expect(labels.get("p4")).toBe("semi-final 2");
+    expect(labels.get("p1")).toBe("quarter-final 1");
+  });
+
+  it("drops the number when a round holds only one match", () => {
+    const labels = matchRefLabels([ko("p1", 1), ko("p2", 2)]);
+    expect(labels.get("p2")).toBe("the final");
+    expect(labels.get("p1")).toBe("semi-final");
+  });
+
+  it("puts that name into the pointer instead of the raw ref", () => {
+    const rows = buildRows(
+      [
+        ko("p1", 1), ko("p2", 1),
+        m({
+          ref: "p3", round_no: 2, stage: "knockout", group_label: "",
+          home: { source: { type: "winner_of", ref: "p1" } },
+          away: { source: { type: "loser_of", ref: "p2" } },
+        } as Partial<PreviewMatch> & { ref: string }),
+      ],
+      NAMES,
+    );
+    const final = rows.find((r) => r.ref === "p3")!;
+    expect(final.home).toBe("Winner of semi-final 1");
+    expect(final.away).toBe("Loser of semi-final 2");
+    expect(final.home).not.toContain("p1");
   });
 });
