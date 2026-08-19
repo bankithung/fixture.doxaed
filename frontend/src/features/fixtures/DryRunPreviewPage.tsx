@@ -60,6 +60,7 @@ import {
 } from "./previewExport";
 import { competitionLabel } from "./previewFilters";
 import { PreviewNotices, type UnplacedLeaf } from "./PreviewNotices";
+import { PreviewProgress } from "./PreviewProgress";
 
 /** Pairing-layer warning labels per stable code (§7.7). */
 const WARNING_LABELS: Record<string, string> = {
@@ -770,7 +771,9 @@ export function DryRunPreviewPage(): React.ReactElement {
             aria-busy="true"
             data-testid="preview-skeleton"
           >
-            <div className="h-8 shrink-0 animate-pulse rounded bg-muted/60" />
+            {/* A re-draw takes real seconds now that it tries ten of them, so
+                the wait says what it is doing instead of pulsing in silence. */}
+            <PreviewProgress redraw={roll > 0} />
             <div className="flex flex-1 flex-col gap-1.5">
               {Array.from({ length: 18 }, (_, i) => (
                 <div
