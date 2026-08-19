@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Download, FileText, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ActionMenu, ActionMenuItem } from "@/components/ui/menu";
 import { Input } from "@/components/ui/input";
 import { Select, type SelectOption } from "@/components/ui/Select";
 import { cn } from "@/lib/tailwind";
@@ -73,6 +74,7 @@ export function PreviewToolbar({
   visible,
   onExportCsv,
   onExportPdf,
+  onExportCourtGrid,
 }: {
   /** ALL rows (unfiltered) — facets count against them. */
   rows: PreviewRow[];
@@ -85,6 +87,8 @@ export function PreviewToolbar({
   /** Both exports carry exactly what the filters are showing. */
   onExportCsv: () => void;
   onExportPdf: () => void;
+  /** The second PDF layout: time down, courts across. */
+  onExportCourtGrid?: () => void;
 }): React.ReactElement {
   const [drawer, setDrawer] = useState(false);
 
@@ -188,16 +192,37 @@ export function PreviewToolbar({
             <Download aria-hidden="true" className="h-3.5 w-3.5" />
             {t("CSV")}
           </Button>
-          <Button
-            variant="outline"
-            data-testid="export-pdf"
-            onClick={onExportPdf}
-            className="px-2.5 text-xs"
-            title={t("Print or save the rows you can see, landscape")}
-          >
-            <FileText aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("PDF")}
-          </Button>
+          {onExportCourtGrid ? (
+            // Two layouts of the SAME filtered rows: the list, and the
+            // time-by-court grid an official reads at the table.
+            <ActionMenu label={t("PDF")} icon={FileText} data-testid="export-pdf">
+              <ActionMenuItem
+                data-testid="export-pdf-list"
+                onSelect={onExportPdf}
+                title={t("One row per match, grouped as on screen")}
+              >
+                {t("List")}
+              </ActionMenuItem>
+              <ActionMenuItem
+                data-testid="export-pdf-grid"
+                onSelect={onExportCourtGrid}
+                title={t("Time down the side, courts across the top")}
+              >
+                {t("Court grid")}
+              </ActionMenuItem>
+            </ActionMenu>
+          ) : (
+            <Button
+              variant="outline"
+              data-testid="export-pdf"
+              onClick={onExportPdf}
+              className="px-2.5 text-xs"
+              title={t("Print or save the rows you can see, landscape")}
+            >
+              <FileText aria-hidden="true" className="h-3.5 w-3.5" />
+              {t("PDF")}
+            </Button>
+          )}
         </div>
       </div>
 

@@ -56,6 +56,7 @@ import {
 } from "./previewGrid";
 import {
   downloadPreviewCsv,
+  openPreviewCourtGridPdf,
   openPreviewPdf,
   type PreviewExportMeta,
 } from "./previewExport";
@@ -395,6 +396,10 @@ export function DryRunPreviewPage(): React.ReactElement {
       blackouts,
       meta: exportMeta,
     });
+  // The second layout (owner 2026-08-19): the same filtered rows as a
+  // time-by-court grid, for an official standing at a table.
+  const onExportCourtGrid = (): void =>
+    openPreviewCourtGridPdf({ rows, meta: exportMeta });
 
   /** Publish = the real generate + schedule endpoints replaying the previewed
    * seed, both guarded by `expected_inputs_hash` (D6/D10). */
@@ -835,6 +840,7 @@ export function DryRunPreviewPage(): React.ReactElement {
               visible={rows.length}
               onExportCsv={onExportCsv}
               onExportPdf={onExportPdf}
+              onExportCourtGrid={onExportCourtGrid}
             />
             <div className="max-h-[65vh] overflow-auto">
               <CourtLoadView
@@ -856,6 +862,7 @@ export function DryRunPreviewPage(): React.ReactElement {
               visible={rows.length}
               onExportCsv={onExportCsv}
               onExportPdf={onExportPdf}
+              onExportCourtGrid={onExportCourtGrid}
             />
             <MatchesSpreadsheet
               rows={rows}
@@ -879,6 +886,7 @@ export function DryRunPreviewPage(): React.ReactElement {
               visible={rows.length}
               onExportCsv={onExportCsv}
               onExportPdf={onExportPdf}
+              onExportCourtGrid={onExportCourtGrid}
             />
             <div className="max-h-[65vh] overflow-auto px-3 py-3">
               {selectedLeaf ? (

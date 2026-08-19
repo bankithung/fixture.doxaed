@@ -3,6 +3,7 @@ import type { PreviewMatch } from "@/api/tournaments";
 import {
   applyFilters,
   buildRows,
+  buildCourtGrid,
   courtSummary,
   EMPTY_FILTERS,
   groupRows,
@@ -270,5 +271,52 @@ describe("a court heading says what is played on it", () => {
     expect(groupRows(rows, "day")[0]!.sub).toBe("");
     // Day-and-court still reads day over court, as it always did.
     expect(groupRows(rows, "day_venue")[0]!.sub).toBe("Audi · T1");
+  });
+});
+
+describe("the court grid: time down, courts across", () => {
+  // Owner 2026-08-19, from a layout they sent: a list makes an official scan
+  // for their court; this puts the court above their head.
+  const at = (over: Partial<PreviewMatch> & { ref: string }): PreviewMatch =>
+    m({ group_label: "", ...over });
+
+  it("gives one row per start time and one column per court", () => {
+    const rows = buildRows(
+      [
+        at({ ref: "a", venue: "T1", scheduled_at: "2026-08-16T08:00:00" }),
+        at({ ref: "b", venue: "T2", scheduled_at: "2026-08-16T08:00:00" }),
+        at({ ref: "c", venue: "T1", scheduled_at: "2026-08-16T08:20:00" }),
+      ],
+      NAMES,
+    );
+    const [day] = buildCourtGrid(rows);
+    expect(day!.courts).toEqual(["T1", "T2"]);
+    expect(day!.slots.map((s) => s.start)).toEqual(["08:00", "08:20"]);
+    // The 8:20 row has T1 busy and T2 idle — an empty cell, not a shifted one.
+    expect(day!.slots[1]!.cells[0]).not.toBeNull();
+    expect(day!.slots[1]!.cells[1]).toBeNull();
+  });
+
+  it("keeps each day its own grid, in date order", () => {
+    const rows = buildRows(
+      [
+        at({ ref: "b", venue: "T1", scheduled_at: "2026-08-17T09:00:00" }),
+        at({ ref: "a", venue: "T1", scheduled_at: "2026-08-16T09:00:00" }),
+      ],
+      NAMES,
+    );
+    expect(buildCourtGrid(rows).map((d) => d.day)).toEqual([
+      "2026-08-16",
+      "2026-08-17",
+    ]);
+  });
+
+  it("holds no cell for a match with no time", () => {
+    const rows = buildRows(
+      [at({ ref: "a", venue: "T1", scheduled_at: null })],
+      NAMES,
+      ["a"],
+    );
+    expect(buildCourtGrid(rows)).toEqual([]);
   });
 });

@@ -873,3 +873,24 @@ describe("DryRunPreviewPage \u00b7 a re-draw shows its work", () => {
     expect(screen.getByTestId("preview-progress-elapsed")).toBeInTheDocument();
   });
 });
+
+describe("DryRunPreviewPage \u00b7 the PDF has two layouts", () => {
+  it("offers the list and the court grid, both from the rows on screen", async () => {
+    // Owner 2026-08-19: "we can have two options, one is the same current PDF
+    // view and another is the attached image view" (time down, courts across).
+    const open = vi
+      .spyOn(window, "open")
+      .mockReturnValue({
+        document: { write: vi.fn(), close: vi.fn() },
+        focus: vi.fn(),
+        print: vi.fn(),
+      } as never);
+    mount();
+    await screen.findByTestId("matches-spreadsheet");
+    await userEvent.click(screen.getByTestId("export-pdf"));
+    expect(screen.getByTestId("export-pdf-list")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("export-pdf-grid"));
+    expect(open).toHaveBeenCalled();
+    open.mockRestore();
+  });
+});
