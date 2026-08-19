@@ -27,7 +27,7 @@ without touching callers.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Container, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import Any
@@ -1455,13 +1455,157 @@ def finish_solo_busy(
     return out
 
 
-def _pin_venue_ok(r: ScopedRule, venue: str, base_of: dict[str, str]) -> bool:
+def _pin_venue_ok(r: ScopedRule, venue: str, base_of: Mapping[str, str]) -> bool:
     """Finals venue pin (increment T): with ``venues`` named, the pinned
     match may only sit on one of them — a sub-venue counts through its
     physical base ("Hall · T2" satisfies a pin on "Hall")."""
     allowed = r.params.get("venues")
     return (not allowed or venue in allowed
             or base_of.get(venue, venue) in allowed)
+
+
+def pin_time_ok(
+    r: ScopedRule, dt: datetime, end: datetime, cfg: ScheduleConfig,
+) -> bool:
+    """The DATE/TIME half of a ``round_pinned_to_window`` rule (the venue half
+    is ``_pin_venue_ok``). One implementation, because the placer applies it at
+    slot-scan time and ``validate_schedule`` has to judge a hand-move by the
+    same window — without that, the optimizer had to freeze every pinned match
+    where it stood rather than search inside its window."""
+    pd = r.params.get("date")
+    if pd == "last_day":
+        pd = cfg.date_end
+    if isinstance(pd, date) and dt.date() != pd:
+        return False
+    if r.params.get("from") and dt.time() < r.params["from"]:
+        return False
+    if r.params.get("to") and end > datetime.combine(dt.date(), r.params["to"]):
+        return False
+    return True
+
+
+# ------------------------------------------------------------- per-match gate
+#: Codes ``single_match_reasons`` emits, so the FE's localization table and any
+#: caller filtering on them have one place to read. Every one of these is a
+#: HARD refusal in ``schedule_matches.feasible`` as well.
+SINGLE_MATCH_CODES = (
+    "venue_type_mismatch",
+    "venue_sport_mismatch",
+    "court_competition_mismatch",
+    "blackout_date",
+    "blackout_window",
+    "reserve_day",
+    "outside_session_window",
+    "team_blackout",
+    "closing_round_too_early",
+    "non_closing_round_too_late",
+)
+
+
+def single_match_reasons(
+    m: MatchSlotReq, dt: datetime, venue: str, end: datetime,
+    cfg: ScheduleConfig, base_of: Mapping[str, str],
+    *,
+    blackout_rules: Sequence[ScopedRule] = (),
+    recurring_rules: Sequence[ScopedRule] = (),
+    reserve_rules: Sequence[ScopedRule] = (),
+    hard_windows: Sequence[ScopedRule] = (),
+    relax_vtype: Container[str] = frozenset(),
+    closing_windows: Sequence[tuple[ScopedRule, set[str], date | None]] = (),
+) -> Iterator[dict[str, Any]]:
+    """Every HARD refusal that depends on this match and this slot alone,
+    yielded as coded violations.
+
+    THE gate: the greedy, the optimizer's candidate generator and
+    ``validate_schedule`` all read it, because three partial copies is how a
+    match hand-moved onto a wrong-type venue, outside its category's session
+    window, or onto a day its sport is blacked out of came back from the
+    conflict check with nothing to say. Rule lists arrive pre-resolved — the
+    caller filters them once per run, not once per candidate slot — so each
+    caller decides which scopes it owns (an "all"-scope recurring blackout is
+    already cut from the placer's grid; the validator still has to check it).
+    """
+    base = base_of.get(venue, venue)
+    if m.venue_type and m.sport not in relax_vtype:
+        vt = cfg.venue_types.get(base, "")
+        if vt and vt != m.venue_type:
+            yield {"code": "venue_type_mismatch", "hard": True,
+                   "match_id": m.id, "venue": venue,
+                   "venue_type": vt, "expected": m.venue_type}
+    allowed_sports = cfg.venue_sports.get(base)
+    if allowed_sports and m.sport and m.sport not in allowed_sports:
+        yield {"code": "venue_sport_mismatch", "hard": True, "match_id": m.id,
+               "venue": venue, "sport": m.sport, "allowed": list(allowed_sports)}
+    if not court_open_to(cfg, venue, m.leaf_key):
+        yield {"code": "court_competition_mismatch", "hard": True,
+               "match_id": m.id, "venue": venue, "leaf_key": m.leaf_key,
+               "allowed": list(cfg.court_competitions.get(venue) or [])}
+
+    tkey = tuple(t for t in (m.home, m.away) if t)
+
+    def in_scope(r: ScopedRule) -> bool:
+        return scope_matches(r.scope, sport=m.sport, leaf_key=m.leaf_key,
+                             team_ids=tkey, team_tags=cfg.team_tags)
+
+    for r in blackout_rules:
+        if dt.date() in r.params["dates"] and in_scope(r):
+            yield {"code": "blackout_date", "hard": True, "match_id": m.id,
+                   "scope": r.scope, "date": dt.date().isoformat()}
+    for r in recurring_rules:
+        days = r.params.get("days")
+        if days and dt.weekday() not in days:
+            continue
+        if not in_scope(r):
+            continue
+        if dt < datetime.combine(dt.date(), r.params["to"]) \
+                and datetime.combine(dt.date(), r.params["from"]) < end:
+            yield {"code": "blackout_window", "hard": True, "match_id": m.id,
+                   "label": str(r.params.get("label") or ""),
+                   "from": r.params["from"].isoformat(),
+                   "to": r.params["to"].isoformat()}
+    for r in reserve_rules:
+        if dt.date() in r.params["dates"] and in_scope(r):
+            yield {"code": "reserve_day", "hard": True, "match_id": m.id,
+                   "scope": r.scope, "date": dt.date().isoformat()}
+    # Every matching hard window must CONTAIN the match (intersection
+    # semantics — two windows that jointly starve a leaf surface as a
+    # violation, §9 A8).
+    for r in hard_windows:
+        if not in_scope(r):
+            continue
+        days = r.params.get("days")
+        if (days and dt.weekday() not in days) or dt.time() < r.params["from"] \
+                or end > datetime.combine(dt.date(), r.params["to"]):
+            yield {"code": "outside_session_window", "hard": True,
+                   "match_id": m.id, "scope": r.scope,
+                   "from": r.params["from"].isoformat(),
+                   "to": r.params["to"].isoformat()}
+    for t in tkey:
+        if dt.date() in cfg.team_blackouts.get(t, ()):
+            yield {"code": "team_blackout", "hard": True,
+                   "match_id": m.id, "team_id": t}
+    if closing_windows and not closing_round_ok(
+        m, dt.date(), closing_windows, cfg, tkey,
+    ):
+        is_closing = any(m.id in ids for _r, ids, _d in closing_windows)
+        yield {
+            "code": ("closing_round_too_early" if is_closing
+                     else "non_closing_round_too_late"),
+            "hard": True, "match_id": m.id, "other_match_id": None,
+            "date": dt.date().isoformat(),
+        }
+
+
+def single_match_ok(
+    m: MatchSlotReq, dt: datetime, venue: str, end: datetime,
+    cfg: ScheduleConfig, base_of: Mapping[str, str],
+    **rules: Any,
+) -> bool:
+    """``single_match_reasons`` as a bool. Lazy: only the first failing check
+    ever builds a record, so the placer's slot scan pays for one generator."""
+    for _reason in single_match_reasons(m, dt, venue, end, cfg, base_of, **rules):
+        return False
+    return True
 
 
 # --------------------------------------------------------------------------- engine
@@ -1717,41 +1861,29 @@ def _schedule_once(
             return False
         return bool(r.params["from"] <= dt.time() < r.params["to"])
 
-    def _fits_window(r: ScopedRule, dt: datetime, end: datetime) -> bool:
-        """Hard window: the whole match must sit inside the window on a
-        matching day (days listed ⇒ other days are out entirely)."""
-        days = r.params.get("days")
-        if days and dt.weekday() not in days:
-            return False
-        return (dt.time() >= r.params["from"]
-                and end <= datetime.combine(dt.date(), r.params["to"]))
-
-    def _closing_ok(m: MatchSlotReq, dt: datetime,
-                    tkey: tuple[str, ...]) -> bool:
-        """The closing-rounds gate, shared by every caller through
-        ``closing_round_ok`` so the greedy, the optimizer and the validator
-        cannot drift apart."""
-        return closing_round_ok(m, dt.date(), closing_windows, cfg, tkey)
+    # The per-match half of the gate, pre-filtered once per run. Sport-/leaf-
+    # scoped recurring blackouts and reserve days can't be cut from the shared
+    # grid (build_slots), so only those are the placer's to enforce.
+    _single_rules: dict[str, Any] = {
+        "blackout_rules": blackout_rules,
+        "recurring_rules": recurring_scoped,
+        "reserve_rules": reserve_scoped,
+        "hard_windows": hard_windows,
+        "relax_vtype": relax_vtype,
+        "closing_windows": closing_windows,
+    }
 
     def feasible(m: MatchSlotReq, dt: datetime, venue: str, wend: datetime,
                  dur: timedelta, teams: list[str],
                  honour_deadline: bool = False) -> bool:
-        if m.venue_type and m.sport not in relax_vtype:
-            vt = cfg.venue_types.get(base_of.get(venue, venue), "")
-            if vt and vt != m.venue_type:
-                return False
-        # Sport allow-list (owner ask 2026-06-25): a venue bound to specific
-        # sports rejects matches of any other sport — "TT only on TT courts".
-        allowed_sports = cfg.venue_sports.get(base_of.get(venue, venue))
-        if allowed_sports and m.sport and m.sport not in allowed_sports:
-            return False
-        # Competition allow-list per court (spec 2026-08-16): court 1 boys,
-        # court 2 girls. Narrower than the venue's sport list and checked
-        # against the match's leaf, so it binds at any depth of the tree.
-        if not court_open_to(cfg, venue, m.leaf_key):
-            return False
         end = dt + dur
         if end > wend:
+            return False
+        # Venue type, sport allow-list, per-court reservation, scoped blackout
+        # dates and windows, reserve days, hard session windows, team blackout
+        # days, closing rounds — ONE gate, shared with validate_schedule and the
+        # optimizer's candidate generator (they used to hold partial copies).
+        if not single_match_ok(m, dt, venue, end, cfg, base_of, **_single_rules):
             return False
         # Bracket precedence: a dependent never starts before its feeders end
         # (+ the advancing side's rest gap — the winner plays both matches),
@@ -1772,34 +1904,6 @@ def _schedule_once(
         if _overlaps(venue_busy[venue], dt, end):
             return False
         tkey = tuple(teams)
-        for r in blackout_rules:
-            if dt.date() in r.params["dates"] and _scope_ok(r, m, tkey):
-                return False
-        # Sport-/leaf-scoped recurring blackouts and reserve days can't be cut
-        # from the shared grid (build_slots) — enforce them per match here.
-        for r in recurring_scoped:
-            if _scope_ok(r, m, tkey):
-                days = r.params.get("days")
-                if days is None or dt.weekday() in days:
-                    ws = datetime.combine(dt.date(), r.params["from"])
-                    we = datetime.combine(dt.date(), r.params["to"])
-                    if dt < we and ws < end:
-                        return False
-        for r in reserve_scoped:
-            if dt.date() in r.params["dates"] and _scope_ok(r, m, tkey):
-                return False
-        # Every matching hard window must contain the match (intersection
-        # semantics — two windows that jointly starve a leaf surface as a
-        # violation, §9 A8).
-        for r in hard_windows:
-            if _scope_ok(r, m, tkey) and not _fits_window(r, dt, end):
-                return False
-        # Closing rounds keep the closing days (owner 2026-08-17). A closing
-        # round may not play BEFORE the date the host set; with `exclusive`,
-        # nothing else may play from that date on — which is what "the end
-        # days are only finals and semis" actually means.
-        if not _closing_ok(m, dt, tkey):
-            return False
         # Phase barrier: nothing of a later phase may start until every match
         # of an earlier phase has ended (and a phase already placed ahead of
         # this one — a pinned final — caps this match's end).
@@ -1981,18 +2085,8 @@ def _schedule_once(
 
     def _pin_ok(r: ScopedRule, dt: datetime, end: datetime,
                 venue: str) -> bool:
-        if not _pin_venue_ok(r, venue, base_of):  # finals venue pin (T)
-            return False
-        pd = r.params.get("date")
-        if pd == "last_day":
-            pd = cfg.date_end
-        if isinstance(pd, date) and dt.date() != pd:
-            return False
-        if r.params.get("from") and dt.time() < r.params["from"]:
-            return False
-        if r.params.get("to") and end > datetime.combine(dt.date(), r.params["to"]):
-            return False
-        return True
+        return (_pin_venue_ok(r, venue, base_of)      # finals venue pin (T)
+                and pin_time_ok(r, dt, end, cfg))
 
     # Pinned-round resolution (§4.7): match id -> its pin rule.
     pin_of = resolve_pinned_rounds(matches, pinned_rules, cfg)
@@ -2734,6 +2828,28 @@ def validate_schedule(
     team_items: dict[str, list[TeamItem]] = defaultdict(list)
     # (start, end, sport, leaf, match_id|None) for mutual-exclusion checking.
     ex_items: list[tuple[datetime, datetime, str, str, str | None]] = []
+    # The per-match gate, pre-resolved once. The validator owns EVERY scope:
+    # an "all"-scope recurring blackout is cut from the placer's grid, so the
+    # placer never checks it, but a hand-move can land squarely inside one.
+    rules = cfg.constraint_rules
+    single_rules: dict[str, Any] = {
+        "blackout_rules": [
+            r for r in rules if r.type == "blackout_dates" and r.hard
+        ],
+        "recurring_rules": [
+            r for r in rules
+            if r.type == "recurring_blackout_window" and r.hard
+        ],
+        "reserve_rules": [r for r in rules if r.type == "reserve_days"],
+        "hard_windows": [
+            r for r in rules
+            if r.type in ("preferred_window", "category_session_window") and r.hard
+        ],
+        "relax_vtype": relaxed_venue_type_sports(cfg, matches),
+        "closing_windows": resolve_closing_rounds(
+            matches, [r for r in rules if r.type == "closing_rounds_window"], cfg,
+        ),
+    }
     for mid, (dt, venue) in assignments.items():
         end = dt + dur_of(mid)
         venue_items[venue].append((dt, end, mid))
@@ -2741,42 +2857,29 @@ def validate_schedule(
         if m_ex:
             ex_items.append((dt, end, m_ex.sport, m_ex.leaf_key, mid))
         # Per-venue off-day (increment S): landing on one is hard, regardless
-        # of what else the day holds. Sub-venues resolve to their base.
+        # of what else the day holds. Sub-venues resolve to their base — via the
+        # authoritative map first, then by suffix, so a stale court string
+        # ("Hall · T9" after ``count`` dropped) still lands on its hall instead
+        # of falling through unchecked.
         if dt.date() in cfg.venue_unavailable_dates.get(
-            base_of.get(venue, venue), ()
+            base_of.get(venue) or court_base_of(venue, cfg.venues), ()
         ):
             violations.append({
                 "code": "venue_unavailable", "hard": True, "match_id": mid,
                 "venue": venue, "date": dt.date().isoformat(),
             })
-        # Resource bindings, checked HERE and not only at placement time: every
-        # repair verb (reschedule_match / swap_slots / bulk moves) routes
-        # through validate_schedule, so before this the sport allow-list could
-        # be walked straight past by a manual move. The per-court competition
-        # reservation would have inherited the same hole.
+        # Resource bindings and every other per-match rule, checked HERE and
+        # not only at placement time: every repair verb (reschedule_match /
+        # swap_slots / bulk moves) routes through validate_schedule, so a
+        # rule the placer alone knew about could be walked straight past by a
+        # manual move.
         if m_ex is not None:
-            base = base_of.get(venue, venue)
-            allowed_sports = cfg.venue_sports.get(base)
-            if allowed_sports and m_ex.sport and m_ex.sport not in allowed_sports:
-                violations.append({
-                    "code": "venue_sport_mismatch", "hard": True, "match_id": mid,
-                    "venue": venue, "sport": m_ex.sport,
-                    "allowed": list(allowed_sports),
-                })
-            if not court_open_to(cfg, venue, m_ex.leaf_key):
-                violations.append({
-                    "code": "court_competition_mismatch", "hard": True,
-                    "match_id": mid, "venue": venue, "leaf_key": m_ex.leaf_key,
-                    "allowed": list(cfg.court_competitions.get(venue) or []),
-                })
-        m = by_id.get(mid)
-        if m:
-            for t in (m.home, m.away):
+            violations.extend(single_match_reasons(
+                m_ex, dt, venue, end, cfg, base_of, **single_rules,
+            ))
+            for t in (m_ex.home, m_ex.away):
                 if t:
                     team_items[t].append((dt, end, mid, venue))
-                    if dt.date() in cfg.team_blackouts.get(t, ()):
-                        violations.append({"code": "team_blackout", "hard": True,
-                                           "match_id": mid, "team_id": t})
     for booking in preoccupied or []:
         venue, start, end, team_ids = booking[0], booking[1], booking[2], booking[3]
         venue_items[venue].append((start, end, None))
@@ -2786,15 +2889,17 @@ def validate_schedule(
         if meta:
             ex_items.append((start, end, str(meta[0]), str(meta[1]), None))
 
-    # Finals venue pin (increment T): a pinned-round match parked on a venue
-    # outside its ``venues`` list is a hard violation — the repair verbs
-    # refuse to move a final off center court unless forced.
-    venue_pins = [
-        r for r in cfg.constraint_rules
-        if r.type == "round_pinned_to_window" and r.params.get("venues")
+    # Round pins (increment T + owner 2026-08-17): a pinned-round match parked
+    # on a venue outside its ``venues`` list, or outside the day/window the host
+    # pinned it to, is a hard violation — the repair verbs refuse to move a
+    # final off center court, or off finals day, unless forced. The WINDOW half
+    # went unchecked until now, which is the only reason the optimizer had to
+    # freeze pinned matches rather than search inside their window.
+    pin_rules = [
+        r for r in cfg.constraint_rules if r.type == "round_pinned_to_window"
     ]
-    if venue_pins:
-        for mid, r in resolve_pinned_rounds(matches, venue_pins, cfg).items():
+    if pin_rules:
+        for mid, r in resolve_pinned_rounds(matches, pin_rules, cfg).items():
             slot = assignments.get(mid)
             if slot is None:
                 continue
@@ -2805,30 +2910,12 @@ def validate_schedule(
                     "round": str(r.params.get("round")),
                     "allowed_venues": list(r.params.get("venues") or []),
                 })
-
-    # Closing-rounds window (owner 2026-08-17): before this, a repair verb
-    # could hand-move a final back onto day one, or drop a first-round match
-    # onto the finals day the host had cleared. Judged by the SAME resolver the
-    # draw was built under, so the greedy and the validator cannot disagree.
-    closing_windows = resolve_closing_rounds(
-        matches,
-        [r for r in cfg.constraint_rules if r.type == "closing_rounds_window"],
-        cfg,
-    )
-    if closing_windows:
-        for m in matches:
-            slot = assignments.get(m.id)
-            if slot is None:
-                continue
-            if closing_round_ok(m, slot[0].date(), closing_windows, cfg):
-                continue
-            is_closing = any(m.id in ids for _r, ids, _d in closing_windows)
-            violations.append({
-                "code": ("closing_round_too_early" if is_closing
-                         else "non_closing_round_too_late"),
-                "hard": True, "match_id": m.id, "other_match_id": None,
-                "date": slot[0].date().isoformat(),
-            })
+            if not pin_time_ok(r, slot[0], slot[0] + dur_of(mid), cfg):
+                violations.append({
+                    "code": "pinned_round_window", "hard": True,
+                    "match_id": mid, "round": str(r.params.get("round")),
+                    "at": slot[0].isoformat(),
+                })
 
     # Phased finish (owner 2026-08-19): a repair verb could otherwise drag a
     # final back among the quarter-finals, or leave one category's semi after
@@ -3075,43 +3162,15 @@ def validate_schedule(
                 "match_id": m.id, "other_match_id": None,
             })
 
-    # Grid-subtractive rules are cut from the slot grid at build time, so the
-    # greedy can never breach them — but a manual move can land anywhere
-    # (audit 2026-07-13): re-check blackout windows and ceremonies here.
-    def _rule_scope_ok(r: ScopedRule, m: MatchSlotReq | None) -> bool:
-        if m is None:
-            return r.scope == "all"
-        return scope_matches(
-            r.scope, sport=m.sport, leaf_key=m.leaf_key,
-            team_ids=tuple(t for t in (m.home, m.away) if t),
-            team_tags=cfg.team_tags,
-        )
-
-    recurring_hard = [
-        r for r in cfg.constraint_rules
-        if r.type == "recurring_blackout_window" and r.hard
-    ]
+    # Ceremonies are cut from the slot grid at build time, so the greedy can
+    # never breach them — but a manual move can land anywhere (audit
+    # 2026-07-13). Recurring blackout windows are handled by the per-match gate
+    # above; a ceremony is not scoped to a match at all, so it stays here.
     ceremony_rules = [
         r for r in cfg.constraint_rules if r.type == "ceremony_block"
     ]
     for mid, (dt, venue) in assignments.items():
         end = dt + dur_of(mid)
-        m = by_id.get(mid)
-        for r in recurring_hard:
-            days = r.params.get("days")
-            if days and dt.weekday() not in days:
-                continue
-            if not _rule_scope_ok(r, m):
-                continue
-            ws = datetime.combine(dt.date(), r.params["from"])
-            we = datetime.combine(dt.date(), r.params["to"])
-            if dt < we and ws < end:
-                violations.append({
-                    "code": "blackout_window", "hard": True, "match_id": mid,
-                    "label": str(r.params.get("label") or ""),
-                    "from": r.params["from"].isoformat(),
-                    "to": r.params["to"].isoformat(),
-                })
         for r in ceremony_rules:
             if r.params.get("date") != dt.date():
                 continue
@@ -3160,6 +3219,52 @@ def validate_schedule(
                 "code": "official_capacity_exceeded", "hard": True,
                 "match_id": subject[2], "scope": r.scope, "capacity": cap,
                 "at": cur[0].isoformat(),
+            })
+
+    # Calendar membership (owner 2026-08-19). ONE check that subsumes the daily
+    # window, excluded dates, all-scope blackout and reserve days, per-venue
+    # windows, per-venue breaks, venue off-days, and court strings that do not
+    # exist: if the placer would never have OFFERED this (start, venue), a
+    # hand-move must not be told there is no conflict. Probed before this — a
+    # match at 22:00, on a date a month past ``date_end``, or on a court named
+    # "Audi · T9" all came back clean, and every repair verb trusts that answer.
+    #
+    # A match a named rule has already explained is left alone: this is the
+    # catch-all, and the specific reason is the better answer.
+    #
+    # It judges the OPEN WINDOW, not the slot grid. The placer only ever offers
+    # starts on the grid step, but reflow pushes a delayed match to whatever
+    # minute its predecessor actually ended and the rain-day shift keeps each
+    # match's own time of day — both legitimate, neither on the step. What is
+    # never legitimate is a time no window covers at all.
+    explained = {v.get("match_id") for v in violations}
+    open_windows: dict[tuple[str, date], list[tuple[datetime, datetime]]] = \
+        defaultdict(list)
+    first_start: dict[tuple[str, datetime], datetime] = {}
+    for s, v, w in build_slots(cfg):
+        key = (v, w)
+        prev = first_start.get(key)
+        if prev is None or s < prev:
+            first_start[key] = s
+    for (v, w), s in first_start.items():
+        open_windows[(v, s.date())].append((s, w))
+    for mid, (dt, venue) in assignments.items():
+        if mid in explained:
+            continue
+        holding = [
+            (ws, we) for ws, we in open_windows.get((venue, dt.date()), ())
+            if ws <= dt < we
+        ]
+        if not holding:
+            violations.append({
+                "code": "off_grid", "hard": True, "match_id": mid,
+                "venue": venue, "at": dt.isoformat(),
+            })
+        elif all(dt + dur_of(mid) > we for _ws, we in holding):
+            violations.append({
+                "code": "runs_past_window", "hard": True, "match_id": mid,
+                "venue": venue, "at": dt.isoformat(),
+                "window_end": max(we for _ws, we in holding).isoformat(),
             })
     return violations
 

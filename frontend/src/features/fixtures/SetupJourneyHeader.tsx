@@ -88,6 +88,7 @@ export function SetupJourneyHeader({
   activeStep,
   doneSteps,
   onStepClick,
+  actions,
 }: {
   step: JourneyStep;
   /** Slimmer spacing for the preview page's top strip. */
@@ -99,6 +100,9 @@ export function SetupJourneyHeader({
   doneSteps?: Partial<Record<VisibleStep, boolean>>;
   /** Deep-link from a completed, current, or optional step. */
   onStepClick?: (step: VisibleStep) => void;
+  /** Page-level actions, shown top right beside the steps — where a host
+   * looks for them on every page of the funnel (owner 2026-08-19). */
+  actions?: React.ReactNode;
 }): React.ReactElement {
   const pointer = VISIBLE_POINTER[step === "done" ? "done" : (String(step) as "1" | "2" | "3")];
   // In page-nav mode the "you are here" label + line follow the active page;
@@ -118,7 +122,8 @@ export function SetupJourneyHeader({
       aria-label={t("Fixture setup steps")}
       className={cn("flex flex-col", compact ? "gap-1" : "gap-1.5")}
     >
-      <ol className="flex items-center gap-1 text-xs">
+      <div className="flex items-start gap-3">
+      <ol className="flex flex-1 items-center gap-1 text-xs">
         {STEPS.map((s) => {
           const state = dotState(s.n, step, activeStep, doneSteps);
           // Page-nav mode → every step is a reachable page (even "todo" ones);
@@ -171,6 +176,8 @@ export function SetupJourneyHeader({
           );
         })}
       </ol>
+      {actions ? <div className="shrink-0">{actions}</div> : null}
+      </div>
       {step !== "done" ? (
         <p className="text-xs text-muted-foreground sm:hidden">
           {t(`Step ${shownStep} of 5: ${shownLabel}`)}

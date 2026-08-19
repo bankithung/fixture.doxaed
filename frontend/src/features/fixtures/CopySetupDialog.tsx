@@ -109,9 +109,13 @@ export function CopySetupDialog({
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
+      variant="side"
       ariaLabel={t("Copy fixture setup")}
     >
-      <div data-testid="copy-setup-dialog" className="flex flex-col gap-4">
+      <div
+        data-testid="copy-setup-dialog"
+        className="flex h-full flex-col gap-4 overflow-y-auto"
+      >
         <div>
           <h2 className="text-base font-semibold">
             {t("Copy setup from another tournament")}
