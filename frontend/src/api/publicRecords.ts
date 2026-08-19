@@ -3,6 +3,8 @@ import { api } from "./client";
 export interface TeamMatchRow {
   match_id: string;
   opponent: string;
+  /** Signed crest URL of the opponent, "" when they have none. */
+  opponent_crest?: string;
   home: boolean;
   score: string | null;
   set_scores: number[][];
@@ -24,6 +26,8 @@ export interface PublicBadge {
 export interface PublicTeamRecord {
   team_id: string;
   team_name: string;
+  /** Signed crest URL, "" when the team has no badge. */
+  crest?: string;
   leaf_key: string;
   played: number;
   wins: number;
@@ -62,6 +66,8 @@ export interface SchoolHistorySeason {
     teams: {
       team_id: string;
       team_name: string;
+      /** Signed crest URL, "" when the team has no badge. */
+      crest?: string;
       leaf_key: string;
       played: number;
       wins: number;

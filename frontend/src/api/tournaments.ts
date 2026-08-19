@@ -277,6 +277,8 @@ export interface TeamRow {
   /** Current seed (nullable) — the SeedListEditor prefills from this. */
   seed?: number | null;
   player_count: number;
+  /** Signed crest URL, "" when the team has no badge. */
+  crest?: string;
   /** Inline roster (Teams tab expands a team to show it). */
   players?: TeamPlayerRow[];
 }
@@ -312,6 +314,9 @@ export interface MiniTeam {
   id: string;
   name: string;
   short_name: string;
+  /** Signed crest URL, "" when the team has no badge. Render it with
+   * `components/ui/TeamCrest` so the fallback is initials, never a gap. */
+  crest?: string;
 }
 
 /** Resolved set-scoring rules served by the backend (sport profile merged
@@ -468,6 +473,8 @@ export interface PublicScheduleSide {
   name: string;
   short_name: string;
   school: string;
+  /** Signed crest URL, "" when the team has no badge. */
+  crest?: string;
 }
 
 /** One match of the public read-only schedule (trust layer, increment H). */
@@ -568,6 +575,8 @@ export interface StandingRow {
   team_id: string;
   name: string;
   school: string;
+  /** Signed crest URL, "" when the team has no badge. */
+  crest?: string;
   P: number;
   W: number;
   D: number;
@@ -628,6 +637,8 @@ export interface LeadersBoard {
     team_id?: string;
     name?: string;
     team_name?: string;
+    /** Signed crest URL of `team_name`'s team, "" when it has none. */
+    team_crest?: string;
     played?: number;
     value: number | string;
     detail?: string;

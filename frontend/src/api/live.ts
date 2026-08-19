@@ -12,6 +12,8 @@ export interface LiveTeam {
   id: string;
   name: string;
   short_name: string;
+  /** Signed crest URL, "" when the team has no badge. */
+  crest?: string;
   players: MiniPlayer[];
 }
 
