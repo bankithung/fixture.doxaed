@@ -192,3 +192,49 @@ describe("ParticipationPage", () => {
     expect(screen.getByText("Nobody matches that")).toBeInTheDocument();
   });
 });
+
+describe("ParticipationWorkbench \u00b7 the sheet reads like a spreadsheet", () => {
+  it("numbers the rows and lets a column be dragged wider", async () => {
+    // Owner 2026-08-19: "the columns the user should be able to drag and
+    // increase width so that I can view full text."
+    mount();
+    await screen.findByTestId("participation-m1");
+    const sheet = screen.getByTestId("participation-sheet");
+    // A row-number gutter, exactly as a spreadsheet has one.
+    const gutter = sheet.querySelectorAll("[data-row-number]");
+    expect(gutter).toHaveLength(3);
+    expect(gutter[0]).toHaveTextContent("1");
+    expect(gutter[2]).toHaveTextContent("3");
+
+    const handle = screen.getByTestId("participation-resize-name");
+    const before = Number(handle.getAttribute("aria-valuenow"));
+    // Reachable without a pointer: the arrow keys resize too.
+    handle.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBeGreaterThan(before);
+
+    // Once moved, the offer to put them back appears.
+    expect(screen.getByTestId("participation-reset-columns")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("participation-reset-columns"));
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(before);
+  });
+
+  it("keeps a width narrower than the grab handle out of reach", async () => {
+    mount();
+    const handle = await screen.findByTestId("participation-resize-roll");
+    handle.focus();
+    for (let i = 0; i < 12; i++) await userEvent.keyboard("{ArrowLeft}");
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBeGreaterThanOrEqual(
+      Number(handle.getAttribute("aria-valuemin")),
+    );
+  });
+
+  it("sorting still works from the heading beside the handle", async () => {
+    mount();
+    await screen.findByTestId("participation-m1");
+    const rowIds = () =>
+      screen.getAllByTestId(/^participation-m/).map((el) => el.getAttribute("data-testid"));
+    await userEvent.click(screen.getByTestId("participation-sort-events"));
+    expect(rowIds()[0]).toBe("participation-m3");
+  });
+});

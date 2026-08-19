@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -13,6 +13,11 @@ import { tournamentsApi } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
+import {
+  ColumnResizer,
+  measureColumn,
+  useColumnWidths,
+} from "@/components/ui/sheetColumns";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -63,13 +68,31 @@ const EVENT_FILTERS = [
   { value: "none", label: "Not entered yet" },
 ];
 
-const SORT_COLUMNS: { key: ParticipationSortKey; label: string; align?: "right" }[] = [
-  { key: "name", label: "Name" },
-  { key: "class", label: "Class" },
-  { key: "roll", label: "Roll" },
-  { key: "school", label: "School" },
-  { key: "events", label: "Events", align: "right" },
+/** The sheet's columns, in order, with the width each starts at. Everything
+ * else about them (sorting, truncation, the resize handle) follows from this
+ * one list, so a column is added here and nowhere else. */
+const SHEET_COLUMNS: {
+  key: string;
+  label: string;
+  width: number;
+  sort?: ParticipationSortKey;
+  align?: "right";
+}[] = [
+  { key: "name", label: "Name", width: 210, sort: "name" },
+  { key: "class", label: "Class", width: 96, sort: "class" },
+  { key: "roll", label: "Roll", width: 84, sort: "roll" },
+  { key: "school", label: "School", width: 190, sort: "school" },
+  { key: "events", label: "Events", width: 84, sort: "events", align: "right" },
+  { key: "entries", label: "Entered in", width: 420 },
 ];
+
+const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(
+  SHEET_COLUMNS.map((c) => [c.key, c.width]),
+);
+
+/** The row-number gutter, exactly as a spreadsheet has one: it gives the eye
+ * a fixed left edge to travel down and a way to say "row 14". */
+const GUTTER = 46;
 
 function SortIcon({ state }: { state: "asc" | "desc" | null }): React.ReactElement {
   const Icon = state === "asc" ? ArrowUp : state === "desc" ? ArrowDown : ChevronsUpDown;
@@ -125,20 +148,28 @@ function StatChip({
 
 /** The competitions one person is in, as chips. Two chips is the whole point,
  * so a second chip is tinted rather than left to be counted. */
-function Chips({ row }: { row: ParticipationRow }): React.ReactElement {
+function Chips({
+  row,
+  /** Cards wrap; a sheet row is ONE line, and the way to see the rest is to
+   * widen the column, exactly as a spreadsheet behaves. */
+  wrap = false,
+}: {
+  row: ParticipationRow;
+  wrap?: boolean;
+}): React.ReactElement {
   if (!row.entries.length) {
     return (
       <span className="text-xs text-muted-foreground">{t("Not entered yet")}</span>
     );
   }
   return (
-    <span className="flex flex-wrap gap-1">
+    <span className={cn("flex gap-1", wrap ? "flex-wrap" : "flex-nowrap")}>
       {row.entries.map((e) => (
         <span
           key={`${e.teamId}-${e.role}`}
           title={`${e.competition} · ${e.team}`}
           className={cn(
-            "inline-flex max-w-[15rem] items-center gap-1 truncate rounded-full px-2 py-0.5 text-xs",
+            "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-xs",
             row.events > 1 ? "bg-warning-muted text-warning-foreground" : "bg-secondary",
           )}
         >
@@ -173,6 +204,17 @@ export function ParticipationWorkbench({
     { key: "events", dir: "desc" },
   );
   const [view, setView] = useState<"sheet" | "matrix">("sheet");
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const { widths, setWidth, resetWidths, resized } = useColumnWidths(
+    `participation-columns:${id}`,
+    DEFAULT_WIDTHS,
+  );
+  const autoFit = (key: string): void => {
+    const px = measureColumn(sheetRef.current, key);
+    if (px) setWidth(key, px);
+  };
+  const sheetWidth =
+    GUTTER + SHEET_COLUMNS.reduce((n, c) => n + (widths[c.key] ?? c.width), 0);
 
   // The whole roster in one read: every filter here is a question about the
   // set as a whole ("who is in two"), so paging it server-side would only be
@@ -224,15 +266,20 @@ export function ParticipationWorkbench({
     URL.revokeObjectURL(url);
   };
 
+  /** ONE toolbar line (owner 2026-08-19): the filters used to wrap onto three
+   * rows on a narrow desk, which pushed the sheet below the fold and made the
+   * page look like a form. They now sit on a single line that scrolls
+   * sideways if the desk is narrow, with the count and the view controls
+   * pinned where they never move. */
   const filterBar = (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
       <Input
         value={filters.q}
         onChange={(e) => set({ q: e.target.value })}
         placeholder={t("Search a name, class, roll or school")}
         aria-label={t("Search participants")}
         data-testid="participation-search"
-        className="h-9 w-full max-w-xs"
+        className="h-8 w-48 shrink-0 text-xs sm:w-56"
       />
       <Select
         size="sm"
@@ -240,7 +287,7 @@ export function ParticipationWorkbench({
         onChange={(v) => set({ events: v as ParticipationFilters["events"] })}
         options={EVENT_FILTERS.map((o) => ({ value: o.value, label: t(o.label) }))}
         aria-label={t("Filter by how many events")}
-        className="w-52"
+        className="w-44 shrink-0"
       />
       <Select
         size="sm"
@@ -248,7 +295,7 @@ export function ParticipationWorkbench({
         onChange={(v) => set({ kind: v })}
         options={KINDS.map((o) => ({ value: o.value, label: t(o.label) }))}
         aria-label={t("Filter by kind")}
-        className="w-40"
+        className="w-32 shrink-0"
       />
       {facets.sports.length > 1 ? (
         <Select
@@ -257,7 +304,7 @@ export function ParticipationWorkbench({
           onChange={(v) => set({ sport: v, competition: "" })}
           options={[{ value: "", label: t("Every sport") }, ...facets.sports]}
           aria-label={t("Filter by sport")}
-          className="w-44"
+          className="w-36 shrink-0"
         />
       ) : null}
       {facets.competitions.length > 1 ? (
@@ -272,7 +319,7 @@ export function ParticipationWorkbench({
             ),
           ]}
           aria-label={t("Filter by competition")}
-          className="w-60"
+          className="w-48 shrink-0"
         />
       ) : null}
       {facets.schools.length > 1 ? (
@@ -282,7 +329,7 @@ export function ParticipationWorkbench({
           onChange={(v) => set({ school: v })}
           options={[{ value: "", label: t("Every school") }, ...facets.schools]}
           aria-label={t("Filter by school")}
-          className="w-56"
+          className="w-44 shrink-0"
         />
       ) : null}
       {filtersOn ? (
@@ -290,14 +337,11 @@ export function ParticipationWorkbench({
           type="button"
           data-testid="participation-clear"
           onClick={() => setFilters(EMPTY_PARTICIPATION_FILTERS)}
-          className="text-xs font-medium text-primary hover:underline"
+          className="shrink-0 whitespace-nowrap px-1 text-xs font-medium text-primary hover:underline"
         >
           {t("Clear filters")}
         </button>
       ) : null}
-      <span className="ml-auto font-tabular text-xs text-muted-foreground">
-        {rows.length} {rows.length === 1 ? t("person") : t("people")}
-      </span>
     </div>
   );
 
@@ -379,51 +423,62 @@ export function ParticipationWorkbench({
           </ul>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+        <div className="flex items-center gap-2 border-b border-border px-4 py-2 sm:px-5">
           {filterBar}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2 sm:px-5">
-          <div
-            role="radiogroup"
-            aria-label={t("Participation view")}
-            className="inline-flex rounded-md border border-border bg-background p-0.5"
-          >
-            {(
-              [
-                ["sheet", t("Sheet")],
-                ["matrix", t("Matrix")],
-              ] as const
-            ).map(([mode, lbl]) => (
+          <div className="flex shrink-0 items-center gap-2 pl-2">
+            <span className="whitespace-nowrap font-tabular text-xs text-muted-foreground">
+              {rows.length} {rows.length === 1 ? t("person") : t("people")}
+            </span>
+            <div
+              role="radiogroup"
+              aria-label={t("Participation view")}
+              className="inline-flex rounded-md border border-border bg-background p-0.5"
+            >
+              {(
+                [
+                  ["sheet", t("Sheet")],
+                  ["matrix", t("Matrix")],
+                ] as const
+              ).map(([mode, lbl]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={view === mode}
+                  data-testid={`participation-view-${mode}`}
+                  onClick={() => setView(mode)}
+                  className={cn(
+                    "h-7 rounded px-2.5 text-xs font-medium transition-colors",
+                    view === mode
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+            {resized ? (
               <button
-                key={mode}
                 type="button"
-                role="radio"
-                aria-checked={view === mode}
-                data-testid={`participation-view-${mode}`}
-                onClick={() => setView(mode)}
-                className={cn(
-                  "h-7 rounded px-2.5 text-xs font-medium transition-colors",
-                  view === mode
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
+                data-testid="participation-reset-columns"
+                onClick={resetWidths}
+                className="whitespace-nowrap text-xs font-medium text-primary hover:underline"
               >
-                {lbl}
+                {t("Reset widths")}
               </button>
-            ))}
+            ) : null}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              data-testid="participation-export"
+              onClick={onExport}
+            >
+              <Download aria-hidden="true" className="h-3.5 w-3.5" />
+              {t("Export CSV")}
+            </Button>
           </div>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            data-testid="participation-export"
-            onClick={onExport}
-            className="ml-auto"
-          >
-            <Download aria-hidden="true" className="h-3.5 w-3.5" />
-            {t("Export CSV")}
-          </Button>
         </div>
 
         {q.isLoading ? (
@@ -475,97 +530,170 @@ export function ParticipationWorkbench({
                     .filter(Boolean)
                     .join(" · ")}
                 </span>
-                <Chips row={r} />
+                <Chips row={r} wrap />
               </li>
             ))}
           </ul>
         ) : view === "sheet" ? (
-          <div className="max-h-[70vh] overflow-auto">
-            <table className="w-full border-separate border-spacing-0 text-sm">
+          /* A spreadsheet, not a report: a row-number gutter to travel down,
+             a gridline on every cell, one line per row, and a heading you can
+             drag wider when a name does not fit (owner 2026-08-19). */
+          <div
+            ref={sheetRef}
+            data-testid="participation-sheet"
+            className="max-h-[70vh] overflow-auto"
+          >
+            <table
+              className="border-separate border-spacing-0 text-sm"
+              style={{ tableLayout: "fixed", width: sheetWidth }}
+            >
               <caption className="sr-only">
                 {t("Every declared person and the competitions they are entered in")}
               </caption>
+              <colgroup>
+                <col style={{ width: GUTTER }} />
+                {SHEET_COLUMNS.map((c) => (
+                  <col key={c.key} style={{ width: widths[c.key] ?? c.width }} />
+                ))}
+              </colgroup>
               <thead>
                 <tr>
-                  {SORT_COLUMNS.map((c) => {
-                    const state = sort.key === c.key ? sort.dir : null;
+                  <th
+                    scope="col"
+                    className="sticky left-0 top-0 z-40 border-b border-r border-border bg-muted px-2 py-2 text-right text-[0.6875rem] font-medium text-muted-foreground"
+                  >
+                    <span className="sr-only">{t("Row")}</span>
+                    <span aria-hidden="true">#</span>
+                  </th>
+                  {SHEET_COLUMNS.map((c) => {
+                    const state = c.sort && sort.key === c.sort ? sort.dir : null;
+                    const w = widths[c.key] ?? c.width;
                     return (
                       <th
                         key={c.key}
                         scope="col"
                         aria-sort={
-                          state ? (state === "asc" ? "ascending" : "descending") : "none"
+                          c.sort
+                            ? state
+                              ? state === "asc"
+                                ? "ascending"
+                                : "descending"
+                              : "none"
+                            : undefined
                         }
-                        className="sticky top-0 z-20 border-b border-border bg-muted p-0 text-left font-medium"
+                        className="sticky top-0 z-30 border-b border-r border-border bg-muted p-0 text-left font-medium"
                       >
-                        <button
-                          type="button"
-                          data-testid={`participation-sort-${c.key}`}
-                          onClick={() => onSort(c.key)}
-                          className={cn(
-                            "flex h-8 w-full items-center gap-1 px-3 text-[0.6875rem] font-medium uppercase tracking-wide transition-colors hover:bg-secondary",
-                            c.align === "right" && "justify-end",
+                        <div className="relative flex items-stretch">
+                          {c.sort ? (
+                            <button
+                              type="button"
+                              data-testid={`participation-sort-${c.sort}`}
+                              onClick={() => onSort(c.sort!)}
+                              className={cn(
+                                "flex h-8 min-w-0 flex-1 items-center gap-1 px-2 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:bg-secondary",
+                                c.align === "right" && "justify-end",
+                              )}
+                            >
+                              <span className="truncate">{t(c.label)}</span>
+                              <SortIcon state={state} />
+                            </button>
+                          ) : (
+                            <span className="flex h-8 min-w-0 flex-1 items-center px-2 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
+                              <span className="truncate">{t(c.label)}</span>
+                            </span>
                           )}
-                        >
-                          {t(c.label)}
-                          <SortIcon state={state} />
-                        </button>
+                          <ColumnResizer
+                            width={w}
+                            label={t(c.label)}
+                            testId={`participation-resize-${c.key}`}
+                            onResize={(px) => setWidth(c.key, px)}
+                            onAutoFit={() => autoFit(c.key)}
+                          />
+                        </div>
                       </th>
                     );
                   })}
-                  <th
-                    scope="col"
-                    className="sticky top-0 z-20 border-b border-border bg-muted px-3 py-2 text-left text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground"
-                  >
-                    {t("Entered in")}
-                  </th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, i) => (
-                  <tr
-                    key={r.id}
-                    data-testid={`participation-${r.id}`}
-                    data-multi={r.events > 1 ? "" : undefined}
-                    className={cn(
-                      "group",
-                      r.events > 1
-                        ? "bg-warning-muted/40"
-                        : i % 2
-                          ? "bg-muted/20"
-                          : "bg-card",
-                    )}
-                  >
-                    <td className="border-b border-border/60 px-3 py-1.5 group-hover:bg-accent/40">
-                      <span className="font-medium">{r.name}</span>
-                      {r.kind === "teacher" ? (
-                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                          {t("Teacher")}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="border-b border-border/60 px-3 py-1.5 text-muted-foreground group-hover:bg-accent/40">
-                      {r.classSection || "·"}
-                    </td>
-                    <td className="border-b border-border/60 px-3 py-1.5 font-tabular text-muted-foreground group-hover:bg-accent/40">
-                      {r.rollNo || "·"}
-                    </td>
-                    <td className="max-w-0 border-b border-border/60 px-3 py-1.5 text-muted-foreground group-hover:bg-accent/40">
-                      <span className="block truncate">{r.group || r.school || "·"}</span>
-                    </td>
-                    <td
-                      className={cn(
-                        "border-b border-border/60 px-3 py-1.5 text-right font-tabular group-hover:bg-accent/40",
-                        r.events > 1 && "font-semibold text-warning",
-                      )}
+                {rows.map((r, i) => {
+                  const tint =
+                    r.events > 1
+                      ? "bg-warning-muted/40"
+                      : i % 2
+                        ? "bg-muted/20"
+                        : "bg-card";
+                  const cell =
+                    "truncate border-b border-r border-border/60 px-2 py-1.5 group-hover:bg-accent/40";
+                  return (
+                    <tr
+                      key={r.id}
+                      data-testid={`participation-${r.id}`}
+                      data-multi={r.events > 1 ? "" : undefined}
+                      className={cn("group", tint)}
                     >
-                      {r.events}
-                    </td>
-                    <td className="border-b border-border/60 px-3 py-1.5 group-hover:bg-accent/40">
-                      <Chips row={r} />
-                    </td>
-                  </tr>
-                ))}
+                      <td
+                        data-row-number=""
+                        className={cn(
+                          "sticky left-0 z-20 border-b border-r border-border px-2 py-1.5 text-right font-tabular text-[0.6875rem] text-muted-foreground",
+                          tint,
+                        )}
+                      >
+                        {i + 1}
+                      </td>
+                      <td data-col="name" className={cell} title={r.name}>
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate font-medium">{r.name}</span>
+                          {r.kind === "teacher" ? (
+                            <span className="shrink-0 rounded bg-muted px-1.5 text-[0.625rem] uppercase tracking-wide text-muted-foreground">
+                              {t("Teacher")}
+                            </span>
+                          ) : null}
+                        </span>
+                      </td>
+                      <td
+                        data-col="class"
+                        className={cn(cell, "text-muted-foreground")}
+                        title={r.classSection || undefined}
+                      >
+                        <span className="block truncate">{r.classSection || "·"}</span>
+                      </td>
+                      <td
+                        data-col="roll"
+                        className={cn(cell, "font-tabular text-muted-foreground")}
+                        title={r.rollNo || undefined}
+                      >
+                        <span className="block truncate">{r.rollNo || "·"}</span>
+                      </td>
+                      <td
+                        data-col="school"
+                        className={cn(cell, "text-muted-foreground")}
+                        title={r.group || r.school || undefined}
+                      >
+                        <span className="block truncate">
+                          {r.group || r.school || "·"}
+                        </span>
+                      </td>
+                      <td
+                        data-col="events"
+                        className={cn(
+                          cell,
+                          "text-right font-tabular",
+                          r.events > 1 && "font-semibold text-warning",
+                        )}
+                      >
+                        <span className="block truncate">{r.events}</span>
+                      </td>
+                      <td
+                        data-col="entries"
+                        className={cn(cell, "overflow-hidden")}
+                        title={r.entries.map((e) => e.competition).join(" · ")}
+                      >
+                        <Chips row={r} />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -575,18 +703,51 @@ export function ParticipationWorkbench({
           <div className="max-h-[70vh] overflow-auto">
             <table
               data-testid="participation-matrix"
-              className="w-full border-separate border-spacing-0 text-sm"
+              className="border-separate border-spacing-0 text-sm"
+              style={{
+                tableLayout: "fixed",
+                width:
+                  GUTTER + (widths.name ?? DEFAULT_WIDTHS.name) + 64 +
+                  columns.length * 36,
+              }}
             >
               <caption className="sr-only">
                 {t("Participants by competition, ticked where they are entered")}
               </caption>
+              <colgroup>
+                <col style={{ width: GUTTER }} />
+                <col style={{ width: widths.name ?? DEFAULT_WIDTHS.name }} />
+                <col style={{ width: 64 }} />
+                {columns.map((c) => (
+                  <col key={c.value} style={{ width: 36 }} />
+                ))}
+              </colgroup>
               <thead>
                 <tr>
                   <th
                     scope="col"
-                    className="sticky left-0 top-0 z-30 border-b border-r border-border bg-muted px-3 py-2 text-left text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground"
+                    className="sticky left-0 top-0 z-40 border-b border-r border-border bg-muted px-2 py-2 text-right text-[0.6875rem] font-medium text-muted-foreground"
                   >
-                    {t("Name")}
+                    <span className="sr-only">{t("Row")}</span>
+                    <span aria-hidden="true">#</span>
+                  </th>
+                  <th
+                    scope="col"
+                    style={{ left: GUTTER }}
+                    className="sticky top-0 z-30 border-b border-r border-border bg-muted p-0 text-left font-medium"
+                  >
+                    <div className="relative flex items-stretch">
+                      <span className="flex h-8 min-w-0 flex-1 items-center px-2 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
+                        {t("Name")}
+                      </span>
+                      <ColumnResizer
+                        width={widths.name ?? DEFAULT_WIDTHS.name}
+                        label={t("Name")}
+                        testId="participation-resize-matrix-name"
+                        onResize={(px) => setWidth("name", px)}
+                        onAutoFit={() => autoFit("name")}
+                      />
+                    </div>
                   </th>
                   <th
                     scope="col"
@@ -633,10 +794,25 @@ export function ParticipationWorkbench({
                             : "bg-card",
                       )}
                     >
+                      <td
+                        className={cn(
+                          "sticky left-0 z-20 border-b border-r border-border px-2 py-1.5 text-right font-tabular text-[0.6875rem] text-muted-foreground",
+                          r.events > 1
+                            ? "bg-warning-muted"
+                            : i % 2
+                              ? "bg-muted/20"
+                              : "bg-card",
+                        )}
+                      >
+                        {i + 1}
+                      </td>
                       <th
                         scope="row"
+                        data-col="name"
+                        title={r.name}
+                        style={{ left: GUTTER }}
                         className={cn(
-                          "sticky left-0 z-10 max-w-0 border-b border-r border-border px-3 py-1.5 text-left font-medium",
+                          "sticky z-10 border-b border-r border-border px-2 py-1.5 text-left font-medium",
                           r.events > 1
                             ? "bg-warning-muted"
                             : i % 2
