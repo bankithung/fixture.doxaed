@@ -135,6 +135,23 @@ export default {
           to: { opacity: "1", transform: "scale(1)" },
         },
         shimmer: { "100%": { transform: "translateX(100%)" } },
+        // A draw being rolled again: the die tumbles rather than spins flat,
+        // so the wait reads as ATTEMPTS being made, not a generic spinner.
+        tumble: {
+          "0%": { transform: "rotate(0deg) scale(1)" },
+          "45%": { transform: "rotate(200deg) scale(1.12)" },
+          "100%": { transform: "rotate(360deg) scale(1)" },
+        },
+        // One of a row of pips lighting in turn — the search moving along.
+        pip: {
+          "0%, 100%": { opacity: "0.2", transform: "scale(0.7)" },
+          "35%": { opacity: "1", transform: "scale(1)" },
+        },
+        // The ring that keeps sweeping while the attempts run.
+        sweep: {
+          from: { transform: "rotate(0deg)" },
+          to: { transform: "rotate(360deg)" },
+        },
         // The side drawer: off the right edge, in. Paired with `fade-in` on the
         // scrim so the page behind it dims at the same time.
         "slide-in-right": {
@@ -147,6 +164,9 @@ export default {
         "fade-up": "fade-up 200ms ease-out both",
         "scale-in": "scale-in 150ms ease-out both",
         shimmer: "shimmer 1.6s infinite",
+        tumble: "tumble 1.8s cubic-bezier(0.45,0,0.55,1) infinite",
+        pip: "pip 1.4s ease-in-out infinite",
+        sweep: "sweep 2.4s linear infinite",
         "slide-in-right":
           "slide-in-right 260ms cubic-bezier(0.25,0.46,0.45,0.94) both",
       },

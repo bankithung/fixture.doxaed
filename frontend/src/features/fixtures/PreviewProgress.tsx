@@ -1,28 +1,34 @@
 import { useEffect, useState } from "react";
-import { Dices, Loader2 } from "lucide-react";
+import { Dices } from "lucide-react";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
 /**
- * What a re-draw looks like while it runs (owner 2026-08-19: "when the user
- * presses try another draw the section is empty, so show a progress indicator
- * with proper UI/UX and animations").
+ * What a re-draw looks like while it runs (owner 2026-08-19: "the section is
+ * empty… show a progress indicator with proper UI/UX and animations", and
+ * then: "we can have animation at the centre… more proper animations that
+ * make the wait show some TRYING type of animation").
  *
  * A draw now tries up to ten arrangements and keeps the one that gives every
- * match a time, which takes real seconds — and a bare pulsing skeleton for
- * that long reads as a page that has stopped rather than one that is working
- * hard. This says what it is doing, shows it moving, and counts the seconds
- * so the wait has a shape.
+ * match a time, which takes real seconds. So the wait is built to read as
+ * ATTEMPTS being made rather than as a generic spinner: a die tumbling inside
+ * a sweeping ring, a row of pips lighting along, the count of seconds, and a
+ * bar underneath.
  *
- * The bar is deliberately NOT a percentage of anything: the server does not
- * report which attempt it is on, and inventing "draw 3 of 10" would be a
- * number we made up. It eases towards full and waits there — motion that is
- * honest about being indeterminate.
+ * The bar is deliberately NOT a percentage of anything, and the pips are not
+ * numbered attempts: the server does not report which draw it is on, and
+ * "draw 3 of 10" would be a number we invented. The motion is honest about
+ * being indeterminate — it eases towards full and waits there, and the row
+ * arriving is what finishes it.
+ *
+ * Every decorative animation stops under `prefers-reduced-motion`; the text
+ * and the seconds carry the whole message on their own.
  */
 
-/** About how long a full re-draw takes; the bar paces itself against this and
- * then holds just short of the end until the answer actually arrives. */
+/** About how long a full re-draw takes; the bar paces itself against this. */
 const EXPECTED_SECONDS = 25;
+/** Pips in the row — one per draw the server is allowed to try. */
+const PIPS = 10;
 
 export function PreviewProgress({
   /** A re-draw (many attempts) rather than a first load (one). */
@@ -44,8 +50,11 @@ export function PreviewProgress({
   }, []);
 
   // Ease towards 92% over the expected wait, then creep. It never reaches 100
-  // on its own — the row arriving is what finishes it.
-  const pct = Math.min(92, 92 * (1 - Math.exp(-elapsed / (EXPECTED_SECONDS / 2.5))));
+  // on its own — the answer landing is what finishes it.
+  const pct = Math.min(
+    92,
+    92 * (1 - Math.exp(-elapsed / (EXPECTED_SECONDS / 2.5))),
+  );
   const secs = Math.floor(elapsed);
 
   return (
@@ -54,56 +63,77 @@ export function PreviewProgress({
       role="status"
       aria-live="polite"
       className={cn(
-        "flex flex-col gap-2 rounded-lg border border-border bg-card p-3",
+        "flex min-h-[50vh] w-full flex-col items-center justify-center gap-4 px-6 py-10 text-center",
         className,
       )}
     >
-      <div className="flex items-center gap-2">
-        <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
-          {redraw ? (
-            <Dices aria-hidden="true" className="h-4 w-4 text-primary" />
-          ) : (
-            <Loader2
-              aria-hidden="true"
-              className="h-4 w-4 animate-spin text-primary"
-            />
-          )}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">
-            {redraw ? t("Drawing again") : t("Building the schedule")}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {redraw
-              ? t("Trying up to 10 draws and keeping the one that gives every match a time.")
-              : t("Placing every match against your rules.")}
-          </p>
-        </div>
+      {/* The die, tumbling inside a ring that keeps sweeping round it. */}
+      <span className="relative flex h-20 w-20 items-center justify-center">
         <span
-          data-testid="preview-progress-elapsed"
-          className="shrink-0 font-tabular text-xs text-muted-foreground"
-        >
-          {secs}s
-        </span>
-      </div>
-
-      {/* The bar itself: a filling track with a sheen travelling across it, so
-          it reads as working even while the fill is barely moving. */}
-      <div
-        className="relative h-1.5 overflow-hidden rounded-full bg-muted"
-        role="progressbar"
-        aria-label={t("Working")}
-        aria-valuemin={0}
-        aria-valuemax={100}
-      >
-        <div
-          className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
-          style={{ width: `${pct}%` }}
+          aria-hidden="true"
+          className="absolute inset-0 animate-sweep rounded-full border-2 border-primary/15 border-t-primary motion-reduce:animate-none"
         />
         <span
           aria-hidden="true"
-          className="absolute inset-y-0 -left-1/3 w-1/3 animate-shimmer bg-gradient-to-r from-transparent via-primary-foreground/40 to-transparent"
+          className="absolute inset-2 rounded-full bg-primary/5"
         />
+        <Dices
+          aria-hidden="true"
+          className={cn(
+            "h-8 w-8 text-primary",
+            redraw && "animate-tumble motion-reduce:animate-none",
+          )}
+        />
+      </span>
+
+      <div className="flex flex-col items-center gap-1">
+        <p className="text-base font-semibold">
+          {redraw ? t("Drawing again") : t("Building the schedule")}
+        </p>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          {redraw
+            ? t("Trying up to 10 draws and keeping the one that gives every match a time.")
+            : t("Placing every match against your rules.")}
+        </p>
+      </div>
+
+      {/* A row of pips lighting along — the search moving, one attempt at a
+          time. Decorative: none of them claims to BE a given attempt. */}
+      {redraw ? (
+        <span aria-hidden="true" className="flex items-center gap-1.5">
+          {Array.from({ length: PIPS }, (_, i) => (
+            <span
+              key={i}
+              className="h-1.5 w-1.5 animate-pip rounded-full bg-primary motion-reduce:animate-none motion-reduce:opacity-40"
+              style={{ animationDelay: `${i * 0.12}s` }}
+            />
+          ))}
+        </span>
+      ) : null}
+
+      <div className="flex w-full max-w-sm flex-col gap-1.5">
+        <div
+          className="relative h-1.5 overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-label={t("Working")}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
+            style={{ width: `${pct}%` }}
+          />
+          <span
+            aria-hidden="true"
+            className="absolute inset-y-0 -left-1/3 w-1/3 animate-shimmer bg-gradient-to-r from-transparent via-primary-foreground/40 to-transparent motion-reduce:animate-none"
+          />
+        </div>
+        <span
+          data-testid="preview-progress-elapsed"
+          className="font-tabular text-xs text-muted-foreground"
+        >
+          {secs}s
+        </span>
       </div>
     </div>
   );
