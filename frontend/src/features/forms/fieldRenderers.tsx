@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import { Check, ExternalLink, Paperclip, Pencil, Plus, Search, Star, Trash2 } from "lucide-react";
@@ -1033,6 +1033,40 @@ function SheetGroup({
     return titled || `${rowLabel} ${i + 1}`;
   };
 
+  /** A competition's own name, without the sport and bracket its headings
+   * already carry: "U-14 · Boys · Singles" under Table Tennis / U-14 reads
+   * simply "Boys · Singles". */
+  const legendLeafLabel = (option: Option): string => {
+    const label = t(option.label);
+    const row = option.row ? t(option.row) : "";
+    if (row && label.startsWith(row)) {
+      return label.slice(row.length).replace(/^\s*·\s*/, "") || label;
+    }
+    return label;
+  };
+
+  /** The legend, grouped: sports in the order the columns run, each with its
+   * age brackets, each with its competitions. Built from the SAME facts the
+   * header bands use, so a legend can never name a sport the sheet does not. */
+  const legendGroups = useMemo(() => {
+    const bySport = new Map<
+      string,
+      Map<string, Extract<Col, { kind: "option" }>[]>
+    >();
+    for (const c of cols) {
+      if (c.kind !== "option") continue;
+      const sport = c.option.sport ?? "";
+      const row = c.option.row ?? "";
+      const rows = bySport.get(sport) ?? new Map();
+      rows.set(row, [...(rows.get(row) ?? []), c]);
+      bySport.set(sport, rows);
+    }
+    return [...bySport.entries()].map(([sport, rows]) => ({
+      sport,
+      rows: [...rows.entries()].map(([row, list]) => ({ row, cols: list })),
+    }));
+  }, [cols]);
+
   const legendToneOf = (sport: string): string => {
     const idx = sportBands.findIndex((b) => b.sport === sport);
     return BAND_TONES[(idx < 0 ? 0 : idx) % BAND_TONES.length];
@@ -1103,51 +1137,75 @@ function SheetGroup({
           form too, so the user can read"), exactly like the directory
           matrix's legend. */}
       {exploded ? (
+        /* Grouped by sport, then by age bracket (owner 2026-08-19): a flat
+           list repeated "Table Tennis" eight times and left the structure —
+           which sports, which brackets, which competitions inside them — to be
+           read out of the repetition. The headings say it once. */
         <div
           data-testid={`sheet-legend-${field.key}`}
-          className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/20 p-2.5"
+          className="flex flex-col gap-2 rounded-lg border border-border bg-muted/20 p-2.5"
         >
           <p className="text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
             {t("Competition legend")}
           </p>
-          <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
-            {cols
-              .filter((c): c is Extract<Col, { kind: "option" }> => c.kind === "option")
-              .map((c) => {
-                const st = legendStatus(c.child, c.option);
-                return (
-                    <span
-                      key={c.option.value}
-                      className="flex items-center gap-2 text-xs"
-                    >
-                      <span
-                        className={cn(
-                          "shrink-0 rounded px-1.5 py-0.5 font-tabular text-[0.6875rem] font-semibold",
-                          legendToneOf(c.option.sport ?? ""),
-                        )}
-                      >
-                        {c.option.code}
+          <div className="grid gap-2 lg:grid-cols-2">
+            {legendGroups.map((sport) => (
+              <div
+                key={sport.sport}
+                data-testid={`legend-sport-${sport.sport}`}
+                className="flex flex-col gap-1 rounded-md border border-border bg-card p-2"
+              >
+                <span
+                  className={cn(
+                    "w-fit rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold",
+                    legendToneOf(sport.sport),
+                  )}
+                >
+                  {sport.sport}
+                </span>
+                {sport.rows.map((row) => (
+                  <div key={row.row} className="flex flex-col gap-0.5">
+                    {row.row ? (
+                      <span className="text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground">
+                        {row.row}
                       </span>
-                      <span className="min-w-0 truncate text-muted-foreground">
-                        {c.option.sport} · {t(c.option.label)}
-                      </span>
-                      <span
-                        className={cn(
-                          "ml-auto shrink-0 whitespace-nowrap font-medium",
-                          st.ok ? "text-success" : "text-destructive",
-                        )}
-                      >
-                        {st.teams === 0
-                          ? t("Not entered")
-                          : st.teams > MAX_TEAMS
-                            ? `${st.teams} ${t("teams")} · ${t("max")} ${MAX_TEAMS}`
-                            : st.short
-                              ? `${st.teams} ${st.teams === 1 ? t("team") : t("teams")} · ${t("short of players")}`
-                              : `${st.teams} ${st.teams === 1 ? t("team") : t("teams")}`}
-                      </span>
-                    </span>
-                );
-              })}
+                    ) : null}
+                    <div className="grid gap-x-4 gap-y-0.5 sm:grid-cols-2">
+                      {row.cols.map((c) => {
+                        const st = legendStatus(c.child, c.option);
+                        return (
+                          <span
+                            key={c.option.value}
+                            className="flex items-center gap-1.5 text-xs"
+                          >
+                            <span className="shrink-0 rounded bg-muted px-1 font-tabular text-[0.625rem] font-semibold text-muted-foreground">
+                              {c.option.code}
+                            </span>
+                            <span className="min-w-0 truncate">
+                              {legendLeafLabel(c.option)}
+                            </span>
+                            <span
+                              className={cn(
+                                "ml-auto shrink-0 whitespace-nowrap text-[0.6875rem] font-medium",
+                                st.ok ? "text-success" : "text-destructive",
+                              )}
+                            >
+                              {st.teams === 0
+                                ? t("Not entered")
+                                : st.teams > MAX_TEAMS
+                                  ? `${st.teams} ${t("teams")} · ${t("max")} ${MAX_TEAMS}`
+                                  : st.short
+                                    ? `${st.teams} ${st.teams === 1 ? t("team") : t("teams")} · ${t("short")}`
+                                    : `${st.teams} ${st.teams === 1 ? t("team") : t("teams")}`}
+                            </span>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
         </div>
       ) : null}

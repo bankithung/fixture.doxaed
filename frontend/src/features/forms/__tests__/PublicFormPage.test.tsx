@@ -1823,3 +1823,82 @@ describe("PublicFormPage \u00b7 the built teams mirror the ticks", () => {
     expect(within(table).queryByText("Grace TT-1")).not.toBeInTheDocument();
   });
 });
+
+const LEGEND_PAYLOAD = {
+  tournament_name: "ANPSA Dimapur",
+  form: {
+    id: "form1", title: "Team registration", description: "",
+    confirmation_message: "Thanks",
+    schema: {
+      version: 1,
+      sections: [{
+        key: "participants", title: "Your participants",
+        fields: [{
+          key: "participant_students", type: "group", label: "Student",
+          repeatable: true, row_key: "participant_id", layout: "sheet",
+          tab_label: "Students",
+          fields: [
+            { key: "participant_id", type: "hidden", label: "" },
+            { key: "participant_name", type: "short_text",
+              label: "Full name", required: true },
+            { key: "participant_events", type: "multi_choice",
+              label: "Playing in", layout: "columns",
+              options: [
+                { value: "tt.u14.boys.s", label: "U-14 · Boys · Singles",
+                  sport: "Table Tennis", code: "UBS", row: "U-14",
+                  squad_min: 1, squad_max: 1 },
+                { value: "tt.u14.girls.s", label: "U-14 · Girls · Singles",
+                  sport: "Table Tennis", code: "UGS", row: "U-14",
+                  squad_min: 1, squad_max: 1 },
+                { value: "tt.open.girls.s", label: "Open Category · Girls · Singles",
+                  sport: "Table Tennis", code: "OGS", row: "Open Category",
+                  squad_min: 1, squad_max: 1 },
+                { value: "spk.u14.boys", label: "U-14 · Boys",
+                  sport: "Sepak Takraw", code: "UB", row: "U-14",
+                  squad_min: 1, squad_max: 3 },
+              ] },
+          ],
+        }],
+      }],
+    } as FormSchema,
+  },
+};
+
+describe("PublicFormPage \u00b7 the legend is grouped, not a list", () => {
+  it("names each sport and bracket once, with the competitions under them", async () => {
+    // Owner 2026-08-19: "this competition legend view, let's group them
+    // properly". A flat list repeated the sport on all eight rows.
+    vi.mocked(formsApi.publicGet).mockResolvedValue(LEGEND_PAYLOAD as never);
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+    const legend = screen.getByTestId("sheet-legend-participant_students");
+
+    // One card per sport, the sport named once.
+    const card = within(legend).getByTestId("legend-sport-Table Tennis");
+    expect(within(card).getAllByText("Table Tennis")).toHaveLength(1);
+
+    // The brackets are headings, so a competition reads without them.
+    expect(within(card).getByText("U-14")).toBeInTheDocument();
+    expect(within(card).getByText("Open Category")).toBeInTheDocument();
+    expect(within(card).getByText("Boys · Singles")).toBeInTheDocument();
+    expect(within(card).getAllByText("Girls · Singles").length).toBeGreaterThan(0);
+    // and the old repeated form is gone
+    expect(
+      within(card).queryByText("U-14 · Boys · Singles"),
+    ).toBeNull();
+  });
+
+  it("still says where each competition stands", async () => {
+    vi.mocked(formsApi.publicGet).mockResolvedValue(LEGEND_PAYLOAD as never);
+    renderPage();
+    const legend = await screen.findByTestId("sheet-legend-participant_students");
+    expect(within(legend).getAllByText("Not entered").length).toBeGreaterThan(0);
+    await userEvent.click(screen.getByTestId("row-add-participant_students"));
+    await userEvent.click(
+      screen.getByRole("checkbox", {
+        name: "Open Category · Girls · Singles, Student 1",
+      }),
+    );
+    expect(within(legend).getByText("1 team")).toBeInTheDocument();
+  });
+});
