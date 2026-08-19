@@ -31,6 +31,52 @@ from apps.teams.services.registration import (
 )
 
 
+def option_label(schema: dict, field_key: str, value) -> str:
+    """The human LABEL behind a choice answer.
+
+    A dropdown's answer is its option VALUE — an internal code. The school
+    picker's values are slugs (``amazing_school``) and its labels are the real
+    names, so storing the answer put a slug in ``Institution.name`` and every
+    screen that names a school showed it (owner 2026-08-19). Returns the label
+    of the matching option, the value itself when the field is free text or the
+    value matches no option, and never an empty string.
+
+    Walks nested option fields too: a branching form can put the name question
+    under an option, and its answer is no less a code for being nested.
+    """
+    want = str(value).strip()
+    if not want:
+        return want
+
+    def walk(fields) -> str | None:
+        for fld in fields or []:
+            if not isinstance(fld, dict):
+                continue
+            # An option may be a bare string (its own label), so only a dict
+            # option can carry a value/label pair or nested fields.
+            opts = [o for o in (fld.get("options") or []) if isinstance(o, dict)]
+            if fld.get("key") == field_key:
+                for o in opts:
+                    if str(o.get("value")) == want:
+                        label = str(o.get("label") or "").strip()
+                        return label or want
+                return want
+            hit = walk(fld.get("fields"))
+            if hit is not None:
+                return hit
+            for o in opts:
+                hit = walk(o.get("fields"))
+                if hit is not None:
+                    return hit
+        return None
+
+    for sec in (schema or {}).get("sections") or []:
+        hit = walk(sec.get("fields"))
+        if hit is not None:
+            return hit
+    return want
+
+
 def supersede_team_registration(
     form, institution_id, *, exclude_response_id=None, request=None
 ) -> int:
@@ -284,13 +330,19 @@ def _map_organization_registration(resp: FormResponse) -> FormResponse:
     a = resp.answers or {}
     # First non-blank candidate (whitespace-only counts as blank, else a "   "
     # answer would short-circuit the chain and create no Institution).
+    # The bound question may be a PICKER, whose answer is an option value —
+    # a slug, not a name. Resolve it to the option's label before it becomes
+    # the institution's name (owner 2026-08-19: the directory read
+    # "amazing_school").
+    name_key = b.get("institution_name", "institution_name")
+    schema = form.schema or {}
     name = next(
         (
             str(c).strip()
             for c in (
-                a.get(b.get("institution_name", "institution_name")),
-                a.get("school"),
-                a.get("name"),
+                option_label(schema, name_key, a.get(name_key) or ""),
+                option_label(schema, "school", a.get("school") or ""),
+                option_label(schema, "name", a.get("name") or ""),
                 resp.title,
             )
             if c and str(c).strip()

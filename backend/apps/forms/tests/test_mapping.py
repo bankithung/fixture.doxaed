@@ -16,7 +16,8 @@ from django.utils import timezone
 
 from apps.forms.models import Form, FormResponse
 from apps.forms.services.mapping import map_response
-from apps.teams.models import Player, Team
+from apps.teams.services.registration import get_or_create_institution
+from apps.teams.models import Institution, Player, Team
 from apps.tournaments.services.create import create_tournament
 
 User = get_user_model()
@@ -164,3 +165,80 @@ def test_team_registration_multi_category_creates_teams_with_players():
         for p in Player.objects.filter(team=mh_a).select_related("person")
     ) == ["Asha", "Beni"]
     assert Player.objects.filter(team=teams.get(name="MH B")).count() == 1
+
+
+# --------------------------------------------------------- a picker's answer
+def _picker_org_form(t):
+    """A school-name question that is a PICKER: values are slugs, labels are
+    the real names — the shape the ANPSA Dimapur form actually has."""
+    return Form.objects.create(
+        organization=t.organization, tournament=t, slug="org", title="Org",
+        purpose="organization_registration",
+        settings={"bindings": {"institution_name": "school_name",
+                               "contact_name": "contact_name"}},
+        schema={"version": 1, "sections": [{"key": "s", "title": "S", "fields": [
+            {"key": "school_name", "type": "dropdown", "label": "School name",
+             "role": "title", "options": [
+                 {"value": "amazing_school", "label": "Amazing School"},
+                 {"value": "christ_school", "label": "Christ School"},
+             ]},
+            {"key": "contact_name", "type": "short_text", "label": "Your name"},
+        ]}]},
+    )
+
+
+def test_a_picked_school_is_named_by_its_label_not_its_slug():
+    # Owner 2026-08-19: the directory read "amazing_school". A dropdown's
+    # answer is its option VALUE — an internal code, never the name.
+    t = create_tournament(user=_verified("a@test.local"), name="Cup")
+    f = _picker_org_form(t)
+    resp = FormResponse.objects.create(
+        form=f, organization=t.organization, tournament=t,
+        answers={"school_name": "amazing_school", "contact_name": "Kutu"},
+    )
+    map_response(resp)
+    inst = Institution.objects.get(tournament=t, deleted_at__isnull=True)
+    assert inst.name == "Amazing School"
+
+
+def test_a_typed_school_name_is_stored_as_typed():
+    # A free-text question has no options; its answer IS the name.
+    t = create_tournament(user=_verified("a@test.local"), name="Cup")
+    f = Form.objects.create(
+        organization=t.organization, tournament=t, slug="org", title="Org",
+        purpose="organization_registration",
+        settings={"bindings": {"institution_name": "school_name"}},
+        schema={"version": 1, "sections": [{"key": "s", "title": "S", "fields": [
+            {"key": "school_name", "type": "short_text", "label": "School name"},
+        ]}]},
+    )
+    resp = FormResponse.objects.create(
+        form=f, organization=t.organization, tournament=t,
+        answers={"school_name": "St. Thomas Hr. Sec. School"},
+    )
+    map_response(resp)
+    assert Institution.objects.get(tournament=t).name == "St. Thomas Hr. Sec. School"
+
+
+def test_an_answer_matching_no_option_is_kept_as_written():
+    t = create_tournament(user=_verified("a@test.local"), name="Cup")
+    f = _picker_org_form(t)
+    resp = FormResponse.objects.create(
+        form=f, organization=t.organization, tournament=t,
+        answers={"school_name": "Some Other School"},
+    )
+    map_response(resp)
+    assert Institution.objects.get(tournament=t).name == "Some Other School"
+
+
+def test_the_same_school_typed_three_ways_is_one_institution():
+    # The picker slug, the label, and a hand-typed variant must not mint three
+    # rows — that would split its teams and its standings in three.
+    t = create_tournament(user=_verified("a@test.local"), name="Cup")
+    for name in ("amazing_school", "AMAZING SCHOOL", "Amazing School"):
+        inst = get_or_create_institution(tournament=t, name=name)
+        assert inst is not None
+    rows = Institution.objects.filter(tournament=t, deleted_at__isnull=True)
+    assert rows.count() == 1
+    # The row keeps the name it was created with; renaming is its own path.
+    assert rows.first().name == "amazing_school"

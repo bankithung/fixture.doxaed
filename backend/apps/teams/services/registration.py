@@ -110,13 +110,33 @@ def get_or_create_institution(
     status=InstitutionStatus.REGISTERED, created_by=None, source_response_id=None,
 ) -> Institution | None:
     """Stage-1 institution writer — idempotent on (tournament, name). Copies the
-    tournament's organization (org-consistency). Returns None for a blank name."""
+    tournament's organization (org-consistency). Returns None for a blank name.
+
+    Identity is the SLUGIFIED name, not the exact string: the same school
+    typed as "AMAZING SCHOOL", "Amazing School" or the picker slug
+    "amazing_school" is one school, and minting a second row for it would
+    split its teams, its standings and its emails in two (owner 2026-08-19).
+    An existing row keeps the name it has — renaming belongs to the bound-link
+    edit path, which asks for it explicitly.
+    """
     name = (name or "").strip()[:200]
     if not name:
         return None
     existing = Institution.objects.filter(
         tournament=tournament, name=name, deleted_at__isnull=True
     ).first()
+    if existing is None:
+        key = _slugify(name)
+        if key:
+            existing = next(
+                (
+                    i for i in Institution.objects.filter(
+                        tournament=tournament, deleted_at__isnull=True
+                    )
+                    if i.slug == key or _slugify(i.name) == key
+                ),
+                None,
+            )
     if existing is not None:
         return existing
     return Institution.objects.create(
