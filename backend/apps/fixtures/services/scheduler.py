@@ -27,7 +27,7 @@ without touching callers.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import Any
@@ -37,6 +37,7 @@ from django.utils.translation import gettext as _
 
 from apps.fixtures.services.constraints import (
     DEFAULT_WEIGHT,
+    FINISH_PHASES,
     normalize_scope,
     parse_weight,
     scope_matches,
@@ -596,6 +597,26 @@ def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> l
                     f"{from_date} onwards ({scope})"
                     + (", and nothing else does." if p.get("exclusive") else ".")
                 )
+        elif ctype == "phased_finish":
+            order = [
+                str(x).strip() for x in (p.get("order") or [])
+                if isinstance(x, str) and str(x).strip() in FINISH_PHASES
+            ]
+            final_order = [
+                str(x).strip() for x in (p.get("final_order") or [])
+                if isinstance(x, str) and str(x).strip()
+            ]
+            if order:
+                cfg.constraint_rules.append(ScopedRule(
+                    ctype, scope, True, weight,
+                    {"order": order, "final_order": final_order}, record=c))
+                names = ", ".join(_FINISH_PHASE_NOTES.get(x, x) for x in order)
+                notes.append(
+                    f"Every competition finishes in phases ({scope}): {names}. "
+                    "A phase starts only once the one before it has finished"
+                    + (", and the last of them plays in the order you set."
+                       if final_order else ".")
+                )
         elif ctype in ("even_spacing", "avoid_back_to_back"):
             notes.append(f"'{ctype}' is optimised by the built-in day-spread scoring.")
         # keep_apart_until_round is a PAIRING-layer record — generate.py
@@ -878,6 +899,12 @@ class MatchSlotReq:
     # committed outside the run contributes a fixed lower bound instead.
     after: tuple[str, ...] = ()
     not_before: datetime | None = None
+    # A third-place playoff: BOTH sides come from ``loser_of`` pointers in the
+    # main bracket. It shares its round number with the final, so no count of
+    # rounds can tell the two apart — which is exactly what a host means by
+    # "third places play, and only then the finals" (owner 2026-08-19). A
+    # losers-bracket match is fed by losers too and is NOT this.
+    third_place: bool = False
 
 
 @dataclass
@@ -1018,6 +1045,19 @@ def resolve_pinned_rounds(
     return pin_of
 
 
+def _is_third_place(home_src: Any, away_src: Any, stage: str) -> bool:
+    """Is this the third-place playoff? Both sides fed by ``loser_of`` in the
+    MAIN bracket. A losers-bracket match (double elimination) is fed the same
+    way and is ordinary play, so it is excluded by stage.
+    """
+    if stage == "losers":
+        return False
+    return all(
+        isinstance(src, dict) and src.get("type") == "loser_of"
+        for src in (home_src, away_src)
+    )
+
+
 def competition_rank(order: Sequence[str], sport: str, leaf_key: str) -> int:
     """Where a match's competition sits in a host-authored priority ``order``.
 
@@ -1026,6 +1066,11 @@ def competition_rank(order: Sequence[str], sport: str, leaf_key: str) -> int:
     per-court reservations use — so one entry can name a whole sport or one
     exact competition without the engine knowing anything about either.
 
+    A bare SEGMENT ("girls", "u_14") matches any competition whose path carries
+    that segment at any depth — "all the girls' finals, then the boys'"
+    (owner 2026-08-19) is one entry, not one per category. It is the weakest
+    match there is, so a prefix or an exact leaf still overrides it.
+
     The MOST SPECIFIC matching entry wins, so a host can write a broad rule and
     then override one competition inside it regardless of which came first in
     the list. Anything unlisted ranks last: naming two categories must not
@@ -1033,12 +1078,15 @@ def competition_rank(order: Sequence[str], sport: str, leaf_key: str) -> int:
     """
     from apps.tournaments.services.sports import leaf_matches_prefix
 
+    segs = set(leaf_key.split(".")) if leaf_key else set()
     best: tuple[int, int] | None = None  # (-specificity, position)
     for i, key in enumerate(order):
         if leaf_key and leaf_matches_prefix(key, leaf_key):
             depth = key.count(".") + 1
         elif sport and key == sport:
             depth = 1
+        elif key and "." not in key and key in segs:
+            depth = 0
         else:
             continue
         cand = (-depth, i)
@@ -1126,6 +1174,134 @@ def closing_round_ok(
     return True
 
 
+# How each phase reads in the plain-language note the setup screen shows back.
+_FINISH_PHASE_NOTES: dict[str, str] = {
+    "earlier": "all earlier rounds",
+    "semi_final": "semi-finals",
+    "third_place": "third places",
+    "final": "finals",
+}
+
+
+@dataclass
+class FinishPlan:
+    """One ``phased_finish`` rule resolved against the draw: which match sits
+    in which phase, and how the phases are ordered."""
+
+    rule: ScopedRule
+    # match id -> (phase position in the rule's list, tie-break within the
+    # last phase). Only matches this rule governs appear.
+    key_of: dict[str, tuple[int, int]]
+    # match id -> phase token, for readable violations.
+    phase_of: dict[str, str]
+
+
+def resolve_finish_phases(
+    matches: Sequence[MatchSlotReq], rules: Sequence[ScopedRule],
+    cfg: ScheduleConfig,
+) -> list[FinishPlan]:
+    """Resolve each ``phased_finish`` rule to per-match phase keys.
+
+    The phase is read from each competition's OWN bracket, exactly as
+    ``resolve_closing_rounds`` reads its closing rounds: the last step of a
+    leaf is its final (or its third-place playoff, which shares that round
+    number and is told apart by its ``loser_of`` sides), the step before it is
+    the semi-finals, everything earlier is ``earlier``. One record therefore
+    covers categories of different bracket depths, which naming literal round
+    numbers never could.
+
+    ``order`` is the host's sequence of phases; a phase the host does not list
+    is not part of this rule at all (it neither waits nor is waited for).
+    ``final_order`` breaks ties inside the LAST listed phase — "the girls'
+    finals, then the boys'" — through the same competition-matching grammar
+    the priority order uses.
+
+    Shared by the greedy pass, the optimizer (through ``validate_schedule``)
+    and the validator, so a hand-moved final is judged by exactly the rule the
+    draw was built under.
+    """
+    plans: list[FinishPlan] = []
+    for r in rules:
+        order = [str(x) for x in (r.params.get("order") or []) if x in FINISH_PHASES]
+        if not order:
+            continue
+        in_scope = [
+            m for m in matches
+            if scope_matches(
+                r.scope, sport=m.sport, leaf_key=m.leaf_key,
+                team_ids=tuple(t for t in (m.home, m.away) if t),
+                team_tags=cfg.team_tags,
+            )
+        ]
+        if not in_scope:
+            continue
+        # Each competition's own last two steps.
+        steps_by_leaf: dict[str, list[tuple[int, int]]] = {}
+        by_leaf: dict[str, list[MatchSlotReq]] = defaultdict(list)
+        for m in in_scope:
+            by_leaf[m.leaf_key].append(m)
+        for leaf, cohort in by_leaf.items():
+            ko = [m for m in cohort if m.stage == "knockout"] or cohort
+            steps_by_leaf[leaf] = sorted({(m.stage_no, m.round_no) for m in ko})
+        final_order = [
+            str(x).strip() for x in (r.params.get("final_order") or [])
+            if isinstance(x, str) and str(x).strip()
+        ]
+        last_phase = order[-1]
+        key_of: dict[str, tuple[int, int]] = {}
+        phase_of: dict[str, str] = {}
+        for m in in_scope:
+            steps = steps_by_leaf.get(m.leaf_key) or []
+            step = (m.stage_no, m.round_no)
+            if steps and step == steps[-1]:
+                phase = "third_place" if m.third_place else "final"
+            elif len(steps) >= 2 and step == steps[-2]:
+                phase = "semi_final"
+            else:
+                phase = "earlier"
+            if phase not in order:
+                continue
+            sub = (
+                competition_rank(final_order, m.sport, m.leaf_key)
+                if final_order and phase == last_phase else 0
+            )
+            key_of[m.id] = (order.index(phase), sub)
+            phase_of[m.id] = phase
+        if key_of:
+            plans.append(FinishPlan(rule=r, key_of=key_of, phase_of=phase_of))
+    return plans
+
+
+def finish_phase_bounds(
+    m: MatchSlotReq, plans: Sequence[FinishPlan],
+    placed: Mapping[str, tuple[datetime, datetime]],
+) -> tuple[datetime | None, datetime | None]:
+    """The window ``m`` is left with by the phases already placed: it may not
+    start before every earlier phase has ENDED, and it may not end after the
+    first later-phase match has STARTED (the second direction matters because
+    a pinned final can be placed first).
+
+    Computed once per match rather than per candidate slot — the answer only
+    changes when something else is placed.
+    """
+    lo: datetime | None = None
+    hi: datetime | None = None
+    for plan in plans:
+        k = plan.key_of.get(m.id)
+        if k is None:
+            continue
+        for oid, (ostart, oend) in placed.items():
+            ok = plan.key_of.get(oid)
+            if ok is None or oid == m.id or ok == k:
+                continue
+            if ok < k:
+                if lo is None or oend > lo:
+                    lo = oend
+            elif hi is None or ostart < hi:
+                hi = ostart
+    return lo, hi
+
+
 def _pin_venue_ok(r: ScopedRule, venue: str, base_of: dict[str, str]) -> bool:
     """Finals venue pin (increment T): with ``venues`` named, the pinned
     match may only sit on one of them — a sub-venue counts through its
@@ -1204,6 +1380,17 @@ def schedule_matches(
     closing_windows = resolve_closing_rounds(
         matches, [r for r in rules if r.type == "closing_rounds_window"], cfg,
     )
+    # Phased finish (owner 2026-08-19): every category through its semi-finals
+    # before ANY third place, every third place before ANY final, and the
+    # finals in the order the host set. A barrier between whole phases, which
+    # no per-match rule can express.
+    finish_plans = resolve_finish_phases(
+        matches, [r for r in rules if r.type == "phased_finish"], cfg,
+    )
+    # The window the already-placed phases leave the match being placed. Set
+    # once per match, just before its slot scan.
+    phase_lo: datetime | None = None
+    phase_hi: datetime | None = None
 
     # Sub-venue expansion (§2.3): display name -> base name, and the parallel
     # units of each expanded base.
@@ -1346,6 +1533,13 @@ def schedule_matches(
         # nothing else may play from that date on — which is what "the end
         # days are only finals and semis" actually means.
         if not _closing_ok(m, dt, tkey):
+            return False
+        # Phase barrier: nothing of a later phase may start until every match
+        # of an earlier phase has ended (and a phase already placed ahead of
+        # this one — a pinned final — caps this match's end).
+        if phase_lo is not None and dt < phase_lo:
+            return False
+        if phase_hi is not None and end > phase_hi:
             return False
         # Resource capacities (§2.4): officials/scorers cap concurrent
         # in-flight matches per sport (or tournament-wide for scope "all").
@@ -1577,6 +1771,20 @@ def schedule_matches(
         rank, step = _rank(m), (within,)
         return (rank, step) if _seq(m) else (step, rank)
 
+    def _phase_sort(m: MatchSlotReq) -> tuple[int, int]:
+        """Where this match sits in the authored finish order — the PRIMARY
+        placement term when a ``phased_finish`` rule is on, so every match of
+        an earlier phase is placed (and its end time known) before any match
+        of a later one is even attempted. A match no rule lists sorts first;
+        it waits for nothing and nothing waits for it.
+        """
+        best: tuple[int, int] | None = None
+        for plan in finish_plans:
+            k = plan.key_of.get(m.id)
+            if k is not None and (best is None or k > best):
+                best = k
+        return best if best is not None else (-1, 0)
+
     def _seq(m: MatchSlotReq) -> bool:
         """Whether THIS match's governing rule drains its competition before
         the next starts. Per match for the same reason as the rank: two sports
@@ -1596,9 +1804,9 @@ def schedule_matches(
 
         def _order_key(m: MatchSlotReq) -> tuple:
             if m.id in fair_pos:
-                return (0, m.stage_no, *_pace(m, fair_pos[m.id]),
+                return (_phase_sort(m), 0, m.stage_no, *_pace(m, fair_pos[m.id]),
                         m.leaf_key, m.match_no)
-            return (1, m.stage_no, *_pace(m, m.round_no),
+            return (_phase_sort(m), 1, m.stage_no, *_pace(m, m.round_no),
                     m.leaf_key, m.match_no)
 
         by_order = sorted(matches, key=_order_key)
@@ -1607,7 +1815,7 @@ def schedule_matches(
         # knockout in time (a stage-1 bracket depends on stage-0 results). It is
         # 0 for every single-stage tournament, so this is a no-op there.
         by_order = sorted(matches, key=lambda m: (
-            m.stage_no, *_pace(m, m.round_no), m.match_no,
+            _phase_sort(m), m.stage_no, *_pace(m, m.round_no), m.match_no,
         ))
     ordered = [m for m in by_order if m.id in pin_of] + \
               [m for m in by_order if m.id not in pin_of]
@@ -1620,6 +1828,20 @@ def schedule_matches(
             continue
         teams = [t for t in (m.home, m.away) if t]
         dur = timedelta(minutes=m.duration_minutes or cfg.slot_minutes)
+        # The window the phases already placed leave this match. Recomputed per
+        # match (not per candidate slot) — it only moves when something else
+        # is placed.
+        if finish_plans:
+            phase_lo, phase_hi = finish_phase_bounds(
+                m, finish_plans,
+                {
+                    mid: (start, end_of[mid])
+                    for mid, (start, _v) in assignments.items()
+                    if mid in end_of
+                },
+            )
+        else:
+            phase_lo = phase_hi = None
         pin = pin_of.get(m.id)
         chosen: tuple[datetime, str] | None = None
         best_score = float("-inf")
@@ -2114,6 +2336,38 @@ def validate_schedule(
                 "date": slot[0].date().isoformat(),
             })
 
+    # Phased finish (owner 2026-08-19): a repair verb could otherwise drag a
+    # final back among the quarter-finals, or leave one category's semi after
+    # every third place had played. Judged by the SAME resolver the draw was
+    # built under — and, because ``_legal`` runs this validator, it is also
+    # what stops the optimizer from undoing the barrier.
+    finish_plans = resolve_finish_phases(
+        matches,
+        [r for r in cfg.constraint_rules if r.type == "phased_finish"],
+        cfg,
+    )
+    if finish_plans:
+        for plan in finish_plans:
+            placed = [
+                (mid, assignments[mid][0], assignments[mid][0] + dur_of(mid), key)
+                for mid, key in plan.key_of.items()
+                if mid in assignments
+            ]
+            placed.sort(key=lambda x: (x[3], x[1]))
+            for i, (mid, start, _end, key) in enumerate(placed):
+                for oid, _ostart, oend, okey in placed[:i]:
+                    if okey >= key:
+                        continue
+                    if oend > start:
+                        violations.append({
+                            "code": "phase_out_of_order", "hard": True,
+                            "match_id": mid, "other_match_id": oid,
+                            "phase": plan.phase_of.get(mid, ""),
+                            "after_phase": plan.phase_of.get(oid, ""),
+                            "at": start.isoformat(),
+                        })
+                        break
+
     def overlap_pairs(
         items: list[Interval], gap: timedelta = timedelta(0),
     ) -> Iterator[tuple[str, str | None, datetime]]:
@@ -2504,6 +2758,9 @@ def build_schedule_inputs(
         for req, m in zip(reqs, targets, strict=True):
             deps: set[str] = set()
             bound: datetime | None = None
+            req.third_place = _is_third_place(
+                m.home_source, m.away_source, m.stage,
+            )
             for src in (m.home_source, m.away_source):
                 if not isinstance(src, dict):
                     continue
@@ -2570,6 +2827,9 @@ def build_schedule_inputs(
                 ).append(f"p{p.ref + 1}")
         for req, p in zip(reqs, plans, strict=True):
             deps: set[str] = set()
+            req.third_place = _is_third_place(
+                p.home_source, p.away_source, p.stage,
+            )
             for src in (p.home_source, p.away_source):
                 if not isinstance(src, dict):
                     continue

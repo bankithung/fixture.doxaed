@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/toast";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { t } from "@/lib/t";
+import { humanizeLeaf } from "@/features/controlroom/format";
 import { ConstraintRow } from "./ConstraintRow";
 import { groupRules } from "./ruleGroups";
 
@@ -151,11 +152,33 @@ export function ConstraintBuilder({
   // What a priority order can rank: whole sports first (the broad stroke),
   // then every configured competition. Values are the keys the engine matches
   // segment-aligned, so a sport entry covers all its categories.
+  // A word that appears in more than one competition's path ("girls", "u_14")
+  // ranks all of them at once (owner 2026-08-19: "first girls will play then
+  // the boys"). Derived from the tree, so nothing here knows what a gender is
+  // — a tournament that files its categories some other way gets ITS words.
+  const segmentOptions: SelectOption[] = (() => {
+    const seen = new Map<string, number>();
+    for (const c of competitions) {
+      if (!c.leafKey) continue;
+      for (const seg of new Set(c.leafKey.split(".").slice(1))) {
+        seen.set(seg, (seen.get(seg) ?? 0) + 1);
+      }
+    }
+    return [...seen.entries()]
+      .filter(([, n]) => n > 1)
+      .map(([seg]) => ({
+        value: seg,
+        label: `${t("Every")} ${humanizeLeaf(seg)}`,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  })();
+
   const orderOptions: SelectOption[] = [
     ...(sports.data?.sports ?? []).map((s) => ({
       value: s.key,
       label: `${t("All of")} ${s.name}`,
     })),
+    ...segmentOptions,
     ...competitions
       .filter((c) => c.leafKey)
       .map((c) => ({ value: c.leafKey, label: c.label })),

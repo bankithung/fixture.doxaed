@@ -30,6 +30,12 @@ DEFAULT_WEIGHT = 5
 # scope kinds the record meaningfully accepts (drives the UI scope Select; the
 # grammar itself is validated independently). Layer: S = slot-time
 # (scheduler.py), P = pairing-time (generate.py).
+# The finish phases a host can sequence with ``phased_finish``, in the order a
+# bracket reaches them. The vocabulary is fixed (the engine has to recognise
+# each one from the draw); WHICH of them are barriers, and in what order, is
+# entirely authored.
+FINISH_PHASES: tuple[str, ...] = ("earlier", "semi_final", "third_place", "final")
+
 CONSTRAINT_TYPES: list[dict[str, Any]] = [
     {"type": "no_double_booking_team", "label": "No team double-booking", "hard": True,
      "params_schema": {}, "scopes": ["all", "sport", "leaf"], "layer": "S"},
@@ -190,6 +196,27 @@ CONSTRAINT_TYPES: list[dict[str, Any]] = [
      "params_schema": {"rounds_from_end": "int",
                        "from_date": "date_or_last_day",
                        "exclusive": "bool"},
+     "scopes": ["all", "sport", "leaf"], "layer": "S"},
+    # Finish the whole tournament in phases (owner 2026-08-19: "all categories
+    # play up to their semi final, and only after all categories have played
+    # their semi do the third places play, and all finals at the very end —
+    # girls' final first, boys' last").
+    #
+    # ``closing_rounds_window`` can clear the last DAYS for the closing rounds;
+    # it cannot sequence what happens inside them, and the third-place match
+    # shares its round number with the final, so no count of rounds can put one
+    # after the other. This rule names the phases themselves.
+    #
+    # ``order`` is the sequence of phases, each one a barrier: no match of a
+    # phase may start until every match of the phase before it has finished.
+    # A phase left out of the list is not part of the rule. ``final_order``
+    # orders the LAST listed phase among itself, through the same competition
+    # grammar the priority order uses — so "girls" then "boys" is two entries,
+    # not one per category.
+    {"type": "phased_finish", "hard": True,
+     "label": "Finish in phases: semi-finals, then third places, then finals",
+     "params_schema": {"order": "phase_order", "final_order": "order"},
+     "param_options": {"order": list(FINISH_PHASES)},
      "scopes": ["all", "sport", "leaf"], "layer": "S"},
 ]
 

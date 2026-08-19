@@ -21,6 +21,7 @@ const PARAM_LABELS: Record<string, string> = {
   date: "Date",
   venues: "Venues (names, comma-separated)",
   round: "Round (final / semi_final / number)",
+  final_order: "Which of them plays first",
   min_gap_minutes: "Min gap (minutes)",
   cross_venue_gap_minutes: "Cross-venue gap (minutes)",
   order: "Order, most important first",
@@ -38,6 +39,21 @@ const PARAM_HINTS: Record<string, string> = {
     "Counted back from each competition's own last round, so 2 means its final and semi-finals.",
   exclusive:
     "On, the closing days are kept for those rounds only. Off, earlier rounds may still fill the gaps.",
+  final_order:
+    "Orders the last phase only. One entry can be a whole sport, one category, or a word from the category name such as girls.",
+};
+
+/** The phase list's own hint — keyed by KIND, because `phased_finish` stores
+ * it under the same `order` key the priority rule uses for competitions. */
+const PHASE_ORDER_HINT =
+  "Each phase waits for the one before it to finish everywhere. Leave a phase out to let it play whenever there is room.";
+
+/** How each finish phase reads on screen. The values come from the catalog. */
+const PHASE_LABELS: Record<string, string> = {
+  earlier: "All earlier rounds",
+  semi_final: "Semi-finals",
+  third_place: "Third places",
+  final: "Finals",
 };
 
 /** Readable names for enumerated param values, keyed "<param>:<value>". The
@@ -84,6 +100,8 @@ function OrderedPicker({
   onChange,
   testId,
   label,
+  addLabel,
+  emptyText,
 }: {
   value: string[];
   /** Everything pickable — competitions and whole sports. */
@@ -95,6 +113,11 @@ function OrderedPicker({
   onChange: (next: string[]) => void;
   testId: string;
   label: string;
+  /** What the add control offers, in the words of the thing being ranked —
+   * a phase list must not invite the host to "add a competition". */
+  addLabel?: string;
+  /** What an empty list means, in that same vocabulary. */
+  emptyText?: string;
 }): React.ReactElement {
   // Never render a raw leaf key: it is an internal code, and one leaking into
   // the list is what made a scoped rule look broken (owner 2026-08-18).
@@ -173,13 +196,14 @@ function OrderedPicker({
         </ol>
       ) : (
         <p className="text-xs text-muted-foreground">
-          {t("Nothing ranked yet, so the schedule keeps its usual order.")}
+          {t(emptyText ?? "Nothing ranked yet, so the schedule keeps its usual order.")}
         </p>
       )}
       {remaining.length ? (
         <Select
+          id={`${testId}-add`}
           aria-label={t("Add to the order")}
-          placeholder={t("Add a competition…")}
+          placeholder={t(addLabel ?? "Add a competition…")}
           value=""
           onChange={(v) => onChange([...value, v])}
           options={remaining}
@@ -279,6 +303,30 @@ export function ConstraintRow({
     onChange({ ...record, params: { ...record.params, [key]: value } });
 
   const renderParam = (key: string, kind: string): React.ReactElement => {
+    // The phases themselves, in the order they must finish (owner 2026-08-19).
+    // Same ranked-list control as a competition order — the thing being
+    // ordered is the only difference.
+    if (kind === "phase_order") {
+      const options = (spec.param_options?.[key] ?? []).map((v) => ({
+        value: v,
+        label: t(PHASE_LABELS[v] ?? v),
+      }));
+      return (
+        <div key={key} className="flex w-full flex-col gap-1">
+          <OrderedPicker
+            label={t("Phases, in the order they finish")}
+            value={asList(record.params[key])}
+            options={options}
+            labelOptions={options}
+            addLabel="Add a phase…"
+            emptyText="No phases set, so nothing waits for anything else."
+            onChange={(v) => setParam(key, v)}
+            testId={tid(key)}
+          />
+          <Hint text={PHASE_ORDER_HINT} />
+        </div>
+      );
+    }
     if (kind === "order") {
       // Ranked WITHIN the rule's scope (owner 2026-08-17): sports on separate
       // courts run at the same time, so ordering table tennis against sepak

@@ -1,0 +1,260 @@
+"""Finish the tournament in phases (owner 2026-08-19).
+
+"I want all categories to play up to till semi final, and only after all
+categories have played their semi then only the third places should play, and
+all finals scheduled at the very end — final, first girls will play then the
+boys at the end."
+
+``closing_rounds_window`` can clear the last DAYS for the closing rounds; it
+cannot sequence what happens inside them, and a third-place playoff shares its
+round number with the final, so no count of rounds can order the two. The
+``phased_finish`` record names the phases themselves. Nothing here is
+hardcoded: which phases are barriers, and which competition's finals go first,
+are both authored.
+"""
+from __future__ import annotations
+
+from datetime import date, time, timedelta
+
+from apps.fixtures.services.constraints import validate_constraints
+from apps.fixtures.services.scheduler import (
+    MatchSlotReq,
+    ScheduleConfig,
+    competition_rank,
+    merge_stored_constraints,
+    resolve_finish_phases,
+    schedule_matches,
+    validate_schedule,
+)
+
+D1, D2 = date(2026, 8, 17), date(2026, 8, 18)
+
+GIRLS = "table_tennis.u_14.girls.singles"
+BOYS = "table_tennis.u_14.boys.singles"
+SPK = "sepak_takraw.u_14.boys"
+
+
+def _cfg(**over) -> ScheduleConfig:
+    base = dict(
+        date_start=D1, date_end=D2,
+        daily_start=time(9, 0), daily_end=time(18, 0), slot_minutes=30,
+        venues=["A", "B"], rest_minutes=0, max_per_team_per_day=99,
+    )
+    base.update(over)
+    return ScheduleConfig(**base)
+
+
+def _req(mid, *, leaf_key, round_no, match_no=1, third_place=False,
+         after=(), stage="knockout"):
+    return MatchSlotReq(
+        id=mid, round_no=round_no, match_no=match_no,
+        home=f"{mid}-h", away=f"{mid}-a",
+        sport=leaf_key.split(".")[0], leaf_key=leaf_key, stage=stage,
+        third_place=third_place, after=tuple(after),
+    )
+
+
+def _bracket(prefix: str, leaf: str) -> list[MatchSlotReq]:
+    """A 4-team knockout: two semis (R1), then a third place and a final that
+    SHARE round 2 — exactly how the generator emits them."""
+    return [
+        _req(f"{prefix}s1", leaf_key=leaf, round_no=1, match_no=1),
+        _req(f"{prefix}s2", leaf_key=leaf, round_no=1, match_no=2),
+        _req(f"{prefix}3rd", leaf_key=leaf, round_no=2, match_no=3,
+             third_place=True, after=(f"{prefix}s1", f"{prefix}s2")),
+        _req(f"{prefix}f", leaf_key=leaf, round_no=2, match_no=4,
+             after=(f"{prefix}s1", f"{prefix}s2")),
+    ]
+
+
+def _rules(order, final_order=None, scope="all"):
+    stored = [{
+        "type": "phased_finish", "scope": scope, "hard": True,
+        "params": {"order": order, "final_order": final_order or []},
+    }]
+    cfg = _cfg()
+    merge_stored_constraints(cfg, validate_constraints(stored))
+    return cfg
+
+
+def _at(res, mid):
+    return res.assignments[mid][0]
+
+
+# --------------------------------------------------------- phase resolution
+def test_the_phase_is_read_from_each_competitions_own_bracket():
+    matches = _bracket("g", GIRLS) + _bracket("b", BOYS)
+    cfg = _rules(["semi_final", "third_place", "final"])
+    plans = resolve_finish_phases(matches, cfg.constraint_rules, cfg)
+    assert len(plans) == 1
+    phase = plans[0].phase_of
+    assert phase["gs1"] == phase["gs2"] == "semi_final"
+    # The third place and the final share round 2; only their SIDES tell them
+    # apart, which is the whole reason a round number cannot express this.
+    assert phase["g3rd"] == "third_place"
+    assert phase["gf"] == "final"
+
+
+def test_a_phase_the_host_did_not_list_is_not_part_of_the_rule():
+    matches = _bracket("g", GIRLS)
+    cfg = _rules(["third_place", "final"])
+    plans = resolve_finish_phases(matches, cfg.constraint_rules, cfg)
+    assert "gs1" not in plans[0].key_of
+    assert set(plans[0].key_of) == {"g3rd", "gf"}
+
+
+def test_a_deeper_bracket_counts_back_from_its_own_last_round():
+    # One record, two bracket depths: an 8-team leaf's semis are round 2, a
+    # 4-team leaf's are round 1. A literal round number could not do this.
+    deep = [
+        _req("d1", leaf_key=BOYS, round_no=1, match_no=1),
+        _req("d2", leaf_key=BOYS, round_no=1, match_no=2),
+        _req("dsemi", leaf_key=BOYS, round_no=2, match_no=3),
+        _req("dfinal", leaf_key=BOYS, round_no=3, match_no=4),
+    ]
+    matches = deep + _bracket("g", GIRLS)
+    cfg = _rules(["semi_final", "third_place", "final"])
+    phase = resolve_finish_phases(matches, cfg.constraint_rules, cfg)[0].phase_of
+    assert phase["dsemi"] == "semi_final"
+    assert phase["dfinal"] == "final"
+    assert phase.get("d1") is None  # "earlier" was not listed
+    assert phase["gs1"] == "semi_final"
+
+
+def test_scope_keeps_one_sport_out_of_another_sports_phases():
+    matches = _bracket("g", GIRLS) + _bracket("s", SPK)
+    cfg = _rules(["semi_final", "final"], scope="sport:table_tennis")
+    keys = resolve_finish_phases(matches, cfg.constraint_rules, cfg)[0].key_of
+    assert "gf" in keys
+    assert not any(k.startswith("s") for k in keys)
+
+
+# ------------------------------------------------------------ the barrier
+def test_no_third_place_starts_until_every_semi_final_has_finished():
+    matches = _bracket("g", GIRLS) + _bracket("b", BOYS)
+    cfg = _rules(["semi_final", "third_place", "final"])
+    res = schedule_matches(matches, cfg)
+    assert not res.unscheduled
+    dur = 30 * 60
+    semis_end = max(
+        _at(res, m).timestamp() + dur for m in ("gs1", "gs2", "bs1", "bs2")
+    )
+    for third in ("g3rd", "b3rd"):
+        assert _at(res, third).timestamp() >= semis_end
+
+
+def test_every_third_place_finishes_before_any_final_starts():
+    matches = _bracket("g", GIRLS) + _bracket("b", BOYS)
+    cfg = _rules(["semi_final", "third_place", "final"])
+    res = schedule_matches(matches, cfg)
+    thirds_end = max(
+        _at(res, m).timestamp() + 30 * 60 for m in ("g3rd", "b3rd")
+    )
+    for final in ("gf", "bf"):
+        assert _at(res, final).timestamp() >= thirds_end
+
+
+def test_the_finals_play_in_the_order_the_host_set():
+    # "final, first girls will play then the boys at the end" — one entry per
+    # gender, matched as a bare SEGMENT, not one entry per category.
+    matches = _bracket("g", GIRLS) + _bracket("b", BOYS)
+    cfg = _rules(["semi_final", "third_place", "final"],
+                 final_order=["girls", "boys"])
+    res = schedule_matches(matches, cfg)
+    assert _at(res, "gf") + timedelta(minutes=30) <= _at(res, "bf")
+
+
+def test_the_authored_order_is_obeyed_even_when_it_inverts_the_usual_one():
+    # Nothing about "third places come before finals" is baked in: a host who
+    # writes them the other way round gets them the other way round.
+    matches = _bracket("g", GIRLS)
+    cfg = _rules(["final", "third_place"])
+    res = schedule_matches(matches, cfg)
+    assert _at(res, "gf") < _at(res, "g3rd")
+
+
+def test_without_the_record_nothing_changes():
+    matches = _bracket("g", GIRLS) + _bracket("b", BOYS)
+    res = schedule_matches(matches, _cfg())
+    assert not res.unscheduled
+    # The two brackets interleave freely; the girls' final may precede the
+    # boys' semis. Only bracket precedence binds.
+    assert _at(res, "gf") >= _at(res, "gs1")
+
+
+# ------------------------------------------------- the validator agrees
+def test_a_hand_moved_final_is_reported_out_of_order():
+    matches = _bracket("g", GIRLS) + _bracket("b", BOYS)
+    cfg = _rules(["semi_final", "third_place", "final"])
+    res = schedule_matches(matches, cfg)
+    hacked = dict(res.assignments)
+    # Drag the girls' final back onto the semi-finals' slot.
+    hacked["gf"] = res.assignments["gs1"]
+    codes = [v["code"] for v in validate_schedule(hacked, matches, cfg)]
+    assert "phase_out_of_order" in codes
+
+
+def test_the_schedule_the_engine_built_passes_its_own_validator():
+    matches = _bracket("g", GIRLS) + _bracket("b", BOYS)
+    cfg = _rules(["semi_final", "third_place", "final"],
+                 final_order=["girls", "boys"])
+    res = schedule_matches(matches, cfg)
+    assert [
+        v for v in validate_schedule(res.assignments, matches, cfg)
+        if v["code"] == "phase_out_of_order"
+    ] == []
+
+
+# ----------------------------------------------------------- the grammar
+def test_a_bare_segment_matches_every_competition_carrying_it():
+    order = ["girls", "boys"]
+    assert competition_rank(order, "table_tennis", GIRLS) == 0
+    assert competition_rank(order, "table_tennis", BOYS) == 1
+    # A segment is the WEAKEST match: an exact leaf still overrides it.
+    assert competition_rank(["girls", BOYS], "table_tennis", BOYS) == 1
+    assert competition_rank([BOYS, "girls"], "table_tennis", BOYS) == 0
+    # A segment is a FACT about the path, not a label: sepak's boys event
+    # carries "boys" and ranks with the boys.
+    assert competition_rank(order, "sepak_takraw", SPK) == 1
+    # And a competition carrying neither segment stays unlisted, which sorts
+    # last — naming two genders must not invent a rank for a mixed event.
+    assert competition_rank(order, "chess", "chess.open") == 2
+
+
+def test_the_setup_note_says_what_was_set():
+    cfg = _cfg()
+    notes = merge_stored_constraints(cfg, validate_constraints([{
+        "type": "phased_finish", "scope": "all", "hard": True,
+        "params": {"order": ["semi_final", "third_place", "final"],
+                   "final_order": ["girls", "boys"]},
+    }]))
+    joined = " ".join(notes)
+    assert "semi-finals" in joined and "third places" in joined
+    assert "finals" in joined
+
+
+def test_the_stored_record_round_trips_through_the_write_path():
+    # The shape the API actually stores, through the same validator the
+    # settings endpoint uses, into the engine's runtime model.
+    stored = validate_constraints([{
+        "type": "phased_finish", "scope": "sport:table_tennis", "hard": True,
+        "params": {"order": ["semi_final", "final", "nonsense"],
+                   "final_order": ["girls"]},
+    }])
+    assert stored[0]["type"] == "phased_finish"
+    cfg = _cfg()
+    merge_stored_constraints(cfg, stored)
+    rules = [r for r in cfg.constraint_rules if r.type == "phased_finish"]
+    assert rules and rules[0].scope == "sport:table_tennis"
+    # A phase the engine does not recognise is dropped, never guessed at.
+    assert rules[0].params["order"] == ["semi_final", "final"]
+    assert rules[0].params["final_order"] == ["girls"]
+
+
+def test_an_empty_order_is_no_rule_at_all():
+    cfg = _cfg()
+    merge_stored_constraints(cfg, validate_constraints([{
+        "type": "phased_finish", "scope": "all", "hard": True,
+        "params": {"order": [], "final_order": ["girls"]},
+    }]))
+    assert [r for r in cfg.constraint_rules if r.type == "phased_finish"] == []

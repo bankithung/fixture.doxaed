@@ -53,6 +53,7 @@ export const RULE_GROUPS: RuleGroup[] = [
     types: [
       "competition_priority",
       "closing_rounds_window",
+      "phased_finish",
       "round_pinned_to_window",
       "rotation_fairness",
     ],

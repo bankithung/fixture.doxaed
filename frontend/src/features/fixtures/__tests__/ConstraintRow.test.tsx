@@ -404,3 +404,90 @@ describe("ConstraintRow · a scoped order still reads as itself", () => {
     expect(screen.queryByTestId("constraint-0-order-inert-0")).toBeNull();
   });
 });
+
+const PHASED_SPEC: ConstraintType = {
+  type: "phased_finish",
+  label: "Finish in phases: semi-finals, then third places, then finals",
+  hard: true,
+  params_schema: { order: "phase_order", final_order: "order" },
+  param_options: { order: ["earlier", "semi_final", "third_place", "final"] },
+  scopes: ["all", "sport", "leaf"],
+  layer: "S",
+};
+
+describe("ConstraintRow \u00b7 the finishing order is phases, not rounds", () => {
+  it("ranks the phases by name and never shows an engine key", async () => {
+    // Owner 2026-08-19: "all categories play up to their semi final, then only
+    // the third places, and all finals at the very end."
+    const { onChange } = mount(
+      {
+        type: "phased_finish",
+        scope: "all",
+        hard: true,
+        weight: 5,
+        params: { order: ["semi_final", "third_place"] },
+      },
+      PHASED_SPEC,
+    );
+    const list = screen.getByTestId("constraint-0-order");
+    expect(list).toHaveTextContent("Semi-finals");
+    expect(list).toHaveTextContent("Third places");
+    expect(list).not.toHaveTextContent("semi_final");
+
+    // The phase still to add is offered by name; picking it appends.
+    await userEvent.click(screen.getAllByLabelText("Add to the order")[0]!);
+    await userEvent.click(screen.getByRole("option", { name: "Finals" }));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          order: ["semi_final", "third_place", "final"],
+        }),
+      }),
+    );
+  });
+
+  it("moves a phase up, because the order IS the rule", async () => {
+    const { onChange } = mount(
+      {
+        type: "phased_finish",
+        scope: "all",
+        hard: true,
+        weight: 5,
+        params: { order: ["third_place", "final"] },
+      },
+      PHASED_SPEC,
+    );
+    await userEvent.click(screen.getByTestId("constraint-0-order-up-1"));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({ order: ["final", "third_place"] }),
+      }),
+    );
+  });
+
+  it("orders the last phase by competition, girls before boys", async () => {
+    const { onChange } = mount(
+      {
+        type: "phased_finish",
+        scope: "all",
+        hard: true,
+        weight: 5,
+        params: { order: ["semi_final", "final"], final_order: [] },
+      },
+      PHASED_SPEC,
+    );
+    // Two ranked lists on this row: the phases, then the last phase's own
+    // order. The competition picker is the second.
+    await userEvent.click(screen.getAllByLabelText("Add to the order")[1]!);
+    await userEvent.click(
+      screen.getByRole("option", { name: "U-14 \u00b7 Girls" }),
+    );
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          final_order: ["table_tennis.u_14.girls"],
+        }),
+      }),
+    );
+  });
+});

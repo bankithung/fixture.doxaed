@@ -49,6 +49,14 @@ const VIOLATION_TITLES: Record<string, string> = {
   blackout_window: "This time sits inside a daily break or blackout window",
   ceremony_block: "This time overlaps a ceremony",
   official_capacity_exceeded: "Not enough officials for another match of this sport at that time",
+  // The closing-days and finishing-order rules: without these three the raw
+  // code reached the screen (owner rule: never show an engine key to a host).
+  closing_round_too_early:
+    "A closing round would play before the day you kept for it",
+  non_closing_round_too_late:
+    "Only closing rounds may play from that day onwards",
+  phase_out_of_order:
+    "This would break the finishing order you set (semi-finals, then third places, then finals)",
 };
 
 function violationDetail(v: RepairViolation): string {
