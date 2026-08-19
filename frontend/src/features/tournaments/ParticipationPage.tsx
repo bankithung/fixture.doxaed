@@ -25,17 +25,23 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import {
+  ALL_DETAIL_COLUMNS,
   applyParticipationFilters,
   buildParticipation,
+  detailColumns,
+  detailText,
   EMPTY_PARTICIPATION_FILTERS,
   participationCsv,
   participationFacets,
   participationTotals,
   sortParticipation,
+  type DetailColumn,
   type ParticipationFilters,
   type ParticipationRow,
   type ParticipationSortKey,
 } from "./participation";
+import { fmtDob, fmtGender } from "./personFormat";
+import { FileChips } from "@/components/ui/FileChips";
 
 /**
  * The participation workbench (owner 2026-08-17: "the host should have an
@@ -58,24 +64,39 @@ import {
 
 /** The sheet's columns, in order, with the width each starts at. Everything
  * else about them (sorting, truncation, the resize handle) follows from this
- * one list, so a column is added here and nowhere else. */
-const SHEET_COLUMNS: {
+ * one list, so a column is added here and nowhere else.
+ *
+ * The middle of the list is not fixed: the person-detail columns are whatever
+ * the registration form actually collected (see `detailColumns`), so an event
+ * that asks for a date of birth and a document shows those, and one that asks
+ * for a class and a roll number shows THOSE.
+ */
+interface SheetColumn {
   key: string;
   label: string;
   width: number;
   sort?: ParticipationSortKey;
   align?: "right";
-}[] = [
-  { key: "name", label: "Name", width: 210, sort: "name" },
-  { key: "class", label: "Class", width: 96, sort: "class" },
-  { key: "roll", label: "Roll", width: 84, sort: "roll" },
+}
+
+const NAME_COLUMN: SheetColumn = {
+  key: "name",
+  label: "Name",
+  width: 210,
+  sort: "name",
+};
+
+const TAIL_COLUMNS: SheetColumn[] = [
   { key: "school", label: "School", width: 190, sort: "school" },
   { key: "events", label: "Events", width: 84, sort: "events", align: "right" },
   { key: "entries", label: "Entered in", width: 420 },
 ];
 
 const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(
-  SHEET_COLUMNS.map((c) => [c.key, c.width]),
+  [NAME_COLUMN, ...ALL_DETAIL_COLUMNS, ...TAIL_COLUMNS].map((c) => [
+    c.key,
+    c.width,
+  ]),
 );
 
 /** The row-number gutter, exactly as a spreadsheet has one: it gives the eye
@@ -169,6 +190,72 @@ function Chips({
   );
 }
 
+/** The same detail on a phone card, where it reads as a sentence fragment
+ * rather than a column: the units come back, because there is no heading above
+ * the number to supply them. */
+function cardDetail(row: ParticipationRow, column: DetailColumn): string {
+  const v = detailText(row, column.key);
+  if (!v) return "";
+  if (column.key === "dob") return fmtDob(v);
+  if (column.key === "age") return `${v} ${t("yrs")}`;
+  if (column.key === "gender") return fmtGender(v);
+  return v;
+}
+
+/** One person-detail cell. The column decides how the value reads: a date is
+ * written the way the squad panel writes it, an age is a number the eye can
+ * scan down for a u-14 problem, and a document is the file itself rather than
+ * a count — the whole reason an organizer opens this list is to check what a
+ * school actually sent. */
+function DetailCell({
+  column,
+  row,
+  cell,
+}: {
+  column: DetailColumn;
+  row: ParticipationRow;
+  cell: string;
+}): React.ReactElement {
+  if (column.key === "docs") {
+    return (
+      <td data-col="docs" className={cn(cell, "overflow-hidden")}>
+        {row.documents.length ? (
+          <FileChips files={row.documents} className="flex-nowrap gap-1" />
+        ) : (
+          <span className="text-muted-foreground">·</span>
+        )}
+      </td>
+    );
+  }
+  const raw = detailText(row, column.key);
+  const text =
+    column.key === "dob"
+      ? raw
+        ? fmtDob(raw)
+        : ""
+      : column.key === "gender"
+        ? fmtGender(raw)
+        : raw;
+  // An age that reads too old for the competition is worth catching by eye,
+  // so it is the one detail allowed to raise its voice.
+  const numeric = column.key === "age" || column.key === "roll" ||
+    column.key === "phone" || column.key === "dob";
+  return (
+    <td
+      data-col={column.key}
+      className={cn(
+        cell,
+        "text-muted-foreground",
+        numeric && "font-tabular",
+        column.align === "right" && "text-right",
+      )}
+      title={text || undefined}
+    >
+      <span className="block truncate">{text || "·"}</span>
+    </td>
+  );
+}
+
 export function ParticipationPage(): React.ReactElement {
   const { id = "" } = useParams();
   return <ParticipationWorkbench tournamentId={id} />;
@@ -202,8 +289,6 @@ export function ParticipationWorkbench({
     const px = measureColumn(sheetRef.current, key);
     if (px) setWidth(key, px);
   };
-  const sheetWidth =
-    GUTTER + SHEET_COLUMNS.reduce((n, c) => n + (widths[c.key] ?? c.width), 0);
 
   // The whole roster in one read: every filter here is a question about the
   // set as a whole ("who is in two"), so paging it server-side would only be
@@ -221,6 +306,15 @@ export function ParticipationWorkbench({
   );
   const facets = useMemo(() => participationFacets(all), [all]);
   const totals = useMemo(() => participationTotals(all), [all]);
+  // What this event's form actually asked each school for. Read off the WHOLE
+  // roster, so filtering to one school never makes a column vanish mid-read.
+  const detail = useMemo(() => detailColumns(all), [all]);
+  const sheetColumns = useMemo(
+    () => [NAME_COLUMN, ...detail, ...TAIL_COLUMNS],
+    [detail],
+  );
+  const sheetWidth =
+    GUTTER + sheetColumns.reduce((n, c) => n + (widths[c.key] ?? c.width), 0);
   const rows = useMemo(
     () => sortParticipation(applyParticipationFilters(all, filters), sort.key, sort.dir),
     [all, filters, sort],
@@ -231,6 +325,18 @@ export function ParticipationWorkbench({
     const live = new Set(rows.flatMap((r) => r.entries.map((e) => e.leafKey)));
     return facets.competitions.filter((c) => live.has(c.value));
   }, [rows, facets]);
+
+  // The box names what it actually searches, which depends on what this
+  // event's form collected — promising "class, roll" to a host whose schools
+  // were never asked for either is a lie the placeholder can avoid.
+  const searchLabel = useMemo(() => {
+    const extra = detail
+      .filter((c) => c.key === "class" || c.key === "roll" || c.key === "phone")
+      .map((c) => t(c.label).toLowerCase());
+    return extra.length
+      ? `${t("Search a name")}, ${extra.join(", ")} ${t("or school")}`
+      : t("Search a name or school");
+  }, [detail]);
 
   const set = (patch: Partial<ParticipationFilters>): void =>
     setFilters((f) => ({ ...f, ...patch }));
@@ -248,7 +354,7 @@ export function ParticipationWorkbench({
   ).filter((k) => filters[k] !== "").length;
 
   const onExport = (): void => {
-    const csv = participationCsv(rows, facets.competitions);
+    const csv = participationCsv(rows, facets.competitions, detail);
     const url = URL.createObjectURL(
       new Blob([csv], { type: "text/csv;charset=utf-8" }),
     );
@@ -277,7 +383,7 @@ export function ParticipationWorkbench({
         <Input
           value={filters.q}
           onChange={(e) => set({ q: e.target.value })}
-          placeholder={t("Search a name, class, roll or school")}
+          placeholder={searchLabel}
           aria-label={t("Search participants")}
           data-testid="participation-search"
           className="h-8 pl-7 text-xs"
@@ -497,13 +603,18 @@ export function ParticipationWorkbench({
                 </div>
                 <span className="text-xs text-muted-foreground">
                   {[
-                    r.kind === "teacher" ? t("Teacher in charge") : r.classSection,
-                    r.rollNo,
+                    r.kind === "teacher" ? t("Teacher in charge") : "",
+                    ...detail
+                      .filter((c) => c.key !== "docs")
+                      .map((c) => cardDetail(r, c)),
                     r.group || r.school,
                   ]
                     .filter(Boolean)
                     .join(" · ")}
                 </span>
+                {r.documents.length ? (
+                  <FileChips files={r.documents} />
+                ) : null}
                 <Chips row={r} wrap />
               </li>
             ))}
@@ -526,7 +637,7 @@ export function ParticipationWorkbench({
               </caption>
               <colgroup>
                 <col style={{ width: GUTTER }} />
-                {SHEET_COLUMNS.map((c) => (
+                {sheetColumns.map((c) => (
                   <col key={c.key} style={{ width: widths[c.key] ?? c.width }} />
                 ))}
               </colgroup>
@@ -539,7 +650,7 @@ export function ParticipationWorkbench({
                     <span className="sr-only">{t("Row")}</span>
                     <span aria-hidden="true">#</span>
                   </th>
-                  {SHEET_COLUMNS.map((c) => {
+                  {sheetColumns.map((c) => {
                     const state = c.sort && sort.key === c.sort ? sort.dir : null;
                     const w = widths[c.key] ?? c.width;
                     return (
@@ -625,20 +736,9 @@ export function ParticipationWorkbench({
                           ) : null}
                         </span>
                       </td>
-                      <td
-                        data-col="class"
-                        className={cn(cell, "text-muted-foreground")}
-                        title={r.classSection || undefined}
-                      >
-                        <span className="block truncate">{r.classSection || "·"}</span>
-                      </td>
-                      <td
-                        data-col="roll"
-                        className={cn(cell, "font-tabular text-muted-foreground")}
-                        title={r.rollNo || undefined}
-                      >
-                        <span className="block truncate">{r.rollNo || "·"}</span>
-                      </td>
+                      {detail.map((c) => (
+                        <DetailCell key={c.key} column={c} row={r} cell={cell} />
+                      ))}
                       <td
                         data-col="school"
                         className={cn(cell, "text-muted-foreground")}

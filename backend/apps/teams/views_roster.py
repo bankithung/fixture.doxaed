@@ -53,7 +53,41 @@ def _fields_from(data: dict) -> dict:
     return out
 
 
-def _payload(m: RosterMember, entries: dict) -> dict:
+def _documents_for(members: list[RosterMember], tournament) -> dict:
+    """``{member_id: [file meta]}`` — the papers each declared person's school
+    uploaded for them, read back out of the submission that declared them.
+
+    The sheet asks a school for age proof / ID / consent per child, and until
+    now those files were reachable only from the team squad panel — so a person
+    the school had documented read as a bare name in the organizer's own list
+    (owner 2026-08-19). Nothing is stored twice: the join is by the sheet row
+    id the member carries, with a name fallback for people declared before that
+    id was persisted.
+    """
+    from apps.forms.services.roster import participant_documents
+
+    docs = participant_documents(
+        tournament, {m.institution_id for m in members if m.institution_id},
+    )
+    if not docs:
+        return {}
+    out: dict = {}
+    for m in members:
+        bucket = docs.get(str(m.institution_id or ""))
+        if not bucket:
+            continue
+        row_id = str((m.attributes or {}).get("form_row_id") or "")
+        found = bucket["by_row"].get(row_id) if row_id else None
+        if found is None:
+            found = bucket["by_name"].get(
+                (m.person.full_name or "").strip().casefold()
+            )
+        if found:
+            out[m.id] = found
+    return out
+
+
+def _payload(m: RosterMember, entries: dict, documents: dict | None = None) -> dict:
     return {
         "id": str(m.id),
         "full_name": m.person.full_name,
@@ -75,6 +109,8 @@ def _payload(m: RosterMember, entries: dict) -> dict:
         "group": (
             {"id": str(m.group_id), "name": m.group.name} if m.group_id else None
         ),
+        # The papers the school attached to this person (signed view URLs).
+        "documents": (documents or {}).get(m.id, []),
         # The point of the layer: one person, every competition they are in.
         "entries": entries.get(m.id, []),
     }
@@ -157,7 +193,8 @@ class TournamentRosterView(APIView):
             )
         members = list(qs)
         entries = _entries_for(t, members)
-        payload = [_payload(m, entries) for m in members]
+        documents = _documents_for(members, t)
+        payload = [_payload(m, entries, documents) for m in members]
         return Response({
             "can_manage": can_manage_tournament(request.user, t),
             "roster_mode": t.roster_mode,
@@ -197,7 +234,10 @@ class TournamentRosterView(APIView):
             )
         except DjangoValidationError as exc:
             raise _as_drf(exc) from exc
-        return Response(_payload(member, _entries_for(t, [member])), status=201)
+        return Response(
+            _payload(member, _entries_for(t, [member]), _documents_for([member], t)),
+            status=201,
+        )
 
 
 def _resolve_competitor(request, t, data):
@@ -276,7 +316,9 @@ class TournamentRosterDetailView(APIView):
         except DjangoValidationError as exc:
             raise _as_drf(exc) from exc
         member.refresh_from_db()
-        return Response(_payload(member, _entries_for(t, [member])))
+        return Response(
+            _payload(member, _entries_for(t, [member]), _documents_for([member], t))
+        )
 
     def delete(self, request, tournament_id, member_id):
         _t, member = self._resolve(request, tournament_id, member_id)

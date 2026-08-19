@@ -115,6 +115,55 @@ describe("ParticipationPage", () => {
     expect(screen.getByTestId("participation-m3")).toBeInTheDocument();
   });
 
+  it("shows the details the form collected, and no column it never asked for", async () => {
+    // A roster-first event asks for a date of birth and an age-proof document
+    // and never asks for a class or a roll number; the list used to show a
+    // hardcoded Class and Roll and nothing else (owner 2026-08-19).
+    vi.mocked(tournamentsApi.roster).mockResolvedValue({
+      ...DATA,
+      members: DATA.members.map((m) => ({
+        ...m,
+        class_section: "",
+        roll_no: "",
+        gender: "male",
+        date_of_birth: "2013-04-02",
+        documents:
+          m.id === "m1"
+            ? [
+                {
+                  name: "birth.pdf",
+                  label: "Birth certificate",
+                  url: "/api/forms/uploads/abc/",
+                  content_type: "application/pdf",
+                },
+              ]
+            : [],
+      })),
+    } as TournamentRoster);
+    mount();
+    const row = await screen.findByTestId("participation-m1");
+    // Written the way the squad panel writes it (locale-formatted, not raw ISO).
+    expect(row.querySelector('[data-col="dob"]')).toHaveTextContent(/Apr.*2013/);
+    expect(row.querySelector('[data-col="gender"]')).toHaveTextContent("Male");
+    // The document is the file itself, not a count — the reason to open the
+    // list is to check what a school actually sent.
+    const doc = within(row as HTMLElement).getByRole("link", {
+      name: "Birth certificate",
+    });
+    expect(doc).toHaveAttribute("href", "/api/forms/uploads/abc/");
+    // Columns nobody filled are not there at all.
+    expect(row.querySelector('[data-col="class"]')).toBeNull();
+    expect(row.querySelector('[data-col="roll"]')).toBeNull();
+  });
+
+  it("keeps Class and Roll for an event whose form does ask for them", async () => {
+    mount();
+    const row = await screen.findByTestId("participation-m1");
+    expect(row.querySelector('[data-col="class"]')).toHaveTextContent("8-A");
+    expect(row.querySelector('[data-col="roll"]')).toHaveTextContent("12");
+    expect(row.querySelector('[data-col="dob"]')).toBeNull();
+  });
+
   it("marks the rows that are in more than one event", async () => {
     mount();
     expect(await screen.findByTestId("participation-m1")).toHaveAttribute("data-multi");

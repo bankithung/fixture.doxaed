@@ -1,6 +1,7 @@
-import type { RosterMember } from "@/api/tournaments";
+import type { RosterMember, UploadRef } from "@/api/tournaments";
 import { humanizeLeaf } from "@/features/controlroom/format";
 import { t } from "@/lib/t";
+import { ageFrom } from "./personFormat";
 
 /**
  * The model behind the participation workbench (owner 2026-08-17: "a list of
@@ -40,6 +41,13 @@ export interface ParticipationRow {
   kind: "student" | "teacher";
   classSection: string;
   rollNo: string;
+  /** ISO date, or "" when the sheet did not ask (or the school left it out). */
+  dob: string;
+  gender: string;
+  phone: string;
+  email: string;
+  /** Papers the school uploaded for this person. */
+  documents: UploadRef[];
   school: string;
   /** The house/class in a within-school event, else "". */
   group: string;
@@ -132,6 +140,11 @@ export function buildParticipation(
       kind: m.kind,
       classSection: m.class_section,
       rollNo: m.roll_no,
+      dob: m.date_of_birth ?? "",
+      gender: m.gender,
+      phone: m.contact_phone,
+      email: m.contact_email,
+      documents: m.documents ?? [],
       school: m.institution?.name ?? "",
       group: m.group?.name ?? "",
       entries,
@@ -186,7 +199,7 @@ export function applyParticipationFilters(
     if (f.events === "multi" && r.events < 2) return false;
     if (f.events === "cross_sport" && !r.multiAcrossSports) return false;
     if (q) {
-      const hay = [r.name, r.classSection, r.rollNo, r.school, r.group]
+      const hay = [r.name, r.classSection, r.rollNo, r.school, r.group, r.phone]
         .join(" ")
         .toLowerCase();
       if (!hay.includes(q)) return false;
@@ -211,6 +224,8 @@ export type ParticipationSortKey =
   | "name"
   | "class"
   | "roll"
+  | "dob"
+  | "gender"
   | "school"
   | "events";
 
@@ -227,9 +242,13 @@ export function sortParticipation(
         ? r.classSection
         : key === "roll"
           ? r.rollNo
-          : key === "school"
-            ? r.school
-            : r.name;
+          : key === "dob"
+            ? r.dob
+            : key === "gender"
+              ? r.gender
+              : key === "school"
+                ? r.school
+                : r.name;
   return [...rows].sort((a, b) => {
     const x = pick(a);
     const y = pick(b);
@@ -238,6 +257,100 @@ export function sortParticipation(
     }
     return String(x).localeCompare(String(y)) * sign || a.name.localeCompare(b.name);
   });
+}
+
+/**
+ * The person-detail columns the sheet CAN carry, in reading order.
+ *
+ * A registration form is DATA, not a fixed shape: this event asks each school
+ * for a date of birth, a gender and an age-proof document, the next asks for a
+ * class and a roll number, and a third asks for something nobody has thought of
+ * yet. The list showed a hardcoded Class and Roll either way, so an organizer
+ * running the first kind read a column of dots beside every child while the
+ * details their schools HAD filled in were nowhere on the page (owner
+ * 2026-08-19). So the columns follow the answers: one is shown when at least
+ * one person carries it, and hidden when nobody does.
+ */
+export type DetailKey =
+  | "class"
+  | "roll"
+  | "dob"
+  | "age"
+  | "gender"
+  | "phone"
+  | "docs";
+
+export interface DetailColumn {
+  key: DetailKey;
+  label: string;
+  width: number;
+  sort?: ParticipationSortKey;
+  align?: "right";
+}
+
+/** Every detail column that can appear, whatever this event asks for. The page
+ * seeds its saved column widths from the whole set, so a width survives a
+ * column going quiet and coming back. */
+export const ALL_DETAIL_COLUMNS: DetailColumn[] = [
+  { key: "class", label: "Class", width: 96, sort: "class" },
+  { key: "roll", label: "Roll", width: 84, sort: "roll" },
+  { key: "dob", label: "Born", width: 118, sort: "dob" },
+  { key: "age", label: "Age", width: 60, align: "right" },
+  { key: "gender", label: "Gender", width: 90, sort: "gender" },
+  { key: "phone", label: "Phone", width: 130 },
+  { key: "docs", label: "Documents", width: 210 },
+];
+
+/** Whether any visible person carries this detail. Age rides on the date of
+ * birth, so the two appear and disappear together. */
+function carries(rows: readonly ParticipationRow[], key: DetailKey): boolean {
+  switch (key) {
+    case "class":
+      return rows.some((r) => !!r.classSection);
+    case "roll":
+      return rows.some((r) => !!r.rollNo);
+    case "dob":
+    case "age":
+      return rows.some((r) => !!r.dob);
+    case "gender":
+      return rows.some((r) => !!r.gender);
+    case "phone":
+      return rows.some((r) => !!r.phone);
+    case "docs":
+      return rows.some((r) => r.documents.length > 0);
+  }
+}
+
+/** The detail columns worth showing for these people. Computed from the WHOLE
+ * roster, not the filtered view, so narrowing to one school never makes a
+ * column jump out of the table under the reader. */
+export function detailColumns(
+  rows: readonly ParticipationRow[],
+): DetailColumn[] {
+  return ALL_DETAIL_COLUMNS.filter((c) => carries(rows, c.key));
+}
+
+/** One detail as text — the single source both the sheet cell and the exported
+ * spreadsheet read, so what an organizer sees is what they download. */
+export function detailText(r: ParticipationRow, key: DetailKey): string {
+  switch (key) {
+    case "class":
+      return r.classSection;
+    case "roll":
+      return r.rollNo;
+    case "dob":
+      return r.dob;
+    case "age": {
+      const a = r.dob ? ageFrom(r.dob) : null;
+      return a === null ? "" : String(a);
+    }
+    case "gender":
+      return r.gender;
+    case "phone":
+      return r.phone;
+    case "docs":
+      return r.documents.map((d) => d.label || d.name).join("; ");
+  }
 }
 
 function csvCell(v: string): string {
@@ -252,12 +365,12 @@ function csvCell(v: string): string {
 export function participationCsv(
   rows: readonly ParticipationRow[],
   competitions: readonly { value: string; label: string }[],
+  columns: readonly DetailColumn[],
 ): string {
   const head = [
     t("Name"),
     t("Kind"),
-    t("Class"),
-    t("Roll"),
+    ...columns.map((c) => t(c.label)),
     t("School"),
     t("Events"),
     ...competitions.map((c) => c.label),
@@ -267,8 +380,7 @@ export function participationCsv(
     return [
       r.name,
       r.kind === "teacher" ? t("Teacher") : t("Student"),
-      r.classSection,
-      r.rollNo,
+      ...columns.map((c) => detailText(r, c.key)),
       r.school,
       String(r.events),
       ...competitions.map((c) => (mine.has(c.value) ? t("Yes") : "")),

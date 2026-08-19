@@ -163,6 +163,9 @@ export interface RosterMember {
   contact_email: string;
   contact_phone: string;
   attributes: Record<string, unknown>;
+  /** Papers the school uploaded for this person (age proof, ID, consent),
+   * read back out of the submission that declared them. */
+  documents: UploadRef[];
   institution: { id: string; name: string } | null;
   group: { id: string; name: string } | null;
   entries: RosterEntry[];

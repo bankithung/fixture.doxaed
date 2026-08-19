@@ -23,7 +23,6 @@ import {
   type TeamRegistrationDetail,
   type TeamRow,
   type TournamentSport,
-  type UploadRef,
 } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
@@ -50,6 +49,8 @@ import "@/components/ui/star-border.css";
 import { StaggeredDrawer } from "@/components/ui/StaggeredDrawer";
 import { StarBorder } from "@/components/ui/StarBorder";
 import { RangePills } from "@/features/dashboard/RangePills";
+import { FileChips } from "@/components/ui/FileChips";
+import { ageFrom, fmtDob } from "@/features/tournaments/personFormat";
 import { CreateFormDialog } from "../CreateFormDialog";
 import { configuredLeaves, EmptyState } from "./shared";
 
@@ -833,75 +834,6 @@ export function TeamsTab(): React.ReactElement {
       />
     </div>
   );
-}
-
-/** A row of uploaded-file chips — images preview as thumbnails, everything
- * else shows a paperclip; each opens the signed view URL in a new tab. */
-function FileChips({ files }: { files: UploadRef[] }): React.ReactElement | null {
-  if (!files.length) return null;
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {files.map((f) => {
-        const isImg = f.content_type.startsWith("image/");
-        // Show the respondent's document name when given; the filename is the
-        // hover title so the admin can still see the original.
-        const label = f.label || f.name;
-        return (
-          <a
-            key={f.url}
-            href={f.url}
-            target="_blank"
-            rel="noreferrer"
-            title={f.label ? f.name : undefined}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs text-primary transition-colors hover:bg-accent"
-          >
-            {isImg ? (
-              <img
-                src={f.url}
-                alt={label}
-                className="h-6 w-6 shrink-0 rounded border border-border object-cover"
-              />
-            ) : (
-              <Paperclip aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-            )}
-            <span className="max-w-[11rem] truncate">{label}</span>
-          </a>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Humanize an ISO date ("2013-03-11" → "11 Mar 2013"); returns the raw input
- * on a parse miss so bad data never renders blank. */
-function fmtDob(iso: string): string {
-  try {
-    const d = new Date(`${iso}T00:00:00`);
-    if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleDateString(undefined, {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return iso;
-  }
-}
-
-/** Whole years from an ISO DOB to today — age matters for u-14/u-17 eligibility,
- * so it reads next to the date. null on a parse miss / implausible value. */
-function ageFrom(iso: string): number | null {
-  try {
-    const dob = new Date(`${iso}T00:00:00`);
-    if (Number.isNaN(dob.getTime())) return null;
-    const now = new Date();
-    let age = now.getFullYear() - dob.getFullYear();
-    const m = now.getMonth() - dob.getMonth();
-    if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age -= 1;
-    return age >= 0 && age < 130 ? age : null;
-  } catch {
-    return null;
-  }
 }
 
 /** One roster table row per player (# · name · born · age); the docs toggle

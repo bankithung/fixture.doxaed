@@ -3,6 +3,8 @@ import type { RosterMember } from "@/api/tournaments";
 import {
   applyParticipationFilters,
   buildParticipation,
+  detailColumns,
+  detailText,
   EMPTY_PARTICIPATION_FILTERS,
   participationCsv,
   participationFacets,
@@ -22,6 +24,7 @@ function member(over: Partial<RosterMember> & { id: string }): RosterMember {
     contact_email: "",
     contact_phone: "",
     attributes: {},
+    documents: [],
     institution: { id: "i1", name: "Grace Academy" },
     group: null,
     entries: [],
@@ -201,12 +204,65 @@ describe("sortParticipation", () => {
   });
 });
 
+describe("detailColumns", () => {
+  it("shows the columns this form filled, and hides the ones it never asked", () => {
+    // A roster-first event asks for a date of birth, a gender and a document
+    // and never asks for a class or a roll number (owner 2026-08-19).
+    const rows = buildParticipation([
+      member({
+        id: "d1",
+        full_name: "Phirun Mech",
+        class_section: "",
+        roll_no: "",
+        gender: "male",
+        date_of_birth: "2013-04-02",
+        documents: [
+          { name: "birth.pdf", url: "/api/forms/uploads/x/", content_type: "application/pdf" },
+        ],
+      }),
+    ]);
+    const keys = detailColumns(rows).map((c) => c.key);
+    expect(keys).toEqual(["dob", "age", "gender", "docs"]);
+    expect(keys).not.toContain("class");
+    expect(keys).not.toContain("roll");
+  });
+
+  it("keeps class and roll for a form that does ask for them", () => {
+    const keys = detailColumns(ROWS).map((c) => c.key);
+    expect(keys).toContain("class");
+    expect(keys).toContain("roll");
+    expect(keys).not.toContain("dob");
+  });
+
+  it("reads the age off the date of birth, and the papers by name", () => {
+    const [row] = buildParticipation([
+      member({
+        id: "d2",
+        date_of_birth: `${new Date().getFullYear() - 12}-01-01`,
+        documents: [
+          {
+            name: "scan.pdf",
+            label: "Aadhaar card",
+            url: "/api/forms/uploads/y/",
+            content_type: "application/pdf",
+          },
+        ],
+      }),
+    ]);
+    expect(detailText(row!, "age")).toBe("12");
+    expect(detailText(row!, "docs")).toBe("Aadhaar card");
+  });
+});
+
 describe("participationCsv", () => {
   it("writes one column per competition, ticked where they are entered", () => {
     const facets = participationFacets(ROWS);
-    const csv = participationCsv(ROWS, facets.competitions);
+    const csv = participationCsv(ROWS, facets.competitions, detailColumns(ROWS));
     const [head, ...body] = csv.split("\n");
     expect(head).toContain("Events");
+    // The export carries the same detail the sheet shows, so what an organizer
+    // reads on screen is what lands in the file.
+    expect(head).toContain("Class");
     // Every competition becomes a column, so a double entry reads across.
     for (const c of facets.competitions) expect(head).toContain(c.label);
     const imli = body.find((l) => l.startsWith("Imli Jamir"))!;
@@ -216,6 +272,7 @@ describe("participationCsv", () => {
   it("quotes a value containing a comma", () => {
     const csv = participationCsv(
       buildParticipation([member({ id: "z", full_name: "Ao, Toshi" })]),
+      [],
       [],
     );
     expect(csv).toContain('"Ao, Toshi"');

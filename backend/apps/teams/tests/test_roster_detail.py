@@ -167,3 +167,120 @@ def test_serve_upload_requires_signed_token_or_manager():
     out = APIClient()
     out.force_authenticate(user=outsider)
     assert out.get(base).status_code == 404
+
+
+# ------------------------------------------------- the same detail, declared once
+def _seed_roster_first(admin):
+    """A roster-first submission: the people are declared ONCE on the form's own
+    participants sheet (with DOB + documents) and the team row PICKS them."""
+    from apps.forms.services.forms import publish_form
+    from apps.tournaments.models import RosterMode
+
+    t = _cup(admin)
+    t.roster_mode = RosterMode.ROSTER_FIRST
+    t.save(update_fields=["roster_mode"])
+    inst = get_or_create_institution(tournament=t, name="Holy Cross")
+    form = generate_team_form_template(tournament=t, created_by=admin)
+    publish_form(form)
+    cg = form.settings["bindings"]["category_groups"][0]
+    p = form.settings["bindings"]["participants"]
+
+    doc = _upload(form, "birth.pdf", "application/pdf")
+    doc.label = "Birth certificate"
+    doc.save(update_fields=["label"])
+
+    answers = {
+        "institution_id": str(inst.id),
+        p["students_group"]: [
+            {
+                p["student_id"]: "row-a",
+                p["student_name"]: "Ravi K",
+                p["student_dob"]: DOB_A,
+                p["student_gender"]: "male",
+                p["student_docs"]: [str(doc.upload_ref)],
+            },
+            {
+                p["student_id"]: "row-b",
+                p["student_name"]: "Merithung",
+                p["student_dob"]: DOB_B,
+            },
+        ],
+        p["staff_group"]: [
+            {p["staff_id"]: "row-t", p["staff_name"]: "Bankithung",
+             p["staff_phone"]: "9876543210"},
+        ],
+        cg["group"]: [
+            {
+                cg["team_name"]: "Eagles",
+                cg["staff_group"]: [{cg["staff_member"]: "row-t"}],
+                cg["players_group"]: [
+                    {cg["player_member"]: "row-a"},
+                    {cg["player_member"]: "row-b"},
+                ],
+            }
+        ],
+    }
+    resp = FormResponse.objects.create(
+        form=form, organization=t.organization, tournament=t, answers=answers
+    )
+    FormFileUpload.objects.filter(form=form, response__isnull=True).update(response=resp)
+    map_response(resp)
+    return t, inst, Team.objects.get(tournament=t, name="Eagles")
+
+
+@override_settings(MEDIA_ROOT="/tmp/fixture-test-media")
+def test_a_picked_squad_still_shows_its_dob_and_documents():
+    """A roster-first team row carries only a PICK, so reading it alone found no
+    player at all and every squad showed "Born —" beside a child whose school
+    had uploaded a birth certificate (owner 2026-08-19)."""
+    _t, _inst, team = _seed_roster_first(_admin("rd-rf@forms.test"))
+    detail = team_submission_detail(team)
+
+    players = {p["name"]: p for p in detail["players"]}
+    assert set(players) == {"Ravi K", "Merithung"}
+    assert players["Ravi K"]["dob"] == DOB_A
+    assert [d["label"] for d in players["Ravi K"]["documents"]] == ["Birth certificate"]
+    assert players["Merithung"]["dob"] == DOB_B
+    assert players["Merithung"]["documents"] == []
+    # The teacher in charge is picked, not typed — same coach strip either way.
+    assert [c["name"] for c in detail["coaches"]] == ["Bankithung"]
+
+
+@override_settings(MEDIA_ROOT="/tmp/fixture-test-media")
+def test_the_participants_list_carries_the_papers_the_school_sent():
+    """The organizer's own list of declared people shows each person's uploaded
+    documents, so the detail a school filled in is readable where the people
+    are, not only inside a team panel."""
+    admin = _admin("rd-plist@forms.test")
+    t, _inst, _team = _seed_roster_first(admin)
+
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    r = c.get(f"/api/tournaments/{t.id}/roster/")
+    assert r.status_code == 200, r.data
+    by_name = {m["full_name"]: m for m in r.json()["members"]}
+
+    ravi = by_name["Ravi K"]
+    assert ravi["date_of_birth"] == DOB_A
+    assert ravi["gender"] == "male"
+    assert [d["label"] for d in ravi["documents"]] == ["Birth certificate"]
+    assert "/api/forms/uploads/" in ravi["documents"][0]["url"]
+    # Nobody gets someone else's papers.
+    assert by_name["Merithung"]["documents"] == []
+    assert by_name["Bankithung"]["contact_phone"] == "9876543210"
+
+
+@override_settings(MEDIA_ROOT="/tmp/fixture-test-media")
+def test_a_typed_submission_keeps_reading_exactly_as_it_did():
+    """No participants sheet in the bindings means no join to make — an inline
+    form must be untouched by any of this."""
+    admin = _admin("rd-typed@forms.test")
+    t, _form, team = _seed_submission(admin)
+    detail = team_submission_detail(team)
+    assert {p["name"] for p in detail["players"]} == {"Ravi K", "Merithung"}
+
+    c = APIClient()
+    c.force_authenticate(user=admin)
+    r = c.get(f"/api/tournaments/{t.id}/roster/")
+    assert r.status_code == 200
+    assert all(m["documents"] == [] for m in r.json()["members"])

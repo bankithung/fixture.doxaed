@@ -238,12 +238,19 @@ def _declare_participants(
         dob = row.get("date_of_birth") or None
         if dob:
             member.date_of_birth = dob
+        row_id = str(row.get("row_id") or "").strip()
+        if row_id:
+            # Which sheet row declared this person. The columns above are the
+            # ones every tournament means the same thing by; anything else the
+            # sheet asked for (documents, and whatever an event adds next) is
+            # read back out of the submission by this id, so the link has to
+            # survive on the member.
+            member.attributes = {**(member.attributes or {}), "form_row_id": row_id}
         member.save()
         claimed.add(member.pk)
         if roll:
             by_roll[roll.lower()] = member
         by_name[name.lower()] = member
-        row_id = str(row.get("row_id") or "").strip()
         if row_id:
             out[row_id] = member
         # A pick may also carry the member's real id (an older form, or an
