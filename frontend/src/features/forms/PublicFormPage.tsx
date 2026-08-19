@@ -724,6 +724,8 @@ export function PublicFormPage(): React.ReactElement {
       staffKey?: string;
       staffPickKey?: string;
       staffIds: string[];
+      nameKey?: string;
+      suffix: string;
     };
     const builds: Build[] = [];
     for (const sec of schema.sections ?? []) {
@@ -822,6 +824,9 @@ export function PublicFormPage(): React.ReactElement {
             );
         }
       }
+      const nameChild = (teamGroup.fields ?? []).find(
+        (c) => c.default_from === "institution",
+      );
       builds.push({
         teamKey: teamGroup.key,
         playersKey: playersChild.key,
@@ -831,12 +836,15 @@ export function PublicFormPage(): React.ReactElement {
             ? playersChild.max_items
             : Number.MAX_SAFE_INTEGER,
         entries,
+        nameKey: nameChild?.key,
+        suffix: nameChild?.default_suffix ?? "",
         staffKey: staffChild?.key,
         staffPickKey: staffChild?.seed_field,
         staffIds,
       });
     }
     if (!builds.length) return;
+    const school = selectedInstOption ? t(selectedInstOption.label) : "";
 
     setAnswers((prev) => {
       let touched = false;
@@ -850,7 +858,7 @@ export function PublicFormPage(): React.ReactElement {
         // grouping: one team per number, in order. All on T1 (nobody chose)
         // keeps the balanced split: 6 sepak players make two regus of 3,
         // not a 4 and an illegal 2. Row order decides who lands together.
-        let squads: string[][];
+        let squads: { no: number; ids: string[] }[];
         if (b.entries.some((e) => e.no > 1)) {
           const byNo = new Map<number, string[]>();
           for (const e of b.entries) {
@@ -858,7 +866,7 @@ export function PublicFormPage(): React.ReactElement {
           }
           squads = [...byNo.entries()]
             .sort((x, y) => x[0] - y[0])
-            .map(([, ids]) => ids);
+            .map(([no, ids]) => ({ no, ids }));
         } else {
           const members = b.entries.map((e) => e.id);
           squads = [];
@@ -869,19 +877,27 @@ export function PublicFormPage(): React.ReactElement {
           for (let ti = 0; ti < count && at < members.length; ti++) {
             const size = base + (extra > 0 ? 1 : 0);
             if (extra > 0) extra--;
-            squads.push(members.slice(at, at + size));
+            squads.push({ no: ti + 1, ids: members.slice(at, at + size) });
             at += size;
           }
         }
         const teams: Record<string, unknown>[] = [];
         for (const squad of squads) {
           const row: Record<string, unknown> = {
-            [b.playersKey]: squad.map((id) => ({ [b.pickKey]: id })),
+            [b.playersKey]: squad.ids.map((id) => ({ [b.pickKey]: id })),
           };
           if (b.staffKey && b.staffPickKey && b.staffIds.length) {
             row[b.staffKey] = b.staffIds.map((id) => ({
               [b.staffPickKey!]: id,
             }));
+          }
+          // The team is NAMED by the number the school picked in the cell
+          // (owner 2026-08-19: "i selected T2 but it shows T1"), not by its
+          // position in the list.
+          if (b.nameKey && school) {
+            row[b.nameKey] = b.suffix
+              ? `${school} ${b.suffix}-${squad.no}`
+              : school;
           }
           teams.push(row);
         }
@@ -895,7 +911,11 @@ export function PublicFormPage(): React.ReactElement {
             const owned = (k?: string): boolean =>
               !k ||
               JSON.stringify(cur[k] ?? null) === JSON.stringify(row[k] ?? null);
-            return owned(b.playersKey) && owned(b.staffKey);
+            return (
+              owned(b.playersKey) &&
+              owned(b.staffKey) &&
+              (school ? owned(b.nameKey) : true)
+            );
           });
         if (sameShape) continue;
         if (teams.length === 0) delete next[b.teamKey];

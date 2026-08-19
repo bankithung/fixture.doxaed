@@ -1649,10 +1649,15 @@ describe("PublicFormPage \u00b7 the built teams mirror the ticks", () => {
         sections: [
           {
             key: "competitions", title: "Competitions",
-            fields: [{
-              key: "categories", type: "multi_choice", label: "Playing in",
-              options: [{ value: "tt.u14.girls", label: "U-14 \u00b7 Girls" }],
-            }],
+            fields: [
+              { key: "inst", type: "dropdown", label: "Select your institution",
+                data_source: { type: "institution_list" },
+                options: [{ value: "i1", label: "Grace" }] },
+              {
+                key: "categories", type: "multi_choice", label: "Playing in",
+                options: [{ value: "tt.u14.girls", label: "U-14 \u00b7 Girls" }],
+              },
+            ],
           },
           {
             key: "participants", title: "Your participants",
@@ -1785,4 +1790,36 @@ describe("PublicFormPage \u00b7 the built teams mirror the ticks", () => {
     expect(within(table).queryByText("Asha, Binu")).not.toBeInTheDocument();
   });
 
+
+  it("names the team by the picked number, not its position", async () => {
+    // Owner 2026-08-19: "i selected T2 but here it shows T1". A school whose
+    // only doubles team is T2 gets TT-2 on the review, not TT-1.
+    vi.mocked(formsApi.publicGet).mockResolvedValue(mirrorPayload as never);
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+    await userEvent.click(
+      screen.getByRole("button", { name: /select your institution/i }),
+    );
+    await userEvent.click(screen.getByRole("option", { name: "Grace" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /U-14 · Girls/ }));
+    await userEvent.click(screen.getByRole("button", { name: /participants/i }));
+    await userEvent.click(screen.getByTestId("row-add-participant_students"));
+    await userEvent.click(screen.getByTestId("row-add-participant_students"));
+    const names = screen.getAllByLabelText(/full name/i);
+    await userEvent.type(names[0], "Asha");
+    await userEvent.type(names[1], "Binu");
+    for (const n of [1, 2]) {
+      await userEvent.click(
+        screen.getByRole("checkbox", { name: `U-14 · Girls, Student ${n}` }),
+      );
+      await userEvent.click(
+        screen.getByRole("button", { name: `Team, U-14 · Girls, Student ${n}` }),
+      );
+      await userEvent.click(screen.getByRole("option", { name: "T2" }));
+    }
+    await userEvent.click(screen.getByRole("button", { name: /confirm & review/i }));
+    const table = await screen.findByTestId("review-teams");
+    expect(within(table).getByText("Grace TT-2")).toBeInTheDocument();
+    expect(within(table).queryByText("Grace TT-1")).not.toBeInTheDocument();
+  });
 });
