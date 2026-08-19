@@ -538,11 +538,27 @@ export function PublicFormPage(): React.ReactElement {
    * every landing; a prior response saved under an older schema carries
    * values that match no current option (owner 2026-08-19: Grace's saved
    * branch keys blanked the whole matrix). */
+  const autoTeamKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const sec of data?.form?.schema?.sections ?? []) {
+      if (!sec.auto) continue;
+      for (const f of sec.fields ?? []) {
+        if (f.type === "group" && f.repeatable) keys.add(f.key);
+      }
+    }
+    return keys;
+  }, [data]);
   const scrubPrefill = (
     pf: Record<string, unknown>,
   ): Record<string, unknown> =>
     Object.fromEntries(
-      Object.entries(pf).filter(([k]) => !compFieldKeys.has(k)),
+      Object.entries(pf).filter(
+        // The competition selection AND the auto sections' teams are DERIVED
+        // (from Stage-1 leaves and the sheet's ticks): a prior submission
+        // saved under an older flow blocked the synthesis and reviewed as
+        // "No players" beside a ticked student (owner 2026-08-19).
+        ([k]) => !compFieldKeys.has(k) && !autoTeamKeys.has(k),
+      ),
     );
   /** The selected school's registered leaves (null until a school with a
    * registration is chosen → no scoping). */
@@ -670,8 +686,14 @@ export function PublicFormPage(): React.ReactElement {
         (f) => f.type === "group" && f.repeatable,
       );
       if (!teamGroup) continue;
-      const playersChild = (teamGroup.fields ?? []).find((g) =>
-        g.fields?.some((c) => c.data_source?.type === "form_group"),
+      // The STAFF group also holds a form_group picker, and finding the
+      // first picker-bearing child returned it — which put the teachers in
+      // the Players column and the players nowhere (owner 2026-08-19). The
+      // staff group is the one carrying seed metadata; players is the other.
+      const playersChild = (teamGroup.fields ?? []).find(
+        (g) =>
+          !g.seed_from_group &&
+          g.fields?.some((c) => c.data_source?.type === "form_group"),
       );
       const pick = playersChild?.fields?.find(
         (c) => c.data_source?.type === "form_group",
@@ -798,8 +820,10 @@ export function PublicFormPage(): React.ReactElement {
       const nameChild = (teamGroup.fields ?? []).find(
         (c) => c.default_from === "institution",
       );
-      const playersChild = (teamGroup.fields ?? []).find((g) =>
-        g.fields?.some((c) => c.data_source?.type === "form_group"),
+      const playersChild = (teamGroup.fields ?? []).find(
+        (g) =>
+          !g.seed_from_group &&
+          g.fields?.some((c) => c.data_source?.type === "form_group"),
       );
       const pick = playersChild?.fields?.find(
         (c) => c.data_source?.type === "form_group",
