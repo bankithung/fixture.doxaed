@@ -457,6 +457,67 @@ export function courtSummary(rows: readonly PreviewRow[]): string {
     .join(" · ");
 }
 
+/** One day of the court grid: the courts across, the start times down. */
+export interface CourtGridDay {
+  day: string;
+  dayLabel: string;
+  /** Court names, left to right, in the order they first play. */
+  courts: string[];
+  slots: {
+    start: string;
+    end: string;
+    /** The stage every match in this slot belongs to, when they agree. */
+    stage: string;
+    /** One entry per court, null where that court is idle. */
+    cells: (PreviewRow | null)[];
+  }[];
+}
+
+/**
+ * The schedule as a time-by-court grid (owner 2026-08-19): one row per start
+ * time, one column per court, so an official reads "8:20, court 2" straight
+ * off the page instead of scanning a list for their court.
+ *
+ * A row is a START TIME, not a fixed slot length — competitions of different
+ * durations share the day, so the times that actually occur are the rows.
+ * Matches with no time yet hold no cell; they belong in the list under it.
+ */
+export function buildCourtGrid(rows: readonly PreviewRow[]): CourtGridDay[] {
+  const days = new Map<string, PreviewRow[]>();
+  for (const r of rows) {
+    if (!r.placed || !r.start || !r.day) continue;
+    days.set(r.day, [...(days.get(r.day) ?? []), r]);
+  }
+  return [...days.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([day, dayRows]) => {
+      const courts: string[] = [];
+      for (const r of [...dayRows].sort((a, b) => a.start.localeCompare(b.start))) {
+        if (!courts.includes(r.venue)) courts.push(r.venue);
+      }
+      const byStart = new Map<string, PreviewRow[]>();
+      for (const r of dayRows) {
+        byStart.set(r.start, [...(byStart.get(r.start) ?? []), r]);
+      }
+      const slots = [...byStart.entries()]
+        .sort((a, b) => toMinutes(a[0]) - toMinutes(b[0]))
+        .map(([start, list]) => {
+          const cells = courts.map(
+            (court) => list.find((r) => r.venue === court) ?? null,
+          );
+          const ends = list.map((r) => r.end).filter(Boolean).sort();
+          const stages = new Set(list.map((r) => r.group || r.stageLabel));
+          return {
+            start,
+            end: ends[0] ?? "",
+            stage: stages.size === 1 ? [...stages][0]! : "",
+            cells,
+          };
+        });
+      return { day, dayLabel: fmtDayLabel(day), courts, slots };
+    });
+}
+
 /** Split sorted rows into bands, preserving the incoming row order. */
 export function groupRows(
   rows: readonly PreviewRow[],

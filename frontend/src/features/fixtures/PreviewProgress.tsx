@@ -9,8 +9,8 @@ import { t } from "@/lib/t";
  * then: "we can have animation at the centre… more proper animations that
  * make the wait show some TRYING type of animation").
  *
- * A draw now tries up to ten arrangements and keeps the one that gives every
- * match a time, which takes real seconds. So the wait is built to read as
+ * A draw tries several arrangements and keeps the one that gives every match
+ * a time, which takes real seconds. So the wait is built to read as
  * ATTEMPTS being made rather than as a generic spinner: a die tumbling inside
  * a sweeping ring, a row of pips lighting along, the count of seconds, and a
  * bar underneath.
@@ -26,9 +26,9 @@ import { t } from "@/lib/t";
  */
 
 /** About how long a full re-draw takes; the bar paces itself against this. */
-const EXPECTED_SECONDS = 25;
-/** Pips in the row — one per draw the server is allowed to try. */
-const PIPS = 10;
+const EXPECTED_SECONDS = 11;
+/** Pips in the row. Decorative: the count is a rhythm, not a tally. */
+const PIPS = 8;
 
 export function PreviewProgress({
   /** A re-draw (many attempts) rather than a first load (one). */
@@ -92,7 +92,7 @@ export function PreviewProgress({
         </p>
         <p className="max-w-sm text-sm text-muted-foreground">
           {redraw
-            ? t("Trying up to 10 draws and keeping the one that gives every match a time.")
+            ? t("Trying several draws and keeping the one that gives every match a time.")
             : t("Placing every match against your rules.")}
         </p>
       </div>

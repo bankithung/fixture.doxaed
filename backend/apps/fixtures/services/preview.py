@@ -60,11 +60,13 @@ from apps.tournaments.services.sports import (
 #: places everything, and it never runs at all when the first one does.
 MAX_DRAW_ATTEMPTS = 10
 
-#: And the wall clock those attempts may spend. A preview is one HTTP request
-#: against a 60s worker timeout, so a big tournament must stop trying before it
-#: costs the host their answer entirely. The fallback draw is always allowed
-#: past this — it is the one that rescues a re-draw nothing else could place.
-MAX_DRAW_SECONDS = 25.0
+#: And the wall clock those attempts may spend. Ten attempts is a ceiling, not
+#: a target: a host waiting on a button gives up long before a machine does
+#: (owner 2026-08-19: "this is taking forever"), so the loop stops at this
+#: budget and keeps the best it found. The fallback draw is always allowed
+#: past it — it is the one that rescues a re-draw nothing else could place,
+#: and it is one pass, not ten.
+MAX_DRAW_SECONDS = 7.0
 
 def stored_venue_records(tournament) -> list[dict[str, Any]]:
     """The workspace's stored Venue pool as scheduler venue records — the

@@ -854,7 +854,7 @@ describe("DryRunPreviewPage \u00b7 the sheet's columns resize", () => {
 describe("DryRunPreviewPage \u00b7 a re-draw shows its work", () => {
   it("says what it is doing while the draw runs, and counts the wait", async () => {
     // Owner 2026-08-19: "when the user presses try another draw the section is
-    // empty" — a re-draw tries up to ten arrangements, which takes seconds.
+    // empty" — a re-draw tries several arrangements, which takes seconds.
     mount();
     await screen.findByTestId("matches-spreadsheet");
     // Hold the re-draw open, the way a ten-attempt draw holds it open.
@@ -867,7 +867,7 @@ describe("DryRunPreviewPage \u00b7 a re-draw shows its work", () => {
     await userEvent.click(screen.getByTestId("regenerate-preview"));
     const panel = await screen.findByTestId("preview-progress");
     expect(panel).toHaveTextContent("Drawing again");
-    expect(panel).toHaveTextContent(/up to 10 draws/i);
+    expect(panel).toHaveTextContent(/several draws/i);
     // A live region, so a screen reader is told too.
     expect(panel).toHaveAttribute("aria-live", "polite");
     expect(screen.getByTestId("preview-progress-elapsed")).toBeInTheDocument();
