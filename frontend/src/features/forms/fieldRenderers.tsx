@@ -1332,12 +1332,13 @@ function SheetGroup({
                       option,
                       child,
                     );
-                    // Once ticked, a competition whose teams hold more than
-                    // one player grows a dropdown IN THE CELL to pick which
-                    // of the school's teams (max 3) this student joins. One
-                    // number per competition, so nobody can sit in two teams
-                    // of the same category. Singles need no choice: each
-                    // player is their own team.
+                    // The school does NOT choose a team number (owner
+                    // 2026-08-19): a group game fields ONE team, so the
+                    // choice decided nothing, and singles already give every
+                    // player their own team. Everyone ticked goes to team 1
+                    // and the squad size splits them from there. A number
+                    // left by an older submission is cleared on untick so it
+                    // cannot outlive the tick that put it there.
                     const teamNoKey = child.team_no_field;
                     let teamMap: Record<string, number> = {};
                     if (teamNoKey) {
@@ -1352,12 +1353,6 @@ function SheetGroup({
                         // A stale value reads as "team 1 everywhere".
                       }
                     }
-                    const teamNo = Math.min(
-                      MAX_TEAMS,
-                      Math.max(1, Number(teamMap[oval]) || 1),
-                    );
-                    const canPickTeam =
-                      on && Boolean(teamNoKey) && (option.squad_max ?? 1) > 1;
                     return (
                       <td
                         key={`${child.key}-${option.value}`}
@@ -1399,25 +1394,6 @@ function SheetGroup({
                               lock && on && "outline outline-2 outline-destructive",
                             )}
                           />
-                          {canPickTeam ? (
-                            <Select
-                              size="sm"
-                              className="w-16"
-                              aria-label={`${t("Team")}, ${t(option.label)}, ${rowLabel} ${i + 1}`}
-                              value={String(teamNo)}
-                              options={Array.from({ length: MAX_TEAMS }, (_, n) => ({
-                                value: String(n + 1),
-                                label: `T${n + 1}`,
-                              }))}
-                              onChange={(v) =>
-                                setCell(
-                                  i,
-                                  teamNoKey!,
-                                  JSON.stringify({ ...teamMap, [oval]: Number(v) }),
-                                )
-                              }
-                            />
-                          ) : null}
                         </div>
                       </td>
                     );
