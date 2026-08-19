@@ -322,7 +322,13 @@ describe("MatchConsolePage", () => {
     );
     // And each squad states its own count against the on-court cap.
     const home = screen.getByTestId("gate-sheet-home");
-    expect(within(home).getByText("Home")).toBeInTheDocument();
+    // Owner 2026-08-19: the sides are Team 1 and Team 2 on screen. A school
+    // hosting on its own tables has no away side, so home/away stays the
+    // draw's word for it and never the sheet's.
+    expect(within(home).getByText("Team 1")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("gate-sheet-away")).getByText("Team 2"),
+    ).toBeInTheDocument();
     expect(within(home).getByText("1 named")).toBeInTheDocument();
   });
 

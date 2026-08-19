@@ -48,10 +48,14 @@ import { competitionLabel } from "./console/shared";
  *    Boys · Doubles" underneath a heading that already said it. Every cell
  *    here drops out when it is empty or when it merely repeats the heading.
  * 2. *The two squads are one opposition, not two lists.* They sit either side
- *    of a `vs` rail and each is labelled Home or Away, because an official
- *    reading a sheet has to know which end of the table a school is on. The
- *    rail is a real grid column, so it becomes a full-width divider when the
- *    columns stack on a phone.
+ *    of a `vs` rail and are labelled Team 1 and Team 2, so an official reading
+ *    the sheet knows which entry is which without reading the names (owner
+ *    2026-08-19: "instead of home and away use team 1 team 2" — a school
+ *    hosting on its own tables has no away side, and a table-tennis draw has
+ *    no home end to speak of). `side` stays home/away underneath, because
+ *    that is what the draw, the scoreboard and every score payload call it.
+ *    The rail is a real grid column, so it becomes a full-width divider when
+ *    the columns stack on a phone.
  * 3. *A number box means a shirt number.* Table tennis and sepak rosters carry
  *    none, and the old sheet drew an empty grey square beside every player. A
  *    squad with no numbers gets a plain ordinal instead.
@@ -187,7 +191,7 @@ function TeamSheet({
               tone === "primary" ? "text-primary" : "text-info",
             )}
           >
-            {side === "home" ? t("Home") : t("Away")}
+            {side === "home" ? t("Team 1") : t("Team 2")}
           </span>
           <h3 className="min-w-0 text-base font-semibold leading-tight sm:text-lg">
             {name}
