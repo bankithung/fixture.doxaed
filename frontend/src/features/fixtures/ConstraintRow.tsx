@@ -46,6 +46,12 @@ const PARAM_HINTS: Record<string, string> = {
     "Applies to the last phase. Within a sport keeps two finals off the same slot; other sports still play at that time, in their own hall.",
   until_round:
     "Read against each competition's own bracket, so one rule covers a four-team category and a sixteen-team one.",
+  // Owner 2026-08-19: read as "the team that played waits 20 minutes", when it
+  // actually holds EVERY team the rule links — the whole school.
+  min_gap_minutes:
+    "Time between any two matches this rule links, which is all of them, not only the one that just played. Leave it at 0 to mean simply never at the same time.",
+  cross_venue_gap_minutes:
+    "The same, when the two matches are at different venues, for the travel between them.",
 };
 
 /** The phase list's own hint — keyed by KIND, because `phased_finish` stores

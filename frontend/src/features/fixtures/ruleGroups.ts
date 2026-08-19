@@ -86,7 +86,7 @@ export const RULE_GROUPS: RuleGroup[] = [
     key: "people",
     title: "People in two places",
     blurb:
-      "Nobody plays two matches at once. Each rule is keyed on a different person, so turn on the one that matches how your teams travel.",
+      "Nobody plays two matches at once. Each rule is keyed on a different person, so turn on the one that matches how your teams travel. A gap here holds every match the rule links; a team's own rest between its matches is under Rest and workload.",
     types: [
       "no_person_overlap",
       "no_staff_overlap",
