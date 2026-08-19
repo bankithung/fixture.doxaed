@@ -458,6 +458,10 @@ def register_school(
                     pool=(td.get("pool") or "")[:80],
                     sport=(td.get("sport") or "")[:40],
                     leaf_key=(td.get("leaf_key") or "")[:160],
+                    # Per-team crest, only when the form asked for one PER ROW
+                    # (pre-2026-08-17 shapes). Normally unset: the crest is the
+                    # school's, and `apps.teams.services.crest` reads it there.
+                    logo_ref=td.get("logo_ref") or None,
                     status=TeamStatus.REGISTERED,
                     created_by=submitted_by,
                 )

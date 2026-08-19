@@ -571,6 +571,23 @@ def _map_team_registration(resp: FormResponse) -> FormResponse:
     return resp
 
 
+def _one_ref(value) -> str:
+    """The single upload ref in a file-field answer, as a string.
+
+    A file field stores one ref or a list of them; a crest is one image, so a
+    list yields its first entry. Anything that is not a UUID is dropped rather
+    than stored — a bad ref would render as a broken badge on every fixture the
+    team appears in.
+    """
+    ref = value[0] if isinstance(value, list) and value else value
+    if not isinstance(ref, str):
+        return ""
+    try:
+        return str(uuid.UUID(ref))
+    except (ValueError, AttributeError):
+        return ""
+
+
 def _dob_year(value) -> int | None:
     """Pull the YEAR out of a ``YYYY-MM-DD`` date answer (Person stores DOB
     coarsely as ``dob_year`` for now; the full date stays on the response)."""
@@ -627,6 +644,9 @@ def _map_team_registration_multi(resp, form, b, a) -> FormResponse:
         ).first()
         default_name = inst.name if inst else ""
     inst_name = default_name
+    # The school-wide crest, picked up from whichever top-level logo key the
+    # form's category groups agree on (they all name the same one).
+    school_logo = ""
     # Team names are unique per competition leaf — track per-leaf names so a
     # defaulted (institution) name auto-suffixes instead of failing the submit.
     used_by_leaf: dict[str, set[str]] = {}
@@ -706,7 +726,17 @@ def _map_team_registration_multi(resp, form, b, a) -> FormResponse:
                                 or "in_charge"
                             ),
                         })
+            # The crest. Asked ONCE per submission since 2026-08-17, so it
+            # normally sits at the top level and belongs to the school; a form
+            # generated before that asked per team row, and that row wins for
+            # its own team. Either way it is stored on the domain row here, so
+            # every fixture surface can show it without re-reading the form.
+            logo_key = cg.get("team_logo")
+            row_logo = _one_ref(row.get(logo_key)) if logo_key else ""
+            if logo_key and not row_logo:
+                school_logo = school_logo or _one_ref(a.get(logo_key))
             teams_payload.append({
+                "logo_ref": row_logo or None,
                 "staff": staff,
                 "name": str(name),
                 # pool = human-readable label; sport/leaf_key = the structural
@@ -728,6 +758,15 @@ def _map_team_registration_multi(resp, form, b, a) -> FormResponse:
         group_id=group_id,
         participants=_participants_from(b, a),
     ) if teams_payload else []
+    if school_logo and institution_id:
+        from apps.teams.models import Institution
+
+        # A resubmission with a new crest replaces the old one; a resubmission
+        # that leaves the logo box empty keeps what is already there, because a
+        # school that re-enters its teams has not withdrawn its badge.
+        Institution.objects.filter(
+            id=institution_id, tournament=form.tournament
+        ).update(logo_ref=school_logo)
     resp.mapped_entities = {"team_ids": [str(t.id) for t in teams]}
     resp.save(update_fields=["mapped_entities"])
     return resp

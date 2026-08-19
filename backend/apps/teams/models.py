@@ -503,6 +503,12 @@ class Institution(models.Model):
     # Optional pointer to the Stage-1 form response that created this row (bare
     # UUID, no FK — avoids a teams→forms cycle; mirrors audit scope columns).
     source_response_id = models.UUIDField(null=True, blank=True)
+    # The school's crest, as a ``FormFileUpload.upload_ref`` (bare UUID, no FK,
+    # same reason as above). A crest belongs to the SCHOOL: the team form asks
+    # for it once per submission (owner 2026-08-17), and it is what every
+    # fixture, bracket, scoreboard and printed sheet shows beside the team's
+    # name. Blank when nobody uploaded one — every reader falls back to initials.
+    logo_ref = models.UUIDField(null=True, blank=True)
     # P2: pointer into the canonical platform identity (SchoolProfile) —
     # the spine for cross-tournament, cross-year school records. Nullable;
     # backfilled by normalized name + region, resolved via the merge console.
@@ -587,6 +593,12 @@ class Team(models.Model):
     sport = models.CharField(max_length=40, blank=True)
     leaf_key = models.CharField(max_length=160, blank=True, db_index=True)
     seed = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Per-team crest override (``FormFileUpload.upload_ref``). Normally unset —
+    # the crest is the school's and is read off ``institution.logo_ref``. This
+    # exists because a form generated before the logo moved to the participants
+    # sheet asked for one PER TEAM ROW, and because a house in a within-school
+    # event has no institution of its own to inherit from.
+    logo_ref = models.UUIDField(null=True, blank=True)
     status = models.CharField(
         max_length=24, choices=TeamStatus.choices, default=TeamStatus.REGISTERED,
         db_index=True,
