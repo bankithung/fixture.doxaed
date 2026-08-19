@@ -54,6 +54,10 @@ function isImageFile(name: string, contentType?: string): boolean {
   return /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(name);
 }
 
+/** A school fields at most this many teams per competition (owner
+ * 2026-08-19); the tick cell's dropdown offers T1..T3. */
+const MAX_TEAMS = 3;
+
 /** Address sub-fields (mirrors the backend address coercion shape). */
 const ADDRESS_PARTS: { key: string; label: string }[] = [
   { key: "line1", label: "Address line" },
@@ -998,6 +1002,8 @@ function SheetGroup({
   const canRemove = !disabled && rows.length > minRows;
   const setCell = (i: number, key: string, v: unknown): void =>
     onChange(rows.map((r, k) => (k === i ? { ...r, [key]: v } : r)));
+  const setCells = (i: number, patch: Record<string, unknown>): void =>
+    onChange(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)));
   // Documents live behind a side drawer (owner 2026-08-18): the inline upload
   // UI made the Documents column the tallest thing on every row. The cell is
   // a count button; the drawer holds the full upload UX with previews, the
@@ -1164,13 +1170,40 @@ function SheetGroup({
                 {cols.map((col) => {
                   if (col.kind === "option") {
                     const { child, option } = col;
+                    const oval = String(option.value);
                     const picked = asArray((row ?? {})[child.key]);
-                    const on = picked.includes(String(option.value));
+                    const on = picked.includes(oval);
                     const lock = lockReason(
                       (row ?? {}) as Record<string, unknown>,
                       option,
                       child,
                     );
+                    // Once ticked, a competition whose teams hold more than
+                    // one player grows a dropdown IN THE CELL to pick which
+                    // of the school's teams (max 3) this student joins. One
+                    // number per competition, so nobody can sit in two teams
+                    // of the same category. Singles need no choice: each
+                    // player is their own team.
+                    const teamNoKey = child.team_no_field;
+                    let teamMap: Record<string, number> = {};
+                    if (teamNoKey) {
+                      try {
+                        const parsed: unknown = JSON.parse(
+                          String((row ?? {})[teamNoKey] || "{}"),
+                        );
+                        if (parsed && typeof parsed === "object") {
+                          teamMap = parsed as Record<string, number>;
+                        }
+                      } catch {
+                        // A stale value reads as "team 1 everywhere".
+                      }
+                    }
+                    const teamNo = Math.min(
+                      MAX_TEAMS,
+                      Math.max(1, Number(teamMap[oval]) || 1),
+                    );
+                    const canPickTeam =
+                      on && Boolean(teamNoKey) && (option.squad_max ?? 1) > 1;
                     return (
                       <td
                         key={`${child.key}-${option.value}`}
@@ -1180,30 +1213,58 @@ function SheetGroup({
                           lock && !on && "bg-muted/40",
                         )}
                       >
-                        <input
-                          type="checkbox"
-                          checked={on}
-                          // A locked cell cannot be ticked; a tick that BECAME
-                          // conflicting (the gender or birthday changed after)
-                          // stays clickable so it can be unticked, and shows
-                          // as the problem it is.
-                          disabled={disabled || (Boolean(lock) && !on)}
-                          aria-label={`${t(option.label)}, ${rowLabel} ${i + 1}`}
-                          onChange={(e) =>
-                            setCell(
-                              i,
-                              child.key,
-                              e.target.checked
-                                ? [...picked, String(option.value)]
-                                : picked.filter((v) => v !== String(option.value)),
-                            )
-                          }
-                          className={cn(
-                            "h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            lock && !on && "opacity-35",
-                            lock && on && "outline outline-2 outline-destructive",
-                          )}
-                        />
+                        <div className="flex flex-col items-center gap-1.5">
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            // A locked cell cannot be ticked; a tick that BECAME
+                            // conflicting (the gender or birthday changed after)
+                            // stays clickable so it can be unticked, and shows
+                            // as the problem it is.
+                            disabled={disabled || (Boolean(lock) && !on)}
+                            aria-label={`${t(option.label)}, ${rowLabel} ${i + 1}`}
+                            onChange={(e) => {
+                              const nextPicked = e.target.checked
+                                ? [...picked, oval]
+                                : picked.filter((v) => v !== oval);
+                              const patch: Record<string, unknown> = {
+                                [child.key]: nextPicked,
+                              };
+                              if (!e.target.checked && teamNoKey && oval in teamMap) {
+                                const m = { ...teamMap };
+                                delete m[oval];
+                                patch[teamNoKey] = Object.keys(m).length
+                                  ? JSON.stringify(m)
+                                  : "";
+                              }
+                              setCells(i, patch);
+                            }}
+                            className={cn(
+                              "h-4 w-4 accent-[hsl(var(--primary))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              lock && !on && "opacity-35",
+                              lock && on && "outline outline-2 outline-destructive",
+                            )}
+                          />
+                          {canPickTeam ? (
+                            <Select
+                              size="sm"
+                              className="w-16"
+                              aria-label={`${t("Team")}, ${t(option.label)}, ${rowLabel} ${i + 1}`}
+                              value={String(teamNo)}
+                              options={Array.from({ length: MAX_TEAMS }, (_, n) => ({
+                                value: String(n + 1),
+                                label: `T${n + 1}`,
+                              }))}
+                              onChange={(v) =>
+                                setCell(
+                                  i,
+                                  teamNoKey!,
+                                  JSON.stringify({ ...teamMap, [oval]: Number(v) }),
+                                )
+                              }
+                            />
+                          ) : null}
+                        </div>
                       </td>
                     );
                   }

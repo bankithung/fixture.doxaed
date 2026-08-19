@@ -720,7 +720,7 @@ export function PublicFormPage(): React.ReactElement {
       playersKey: string;
       pickKey: string;
       cap: number;
-      members: string[];
+      entries: { id: string; no: number }[];
       staffKey?: string;
       staffPickKey?: string;
       staffIds: string[];
@@ -763,17 +763,34 @@ export function PublicFormPage(): React.ReactElement {
       const offered = new Set(
         (ticksChild.options ?? []).map((o) => String(o.value)),
       );
-      const members = sheet
-        .filter((r) => {
-          const row = (r ?? {}) as Record<string, unknown>;
-          const declared = Array.isArray(row[ticksChild.key])
-            ? (row[ticksChild.key] as unknown[]).map(String).filter((d) =>
-                offered.has(d),
-              )
-            : [];
-          return Boolean(row[idField]) && declared.some((d) => eventCovers(d, leaf));
-        })
-        .map((r) => String((r as Record<string, unknown>)[idField]));
+      // Each entry carries the team the student picked in the cell (owner
+      // 2026-08-19: "in the same cell a dropdown to select teams", max 3).
+      // One number per competition, so nobody sits in two teams of one
+      // category; the same student in another GAME is a different column.
+      const teamNoField = ticksChild.team_no_field;
+      const entries: { id: string; no: number }[] = [];
+      for (const r of sheet) {
+        const row = (r ?? {}) as Record<string, unknown>;
+        const declared = Array.isArray(row[ticksChild.key])
+          ? (row[ticksChild.key] as unknown[]).map(String).filter((d) =>
+              offered.has(d),
+            )
+          : [];
+        if (!row[idField] || !declared.some((d) => eventCovers(d, leaf))) {
+          continue;
+        }
+        let no = 1;
+        if (teamNoField) {
+          try {
+            const parsed: unknown = JSON.parse(String(row[teamNoField] || "{}"));
+            const v = (parsed as Record<string, unknown> | null)?.[leaf];
+            no = Math.min(3, Math.max(1, Number(v) || 1));
+          } catch {
+            // A stale value reads as team 1.
+          }
+        }
+        entries.push({ id: String(row[idField]), no });
+      }
       const staffChild = (teamGroup.fields ?? []).find((g) => g.seed_from_group);
       let staffIds: string[] = [];
       if (staffChild?.seed_from_group && staffChild.seed_events && staffChild.seed_row_id) {
@@ -813,7 +830,7 @@ export function PublicFormPage(): React.ReactElement {
           typeof playersChild.max_items === "number" && playersChild.max_items > 0
             ? playersChild.max_items
             : Number.MAX_SAFE_INTEGER,
-        members,
+        entries,
         staffKey: staffChild?.key,
         staffPickKey: staffChild?.seed_field,
         staffIds,
@@ -829,19 +846,35 @@ export function PublicFormPage(): React.ReactElement {
         const existing = Array.isArray(prev[b.teamKey])
           ? (prev[b.teamKey] as Record<string, unknown>[])
           : [];
+        // If anyone was placed in T2/T3, the numbers are the school's own
+        // grouping: one team per number, in order. All on T1 (nobody chose)
+        // keeps the balanced split: 6 sepak players make two regus of 3,
+        // not a 4 and an illegal 2. Row order decides who lands together.
+        let squads: string[][];
+        if (b.entries.some((e) => e.no > 1)) {
+          const byNo = new Map<number, string[]>();
+          for (const e of b.entries) {
+            byNo.set(e.no, [...(byNo.get(e.no) ?? []), e.id]);
+          }
+          squads = [...byNo.entries()]
+            .sort((x, y) => x[0] - y[0])
+            .map(([, ids]) => ids);
+        } else {
+          const members = b.entries.map((e) => e.id);
+          squads = [];
+          const count = Math.max(1, Math.ceil(members.length / b.cap));
+          const base = Math.floor(members.length / count);
+          let extra = members.length % count;
+          let at = 0;
+          for (let ti = 0; ti < count && at < members.length; ti++) {
+            const size = base + (extra > 0 ? 1 : 0);
+            if (extra > 0) extra--;
+            squads.push(members.slice(at, at + size));
+            at += size;
+          }
+        }
         const teams: Record<string, unknown>[] = [];
-        // Balanced split: 6 sepak players with a squad cap of 4 make two
-        // regus of 3, not a 4 and an illegal 2. Row order still decides who
-        // lands together.
-        const count = Math.max(1, Math.ceil(b.members.length / b.cap));
-        const base = Math.floor(b.members.length / count);
-        let extra = b.members.length % count;
-        let at = 0;
-        for (let ti = 0; ti < count && at < b.members.length; ti++) {
-          const size = base + (extra > 0 ? 1 : 0);
-          if (extra > 0) extra--;
-          const squad = b.members.slice(at, at + size);
-          at += size;
+        for (const squad of squads) {
           const row: Record<string, unknown> = {
             [b.playersKey]: squad.map((id) => ({ [b.pickKey]: id })),
           };
@@ -887,6 +920,7 @@ export function PublicFormPage(): React.ReactElement {
       players: string[];
       staff: string[];
       need: number;
+      cap: number;
     }[] = [];
     const nameOf = (
       sheetKey: string,
@@ -969,6 +1003,10 @@ export function PublicFormPage(): React.ReactElement {
           need:
             typeof playersChild?.min_items === "number"
               ? playersChild.min_items
+              : 0,
+          cap:
+            typeof playersChild?.max_items === "number"
+              ? playersChild.max_items
               : 0,
         });
       }
@@ -2088,6 +2126,11 @@ export function PublicFormPage(): React.ReactElement {
                                   <div className="text-xs text-destructive">
                                     {t("Needs at least")} {row.need}{" "}
                                     {t("players")}
+                                  </div>
+                                ) : null}
+                                {row.cap > 0 && row.players.length > row.cap ? (
+                                  <div className="text-xs text-destructive">
+                                    {t("Keep to")} {row.cap} {t("players")}
                                   </div>
                                 ) : null}
                               </td>

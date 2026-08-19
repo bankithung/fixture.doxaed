@@ -1645,10 +1645,13 @@ describe("PublicFormPage \u00b7 the built teams mirror the ticks", () => {
                   label: "Full name", required: true },
                 { key: "participant_events", type: "multi_choice",
                   label: "Playing in", layout: "columns",
+                  team_no_field: "participant_team_no",
                   options: [
                     { value: "tt.u14.girls", label: "U-14 \u00b7 Girls",
-                      sport: "Table Tennis", code: "UG" },
+                      sport: "Table Tennis", code: "UG",
+                      squad_min: 1, squad_max: 2 },
                   ] },
+                { key: "participant_team_no", type: "hidden", label: "" },
               ],
             }],
           },
@@ -1694,8 +1697,12 @@ describe("PublicFormPage \u00b7 the built teams mirror the ticks", () => {
     const names = screen.getAllByLabelText(/full name/i);
     await userEvent.type(names[0], "Asha");
     await userEvent.type(names[1], "Binu");
-    await userEvent.click(screen.getByLabelText(/U-14 \u00b7 Girls, Student 1/));
-    await userEvent.click(screen.getByLabelText(/U-14 \u00b7 Girls, Student 2/));
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "U-14 \u00b7 Girls, Student 1" }),
+    );
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "U-14 \u00b7 Girls, Student 2" }),
+    );
 
     await userEvent.click(screen.getByRole("button", { name: /confirm & review/i }));
     const table = await screen.findByTestId("review-teams");
@@ -1703,7 +1710,9 @@ describe("PublicFormPage \u00b7 the built teams mirror the ticks", () => {
 
     // Untick one: the squad re-chunks instead of freezing at first build.
     await userEvent.click(screen.getByRole("button", { name: /back/i }));
-    await userEvent.click(screen.getByLabelText(/U-14 \u00b7 Girls, Student 2/));
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "U-14 \u00b7 Girls, Student 2" }),
+    );
     await userEvent.click(screen.getByRole("button", { name: /confirm & review/i }));
     const rebuilt = await screen.findByTestId("review-teams");
     expect(within(rebuilt).getByText("Asha")).toBeInTheDocument();
@@ -1711,9 +1720,48 @@ describe("PublicFormPage \u00b7 the built teams mirror the ticks", () => {
 
     // Untick the last one: no ticks, no teams, no table.
     await userEvent.click(screen.getByRole("button", { name: /back/i }));
-    await userEvent.click(screen.getByLabelText(/U-14 \u00b7 Girls, Student 1/));
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "U-14 \u00b7 Girls, Student 1" }),
+    );
     await userEvent.click(screen.getByRole("button", { name: /confirm & review/i }));
     await screen.findByRole("button", { name: /back/i });
     expect(screen.queryByTestId("review-teams")).not.toBeInTheDocument();
   });
+
+  it("the cell's Team dropdown splits the squad the school's way", async () => {
+    // Owner 2026-08-19: "once they check any competition, in the same cell
+    // show a dropdown to select teams" (max 3). T2 on one student makes two
+    // teams; the same student can never be T1 and T2 of one category.
+    vi.mocked(formsApi.publicGet).mockResolvedValue(mirrorPayload as never);
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+    await userEvent.click(screen.getByRole("checkbox", { name: /U-14 \u00b7 Girls/ }));
+    await userEvent.click(screen.getByRole("button", { name: /participants/i }));
+    await userEvent.click(screen.getByTestId("row-add-participant_students"));
+    await userEvent.click(screen.getByTestId("row-add-participant_students"));
+    const names = screen.getAllByLabelText(/full name/i);
+    await userEvent.type(names[0], "Asha");
+    await userEvent.type(names[1], "Binu");
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "U-14 \u00b7 Girls, Student 1" }),
+    );
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "U-14 \u00b7 Girls, Student 2" }),
+    );
+
+    // The tick grew a Team dropdown in the same cell; move Binu to T2.
+    await userEvent.click(
+      screen.getByRole("button", { name: "Team, U-14 \u00b7 Girls, Student 2" }),
+    );
+    await userEvent.click(screen.getByRole("option", { name: "T2" }));
+
+    await userEvent.click(screen.getByRole("button", { name: /confirm & review/i }));
+    const table = await screen.findByTestId("review-teams");
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("Asha");
+    expect(rows[1]).toHaveTextContent("Binu");
+    expect(within(table).queryByText("Asha, Binu")).not.toBeInTheDocument();
+  });
+
 });

@@ -60,6 +60,10 @@ export interface Option {
    * rule its path carries. */
   gender?: string;
   age?: { op: "under" | "over" | "between"; age?: number; min?: number; max?: number };
+  /** Squad bounds off the competition's format node: the team-number chip
+   * shows only when one team can hold more than one player. */
+  squad_min?: number;
+  squad_max?: number;
   /** Optional per-option image/logo (a compressed data URL set in the builder),
    * shown beside the option on the public form. */
   image?: string;
@@ -110,6 +114,9 @@ export interface Field {
   fields?: Field[];
   /** `type: "group"` → render as add/remove repeatable rows (array value). */
   repeatable?: boolean;
+  /** `layout: "columns"` tick fields: the sibling hidden field storing each
+   * row's team number per competition, as a JSON string {leaf: n}. */
+  team_no_field?: string;
   /** Repeatable group row bounds (W2-B roster limits, server-enforced). */
   min_items?: number;
   max_items?: number;

@@ -207,6 +207,7 @@ def _event_leaf_options(tournament) -> list[dict]:
         _leaf_path_nodes,
         iter_leaves,
         leaf_age_rule,
+        leaf_roster_rules,
     )
 
     out: list[dict] = []
@@ -253,6 +254,13 @@ def _event_leaf_options(tournament) -> list[dict]:
             age = leaf_age_rule([sport], lf["leaf_key"])
             if age:
                 entry["age"] = age
+            # Squad bounds off the format node: the sheet's team-number chip
+            # only appears where a team holds more than one player.
+            rules = leaf_roster_rules([sport], lf["leaf_key"])
+            if rules.get("squad_min"):
+                entry["squad_min"] = rules["squad_min"]
+            if rules.get("squad_max"):
+                entry["squad_max"] = rules["squad_max"]
             out.append(entry)
     return out
 
@@ -577,7 +585,14 @@ def build_team_form_schema(
                          "directory": False,
                          "layout": "columns",
                          "scope_to_institution": True,
+                         "team_no_field": "participant_team_no",
                          "options": _event_leaf_options(tournament)},
+                        # Which of the school's teams (1-3) the student joins
+                        # per competition, as JSON {leaf: n}. One number per
+                        # competition, so a student cannot sit in two teams of
+                        # the same category; hidden fields validate as text.
+                        {"key": "participant_team_no", "type": "hidden",
+                         "label": ""},
                         # Age proof, ID, medical consent — the papers a school
                         # is asked for per child (owner 2026-08-18). Capped at
                         # three so one entry cannot become a folder, and photos
