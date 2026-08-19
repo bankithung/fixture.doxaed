@@ -267,6 +267,13 @@ class LiveMatchSnapshotView(GenericAPIView):
                     "venue": m.venue,
                     "leaf_key": m.leaf_key,
                     "group_label": m.group_label,
+                    # Where this match sits in its draw. The pre-match team
+                    # sheet names it ("Group stage, round 1, match 12") because
+                    # that is how the printed order-of-play refers to it, and
+                    # an official at the table matches the two by number.
+                    "stage": m.stage,
+                    "round_no": m.round_no,
+                    "match_no": m.match_no,
                     # P1.d: the sport's console metadata — the client picks
                     # its console module (and terminology) from this, never
                     # from hardcoded sport checks.

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -226,6 +226,12 @@ describe("AppShell", () => {
     await waitFor(() =>
       expect(screen.getAllByText(/spring cup/i).length).toBeGreaterThan(0),
     );
+    // The fan-facing site opens in its own tab (owner 2026-08-19), so checking
+    // what a visitor sees does not throw away the job the organizer is mid-way
+    // through. It is the only rail item that leaves the shell.
+    const pub = within(primary).getByRole("link", { name: /public page/i });
+    expect(pub).toHaveAttribute("target", "_blank");
+    expect(pub.getAttribute("rel")).toContain("noopener");
   });
 
   it("hides the sidebar for a MANAGED tournament mid-setup (focused flow, W2-C)", async () => {

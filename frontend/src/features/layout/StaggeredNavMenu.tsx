@@ -165,6 +165,25 @@ export function StaggeredNavMenu({
         </div>
       );
     }
+    // The fan-facing site opens in its own tab. Closing the drawer by hand is
+    // on us here: nothing else does, because there is no route change to
+    // close it on.
+    if (item.external) {
+      return (
+        <div key={item.key} className="snav-itemwrap">
+          <a
+            href={item.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={onClose}
+            className="snav-item-inner flex items-center gap-3 rounded-lg px-3 py-2 text-base font-semibold tracking-tight text-foreground/80 transition-colors hover:bg-accent/50 hover:text-primary"
+          >
+            <Icon aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
+            <span className="flex-1 truncate">{item.label}</span>
+          </a>
+        </div>
+      );
+    }
     return (
       <div key={item.key} className="snav-itemwrap">
         <NavLink

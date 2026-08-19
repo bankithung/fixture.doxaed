@@ -257,6 +257,102 @@ describe("MatchConsolePage", () => {
     );
   });
 
+  it("does not print the competition a second time as its group", async () => {
+    // A knockout's group_label IS its competition label (generate.py names
+    // every bracket match after the category), so the fixed four-cell strip
+    // reprinted the heading one line below itself. Only a real group earns
+    // the cell.
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      snap("scheduled", {
+        sport: "table_tennis",
+        sport_meta: { key: "table_tennis", name: "Table Tennis", family: "target" },
+        leaf_key: "table_tennis.open_category.boys.doubles",
+        group_label: "Table Tennis - Open Category - Boys - Doubles",
+      } as never),
+    );
+    renderConsole();
+
+    const gate = await screen.findByTestId("pre-match-gate");
+    expect(within(gate).getByTestId("match-context")).toHaveTextContent(
+      "Doubles",
+    );
+    // Punctuation differs between the draw's label and the humanized heading,
+    // so the match is made on words alone.
+    expect(within(gate).queryByText("Group")).toBeNull();
+  });
+
+  it("keeps the group cell when the group is a real pool", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      snap("scheduled", {
+        sport: "table_tennis",
+        sport_meta: { key: "table_tennis", name: "Table Tennis", family: "target" },
+        leaf_key: "table_tennis.open_category.boys.doubles",
+        group_label: "Pool B",
+        stage: "group",
+        round_no: 2,
+        match_no: 14,
+      } as never),
+    );
+    renderConsole();
+
+    const gate = await screen.findByTestId("pre-match-gate");
+    expect(within(gate).getByText("Pool B")).toBeInTheDocument();
+    // Where the match sits in its draw, the way the printed order-of-play
+    // refers to it — that is how an official finds it on paper.
+    expect(within(gate).getByTestId("gate-draw-line")).toHaveTextContent(
+      "Group stage",
+    );
+    expect(within(gate).getByTestId("gate-draw-line")).toHaveTextContent(
+      "Round 2",
+    );
+    expect(within(gate).getByTestId("gate-draw-line")).toHaveTextContent(
+      "Match 14",
+    );
+  });
+
+  it("counts what is unchecked before the confirm is ever opened", async () => {
+    // The warnings used to exist only inside the dialog, so the only way to
+    // learn the crew was missing was to press Start.
+    vi.mocked(liveApi.snapshot).mockResolvedValue(snap("scheduled"));
+    renderConsole();
+
+    // Beta has nobody named and no official is assigned: two things.
+    expect(await screen.findByTestId("gate-readiness")).toHaveTextContent(
+      "2 things to check before you start.",
+    );
+    // And each squad states its own count against the on-court cap.
+    const home = screen.getByTestId("gate-sheet-home");
+    expect(within(home).getByText("Home")).toBeInTheDocument();
+    expect(within(home).getByText("1 named")).toBeInTheDocument();
+  });
+
+  it("numbers a squad that has no shirt numbers rather than drawing empty boxes", async () => {
+    // Table tennis and sepak rosters carry no jersey numbers, and the sheet
+    // used to render an empty grey square beside every player.
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      snap("scheduled", {
+        players_per_side: 2,
+        home_team: {
+          id: "a",
+          name: "Alpha",
+          short_name: "ALP",
+          players: [
+            { id: "p1", name: "Rahul Shah", jersey_no: null, position: "" },
+            { id: "p2", name: "Thejasetuo Zhimomi", jersey_no: null, position: "" },
+          ],
+        },
+      } as never),
+    );
+    renderConsole();
+
+    const home = await screen.findByTestId("gate-sheet-home");
+    expect(within(home).getByText("2 of 2 named")).toBeInTheDocument();
+    const rows = within(home).getAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("1");
+    expect(rows[1]).toHaveTextContent("2");
+  });
+
   it("requires a confirm before completing (P7a mistake-proofing)", async () => {
     vi.mocked(liveApi.snapshot).mockResolvedValue(snap("live"));
     vi.mocked(liveApi.transition).mockResolvedValue({} as never);

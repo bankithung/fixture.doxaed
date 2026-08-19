@@ -287,6 +287,13 @@ describe("computeTournamentNav", () => {
     // an org slug here 404s the public schedule (owner report 2026-07-02).
     const pub = ops.items.find((i) => i.key === "public")!;
     expect(pub.href).toBe(`/t/acme/${TID}/schedule`);
+    // And it opens in its own tab (owner 2026-08-19): it is a thing an
+    // organizer looks AT, so following it in place threw away whatever they
+    // were mid-way through in the shell. It is the ONLY external item.
+    expect(pub.external).toBe(true);
+    expect(
+      groups.flatMap((g) => g.items).filter((i) => i.external).map((i) => i.key),
+    ).toEqual(["public"]);
     // Only people + config remain; the setup-flow pages are gone from the nav.
     const manage = groups.find((g) => g.key === "manage")!;
     expect(manage.items.map((i) => i.key)).toEqual(["members", "settings"]);

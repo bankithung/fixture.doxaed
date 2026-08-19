@@ -66,6 +66,30 @@ function railNavLink(item: NavItem, collapsed: boolean): React.ReactElement {
     );
   }
 
+  // The fan-facing site opens in its own tab: it is something an organizer
+  // looks AT, not a place the shell navigates to, and it is never "active".
+  if (item.external) {
+    return (
+      <a
+        key={item.key}
+        href={item.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={collapsed ? item.label : undefined}
+        className={NAV_LINK(false, collapsed)}
+      >
+        <Icon aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
+        {collapsed ? (
+          <span className="w-full truncate text-center text-[10px] leading-tight">
+            {item.label}
+          </span>
+        ) : (
+          <span className="flex-1 truncate">{item.label}</span>
+        )}
+      </a>
+    );
+  }
+
   return (
     <NavLink
       key={item.key}

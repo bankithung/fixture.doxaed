@@ -115,6 +115,11 @@ export interface LiveSnapshot {
     venue?: string;
     leaf_key?: string;
     group_label?: string;
+    /** Where the match sits in its draw — the pre-match sheet names it the
+     * way the printed order-of-play does. */
+    stage?: string;
+    round_no?: number;
+    match_no?: number;
     /** Confirmed team sheets (only once live/final and a lineup was built). */
     lineups?: { home?: LiveLineupSide; away?: LiveLineupSide } | null;
   };

@@ -72,6 +72,13 @@ export interface NavItem {
   locked?: boolean;
   /** Label of the stage that unlocks a locked item (for the "Unlocks at" copy). */
   lockLabel?: string;
+  /**
+   * Opens in a new tab instead of navigating the shell (owner 2026-08-19).
+   * Only the fan-facing site sets it: an organizer opens it to check what a
+   * visitor sees while they are mid-job in the console, and following it in
+   * place threw that job away and left them outside the nav they came from.
+   */
+  external?: boolean;
 }
 
 /** Minimal stage payload the tournament rail needs to compute gating. */
@@ -283,6 +290,7 @@ export function computeTournamentNav(
             label: t("Public page"),
             href: routes.publicSchedule(opts.slug, tournamentId),
             icon: ExternalLink,
+            external: true,
           }
         : null,
     ];
