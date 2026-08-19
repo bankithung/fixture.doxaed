@@ -519,6 +519,17 @@ export function PublicFormPage(): React.ReactElement {
     () => new Set(data?.competition_fields ?? []),
     [data],
   );
+  /** A prior submission's answers, minus the competition-selection fields.
+   * Those are DERIVED from the school's Stage-1 registration and re-marked on
+   * every landing; a prior response saved under an older schema carries
+   * values that match no current option (owner 2026-08-19: Grace's saved
+   * branch keys blanked the whole matrix). */
+  const scrubPrefill = (
+    pf: Record<string, unknown>,
+  ): Record<string, unknown> =>
+    Object.fromEntries(
+      Object.entries(pf).filter(([k]) => !compFieldKeys.has(k)),
+    );
   /** The selected school's registered leaves (null until a school with a
    * registration is chosen → no scoping). */
   const instLeaves = useMemo(() => {
@@ -949,8 +960,10 @@ export function PublicFormPage(): React.ReactElement {
       setEditingPrior(res.editing);
       setCodeError(null);
       if (res.prefill) {
-        // Their saved registration becomes the working answers (edit mode).
-        setAnswers((a) => ({ ...a, ...res.prefill }));
+        // Their saved registration becomes the working answers (edit mode) —
+        // except the derived competition selection, which the scoping owns.
+        const pf = res.prefill;
+        setAnswers((a) => ({ ...a, ...scrubPrefill(pf) }));
       }
       if (res.file_meta) setAccessFileMeta((m) => ({ ...m, ...res.file_meta }));
       if (res.roster) setRoster(res.roster);
@@ -978,7 +991,10 @@ export function PublicFormPage(): React.ReactElement {
       }),
     onSuccess: (res) => {
       setEditingPrior(res.editing);
-      if (res.prefill) setAnswers((a) => ({ ...a, ...res.prefill }));
+      if (res.prefill) {
+        const pf = res.prefill;
+        setAnswers((a) => ({ ...a, ...scrubPrefill(pf) }));
+      }
       if (res.file_meta) setAccessFileMeta((m) => ({ ...m, ...res.file_meta }));
       if (res.roster) setRoster(res.roster);
     },
