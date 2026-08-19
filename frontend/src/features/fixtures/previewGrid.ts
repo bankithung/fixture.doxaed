@@ -2,7 +2,7 @@ import type { PreviewMatch } from "@/api/tournaments";
 import { t } from "@/lib/t";
 import { shortGroupName } from "./groupSlotLabel";
 import { competitionLabel, sportKey, sportLabel } from "./previewFilters";
-import { sideName } from "./sideName";
+import { sideCrest, sideName } from "./sideName";
 
 /**
  * The spreadsheet layer of the dry-run preview (owner ask 2026-08-15: "a
@@ -43,6 +43,12 @@ export interface PreviewRow {
   roundLabel: string;
   home: string;
   away: string;
+  /** Signed crest URL for each side, "" when the team has no badge or the
+   * side is still a pointer. A SIBLING of `home`/`away` rather than part of
+   * them: sorting, the CSV columns and the text filter all read the name, and
+   * a badge must not end up inside the string they compare. */
+  homeCrest: string;
+  awayCrest: string;
   placed: boolean;
   match: PreviewMatch;
 }
@@ -277,6 +283,9 @@ export function buildRows(
   matches: readonly PreviewMatch[],
   teamNames: ReadonlyMap<string, string>,
   unscheduled: readonly string[] = [],
+  /** `{team_id: crest URL}`. Optional, and empty is a fine answer: a preview
+   * whose teams have no badges reads exactly as it always did. */
+  crests: ReadonlyMap<string, string> = new Map(),
 ): PreviewRow[] {
   const unplaced = new Set(unscheduled);
   const numbers = matchNumbers(matches);
@@ -312,6 +321,8 @@ export function buildRows(
       roundLabel: roundNames.get(m.ref) ?? (m.round_no ? `R${m.round_no}` : ""),
       home: sideName(m.home, teamNames, refLabels),
       away: sideName(m.away, teamNames, refLabels),
+      homeCrest: sideCrest(m.home, crests),
+      awayCrest: sideCrest(m.away, crests),
       placed: Boolean(m.scheduled_at) && !unplaced.has(m.ref),
       match: m,
     };

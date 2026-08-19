@@ -46,6 +46,10 @@ export interface TargetSportConsoleProps {
   match: LiveSnapshot["match"];
   homeName: string;
   awayName: string;
+  /** Each side's badge URL ("" / undefined = the team's initials). Resolved by
+   * the chassis alongside the names so every console shows the same badge. */
+  homeCrest?: string;
+  awayCrest?: string;
   live: boolean;
   isFinal: boolean;
   refresh: () => void;
@@ -80,6 +84,8 @@ export function TargetSportConsole({
   match,
   homeName,
   awayName,
+  homeCrest,
+  awayCrest,
   live,
   isFinal,
   refresh,
@@ -337,6 +343,8 @@ export function TargetSportConsole({
             <ScorePad
               homeName={homeName}
               awayName={awayName}
+              homeCrest={homeCrest}
+              awayCrest={awayCrest}
               homeValue={isFinal ? (match.home_score ?? 0) : homePts}
               awayValue={isFinal ? (match.away_score ?? 0) : awayPts}
               canScore={canScore}
@@ -431,6 +439,7 @@ export function TargetSportConsole({
               // is the ONE Record result control (no bottom-bar twin).
               <MatchDecidedPrompt
                 winnerName={winnerName}
+                winnerCrest={prog.leader === 0 ? homeCrest : awayCrest}
                 periodsWon={`${Math.max(homeSets, awaySets)}-${Math.min(homeSets, awaySets)}`}
                 periodPlural={periodPlural}
                 recordLabel={t("Record result")}

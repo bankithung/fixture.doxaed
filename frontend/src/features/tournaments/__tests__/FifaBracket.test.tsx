@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { FifaBracket, sourceLabel } from "../FifaBracket";
 import type { MatchRow } from "@/api/tournaments";
 
@@ -228,5 +228,92 @@ describe("FifaBracket uneven (pair_all) brackets", () => {
     expect(text).toContain("Winner of M");
     expect(text).not.toContain("Alpha");
     expect(text).not.toContain("Charlie");
+  });
+});
+
+describe("FifaBracket crests", () => {
+  const CREST = "https://cdn.example/alpha.png";
+
+  it("wears a team's crest, and its monogram when it has none", () => {
+    const only = m(
+      {
+        round_no: 1,
+        home_team: { id: "a", name: "Alpha FC", short_name: "ALP", crest: CREST },
+        away_team: team("b", "Practice School 16"),
+      },
+      "m1",
+    );
+    render(<FifaBracket columns={[[1, [only]]]} />);
+    expect(screen.getByTestId("team-crest")).toHaveAttribute("src", CREST);
+    // The crest-less side keeps THIS board's monogram: "PS", never the numeric
+    // "P1" the shared fallback would read off "Practice School 16".
+    expect(screen.getByText("PS")).toBeInTheDocument();
+    expect(screen.queryByTestId("team-crest-fallback")).toBeNull();
+  });
+
+  it("gives an unresolved slot no badge at all", () => {
+    const p1 = m(
+      { round_no: 1, home_team: team("a", "Alpha"), away_team: team("b", "Beta") },
+      "p1",
+    );
+    const fin = m(
+      {
+        round_no: 2,
+        home_source: { type: "winner_of", ref: "p1" },
+        away_source: { type: "group_position", group_label: "Group A", position: 1 },
+      },
+      "f1",
+    );
+    render(<FifaBracket columns={[[1, [p1]], [2, [fin]]]} />);
+    // "Winner of M1" and "Group A top 1" are slots, not teams — a badge there
+    // would be a crest for a team that has not qualified.
+    expect(screen.getByText("Winner of M1")).toBeInTheDocument();
+    // The group slot also earns a Bye ghost in the column it sits out, so
+    // the label legitimately appears twice.
+    expect(screen.getAllByText("Group A top 1").length).toBeGreaterThan(0);
+    expect(screen.queryAllByTestId("team-crest")).toHaveLength(0);
+    expect(screen.queryAllByTestId("team-crest-fallback")).toHaveLength(0);
+  });
+
+  it("puts the crest on a team's Bye card too, and on nobody else's", () => {
+    const r1 = m(
+      { round_no: 1, home_team: team("t3", "Gamma FC"), away_team: team("t4", "Delta FC") },
+      "m1",
+    );
+    const sf = m(
+      {
+        round_no: 2,
+        home_team: { id: "t1", name: "Alpha FC", short_name: "ALP", crest: CREST },
+        away_source: { type: "winner_of", match_id: "m1" },
+      },
+      "m2",
+    );
+    render(<FifaBracket columns={[[1, [r1]], [2, [sf]]]} />);
+    const bye = screen.getByTestId("bracket-bye");
+    expect(within(bye).getByTestId("team-crest")).toHaveAttribute("src", CREST);
+  });
+
+  it("leaves a group-slot Bye card bare", () => {
+    const playin = m(
+      {
+        round_no: 1,
+        home_source: { type: "group_position", group_label: "Group D", position: 1 },
+        away_source: { type: "group_position", group_label: "Group E", position: 1 },
+      },
+      "m1",
+    );
+    const sf = m(
+      {
+        round_no: 2,
+        home_source: { type: "group_position", group_label: "Group A", position: 1 },
+        away_source: { type: "winner_of", match_id: "m1" },
+      },
+      "m2",
+    );
+    render(<FifaBracket columns={[[1, [playin]], [2, [sf]]]} />);
+    const bye = screen.getByTestId("bracket-bye");
+    expect(bye).toHaveTextContent("Group A top 1");
+    expect(within(bye).queryByTestId("team-crest")).toBeNull();
+    expect(within(bye).queryByTestId("team-crest-fallback")).toBeNull();
   });
 });

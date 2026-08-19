@@ -22,6 +22,7 @@ import { liveSetView } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { BrandLogo } from "@/components/ui/BrandLogo";
+import { TeamCrest, type CrestSize } from "@/components/ui/TeamCrest";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { PublicViewerTabs } from "@/features/live/PublicViewerHeader";
 import {
@@ -115,12 +116,19 @@ function StatusPill({ status }: { status: string }): React.ReactElement {
   );
 }
 
+/** A team's crest + name, linked to its page. Every public row that names a
+ * team goes through here, so the badge a parent scans for is the same one on
+ * the list, the live band and the follow band. A TBD side has no team yet, so
+ * it gets neither crest nor link. */
 function TeamName({
   side,
   className,
+  crestSize = "xs",
 }: {
-  side: { id: string; name: string } | null | undefined;
+  side: { id: string; name: string; crest?: string } | null | undefined;
   className?: string;
+  /** Scales with the surface: rows stay "xs", the live hero goes large. */
+  crestSize?: CrestSize;
 }): React.ReactElement {
   const { slug = "", id = "" } = useParams();
   if (!side) return <span className={className}>{t("TBD")}</span>;
@@ -128,13 +136,16 @@ function TeamName({
     <Link
       to={routes.publicTeam(slug, id, side.id)}
       // Sits above the row's stretched match link (which covers the row), so
-      // a team name still opens that team's page.
+      // a team name still opens that team's page. `w-fit` keeps the link only
+      // as wide as its content, leaving the rest of the row to that link.
       className={cn(
         className,
-        "pointer-events-auto relative z-10 w-fit hover:text-primary hover:underline",
+        "group pointer-events-auto relative z-10 flex w-fit max-w-full items-center gap-1.5 hover:text-primary",
       )}
     >
-      {side.name}
+      <TeamCrest src={side.crest} name={side.name} size={crestSize} />
+      {/* Truncation lives on the name, not the row: the crest never shrinks. */}
+      <span className="truncate group-hover:underline">{side.name}</span>
     </Link>
   );
 }
@@ -369,9 +380,13 @@ function LiveBand({
                     name cells collided at 390px), three from `sm` up. */}
                 <div className="grid w-full max-w-xl grid-cols-1 items-center gap-2 sm:grid-cols-[1fr_auto_1fr] sm:gap-6">
                   <div className="min-w-0 text-center sm:text-right">
+                    {/* The hero of the whole page: a full-size badge either
+                        side of the score, centred on a phone and hugging the
+                        score from `sm` up. */}
                     <TeamName
                       side={m.home}
-                      className="block truncate text-sm font-medium sm:text-base"
+                      crestSize="lg"
+                      className="mx-auto truncate text-sm font-medium sm:mx-0 sm:ml-auto sm:text-base"
                     />
                     <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
                       {t("Home")}
@@ -399,7 +414,8 @@ function LiveBand({
                   <div className="min-w-0 text-center sm:text-left">
                     <TeamName
                       side={m.away}
-                      className="block truncate text-sm font-medium sm:text-base"
+                      crestSize="lg"
+                      className="mx-auto truncate text-sm font-medium sm:mx-0 sm:mr-auto sm:text-base"
                     />
                     <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
                       {t("Away")}
@@ -778,9 +794,21 @@ function PrintSheet({
                   <td className="border-b border-border py-1 pr-3 font-tabular">
                     {fmtKickoff(m.scheduled_at, timeZone)}
                   </td>
+                  {/* Crests print too (owner ask): they are real <img>, and a
+                      teamless side keeps its plain "TBD" so the column never
+                      grows a badge for nobody. */}
                   <td className="border-b border-border py-1 pr-3">
-                    {m.home?.name ?? t("TBD")} {t("vs")}{" "}
-                    {m.away?.name ?? t("TBD")}
+                    <span className="flex items-center gap-1.5">
+                      {m.home ? (
+                        <TeamCrest src={m.home.crest} name={m.home.name} size="xs" />
+                      ) : null}
+                      <span>{m.home?.name ?? t("TBD")}</span>
+                      <span className="text-muted-foreground">{t("vs")}</span>
+                      {m.away ? (
+                        <TeamCrest src={m.away.crest} name={m.away.name} size="xs" />
+                      ) : null}
+                      <span>{m.away?.name ?? t("TBD")}</span>
+                    </span>
                   </td>
                   <td className="border-b border-border py-1 pr-3">
                     {splitLabel(m.leaf_label).join(" / ")}

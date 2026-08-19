@@ -47,6 +47,7 @@ from apps.fixtures.services.scheduler import (
     schedule_matches,
     stored_activated_reserve_days,
 )
+from apps.teams.services.crest import crest_map_for_tournament
 from apps.tournaments.services.sports import (
     iter_leaves,
     leaf_label,
@@ -353,9 +354,27 @@ def _side_payload(team_id, source) -> dict[str, Any]:
     return {"source": src}
 
 
+def _crests_for(tournament) -> dict[str, str]:
+    """``{team_id: crest_url}`` for the whole tournament, ONE query per preview.
+
+    Memoized on the tournament instance because a whole-tournament preview
+    calls :func:`_schedule_and_payload` once per draw attempt (up to
+    ``MAX_DRAW_ATTEMPTS`` + the configured-draw fallback). The crests cannot
+    change between attempts — nothing here writes — so re-querying them would
+    be pure waste on the slowest path in the app. The instance lives for one
+    request, so the memo dies with it.
+    """
+    cached = getattr(tournament, "_preview_crests", None)
+    if cached is None:
+        cached = crest_map_for_tournament(tournament.id)
+        tournament._preview_crests = cached
+    return cached
+
+
 def _fairness(
     assignments: dict[str, tuple[datetime, str]], reqs, cfg,
     team_names: dict[str, str] | None = None,
+    team_crests: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """The §5.2 fairness block, extended with per-team analytics
     (increment R) — PURE computation over the simulated assignments:
@@ -417,11 +436,15 @@ def _fairness(
         rest_median_by_team[tid] = median(gaps)
 
     names = team_names or {}
+    crests = team_crests or {}
     ordered = sorted(team_intervals, key=lambda tid: (names.get(tid, ""), tid))
     teams: list[dict[str, Any]] = [
         {
             "team_id": tid,
             "name": names.get(tid, ""),
+            # The fairness table names teams, so it wears their badges too.
+            # "" (never null) for a team with no crest.
+            "crest": crests.get(tid, ""),
             "rest_min": rest_min_by_team.get(tid),
             "rest_median": rest_median_by_team.get(tid),
             "early": team_early.get(tid, 0),
@@ -510,6 +533,7 @@ def _schedule_and_payload(
     # ref → the match's own length in minutes (per-competition duration, the
     # value the scheduler actually blocks) so the UI can show "15 min".
     dur_by_ref: dict[str, int] = {}
+    crests = _crests_for(tournament)
     if include_schedule:
         payload = dict(schedule or {}) or dict(tournament.scheduling_config or {})
         if not payload.get("venues"):
@@ -558,7 +582,7 @@ def _schedule_and_payload(
             ).values_list("id", "name")
         }
         fairness = _fairness(assignments, reqs, sched_cfg,
-                             team_names=team_names)
+                             team_names=team_names, team_crests=crests)
 
     matches: list[dict[str, Any]] = []
     for p in plans:
@@ -580,6 +604,15 @@ def _schedule_and_payload(
 
     return {
         "matches": matches,
+        # ONE map for the whole preview, keyed by team id, rather than a crest
+        # repeated inside every match side. A preview row carries only a
+        # ``team_id`` (its name is looked up the same way), the same team
+        # appears in many matches, and the sheet, the court grid, the fairness
+        # table and the exported PDF all render from this one body — so a
+        # lookup table is both the smaller payload and the only shape that
+        # serves a surface which has no match row to hang a crest on. Absent
+        # id = no crest; read it as ``crests.get(tid, "")``.
+        "crests": crests,
         "unscheduled": unscheduled,
         "violations": violations,
         "soft_score": soft_score,

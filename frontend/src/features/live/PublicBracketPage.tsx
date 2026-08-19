@@ -14,7 +14,9 @@ import { PublicViewerHeader } from "./PublicViewerHeader";
  * winners already fall out of home/away_score = sets won). */
 function toMatchRow(m: PublicScheduleMatch): MatchRow {
   const team = (s: PublicScheduleMatch["home"]) =>
-    s ? { id: s.id, name: s.name, short_name: s.short_name } : null;
+    s
+      ? { id: s.id, name: s.name, short_name: s.short_name, crest: s.crest }
+      : null;
   return {
     id: m.id,
     stage: m.stage,

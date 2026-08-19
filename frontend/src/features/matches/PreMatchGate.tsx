@@ -3,6 +3,7 @@ import { CircleAlert, Play, ShieldCheck } from "lucide-react";
 import type { LiveSnapshot } from "@/api/live";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { officialRoleLabel } from "@/features/controlroom/crewRoster";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -62,9 +63,14 @@ function TeamSheet({
   fallback: string;
 }): React.ReactElement {
   const players = team?.players ?? [];
+  const name = team?.name ?? fallback;
   return (
     <div className="flex min-w-0 flex-col gap-2 p-3 sm:p-4">
-      <div className="flex items-baseline gap-2">
+      {/* Centred rather than baseline-aligned, because the badge is the
+          tallest thing on this row. It is the largest crest in the app: this
+          screen exists so an official can match the sheet to the people in
+          front of them, and a badge is what a school is recognised by. */}
+      <div className="flex items-center gap-2">
         <span
           aria-hidden="true"
           className={cn(
@@ -72,13 +78,14 @@ function TeamSheet({
             tone === "primary" ? "bg-primary" : "bg-info",
           )}
         />
+        <TeamCrest src={team?.crest} name={name} size="lg" />
         <h3
           className={cn(
             "min-w-0 flex-1 text-base font-semibold leading-tight sm:text-lg",
             tone === "primary" ? "text-primary" : "text-info",
           )}
         >
-          {team?.name ?? fallback}
+          {name}
         </h3>
         {players.length ? (
           <span className="shrink-0 font-tabular text-xs text-muted-foreground">

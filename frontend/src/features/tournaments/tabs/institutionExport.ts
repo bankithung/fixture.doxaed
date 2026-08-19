@@ -78,6 +78,23 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * A school's badge for the printed sheet, or NOTHING when it has none.
+ *
+ * The document is generated HTML, so `components/ui/TeamCrest` and its
+ * fall-back-to-initials cannot run here — and a printed page has no way to
+ * recover from a missing image, it just carries the broken-image icon onto
+ * the paper. No crest, no tag.
+ */
+function crestImg(url: string | undefined): string {
+  if (!url) return "";
+  return (
+    `<img src="${esc(url)}" alt="" width="16" height="16" ` +
+    `style="border-radius:50%;object-fit:cover;vertical-align:middle;` +
+    `margin-right:6px;border:1px solid #e5e7eb;background:#fff">`
+  );
+}
+
 const STATUS_COLOR: Record<string, string> = {
   registered: "#166534",
   invited: "#92400e",
@@ -117,7 +134,7 @@ export function openInstitutionsPdf(
         .join(" ");
       return `<tr>
         <td class="num">${idx + 1}</td>
-        <td class="name">${esc(i.name)}</td>
+        <td class="name">${crestImg(i.crest)}${esc(i.name)}</td>
         <td class="cap">${esc(i.kind)}</td>
         <td>${esc(i.region || "")}</td>
         <td>${contact}</td>
@@ -180,20 +197,37 @@ export function openInstitutionsPdf(
   w.document.write(html);
   w.document.close();
   w.focus();
-  // Print once the logo is in (or after a beat if it never arrives), so the
-  // header art makes it into the print preview.
+  // Print once the art is in (or after a beat if it never arrives), so the
+  // header logo AND every school crest make it into the print preview. A bare
+  // timeout is a guess, not a handshake: each crest is a signed URL this new
+  // tab fetches for itself, and printing mid-fetch puts blank squares on the
+  // paper. The ceiling is the other half of the deal — one dead crest URL
+  // must never hold the dialog hostage.
+  // (Same handshake as `features/fixtures/previewExport.ts` — keep in step.)
   let printed = false;
   const doPrint = (): void => {
     if (printed) return;
     printed = true;
     w.print();
   };
-  const img = w.document.querySelector("img");
-  if (img && !img.complete) {
-    img.addEventListener("load", () => setTimeout(doPrint, 50));
-    img.addEventListener("error", doPrint);
-    setTimeout(doPrint, 1500);
-  } else {
+  // Guarded: a document stub with no query API is still a printable window.
+  const all = w.document.querySelectorAll
+    ? Array.from(w.document.querySelectorAll("img"))
+    : [];
+  const pending = all.filter((img) => !img.complete);
+  if (!pending.length) {
     setTimeout(doPrint, 250);
+    return;
   }
+  let left = pending.length;
+  const settle = (): void => {
+    left -= 1;
+    // A beat after the last one so the layout it changed has painted.
+    if (left <= 0) setTimeout(doPrint, 50);
+  };
+  for (const img of pending) {
+    img.addEventListener("load", settle);
+    img.addEventListener("error", settle);
+  }
+  setTimeout(doPrint, 1500);
 }

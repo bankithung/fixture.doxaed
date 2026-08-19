@@ -9,6 +9,7 @@ from rest_framework.response import Response
 
 from apps.badges.catalog import BADGE_TEMPLATES
 from apps.badges.models import BadgeAward
+from apps.teams.services.crest import team_crest
 from apps.tournaments.models import Tournament, TournamentStatus
 from apps.tournaments.scope import accessible_tournaments
 
@@ -24,7 +25,11 @@ _PUBLIC_STATUSES = (
 def _rows(tournament) -> list[dict]:
     awards = (
         BadgeAward.objects.filter(tournament=tournament, revoked_at__isnull=True)
-        .select_related("team", "player", "player__person", "match")
+        # institution: a team award's crest resolves off the school, and the
+        # honours board renders every award of the tournament at once.
+        .select_related(
+            "team", "team__institution", "player", "player__person", "match",
+        )
         .order_by("-awarded_at")
     )
     out = []
@@ -41,6 +46,7 @@ def _rows(tournament) -> list[dict]:
             "subject_type": a.subject_type,
             "team_id": str(a.team_id) if a.team_id else None,
             "team_name": a.team.name if a.team_id else None,
+            "team_crest": team_crest(a.team) if a.team_id else "",
             "player_id": str(a.player_id) if a.player_id else None,
             "player_name": (
                 a.player.person.full_name
@@ -98,7 +104,8 @@ class PublicBadgeAwardView(GenericAPIView):
         award = (
             BadgeAward.objects.filter(id=award_id, revoked_at__isnull=True)
             .select_related(
-                "tournament", "team", "player", "player__person", "match"
+                "tournament", "team", "team__institution", "player",
+                "player__person", "match",
             )
             .first()
         )
@@ -117,6 +124,7 @@ class PublicBadgeAwardView(GenericAPIView):
                 else (award.team.name if award.team_id else "")
             ),
             "team_name": award.team.name if award.team_id else None,
+            "team_crest": team_crest(award.team) if award.team_id else "",
             "evidence": award.evidence,
             "tournament_name": t.name,
             "tournament_slug": t.slug,

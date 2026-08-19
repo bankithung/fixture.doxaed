@@ -1,12 +1,16 @@
 import { CheckCircle2 } from "lucide-react";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import type { LineupEntryView, LineupSideView } from "./types";
 
-/** Team header inside a lineup panel: name + confirmed tick. */
+/** Team header inside a lineup panel: crest + name + confirmed tick. One
+ * header for all four per-sport visuals, so the badge lands on the pitch, the
+ * court and the flat list alike. */
 export function SideHeader({ side }: { side: LineupSideView }): React.ReactElement {
   return (
     <div className="flex items-center gap-2">
+      <TeamCrest src={side.crest} name={side.teamName} size="sm" />
       <span className="min-w-0 truncate text-sm font-semibold">{side.teamName}</span>
       {side.confirmed ? (
         <span className="inline-flex items-center gap-1 text-[0.6875rem] font-medium text-success">

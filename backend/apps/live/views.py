@@ -11,6 +11,7 @@ from rest_framework.response import Response
 
 from apps.matches.models import Match, MatchEvent, MatchEventType, MatchStatus
 from apps.matches.services.set_scoring import rules_for_match
+from apps.teams.services.crest import team_crest
 from apps.tournaments.services.sports import leaf_roster_rules
 
 _ROSTER_VISIBLE = (MatchStatus.LIVE, MatchStatus.HALF_TIME, MatchStatus.COMPLETED)
@@ -59,6 +60,12 @@ def _team(t, include_players: bool):
         "id": str(t.id),
         "name": t.name,
         "short_name": t.short_name,
+        # The badge beside the name. "" rather than null so the client renders
+        # initials on a falsy value and never branches on None. Resolved from
+        # the team's own override then its school's, which reads
+        # ``t.institution`` — the caller MUST select_related it (see
+        # LiveMatchSnapshotView) or this is a query per team.
+        "crest": team_crest(t),
         "players": players,
     }
 
@@ -179,6 +186,9 @@ class LiveMatchSnapshotView(GenericAPIView):
             Match.objects.select_related(
                 "home_team", "away_team", "tournament",
                 "tournament__organization",
+                # The crest falls back to the school's, so the institution
+                # comes along in this query rather than in two more.
+                "home_team__institution", "away_team__institution",
             )
             .filter(id=match_id, deleted_at__isnull=True)
             .first()

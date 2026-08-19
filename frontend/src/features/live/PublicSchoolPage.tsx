@@ -5,6 +5,7 @@ import {
   publicRecordsApi,
   type PublicSchoolRecord,
 } from "@/api/publicRecords";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { LeafLabel } from "@/features/fixtures/LeafLabel";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
@@ -48,6 +49,7 @@ function TeamCard({
       data-testid={`school-team-${team.team_id}`}
       className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-colors hover:border-primary/40"
     >
+      <TeamCrest src={team.crest} name={team.team_name} size="md" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{team.team_name}</p>
         <LeafLabel label={team.leaf_key} className="mt-0.5" />

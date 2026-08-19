@@ -278,6 +278,97 @@ describe("ControlRoomPage", () => {
     expect(within(board).queryByTestId("tile-m3")).toBeNull();
   });
 
+  // --- crests -------------------------------------------------------------
+  // A school's badge is how an operator matches a row to the shirts in front
+  // of them, so it rides the name everywhere a team is named in operations.
+  const ALPHA = {
+    id: "tmh",
+    name: "Alpha FC",
+    short_name: "ALP",
+    crest: "https://cdn.test/alpha.png",
+  };
+  const CRESTED = row({ id: "c-live", status: "live", home_team: ALPHA });
+  const SETTLED = row({
+    id: "c-done",
+    status: "completed",
+    home_score: 2,
+    away_score: 1,
+    home_team: ALPHA,
+  });
+  const QUEUED = row({
+    id: "c-next",
+    scheduled_at: "2026-06-20T08:30:00Z",
+    home_team: ALPHA,
+  });
+  const PLACEHOLDER = row({
+    id: "c-tbd",
+    scheduled_at: "2026-06-20T09:30:00Z",
+    venue: "Side Pitch",
+    home_team: null,
+    away_team: null,
+  });
+  const CREST_ROOM: ControlRoomPayload = {
+    ...ROOM,
+    venues: [
+      { venue: "Main Ground", matches: [CRESTED, SETTLED, QUEUED] },
+      { venue: "Side Pitch", matches: [PLACEHOLDER] },
+    ],
+    queue: [QUEUED, PLACEHOLDER],
+  };
+
+  it("puts each team's crest beside its name on the sheet, winner included", async () => {
+    vi.mocked(tournamentsApi.controlRoom).mockResolvedValue(CREST_ROOM);
+    mount();
+    const board = await screen.findByTestId("day-board");
+    await userEvent.click(screen.getByTestId("feed-filter-all"));
+
+    // An uploaded badge is a real <img>; a team with none still gets a badge,
+    // its initials, so the row never shows a gap where a crest should be.
+    const line = within(board).getByTestId("tile-c-live");
+    expect(within(line).getByTestId("team-crest")).toHaveAttribute(
+      "src",
+      "https://cdn.test/alpha.png",
+    );
+    expect(within(line).getAllByTestId("team-crest-fallback")).toHaveLength(1);
+
+    // The Winner cell names the winning side, so it carries that side's crest.
+    const winner = within(board).getByTestId("winner-c-done");
+    expect(within(winner).getByTestId("team-crest")).toBeInTheDocument();
+    expect(winner).toHaveTextContent("Alpha FC");
+
+    // An unresolved bracket slot has no school behind it: no crest, and no
+    // initials of the word "TBD" pretending to be one.
+    const placeholder = within(board).getByTestId("tile-c-tbd");
+    expect(within(placeholder).queryByTestId("team-crest")).toBeNull();
+    expect(within(placeholder).queryByTestId("team-crest-fallback")).toBeNull();
+  });
+
+  it("carries the crest into the ops band, the courts tab and the printed sheet", async () => {
+    vi.mocked(tournamentsApi.controlRoom).mockResolvedValue(CREST_ROOM);
+    mount();
+
+    // Up next: the glance cell, where a badge beats a three-letter short name.
+    const band = await screen.findByTestId("ops-band");
+    expect(within(band).getByTestId("team-crest")).toHaveAttribute(
+      "src",
+      "https://cdn.test/alpha.png",
+    );
+    expect(within(band).getByTestId("team-crest-fallback")).toBeInTheDocument();
+
+    // The day sheet is a printed deliverable, and an <img> prints where a CSS
+    // background would not — so the crest is on the paper too.
+    const printed = screen.getByTestId("day-sheet");
+    expect(within(printed).getAllByTestId("team-crest").length).toBeGreaterThan(
+      0,
+    );
+
+    // A court's now/next line names two teams, so it badges them both.
+    await userEvent.click(screen.getByTestId("board-tab-courts"));
+    const court = screen.getByTestId("court-row-Main Ground");
+    expect(within(court).getByTestId("team-crest")).toBeInTheDocument();
+    expect(within(court).getByTestId("team-crest-fallback")).toBeInTheDocument();
+  });
+
   it("the Ongoing tab shows only what is being played right now", async () => {
     mount();
     await userEvent.click(await screen.findByTestId("board-tab-live"));

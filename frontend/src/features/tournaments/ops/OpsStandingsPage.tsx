@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveApi } from "@/api/live";
 import { tournamentsApi, type StandingsGroup } from "@/api/tournaments";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { qk } from "@/lib/queryKeys";
 import { cn } from "@/lib/tailwind";
 import { isSetSport } from "@/lib/setDisplay";
@@ -138,6 +139,7 @@ function GroupCard({
                     >
                       {i + 1}
                     </span>
+                    <TeamCrest src={r.crest} name={r.name} size="sm" />
                     <span className="min-w-0">
                       <span className="block truncate font-medium">
                         {r.name}

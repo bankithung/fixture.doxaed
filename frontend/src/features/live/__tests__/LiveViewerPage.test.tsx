@@ -44,6 +44,10 @@ function renderAt(path = "/m/m1") {
   );
 }
 
+/** Signed capability URL: it loads without a session, which is what lets a
+ * crest render on a page nobody logged into. */
+const ALPHA_CREST = "/api/public/teams/a/crest.png?sig=alpha";
+
 const TOURNAMENT = {
   id: "t1",
   slug: "cup",
@@ -57,7 +61,8 @@ function footballSnapshot(overrides: Partial<LiveSnapshot> = {}): LiveSnapshot {
       id: "m1",
       status: "live",
       current_period: "first_half",
-      home_team: { id: "a", name: "Alpha", short_name: "ALP", players: [] },
+      home_team: { id: "a", name: "Alpha", short_name: "ALP", players: [], crest: ALPHA_CREST },
+      // Beta uploaded nothing: it must still get a badge, never a gap.
       away_team: { id: "b", name: "Beta", short_name: "BET", players: [] },
       home_score: 2,
       away_score: 1,
@@ -99,7 +104,7 @@ function sepakSnapshot(): LiveSnapshot {
       id: "m1",
       status: "live",
       current_period: "set_2",
-      home_team: { id: "a", name: "Alpha", short_name: "ALP", players: [] },
+      home_team: { id: "a", name: "Alpha", short_name: "ALP", players: [], crest: ALPHA_CREST },
       away_team: { id: "b", name: "Beta", short_name: "BET", players: [] },
       home_score: 1,
       away_score: 0,
@@ -162,6 +167,61 @@ describe("LiveViewerPage", () => {
     );
     // Live document title in "Home 2 - 1 Away · Tournament" form.
     expect(document.title).toBe("Alpha 2 - 1 Beta · Nagaland Cup");
+  });
+
+  it("flanks the scoreline with each team's crest, initials when there is none", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(footballSnapshot());
+    renderAt();
+    const home = await screen.findByRole("link", { name: "Alpha" });
+    const crest = within(home).getByTestId("team-crest");
+    expect(crest).toHaveAttribute("src", ALPHA_CREST);
+    // Headline size: this is the page's identity, not a list row.
+    expect(crest.className).toContain("h-10");
+    const away = screen.getByRole("link", { name: "Beta" });
+    expect(within(away).getByTestId("team-crest-fallback")).toHaveTextContent("B");
+  });
+
+  it("badges the stats header and the head-to-head rows", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      footballSnapshot({
+        stats: [{ type: "shot", home: 5, away: 2 }],
+        h2h: [
+          {
+            id: "old1",
+            status: "completed",
+            scheduled_at: "2026-06-20T09:00:00Z",
+            home_team_id: "b",
+            away_team_id: "a",
+            home_score: 0,
+            away_score: 3,
+            set_scores: [],
+          },
+        ],
+      }),
+    );
+    renderAt("/m/m1?tab=stats");
+    const stats = await screen.findByTestId("hub-panel-stats");
+    // Row-size here: the bars are the subject, the badge is the label.
+    const statCrest = within(stats).getByTestId("team-crest");
+    expect(statCrest).toHaveAttribute("src", ALPHA_CREST);
+    expect(statCrest.className).toContain("h-4");
+
+    fireEvent.click(screen.getByTestId("hub-tab-h2h"));
+    const row = screen.getByTestId("h2h-row-old1");
+    // A prior meeting is the same two teams, so both badges resolve.
+    expect(within(row).getByTestId("team-crest")).toHaveAttribute("src", ALPHA_CREST);
+    expect(within(row).getByTestId("team-crest-fallback")).toHaveTextContent("B");
+  });
+
+  it("badges the team sheet headers on the Lineups tab", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(sepakSnapshot());
+    renderAt("/m/m1?tab=lineups");
+    const panel = await screen.findByTestId("hub-panel-lineups");
+    expect(within(panel).getByTestId("team-crest")).toHaveAttribute(
+      "src",
+      ALPHA_CREST,
+    );
+    expect(within(panel).getByTestId("team-crest-fallback")).toHaveTextContent("B");
   });
 
   it("shows an error when the match cannot be loaded", async () => {
@@ -310,6 +370,8 @@ describe("LiveViewerPage", () => {
 
       const card = await screen.findByTestId("up-next-card");
       expect(within(card).getByText("Court Next")).toBeInTheDocument();
+      // Both sides of the next game are badged, at row size.
+      expect(within(card).getAllByTestId("team-crest-fallback")).toHaveLength(2);
       expect(within(card).getByTestId("up-next-link")).toHaveAttribute(
         "href",
         "/m/next",

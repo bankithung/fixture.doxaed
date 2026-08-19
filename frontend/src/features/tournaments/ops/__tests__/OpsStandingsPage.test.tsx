@@ -197,6 +197,33 @@ describe("OpsStandingsPage", () => {
     expect(within(board).getByText("Knockout")).toBeInTheDocument();
   });
 
+  it("shows each team's crest beside its name", async () => {
+    vi.mocked(tournamentsApi.standings).mockResolvedValue({
+      groups: [
+        {
+          group_label: "Football U15 Group A",
+          rows: [
+            { team_id: "th", name: "Alpha", school: "Alpha School", crest: "https://cdn.example/alpha.png", P: 1, W: 1, D: 0, L: 0, GF: 2, GA: 0, GD: 2, Pts: 3 },
+            { team_id: "ta", name: "Bravo", school: "Bravo School", P: 1, W: 0, D: 0, L: 1, GF: 0, GA: 2, GD: -2, Pts: 0 },
+          ],
+        },
+      ],
+    });
+    vi.mocked(tournamentsApi.matches).mockResolvedValue([match({ id: "m1" })]);
+    mount();
+
+    const top = await screen.findByTestId("ops-standing-th");
+    expect(within(top).getByTestId("team-crest")).toHaveAttribute(
+      "src",
+      "https://cdn.example/alpha.png",
+    );
+    // No crest is still a badge, not a gap.
+    const second = screen.getByTestId("ops-standing-ta");
+    expect(within(second).getByTestId("team-crest-fallback")).toHaveTextContent(
+      "B",
+    );
+  });
+
   it("does not print the school twice when it IS the team name", async () => {
     vi.mocked(tournamentsApi.standings).mockResolvedValue({
       groups: [

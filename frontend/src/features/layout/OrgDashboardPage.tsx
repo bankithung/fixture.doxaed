@@ -16,6 +16,7 @@ import { tournamentsApi, type Tournament } from "@/api/tournaments";
 import { Select } from "@/components/ui/Select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import {
   Dialog,
   DialogDescription,
@@ -396,12 +397,32 @@ export function OrgDashboardPage(): React.ReactElement {
               {featured && featuredMatch ? (
                 <>
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">{featured.name}</p>
+                  {/* The rail is a glance card, so the crest leads each side.
+                      A slot with no team yet keeps its "TBD" and no badge. */}
                   <div className="mt-3 flex items-center justify-center gap-3 font-tabular text-2xl font-semibold">
-                    <span className="flex-1 truncate text-right">{featuredMatch.home_team?.short_name ?? featuredMatch.home_team?.name ?? t("TBD")}</span>
+                    <span className="flex min-w-0 flex-1 items-center justify-end gap-2">
+                      {featuredMatch.home_team ? (
+                        <TeamCrest
+                          src={featuredMatch.home_team.crest}
+                          name={featuredMatch.home_team.name}
+                          size="sm"
+                        />
+                      ) : null}
+                      <span className="truncate">{featuredMatch.home_team?.short_name ?? featuredMatch.home_team?.name ?? t("TBD")}</span>
+                    </span>
                     <span className="shrink-0 tabular-nums">
                       {featuredMatch.home_score ?? 0}-{featuredMatch.away_score ?? 0}
                     </span>
-                    <span className="flex-1 truncate text-left">{featuredMatch.away_team?.short_name ?? featuredMatch.away_team?.name ?? t("TBD")}</span>
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      {featuredMatch.away_team ? (
+                        <TeamCrest
+                          src={featuredMatch.away_team.crest}
+                          name={featuredMatch.away_team.name}
+                          size="sm"
+                        />
+                      ) : null}
+                      <span className="truncate">{featuredMatch.away_team?.short_name ?? featuredMatch.away_team?.name ?? t("TBD")}</span>
+                    </span>
                   </div>
                   <Link
                     to={routes.matchConsole(featured.id, featuredMatch.id)}

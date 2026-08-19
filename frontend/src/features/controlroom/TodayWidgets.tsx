@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, MapPin, Trophy } from "lucide-react";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import {
   tournamentsApi,
   type ControlRoomMatch,
@@ -18,6 +19,37 @@ import { MatchSheet } from "./MatchSheet";
 import { MatchTile } from "./MatchTile";
 
 const teamName = (tm: { name: string } | null): string => tm?.name || t("TBD");
+
+/**
+ * "Home v Away" with each team's crest in front of its own name.
+ *
+ * An unresolved slot gets no badge: a bracket placeholder has no school behind
+ * it, so initials would invent a team that does not exist yet. Both names still
+ * truncate and the crests are `shrink-0`, so the row keeps its height.
+ */
+function TeamLine({ match }: { match: ControlRoomMatch }): React.ReactElement {
+  return (
+    <>
+      {match.home_team ? (
+        <TeamCrest
+          src={match.home_team.crest}
+          name={match.home_team.name}
+          size="xs"
+        />
+      ) : null}
+      <span className="truncate">{teamName(match.home_team)}</span>
+      <span className="shrink-0">{t("v")}</span>
+      {match.away_team ? (
+        <TeamCrest
+          src={match.away_team.crest}
+          name={match.away_team.name}
+          size="xs"
+        />
+      ) : null}
+      <span className="truncate">{teamName(match.away_team)}</span>
+    </>
+  );
+}
 
 /**
  * Section shell. `bare` drops the card chrome: on the Today board every widget
@@ -118,18 +150,18 @@ function CourtRow({
             {venue.venue || t("No court")}
           </span>
         </span>
-        <span className="truncate text-[13px] text-muted-foreground">
+        <span className="flex min-w-0 items-center gap-1 text-[13px] text-muted-foreground">
           {now ? (
-            `${teamName(now.home_team)} v ${teamName(now.away_team)}`
+            <TeamLine match={now} />
           ) : next ? (
             <>
-              <span className="font-tabular text-foreground">
+              <span className="shrink-0 font-tabular text-foreground">
                 {fmtKickoff(next.scheduled_at, timeZone)}
               </span>
-              {` ${teamName(next.home_team)} v ${teamName(next.away_team)}`}
+              <TeamLine match={next} />
             </>
           ) : (
-            t("Idle")
+            <span className="truncate">{t("Idle")}</span>
           )}
         </span>
         <span className="flex w-20 shrink-0 items-center gap-2">
@@ -187,8 +219,8 @@ function CourtRow({
                   <span className="w-11 shrink-0 font-tabular text-muted-foreground">
                     {fmtKickoff(m.scheduled_at, timeZone)}
                   </span>
-                  <span className="min-w-0 flex-1 truncate">
-                    {teamName(m.home_team)} {t("v")} {teamName(m.away_team)}
+                  <span className="flex min-w-0 flex-1 items-center gap-1">
+                    <TeamLine match={m} />
                   </span>
                 </li>
               ))}

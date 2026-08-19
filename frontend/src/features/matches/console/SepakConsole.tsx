@@ -70,6 +70,8 @@ export function SepakConsole({
   match,
   homeName,
   awayName,
+  homeCrest,
+  awayCrest,
   live,
   isFinal,
   refresh,
@@ -438,6 +440,8 @@ export function SepakConsole({
             <ScorePad
               homeName={homeName}
               awayName={awayName}
+              homeCrest={homeCrest}
+              awayCrest={awayCrest}
               homeValue={isFinal ? (match.home_score ?? 0) : homePts}
               awayValue={isFinal ? (match.away_score ?? 0) : awayPts}
               server={isFinal || awaitingNext ? null : server}
@@ -563,6 +567,7 @@ export function SepakConsole({
               // is the ONE Record result control (no bottom-bar twin).
               <MatchDecidedPrompt
                 winnerName={winnerName}
+                winnerCrest={prog.leader === 0 ? homeCrest : awayCrest}
                 periodsWon={`${Math.max(homeSets, awaySets)}-${Math.min(homeSets, awaySets)}`}
                 periodPlural={periodPlural}
                 recordLabel={t("Record result")}

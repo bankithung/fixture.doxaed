@@ -29,6 +29,7 @@ from apps.fixtures.services.preview import (
 from apps.fixtures.services.readiness import fixture_readiness
 from apps.fixtures.services.scheduler import apply_schedule
 from apps.streaming.services.links import CourtLinkResolver
+from apps.teams.services.crest import team_crest
 from apps.tournaments.models import Tournament
 from apps.tournaments.permissions import can_access_module
 from apps.tournaments.scope import accessible_tournaments
@@ -751,7 +752,13 @@ class ControlRoomDayView(GenericAPIView):
 
         matches = list(
             Match.objects.filter(tournament=t, deleted_at__isnull=True)
-            .select_related("home_team", "away_team", "tournament", "scorer")
+            # The institutions are here for the crest MatchSerializer emits:
+            # it resolves a team's badge through its school, so without them
+            # the board would load an institution per match row.
+            .select_related(
+                "home_team", "away_team", "tournament", "scorer",
+                "home_team__institution", "away_team__institution",
+            )
             .prefetch_related("officials__user")
             .order_by(_F("scheduled_at").asc(nulls_last=True), "match_no")
         )
@@ -1310,13 +1317,23 @@ class PublicTournamentScheduleView(GenericAPIView):
                 "name": team.name,
                 "short_name": team.short_name,
                 "school": team.school,
+                # The badge beside the name. "" (never null) so the client
+                # falls back to initials on a falsy value.
+                "crest": team_crest(team),
             }
 
         labels: dict[str, str] = {}
         matches = []
         rows = list(
             Match.objects.filter(tournament=t, deleted_at__isnull=True)
-            .select_related("home_team", "away_team")
+            # The institution rides along because a crest falls back to the
+            # school's: this endpoint lists a WHOLE tournament and is refetched
+            # by every spectator, so a per-team institution load would be an
+            # N+1 over hundreds of rows.
+            .select_related(
+                "home_team", "away_team",
+                "home_team__institution", "away_team__institution",
+            )
             .order_by(_F("scheduled_at").asc(nulls_last=True), "match_no")
         )
         # Per-court streaming (spec 2026-08-03). THIS ENDPOINT IS REFETCHED BY

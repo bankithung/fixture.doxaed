@@ -18,6 +18,7 @@ from collections import defaultdict
 
 from apps.matches.models import Match, MatchEvent, MatchEventType, MatchStatus
 from apps.matches.services.sport_defs import SPORT_DEFINITIONS, get_definition
+from apps.teams.services.crest import team_crest
 
 # Row caps mirroring the historic surface (5 players / 3 teams per board).
 _PLAYER_TOP = 5
@@ -46,7 +47,8 @@ def _team_aggregates(matches) -> list[dict]:
                 continue
             r = rows.setdefault(
                 tid,
-                {"team_id": str(tid), "team_name": team.name, "played": 0,
+                {"team_id": str(tid), "team_name": team.name,
+                 "team_crest": team_crest(team), "played": 0,
                  "wins": 0, "scored": 0, "conceded": 0,
                  "sets_won": 0, "sets_lost": 0, "clean_sheets": 0},
             )
@@ -77,7 +79,11 @@ def _scorer_rows(tournament, match_ids, limit) -> list[dict]:
         tournament=tournament, match_id__in=match_ids,
         event_type__in=(MatchEventType.GOAL, MatchEventType.PENALTY_SCORED),
         player__isnull=False,
-    ).select_related("player", "player__person", "player__team"):
+    ).select_related(
+        "player", "player__person", "player__team",
+        # The scorer row wears the team's badge, resolved off its school.
+        "player__team__institution",
+    ):
         if e.id in voided:
             continue
         tally[e.player_id] += 1
@@ -89,6 +95,7 @@ def _scorer_rows(tournament, match_ids, limit) -> list[dict]:
                 meta[pid].person.full_name if meta[pid].person_id else str(pid)
             ),
             "team_name": meta[pid].team.name if meta[pid].team_id else "",
+            "team_crest": team_crest(meta[pid].team) if meta[pid].team_id else "",
             "value": n,
         }
         for pid, n in sorted(tally.items(), key=lambda kv: -kv[1])[:limit]
@@ -100,6 +107,7 @@ def _team_board(spec, aggregates, limit) -> list[dict]:
     def row(r, value, detail=""):
         return {
             "team_id": r["team_id"], "team_name": r["team_name"],
+            "team_crest": r["team_crest"],
             "played": r["played"], "value": value, "detail": detail,
         }
 
@@ -172,7 +180,11 @@ def compute_leaders(tournament, full: bool = False) -> dict:
     matches = list(
         Match.objects.filter(
             tournament=tournament, deleted_at__isnull=True,
-        ).select_related("home_team", "away_team")
+        ).select_related(
+            "home_team", "away_team",
+            # institution: every board row carries its team's crest.
+            "home_team__institution", "away_team__institution",
+        )
     )
     by_code: dict[str, list] = defaultdict(list)
     for m in matches:
@@ -238,12 +250,15 @@ def compute_leaders(tournament, full: bool = False) -> dict:
                 if a.player_id and a.player.person_id
                 else (a.team.name if a.team_id else "")
             ),
+            # A player award has no team badge of its own; a team award wears
+            # its school's, so the honours strip can show it beside the name.
+            "team_crest": team_crest(a.team) if a.team_id else "",
             "evidence": a.evidence,
         }
         for a in BadgeAward.objects.filter(
             tournament=tournament, revoked_at__isnull=True
         )
-        .select_related("team", "player", "player__person")
+        .select_related("team", "team__institution", "player", "player__person")
         .order_by("-awarded_at")[: (None if full else 6)]
     ]
     return {

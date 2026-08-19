@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -140,5 +140,38 @@ describe("CrewPage", () => {
     // M1 has a scorer → hidden; M2 has none → shown.
     expect(screen.queryByTestId("crew-row-m1")).toBeNull();
     expect(screen.getByTestId("crew-row-m2")).toBeInTheDocument();
+  });
+
+  it("badges each team on the row, and an unresolved slot not at all", async () => {
+    const crested = row({
+      id: "c1",
+      home_team: {
+        id: "th",
+        name: "Alpha",
+        short_name: "ALP",
+        crest: "https://cdn.test/alpha.png",
+      },
+    });
+    const placeholder = row({ id: "c2", home_team: null, away_team: null });
+    vi.mocked(tournamentsApi.controlRoom).mockResolvedValue({
+      ...ROOM,
+      venues: [{ venue: "Main", matches: [crested, placeholder] }],
+      queue: [crested, placeholder],
+    });
+    mount();
+
+    // The uploaded badge is an <img>; the team with none still reads as a
+    // badge (its initials) rather than a hole in the row.
+    const rowEl = await screen.findByTestId("crew-row-c1");
+    expect(within(rowEl).getByTestId("team-crest")).toHaveAttribute(
+      "src",
+      "https://cdn.test/alpha.png",
+    );
+    expect(within(rowEl).getByTestId("team-crest-fallback")).toBeInTheDocument();
+
+    // A slot with no team yet gets neither.
+    const bare = screen.getByTestId("crew-row-c2");
+    expect(within(bare).queryByTestId("team-crest")).toBeNull();
+    expect(within(bare).queryByTestId("team-crest-fallback")).toBeNull();
   });
 });

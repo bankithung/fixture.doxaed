@@ -60,20 +60,72 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * A team crest for a printed document, or NOTHING when the team has no badge.
+ *
+ * These pages are generated HTML, so `components/ui/TeamCrest` (and its
+ * on-error fallback to initials) cannot run here. A printed sheet has no way
+ * to recover from a missing image either: it would carry the browser's broken
+ * -image icon onto the paper. So the rule is absolute — no crest, no tag.
+ *
+ * Styles are inline because the document is written into a fresh tab and must
+ * survive being saved or re-opened on its own.
+ */
+function crestImg(url: string, size = 14): string {
+  if (!url) return "";
+  return (
+    `<img src="${esc(url)}" alt="" width="${size}" height="${size}" ` +
+    `style="border-radius:50%;object-fit:cover;vertical-align:middle;` +
+    `margin-right:4px;border:1px solid #e5e7eb;background:#fff">`
+  );
+}
+
+interface PdfColumn {
+  label: string;
+  /** The cell's text. Always escaped. */
+  pick: (r: PreviewRow) => string;
+  cls: string;
+  /**
+   * Raw HTML placed before the text — the team's crest. Kept separate from
+   * `pick` so that every column's TEXT still goes through `esc`: a school
+   * name must never reach the page unescaped just because its row has a
+   * badge.
+   */
+  lead?: (r: PreviewRow) => string;
+}
+
 /** The printed sheet's columns — the same reading order as the on-screen grid. */
-const PDF_COLUMNS: [string, (r: PreviewRow) => string, string][] = [
-  [t("Day"), (r) => r.dayLabel, ""],
-  [t("Start"), (r) => fmtClock(r.start) || "·", "num"],
-  [t("End"), (r) => fmtClock(r.end) || "·", "num"],
-  [t("Min"), (r) => (r.minutes == null ? "·" : String(r.minutes)), "num"],
-  [t("Court"), (r) => (r.day ? r.venue : "·"), ""],
-  [t("Sport"), (r) => r.sportLabel, ""],
-  [t("Category"), (r) => r.categoryLabel, "muted"],
-  [t("Stage"), (r) => r.group || r.stageLabel, ""],
-  [t("Round"), (r) => r.roundLabel || "·", "muted"],
-  [t("Team 1"), (r) => r.home, "team"],
-  [t("Team 2"), (r) => r.away, "team"],
-  [t("Status"), (r) => (r.placed ? t("Scheduled") : t("No time")), ""],
+const PDF_COLUMNS: PdfColumn[] = [
+  { label: t("Day"), pick: (r) => r.dayLabel, cls: "" },
+  { label: t("Start"), pick: (r) => fmtClock(r.start) || "·", cls: "num" },
+  { label: t("End"), pick: (r) => fmtClock(r.end) || "·", cls: "num" },
+  {
+    label: t("Min"),
+    pick: (r) => (r.minutes == null ? "·" : String(r.minutes)),
+    cls: "num",
+  },
+  { label: t("Court"), pick: (r) => (r.day ? r.venue : "·"), cls: "" },
+  { label: t("Sport"), pick: (r) => r.sportLabel, cls: "" },
+  { label: t("Category"), pick: (r) => r.categoryLabel, cls: "muted" },
+  { label: t("Stage"), pick: (r) => r.group || r.stageLabel, cls: "" },
+  { label: t("Round"), pick: (r) => r.roundLabel || "·", cls: "muted" },
+  {
+    label: t("Team 1"),
+    pick: (r) => r.home,
+    cls: "team",
+    lead: (r) => crestImg(r.homeCrest),
+  },
+  {
+    label: t("Team 2"),
+    pick: (r) => r.away,
+    cls: "team",
+    lead: (r) => crestImg(r.awayCrest),
+  },
+  {
+    label: t("Status"),
+    pick: (r) => (r.placed ? t("Scheduled") : t("No time")),
+    cls: "",
+  },
 ];
 
 /** Build the landscape run-sheet document (exported for tests). */
@@ -124,7 +176,7 @@ export function previewPdfHtml({
           lineNo += 1;
           const r = line.row;
           return `<tr${r.placed ? "" : ' class="unplaced"'}><td class="num">${r.number || lineNo}</td>${PDF_COLUMNS.map(
-            ([, pick, cls]) => `<td class="${cls}">${esc(pick(r))}</td>`,
+            (c) => `<td class="${c.cls}">${c.lead?.(r) ?? ""}${esc(c.pick(r))}</td>`,
           ).join("")}</tr>`;
         })
         .join("");
@@ -192,8 +244,8 @@ export function previewPdfHtml({
   }</p>
   <table>
     <thead><tr><th style="width:1.6rem">#</th>${PDF_COLUMNS.map(
-      ([label, , cls]) =>
-        `<th${cls === "num" ? ' style="text-align:right"' : ""}>${esc(label)}</th>`,
+      (c) =>
+        `<th${c.cls === "num" ? ' style="text-align:right"' : ""}>${esc(c.label)}</th>`,
     ).join("")}</tr></thead>
     <tbody>${body}</tbody>
   </table>
@@ -258,8 +310,8 @@ export function previewCourtGridHtml({
                 .join(" · ");
               return `<td class="cell">
                 <div class="tag">${chip(r)}<span class="line">${esc(line)}</span></div>
-                <div class="who"><span class="team">${esc(r.home)}</span><span class="vs">${esc(t("vs"))}</span></div>
-                <div class="who"><span class="team">${esc(r.away)}</span></div>
+                <div class="who"><span class="team">${crestImg(r.homeCrest)}${esc(r.home)}</span><span class="vs">${esc(t("vs"))}</span></div>
+                <div class="who"><span class="team">${crestImg(r.awayCrest)}${esc(r.away)}</span></div>
                 <div class="cat">${esc(r.sportLabel)} · ${esc(r.categoryLabel)}</div>
               </td>`;
             })
@@ -345,13 +397,59 @@ export function previewCourtGridHtml({
       ? `<div class="none"><h3>${esc(t("Still without a time"))}</h3><ul>${unplaced
           .map(
             (r) =>
-              `<li>${esc(r.sportLabel)} · ${esc(r.categoryLabel)} · ${esc(r.home)} ${esc(t("vs"))} ${esc(r.away)}</li>`,
+              `<li>${esc(r.sportLabel)} · ${esc(r.categoryLabel)} · ${crestImg(
+                r.homeCrest,
+                12,
+              )}${esc(r.home)} ${esc(t("vs"))} ${crestImg(r.awayCrest, 12)}${esc(r.away)}</li>`,
           )
           .join("")}</ul></div>`
       : ""
   }
   <p class="foot">${esc(t("Generated by Fixture"))} · fixture.doxaed.com</p>
 </body></html>`;
+}
+
+/**
+ * Raise the print dialog once the crests have actually arrived.
+ *
+ * A bare `setTimeout(print, 250)` is a guess, not a handshake. Every crest is
+ * a signed URL the NEW tab has to fetch for itself, and a sheet can carry
+ * hundreds of them; print while they are still in flight and the badges come
+ * out of the printer as blank squares. So we wait on each image's own
+ * load/error and only then print.
+ *
+ * The 1500ms ceiling is the other half of the deal: one dead crest URL must
+ * never hold the dialog hostage, because the schedule on the page is the part
+ * the reader actually came for. (Same handshake as
+ * `features/tournaments/tabs/institutionExport.ts` — keep the two in step.)
+ */
+function printWhenImagesReady(w: Window): void {
+  let printed = false;
+  const doPrint = (): void => {
+    if (printed) return;
+    printed = true;
+    w.print();
+  };
+  // Guarded: a document stub with no query API is still a printable window.
+  const all = w.document.querySelectorAll
+    ? Array.from(w.document.querySelectorAll("img"))
+    : [];
+  const pending = all.filter((img) => !img.complete);
+  if (!pending.length) {
+    setTimeout(doPrint, 250);
+    return;
+  }
+  let left = pending.length;
+  const settle = (): void => {
+    left -= 1;
+    // A beat after the last one so the layout it changed has painted.
+    if (left <= 0) setTimeout(doPrint, 50);
+  };
+  for (const img of pending) {
+    img.addEventListener("load", settle);
+    img.addEventListener("error", settle);
+  }
+  setTimeout(doPrint, 1500);
 }
 
 /** Open the court grid in a new tab and raise the print dialog. */
@@ -364,7 +462,7 @@ export function openPreviewCourtGridPdf(opts: {
   w.document.write(previewCourtGridHtml(opts));
   w.document.close();
   w.focus();
-  setTimeout(() => w.print(), 250);
+  printWhenImagesReady(w);
 }
 
 /**
@@ -387,5 +485,5 @@ export function openPreviewPdf(opts: {
   w.document.write(previewPdfHtml(opts));
   w.document.close();
   w.focus();
-  setTimeout(() => w.print(), 250);
+  printWhenImagesReady(w);
 }

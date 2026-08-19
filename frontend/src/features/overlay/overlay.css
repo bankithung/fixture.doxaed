@@ -176,6 +176,61 @@ html[data-obs-overlay] ::-webkit-scrollbar {
   box-shadow: inset 0 0 0 3px rgba(14, 17, 23, 0.9);
 }
 
+/* --- Team badges --------------------------------------------------------- */
+
+/* `TeamCrest` is the app's shared badge and brings app tokens with it
+   (`bg-muted`, `border-border`, a Tailwind h/w pair). Here it is re-skinned in
+   the broadcast palette and, critically, re-sized in ABSOLUTE pixels: the
+   panel is authored at 1920x1080 and `?scale` multiplies the whole coordinate
+   system, so a rem-derived badge would not scale with it.
+
+   These rules are scoped under `.ov` on purpose — that is (0,2,0), so they beat
+   the single-class Tailwind utilities the component ships with whatever order
+   the bundler emits, without a single `!important`.
+
+   The box is declared here and never depends on the image: an image that
+   resolves late, or 404s to the initials fallback, occupies exactly the same
+   pixels. A browser source being captured must never reflow. */
+.ov .ov-crest {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 8px;
+  background: var(--ov-fill);
+  object-fit: cover;
+  color: var(--ov-ink);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+/* Target board: 66px rows. */
+.ov .ov-crest--a {
+  width: 44px;
+  height: 44px;
+  font-size: 18px;
+}
+
+/* Timed board: 96px rows, beside the 3-4 character code. */
+.ov .ov-crest--b {
+  width: 44px;
+  height: 44px;
+  font-size: 18px;
+}
+
+/* Quiet boards (up next): 54px rows. */
+.ov .ov-crest--q {
+  width: 36px;
+  height: 36px;
+  font-size: 15px;
+}
+
+/* The single ellipsising text cell that sits beside a badge. */
+.ov .ov-ellipsis {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* --- FAMILY A: target sports (TT, sepak takraw, badminton, volleyball) ---- */
 
 .ovA {
@@ -226,14 +281,16 @@ html[data-obs-overlay] ::-webkit-scrollbar {
   --ov-side: var(--ov-away);
 }
 
+/* Badge + name share the ONE flexible column, so the panel keeps the width
+   `panelGeometry` authors; the name is the part that gives. */
 .ovA__name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   min-width: 0;
-  overflow: hidden;
   font-size: 34px;
   font-weight: 600;
   line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* Up to `slots` per-game numbers for THIS row, right-aligned. */
@@ -319,16 +376,19 @@ html[data-obs-overlay] ::-webkit-scrollbar {
 }
 
 .ovB__code {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   min-width: 0;
-  overflow: hidden;
   font-size: 40px;
   font-weight: 700;
   line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
+/* Mirrored: each badge sits on its own side's OUTER edge, the way a football
+   bug reads (badge, code, score | score, code, badge). */
 .ovB__side--away .ovB__code {
+  flex-direction: row-reverse;
   text-align: right;
 }
 
@@ -435,12 +495,12 @@ html[data-obs-overlay] ::-webkit-scrollbar {
 }
 
 .ovQ__text {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
-  overflow: hidden;
   font-size: 30px;
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* --- Numbers ------------------------------------------------------------- */

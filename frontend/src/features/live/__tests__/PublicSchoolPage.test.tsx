@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { publicRecordsApi } from "@/api/publicRecords";
@@ -12,6 +12,8 @@ vi.mock("@/api/publicRecords", async (importOriginal) => {
     publicRecordsApi: { ...actual.publicRecordsApi, school: vi.fn() },
   };
 });
+
+const CREST = "/api/public/teams/team-2/crest.png?sig=beta";
 
 const TEAM = {
   team_id: "team-1",
@@ -51,7 +53,7 @@ beforeEach(() => {
       played: 4, wins: 3, draws: 0, losses: 1,
       scored: 9, conceded: 3, difference: 6,
     },
-    teams: [TEAM],
+    teams: [TEAM, { ...TEAM, team_id: "team-2", team_name: "Alpha U16 Girls", crest: CREST }],
     badges: [
       { id: "b1", badge_key: "champions", name: "Champions", evidence: {} },
     ],
@@ -93,6 +95,19 @@ describe("PublicSchoolPage", () => {
     const history = screen.getByTestId("school-history");
     expect(history).toHaveTextContent("Last Year Cup");
     expect(history).toHaveTextContent("3 played, 2 won");
+  });
+
+  it("badges each team card, initials when the team has no crest", async () => {
+    mount();
+    const withCrest = await screen.findByTestId("school-team-team-2");
+    expect(within(withCrest).getByTestId("team-crest")).toHaveAttribute(
+      "src",
+      CREST,
+    );
+    const without = screen.getByTestId("school-team-team-1");
+    expect(within(without).getByTestId("team-crest-fallback")).toHaveTextContent(
+      "AU",
+    );
   });
 
   it("shows the error state with a way back", async () => {

@@ -11,6 +11,7 @@ import hashlib
 from django.db.models import Q
 
 from apps.matches.models import Match, MatchStatus
+from apps.teams.services.crest import team_crest
 
 
 def _sort_key(row: dict, tiebreakers: list[str]):
@@ -188,7 +189,12 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
             status__in=(MatchStatus.COMPLETED, MatchStatus.WALKOVER),
             deleted_at__isnull=True,
         )
-        .select_related("home_team", "away_team")
+        # institution: the row's crest resolves off the team's school, and a
+        # table is built from every match in the group.
+        .select_related(
+            "home_team", "away_team",
+            "home_team__institution", "away_team__institution",
+        )
     )
     if group_label is not None:
         qs = qs.filter(group_label=group_label)
@@ -217,6 +223,7 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
             r = {
                 "team_id": str(team.id),
                 "name": team.name,
+                "crest": team_crest(team),
                 "school": team.school,
                 "P": 0, "W": 0, "D": 0, "L": 0, "GF": 0, "GA": 0, "Pts": 0,
                 # Raw points within sets (set sports) for point-based tiebreaks.
@@ -232,7 +239,10 @@ def compute_standings(tournament, group_label: str | None = None) -> list[dict]:
         pending = Match.objects.filter(
             tournament=tournament, group_label=group_label,
             deleted_at__isnull=True,
-        ).select_related("home_team", "away_team")
+        ).select_related(
+            "home_team", "away_team",
+            "home_team__institution", "away_team__institution",
+        )
         for m in pending:
             row(m.home_team)
             row(m.away_team)

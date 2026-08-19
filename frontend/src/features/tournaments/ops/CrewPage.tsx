@@ -9,6 +9,7 @@ import {
 } from "@/api/tournaments";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/button";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { AssignDrawer } from "@/features/controlroom/AssignDrawer";
 import { BulkAssignDialog } from "./BulkAssignDialog";
 import { fmtDayLabel, fmtKickoff } from "@/features/controlroom/format";
@@ -72,10 +73,26 @@ function CrewRow({
           {match.scheduled_at ? fmtKickoff(match.scheduled_at, tz) : t("TBD")}
         </span>
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium">
-            {(match.home_team?.name ?? t("TBD")) +
-              " v " +
-              (match.away_team?.name ?? t("TBD"))}
+          {/* Crest in front of each name, so a venue manager matches the row
+              to the badge on the shirt. An unresolved slot carries none. */}
+          <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+            {match.home_team ? (
+              <TeamCrest
+                src={match.home_team.crest}
+                name={match.home_team.name}
+                size="xs"
+              />
+            ) : null}
+            <span className="truncate">{match.home_team?.name ?? t("TBD")}</span>
+            <span className="shrink-0 text-muted-foreground">{t("v")}</span>
+            {match.away_team ? (
+              <TeamCrest
+                src={match.away_team.crest}
+                name={match.away_team.name}
+                size="xs"
+              />
+            ) : null}
+            <span className="truncate">{match.away_team?.name ?? t("TBD")}</span>
           </p>
           {match.leaf_label ? (
             <p className="truncate text-xs text-muted-foreground">

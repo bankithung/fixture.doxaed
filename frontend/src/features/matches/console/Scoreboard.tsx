@@ -1,6 +1,7 @@
 import { Check, Minus, Plus, Trophy, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -183,6 +184,11 @@ export function SyncBadge({
 export interface ScorePadProps {
   homeName: string;
   awayName: string;
+  /** Each side's badge URL ("" / undefined = the team's initials). It rides in
+   * the name row, which already reserves two lines for a long school name, so
+   * no scoring control moves and no tap target changes size. */
+  homeCrest?: string;
+  awayCrest?: string;
   /** The big numerals: current-period points in play, periods won once final. */
   homeValue: number;
   awayValue: number;
@@ -215,6 +221,8 @@ export interface ScorePadProps {
 export function ScorePad({
   homeName,
   awayName,
+  homeCrest,
+  awayCrest,
   homeValue,
   awayValue,
   server = null,
@@ -242,6 +250,7 @@ export function ScorePad({
     >
       {([0, 1] as const).map((side) => {
         const name = side === 0 ? homeName : awayName;
+        const crest = side === 0 ? homeCrest : awayCrest;
         const value = side === 0 ? homeValue : awayValue;
         const home = side === 0;
         return (
@@ -300,6 +309,11 @@ export function ScorePad({
                     )}
                   />
                 ) : null}
+                {/* The badge is display only: it sits in the name row, which
+                    already stands two lines tall for a long school name, so
+                    the Point and Undo buttons below keep their exact size and
+                    position. */}
+                <TeamCrest src={crest} name={name} size="md" />
                 <span
                   className={cn(
                     "line-clamp-2 text-balance text-center text-sm font-semibold leading-tight sm:text-base",
@@ -443,6 +457,7 @@ export function NextGamePrompt({
  * does not exist (owner 2026-07-26). */
 export function MatchDecidedPrompt({
   winnerName,
+  winnerCrest,
   periodsWon,
   periodPlural,
   recordLabel,
@@ -450,6 +465,9 @@ export function MatchDecidedPrompt({
   pending = false,
 }: {
   winnerName: string | null;
+  /** The clinching side's badge, beside its name. Display only — the one
+   * control here is still Record result. */
+  winnerCrest?: string;
   /** Periods won, winner first ("2-0"). */
   periodsWon: string;
   periodPlural: string;
@@ -464,6 +482,14 @@ export function MatchDecidedPrompt({
       className="flex flex-col gap-2 rounded-xl border border-success/40 bg-success-muted p-3"
     >
       <p className="text-center text-sm font-semibold">
+        {winnerName ? (
+          <TeamCrest
+            src={winnerCrest}
+            name={winnerName}
+            size="sm"
+            className="mr-1.5 align-middle"
+          />
+        ) : null}
         {winnerName
           ? `${winnerName} ${t("wins")} ${periodsWon}`
           : t("The match is decided")}

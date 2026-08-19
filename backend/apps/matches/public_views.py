@@ -19,6 +19,7 @@ from apps.matches.services.records import (
     team_record,
 )
 from apps.teams.models import Institution, Team
+from apps.teams.services.crest import crest_url, team_crest
 from apps.tournaments.models import Tournament, TournamentStatus
 
 _PUBLIC = (
@@ -128,7 +129,11 @@ class PublicTeamRecordView(GenericAPIView):
             raise NotFound("team_not_found")
         data = team_record(team)
         data["institution"] = (
-            {"id": str(team.institution_id), "name": team.institution.name}
+            {
+                "id": str(team.institution_id),
+                "name": team.institution.name,
+                "crest": crest_url(team.institution.logo_ref),
+            }
             if team.institution_id
             else None
         )
@@ -200,7 +205,11 @@ class MyTodayView(GenericAPIView):
                 models_q_live()
                 | models_q_window(window_start, window_end)
             )
-            .select_related("home_team", "away_team", "tournament")
+            .select_related(
+                "home_team", "away_team", "tournament",
+                # institution: each row shows both crests, up to 80 rows.
+                "home_team__institution", "away_team__institution",
+            )
             .order_by("scheduled_at")[:80]
         )
         rows = []
@@ -213,6 +222,8 @@ class MyTodayView(GenericAPIView):
                 "tournament_name": t.name if t else "",
                 "home": m.home_team.name if m.home_team_id else "TBD",
                 "away": m.away_team.name if m.away_team_id else "TBD",
+                "home_crest": team_crest(m.home_team) if m.home_team_id else "",
+                "away_crest": team_crest(m.away_team) if m.away_team_id else "",
                 "status": m.status,
                 "home_score": m.home_score,
                 "away_score": m.away_score,
@@ -448,7 +459,11 @@ class MyOverviewView(GenericAPIView):
 
         recent = (
             matches.filter(status=MatchStatus.COMPLETED)
-            .select_related("home_team", "away_team", "tournament")
+            .select_related(
+                "home_team", "away_team", "tournament",
+                # institution: the results strip badges both sides.
+                "home_team__institution", "away_team__institution",
+            )
             .order_by(F("ended_at").desc(nulls_last=True), "-updated_at")[:8]
         )
         recent_results = [
@@ -458,6 +473,8 @@ class MyOverviewView(GenericAPIView):
                 "tournament_name": m.tournament.name,
                 "home": m.home_team.name if m.home_team_id else "TBD",
                 "away": m.away_team.name if m.away_team_id else "TBD",
+                "home_crest": team_crest(m.home_team) if m.home_team_id else "",
+                "away_crest": team_crest(m.away_team) if m.away_team_id else "",
                 "home_score": m.home_score,
                 "away_score": m.away_score,
                 "sport": m.sport or "football",

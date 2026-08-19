@@ -10,6 +10,7 @@ import {
 } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { useToast } from "@/components/ui/toast";
 import { ApiError } from "@/types/api";
 import { newEventId } from "@/lib/eventId";
@@ -306,7 +307,12 @@ export function StandingsTable({ group }: { group: StandingsGroup }): React.Reac
                 key={r.team_id}
                 className="border-t border-border transition-colors hover:bg-accent/40"
               >
-                <td className="px-4 py-2 font-medium">{r.name}</td>
+                <td className="px-4 py-2 font-medium">
+                  <span className="flex items-center gap-2">
+                    <TeamCrest src={r.crest} name={r.name} size="sm" />
+                    {r.name}
+                  </span>
+                </td>
                 {[r.P, r.W, r.D, r.L, r.GF, r.GA, r.GD, r.Pts].map((v, i) => (
                   <td
                     key={i}

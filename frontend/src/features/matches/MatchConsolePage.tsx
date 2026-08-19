@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { useToast } from "@/components/ui/toast";
 import { isNetworkError } from "@/api/client";
 import { newEventId } from "@/lib/eventId";
@@ -357,6 +358,12 @@ export function MatchConsolePage(): React.ReactElement {
   const headerPeriod = livePeriodLabel(match);
   const homeName = match.home_team?.name ?? t("TBD");
   const awayName = match.away_team?.name ?? t("TBD");
+  // The badge travels with the name everywhere the name goes: the board, the
+  // recorder, the printed report. `TeamCrest` reserves its box and falls back
+  // to initials, so a team with no upload still gets a badge and nothing on
+  // this surface moves when an image resolves late.
+  const homeCrest = match.home_team?.crest;
+  const awayCrest = match.away_team?.crest;
   const lastEvent = events[0];
   const canUndo = live && !!lastEvent;
   const isFinal = match.status === "completed" || match.status === "walkover";
@@ -445,10 +452,17 @@ export function MatchConsolePage(): React.ReactElement {
         return (
           <div key={side} className="flex flex-col gap-3 p-4">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-semibold">
-                {team?.name ?? (side === "home" ? t("Home") : t("Away"))}
+              <span className="flex min-w-0 items-center gap-1.5">
+                <TeamCrest
+                  src={side === "home" ? homeCrest : awayCrest}
+                  name={team?.name ?? ""}
+                  size="sm"
+                />
+                <span className="truncate text-sm font-semibold">
+                  {team?.name ?? (side === "home" ? t("Home") : t("Away"))}
+                </span>
               </span>
-              <span className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
+              <span className="shrink-0 text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
                 {side === "home" ? t("Home") : t("Away")}
               </span>
             </div>
@@ -715,8 +729,15 @@ export function MatchConsolePage(): React.ReactElement {
       {/* Print-only official match report. */}
       <div data-testid="match-report" className="hidden print:block">
         <h1 className="text-xl font-semibold">{t("Official match report")}</h1>
-        <p className="mt-1 text-2xl font-semibold">
-          {homeName} {match.home_score ?? 0}-{match.away_score ?? 0} {awayName}
+        {/* Both badges flank the headline score. `TeamCrest` draws a real
+            <img>, so the crest is on the paper an official signs — and a team
+            with no upload prints its initials rather than a blank. */}
+        <p className="mt-1 flex items-center gap-2 text-2xl font-semibold">
+          <TeamCrest src={homeCrest} name={homeName} size="lg" />
+          <span>
+            {homeName} {match.home_score ?? 0}-{match.away_score ?? 0} {awayName}
+          </span>
+          <TeamCrest src={awayCrest} name={awayName} size="lg" />
         </p>
         {match.home_pens != null && match.away_pens != null ? (
           <p className="font-tabular text-sm">
@@ -767,6 +788,8 @@ export function MatchConsolePage(): React.ReactElement {
           match={match}
           homeName={homeName}
           awayName={awayName}
+          homeCrest={homeCrest}
+          awayCrest={awayCrest}
           live={live}
           isFinal={isFinal}
           refresh={refresh}
@@ -817,11 +840,17 @@ export function MatchConsolePage(): React.ReactElement {
               ) : null}
             </span>
 
+            {/* Badges sit on each side's OUTER edge, so the two scores stay
+                the closest things to the centre — the reading order a
+                scoreboard is scanned in. */}
             <div className="grid w-full max-w-xl grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
-              <div className="min-w-0 text-right">
-                <div className="truncate text-sm font-medium sm:text-base">{homeName}</div>
-                <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
-                  {t("Home")}
+              <div className="flex min-w-0 items-center justify-end gap-2">
+                <TeamCrest src={homeCrest} name={homeName} size="md" />
+                <div className="min-w-0 text-right">
+                  <div className="truncate text-sm font-medium sm:text-base">{homeName}</div>
+                  <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
+                    {t("Home")}
+                  </div>
                 </div>
               </div>
               <div className="font-tabular text-4xl font-semibold tabular-nums sm:text-6xl">
@@ -829,11 +858,14 @@ export function MatchConsolePage(): React.ReactElement {
                 <span className="px-2 text-muted-foreground">-</span>
                 {match.away_score ?? 0}
               </div>
-              <div className="min-w-0 text-left">
-                <div className="truncate text-sm font-medium sm:text-base">{awayName}</div>
-                <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
-                  {t("Away")}
+              <div className="flex min-w-0 items-center justify-start gap-2">
+                <div className="min-w-0 text-left">
+                  <div className="truncate text-sm font-medium sm:text-base">{awayName}</div>
+                  <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
+                    {t("Away")}
+                  </div>
                 </div>
+                <TeamCrest src={awayCrest} name={awayName} size="md" />
               </div>
             </div>
 

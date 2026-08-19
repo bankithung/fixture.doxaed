@@ -1,5 +1,6 @@
 import { Lock, Radio, UserCog } from "lucide-react";
 import type { ControlRoomMatch, MatchRow } from "@/api/tournaments";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { LeafLabel } from "@/features/fixtures/LeafLabel";
 import { liveSetView, livePeriodLabel } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
@@ -178,8 +179,18 @@ export function MatchTile({
       ) : null}
 
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm">
-        <span className="truncate text-right font-medium">
-          {match.home_team?.name ?? t("TBD")}
+        {/* Crest then name on both sides, so the two teams read the same way
+            round and the badge never lands between a name and the score. An
+            unresolved slot shows no badge at all. */}
+        <span className="flex min-w-0 items-center justify-end gap-1.5 font-medium">
+          {match.home_team ? (
+            <TeamCrest
+              src={match.home_team.crest}
+              name={match.home_team.name}
+              size="sm"
+            />
+          ) : null}
+          <span className="truncate">{match.home_team?.name ?? t("TBD")}</span>
         </span>
         <span
           className={cn(
@@ -193,8 +204,15 @@ export function MatchTile({
               : `${match.home_score ?? 0} - ${match.away_score ?? 0}`
             : t("vs")}
         </span>
-        <span className="truncate font-medium">
-          {match.away_team?.name ?? t("TBD")}
+        <span className="flex min-w-0 items-center gap-1.5 font-medium">
+          {match.away_team ? (
+            <TeamCrest
+              src={match.away_team.crest}
+              name={match.away_team.name}
+              size="sm"
+            />
+          ) : null}
+          <span className="truncate">{match.away_team?.name ?? t("TBD")}</span>
         </span>
       </div>
 

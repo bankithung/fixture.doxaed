@@ -12,6 +12,7 @@ export function sideView(
   if (lineup && lineup.entries.length > 0) {
     return {
       teamName: team.name,
+      crest: team.crest,
       confirmed: lineup.confirmed,
       entries: lineup.entries,
     };
@@ -19,6 +20,7 @@ export function sideView(
   if (team.players.length > 0) {
     return {
       teamName: team.name,
+      crest: team.crest,
       confirmed: false,
       entries: team.players.map((p) => ({
         player_id: p.id,
@@ -29,5 +31,5 @@ export function sideView(
       })),
     };
   }
-  return { teamName: team.name, confirmed: false, entries: [] };
+  return { teamName: team.name, crest: team.crest, confirmed: false, entries: [] };
 }

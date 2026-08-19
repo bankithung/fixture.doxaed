@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveApi } from "@/api/live";
 import { tournamentsApi } from "@/api/tournaments";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { WatchLiveLink } from "./WatchLiveLink";
 import { useEventStream } from "@/lib/useEventStream";
 import { liveSetView } from "@/lib/setDisplay";
@@ -122,17 +123,37 @@ export function VenueDisplayPage(): React.ReactElement {
                 const chips = sv ? sv.finished : (slot.on.set_scores ?? []);
                 return (
                   <div className="flex flex-col items-center gap-3 px-6 py-8">
+                    {/* Read from across a hall: a full-size badge against
+                        each side of the score, which stays centred. */}
                     <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-4">
-                      <p className="truncate text-right text-3xl font-semibold">
-                        {slot.on.home?.name ?? t("TBD")}
+                      <p className="flex min-w-0 items-center justify-end gap-3 text-3xl font-semibold">
+                        <span className="truncate">
+                          {slot.on.home?.name ?? t("TBD")}
+                        </span>
+                        {slot.on.home ? (
+                          <TeamCrest
+                            src={slot.on.home.crest}
+                            name={slot.on.home.name}
+                            size="xl"
+                          />
+                        ) : null}
                       </p>
                       <p className="font-tabular text-6xl font-semibold">
                         {sv
                           ? `${sv.points[0]}-${sv.points[1]}`
                           : `${slot.on.home_score ?? 0}-${slot.on.away_score ?? 0}`}
                       </p>
-                      <p className="truncate text-3xl font-semibold">
-                        {slot.on.away?.name ?? t("TBD")}
+                      <p className="flex min-w-0 items-center gap-3 text-3xl font-semibold">
+                        {slot.on.away ? (
+                          <TeamCrest
+                            src={slot.on.away.crest}
+                            name={slot.on.away.name}
+                            size="xl"
+                          />
+                        ) : null}
+                        <span className="truncate">
+                          {slot.on.away?.name ?? t("TBD")}
+                        </span>
                       </p>
                     </div>
                     {sv ? (
@@ -162,7 +183,7 @@ export function VenueDisplayPage(): React.ReactElement {
                 </p>
                 <ul className="mt-2 flex flex-col gap-1.5">
                   {slot.next.map((m) => (
-                    <li key={m.id} className="flex items-baseline gap-3 text-xl">
+                    <li key={m.id} className="flex items-center gap-3 text-xl">
                       <span className="w-16 shrink-0 font-tabular text-muted-foreground">
                         {m.scheduled_at
                           ? new Date(m.scheduled_at).toLocaleTimeString([], {
@@ -171,8 +192,20 @@ export function VenueDisplayPage(): React.ReactElement {
                             })
                           : ""}
                       </span>
-                      <span className="truncate">
-                        {m.home?.name ?? t("TBD")} {t("vs")} {m.away?.name ?? t("TBD")}
+                      {/* Small here on purpose: the queue is a list, and the
+                          badge that has to carry the hall is the one above. */}
+                      <span className="flex min-w-0 items-center gap-2">
+                        {m.home ? (
+                          <TeamCrest src={m.home.crest} name={m.home.name} size="sm" />
+                        ) : null}
+                        <span className="truncate">{m.home?.name ?? t("TBD")}</span>
+                        <span className="shrink-0 text-muted-foreground">
+                          {t("vs")}
+                        </span>
+                        {m.away ? (
+                          <TeamCrest src={m.away.crest} name={m.away.name} size="sm" />
+                        ) : null}
+                        <span className="truncate">{m.away?.name ?? t("TBD")}</span>
                       </span>
                     </li>
                   ))}
@@ -191,8 +224,9 @@ interface MatchLike {
   status: string;
   venue: string;
   scheduled_at: string | null;
-  home: { name: string } | null;
-  away: { name: string } | null;
+  /** Signed crest URL rides along with the name (PublicScheduleSide). */
+  home: { name: string; crest?: string } | null;
+  away: { name: string; crest?: string } | null;
   home_score: number | null;
   away_score: number | null;
   sport?: string;

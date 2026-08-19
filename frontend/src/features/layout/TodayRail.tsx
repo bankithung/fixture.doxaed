@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, CircleAlert, Radio } from "lucide-react";
 import { api } from "@/api/client";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -12,6 +13,11 @@ interface TodayMatch {
   tournament_name: string;
   home: string;
   away: string;
+  /** Signed crest URL of `home`, "" (or absent) when the team has none. The
+   * feed sends the names flat, so the badges are flat siblings too rather
+   * than a nested team object nothing else here needs. */
+  home_crest?: string;
+  away_crest?: string;
   status: string;
   home_score: number | null;
   away_score: number | null;
@@ -81,8 +87,20 @@ export function TodayRail(): React.ReactElement {
                     ) : null}
                   </span>
                   <span className="flex items-center gap-2 text-sm">
-                    <span className="min-w-0 flex-1 truncate">
-                      {m.home} {t("vs")} {m.away}
+                    {/* A crest in front of each name. The feed carries names
+                        only, so an unnamed side has no badge either. */}
+                    <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                      {m.home ? (
+                        <TeamCrest src={m.home_crest} name={m.home} size="xs" />
+                      ) : null}
+                      <span className="truncate">{m.home}</span>
+                      <span className="shrink-0 text-muted-foreground">
+                        {t("vs")}
+                      </span>
+                      {m.away ? (
+                        <TeamCrest src={m.away_crest} name={m.away} size="xs" />
+                      ) : null}
+                      <span className="truncate">{m.away}</span>
                     </span>
                     <span
                       className={cn(

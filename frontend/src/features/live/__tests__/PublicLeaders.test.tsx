@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -11,12 +11,19 @@ vi.mock("@/api/client", async (importOriginal) => {
 import { api } from "@/api/client";
 import { PublicLeaders } from "../PublicLeaders";
 
-const board = (key: string, teamId: string, teamName: string) => ({
+const CREST = "/api/public/teams/s1/crest.png?sig=sepak";
+
+const board = (
+  key: string,
+  teamId: string,
+  teamName: string,
+  teamCrest?: string,
+) => ({
   key,
   label: "Match wins",
   subject: "team" as const,
   fmt: "int",
-  rows: [{ team_id: teamId, team_name: teamName, value: 1 }],
+  rows: [{ team_id: teamId, team_name: teamName, team_crest: teamCrest, value: 1 }],
 });
 
 const PAYLOAD = {
@@ -27,7 +34,7 @@ const PAYLOAD = {
       sport: "sepak_takraw",
       name: "Sepak Takraw",
       played: 3,
-      boards: [board("wins", "s1", "Sepak Wide School")],
+      boards: [board("wins", "s1", "Sepak Wide School", CREST)],
       categories: [
         {
           leaf_key: "sepak.u14.girls",
@@ -88,6 +95,17 @@ describe("PublicLeaders", () => {
     expect(screen.getByTestId("public-leaders")).toHaveTextContent(
       "2 matches played",
     );
+  });
+
+  it("badges the leaders, initials for a team with no crest", async () => {
+    mount();
+    await screen.findByText("Sepak Wide School");
+    const sepak = screen.getByTestId("board-sepak_takraw-wins");
+    expect(within(sepak).getByTestId("team-crest")).toHaveAttribute("src", CREST);
+    // The other sport's leader never uploaded one. "School" is a noise word,
+    // so "Paddle School" initials to "P".
+    const other = screen.getByTestId("board-table_tennis-wins");
+    expect(within(other).getByTestId("team-crest-fallback")).toHaveTextContent("P");
   });
 
   it("renders nothing for a competition that has not played yet", async () => {

@@ -47,6 +47,7 @@ import {
 import { ShareDialog } from "@/components/ui/ShareDialog";
 import { StaggeredDrawer } from "@/components/ui/StaggeredDrawer";
 import { StarBorder } from "@/components/ui/StarBorder";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { useToast } from "@/components/ui/toast";
 import { RangePills } from "@/features/dashboard/RangePills";
 import { flipPlacement } from "@/lib/popover";
@@ -1026,7 +1027,12 @@ function InstitutionTable({
                     className="sticky left-0 z-10 border-b border-border bg-card px-4 py-2.5 align-top font-medium"
                     title={i.name}
                   >
-                    <span className="block max-w-[14rem] truncate">{i.name}</span>
+                    {/* The badge the exported PDF prints, so the screen and
+                        the sheet name a school the same way. */}
+                    <span className="flex max-w-[14rem] items-center gap-1.5">
+                      <TeamCrest src={i.crest} name={i.name} size="xs" />
+                      <span className="truncate">{i.name}</span>
+                    </span>
                   </td>
                   <td className={cn(TD, "capitalize text-muted-foreground")}>{t(i.kind)}</td>
                   <td className={cn(TD, "text-muted-foreground")}>{i.region || "·"}</td>

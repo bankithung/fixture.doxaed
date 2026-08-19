@@ -10,6 +10,7 @@ import {
 } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/Select";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { useToast } from "@/components/ui/toast";
 import { useAuthStore } from "@/features/auth/authStore";
 import { ScheduleChangesPanel } from "@/features/fixtures/ScheduleChangesPanel";
@@ -218,8 +219,27 @@ function OpsHeaderBand({
             <p className="font-tabular text-3xl font-semibold leading-none">
               {next.scheduled_at ? fmtKickoff(next.scheduled_at, tz) : t("TBD")}
             </p>
-            <p className="mt-1 truncate text-xs text-muted-foreground">
-              {teamName(next.home_team)} v {teamName(next.away_team)}
+            {/* Crests ride the short names here: the band is the glance
+                surface, and a badge is faster to recognise than a
+                three-letter abbreviation. An unresolved slot gets none. */}
+            <p className="mt-1 flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+              {next.home_team ? (
+                <TeamCrest
+                  src={next.home_team.crest}
+                  name={next.home_team.name}
+                  size="xs"
+                />
+              ) : null}
+              <span className="truncate">{teamName(next.home_team)}</span>
+              <span className="shrink-0">{t("v")}</span>
+              {next.away_team ? (
+                <TeamCrest
+                  src={next.away_team.crest}
+                  name={next.away_team.name}
+                  size="xs"
+                />
+              ) : null}
+              <span className="truncate">{teamName(next.away_team)}</span>
             </p>
           </div>
         ) : (
@@ -959,9 +979,30 @@ export function ControlRoomPage(): React.ReactElement {
                           })
                         : ""}
                     </td>
+                    {/* Crests print: a browser drops background images from a
+                        printed page, but an <img> comes through, and TeamCrest
+                        renders one. Kept at the xs badge (1rem) and inline with
+                        the names, so a row is no taller than it was and the
+                        table still breaks across pages where it always did. */}
                     <td className="py-1.5 pr-2">
-                      {m.home_team?.name ?? "TBD"} {t("vs")}{" "}
-                      {m.away_team?.name ?? "TBD"}
+                      <span className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
+                        {m.home_team ? (
+                          <TeamCrest
+                            src={m.home_team.crest}
+                            name={m.home_team.name}
+                            size="xs"
+                          />
+                        ) : null}
+                        {m.home_team?.name ?? "TBD"} {t("vs")}
+                        {m.away_team ? (
+                          <TeamCrest
+                            src={m.away_team.crest}
+                            name={m.away_team.name}
+                            size="xs"
+                          />
+                        ) : null}
+                        {m.away_team?.name ?? "TBD"}
+                      </span>
                     </td>
                     <td className="py-1.5 pr-2">{m.leaf_label}</td>
                     <td className="py-1.5 pr-2">

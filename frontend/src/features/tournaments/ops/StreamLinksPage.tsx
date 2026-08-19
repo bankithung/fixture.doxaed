@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import {
   fmtDayLabel,
   fmtKickoff,
@@ -115,7 +116,9 @@ function LinkRow({
   onEdit,
 }: {
   testid: string;
-  title: string;
+  /** A node, not a string: a match row puts a crest in front of each team
+   * name, so the caller owns how the title is laid out (and its truncation). */
+  title: React.ReactNode;
   /** Fixed-width leading cell (a kickoff time), optional. */
   lead?: string;
   chips?: React.ReactNode;
@@ -137,7 +140,9 @@ function LinkRow({
             {lead}
           </span>
         ) : null}
-        <span className="truncate text-[13px] font-medium">{title}</span>
+        <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium">
+          {title}
+        </span>
         {chips}
       </div>
 
@@ -479,7 +484,7 @@ export function StreamLinksPage(): React.ReactElement {
                     <LinkRow
                       key={c.court_id}
                       testid={`stream-court-${c.court_id}`}
-                      title={c.court_name}
+                      title={<span className="truncate">{c.court_name}</span>}
                       chips={
                         <>
                           <SourceChip
@@ -532,7 +537,7 @@ export function StreamLinksPage(): React.ReactElement {
                     <LinkRow
                       key={leafKey}
                       testid={`stream-category-${leafKey}`}
-                      title={label}
+                      title={<span className="truncate">{label}</span>}
                       chips={
                         link && link.watch_url && !link.enabled ? (
                           <Chip tone="off">{t("Switched off")}</Chip>
@@ -618,7 +623,36 @@ export function StreamLinksPage(): React.ReactElement {
                   {pageMatches.map((m) => {
                     const link = findMatchLink(links, m.id);
                     const live = link?.watch_url && link.enabled;
-                    const title = `${m.home_team?.name ?? t("TBD")} v ${m.away_team?.name ?? t("TBD")}`;
+                    // Crest in front of each name, so the row a director is
+                    // about to point a camera at is identified by badge as
+                    // well as by name. An unresolved slot carries none.
+                    const title = (
+                      <>
+                        {m.home_team ? (
+                          <TeamCrest
+                            src={m.home_team.crest}
+                            name={m.home_team.name}
+                            size="xs"
+                          />
+                        ) : null}
+                        <span className="truncate">
+                          {m.home_team?.name ?? t("TBD")}
+                        </span>
+                        <span className="shrink-0 text-muted-foreground">
+                          {t("v")}
+                        </span>
+                        {m.away_team ? (
+                          <TeamCrest
+                            src={m.away_team.crest}
+                            name={m.away_team.name}
+                            size="xs"
+                          />
+                        ) : null}
+                        <span className="truncate">
+                          {m.away_team?.name ?? t("TBD")}
+                        </span>
+                      </>
+                    );
                     return (
                       <LinkRow
                         key={m.id}

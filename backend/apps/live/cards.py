@@ -50,6 +50,77 @@ def _center(draw, text, y, font, fill):
     draw.text(((_W - w) / 2, y), text, font=font, fill=fill)
 
 
+# Side of the square a crest is fitted into, and the gap to the team name.
+_CREST = 72
+_CREST_GAP = 18
+
+
+def _crest_images(m: Match) -> dict[str, Image.Image | None]:
+    """``{"home": img|None, "away": img|None}`` — each team's crest as an RGBA
+    thumbnail, in ONE query for the pair.
+
+    Read through the upload row's own ``file`` field rather than fetching the
+    signed crest URL over HTTP: this renderer runs inside the very process
+    that would serve that URL, so an HTTP round trip would be the server
+    calling itself and would stall the card whenever the worker pool is busy.
+
+    Every failure path returns None and the card falls back to its existing
+    text-only layout. A share card is the image WhatsApp unfurls for a
+    forwarded match link; it must never 500 over decoration, so a missing
+    file, an unreadable image or a ref pointing at nothing all degrade
+    silently rather than raise.
+    """
+    out: dict[str, Image.Image | None] = {"home": None, "away": None}
+    try:
+        from apps.forms.models import FormFileUpload
+
+        refs: dict[str, str] = {}
+        for side, team in (("home", m.home_team if m.home_team_id else None),
+                           ("away", m.away_team if m.away_team_id else None)):
+            if team is None:
+                continue
+            ref = getattr(team, "logo_ref", None)
+            if not ref:
+                inst = getattr(team, "institution", None)
+                ref = getattr(inst, "logo_ref", None) if inst else None
+            if ref:
+                refs[side] = str(ref)
+        if not refs:
+            return out
+        rows = {
+            str(u.upload_ref): u
+            for u in FormFileUpload.objects.filter(upload_ref__in=set(refs.values()))
+        }
+        for side, ref in refs.items():
+            out[side] = _load_crest(rows.get(ref))
+    except Exception:  # decoration, never a failed card
+        return {"home": None, "away": None}
+    return out
+
+
+def _load_crest(upload) -> Image.Image | None:
+    """One upload row decoded to an RGBA thumbnail, or None on anything odd
+    (no row, no file on disk, a PDF someone uploaded as a logo)."""
+    if upload is None or not upload.file:
+        return None
+    try:
+        with upload.file.open("rb") as fh:
+            img = Image.open(fh)
+            img.load()
+        img = img.convert("RGBA")
+        img.thumbnail((_CREST, _CREST), Image.LANCZOS)
+        return img
+    except Exception:  # see _crest_images: decoration, never a failed card
+        return None
+
+
+def _paste_crest(img: Image.Image, crest: Image.Image, left: int, mid_y: int):
+    """Paste a crest centred inside its _CREST box, honouring transparency."""
+    x = left + (_CREST - crest.width) // 2
+    y = mid_y - crest.height // 2
+    img.paste(crest, (x, y), crest)
+
+
 def render_match_card(m: Match) -> bytes:
     img = Image.new("RGB", (_W, _H), _BG)
     d = ImageDraw.Draw(img)
@@ -82,10 +153,24 @@ def render_match_card(m: Match) -> bytes:
 
     # Team names on their own row; the score/vs sits BELOW them so long
     # school names never collide with the center column.
-    f_team = _fit(d, max(home, away, key=len), 500, 52)
-    d.text((90, 248), home, font=f_team, fill=_INK)
+    #
+    # When EITHER side has a crest the gutter is reserved on BOTH, so the two
+    # names keep one shared size and stay mirror-symmetric; a school with no
+    # badge simply sits further in rather than being typeset larger than its
+    # opponent.
+    crests = _crest_images(m)
+    badged = crests["home"] is not None or crests["away"] is not None
+    gutter = (_CREST + _CREST_GAP) if badged else 0
+    f_team = _fit(d, max(home, away, key=len), 500 - gutter, 52)
+    name_y = 248
+    mid_y = name_y + f_team.size // 2
+    d.text((90 + gutter, name_y), home, font=f_team, fill=_INK)
     aw = d.textlength(away, font=f_team)
-    d.text((_W - 90 - aw, 248), away, font=f_team, fill=_INK)
+    d.text((_W - 90 - gutter - aw, name_y), away, font=f_team, fill=_INK)
+    if crests["home"] is not None:
+        _paste_crest(img, crests["home"], 90, mid_y)
+    if crests["away"] is not None:
+        _paste_crest(img, crests["away"], _W - 90 - _CREST, mid_y)
 
     if live or final:
         if m.set_scores and not final:
@@ -126,7 +211,12 @@ class MatchCardView(GenericAPIView):
 
     def get(self, request, match_id):
         m = (
-            Match.objects.select_related("home_team", "away_team", "tournament")
+            Match.objects.select_related(
+                "home_team", "away_team", "tournament",
+                # A team's crest falls back to its school's, so the
+                # institutions come along here instead of in two more queries.
+                "home_team__institution", "away_team__institution",
+            )
             .filter(id=match_id, deleted_at__isnull=True)
             .first()
         )

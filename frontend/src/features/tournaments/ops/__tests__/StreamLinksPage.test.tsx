@@ -488,6 +488,37 @@ describe("StreamLinksPage", () => {
     expect(screen.queryByTestId("stream-next")).not.toBeInTheDocument();
   });
 
+  it("badges both teams on a match row, and an unresolved slot not at all", async () => {
+    vi.mocked(tournamentsApi.matchesEnriched).mockResolvedValue([
+      match({
+        id: "c1",
+        home_team: {
+          id: "th",
+          name: "Alpha",
+          short_name: "ALP",
+          crest: "https://cdn.test/alpha.png",
+        },
+      }),
+      match({ id: "c2", home_team: null, away_team: null }),
+    ]);
+    mount();
+    await openDay();
+    await openTab("matches");
+
+    // The uploaded badge is an <img>; a team with none still reads as a badge.
+    const row = screen.getByTestId("stream-match-c1");
+    expect(within(row).getByTestId("team-crest")).toHaveAttribute(
+      "src",
+      "https://cdn.test/alpha.png",
+    );
+    expect(within(row).getByTestId("team-crest-fallback")).toBeInTheDocument();
+
+    // A slot with no team yet gets neither.
+    const bare = screen.getByTestId("stream-match-c2");
+    expect(within(bare).queryByTestId("team-crest")).toBeNull();
+    expect(within(bare).queryByTestId("team-crest-fallback")).toBeNull();
+  });
+
   it("points at the setup page with a primary action, not a disclosure", async () => {
     // The tournament owner could not find the broadcast instructions twice
     // while they were a collapsed disclosure on this page. There is now ONE

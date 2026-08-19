@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { useToast } from "@/components/ui/toast";
 import { OFFICIAL_ROLES, candidatesOf, officialRoleLabel } from "@/features/controlroom/crewRoster";
 import { RepairViolationsList } from "@/features/fixtures/MatchRepairControls";
@@ -232,16 +233,33 @@ export function AssignDrawer({
   });
 
   const officials = match.officials ?? [];
-  const teamLine =
-    (match.home_team?.name ?? t("TBD")) +
-    " v " +
-    (match.away_team?.name ?? t("TBD"));
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} ariaLabel={t("Assign")}>
       <DialogHeader>
         <DialogTitle>{t("Assign")}</DialogTitle>
-        <DialogDescription>{teamLine}</DialogDescription>
+        {/* The crests identify the match the drawer is about to write to, so a
+            crew assignment is confirmed by the badge and not only by a name.
+            An unresolved slot carries none. */}
+        <DialogDescription className="flex min-w-0 flex-wrap items-center gap-1.5">
+          {match.home_team ? (
+            <TeamCrest
+              src={match.home_team.crest}
+              name={match.home_team.name}
+              size="xs"
+            />
+          ) : null}
+          <span className="truncate">{match.home_team?.name ?? t("TBD")}</span>
+          <span className="shrink-0">{t("v")}</span>
+          {match.away_team ? (
+            <TeamCrest
+              src={match.away_team.crest}
+              name={match.away_team.name}
+              size="xs"
+            />
+          ) : null}
+          <span className="truncate">{match.away_team?.name ?? t("TBD")}</span>
+        </DialogDescription>
       </DialogHeader>
 
       <div className="flex flex-col gap-4 py-2">

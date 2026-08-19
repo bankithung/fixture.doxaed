@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -95,6 +95,25 @@ describe("PublicBracketPage", () => {
     expect(screen.getAllByText("Asen").length).toBeGreaterThan(0);
     // The group-stage competition never becomes a bracket.
     expect(screen.queryByTestId("bracket-sepak.u14")).not.toBeInTheDocument();
+  });
+
+  it("carries a side's crest through the public schedule adapter", async () => {
+    vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(
+      payload([
+        {
+          ...SEMI,
+          home: { ...SEMI.home, crest: "https://cdn.example/asen.png" },
+        },
+      ]),
+    );
+    wrap();
+    const board = await screen.findByTestId("bracket-tt.u14");
+    // The public payload names the side; without the adapter passing `crest`
+    // the public bracket would be the only bare one.
+    expect(within(board).getByTestId("team-crest")).toHaveAttribute(
+      "src",
+      "https://cdn.example/asen.png",
+    );
   });
 
   it("switches brackets from the category bookmarks (one bracket at a time)", async () => {

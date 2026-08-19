@@ -21,6 +21,7 @@ from apps.teams.serializers import (
     InstitutionInSerializer,
     SchoolRegistrationSerializer,
 )
+from apps.teams.services.crest import crest_url, team_crest
 from apps.teams.services.registration import (
     create_registration_link,
     get_or_create_institution,
@@ -369,6 +370,10 @@ class TournamentTeamsListView(GenericAPIView):
                     "school": t.school,
                     "institution_id": str(t.institution_id) if t.institution_id else None,
                     "institution_name": t.institution.name if t.institution_id else t.school,
+                    # The badge beside the name. "" (never null) when the team
+                    # and its school both lack one. The queryset already
+                    # select_relates the institution, so this costs no query.
+                    "crest": team_crest(t),
                     "pool": t.pool,
                     "sport": t.sport,
                     "leaf_key": t.leaf_key,
@@ -442,6 +447,13 @@ def _institution_dict(
         "contact_phone": i.contact_phone,
         "status": i.status,
         "team_count": getattr(i, "team_count", 0),
+        # The school's own badge, so the admin list and the exported schools
+        # PDF name a school the same way a fixture, a bracket and a scoreboard
+        # already do. This is the SAME ref every one of that school's teams
+        # inherits (``services.crest.team_crest`` falls back to it), so the
+        # crest beside "St. Mary's" in the schools sheet is the crest beside
+        # its teams in the draw. "" when the school never uploaded one.
+        "crest": crest_url(i.logo_ref),
         # Whether a team-registration access code has been issued/emailed to
         # this school (the admin's per-school send/resend UI keys off this).
         "has_team_code": bool(i.team_code_hash),

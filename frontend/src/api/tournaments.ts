@@ -1745,6 +1745,12 @@ export interface FairnessFlag {
 
 export interface FixturePreview {
   matches: PreviewMatch[];
+  /** `{team_id: signed crest URL}` for every badged team in the preview — ONE
+   * map for the whole body rather than a crest repeated inside every side,
+   * because the same team plays many matches and the sheet, the draw, the
+   * court grid and the exported PDFs all read from it. A team id that is
+   * absent has no badge: read it as `crests[id] ?? ""`. */
+  crests?: Record<string, string>;
   unscheduled: string[];
   violations: PreviewViolation[];
   soft_score: number | null;

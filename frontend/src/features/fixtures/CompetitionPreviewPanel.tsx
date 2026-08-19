@@ -13,6 +13,7 @@ import "@/components/ui/star-border.css";
 import { shortGroupName } from "./groupSlotLabel";
 import { LeafLabel } from "./LeafLabel";
 import { GroupCompositionView } from "./GroupCompositionView";
+import { sideCrest } from "./sideName";
 
 /** Adapt a previewed (placeholder) match to the MatchRow shape the FIFA
  * bracket renders — no scores yet, typed pointers passed through so an
@@ -20,10 +21,17 @@ import { GroupCompositionView } from "./GroupCompositionView";
 export function previewToMatchRow(
   pm: PreviewMatch,
   teamNames: ReadonlyMap<string, string>,
+  /** `{team_id: crest URL}` — the bracket node renders `MiniTeam.crest`. */
+  teamCrests: ReadonlyMap<string, string> = new Map(),
 ): MatchRow {
   const team = (s: PreviewSide): MiniTeam | null =>
     s.team_id
-      ? { id: s.team_id, name: teamNames.get(s.team_id) ?? t("TBD"), short_name: "" }
+      ? {
+          id: s.team_id,
+          name: teamNames.get(s.team_id) ?? t("TBD"),
+          short_name: "",
+          crest: sideCrest(s, teamCrests),
+        }
       : null;
   const source = (s: PreviewSide): MatchSource | null =>
     (s.source as MatchSource | undefined) ?? null;
@@ -68,11 +76,14 @@ export function CompetitionPreviewPanel({
   label,
   matches,
   teamNames,
+  teamCrests,
   unscheduled,
 }: {
   label: string;
   matches: PreviewMatch[];
   teamNames: ReadonlyMap<string, string>;
+  /** `{team_id: crest URL}`; absent or empty just means no badges. */
+  teamCrests?: ReadonlyMap<string, string>;
   unscheduled: readonly string[];
 }): React.ReactElement {
   const { groups, ko, teamsCount, untimed } = useMemo(() => {
@@ -136,12 +147,12 @@ export function CompetitionPreviewPanel({
     const byRound = new Map<number, MatchRow[]>();
     for (const m of ko) {
       const list = byRound.get(m.round_no);
-      const row = previewToMatchRow(m, teamNames);
+      const row = previewToMatchRow(m, teamNames, teamCrests);
       if (list) list.push(row);
       else byRound.set(m.round_no, [row]);
     }
     return [...byRound.entries()].sort((a, b) => a[0] - b[0]);
-  }, [ko, teamNames]);
+  }, [ko, teamNames, teamCrests]);
 
   const timed = matches.length - untimed.length;
 
@@ -197,7 +208,11 @@ export function CompetitionPreviewPanel({
           {/* The same spreadsheet the rest of the preview uses: one line per
               team, group and slot as columns (owner 2026-08-15). The fixtures
               themselves live in the schedule sheet. */}
-          <GroupCompositionView matches={matches} teamNames={teamNames} />
+          <GroupCompositionView
+            matches={matches}
+            teamNames={teamNames}
+            teamCrests={teamCrests}
+          />
         </div>
       ) : null}
 

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { MatchRow } from "@/api/tournaments";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { LeafLabel } from "@/features/fixtures/LeafLabel";
@@ -16,6 +17,9 @@ function stripPlayoffSuffix(label: string): string {
 interface StandRow {
   team_id: string;
   name: string;
+  /** Signed crest URL, carried off the match rows this table is derived from —
+   * the table has no team lookup of its own. */
+  crest?: string;
   P: number;
   W: number;
   D: number;
@@ -32,7 +36,7 @@ function computeStandings(matches: MatchRow[]): StandRow[] {
     if (!team) return null;
     let r = table.get(team.id);
     if (!r) {
-      r = { team_id: team.id, name: team.name, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0, GD: 0, Pts: 0 };
+      r = { team_id: team.id, name: team.name, crest: team.crest, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0, GD: 0, Pts: 0 };
       table.set(team.id, r);
     }
     return r;
@@ -90,10 +94,15 @@ function GroupTable({
               title={i < advance ? t("Advances") : undefined}
             >
               <td className="px-3 py-1.5 font-medium">
-                <span className="mr-1.5 font-tabular text-xs text-muted-foreground">
-                  {i + 1}
+                {/* The badge rides at the text's own line height, so the row
+                    keeps its height and the numeric columns do not shift. */}
+                <span className="flex items-center gap-1.5">
+                  <span className="font-tabular text-xs text-muted-foreground">
+                    {i + 1}
+                  </span>
+                  <TeamCrest src={r.crest} name={r.name} size="sm" />
+                  {r.name}
                 </span>
-                {r.name}
               </td>
               {[r.P, r.W, r.D, r.L, r.GF, r.GA, r.GD, r.Pts].map((v, j) => (
                 <td

@@ -15,6 +15,9 @@ export interface LineupEntryView {
 
 export interface LineupSideView {
   teamName: string;
+  /** Signed crest URL of the team, "" / undefined when it has no badge —
+   * the header renders initials rather than a gap. */
+  crest?: string;
   /** True when this is the confirmed team sheet (not the raw roster). */
   confirmed: boolean;
   entries: LineupEntryView[];

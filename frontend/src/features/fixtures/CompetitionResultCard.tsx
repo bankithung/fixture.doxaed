@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Lock } from "lucide-react";
 import type { MatchRow } from "@/api/tournaments";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -56,8 +57,17 @@ function Row({
           <span className="sr-only">{t("Slot locked")}</span>
         </span>
       ) : null}
-      <span className="flex-1 truncate text-right font-medium">
-        {match.home_team?.name ?? t("TBD")}
+      {/* Crest then name on both sides, so a drawn tie reads the same way
+          round. A slot still waiting on a winner shows no badge. */}
+      <span className="flex min-w-0 flex-1 items-center justify-end gap-1.5 font-medium">
+        {match.home_team ? (
+          <TeamCrest
+            src={match.home_team.crest}
+            name={match.home_team.name}
+            size="xs"
+          />
+        ) : null}
+        <span className="truncate">{match.home_team?.name ?? t("TBD")}</span>
       </span>
       <span
         className={cn(
@@ -67,8 +77,15 @@ function Row({
       >
         {done ? `${match.home_score ?? 0} - ${match.away_score ?? 0}` : t("vs")}
       </span>
-      <span className="flex-1 truncate font-medium">
-        {match.away_team?.name ?? t("TBD")}
+      <span className="flex min-w-0 flex-1 items-center gap-1.5 font-medium">
+        {match.away_team ? (
+          <TeamCrest
+            src={match.away_team.crest}
+            name={match.away_team.name}
+            size="xs"
+          />
+        ) : null}
+        <span className="truncate">{match.away_team?.name ?? t("TBD")}</span>
       </span>
       <span className="hidden shrink-0 font-tabular text-[0.6875rem] text-muted-foreground sm:inline">
         {meta(match)}

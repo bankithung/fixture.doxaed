@@ -50,6 +50,7 @@ from apps.matches.services.officials import (
 from apps.matches.services.scoring import assign_scorer, record_score
 from apps.matches.services.standings import compute_standings
 from apps.matches.services.state import transition_match
+from apps.teams.services.crest import team_crest
 from apps.tournaments.models import (
     Tournament,
     TournamentMembership,
@@ -79,7 +80,12 @@ def _accessible_tournament_or_404(user, tournament_id) -> Tournament:
 def _match_or_404(user, match_id) -> Match:
     match = (
         Match.objects.filter(id=match_id, deleted_at__isnull=True)
-        .select_related("tournament", "tournament__organization")
+        .select_related(
+            "tournament", "tournament__organization",
+            # Nearly every view here answers with MatchSerializer, whose team
+            # stubs resolve a crest off each side's school.
+            "home_team__institution", "away_team__institution",
+        )
         .first()
     )
     if match is None or not accessible_tournaments(user).filter(
@@ -277,7 +283,11 @@ class TournamentMatchListView(GenericAPIView):
         t = _accessible_tournament_or_404(request.user, tournament_id)
         qs = (
             Match.objects.filter(tournament=t, deleted_at__isnull=True)
-            .select_related("home_team", "away_team", "tournament", "scorer")
+            .select_related(
+                "home_team", "away_team", "tournament", "scorer",
+                # team_mini() resolves each crest off the team's school.
+                "home_team__institution", "away_team__institution",
+            )
             .prefetch_related("officials__user")
             .order_by("group_label", "match_no")
         )
@@ -574,11 +584,19 @@ class TournamentTiesView(GenericAPIView):
             "stage": tie.stage,
             "group_label": tie.group_label,
             "home_team": (
-                {"id": str(tie.home_team_id), "name": tie.home_team.name}
+                {
+                    "id": str(tie.home_team_id),
+                    "name": tie.home_team.name,
+                    "crest": team_crest(tie.home_team),
+                }
                 if tie.home_team_id else None
             ),
             "away_team": (
-                {"id": str(tie.away_team_id), "name": tie.away_team.name}
+                {
+                    "id": str(tie.away_team_id),
+                    "name": tie.away_team.name,
+                    "crest": team_crest(tie.away_team),
+                }
                 if tie.away_team_id else None
             ),
             "format": tie.format,
@@ -607,7 +625,9 @@ class TournamentTiesView(GenericAPIView):
 
         t = _accessible_tournament_or_404(request.user, tournament_id)
         ties = MatchTie.objects.filter(tournament=t).select_related(
-            "home_team", "away_team"
+            "home_team", "away_team",
+            # The crest resolves off the team's school; one tie card per row.
+            "home_team__institution", "away_team__institution",
         ).order_by("created_at")
         return Response({"ties": [self._tie_dict(x) for x in ties]})
 
@@ -1286,7 +1306,7 @@ class MatchLineupView(GenericAPIView):
         match = _match_or_404(request.user, match_id)
         lineups = (
             Lineup.objects.filter(match=match, deleted_at__isnull=True)
-            .select_related("team")
+            .select_related("team", "team__institution")
             .prefetch_related("entries", "entries__player", "entries__player__person")
             .order_by("created_at")
         )
@@ -1315,7 +1335,7 @@ class MatchLineupView(GenericAPIView):
         except ValidationError as e:
             raise DRFValidationError({"detail": getattr(e, "message", "invalid_lineup")})
         lineup = (
-            Lineup.objects.select_related("team")
+            Lineup.objects.select_related("team", "team__institution")
             .prefetch_related("entries", "entries__player", "entries__player__person")
             .get(pk=lineup.pk)
         )
@@ -1347,7 +1367,7 @@ class ConfirmLineupView(GenericAPIView):
         except ValidationError as e:
             raise DRFValidationError({"detail": getattr(e, "message", "invalid_confirm")})
         lineup = (
-            Lineup.objects.select_related("team")
+            Lineup.objects.select_related("team", "team__institution")
             .prefetch_related("entries", "entries__player", "entries__player__person")
             .get(pk=lineup.pk)
         )

@@ -1,5 +1,6 @@
 import { Link, useParams } from "react-router-dom";
 import { type StandingRow } from "@/api/tournaments";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -137,20 +138,25 @@ export function GroupTable({
               )}
             >
               <td className="px-4 py-1.5 font-medium">
-                <span className="mr-1.5 font-tabular text-xs text-muted-foreground">
-                  {idx + 1}
+                {/* Badge, then name: it sits at the row's own line height, so
+                    the stat columns keep their alignment. */}
+                <span className="flex items-center gap-1.5">
+                  <span className="font-tabular text-xs text-muted-foreground">
+                    {idx + 1}
+                  </span>
+                  <TeamCrest src={r.crest} name={r.name} size="sm" />
+                  {slug && id ? (
+                    <Link
+                      to={routes.publicTeam(slug, id, r.team_id)}
+                      data-testid={`standing-team-link-${r.team_id}`}
+                      className="rounded-sm underline-offset-2 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {r.name}
+                    </Link>
+                  ) : (
+                    r.name
+                  )}
                 </span>
-                {slug && id ? (
-                  <Link
-                    to={routes.publicTeam(slug, id, r.team_id)}
-                    data-testid={`standing-team-link-${r.team_id}`}
-                    className="rounded-sm underline-offset-2 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {r.name}
-                  </Link>
-                ) : (
-                  r.name
-                )}
               </td>
               {cells(r).map((v, i) => (
                 <td

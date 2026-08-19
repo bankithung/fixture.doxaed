@@ -11,7 +11,7 @@ describe("FootballLineups pitch (owner ask: pitch UI with players)", () => {
     render(
       <FootballLineups
         home={{
-          teamName: "Alpha", confirmed: true,
+          teamName: "Alpha", confirmed: true, crest: "/api/public/teams/a/crest.png?sig=x",
           entries: [
             entry("gk1", "Imna Jamir", "starter", "goalkeeper", 1),
             entry("d1", "Ato Yaden", "starter", "defender", 4),
@@ -27,6 +27,13 @@ describe("FootballLineups pitch (owner ask: pitch UI with players)", () => {
       />,
     );
     expect(screen.getByTestId("football-pitch")).toBeInTheDocument();
+    // The shared side header carries the badge: crest for Alpha, initials
+    // for Beta, which uploaded none.
+    expect(screen.getByTestId("team-crest")).toHaveAttribute(
+      "src",
+      "/api/public/teams/a/crest.png?sig=x",
+    );
+    expect(screen.getByTestId("team-crest-fallback")).toHaveTextContent("B");
     const homeHalf = screen.getByTestId("pitch-home-half");
     expect(homeHalf).toHaveTextContent("Jamir");
     // Shirt numbers ride the dots.

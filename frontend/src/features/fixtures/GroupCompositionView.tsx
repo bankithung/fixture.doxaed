@@ -1,5 +1,6 @@
 import { Fragment, useMemo } from "react";
 import type { PreviewMatch } from "@/api/tournaments";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { shortGroupName } from "./groupSlotLabel";
@@ -10,6 +11,8 @@ interface DrawLine {
   /** Position within the group (1-based) — the slot number on a wall chart. */
   slot: number;
   school: string;
+  /** The team's badge URL, "" when it has none (then initials stand in). */
+  crest: string;
   /** Continuous line number down the whole sheet. */
   lineNo: number;
 }
@@ -32,33 +35,51 @@ interface LeafDraw {
 export function GroupCompositionView({
   matches,
   teamNames,
+  teamCrests,
 }: {
   matches: PreviewMatch[];
   teamNames: ReadonlyMap<string, string>;
+  /** `{team_id: crest URL}`; absent or empty just means no badges. */
+  teamCrests?: ReadonlyMap<string, string>;
 }): React.ReactElement {
   const leaves = useMemo<LeafDraw[]>(() => {
-    // leaf -> group name -> ordered unique school names.
+    // leaf -> group name -> that group's teams, keyed by team id. Collecting
+    // by ID rather than by name is what lets a crest ride along: the badge
+    // cannot be recovered from the name once the id is thrown away.
+    type Entrant = { name: string; crest: string };
     const byLeaf = new Map<
       string,
-      { label: string; groups: Map<string, Set<string>>; entrants: Set<string> }
+      {
+        label: string;
+        groups: Map<string, Map<string, Entrant>>;
+        entrants: Map<string, Entrant>;
+      }
     >();
     for (const m of matches) {
       let entry = byLeaf.get(m.leaf_key);
       if (!entry) {
-        entry = { label: "", groups: new Map(), entrants: new Set() };
+        entry = { label: "", groups: new Map(), entrants: new Map() };
         byLeaf.set(m.leaf_key, entry);
       }
       if (!entry.label && m.group_label) entry.label = competitionLabel(m);
-      const names = [m.home, m.away]
-        .map((s) => (s.team_id ? teamNames.get(s.team_id) : undefined))
-        .filter((n): n is string => !!n);
+      const sides = [m.home, m.away].flatMap((s) => {
+        const name = s.team_id ? teamNames.get(s.team_id) : undefined;
+        if (!s.team_id || !name) return [];
+        return [
+          [s.team_id, { name, crest: teamCrests?.get(s.team_id) ?? "" }] as const,
+        ];
+      });
       if (m.stage === "group" && m.group_label) {
         const g = `${t("Group")} ${shortGroupName(m.group_label)}`;
-        if (!entry.groups.has(g)) entry.groups.set(g, new Set());
-        names.forEach((n) => entry.groups.get(g)!.add(n));
+        let bucket = entry.groups.get(g);
+        if (!bucket) {
+          bucket = new Map();
+          entry.groups.set(g, bucket);
+        }
+        for (const [id, e] of sides) bucket.set(id, e);
       } else {
         // Knockout-only competition: its entrants are real teams.
-        names.forEach((n) => entry.entrants.add(n));
+        for (const [id, e] of sides) entry.entrants.set(id, e);
       }
     }
     const out: LeafDraw[] = [];
@@ -66,28 +87,28 @@ export function GroupCompositionView({
     // mutates a counter while rendering.
     let lineNo = 0;
     for (const [leafKey, e] of byLeaf) {
+      const sorted = (m: Map<string, Entrant>): Entrant[] =>
+        [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
       const groups =
         e.groups.size > 0
           ? [...e.groups.entries()]
               .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-              .map(([name, set]) => ({
-                name,
-                schools: [...set].sort((a, b) => a.localeCompare(b)),
-              }))
+              .map(([name, bucket]) => ({ name, schools: sorted(bucket) }))
           : e.entrants.size > 0
-            ? [
-                {
-                  name: t("Entry list"),
-                  schools: [...e.entrants].sort((a, b) => a.localeCompare(b)),
-                },
-              ]
+            ? [{ name: t("Entry list"), schools: sorted(e.entrants) }]
             : [];
       if (!groups.length) continue;
       const lines: DrawLine[] = [];
       for (const g of groups) {
-        g.schools.forEach((school, i) => {
+        g.schools.forEach((ent, i) => {
           lineNo += 1;
-          lines.push({ group: g.name, slot: i + 1, school, lineNo });
+          lines.push({
+            group: g.name,
+            slot: i + 1,
+            school: ent.name,
+            crest: ent.crest,
+            lineNo,
+          });
         });
       }
       out.push({
@@ -98,7 +119,7 @@ export function GroupCompositionView({
       });
     }
     return out;
-  }, [matches, teamNames]);
+  }, [matches, teamNames, teamCrests]);
 
   if (leaves.length === 0) {
     return (
@@ -179,8 +200,11 @@ export function GroupCompositionView({
                     <td className="border-b border-r border-border/60 px-2 py-1 text-right font-tabular text-muted-foreground group-hover:bg-accent/40">
                       {line.slot}
                     </td>
-                    <td className="max-w-0 truncate border-b border-border/60 px-2 py-1 font-medium group-hover:bg-accent/40">
-                      {line.school}
+                    <td className="max-w-0 border-b border-border/60 px-2 py-1 font-medium group-hover:bg-accent/40">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <TeamCrest src={line.crest} name={line.school} size="xs" />
+                        <span className="truncate">{line.school}</span>
+                      </span>
                     </td>
                   </tr>
                 );

@@ -11,6 +11,10 @@ export interface Institution {
   contact_phone: string;
   status: string;
   team_count: number;
+  /** Signed crest URL, "" when the school never uploaded a badge. The same
+   * ref every one of its teams inherits, so a school wears one badge across
+   * the schools list, the draw and the printed sheets. */
+  crest?: string;
   /** True once a team-registration access code has been issued to this school. */
   has_team_code?: boolean;
   /** The registration-form answers that created this row (empty for direct add). */

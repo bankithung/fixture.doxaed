@@ -13,6 +13,32 @@ from apps.matches.models import (
     MatchOfficial,
     MatchOfficialRole,
 )
+from apps.teams.services.crest import team_crest
+
+
+def team_mini(team):
+    """The one team stub every match payload carries: id, name, short name,
+    crest.
+
+    This existed TWICE — ``MatchSerializer._mini`` and a module-level
+    ``_mini_team`` for lineups, byte-identical. Two copies of a shape means the
+    next key added lands in one of them, and a lineup's team silently stops
+    matching the same team in the match header. There is now one.
+
+    ``crest`` is always a string ("" when the team has no badge) so a renderer
+    falls back to initials without a null check. Resolving it reads
+    ``team.institution``, so every queryset feeding this must
+    ``select_related`` the institution or a whole day of fixtures becomes an
+    N+1.
+    """
+    if team is None:
+        return None
+    return {
+        "id": str(team.id),
+        "name": team.name,
+        "short_name": team.short_name,
+        "crest": team_crest(team),
+    }
 
 
 class MatchSerializer(serializers.ModelSerializer):
@@ -39,17 +65,11 @@ class MatchSerializer(serializers.ModelSerializer):
 
         return rules_for_match(obj)
 
-    @staticmethod
-    def _mini(team):
-        if team is None:
-            return None
-        return {"id": str(team.id), "name": team.name, "short_name": team.short_name}
-
     def get_home_team(self, obj):
-        return self._mini(obj.home_team)
+        return team_mini(obj.home_team)
 
     def get_away_team(self, obj):
-        return self._mini(obj.away_team)
+        return team_mini(obj.away_team)
 
 
 class MatchOfficialSerializer(serializers.ModelSerializer):
@@ -172,12 +192,6 @@ class TransitionSerializer(serializers.Serializer):
     winner_team_id = serializers.UUIDField(required=False)
 
 
-def _mini_team(team):
-    if team is None:
-        return None
-    return {"id": str(team.id), "name": team.name, "short_name": team.short_name}
-
-
 class LineupEntryReadSerializer(serializers.ModelSerializer):
     player_id = serializers.SerializerMethodField()
     player_name = serializers.SerializerMethodField()
@@ -207,7 +221,7 @@ class LineupSerializer(serializers.ModelSerializer):
         fields = ["id", "team", "entries", "confirmed_at", "confirmed_by", "updated_at"]
 
     def get_team(self, obj):
-        return _mini_team(obj.team)
+        return team_mini(obj.team)
 
     def get_confirmed_by(self, obj):
         return str(obj.confirmed_by_id) if obj.confirmed_by_id else None

@@ -239,6 +239,20 @@ export function DryRunPreviewPage(): React.ReactElement {
 
   const p = preview.data;
 
+  // Every team's badge, keyed by team id. The preview payload carries its own
+  // map (built server-side in the same pass as the matches, so it covers every
+  // team the draw actually used); the teams list is the fallback, which keeps
+  // crests working against a backend that has not shipped the map yet.
+  const teamCrests = useMemo(() => {
+    const fromPayload = p?.crests;
+    if (fromPayload) return new Map(Object.entries(fromPayload));
+    return new Map(
+      (teams.data ?? [])
+        .filter((tm) => tm.crest)
+        .map((tm) => [tm.id, tm.crest!] as const),
+    );
+  }, [p?.crests, teams.data]);
+
   // The tournament's OWN no-play windows: the wizard's daily break, any
   // recurring window, and the ceremonies on their own date. Only these draw a
   // break line in the sheet — a court standing empty for a scheduling reason
@@ -278,8 +292,8 @@ export function DryRunPreviewPage(): React.ReactElement {
   // filters. Both the sheet AND the draw views read from the same filtered
   // set, so what you filter is what you see everywhere.
   const allRows = useMemo(
-    () => buildRows(p?.matches ?? [], teamNames, p?.unscheduled ?? []),
-    [p, teamNames],
+    () => buildRows(p?.matches ?? [], teamNames, p?.unscheduled ?? [], teamCrests),
+    [p, teamNames, teamCrests],
   );
   const rows = useMemo(() => applyFilters(allRows, filters), [allRows, filters]);
   const filteredMatches = useMemo(() => rows.map((r) => r.match), [rows]);
@@ -318,7 +332,7 @@ export function DryRunPreviewPage(): React.ReactElement {
     return [...byLeaf.entries()].map(([leafKey, ms]) => {
       const byRound = new Map<number, MatchRow[]>();
       for (const m of ms) {
-        const row = previewToMatchRow(m, teamNames);
+        const row = previewToMatchRow(m, teamNames, teamCrests);
         const list = byRound.get(m.round_no);
         if (list) list.push(row);
         else byRound.set(m.round_no, [row]);
@@ -336,7 +350,7 @@ export function DryRunPreviewPage(): React.ReactElement {
         columns: [...byRound.entries()].sort((a, b) => a[0] - b[0]),
       };
     });
-  }, [filteredMatches, teamNames, readiness.data]);
+  }, [filteredMatches, teamNames, teamCrests, readiness.data]);
 
   // The unplaced matches per competition — a chip you can click to filter the
   // sheet down to exactly those rows.
@@ -896,6 +910,7 @@ export function DryRunPreviewPage(): React.ReactElement {
                   label={selectedLabel}
                   matches={filteredMatches}
                   teamNames={teamNames}
+                  teamCrests={teamCrests}
                   unscheduled={p.unscheduled}
                 />
               ) : (
@@ -903,6 +918,7 @@ export function DryRunPreviewPage(): React.ReactElement {
                   <GroupCompositionView
                     matches={filteredMatches}
                     teamNames={teamNames}
+                    teamCrests={teamCrests}
                   />
                   {drawBrackets.length ? (
                     <section data-testid="draw-brackets" className="flex flex-col gap-4">

@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import type { ControlRoomPerms } from "@/features/controlroom/MatchActionsMenu";
 import { MatchSheet } from "@/features/controlroom/MatchSheet";
 import { RowActions } from "@/features/controlroom/MatchActionsMenu";
@@ -193,12 +194,29 @@ function MyTaskCard({
       </div>
 
       <div className="flex min-w-0 items-start gap-2">
+        {/* The two teams stack, so each crest sits at the head of its own
+            line and the score column beside them never shifts. An unresolved
+            slot shows no badge. */}
         <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm">
-          <span className="truncate font-medium">
-            {match.home_team?.name ?? t("TBD")}
+          <span className="flex min-w-0 items-center gap-1.5 font-medium">
+            {match.home_team ? (
+              <TeamCrest
+                src={match.home_team.crest}
+                name={match.home_team.name}
+                size="xs"
+              />
+            ) : null}
+            <span className="truncate">{match.home_team?.name ?? t("TBD")}</span>
           </span>
-          <span className="truncate font-medium">
-            {match.away_team?.name ?? t("TBD")}
+          <span className="flex min-w-0 items-center gap-1.5 font-medium">
+            {match.away_team ? (
+              <TeamCrest
+                src={match.away_team.crest}
+                name={match.away_team.name}
+                size="xs"
+              />
+            ) : null}
+            <span className="truncate">{match.away_team?.name ?? t("TBD")}</span>
           </span>
         </div>
         {showScore ? (

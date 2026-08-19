@@ -155,6 +155,35 @@ describe("PublicStandingsPage", () => {
     expect(screen.getByTestId("standings-sport-Table Tennis")).toBeInTheDocument();
   });
 
+  it("shows each team's crest beside its name", async () => {
+    vi.mocked(tournamentsApi.publicStandings).mockResolvedValue({
+      groups: [
+        {
+          group_label: "Football \u00b7 U-15 \u00b7 Boys \u00b7 Group A",
+          rows: [
+            { team_id: "tm1", name: "Alpha FC", school: "North",
+              crest: "https://cdn.example/alpha.png",
+              P: 1, W: 1, D: 0, L: 0, GF: 2, GA: 1, GD: 1, Pts: 3 },
+            { team_id: "tm2", name: "Bravo FC", school: "South",
+              P: 1, W: 0, D: 0, L: 1, GF: 1, GA: 2, GD: -1, Pts: 0 },
+          ],
+        },
+      ],
+    });
+    mount();
+
+    const alpha = await screen.findByTestId("group-standing-tm1");
+    expect(within(alpha).getByTestId("team-crest")).toHaveAttribute(
+      "src",
+      "https://cdn.example/alpha.png",
+    );
+    // A crest-less team keeps a badge of its initials, never a gap.
+    const bravo = screen.getByTestId("group-standing-tm2");
+    expect(within(bravo).getByTestId("team-crest-fallback")).toHaveTextContent(
+      "BF",
+    );
+  });
+
   it("links every standings row to that team's public page (all its matches)", async () => {
     mount();
     const alpha = await screen.findByTestId("standing-team-link-tm1");

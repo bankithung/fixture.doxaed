@@ -19,6 +19,7 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { useEventStream } from "@/lib/useEventStream";
 import { BrandLogo } from "@/components/ui/BrandLogo";
+import { TeamCrest, type CrestSize } from "@/components/ui/TeamCrest";
 import { ShareButton } from "./ShareButton";
 import { sideView } from "./lineups/adapter";
 import { resolveLineupView } from "./lineups/registry";
@@ -97,12 +98,18 @@ function UpNextCard({
         data-testid="up-next-link"
         className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-4 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
-        <span className="min-w-0 truncate text-right text-sm font-semibold">
-          {next.home?.name ?? t("TBD")}
+        <span className="flex min-w-0 items-center justify-end gap-1.5 text-sm font-semibold">
+          {next.home ? (
+            <TeamCrest src={next.home.crest} name={next.home.name} size="xs" />
+          ) : null}
+          <span className="truncate">{next.home?.name ?? t("TBD")}</span>
         </span>
         <span className="text-xs text-muted-foreground">{t("vs")}</span>
-        <span className="min-w-0 truncate text-left text-sm font-semibold">
-          {next.away?.name ?? t("TBD")}
+        <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold">
+          {next.away ? (
+            <TeamCrest src={next.away.crest} name={next.away.name} size="xs" />
+          ) : null}
+          <span className="truncate">{next.away?.name ?? t("TBD")}</span>
         </span>
       </Link>
     </section>
@@ -252,26 +259,51 @@ function relLabel(type: string): string {
   return t("With");
 }
 
+/** A team's crest + name on the hub. A TBD side has no team, so it shows no
+ * badge at all rather than a placeholder for a team nobody knows yet. */
 function TeamNameLink({
   team,
   tournament,
   className,
+  crestSize = "sm",
+  crestSide = "start",
 }: {
-  team: { id: string; name: string } | null;
+  team: { id: string; name: string; crest?: string } | null;
   tournament: LiveSnapshot["tournament"];
   className?: string;
+  crestSize?: CrestSize;
+  /** Which edge carries the badge. The scoreline flanks the score with them
+   * ("end" on the home side, "start" on the away side) so both badges sit
+   * against the number; elsewhere the badge simply leads the name. */
+  crestSide?: "start" | "end";
 }): React.ReactElement {
   if (!team) return <span className={className}>{t("TBD")}</span>;
-  if (!tournament) return <span className={className}>{team.name}</span>;
+  const body = (
+    <>
+      {crestSide === "start" ? (
+        <TeamCrest src={team.crest} name={team.name} size={crestSize} />
+      ) : null}
+      <span className="truncate group-hover:underline">{team.name}</span>
+      {crestSide === "end" ? (
+        <TeamCrest src={team.crest} name={team.name} size={crestSize} />
+      ) : null}
+    </>
+  );
+  const box = cn(
+    "group flex min-w-0 items-center gap-2",
+    crestSide === "end" ? "justify-end" : "justify-start",
+  );
+  if (!tournament) return <span className={cn(className, box)}>{body}</span>;
   return (
     <Link
       to={routes.publicTeam(tournament.slug, tournament.id, team.id)}
       className={cn(
         className,
-        "rounded-md hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        box,
+        "rounded-md hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
     >
-      {team.name}
+      {body}
     </Link>
   );
 }
@@ -380,11 +412,25 @@ function StatsPanel({
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3 text-xs font-medium">
         <span className="inline-flex min-w-0 items-center gap-1.5">
           <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-primary" />
+          {match.home_team ? (
+            <TeamCrest
+              src={match.home_team.crest}
+              name={match.home_team.name}
+              size="xs"
+            />
+          ) : null}
           <span className="truncate">{match.home_team?.name ?? t("TBD")}</span>
         </span>
         <span className={OVERLINE}>{t("Match stats")}</span>
         <span className="inline-flex min-w-0 items-center justify-end gap-1.5">
           <span className="truncate">{match.away_team?.name ?? t("TBD")}</span>
+          {match.away_team ? (
+            <TeamCrest
+              src={match.away_team.crest}
+              name={match.away_team.name}
+              size="xs"
+            />
+          ) : null}
           <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-info" />
         </span>
       </div>
@@ -432,12 +478,14 @@ function H2HList({
   match: SnapMatch;
   timeZone: string;
 }): React.ReactElement {
-  const nameOf = (teamId: string): string =>
+  /** A prior meeting only ever involves these two teams, so the snapshot's
+   * own pair carries both the name and the badge. */
+  const teamOf = (teamId: string): { name: string; crest?: string } =>
     teamId === match.home_team?.id
-      ? match.home_team.name
+      ? match.home_team
       : teamId === match.away_team?.id
-        ? match.away_team.name
-        : t("Unknown");
+        ? match.away_team
+        : { name: t("Unknown") };
   return (
     <ul className="flex flex-col divide-y divide-border">
       {h2h.map((row) => (
@@ -451,16 +499,26 @@ function H2HList({
               {fmtDate(row.scheduled_at, timeZone) ?? ""}
             </span>
             <span className="grid min-w-0 flex-1 grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm">
-              <span className="truncate text-right font-medium">
-                {nameOf(row.home_team_id)}
+              <span className="flex min-w-0 items-center justify-end gap-1.5 font-medium">
+                <TeamCrest
+                  src={teamOf(row.home_team_id).crest}
+                  name={teamOf(row.home_team_id).name}
+                  size="xs"
+                />
+                <span className="truncate">{teamOf(row.home_team_id).name}</span>
               </span>
               <span className="font-tabular font-semibold">
                 {row.status === "walkover"
                   ? t("W/O")
                   : `${row.home_score ?? 0} - ${row.away_score ?? 0}`}
               </span>
-              <span className="truncate font-medium">
-                {nameOf(row.away_team_id)}
+              <span className="flex min-w-0 items-center gap-1.5 font-medium">
+                <TeamCrest
+                  src={teamOf(row.away_team_id).crest}
+                  name={teamOf(row.away_team_id).name}
+                  size="xs"
+                />
+                <span className="truncate">{teamOf(row.away_team_id).name}</span>
               </span>
             </span>
             {(row.set_scores?.length ?? 0) > 0 ? (
@@ -843,9 +901,13 @@ export function LiveViewerPage(): React.ReactElement {
             aria-live="polite"
             className="grid grid-cols-[1fr_auto_1fr] items-center gap-3"
           >
+            {/* The page's headline: a full-size badge against each side of
+                the score, which stays centred and tabular between them. */}
             <TeamNameLink
               team={match.home_team}
               tournament={tournament}
+              crestSize="lg"
+              crestSide="end"
               className="min-w-0 truncate text-right text-base font-semibold sm:text-lg"
             />
             <div className="text-center">
@@ -879,6 +941,8 @@ export function LiveViewerPage(): React.ReactElement {
             <TeamNameLink
               team={match.away_team}
               tournament={tournament}
+              crestSize="lg"
+              crestSide="start"
               className="min-w-0 truncate text-left text-base font-semibold sm:text-lg"
             />
           </div>

@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { t } from "@/lib/t";
 import { cn } from "@/lib/tailwind";
 
@@ -8,6 +9,8 @@ export interface LeaderBoardRow {
   team_id?: string;
   name?: string;
   team_name?: string;
+  /** Signed crest URL of `team_name`'s team, "" when it has none. */
+  team_crest?: string;
   played?: number;
   value: number | string;
   detail?: string;
@@ -125,6 +128,12 @@ export function SportLeaderBoards({
                           <span className="w-4 shrink-0 font-tabular text-xs text-muted-foreground">
                             {i + 1}
                           </span>
+                          {/* The badge belongs to the team, so a player board
+                              keeps it on the club line under the name, not
+                              beside the player. */}
+                          {b.subject !== "player" ? (
+                            <TeamCrest src={r.team_crest} name={label} size="xs" />
+                          ) : null}
                           <span className="min-w-0 flex-1 truncate font-medium">
                             {teamLink && b.subject !== "player" && r.team_id ? (
                               <Link
@@ -138,8 +147,15 @@ export function SportLeaderBoards({
                             )}
                           </span>
                           {sub ? (
-                            <span className="truncate text-xs text-muted-foreground">
-                              {sub}
+                            <span className="flex min-w-0 items-center gap-1 truncate text-xs text-muted-foreground">
+                              {b.subject === "player" && r.team_name ? (
+                                <TeamCrest
+                                  src={r.team_crest}
+                                  name={r.team_name}
+                                  size="xs"
+                                />
+                              ) : null}
+                              <span className="truncate">{sub}</span>
                             </span>
                           ) : null}
                           <span className="font-tabular text-sm font-semibold">

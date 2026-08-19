@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Shield } from "lucide-react";
 import type { MatchRow, MatchSource } from "@/api/tournaments";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { groupPositionLabel } from "@/features/fixtures/groupSlotLabel";
 import { t } from "@/lib/t";
 
@@ -60,24 +61,40 @@ function refId(src: MatchSource | null | undefined): string {
   return raw != null ? String(raw) : "";
 }
 
-/** A side's display label. A real team name; else its group_position slot
- * ("Group A top 1"); else — so we NEVER guess a winner — the match a slot flows
- * FROM ("Winner of M3" / "Loser of M3", where M3 is that feeder's card number);
- * else "TBD" (null). `no` maps match id -> the number shown on each card. */
-function entrantLabel(
+/** Who is on a side of a card: the team when one is resolved, otherwise the
+ * slot it is waiting on. */
+interface Entrant {
+  /** A real team name; else its group_position slot ("Group A top 1"); else —
+   * so we NEVER guess a winner — the match the slot flows FROM ("Winner of M3"
+   * / "Loser of M3"); else null, drawn as "TBD". */
+  label: string | null;
+  /** Signed crest URL of the resolved team; absent on an unresolved slot,
+   * which has no team to wear a badge for. */
+  crest?: string;
+  /** True only when a real team fills the slot. */
+  isTeam: boolean;
+}
+
+/** ONE funnel for both sides of every card: label and badge come out together,
+ * so a name can never be drawn beside another team's crest. `no` maps match id
+ * -> the number shown on each card. */
+function entrant(
   team: MatchRow["home_team"],
   src: MatchSource | null | undefined,
   no: Map<string, number>,
-): string | null {
-  if (team?.name) return team.name;
-  if (!src) return null;
-  if (src.type === "group_position") return groupPositionLabel(src);
+): Entrant {
+  if (team?.name) return { label: team.name, crest: team.crest, isTeam: true };
+  const open = (label: string | null): Entrant => ({ label, isTeam: false });
+  if (!src) return open(null);
+  if (src.type === "group_position") return open(groupPositionLabel(src));
   if (src.type === "winner_of" || src.type === "loser_of") {
     const n = no.get(refId(src));
-    if (n == null) return null;
-    return src.type === "loser_of" ? `${t("Loser of M")}${n}` : `${t("Winner of M")}${n}`;
+    if (n == null) return open(null);
+    return open(
+      src.type === "loser_of" ? `${t("Loser of M")}${n}` : `${t("Winner of M")}${n}`,
+    );
   }
-  return null;
+  return open(null);
 }
 
 /** FIFA round name from the number of teams contesting that round. */
@@ -176,15 +193,54 @@ function statusBadge(m: MatchRow): { text: string; live: boolean } | null {
   return null;
 }
 
+/**
+ * The 20px plate a resolved team wears on the board: its crest when it has one,
+ * its monogram when it has not. The gold plate stays behind both, so an
+ * uploaded badge and a plain monogram read as the same object in the column.
+ *
+ * Crest-less teams keep `initials()` rather than the shared component's
+ * fallback, because that one drops the word "School" and would read the seeded
+ * "Practice School 16" as "P1" — exactly the numeric monogram this file's
+ * `initials()` exists to avoid.
+ */
+function TeamBadge({
+  label,
+  crest,
+}: {
+  label: string;
+  crest?: string;
+}): React.ReactElement {
+  return (
+    <span
+      aria-hidden
+      className="flex h-[20px] w-[20px] shrink-0 items-center justify-center overflow-hidden rounded-full text-[0.5625rem] font-semibold"
+      style={{ background: C.avatar, color: C.goldHi }}
+    >
+      {crest ? (
+        <TeamCrest
+          src={crest}
+          name={label}
+          size="sm"
+          className="border-0 bg-transparent text-inherit"
+        />
+      ) : (
+        initials(label)
+      )}
+    </span>
+  );
+}
+
 /** One side of a match card: crest/monogram, name, winner check, score. */
 function TeamRow({
   label,
+  crest,
   score,
   pens,
   win,
   isTeam,
 }: {
   label: string | null;
+  crest?: string;
   score: number | null;
   pens: number | null;
   win: boolean;
@@ -197,13 +253,7 @@ function TeamRow({
       style={{ borderLeft: `2px solid ${win ? C.gold : "transparent"}` }}
     >
       {isTeam ? (
-        <span
-          aria-hidden
-          className="flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-full text-[0.5625rem] font-semibold"
-          style={{ background: C.avatar, color: C.goldHi }}
-        >
-          {initials(label ?? "")}
-        </span>
+        <TeamBadge label={label ?? ""} crest={crest} />
       ) : (
         <Shield aria-hidden className="h-[20px] w-[20px] shrink-0" style={{ color: C.dim }} strokeWidth={1.5} />
       )}
@@ -237,8 +287,8 @@ function TeamRow({
 
 /** A single match drawn as a card: kickoff/status strip + both sides. */
 function MatchCard({ match, tz, no }: { match: MatchRow; tz?: string; no: Map<string, number> }): React.ReactElement {
-  const home = entrantLabel(match.home_team, match.home_source, no);
-  const away = entrantLabel(match.away_team, match.away_source, no);
+  const home = entrant(match.home_team, match.home_source, no);
+  const away = entrant(match.away_team, match.away_source, no);
   const num = no.get(match.id);
   const win = decided(match);
   const badge = statusBadge(match);
@@ -247,8 +297,8 @@ function MatchCard({ match, tz, no }: { match: MatchRow; tz?: string; no: Map<st
   return (
     <div
       role="group"
-      aria-label={`${home ?? t("TBD")} ${match.home_score ?? ""} ${t("vs")} ${
-        away ?? t("TBD")
+      aria-label={`${home.label ?? t("TBD")} ${match.home_score ?? ""} ${t("vs")} ${
+        away.label ?? t("TBD")
       } ${match.away_score ?? ""}${badge ? ` ${badge.text}` : ""}`
         .replace(/\s+/g, " ")
         .trim()}
@@ -281,9 +331,9 @@ function MatchCard({ match, tz, no }: { match: MatchRow; tz?: string; no: Map<st
           </span>
         ) : null}
       </div>
-      <TeamRow label={home} isTeam={!!match.home_team?.name} score={match.home_score} pens={hasPens ? match.home_pens ?? null : null} win={win === "home"} />
+      <TeamRow label={home.label} crest={home.crest} isTeam={home.isTeam} score={match.home_score} pens={hasPens ? match.home_pens ?? null : null} win={win === "home"} />
       <div style={{ height: 1, background: C.divider }} />
-      <TeamRow label={away} isTeam={!!match.away_team?.name} score={match.away_score} pens={hasPens ? match.away_pens ?? null : null} win={win === "away"} />
+      <TeamRow label={away.label} crest={away.crest} isTeam={away.isTeam} score={match.away_score} pens={hasPens ? match.away_pens ?? null : null} win={win === "away"} />
     </div>
   );
 }
@@ -313,6 +363,11 @@ interface ByeGhost {
   y: number;
   label?: string;
   feederId?: string;
+  /** Set only on an entry bye taken by a REAL team: its crest, and the flag
+   * that says a badge belongs here at all (a group slot sitting out a round is
+   * still nobody). */
+  isTeam?: boolean;
+  crest?: string;
 }
 
 interface BracketLayout {
@@ -413,7 +468,14 @@ function layoutBracket(matches: MatchRow[]): BracketLayout {
           if (col > 0) {
             const label = team?.name ?? sourceLabel(src ?? null);
             if (label) {
-              ghosts.push({ parentId: id, label, x: colX(col - 1), y });
+              ghosts.push({
+                parentId: id,
+                label,
+                isTeam: !!team?.name,
+                crest: team?.crest,
+                x: colX(col - 1),
+                y,
+              });
             }
           }
         }
@@ -659,6 +721,7 @@ export function FifaBracket({
       }}
     >
       <div className="flex items-center gap-2">
+        {g.isTeam ? <TeamBadge label={g.label ?? ""} crest={g.crest} /> : null}
         <span className="min-w-0 flex-1 truncate text-xs font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>
           {ghostLabel(g)}
         </span>

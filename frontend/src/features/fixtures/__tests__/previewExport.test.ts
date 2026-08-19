@@ -3,7 +3,9 @@ import type { PreviewMatch } from "@/api/tournaments";
 import { buildRows, fmtClock, linesWithBreaks, occupancyByCourt } from "../previewGrid";
 import {
   downloadPreviewCsv,
+  openPreviewCourtGridPdf,
   openPreviewPdf,
+  previewCourtGridHtml,
   previewPdfHtml,
   type PreviewExportMeta,
 } from "../previewExport";
@@ -191,5 +193,172 @@ describe("downloadPreviewCsv", () => {
     el.mockRestore();
     create.mockRestore();
     revoke.mockRestore();
+  });
+});
+
+// One school has a badge, the other has none — the two halves of the rule in
+// a single row.
+const CRESTS = new Map([["t1", "https://crest.example/t1.png"]]);
+const CREST_ROWS = buildRows([m({ ref: "c1" })], NAMES, [], CRESTS);
+const POINTER_ROWS = buildRows(
+  [
+    m({
+      ref: "c2",
+      stage: "knockout",
+      group_label: "",
+      round_no: 2,
+      home: { source: { type: "winner_of", ref: "c1" } },
+      away: { source: { type: "winner_of", ref: "c3" } },
+    }),
+  ],
+  NAMES,
+  [],
+  CRESTS,
+);
+
+describe("crests on the printed run sheet", () => {
+  const html = previewPdfHtml({
+    rows: CREST_ROWS,
+    sort: null,
+    groupBy: "none",
+    meta: META,
+  });
+
+  it("prints the badge of a team that has one", () => {
+    expect(html).toContain('src="https://crest.example/t1.png"');
+    expect(html).toContain("border-radius:50%");
+  });
+
+  it("prints NO image tag for the side whose team has no badge", () => {
+    // A printed sheet cannot fall back to initials and cannot recover from a
+    // 404 — a missing crest must leave no tag at all, or the paper carries a
+    // broken-image icon.
+    expect(html.match(/<img/g) ?? []).toHaveLength(1);
+    expect(html).toContain("Lorna's School");
+  });
+
+  it("prints no image for a side nobody has qualified for yet", () => {
+    const ko = previewPdfHtml({
+      rows: POINTER_ROWS,
+      sort: null,
+      groupBy: "none",
+      meta: META,
+    });
+    expect(ko).toContain("Winner of");
+    expect(ko).not.toContain("<img");
+  });
+
+  it("still escapes the team name that carries a badge", () => {
+    const evil = previewPdfHtml({
+      rows: buildRows(
+        [m({ ref: "x1" })],
+        new Map([["t1", "<script>x</script>"]]),
+        [],
+        CRESTS,
+      ),
+      sort: null,
+      groupBy: "none",
+      meta: META,
+    });
+    expect(evil).not.toContain("<script>x</script>");
+    expect(evil).toContain("&lt;script&gt;");
+    expect(evil).toContain('src="https://crest.example/t1.png"');
+  });
+});
+
+describe("crests on the printed court grid", () => {
+  it("puts the badge in the team block, and nothing where there is none", () => {
+    const html = previewCourtGridHtml({ rows: CREST_ROWS, meta: META });
+    expect(html).toContain('src="https://crest.example/t1.png"');
+    expect(html.match(/<img/g) ?? []).toHaveLength(1);
+  });
+
+  it("puts a badge on the still-without-a-time list too", () => {
+    const untimed = buildRows([m({ ref: "u1" })], NAMES, ["u1"], CRESTS);
+    const html = previewCourtGridHtml({ rows: untimed, meta: META });
+    expect(html).toContain("Still without a time");
+    expect(html).toContain('src="https://crest.example/t1.png"');
+  });
+
+  it("prints no image for an unresolved side", () => {
+    const html = previewCourtGridHtml({ rows: POINTER_ROWS, meta: META });
+    expect(html).not.toContain("<img");
+  });
+});
+
+/** A fake `<img>` in the printed tab, with its listeners captured. */
+function fakeWindow(imageCount: number) {
+  const listeners: { load: (() => void)[]; error: (() => void)[] } = {
+    load: [],
+    error: [],
+  };
+  const imgs = Array.from({ length: imageCount }, () => ({
+    complete: false,
+    addEventListener: (ev: "load" | "error", fn: () => void) =>
+      listeners[ev].push(fn),
+  }));
+  const w = {
+    document: {
+      write: vi.fn(),
+      close: vi.fn(),
+      querySelectorAll: vi.fn(() => imgs),
+    },
+    focus: vi.fn(),
+    print: vi.fn(),
+  };
+  return { w, listeners };
+}
+
+describe("the print race", () => {
+  it("holds the dialog until every crest has decoded", () => {
+    vi.useFakeTimers();
+    const { w, listeners } = fakeWindow(2);
+    const open = vi.spyOn(window, "open").mockReturnValue(w as unknown as Window);
+
+    openPreviewPdf({ rows: CREST_ROWS, sort: null, groupBy: "none", meta: META });
+
+    // The naive 250ms timeout would already have printed here, with the
+    // badges still in flight.
+    vi.advanceTimersByTime(300);
+    expect(w.print).not.toHaveBeenCalled();
+
+    listeners.load[0]!();
+    vi.advanceTimersByTime(300);
+    expect(w.print).not.toHaveBeenCalled();
+
+    listeners.load[1]!();
+    vi.runAllTimers();
+    // Once, never twice: the ceiling must not fire a second dialog.
+    expect(w.print).toHaveBeenCalledTimes(1);
+
+    open.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it("prints anyway when a crest never arrives", () => {
+    vi.useFakeTimers();
+    const { w } = fakeWindow(1);
+    const open = vi.spyOn(window, "open").mockReturnValue(w as unknown as Window);
+
+    openPreviewCourtGridPdf({ rows: CREST_ROWS, meta: META });
+    vi.advanceTimersByTime(1600);
+    expect(w.print).toHaveBeenCalledTimes(1);
+
+    open.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it("a broken crest settles the wait like any other", () => {
+    vi.useFakeTimers();
+    const { w, listeners } = fakeWindow(1);
+    const open = vi.spyOn(window, "open").mockReturnValue(w as unknown as Window);
+
+    openPreviewPdf({ rows: CREST_ROWS, sort: null, groupBy: "none", meta: META });
+    listeners.error[0]!();
+    vi.advanceTimersByTime(100);
+    expect(w.print).toHaveBeenCalledTimes(1);
+
+    open.mockRestore();
+    vi.useRealTimers();
   });
 });

@@ -58,6 +58,10 @@ export interface OverlaySide {
   id?: string;
   name: string;
   short_name?: string;
+  /** Signed crest URL, "" when the team has no badge. The board draws it in a
+   * fixed box (see `.ov-crest` in overlay.css) so a badge that arrives late
+   * cannot reflow a graphic that is being captured. */
+  crest?: string;
 }
 
 /** The slice of a public-schedule row the overlay renders from. Deliberately
@@ -595,6 +599,13 @@ export function sideLabel(
   const full = (side?.name ?? "").trim();
   const pick = short.length >= 2 ? short : full || t("TBD");
   return pick.length > maxChars ? `${pick.slice(0, maxChars - 1)}…` : pick;
+}
+
+/** The side's badge URL, "" when it has none (or the side is still TBD).
+ * `TeamCrest` turns an empty one into the team's initials, so a school with no
+ * upload gets a legible tile rather than a hole in the row. */
+export function sideCrest(side: OverlaySide | null | undefined): string {
+  return (side?.crest ?? "").trim();
 }
 
 /** Broadcast code for a timed-sport row: the curated short name, else the

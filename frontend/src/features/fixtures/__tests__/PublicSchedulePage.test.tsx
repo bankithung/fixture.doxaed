@@ -29,6 +29,11 @@ const LIVE_FIELDS = {
   current_period: "",
 };
 
+/** Signed capability URLs: they load with no session, which is why a crest
+ * can appear on a page nobody has logged into. */
+const ALPHA_CREST = "/api/public/teams/tm1/crest.png?sig=alpha";
+const CAROL_CREST = "/api/public/teams/tm3/crest.png?sig=carol";
+
 // leaf_labels carry the joined EM DASH on purpose — the page must never render
 // the dashed string; it splits into chips.
 const PAYLOAD: PublicSchedulePayload = {
@@ -45,7 +50,8 @@ const PAYLOAD: PublicSchedulePayload = {
       stage: "group", group_label: "Football · U-15 · Boys · Group A", round_no: 1, match_no: 1,
       status: "completed", day: "2026-06-20",
       scheduled_at: "2026-06-20T03:30:00Z", venue: "Main Ground",
-      home: { id: "tm1", name: "Alpha FC", short_name: "A", school: "Alpha" },
+      home: { id: "tm1", name: "Alpha FC", short_name: "A", school: "Alpha", crest: ALPHA_CREST },
+      // Bravo never uploaded one: the row must still carry a badge.
       away: { id: "tm2", name: "Bravo FC", short_name: "B", school: "Bravo" },
       home_score: 2, away_score: 1,
       ...LIVE_FIELDS, home_pens: 4, away_pens: 3,
@@ -55,7 +61,7 @@ const PAYLOAD: PublicSchedulePayload = {
       stage: "group", group_label: "Football · U-15 · Boys · Group A", round_no: 1, match_no: 2,
       status: "live", day: "2026-06-20",
       scheduled_at: "2026-06-20T05:30:00Z", venue: "Main Ground",
-      home: { id: "tm3", name: "Carol FC", short_name: "C", school: "Carol" },
+      home: { id: "tm3", name: "Carol FC", short_name: "C", school: "Carol", crest: CAROL_CREST },
       away: { id: "tm4", name: "Delta FC", short_name: "D", school: "Delta" },
       home_score: 0, away_score: 0,
       ...LIVE_FIELDS, current_period: "first_half",
@@ -390,6 +396,51 @@ describe("PublicSchedulePage", () => {
         ),
       );
     });
+  });
+
+  it("badges every team: crest when it has one, initials when it does not, nothing for a TBD side", async () => {
+    mount();
+    const m1 = await screen.findByTestId("public-match-m1");
+    expect(within(m1).getByTestId("team-crest")).toHaveAttribute("src", ALPHA_CREST);
+    expect(within(m1).getByTestId("team-crest-fallback")).toHaveTextContent("BF");
+
+    // A bracket slot with no team yet gets NEITHER: there is nobody to badge.
+    const m3 = within(screen.getByTestId("upnext-band")).getByTestId(
+      "public-match-m3",
+    );
+    expect(within(m3).queryByTestId("team-crest")).toBeNull();
+    expect(within(m3).queryByTestId("team-crest-fallback")).toBeNull();
+
+    // The badge stays inside the team link, so it opens the team page and
+    // never steals the link's accessible name.
+    const team = within(m1).getByRole("link", { name: "Alpha FC" });
+    expect(within(team).getByTestId("team-crest")).toBeInTheDocument();
+  });
+
+  it("scales the crest up on the Now-playing hero", async () => {
+    mount();
+    const tile = within(await screen.findByTestId("live-band")).getByTestId(
+      "live-tile-m2",
+    );
+    const crest = within(tile).getByTestId("team-crest");
+    expect(crest).toHaveAttribute("src", CAROL_CREST);
+    // Hero size, not the list-row size: this is what a parent sees first.
+    expect(crest.className).toContain("h-10");
+    expect(within(tile).getByTestId("team-crest-fallback")).toHaveTextContent("DF");
+  });
+
+  it("prints the crests on the order of play", async () => {
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+    await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
+    await userEvent.click(screen.getByTestId("view-day"));
+
+    const sheet = await screen.findByTestId("print-sheet");
+    const printed = within(sheet).getAllByTestId("team-crest");
+    expect(printed[0]).toHaveAttribute("src", ALPHA_CREST);
+    // Small enough that the table still fits the page.
+    expect(printed[0]!.className).toContain("h-4");
+    expect(within(sheet).getAllByTestId("team-crest-fallback").length).toBeGreaterThan(0);
   });
 
   it("the whole match row opens the match centre; team names still open their team page", async () => {

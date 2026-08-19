@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sideName } from "../sideName";
+import { sideCrest, sideName } from "../sideName";
 
 const TEAMS = new Map([["tm1", "Alpha FC"]]);
 
@@ -61,5 +61,32 @@ describe("sideName — group_position placeholders (Gap 4)", () => {
       "Loser of p4",
     );
     expect(sideName({ source: { type: "tbd" } }, TEAMS)).toBe("TBD");
+  });
+});
+
+describe("sideCrest — the badge that travels beside the name", () => {
+  const CRESTS = new Map([["tm1", "https://crest.example/tm1.png"]]);
+
+  it("answers the badge of a resolved team", () => {
+    expect(sideCrest({ team_id: "tm1" }, CRESTS)).toBe(
+      "https://crest.example/tm1.png",
+    );
+  });
+
+  it("answers \"\" for a team that has no badge", () => {
+    expect(sideCrest({ team_id: "tm2" }, CRESTS)).toBe("");
+  });
+
+  it("answers \"\" for a side nobody has qualified for yet", () => {
+    // A pointer is not a team, so it can never carry a team's crest.
+    expect(sideCrest({ source: { type: "winner_of", ref: "p3" } }, CRESTS)).toBe("");
+    expect(
+      sideCrest({ source: { type: "group_position", group_label: "Group A", position: 1 } }, CRESTS),
+    ).toBe("");
+    expect(sideCrest({ source: { type: "tbd" } }, CRESTS)).toBe("");
+  });
+
+  it("is safe with no crests at all", () => {
+    expect(sideCrest({ team_id: "tm1" }, new Map())).toBe("");
   });
 });

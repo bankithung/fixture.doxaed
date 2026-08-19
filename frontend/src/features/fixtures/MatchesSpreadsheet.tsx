@@ -6,6 +6,7 @@ import {
   measureColumn,
   useColumnWidths,
 } from "@/components/ui/sheetColumns";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { useBreakpoint } from "@/lib/useBreakpoint";
@@ -32,6 +33,32 @@ interface Column {
   /** Dropped on phones, where the sheet keeps only the working columns. */
   phone?: boolean;
   cell: (r: PreviewRow) => React.ReactNode;
+}
+
+/**
+ * One side of a fixture: its badge, then its name.
+ *
+ * The badge is drawn only for a REAL team. `TeamCrest` falls back to initials
+ * when a team has no crest, which is right for a school and wrong for a
+ * pointer: "Winner of Match 3" is not a team, so initialling it would put a
+ * badge on a slot nobody has qualified for yet.
+ */
+function TeamCell({
+  name,
+  crest,
+  real,
+}: {
+  name: string;
+  crest: string;
+  /** The side resolves to an actual team (not a winner_of/group pointer). */
+  real: boolean;
+}): React.ReactElement {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      {real ? <TeamCrest src={crest} name={name} size="xs" /> : null}
+      <span className="truncate font-medium">{name}</span>
+    </span>
+  );
 }
 
 const COLUMNS: Column[] = [
@@ -119,14 +146,14 @@ const COLUMNS: Column[] = [
     label: "Team 1",
     width: 224,
     phone: true,
-    cell: (r) => <span className="truncate font-medium">{r.home}</span>,
+    cell: (r) => <TeamCell name={r.home} crest={r.homeCrest} real={!!r.match.home.team_id} />,
   },
   {
     key: "away",
     label: "Team 2",
     width: 224,
     phone: true,
-    cell: (r) => <span className="truncate font-medium">{r.away}</span>,
+    cell: (r) => <TeamCell name={r.away} crest={r.awayCrest} real={!!r.match.away.team_id} />,
   },
   {
     key: "status",

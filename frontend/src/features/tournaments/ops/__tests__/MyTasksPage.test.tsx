@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -312,6 +312,45 @@ describe("MyTasksPage", () => {
       expect(screen.getByTestId("tile-m1")).toBeInTheDocument();
       expect(screen.getByTestId("tile-m2")).toBeInTheDocument();
       expect(screen.getByTestId("tile-m3")).toBeInTheDocument();
+    });
+
+    it("badges both teams on the card, and an unresolved slot not at all", async () => {
+      const crested = row({
+        id: "c1",
+        scorer: { id: ME, name: "Me" },
+        home_team: {
+          id: "th",
+          name: "Alpha",
+          short_name: "ALP",
+          crest: "https://cdn.test/alpha.png",
+        },
+      });
+      const placeholder = row({
+        id: "c2",
+        scorer: { id: ME, name: "Me" },
+        home_team: null,
+        away_team: null,
+      });
+      vi.mocked(tournamentsApi.matchesEnriched).mockResolvedValue([
+        crested,
+        placeholder,
+      ]);
+      mount();
+      await screen.findByTestId("mytasks-list");
+
+      // The card stacks the two teams, so each crest heads its own line: an
+      // uploaded badge as an <img>, a team without one as its initials.
+      const card = screen.getByTestId("tile-c1");
+      expect(within(card).getByTestId("team-crest")).toHaveAttribute(
+        "src",
+        "https://cdn.test/alpha.png",
+      );
+      expect(within(card).getByTestId("team-crest-fallback")).toBeInTheDocument();
+
+      // A slot with no team yet gets neither.
+      const bare = screen.getByTestId("tile-c2");
+      expect(within(bare).queryByTestId("team-crest")).toBeNull();
+      expect(within(bare).queryByTestId("team-crest-fallback")).toBeNull();
     });
   });
 

@@ -19,6 +19,7 @@ import re
 from collections import defaultdict
 
 from apps.matches.models import Match, MatchStatus
+from apps.teams.services.crest import crest_url, team_crest
 
 _FINAL = (MatchStatus.COMPLETED, MatchStatus.WALKOVER)
 
@@ -39,6 +40,7 @@ def _match_row(m: Match, team_id, tz=None) -> dict:
     return {
         "match_id": str(m.id),
         "opponent": opponent.name if opponent else "TBD",
+        "opponent_crest": team_crest(opponent),
         "home": home,
         "score": (
             f"{m.home_score}-{m.away_score}"
@@ -62,7 +64,11 @@ def team_record(team) -> dict:
             tournament_id=team.tournament_id, deleted_at__isnull=True,
         )
         .filter(models_q_team(team.id))
-        .select_related("home_team", "away_team"),
+        # institution: every result row names an opponent and shows its crest.
+        .select_related(
+            "home_team", "away_team",
+            "home_team__institution", "away_team__institution",
+        ),
         key=lambda m: (m.scheduled_at or m.created_at),
     )
     played = [m for m in matches if m.status in _FINAL]
@@ -84,6 +90,7 @@ def team_record(team) -> dict:
     return {
         "team_id": str(team.id),
         "team_name": team.name,
+        "crest": team_crest(team),
         "leaf_key": team.leaf_key,
         "played": len(played),
         "wins": wins,
@@ -109,7 +116,7 @@ def institution_record(institution) -> dict:
 
     teams = Team.objects.filter(
         institution=institution, deleted_at__isnull=True,
-    ).exclude(status=TeamStatus.WITHDRAWN)
+    ).exclude(status=TeamStatus.WITHDRAWN).select_related("institution")
     rows = [team_record(t) for t in teams]
     totals = {
         k: sum(r[k] for r in rows)
@@ -119,6 +126,9 @@ def institution_record(institution) -> dict:
     return {
         "institution_id": str(institution.id),
         "institution_name": institution.name,
+        # The school's own badge — every team of the school wears it unless
+        # the team overrides it, so this is the crest of the rollup itself.
+        "crest": crest_url(institution.logo_ref),
         "tournament_id": str(institution.tournament_id),
         "totals": totals,
         "teams": rows,
@@ -173,8 +183,8 @@ def school_history(name: str) -> list[dict]:
             "status": t.status,
             "totals": rec["totals"],
             "teams": [
-                {k: r[k] for k in ("team_id", "team_name", "leaf_key", "played",
-                                   "wins", "draws", "losses")}
+                {k: r[k] for k in ("team_id", "team_name", "crest", "leaf_key",
+                                   "played", "wins", "draws", "losses")}
                 for r in rec["teams"]
             ],
         })

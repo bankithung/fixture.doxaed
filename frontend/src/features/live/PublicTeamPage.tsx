@@ -1,8 +1,9 @@
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Award, Shield, Star, Users } from "lucide-react";
+import { ArrowLeft, Award, Star, Users } from "lucide-react";
 import { toggleFollow, useFollows } from "@/lib/follows";
 import { publicRecordsApi } from "@/api/publicRecords";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { LeafLabel } from "@/features/fixtures/LeafLabel";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
@@ -98,9 +99,10 @@ export function PublicTeamPage(): React.ReactElement {
         {/* Identity + record strip */}
         <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
           <div className="flex flex-wrap items-center gap-3 px-5 py-4">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary/10">
-              <Shield aria-hidden="true" className="h-6 w-6 text-primary" />
-            </span>
+            {/* The badge IS this page's identity — the generic shield stood
+                in for it until teams had one. Initials still fill the slot for
+                a team that never uploaded a crest. */}
+            <TeamCrest src={team.crest} name={team.team_name} size="xl" />
             <FollowButton teamId={team.team_id} />
             <div className="min-w-0">
               <h1 className="truncate text-xl font-semibold tracking-tight">
@@ -204,8 +206,16 @@ export function PublicTeamPage(): React.ReactElement {
                     {m.status === "completed" || m.status === "walkover" ? m.result : "·"}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">
-                      {m.home ? t("vs") : t("at")} {m.opponent}
+                    <p className="flex min-w-0 items-center gap-1.5 font-medium">
+                      <span className="shrink-0">
+                        {m.home ? t("vs") : t("at")}
+                      </span>
+                      <TeamCrest
+                        src={m.opponent_crest}
+                        name={m.opponent}
+                        size="xs"
+                      />
+                      <span className="truncate">{m.opponent}</span>
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {m.scheduled_at

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { fmtKickoff } from "@/features/controlroom/format";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import {
@@ -10,10 +11,12 @@ import {
   panelGeometry,
   serveView,
   sideCode,
+  sideCrest,
   sideLabel,
   type OverlayKind,
   type OverlayMatch,
   type OverlayScoring,
+  type OverlaySide,
   type RallyServe,
 } from "./overlayState";
 
@@ -87,7 +90,9 @@ function IdleBoard({
       <div className="ovQ__row ovQ__row--home">
         <span className="ovQ__bar" />
         <span />
-        <span className="ovQ__text">{tournamentName || t("Tournament")}</span>
+        <span className="ovQ__text">
+          <span className="ov-ellipsis">{tournamentName || t("Tournament")}</span>
+        </span>
       </div>
     </div>
   );
@@ -111,15 +116,21 @@ function UpNextBoard(
       <div className="ovQ__row ovQ__row--home">
         <span className="ovQ__bar" />
         <span />
-        <span className="ovQ__text" data-testid="overlay-home-name">
-          {sideLabel(match.home)}
+        <span className="ovQ__text">
+          <Crest side={match.home} variant="q" />
+          <span className="ov-ellipsis" data-testid="overlay-home-name">
+            {sideLabel(match.home)}
+          </span>
         </span>
       </div>
       <div className="ovQ__row ovQ__row--away">
         <span className="ovQ__bar" />
         <span />
-        <span className="ovQ__text" data-testid="overlay-away-name">
-          {sideLabel(match.away)}
+        <span className="ovQ__text">
+          <Crest side={match.away} variant="q" />
+          <span className="ov-ellipsis" data-testid="overlay-away-name">
+            {sideLabel(match.away)}
+          </span>
         </span>
       </div>
     </div>
@@ -181,8 +192,14 @@ function TargetBug(
               )}
               <span className="ovA__bar" />
               <span />
-              <span className="ovA__name" data-testid={`overlay-${side}-name`}>
-                {sideLabel(i === 0 ? match.home : match.away)}
+              <span className="ovA__name">
+                <Crest side={i === 0 ? match.home : match.away} variant="a" />
+                <span
+                  className="ov-ellipsis"
+                  data-testid={`overlay-${side}-name`}
+                >
+                  {sideLabel(i === 0 ? match.home : match.away)}
+                </span>
               </span>
               <span className="ovA__hist" data-testid={`overlay-${side}-history`}>
                 {gv.history.slice(-geo.slots).map((g, gi) => (
@@ -237,8 +254,11 @@ function TimedBug(
       <div className="ovB__side ovB__side--home">
         <span className="ovB__bar" />
         <span />
-        <span className="ovB__code" data-testid="overlay-home-name">
-          {sideCode(match.home)}
+        <span className="ovB__code">
+          <Crest side={match.home} variant="b" />
+          <span className="ov-ellipsis" data-testid="overlay-home-name">
+            {sideCode(match.home)}
+          </span>
         </span>
         <span className="ovB__score" data-testid="overlay-home-score">
           <Digit value={match.home_score ?? 0} />
@@ -261,8 +281,11 @@ function TimedBug(
         <span className="ovB__score" data-testid="overlay-away-score">
           <Digit value={match.away_score ?? 0} />
         </span>
-        <span className="ovB__code" data-testid="overlay-away-name">
-          {sideCode(match.away)}
+        <span className="ovB__code">
+          <Crest side={match.away} variant="b" />
+          <span className="ov-ellipsis" data-testid="overlay-away-name">
+            {sideCode(match.away)}
+          </span>
         </span>
         <span />
         <span className="ovB__bar" />
@@ -274,6 +297,39 @@ function TimedBug(
 // ---------------------------------------------------------------------------
 // Pieces
 // ---------------------------------------------------------------------------
+
+/**
+ * A side's badge on the broadcast board.
+ *
+ * It draws into the FIXED box `.ov-crest` reserves (overlay.css), not into a
+ * Tailwind size class: the panel is authored at 1920x1080 in absolute pixels,
+ * and — more importantly — a browser source is being captured frame by frame,
+ * so a badge that resolves a second after the board paints must not move a
+ * single pixel of the graphic. `TeamCrest` already reserves the box before the
+ * image arrives and falls back to the team's initials on a 404, so the box is
+ * occupied either way; the CSS only re-skins it in the broadcast palette,
+ * because this subtree deliberately opts out of the app's theme tokens.
+ *
+ * A side that is still TBD has no badge to draw, so it draws none rather than
+ * an empty tile.
+ */
+function Crest({
+  side,
+  variant,
+}: {
+  side: OverlaySide | null | undefined;
+  variant: "a" | "b" | "q";
+}): React.ReactElement | null {
+  if (!side) return null;
+  return (
+    <TeamCrest
+      src={sideCrest(side)}
+      name={side.name}
+      size="lg"
+      className={`ov-crest ov-crest--${variant}`}
+    />
+  );
+}
 
 function HeadStrip(props: BoardProps): React.ReactElement {
   const { kind, match, courtLabel, feedFresh, stale, periodTerm } = props;

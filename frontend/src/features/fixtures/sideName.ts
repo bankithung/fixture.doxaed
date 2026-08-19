@@ -31,3 +31,23 @@ export function sideName(
   }
   return t("TBD");
 }
+
+/**
+ * The badge that belongs beside `sideName`'s text, or "" when there is none.
+ *
+ * A crest cannot ride on a string, and `sideName` returns one — so the badge
+ * is threaded alongside it rather than folded into it. Everything downstream
+ * (sorting, CSV columns, the search filter) reads the NAME, and a crest must
+ * not disturb any of that.
+ *
+ * An unresolved side has no team yet, so it has no badge either: "Winner of
+ * Match 3" and "Group A #1" both answer "". Callers render nothing for "" on
+ * paper, and the team's initials on screen.
+ */
+export function sideCrest(
+  side: PreviewSide,
+  crests: ReadonlyMap<string, string>,
+): string {
+  if (!side.team_id) return "";
+  return crests.get(side.team_id) ?? "";
+}

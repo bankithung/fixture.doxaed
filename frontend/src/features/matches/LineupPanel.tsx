@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardCheck, Users } from "lucide-react";
 import { liveApi, type LiveTeam } from "@/api/live";
 import { Button } from "@/components/ui/button";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { useToast } from "@/components/ui/toast";
 import { sideView } from "@/features/live/lineups/adapter";
 import {
@@ -201,10 +202,15 @@ export function LineupPanel({
           return (
             <div key={team.id} className="flex flex-col gap-3 p-5">
               <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-sm font-semibold">{team.name}</span>
+                {/* `sm` is exactly the line box of the name beside it, so the
+                    header row keeps the height it always had. */}
+                <span className="flex min-w-0 items-center gap-2">
+                  <TeamCrest src={team.crest} name={team.name} size="sm" />
+                  <span className="truncate text-sm font-semibold">{team.name}</span>
+                </span>
                 <span
                   className={cn(
-                    "font-tabular text-xs",
+                    "shrink-0 font-tabular text-xs",
                     playersPerSide != null && starters > playersPerSide
                       ? "font-medium text-destructive"
                       : "text-muted-foreground",

@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from apps.matches.models import Match, MatchEvent, MatchEventType, MatchStatus
+from apps.teams.services.crest import team_crest
 
 _FINAL = (MatchStatus.COMPLETED, MatchStatus.WALKOVER)
 _CARDS = (MatchEventType.YELLOW_CARD, MatchEventType.RED_CARD)
@@ -38,7 +39,11 @@ def compute_suspensions(tournament) -> list[dict]:
         MatchEvent.objects.filter(
             tournament=tournament, event_type__in=_CARDS, player__isnull=False
         )
-        .select_related("player", "player__person", "player__team", "match")
+        .select_related(
+            "player", "player__person", "player__team", "match",
+            # institution: each suspension row wears the team's crest.
+            "player__team__institution",
+        )
         .order_by("match_id", "sequence_no")
     )
     if not events:
@@ -130,6 +135,7 @@ def compute_suspensions(tournament) -> list[dict]:
                     ),
                     "team_id": str(player.team_id),
                     "team_name": player.team.name if player.team_id else "",
+                    "team_crest": team_crest(player.team) if player.team_id else "",
                     "reason": reason,
                     "triggered_match_id": str(trigger.id),
                     "banned_matches": banned,

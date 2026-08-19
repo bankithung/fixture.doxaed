@@ -1,6 +1,7 @@
 import { Fragment, useMemo } from "react";
 import { Lock, Radio } from "lucide-react";
 import type { ControlRoomMatch, MatchRow as MatchRowT } from "@/api/tournaments";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { liveSetView } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -24,6 +25,23 @@ function splitLeaf(label: string): { sport: string; category: string } {
     .map((s) => s.trim())
     .filter(Boolean);
   return { sport: segs[0] ?? "", category: segs.slice(1).join(" · ") };
+}
+
+/**
+ * A team cell: the crest, then the name.
+ *
+ * An unresolved slot gets NO badge — a bracket placeholder has no school, so
+ * initials of the word "TBD" would read as a real team on a dense sheet.
+ * The name still truncates, and the crest is `shrink-0`, so the score and time
+ * columns beside it never move.
+ */
+function TeamCell({ team }: { team: ControlRoomMatch["home_team"] }): React.ReactElement {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      {team ? <TeamCrest src={team.crest} name={team.name} size="xs" /> : null}
+      <span className="truncate">{team?.name ?? t("TBD")}</span>
+    </span>
+  );
 }
 
 /**
@@ -171,6 +189,15 @@ export function MatchSheet({
                 const showScore = live || done;
                 const sv = showScore ? liveSetView(m) : null;
                 const winner = matchWinner(m);
+                // The winning side's crest, read back off the same side the
+                // label came from. A draw belongs to neither team, so it keeps
+                // its bare chip.
+                const winnerTeam =
+                  winner?.side === "home"
+                    ? m.home_team
+                    : winner?.side === "away"
+                      ? m.away_team
+                      : null;
                 const grp = groupSuffix(m.leaf_label, m.group_label);
                 const { sport, category } = splitLeaf(m.leaf_label);
                 const delay = delayFor?.(m) ?? null;
@@ -235,8 +262,8 @@ export function MatchSheet({
                       {grp ?? <span className="text-muted-foreground/50">·</span>}
                     </td>
 
-                    <td className={cn(td, "w-48 max-w-0 truncate font-medium")}>
-                      {m.home_team?.name ?? t("TBD")}
+                    <td className={cn(td, "w-48 max-w-0 font-medium")}>
+                      <TeamCell team={m.home_team} />
                     </td>
                     <td
                       className={cn(td, "w-20 whitespace-nowrap text-center font-tabular")}
@@ -256,8 +283,8 @@ export function MatchSheet({
                         <span className="text-muted-foreground/50">-</span>
                       )}
                     </td>
-                    <td className={cn(td, "w-48 max-w-0 truncate font-medium")}>
-                      {m.away_team?.name ?? t("TBD")}
+                    <td className={cn(td, "w-48 max-w-0 font-medium")}>
+                      <TeamCell team={m.away_team} />
                     </td>
 
                     <td
@@ -268,13 +295,20 @@ export function MatchSheet({
                         <span
                           title={winner.label}
                           className={cn(
-                            "inline-block max-w-full truncate rounded px-1.5 py-0.5 font-medium",
+                            "inline-flex max-w-full items-center gap-1 rounded px-1.5 py-0.5 font-medium",
                             winner.side === "draw"
                               ? "bg-muted text-muted-foreground"
                               : "bg-success-muted text-success",
                           )}
                         >
-                          {winner.label}
+                          {winnerTeam ? (
+                            <TeamCrest
+                              src={winnerTeam.crest}
+                              name={winnerTeam.name}
+                              size="xs"
+                            />
+                          ) : null}
+                          <span className="truncate">{winner.label}</span>
                         </span>
                       ) : (
                         <span className="text-muted-foreground/50">·</span>

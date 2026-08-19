@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { BracketView } from "../BracketView";
 import type { MatchRow } from "@/api/tournaments";
 
@@ -140,5 +140,43 @@ describe("BracketView", () => {
     // Winner (Alpha) sorts first and is marked as advancing.
     expect(screen.getByText("Alpha")).toBeInTheDocument();
     expect(screen.getByText("Beta")).toBeInTheDocument();
+  });
+
+  it("carries each team's crest into the group standings table", () => {
+    render(
+      <BracketView
+        matches={[
+          m(
+            {
+              group_label: "Group A",
+              stage: "group",
+              round_no: 1,
+              status: "completed",
+              home_team: {
+                id: "a",
+                name: "Alpha",
+                short_name: "ALP",
+                crest: "https://cdn.example/alpha.png",
+              },
+              away_team: { id: "b", name: "Beta", short_name: "BET" },
+              home_score: 3,
+              away_score: 0,
+            },
+            "g1",
+          ),
+        ]}
+      />,
+    );
+    // The table is derived from the match rows, so the crest has to ride
+    // along with the name through computeStandings.
+    const table = screen.getByRole("table");
+    expect(within(table).getByTestId("team-crest")).toHaveAttribute(
+      "src",
+      "https://cdn.example/alpha.png",
+    );
+    // A team with no crest still gets a badge, its initials.
+    expect(within(table).getByTestId("team-crest-fallback")).toHaveTextContent(
+      "B",
+    );
   });
 });
