@@ -542,6 +542,26 @@ export function courtSummary(rows: readonly PreviewRow[]): string {
     .join(" · ");
 }
 
+/**
+ * Court order for anything that lists them: the hall's name, then the number
+ * on the court, read the way a person reads them. A plain string sort puts
+ * "T10" before "T2"; ordering by first play scatters one hall's courts across
+ * the page.
+ */
+export function byCourtName(a: string, b: string): number {
+  const parts = (s: string): (string | number)[] =>
+    s.split(/(\d+)/).map((x) => (/^\d+$/.test(x) ? Number(x) : x.toLowerCase()));
+  const [pa, pb] = [parts(a), parts(b)];
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] ?? "";
+    const y = pb[i] ?? "";
+    if (x === y) continue;
+    if (typeof x === "number" && typeof y === "number") return x - y;
+    return String(x).localeCompare(String(y));
+  }
+  return 0;
+}
+
 /** One day of the court grid: the courts across, the start times down. */
 export interface CourtGridDay {
   day: string;
@@ -576,10 +596,11 @@ export function buildCourtGrid(rows: readonly PreviewRow[]): CourtGridDay[] {
   return [...days.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([day, dayRows]) => {
-      const courts: string[] = [];
-      for (const r of [...dayRows].sort((a, b) => a.start.localeCompare(b.start))) {
-        if (!courts.includes(r.venue)) courts.push(r.venue);
-      }
+      // Courts read in their own order — Audi T1, T2, T3, then Mph T1, T2 —
+      // not in the order they happen to start playing, which scattered a
+      // hall's courts across the page (owner 2026-08-19: "Audi 3 should be
+      // next to 2").
+      const courts = [...new Set(dayRows.map((r) => r.venue))].sort(byCourtName);
       const byStart = new Map<string, PreviewRow[]>();
       for (const r of dayRows) {
         byStart.set(r.start, [...(byStart.get(r.start) ?? []), r]);
@@ -626,6 +647,8 @@ export function groupRows(
   // band is whole, so it is written here rather than per row.
   if (by === "venue") {
     for (const band of bands) band.sub = courtSummary(band.rows);
+    // Same reading order as the grid: a hall's courts stay together.
+    bands.sort((a, b) => byCourtName(a.venue, b.venue));
   }
   return bands;
 }

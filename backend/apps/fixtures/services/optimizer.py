@@ -48,6 +48,7 @@ from apps.fixtures.services.scheduler import (
     court_open_to,
     exclusion_member,
     expand_venues,
+    max_concurrency,
     relaxed_venue_type_sports,
     resolve_closing_rounds,
     resolve_pinned_rounds,
@@ -255,20 +256,10 @@ def _candidates(
 
 
 # ------------------------------------------------------------- capacity gate
-def _max_concurrency(intervals: list[tuple[datetime, datetime]]) -> int:
-    """Peak number of simultaneously-running intervals (sweep line)."""
-    if not intervals:
-        return 0
-    events: list[tuple[datetime, int]] = []
-    for s, e in intervals:
-        events.append((s, 1))
-        events.append((e, -1))
-    events.sort(key=lambda x: (x[0], x[1]))
-    cur = peak = 0
-    for _t, delta in events:
-        cur += delta
-        peak = max(peak, cur)
-    return peak
+#: The sweep now lives in ``scheduler`` so the placer answers the same question
+#: (a count of overlaps is not a count of concurrency). Kept under the old name
+#: for the callers that already import it from here.
+_max_concurrency = max_concurrency
 
 
 def _capacity_ok(

@@ -513,6 +513,11 @@ def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> l
         elif ctype == "official_capacity":
             count = int(p.get("count") or 0)
             if count >= 1:
+                # HARD by construction, whatever the record says. The greedy
+                # filters these without checking ``hard`` and the validator
+                # filters with it; neither should start branching on it,
+                # because records already carry ``hard: false`` and honouring
+                # it would silently drop their limit.
                 cfg.constraint_rules.append(ScopedRule(
                     ctype, scope, True, weight, {"count": count}, record=c))
                 notes.append(
@@ -948,6 +953,29 @@ Preoccupied = list[
     tuple[str, datetime, datetime, list[str]]
     | tuple[str, datetime, datetime, list[str], tuple[str, str]]
 ]
+
+
+def max_concurrency(intervals: Sequence[tuple[datetime, datetime]]) -> int:
+    """Peak number of simultaneously-running intervals (sweep line).
+
+    The one reading ``official_capacity`` means. Counting how many intervals
+    merely OVERLAP a window is a different number: two matches running back to
+    back on other courts both overlap a long candidate without ever being
+    simultaneous. Shared by the placer, ``validate_schedule`` and the
+    optimizer's capacity gate so all three answer the same question.
+    """
+    if not intervals:
+        return 0
+    events: list[tuple[datetime, int]] = []
+    for s, e in intervals:
+        events.append((s, 1))
+        events.append((e, -1))
+    events.sort(key=lambda x: (x[0], x[1]))
+    cur = peak = 0
+    for _t, delta in events:
+        cur += delta
+        peak = max(peak, cur)
+    return peak
 
 
 def _overlaps(busy: list[tuple[datetime, datetime]], start: datetime,
@@ -1528,6 +1556,14 @@ def _schedule_once(
     venue_busy: dict[str, list[tuple[datetime, datetime]]] = defaultdict(list)
     team_busy: dict[str, list[tuple[datetime, datetime]]] = defaultdict(list)
     team_day: dict[tuple[str, date], int] = defaultdict(int)
+    # The STRICTEST cap any match already on this team-day resolved to. The
+    # effective limit on a day is the smallest of them (a leaf capped at 1
+    # forbids a second match that day whatever the sibling leaf allows), which
+    # is what validate_schedule has always computed — the greedy read only the
+    # candidate's own cap, so emitting the strict leaf first let it place both
+    # and then fail its own validator. Whether a schedule is legal must not
+    # depend on draw emission order.
+    day_cap_seen: dict[tuple[str, date], int] = {}
     venue_load: dict[str, int] = defaultdict(int)
     unscheduled: list[str] = []
     unscheduled_ids: set[str] = set()
@@ -1632,20 +1668,48 @@ def _schedule_once(
         for t in team_ids:
             team_busy[t].append((start, end))
             team_busy_v[t].append((start, end, targets[0]))
-            team_day[(t, start.date())] += 1
+            key = (t, start.date())
+            team_day[key] += 1
+            # A committed booking carries no MatchSlotReq, so it resolves to
+            # the global cap — the same reading validate_schedule gives it.
+            day_cap_seen[key] = min(
+                day_cap_seen.get(key, cfg.max_per_team_per_day),
+                cfg.max_per_team_per_day,
+            )
 
     def _scope_ok(rule: ScopedRule, m: MatchSlotReq,
                   team_ids: tuple[str, ...]) -> bool:
         return scope_matches(rule.scope, sport=m.sport, leaf_key=m.leaf_key,
                              team_ids=team_ids, team_tags=cfg.team_tags)
 
+    # Per-match/per-team memos. Every one of these resolvers walks the whole
+    # rule list, and the slot scan asks for the same answer once per candidate
+    # slot — 720 times per match on a two-day, five-court calendar.
+    _rest_memo: dict[tuple[str, str], timedelta] = {}
+    _cap_memo: dict[tuple[str, str], int] = {}
+    _link_memo: dict[str, tuple[int | None, int | None]] = {}
+
     def _rest_for(m: MatchSlotReq, t: str) -> timedelta:
         """Effective hard rest gap for one team in one match — delegates to the
         shared resolver so the greedy and ``validate_schedule`` never diverge."""
-        return effective_rest_gap(cfg, m, t)
+        key = (m.id, t)
+        got = _rest_memo.get(key)
+        if got is None:
+            got = _rest_memo[key] = effective_rest_gap(cfg, m, t)
+        return got
 
     def _day_cap(m: MatchSlotReq, t: str) -> int:
-        return effective_day_cap(cfg, m, t)
+        key = (m.id, t)
+        got = _cap_memo.get(key)
+        if got is None:
+            got = _cap_memo[key] = effective_day_cap(cfg, m, t)
+        return got
+
+    def _link_gaps(m: MatchSlotReq) -> tuple[int | None, int | None]:
+        got = _link_memo.get(m.id)
+        if got is None:
+            got = _link_memo[m.id] = effective_link_gaps(cfg, m)
+        return got
 
     def _in_window(r: ScopedRule, dt: datetime) -> bool:
         days = r.params.get("days")
@@ -1770,12 +1834,21 @@ def _schedule_once(
             # a per-leaf run scoped to one sport must still see its sibling
             # leaves' matches (their (sport, leaf) meta travels on the
             # booking; legacy meta-less bookings only count for scope "all").
-            n = sum(
-                1 for s, e, sp, lf in (*inflight, *pre_intervals)
+            #
+            # PEAK concurrency, not a count of overlaps: two matches running
+            # back to back on other courts both overlap a long candidate's
+            # window while never running at the same time, so counting them
+            # refused arrangements the validator and the optimizer both bless.
+            # Clipped to the candidate's own window because that is the only
+            # stretch this placement can push over the cap.
+            ivals = [
+                (s if s > dt else dt, e if e < end else end)
+                for s, e, sp, lf in (*inflight, *pre_intervals)
                 if s < end and dt < e
                 and scope_matches(r.scope, sport=sp, leaf_key=lf)
-            )
-            if n >= cap:
+            ]
+            ivals.append((dt, end))
+            if max_concurrency(ivals) > cap:
                 return False
         # Mutual-exclusion groups (owner ask): a match may not overlap (within
         # the group's transition gap) any already-placed match of a DIFFERENT
@@ -1797,7 +1870,11 @@ def _schedule_once(
         for t in teams:
             if dt.date() in cfg.team_blackouts.get(t, ()):  # blackout day
                 return False
-            if team_day[(t, dt.date())] >= _day_cap(m, t):
+            day_key = (t, dt.date())
+            own = _day_cap(m, t)
+            # An empty day is bound by this match's own cap alone — a scoped
+            # record may legitimately raise the limit above the global one.
+            if team_day[day_key] >= min(own, day_cap_seen.get(day_key, own)):
                 return False
             gap = _rest_for(m, t)
             if _overlaps(team_busy[t], dt, end, gap=gap):
@@ -1806,18 +1883,17 @@ def _schedule_once(
             # is busy whenever its partner team is (W2-D). With a stored
             # no_person_overlap record the gaps are tunable and venue-aware
             # (changing venues costs travel time); otherwise the legacy
-            # rest-gap behavior applies.
-            link_same, link_cross = effective_link_gaps(cfg, m)
+            # rest-gap behavior applies. ``linked_pair_gap`` is the ONE
+            # resolver validate_schedule reads too.
+            link_gaps = _link_gaps(m)
             for lt in (linked or {}).get(t, ()):
-                if link_same is None:
+                if link_gaps[0] is None:
                     if _overlaps(team_busy[lt], dt, end, gap=gap):
                         return False
                 else:
                     for s, e, v in team_busy_v.get(lt, ()):
-                        same = base_of.get(v, v) == base_of.get(venue, venue)
-                        g = timedelta(minutes=(
-                            link_same if same else link_cross or link_same
-                        ))
+                        g = linked_pair_gap(cfg, m, t, v, venue, base_of,
+                                            gaps=link_gaps)
                         if dt < e + g and s < end + g:
                             return False
         return True
@@ -2168,7 +2244,10 @@ def _schedule_once(
         for t in teams:
             team_busy[t].append((dt, end))
             team_busy_v[t].append((dt, end, venue))
-            team_day[(t, dt.date())] += 1
+            day_key = (t, dt.date())
+            team_day[day_key] += 1
+            own = _day_cap(m, t)
+            day_cap_seen[day_key] = min(day_cap_seen.get(day_key, own), own)
 
     violations.extend(
         _build_violations(matches, unscheduled, pinned_failed, pin_of,
@@ -2558,6 +2637,38 @@ def effective_rest_gap(
     return timedelta(minutes=best[1]) if best else base
 
 
+def linked_pair_gap(
+    cfg: ScheduleConfig, match: MatchSlotReq | None, team: str,
+    venue_a: str, venue_b: str,
+    base_of: Mapping[str, str] | None = None,
+    gaps: tuple[int | None, int | None] | None = None,
+) -> timedelta:
+    """The gap a LINKED pair (shared player, shared teacher, same school) must
+    clear between two matches on ``venue_a`` and ``venue_b``.
+
+    The greedy resolved this per scope while ``validate_schedule`` judged the
+    same pair by the global ``cfg.rest_minutes``, so the two disagreed in BOTH
+    directions: on the tournament that shipped it the validator invented 42
+    conflicts in the greedy's own output (which made the packing pass a silent
+    no-op), and with a wider authored gap it would instead have let the
+    optimizer and every repair verb walk straight through the host's rule.
+    One resolver, three callers.
+
+    ``gaps`` lets the placement loop hand in ``effective_link_gaps`` once per
+    match instead of re-resolving the whole rule list per candidate slot; the
+    answer is identical.
+    """
+    same_g, cross_g = gaps if gaps is not None else effective_link_gaps(cfg, match)
+    if same_g is None:
+        # No stored gap record: linked teams fall back to the team rest gap,
+        # venue-agnostic, exactly as they did before the record existed.
+        return effective_rest_gap(cfg, match, team)
+    bo = base_of if base_of is not None else dict(expand_venues(cfg))
+    if bo.get(venue_a, venue_a) == bo.get(venue_b, venue_b):
+        return timedelta(minutes=same_g)
+    return timedelta(minutes=cross_g or same_g)
+
+
 def effective_day_cap(
     cfg: ScheduleConfig, match: MatchSlotReq | None, team: str
 ) -> int:
@@ -2569,10 +2680,18 @@ def effective_day_cap(
             r.scope, sport=match.sport, leaf_key=match.leaf_key,
             team_ids=(team,), team_tags=cfg.team_tags,
         ):
-            cand = (scope_specificity(r.scope), int(r.params.get("count") or 0))
-            if best is None or cand[0] > best[0]:
+            count = int(r.params.get("count") or 0)
+            if count < 1:
+                continue  # a cap of zero is not a rule, it is a missing param
+            # Negated so the tie-break reads the same way as effective_rest_gap:
+            # most specific scope first, then THE STRICTER RULE. Stricter is the
+            # SMALLER count here and the LARGER minutes there — before this, two
+            # equally specific caps resolved to whichever was read first, so
+            # whether a schedule was legal depended on draw emission order.
+            cand = (scope_specificity(r.scope), -count)
+            if best is None or cand > best:
                 best = cand
-    return best[1] if best else cfg.max_per_team_per_day
+    return -best[1] if best else cfg.max_per_team_per_day
 
 
 # --------------------------------------------------------------------------- hard validation
@@ -2598,7 +2717,6 @@ def validate_schedule(
     JSON-safe records with stable codes (FE localizes, §9 A5)."""
     by_id = {m.id: m for m in matches}
     violations: list[dict[str, Any]] = []
-    rest = timedelta(minutes=cfg.rest_minutes)
     base_of = dict(expand_venues(cfg))
 
     def dur_of(mid: str) -> timedelta:
@@ -2610,7 +2728,10 @@ def validate_schedule(
     # (start, end, match_id|None) — None marks an immovable fixed booking.
     Interval = tuple[datetime, datetime, "str | None"]
     venue_items: dict[str, list[Interval]] = defaultdict(list)
-    team_items: dict[str, list[Interval]] = defaultdict(list)
+    # Team intervals carry their VENUE too: a linked pair's gap depends on
+    # whether the two matches share a hall (see ``linked_pair_gap``).
+    TeamItem = tuple[datetime, datetime, "str | None", str]
+    team_items: dict[str, list[TeamItem]] = defaultdict(list)
     # (start, end, sport, leaf, match_id|None) for mutual-exclusion checking.
     ex_items: list[tuple[datetime, datetime, str, str, str | None]] = []
     for mid, (dt, venue) in assignments.items():
@@ -2652,7 +2773,7 @@ def validate_schedule(
         if m:
             for t in (m.home, m.away):
                 if t:
-                    team_items[t].append((dt, end, mid))
+                    team_items[t].append((dt, end, mid, venue))
                     if dt.date() in cfg.team_blackouts.get(t, ()):
                         violations.append({"code": "team_blackout", "hard": True,
                                            "match_id": mid, "team_id": t})
@@ -2660,7 +2781,7 @@ def validate_schedule(
         venue, start, end, team_ids = booking[0], booking[1], booking[2], booking[3]
         venue_items[venue].append((start, end, None))
         for t in team_ids:
-            team_items[t].append((start, end, None))
+            team_items[t].append((start, end, None, venue))
         meta = booking[4] if len(booking) > 4 else None
         if meta:
             ex_items.append((start, end, str(meta[0]), str(meta[1]), None))
@@ -2838,7 +2959,7 @@ def validate_schedule(
         # that day) — matches the greedy's place-time _day_cap check.
         per_day: dict[date, int] = defaultdict(int)
         day_caps: dict[date, int] = {}
-        for s, _e, mid in items:
+        for s, _e, mid, _v in items:
             d = s.date()
             per_day[d] += 1
             cap = effective_day_cap(cfg, by_id.get(mid) if mid else None, team)
@@ -2851,9 +2972,9 @@ def validate_schedule(
         # rule), so a scoped hard min_rest is enforced exactly as the greedy did.
         items_sorted = sorted(items, key=lambda x: (x[0], x[1]))
         for a in range(len(items_sorted)):
-            sa, ea, mid_a = items_sorted[a]
+            sa, ea, mid_a, _va = items_sorted[a]
             for b in range(a + 1, len(items_sorted)):
-                sb, eb, mid_b = items_sorted[b]
+                sb, eb, mid_b, _vb = items_sorted[b]
                 if mid_a is None and mid_b is None:
                     continue  # two fixed bookings — not ours to flag
                 # Subject = the in-scope (reportable) match; its rule sets the gap.
@@ -2867,22 +2988,28 @@ def validate_schedule(
                                        "match_id": subject, "other_match_id": other,
                                        "team_id": team})
 
-    # Shared-player links (W2-D): linked teams never play overlapping
-    # matches; the rest gap applies across the link too.
+    # Shared-player links (W2-D): linked teams never play overlapping matches.
+    # The gap comes from ``linked_pair_gap`` — the resolver the placer uses —
+    # so a host who set 20 minutes for one sport and 40 for another is judged
+    # by the number they actually wrote, in the venue-aware form they wrote it.
     for team, partners in (linked or {}).items():
         for lt in partners:
             if not team < lt:  # visit each unordered pair once
                 continue
-            for s_i, e_i, mid_i in team_items.get(team, ()):
-                for s_j, e_j, mid_j in team_items.get(lt, ()):
+            for s_i, e_i, mid_i, v_i in team_items.get(team, ()):
+                for s_j, e_j, mid_j, v_j in team_items.get(lt, ()):
                     if mid_i is None and mid_j is None:
                         continue
                     if mid_i is not None and mid_i == mid_j:
                         continue  # one match fielding both linked teams
-                    if s_i < e_j + rest and s_j < e_i + rest:
-                        subject, other = (
-                            (mid_i, mid_j) if mid_i is not None else (mid_j, mid_i)
-                        )
+                    if mid_i is not None:
+                        subject, other, owner = mid_i, mid_j, team
+                    else:
+                        subject, other, owner = mid_j, mid_i, lt
+                    gap = linked_pair_gap(
+                        cfg, by_id.get(subject), owner, v_i, v_j, base_of,
+                    )
+                    if s_i < e_j + gap and s_j < e_i + gap:
                         violations.append({
                             "code": "shared_player_conflict", "hard": True,
                             "match_id": subject, "other_match_id": other,
@@ -2929,14 +3056,20 @@ def validate_schedule(
         slot = assignments.get(m.id)
         if slot is None:
             continue
+        # The advancing side plays BOTH matches, so the rest gap it is owed is
+        # part of the precedence rule (the placer has always charged it, at
+        # :1702). Without it a final could start the instant its semi-final
+        # ended and the validator called that clean — which is exactly what the
+        # optimizer and every drag-and-drop would then do.
+        margin = effective_rest_gap(cfg, m, "")
         for fid in m.after:
             fslot = assignments.get(fid)
-            if fslot is not None and slot[0] < fslot[0] + dur_of(fid):
+            if fslot is not None and slot[0] < fslot[0] + dur_of(fid) + margin:
                 violations.append({
                     "code": "predecessor_order", "hard": True,
                     "match_id": m.id, "other_match_id": fid,
                 })
-        if m.not_before is not None and slot[0] < m.not_before:
+        if m.not_before is not None and slot[0] < m.not_before + margin:
             violations.append({
                 "code": "predecessor_order", "hard": True,
                 "match_id": m.id, "other_match_id": None,

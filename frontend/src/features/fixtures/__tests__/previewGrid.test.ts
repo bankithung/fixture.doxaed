@@ -370,3 +370,45 @@ describe("a bracket pointer names a match you can find", () => {
     expect(rows.find((r) => r.ref === "p1")!.number).toBe(1);
   });
 });
+
+describe("courts read hall by hall", () => {
+  // Owner 2026-08-19: "Audi 3 should be next to 2" — ordering columns by
+  // which court happened to play first scattered a hall across the page.
+  const onCourts = (
+    pairs: [court: string, at: string][],
+  ): ReturnType<typeof buildRows> =>
+    buildRows(
+      pairs.map(([venue, at], i) =>
+        m({ ref: `c${i}`, venue, scheduled_at: at, group_label: "" }),
+      ),
+      NAMES,
+    );
+
+  it("keeps a hall's courts together, in number order", () => {
+    const rows = onCourts([
+      ["Mph \u00b7 T1", "2026-08-16T08:00:00"],
+      ["Audi \u00b7 T3", "2026-08-16T09:00:00"],
+      ["Audi \u00b7 T1", "2026-08-16T08:00:00"],
+      ["Mph \u00b7 T2", "2026-08-16T08:00:00"],
+      ["Audi \u00b7 T2", "2026-08-16T08:00:00"],
+    ]);
+    expect(buildCourtGrid(rows)[0]!.courts).toEqual([
+      "Audi \u00b7 T1",
+      "Audi \u00b7 T2",
+      "Audi \u00b7 T3",
+      "Mph \u00b7 T1",
+      "Mph \u00b7 T2",
+    ]);
+  });
+
+  it("puts T2 before T10, which a plain sort does not", () => {
+    const rows = onCourts([
+      ["Hall \u00b7 T10", "2026-08-16T08:00:00"],
+      ["Hall \u00b7 T2", "2026-08-16T08:00:00"],
+    ]);
+    expect(buildCourtGrid(rows)[0]!.courts).toEqual([
+      "Hall \u00b7 T2",
+      "Hall \u00b7 T10",
+    ]);
+  });
+});
