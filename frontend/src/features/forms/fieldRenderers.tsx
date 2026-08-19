@@ -238,9 +238,7 @@ function FileUploadField({
                     <span className="truncate text-sm font-medium">
                       {names[ref] ?? meta?.name ?? t("Logo uploaded")}
                     </span>
-                    <span className="text-xs text-muted-foreground">
-                      {t("Shown on every team you enter.")}
-                    </span>
+
                   </div>
                   {!disabled ? (
                     <label

@@ -512,13 +512,11 @@ def build_team_form_schema(
         participants_section = [{
             "key": "participants",
             "title": "Your participants",
-            "description": "School logo and the teacher in charge first, then "
-                           "enter your people once. The teams you enter next "
-                           "pick from this list.",
+            "description": "Enter everyone once. The ticks build your teams.",
             "fields": [
                 {"key": "team_logo", "type": "file_upload",
                  "label": "School logo", "required": False, "accept": "image/*",
-                 "help": "Optional. Used for every team you enter."},
+                 "help": "Optional."},
                 {
                     "key": "participant_staff",
                     "type": "group",
@@ -530,7 +528,7 @@ def build_team_form_schema(
                     "label": "Teacher in charge",
                     "repeatable": True,
                     "row_key": "staff_id",
-                    "help": "Their matches are kept apart, so one teacher is never in two places.",
+                    "help": "Their matches are kept apart.",
                     "fields": [
                         {"key": "staff_id", "type": "hidden", "label": ""},
                         {"key": "staff_full_name", "type": "short_text",
@@ -552,7 +550,7 @@ def build_team_form_schema(
                     "label": "Student",
                     "repeatable": True,
                     "row_key": "participant_id",
-                    "help": "Add each student once, even if they play in several competitions.",
+                    "help": "Add each student once.",
                     "fields": [
                         {"key": "participant_id", "type": "hidden", "label": ""},
                         {"key": "participant_name", "type": "short_text",

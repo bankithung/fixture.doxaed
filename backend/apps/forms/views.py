@@ -536,6 +536,12 @@ class TeamAccessView(GenericAPIView):
     def get_throttles(self):
         from apps.forms.throttling import TeamAccessThrottle
 
+        # The throttle exists to stop CODE GUESSING. An authenticated manager
+        # sends no code at all — their prefill calls were tripping the same
+        # per-IP limit and silently blanking the contact details every few
+        # school switches (owner 2026-08-19, seen as 429s in the log).
+        if self.request.user.is_authenticated:
+            return []
         return [TeamAccessThrottle()]
 
     def post(self, request, form_id):
@@ -710,9 +716,7 @@ class PublicFormView(GenericAPIView):
             # the owner's flow is "the admin will add members so that the
             # members who are in the respective house can add students".
             if bindings.get("competitor_kind") == "house":
-                from apps.teams.services.houses import may_register_for
-
-                from apps.teams.services.houses import houses_for
+                from apps.teams.services.houses import houses_for, may_register_for
 
                 gid = str(answers.get(bindings.get("competitor_id", "house_id")) or "")
                 if not gid:

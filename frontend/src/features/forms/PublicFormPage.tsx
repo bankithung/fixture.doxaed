@@ -277,12 +277,15 @@ function SheetTabs({
   const current = fields.some((f) => f.key === activeKey)
     ? activeKey
     : (fields[0]?.key ?? "");
+  // Bookmark tabs on an INNER card (owner 2026-08-19): the tabs sit on the
+  // card's top edge like file-folder tabs, the active one joined to the panel
+  // below, so the two sheets read as one clickable surface.
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col">
       <div
         role="tablist"
         aria-label={t("Your participants")}
-        className="flex items-center gap-0.5 self-start rounded-lg bg-secondary p-0.5"
+        className="flex items-end gap-1 px-2"
       >
         {fields.map((f) => {
           const on = f.key === current;
@@ -295,14 +298,23 @@ function SheetTabs({
               data-testid={`people-tab-${f.key}`}
               onClick={() => setActive(f.key)}
               className={cn(
-                "relative inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors",
+                "relative -mb-px inline-flex h-9 items-center gap-1.5 rounded-t-lg border border-b-0 px-4 text-xs font-medium transition-colors",
                 on
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
+                  ? "z-10 border-border bg-card text-foreground"
+                  : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
               {t(f.tab_label ?? f.label)}
-              <span className="font-tabular">{countOf(f)}</span>
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-px font-tabular text-[0.6875rem] font-semibold",
+                  on
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground",
+                )}
+              >
+                {countOf(f)}
+              </span>
               {errorOn(f) ? (
                 <span
                   data-testid={`people-tab-error-${f.key}`}
@@ -314,15 +326,17 @@ function SheetTabs({
           );
         })}
       </div>
-      {fields.map((f) => (
-        <div
-          key={f.key}
-          role="tabpanel"
-          className={f.key === current ? undefined : "hidden"}
-        >
-          {render(f)}
-        </div>
-      ))}
+      <div className="rounded-xl border border-border bg-card p-3 sm:p-4">
+        {fields.map((f) => (
+          <div
+            key={f.key}
+            role="tabpanel"
+            className={f.key === current ? undefined : "hidden"}
+          >
+            {render(f)}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -997,6 +1011,18 @@ export function PublicFormPage(): React.ReactElement {
       }
       if (res.file_meta) setAccessFileMeta((m) => ({ ...m, ...res.file_meta }));
       if (res.roster) setRoster(res.roster);
+    },
+    onError: () => {
+      // Silent failure here is how "the contact details are not appending"
+      // happens (owner 2026-08-19: throttled 429s left blank fields with no
+      // explanation). Say it, and let the next landing retry.
+      wantPrefill.current = true;
+      setErrors((e) => ({
+        ...e,
+        __form: t(
+          "Could not load this school's saved details. Re-select the school to retry.",
+        ),
+      }));
     },
   });
   useEffect(() => {
@@ -2093,18 +2119,27 @@ export function PublicFormPage(): React.ReactElement {
                   onClick={onNext}
                 >
                   {(() => {
+                    // The button names where it GOES (owner 2026-08-19):
+                    // the next tab's own label mid-walk, the next step's name
+                    // otherwise, and the confirm at the end. A bare "Next"
+                    // said nothing.
                     const tabs = tabRunOf(current);
                     const curKey =
                       sheetTab && tabs.some((f) => f.key === sheetTab)
                         ? sheetTab
                         : tabs[0]?.key;
-                    const pending =
-                      tabs.length > 1 &&
-                      tabs.findIndex((f) => f.key === curKey) < tabs.length - 1;
-                    if (pending) return t("Next");
-                    return steps.length > 0 && clamped === steps.length - 1
-                      ? t("Confirm & review")
-                      : t("Next");
+                    const at = tabs.findIndex((f) => f.key === curKey);
+                    if (tabs.length > 1 && at < tabs.length - 1) {
+                      return t(tabs[at + 1].tab_label ?? "Next");
+                    }
+                    if (steps.length > 0 && clamped === steps.length - 1) {
+                      return t("Confirm & review");
+                    }
+                    const upcoming = steps[clamped + 1];
+                    if (upcoming && tabRunOf(upcoming).length > 0) {
+                      return t(upcoming.title).replace(/^Your\s+/i, "");
+                    }
+                    return t("Next");
                   })()}
                 </Button>
               )}

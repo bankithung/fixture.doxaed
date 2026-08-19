@@ -1515,8 +1515,8 @@ describe("PublicFormPage · the participants are a two-tab sheet", () => {
     expect(screen.getByRole("tab", { name: /Teachers/ })).toHaveAttribute(
       "aria-selected", "true",
     );
-    // While a tab remains, the button is a plain Next...
-    await userEvent.click(screen.getByRole("button", { name: /^next$/i }));
+    // While a tab remains, the button names the NEXT TAB...
+    await userEvent.click(screen.getByRole("button", { name: /^students$/i }));
     // ...and it switches tabs instead of leaving the step.
     expect(screen.getByRole("tab", { name: /Students/ })).toHaveAttribute(
       "aria-selected", "true",
