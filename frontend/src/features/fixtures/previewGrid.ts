@@ -34,6 +34,8 @@ export interface PreviewRow {
   /** "Group A" for a real group-stage match, else "". */
   group: string;
   round: number;
+  /** Its number on the printed fixture — what a pointer names. */
+  number: number;
   /** What this round is CALLED: "Final", "3rd place", "Semi-final", else
    * "R3". A round number tells an organiser nothing about which match they
    * are looking at (owner 2026-08-19: "the finals should be written as final
@@ -187,58 +189,35 @@ export function categoryOf(m: PreviewMatch): string {
 }
 
 /**
- * What each match is CALLED, so a bracket pointer can name it.
+ * A stable NUMBER for every match, the way a printed fixture numbers them.
  *
- * "Winner of p109" is an internal plan reference: there is no p109 anywhere on
- * the page to look up, which is exactly the complaint (owner 2026-08-19). A
- * knockout round has a name people already use — the last round is the final,
- * the one before it the semi-finals — and within a round the matches number
- * from one. So p109 becomes "Semi-final 2", which the reader can find by
- * eye in the same competition.
+ * "Winner of semi-final 7" was two kinds of confusing (owner 2026-08-19):
+ * the reader had nothing to look up, and the number itself was wrong —
+ * counting within a round crossed the group stage and the knockout, so a
+ * sepak semi-final came out as 7 because six group matches shared its round
+ * number. A match number sidesteps both: it names ONE match, and the sheet
+ * prints it in its own column, so "Winner of Match 42" can be found by eye.
  *
- * Rounds deeper than the quarter-finals keep their number ("Round 2 · 3"),
- * because inventing names for them would be less clear, not more.
+ * The order is the draw's own — competition, then stage, then round, then
+ * the match's place in that round — so a number does not move when the
+ * schedule does, and two people reading the same fixture see the same
+ * numbers.
  */
-export function matchRefLabels(
+export function matchNumbers(
   matches: readonly PreviewMatch[],
-): Map<string, string> {
-  const depth = new Map<string, number>();
-  for (const m of matches) {
-    if (m.stage !== "knockout") continue;
-    depth.set(m.leaf_key, Math.max(depth.get(m.leaf_key) ?? 0, m.round_no ?? 0));
-  }
-  // Position within its own round, so two semi-finals read 1 and 2.
-  const order = new Map<string, number>();
-  const seen = new Map<string, number>();
-  for (const m of [...matches].sort(
-    (a, b) => (a.round_no ?? 0) - (b.round_no ?? 0) || a.ref.localeCompare(b.ref),
-  )) {
-    const key = `${m.leaf_key}|${m.round_no}`;
-    const n = (seen.get(key) ?? 0) + 1;
-    seen.set(key, n);
-    order.set(m.ref, n);
-  }
-  const out = new Map<string, string>();
-  for (const m of matches) {
-    const last = depth.get(m.leaf_key) ?? 0;
-    const n = order.get(m.ref) ?? 1;
-    const inRound = seen.get(`${m.leaf_key}|${m.round_no}`) ?? 1;
-    const suffix = inRound > 1 ? ` ${n}` : "";
-    let label: string;
-    if (m.stage !== "knockout" || !last) {
-      label = `${t("Round")} ${m.round_no}${suffix}`;
-    } else if (m.round_no === last) {
-      label = t("the final");
-    } else if (m.round_no === last - 1) {
-      label = `${t("semi-final")}${suffix}`;
-    } else if (m.round_no === last - 2) {
-      label = `${t("quarter-final")}${suffix}`;
-    } else {
-      label = `${t("round")} ${m.round_no}${suffix}`;
-    }
-    out.set(m.ref, label);
-  }
-  return out;
+): Map<string, number> {
+  // The reference carries the draw's emission order ("p12"), which is the
+  // order the bracket was built in — the right tie-break inside a round.
+  const seq = (ref: string): number => Number(ref.replace(/\D+/g, "")) || 0;
+  const order = [...matches].sort(
+    (a, b) =>
+      a.leaf_key.localeCompare(b.leaf_key) ||
+      a.stage.localeCompare(b.stage) ||
+      (a.round_no ?? 0) - (b.round_no ?? 0) ||
+      seq(a.ref) - seq(b.ref) ||
+      a.ref.localeCompare(b.ref),
+  );
+  return new Map(order.map((m, i) => [m.ref, i + 1]));
 }
 
 /**
@@ -261,6 +240,8 @@ export function roundLabels(
   for (const m of matches) {
     const last = depth.get(m.leaf_key) ?? 0;
     const r = m.round_no ?? 0;
+    // Group and knockout share round numbers, so anything counted per round
+    // must be counted per STAGE as well.
     if (m.stage !== "knockout" || !last || !r) {
       out.set(m.ref, r ? `R${r}` : "");
       continue;
@@ -284,7 +265,10 @@ export function buildRows(
   unscheduled: readonly string[] = [],
 ): PreviewRow[] {
   const unplaced = new Set(unscheduled);
-  const refLabels = matchRefLabels(matches);
+  const numbers = matchNumbers(matches);
+  const refLabels = new Map(
+    [...numbers].map(([ref, n]) => [ref, `${t("Match")} ${n}`]),
+  );
   const roundNames = roundLabels(matches);
   return matches.map((m) => {
     const day = m.scheduled_at ? m.scheduled_at.slice(0, 10) : "";
@@ -309,6 +293,8 @@ export function buildRows(
       stageLabel: t(STAGE_LABELS[m.stage] ?? m.stage),
       group: isGroup ? `${t("Group")} ${shortGroupName(m.group_label)}` : "",
       round: m.round_no ?? 0,
+      /** The number printed beside this match, and the one its pointers use. */
+      number: numbers.get(m.ref) ?? 0,
       roundLabel: roundNames.get(m.ref) ?? (m.round_no ? `R${m.round_no}` : ""),
       home: sideName(m.home, teamNames, refLabels),
       away: sideName(m.away, teamNames, refLabels),

@@ -5,7 +5,7 @@ import {
   buildRows,
   buildCourtGrid,
   courtSummary,
-  matchRefLabels,
+  matchNumbers,
   EMPTY_FILTERS,
   groupRows,
   facetsFor,
@@ -79,9 +79,9 @@ describe("buildRows", () => {
     expect(r.placed).toBe(false);
     expect(r.start).toBe("");
     expect(r.dayLabel).toBe("No date yet");
-    // Typed pointers read in plain words — and name a match on the page,
+    // Typed pointers name a match by its NUMBER, which the sheet prints,
     // never the internal plan ref (owner 2026-08-19).
-    expect(r.away).toBe("Winner of Round 1");
+    expect(r.away).toMatch(/^Winner of Match \d+$/);
     expect(r.away).not.toContain("p1");
     // A knockout row never mislabels its leaf tail as a group.
     expect(r.group).toBe("");
@@ -325,28 +325,32 @@ describe("the court grid: time down, courts across", () => {
 });
 
 describe("a bracket pointer names a match you can find", () => {
-  // Owner 2026-08-19: "Winner of p109 — the name is confusing". p109 is an
-  // internal plan reference; there is no p109 anywhere on the page.
+  // Owner 2026-08-19: "Winner of semi-final 7 is very confusing — could have
+  // written Winner of Match X vs Winner of Match Y."
   const ko = (ref: string, round: number): PreviewMatch =>
     m({ ref, round_no: round, stage: "knockout", group_label: "" });
 
-  it("calls the last round the final and the one before it the semi-final", () => {
-    const labels = matchRefLabels([
-      ko("p1", 1), ko("p2", 1), ko("p3", 2), ko("p4", 2), ko("p5", 3),
+  it("numbers every match in the draw's own order", () => {
+    const nums = matchNumbers([ko("p3", 2), ko("p1", 1), ko("p2", 1)]);
+    expect(nums.get("p1")).toBe(1);
+    expect(nums.get("p2")).toBe(2);
+    expect(nums.get("p3")).toBe(3);
+  });
+
+  it("does not let a group stage steal the knockout's numbers", () => {
+    // The bug behind "semi-final 7": group and knockout share round numbers.
+    const nums = matchNumbers([
+      m({ ref: "g1", round_no: 2, stage: "group", group_label: "Group A" }),
+      m({ ref: "g2", round_no: 2, stage: "group", group_label: "Group B" }),
+      ko("k1", 2),
+      ko("k2", 2),
     ]);
-    expect(labels.get("p5")).toBe("the final");
-    expect(labels.get("p3")).toBe("semi-final 1");
-    expect(labels.get("p4")).toBe("semi-final 2");
-    expect(labels.get("p1")).toBe("quarter-final 1");
+    // Whatever the numbers are, the two knockout matches are distinct and the
+    // group matches do not share their identity.
+    expect(new Set([...nums.values()]).size).toBe(4);
   });
 
-  it("drops the number when a round holds only one match", () => {
-    const labels = matchRefLabels([ko("p1", 1), ko("p2", 2)]);
-    expect(labels.get("p2")).toBe("the final");
-    expect(labels.get("p1")).toBe("semi-final");
-  });
-
-  it("puts that name into the pointer instead of the raw ref", () => {
+  it("puts that number into the pointer instead of the raw ref", () => {
     const rows = buildRows(
       [
         ko("p1", 1), ko("p2", 1),
@@ -359,8 +363,10 @@ describe("a bracket pointer names a match you can find", () => {
       NAMES,
     );
     const final = rows.find((r) => r.ref === "p3")!;
-    expect(final.home).toBe("Winner of semi-final 1");
-    expect(final.away).toBe("Loser of semi-final 2");
+    expect(final.home).toBe("Winner of Match 1");
+    expect(final.away).toBe("Loser of Match 2");
     expect(final.home).not.toContain("p1");
+    // And the sheet prints the number the pointer names.
+    expect(rows.find((r) => r.ref === "p1")!.number).toBe(1);
   });
 });

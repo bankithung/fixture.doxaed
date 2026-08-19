@@ -123,7 +123,7 @@ export function previewPdfHtml({
           }
           lineNo += 1;
           const r = line.row;
-          return `<tr${r.placed ? "" : ' class="unplaced"'}><td class="num">${lineNo}</td>${PDF_COLUMNS.map(
+          return `<tr${r.placed ? "" : ' class="unplaced"'}><td class="num">${r.number || lineNo}</td>${PDF_COLUMNS.map(
             ([, pick, cls]) => `<td class="${cls}">${esc(pick(r))}</td>`,
           ).join("")}</tr>`;
         })
@@ -249,7 +249,11 @@ export function previewCourtGridHtml({
               if (!r) return `<td class="idle"></td>`;
               // "Knockout · Round 3" told an official nothing; the round's
               // own name does (owner 2026-08-19).
-              const line = [r.group || r.stageLabel, r.roundLabel]
+              const line = [
+                r.number ? `${t("Match")} ${r.number}` : "",
+                r.group || r.stageLabel,
+                r.roundLabel,
+              ]
                 .filter(Boolean)
                 .join(" · ");
               return `<td class="cell">

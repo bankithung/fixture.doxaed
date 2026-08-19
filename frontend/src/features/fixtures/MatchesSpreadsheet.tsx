@@ -397,7 +397,10 @@ export function MatchesSpreadsheet({
                         !r.placed && "bg-warning-muted",
                       )}
                     >
-                      {lineNo}
+                      {/* The MATCH number, not a count of rows: a pointer says
+                          "Winner of Match 42", so 42 has to be findable here
+                          however the sheet is sorted (owner 2026-08-19). */}
+                      {r.number || lineNo}
                     </td>
                     {columns.map((c) => (
                       <td
