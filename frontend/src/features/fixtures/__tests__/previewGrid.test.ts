@@ -337,6 +337,23 @@ describe("a bracket pointer names a match you can find", () => {
     expect(nums.get("p3")).toBe(3);
   });
 
+  it("counts each COMPETITION from one, so the last number is its size", () => {
+    // Owner 2026-08-19: "count match by category — Boys U14 match 1, Girls
+    // U14 match 1 — that way we know each category has how many matches."
+    const boys = "tt.u14.boys";
+    const girls = "tt.u14.girls";
+    const nums = matchNumbers([
+      m({ ref: "b1", leaf_key: boys, round_no: 1, stage: "knockout" }),
+      m({ ref: "b2", leaf_key: boys, round_no: 1, stage: "knockout" }),
+      m({ ref: "b3", leaf_key: boys, round_no: 2, stage: "knockout" }),
+      m({ ref: "g1", leaf_key: girls, round_no: 1, stage: "knockout" }),
+      m({ ref: "g2", leaf_key: girls, round_no: 2, stage: "knockout" }),
+    ]);
+    expect([nums.get("b1"), nums.get("b2"), nums.get("b3")]).toEqual([1, 2, 3]);
+    // The girls' category starts again at one — it is three matches smaller.
+    expect([nums.get("g1"), nums.get("g2")]).toEqual([1, 2]);
+  });
+
   it("does not let a group stage steal the knockout's numbers", () => {
     // The bug behind "semi-final 7": group and knockout share round numbers.
     const nums = matchNumbers([
@@ -345,9 +362,10 @@ describe("a bracket pointer names a match you can find", () => {
       ko("k1", 2),
       ko("k2", 2),
     ]);
-    // Whatever the numbers are, the two knockout matches are distinct and the
-    // group matches do not share their identity.
+    // All four are in ONE competition here, so they number 1 to 4 and the
+    // knockout matches do not inherit a group match's number.
     expect(new Set([...nums.values()]).size).toBe(4);
+    expect(nums.get("k1")).not.toBe(nums.get("g1"));
   });
 
   it("puts that number into the pointer instead of the raw ref", () => {

@@ -44,13 +44,13 @@ from apps.fixtures.services.scheduler import (
     ScopedRule,
     _score_soft,
     build_slots,
+    closing_round_ok,
+    court_open_to,
     exclusion_member,
     expand_venues,
-    max_concurrency,
     relaxed_venue_type_sports,
     resolve_closing_rounds,
     resolve_pinned_rounds,
-    single_match_ok,
     validate_schedule,
 )
 
@@ -159,21 +159,60 @@ def _single_match_ok(
     closing_windows: Sequence[tuple[ScopedRule, set[str], date | None]] = (),
 ) -> bool:
     """Every per-match hard constraint that does NOT depend on other in-run
-    matches. It used to be a hand-kept mirror of the single-match half of
-    ``schedule_matches.feasible``; it is now the SAME function, so the optimizer
-    cannot undo a placement rule the greedy respected and the validator cannot
-    bless one neither of them would have made. Slots already come from
-    ``build_slots`` (calendar windows, all-scope cuts, per-venue off-days), so
-    this layers on the type/scope/window checks."""
-    return single_match_ok(
-        m, dt, venue, end, cfg, base_of,
-        blackout_rules=scoped_blackout,
-        recurring_rules=recurring_scoped,
-        reserve_rules=reserve_scoped,
-        hard_windows=hard_windows,
-        relax_vtype=relax_vtype,
-        closing_windows=closing_windows,
-    )
+    matches (mirrors the single-match half of ``schedule_matches.feasible``).
+    Slots already come from ``build_slots`` (calendar windows, all-scope cuts,
+    per-venue off-days), so this layers on the type/scope/window checks."""
+    base = base_of.get(venue, venue)
+    if m.venue_type and m.sport not in relax_vtype:
+        vt = cfg.venue_types.get(base, "")
+        if vt and vt != m.venue_type:
+            return False
+    allowed = cfg.venue_sports.get(base)
+    if allowed and m.sport and m.sport not in allowed:
+        return False
+    # Per-court competition reservation (spec 2026-08-16). Mirrors
+    # ``schedule_matches.feasible`` — the optimizer must not undo a placement
+    # rule the greedy pass respected.
+    if not court_open_to(cfg, venue, m.leaf_key):
+        return False
+    teams = _teams(m)
+    tkey = tuple(teams)
+
+    def _scope(r: ScopedRule) -> bool:
+        return scope_matches(r.scope, sport=m.sport, leaf_key=m.leaf_key,
+                             team_ids=tkey, team_tags=cfg.team_tags)
+
+    for r in scoped_blackout:
+        if dt.date() in r.params["dates"] and _scope(r):
+            return False
+    for r in recurring_scoped:
+        if _scope(r):
+            days = r.params.get("days")
+            if days is None or dt.weekday() in days:
+                ws = datetime.combine(dt.date(), r.params["from"])
+                we = datetime.combine(dt.date(), r.params["to"])
+                if dt < we and ws < end:
+                    return False
+    for r in reserve_scoped:
+        if dt.date() in r.params["dates"] and _scope(r):
+            return False
+    for r in hard_windows:
+        if _scope(r):
+            days = r.params.get("days")
+            if days and dt.weekday() not in days:
+                return False
+            if not (dt.time() >= r.params["from"]
+                    and end <= datetime.combine(dt.date(), r.params["to"])):
+                return False
+    for t in teams:
+        if dt.date() in cfg.team_blackouts.get(t, ()):
+            return False
+    # Closing-rounds window (owner 2026-08-17). Mirrors
+    # ``schedule_matches.feasible`` — the optimizer must not undo a placement
+    # rule the greedy pass respected.
+    if not closing_round_ok(m, dt.date(), closing_windows, cfg, tkey):
+        return False
+    return True
 
 
 def _candidates(
@@ -216,10 +255,20 @@ def _candidates(
 
 
 # ------------------------------------------------------------- capacity gate
-#: The sweep now lives in ``scheduler`` so the placer answers the same question
-#: (a count of overlaps is not a count of concurrency). Kept under the old name
-#: for the callers that already import it from here.
-_max_concurrency = max_concurrency
+def _max_concurrency(intervals: list[tuple[datetime, datetime]]) -> int:
+    """Peak number of simultaneously-running intervals (sweep line)."""
+    if not intervals:
+        return 0
+    events: list[tuple[datetime, int]] = []
+    for s, e in intervals:
+        events.append((s, 1))
+        events.append((e, -1))
+    events.sort(key=lambda x: (x[0], x[1]))
+    cur = peak = 0
+    for _t, delta in events:
+        cur += delta
+        peak = max(peak, cur)
+    return peak
 
 
 def _capacity_ok(

@@ -189,7 +189,8 @@ export function categoryOf(m: PreviewMatch): string {
 }
 
 /**
- * A stable NUMBER for every match, the way a printed fixture numbers them.
+ * A stable NUMBER for every match, counted WITHIN its own competition — the
+ * way a printed fixture numbers them.
  *
  * "Winner of semi-final 7" was two kinds of confusing (owner 2026-08-19):
  * the reader had nothing to look up, and the number itself was wrong —
@@ -217,7 +218,20 @@ export function matchNumbers(
       seq(a.ref) - seq(b.ref) ||
       a.ref.localeCompare(b.ref),
   );
-  return new Map(order.map((m, i) => [m.ref, i + 1]));
+  // Each COMPETITION counts its own matches from one (owner 2026-08-19:
+  // "count match by category — Boys U14 match 1, Girls U14 match 1"). A single
+  // tournament-wide run to 113 said nothing about how big any one category
+  // is; per category, the last number IS the category's match count. Every
+  // bracket pointer names a match in its OWN competition, so "Winner of match
+  // 5" stays unambiguous beside the category the row already names.
+  const perLeaf = new Map<string, number>();
+  const out = new Map<string, number>();
+  for (const m of order) {
+    const n = (perLeaf.get(m.leaf_key) ?? 0) + 1;
+    perLeaf.set(m.leaf_key, n);
+    out.set(m.ref, n);
+  }
+  return out;
 }
 
 /**
