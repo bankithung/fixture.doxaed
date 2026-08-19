@@ -238,3 +238,35 @@ describe("ParticipationWorkbench \u00b7 the sheet reads like a spreadsheet", () 
     expect(rowIds()[0]).toBe("participation-m3");
   });
 });
+
+describe("ParticipationWorkbench \u00b7 the filters live in a drawer", () => {
+  it("opens one Filter button, picks a value, and counts what it left", async () => {
+    // Owner 2026-08-19: "make it like this page filter, the sidebar" — six
+    // dropdowns on the toolbar competed with the table for its room.
+    mount();
+    await screen.findByTestId("participation-m1");
+    await userEvent.click(screen.getByTestId("participation-open-filters"));
+    const drawer = await screen.findByTestId("participation-filter-drawer");
+
+    // The filter NAMES down the left, the chosen filter's values on the right.
+    expect(within(drawer).getByTestId("participation-pane-school")).toBeInTheDocument();
+    await userEvent.click(within(drawer).getByTestId("participation-pane-events"));
+    // Every value carries the count it would leave.
+    const multi = within(drawer).getByTestId("participation-value-multi");
+    expect(multi).toHaveTextContent("2");
+    await userEvent.click(multi);
+
+    expect(screen.queryByTestId("participation-m3")).toBeNull();
+    // The button shows how many filters the drawer is holding.
+    expect(screen.getByTestId("participation-open-filters")).toHaveTextContent("1");
+  });
+
+  it("clears everything from inside the drawer", async () => {
+    mount();
+    await userEvent.click(await screen.findByTestId("stat-multi"));
+    expect(screen.queryByTestId("participation-m3")).toBeNull();
+    await userEvent.click(screen.getByTestId("participation-open-filters"));
+    await userEvent.click(await screen.findByTestId("participation-drawer-clear"));
+    expect(screen.getByTestId("participation-m3")).toBeInTheDocument();
+  });
+});

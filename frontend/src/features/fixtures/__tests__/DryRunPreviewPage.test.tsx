@@ -826,3 +826,27 @@ describe("DryRunPreviewPage", () => {
     );
   });
 });
+
+describe("DryRunPreviewPage \u00b7 the sheet's columns resize", () => {
+  it("drags a column wider so the full text can be read", async () => {
+    // Owner 2026-08-19: "even here in the preview I want to make the column
+    // draggable to increase the width to view the full text." Team names and
+    // competition labels are the ones that get cut off.
+    mount();
+    await screen.findByTestId("matches-spreadsheet");
+    const handle = screen.getByTestId("sheet-resize-home");
+    const before = Number(handle.getAttribute("aria-valuenow"));
+    handle.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBeGreaterThan(before);
+  });
+
+  it("still sorts from the heading beside the handle", async () => {
+    mount();
+    await screen.findByTestId("matches-spreadsheet");
+    // The sort control is its own button; the handle must not swallow it.
+    expect(screen.getByTestId("sheet-sort-home")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("sheet-sort-home"));
+    expect(screen.getByTestId("matches-spreadsheet")).toBeInTheDocument();
+  });
+});

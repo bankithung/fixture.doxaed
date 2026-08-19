@@ -1,6 +1,11 @@
-import { Fragment, useMemo } from "react";
+import { Fragment, useMemo, useRef } from "react";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Coffee } from "lucide-react";
 import type { PreviewMatch } from "@/api/tournaments";
+import {
+  ColumnResizer,
+  measureColumn,
+  useColumnWidths,
+} from "@/components/ui/sheetColumns";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { useBreakpoint } from "@/lib/useBreakpoint";
@@ -22,7 +27,8 @@ interface Column {
   label: string;
   /** Header + cell alignment; numbers sit right like a spreadsheet. */
   align?: "right";
-  width: string;
+  /** Starting width in px. The reader drags it from there. */
+  width: number;
   /** Dropped on phones, where the sheet keeps only the working columns. */
   phone?: boolean;
   cell: (r: PreviewRow) => React.ReactNode;
@@ -32,7 +38,7 @@ const COLUMNS: Column[] = [
   {
     key: "day",
     label: "Day",
-    width: "w-28",
+    width: 112,
     cell: (r) => (
       <span className={cn(!r.day && "text-muted-foreground")}>{r.dayLabel}</span>
     ),
@@ -40,7 +46,7 @@ const COLUMNS: Column[] = [
   {
     key: "start",
     label: "Start",
-    width: "w-20",
+    width: 80,
     phone: true,
     cell: (r) => (
       <span className="whitespace-nowrap font-tabular">
@@ -51,7 +57,7 @@ const COLUMNS: Column[] = [
   {
     key: "end",
     label: "End",
-    width: "w-20",
+    width: 80,
     cell: (r) => (
       <span className="whitespace-nowrap font-tabular text-muted-foreground">
         {fmtClock(r.end) || "·"}
@@ -62,7 +68,7 @@ const COLUMNS: Column[] = [
     key: "minutes",
     label: "Min",
     align: "right",
-    width: "w-12",
+    width: 48,
     cell: (r) => (
       <span className="font-tabular text-muted-foreground">
         {r.minutes ?? "·"}
@@ -72,20 +78,20 @@ const COLUMNS: Column[] = [
   {
     key: "venue",
     label: "Venue",
-    width: "w-32",
+    width: 128,
     phone: true,
     cell: (r) => <span className="truncate">{r.day ? r.venue : "·"}</span>,
   },
   {
     key: "sport",
     label: "Sport",
-    width: "w-28",
+    width: 112,
     cell: (r) => <span className="truncate">{r.sportLabel}</span>,
   },
   {
     key: "category",
     label: "Category",
-    width: "w-44",
+    width: 176,
     cell: (r) => (
       <span className="truncate text-muted-foreground">{r.categoryLabel}</span>
     ),
@@ -93,7 +99,7 @@ const COLUMNS: Column[] = [
   {
     key: "group",
     label: "Stage",
-    width: "w-28",
+    width: 112,
     cell: (r) => (
       <span className="truncate">{r.group || r.stageLabel}</span>
     ),
@@ -102,7 +108,7 @@ const COLUMNS: Column[] = [
     key: "round",
     label: "Rd",
     align: "right",
-    width: "w-10",
+    width: 40,
     cell: (r) => (
       <span className="font-tabular text-muted-foreground">
         {r.round ? `R${r.round}` : "·"}
@@ -112,21 +118,21 @@ const COLUMNS: Column[] = [
   {
     key: "home",
     label: "Team 1",
-    width: "w-56",
+    width: 224,
     phone: true,
     cell: (r) => <span className="truncate font-medium">{r.home}</span>,
   },
   {
     key: "away",
     label: "Team 2",
-    width: "w-56",
+    width: 224,
     phone: true,
     cell: (r) => <span className="truncate font-medium">{r.away}</span>,
   },
   {
     key: "status",
     label: "Status",
-    width: "w-24",
+    width: 96,
     cell: (r) =>
       r.placed ? (
         <span className="text-muted-foreground">{t("Scheduled")}</span>
@@ -137,6 +143,11 @@ const COLUMNS: Column[] = [
       ),
   },
 ];
+
+/** The width each column starts at, before the reader drags it. */
+const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(
+  COLUMNS.map((c) => [c.key, c.width]),
+);
 
 function SortIcon({ state }: { state: "asc" | "desc" | null }): React.ReactElement {
   const Icon = state === "asc" ? ArrowUp : state === "desc" ? ArrowDown : ChevronsUpDown;
@@ -190,6 +201,16 @@ export function MatchesSpreadsheet({
     () => occupancyByCourt(occupancy ?? rows.map((r) => r.match)),
     [occupancy, rows],
   );
+  // Column widths the reader owns: drag a heading's edge, double-click to fit
+  // (owner 2026-08-19: "make the column draggable to increase the width to
+  // view the full text"). Team names and competitions are the long ones.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const { widths, setWidth } = useColumnWidths(
+    "preview-sheet-columns",
+    DEFAULT_WIDTHS,
+  );
+  const totalWidth =
+    40 + columns.reduce((n, c) => n + (widths[c.key] ?? c.width), 0);
 
   const { bands, lineNos } = useMemo(() => {
     const sorted = sortRows(rows, sort);
@@ -221,13 +242,23 @@ export function MatchesSpreadsheet({
 
   return (
     <div
+      ref={scrollRef}
       data-testid="matches-spreadsheet"
       className="relative max-h-[65vh] w-full overflow-auto overscroll-contain"
     >
-      <table className="w-full border-separate border-spacing-0 text-xs">
+      <table
+        className="border-separate border-spacing-0 text-xs"
+        style={{ tableLayout: "fixed", width: totalWidth }}
+      >
         <caption className="sr-only">
           {t("Previewed matches, one row per match")}
         </caption>
+        <colgroup>
+          <col style={{ width: 40 }} />
+          {columns.map((c) => (
+            <col key={c.key} style={{ width: widths[c.key] ?? c.width }} />
+          ))}
+        </colgroup>
         <thead>
           <tr>
             <th
@@ -247,23 +278,34 @@ export function MatchesSpreadsheet({
                   }
                   className={cn(
                     "sticky top-0 z-20 border-b border-r border-border bg-muted p-0 text-left font-medium last:border-r-0",
-                    c.width,
                   )}
                 >
-                  <button
-                    type="button"
-                    data-testid={`sheet-sort-${c.key}`}
-                    onClick={() => onSort(c.key)}
-                    title={t("Sort by this column")}
-                    className={cn(
-                      "flex h-7 w-full items-center gap-1 px-2 text-[0.6875rem] font-medium uppercase tracking-wide transition-colors hover:bg-secondary",
-                      c.align === "right" && "justify-end",
-                      state ? "text-foreground" : "text-muted-foreground",
-                    )}
-                  >
-                    {t(c.label)}
-                    <SortIcon state={state} />
-                  </button>
+                  <div className="relative flex items-stretch">
+                    <button
+                      type="button"
+                      data-testid={`sheet-sort-${c.key}`}
+                      onClick={() => onSort(c.key)}
+                      title={t("Sort by this column")}
+                      className={cn(
+                        "flex h-7 min-w-0 flex-1 items-center gap-1 px-2 text-[0.6875rem] font-medium uppercase tracking-wide transition-colors hover:bg-secondary",
+                        c.align === "right" && "justify-end",
+                        state ? "text-foreground" : "text-muted-foreground",
+                      )}
+                    >
+                      <span className="truncate">{t(c.label)}</span>
+                      <SortIcon state={state} />
+                    </button>
+                    <ColumnResizer
+                      width={widths[c.key] ?? c.width}
+                      label={t(c.label)}
+                      testId={`sheet-resize-${c.key}`}
+                      onResize={(px) => setWidth(c.key, px)}
+                      onAutoFit={() => {
+                        const px = measureColumn(scrollRef.current, c.key);
+                        if (px) setWidth(c.key, px);
+                      }}
+                    />
+                  </div>
                 </th>
               );
             })}
@@ -361,12 +403,20 @@ export function MatchesSpreadsheet({
                     {columns.map((c) => (
                       <td
                         key={c.key}
+                        // Named so double-clicking the handle can measure this
+                        // column's widest cell.
+                        data-col={c.key}
                         className={cn(
-                          "max-w-0 border-b border-r border-border/60 px-2 py-1 last:border-r-0 group-hover:bg-accent/40",
+                          "border-b border-r border-border/60 px-2 py-1 last:border-r-0 group-hover:bg-accent/40",
                           c.align === "right" && "text-right",
                         )}
                       >
-                        <span className="flex items-center gap-1 truncate">
+                        <span
+                          className={cn(
+                            "flex items-center gap-1 truncate",
+                            c.align === "right" && "justify-end",
+                          )}
+                        >
                           {c.cell(r)}
                         </span>
                       </td>

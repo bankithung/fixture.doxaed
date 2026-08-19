@@ -7,12 +7,14 @@ import {
   ArrowUp,
   ChevronsUpDown,
   Download,
+  Search,
+  SlidersHorizontal,
   UserSquare2,
 } from "lucide-react";
 import { tournamentsApi } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/Select";
+import { ParticipationFilterDrawer } from "./ParticipationFilterDrawer";
 import {
   ColumnResizer,
   measureColumn,
@@ -53,20 +55,6 @@ import {
  * Matrix is the literal grid, one column per competition, where a row with two
  * ticks IS the clash.
  */
-
-const KINDS = [
-  { value: "", label: "Everyone" },
-  { value: "student", label: "Students only" },
-  { value: "teacher", label: "Teachers only" },
-];
-
-const EVENT_FILTERS = [
-  { value: "", label: "Any number of events" },
-  { value: "multi", label: "In two or more" },
-  { value: "cross_sport", label: "In two or more sports" },
-  { value: "one", label: "In exactly one" },
-  { value: "none", label: "Not entered yet" },
-];
 
 /** The sheet's columns, in order, with the width each starts at. Everything
  * else about them (sorting, truncation, the resize handle) follows from this
@@ -204,6 +192,7 @@ export function ParticipationWorkbench({
     { key: "events", dir: "desc" },
   );
   const [view, setView] = useState<"sheet" | "matrix">("sheet");
+  const [drawer, setDrawer] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const { widths, setWidth, resetWidths, resized } = useColumnWidths(
     `participation-columns:${id}`,
@@ -253,6 +242,10 @@ export function ParticipationWorkbench({
     );
   const filtersOn =
     JSON.stringify(filters) !== JSON.stringify(EMPTY_PARTICIPATION_FILTERS);
+  // The Filter button counts what the drawer owns; the search box shows itself.
+  const drawerCount = (
+    ["events", "kind", "sport", "competition", "school"] as const
+  ).filter((k) => filters[k] !== "").length;
 
   const onExport = (): void => {
     const csv = participationCsv(rows, facets.competitions);
@@ -271,67 +264,41 @@ export function ParticipationWorkbench({
    * page look like a form. They now sit on a single line that scrolls
    * sideways if the desk is narrow, with the count and the view controls
    * pinned where they never move. */
+  /** ONE toolbar line (owner 2026-08-19): a search box and a single Filter
+   * button, exactly as the preview sheet does it. Six dropdowns competed with
+   * the table for the room the table needs. */
   const filterBar = (
-    <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
-      <Input
-        value={filters.q}
-        onChange={(e) => set({ q: e.target.value })}
-        placeholder={t("Search a name, class, roll or school")}
-        aria-label={t("Search participants")}
-        data-testid="participation-search"
-        className="h-8 w-48 shrink-0 text-xs sm:w-56"
-      />
-      <Select
+    <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="relative min-w-40 max-w-xs flex-1">
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+        />
+        <Input
+          value={filters.q}
+          onChange={(e) => set({ q: e.target.value })}
+          placeholder={t("Search a name, class, roll or school")}
+          aria-label={t("Search participants")}
+          data-testid="participation-search"
+          className="h-8 pl-7 text-xs"
+        />
+      </div>
+      <Button
+        type="button"
         size="sm"
-        value={filters.events}
-        onChange={(v) => set({ events: v as ParticipationFilters["events"] })}
-        options={EVENT_FILTERS.map((o) => ({ value: o.value, label: t(o.label) }))}
-        aria-label={t("Filter by how many events")}
-        className="w-44 shrink-0"
-      />
-      <Select
-        size="sm"
-        value={filters.kind}
-        onChange={(v) => set({ kind: v })}
-        options={KINDS.map((o) => ({ value: o.value, label: t(o.label) }))}
-        aria-label={t("Filter by kind")}
-        className="w-32 shrink-0"
-      />
-      {facets.sports.length > 1 ? (
-        <Select
-          size="sm"
-          value={filters.sport}
-          onChange={(v) => set({ sport: v, competition: "" })}
-          options={[{ value: "", label: t("Every sport") }, ...facets.sports]}
-          aria-label={t("Filter by sport")}
-          className="w-36 shrink-0"
-        />
-      ) : null}
-      {facets.competitions.length > 1 ? (
-        <Select
-          size="sm"
-          value={filters.competition}
-          onChange={(v) => set({ competition: v })}
-          options={[
-            { value: "", label: t("Every competition") },
-            ...facets.competitions.filter(
-              (c) => !filters.sport || c.value.startsWith(`${filters.sport}.`),
-            ),
-          ]}
-          aria-label={t("Filter by competition")}
-          className="w-48 shrink-0"
-        />
-      ) : null}
-      {facets.schools.length > 1 ? (
-        <Select
-          size="sm"
-          value={filters.school}
-          onChange={(v) => set({ school: v })}
-          options={[{ value: "", label: t("Every school") }, ...facets.schools]}
-          aria-label={t("Filter by school")}
-          className="w-44 shrink-0"
-        />
-      ) : null}
+        variant={drawerCount ? "secondary" : "outline"}
+        data-testid="participation-open-filters"
+        onClick={() => setDrawer(true)}
+        className="shrink-0 px-2.5 text-xs"
+      >
+        <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
+        {t("Filter")}
+        {drawerCount ? (
+          <span className="rounded bg-primary px-1.5 font-tabular text-[0.6875rem] text-primary-foreground">
+            {drawerCount}
+          </span>
+        ) : null}
+      </Button>
       {filtersOn ? (
         <button
           type="button"
@@ -369,9 +336,7 @@ export function ParticipationWorkbench({
               {t("Who is playing what")}
             </h1>
             <p className="text-sm text-muted-foreground">
-              {t(
-                "Everyone the schools entered on their team form, and the competitions each is in. Anyone in two is someone the draw has to keep apart, so start from that number.",
-              )}
+              {t("Anyone in two events is someone the draw must keep apart.")}
             </p>
           </div>
           <ul className="flex flex-wrap gap-2">
@@ -480,6 +445,15 @@ export function ParticipationWorkbench({
             </Button>
           </div>
         </div>
+
+        <ParticipationFilterDrawer
+          open={drawer}
+          onClose={() => setDrawer(false)}
+          rows={all}
+          filters={filters}
+          onFilters={setFilters}
+          visible={rows.length}
+        />
 
         {q.isLoading ? (
           <div className="flex flex-col gap-1.5 p-4" aria-busy="true">
