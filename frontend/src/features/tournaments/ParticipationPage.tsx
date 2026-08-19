@@ -332,10 +332,10 @@ export function ParticipationWorkbench({
                 {t("Back to participants")}
               </Link>
             )}
-            <h1 className="pt-1 text-xl font-semibold tracking-tight">
-              {t("Who is playing what")}
-            </h1>
-            <p className="text-sm text-muted-foreground">
+            {/* The house heading size (18px cap), not a bigger one of its
+                own — the numbers beside it are the page's real headline. */}
+            <h1 className="page-title pt-1">{t("Who is playing what")}</h1>
+            <p className="text-xs text-muted-foreground">
               {t("Anyone in two events is someone the draw must keep apart.")}
             </p>
           </div>
