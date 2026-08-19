@@ -97,6 +97,10 @@ CONSTRAINT_TYPES: list[dict[str, Any]] = [
     {"type": "round_pinned_to_window", "label": "Pin a round to a window", "hard": True,
      "params_schema": {"round": "str", "date": "date_or_last_day",
                        "from": "time", "to": "time", "venues": "list"},
+     # "final" is the final ALONE — the third-place playoff shares its round
+     # number and is named separately, so a show court can hold the finals
+     # without also having to hold every third place (owner 2026-08-19).
+     "param_options": {"round": ["final", "third_place", "semi_final"]},
      # Scoped to a sport or the whole tournament, ONE record puts every
      # competition's final on the show court (owner 2026-08-17). "final" is
      # resolved per competition, so a 3-round bracket and a 5-round bracket

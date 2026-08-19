@@ -100,6 +100,11 @@ export function ConstraintBuilder({
     queryKey: ["constraint-types"],
     queryFn: () => tournamentsApi.constraintTypes(),
   });
+  // The courts, so a show court is picked from what exists rather than typed.
+  const venues = useQuery({
+    queryKey: qk.venues(tournamentId),
+    queryFn: () => tournamentsApi.venues(tournamentId),
+  });
   const sports = useQuery({
     queryKey: ["tournament-sports", tournamentId],
     queryFn: () => tournamentsApi.sports(tournamentId),
@@ -172,6 +177,14 @@ export function ConstraintBuilder({
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
   })();
+
+  // Every playing surface, named exactly as the scheduler names it
+  // ("Hall · T2"), so a show court can be PICKED rather than typed.
+  const courtOptions: SelectOption[] = (venues.data?.venues ?? []).flatMap((v) =>
+    (v.courts ?? []).length
+      ? (v.courts ?? []).map((c) => ({ value: c.name, label: c.name }))
+      : [{ value: v.name, label: v.name }],
+  );
 
   const orderOptions: SelectOption[] = [
     ...(sports.data?.sports ?? []).map((s) => ({
@@ -316,6 +329,7 @@ export function ConstraintBuilder({
                     scopeOptions={scopeOptionsFor(spec)}
                     teams={teams}
                     orderOptions={orderOptions}
+                    courtOptions={courtOptions}
                     badge={
                       GLOBAL_SETUP_TYPES.has(record.type) &&
                       (!record.scope || record.scope === "all")

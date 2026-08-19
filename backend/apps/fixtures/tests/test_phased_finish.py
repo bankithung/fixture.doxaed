@@ -416,3 +416,62 @@ def test_no_record_leaves_the_gap_unset():
     assert effective_link_gaps(_cfg(), _req("t", leaf_key=GIRLS, round_no=1)) == (
         None, None,
     )
+
+
+# ------------------------------------------- the show court (owner 2026-08-19)
+def test_pinning_the_final_does_not_drag_the_third_place_with_it():
+    """A third-place playoff shares the final's round number. Pinning "final"
+    used to pin both, so a show court had to hold twice what it was given."""
+    from apps.fixtures.services.scheduler import resolve_pinned_rounds
+
+    matches = _bracket("g", GIRLS)
+    cfg = _cfg()
+    merge_stored_constraints(cfg, validate_constraints([
+        {"type": "round_pinned_to_window", "scope": "all", "hard": True,
+         "params": {"round": "final", "venues": ["A"]}},
+    ]))
+    pinned = resolve_pinned_rounds(
+        matches, [r for r in cfg.constraint_rules
+                  if r.type == "round_pinned_to_window"], cfg,
+    )
+    assert "gf" in pinned
+    assert "g3rd" not in pinned
+
+
+def test_the_third_place_can_be_pinned_on_its_own():
+    from apps.fixtures.services.scheduler import resolve_pinned_rounds
+
+    matches = _bracket("g", GIRLS)
+    cfg = _cfg()
+    merge_stored_constraints(cfg, validate_constraints([
+        {"type": "round_pinned_to_window", "scope": "all", "hard": True,
+         "params": {"round": "third_place", "venues": ["A"]}},
+    ]))
+    pinned = resolve_pinned_rounds(
+        matches, [r for r in cfg.constraint_rules
+                  if r.type == "round_pinned_to_window"], cfg,
+    )
+    assert "g3rd" in pinned and "gf" not in pinned
+
+
+def test_a_pinned_final_still_waits_for_the_phases_before_it():
+    """Pinned matches are placed first so they can claim a scarce window. With
+    a phase barrier that would put the finals down before the rounds they must
+    follow, and everything else would have to fit around them."""
+    matches = _bracket("g", GIRLS) + _bracket("b", BOYS)
+    stored = [
+        {"type": "phased_finish", "scope": "all", "hard": True,
+         "params": {"order": ["semi_final", "third_place", "final"]}},
+        {"type": "round_pinned_to_window", "scope": "all", "hard": True,
+         "params": {"round": "final", "venues": ["A"]}},
+    ]
+    cfg = _cfg()
+    merge_stored_constraints(cfg, validate_constraints(stored))
+    res = schedule_matches(matches, cfg)
+    assert not res.unscheduled
+    # Every third place still ends before any final starts.
+    thirds = max(_at(res, m) + timedelta(minutes=30) for m in ("g3rd", "b3rd"))
+    for final in ("gf", "bf"):
+        assert _at(res, final) >= thirds
+    # And both finals are on the pinned court.
+    assert {res.assignments["gf"][1], res.assignments["bf"][1]} == {"A"}

@@ -18,8 +18,8 @@ const PARAM_LABELS: Record<string, string> = {
   from: "From",
   to: "To",
   date: "Date",
-  venues: "Venues (names, comma-separated)",
-  round: "Round (final / semi_final / number)",
+  venues: "Played on",
+  round: "Which round",
   final_order: "Which of them plays first",
   one_at_a_time: "Two of them at once",
   until_round: "They may first meet",
@@ -48,6 +48,8 @@ const PARAM_HINTS: Record<string, string> = {
     "Read against each competition's own bracket, so one rule covers a four-team category and a sixteen-team one.",
   // Owner 2026-08-19: read as "the team that played waits 20 minutes", when it
   // actually holds EVERY team the rule links — the whole school.
+  venues:
+    "Pick the court every one of these matches is played on. Leave none picked and they go wherever there is room.",
   min_gap_minutes:
     "Time between any two matches this rule links, which is all of them, not only the one that just played. Leave it at 0 to mean simply never at the same time.",
   cross_venue_gap_minutes:
@@ -78,6 +80,9 @@ const PARAM_OPTION_LABELS: Record<string, string> = {
   "one_at_a_time:none": "Allowed, any number together",
   "one_at_a_time:sport": "One at a time within a sport",
   "one_at_a_time:all": "One at a time, whole tournament",
+  "round:final": "The final",
+  "round:third_place": "The third-place match",
+  "round:semi_final": "The semi-finals",
   "until_round:semi_final": "From the semi-finals on",
   "until_round:final": "Only in the final",
   "key:school": "Same school",
@@ -297,6 +302,7 @@ export function ConstraintRow({
   scopeOptions,
   teams,
   orderOptions = [],
+  courtOptions = [],
   onChange,
   onRemove,
   badge,
@@ -311,6 +317,8 @@ export function ConstraintRow({
   teams: { id: string; name: string }[];
   /** Rankable competitions and sports, for an `order` param. */
   orderOptions?: SelectOption[];
+  /** Every playing surface, for a `venues` param — the show court picker. */
+  courtOptions?: SelectOption[];
   onChange: (next: ConstraintRecord) => void;
   onRemove: () => void;
   /** Provenance badge ("From global setup" for wizard-owned records). */
@@ -491,6 +499,53 @@ export function ConstraintRow({
               {t("Applies every day.")}
             </span>
           ) : null}
+        </div>
+      );
+    }
+    // The show court (owner 2026-08-19: "we can have an option for the user to
+    // set up the final court for each game"). Typing a court name by hand into
+    // a comma-separated box is how a pin ends up naming a court that does not
+    // exist, so the courts themselves are the choices.
+    if (kind === "list" && key === "venues" && courtOptions.length > 0) {
+      const picked = asList(record.params[key]);
+      return (
+        <div key={key} className="flex w-full flex-col gap-1">
+          <span className="text-xs font-medium">{paramLabel(key)}</span>
+          <div
+            data-testid={tid(key)}
+            className="flex flex-wrap gap-1"
+            role="group"
+            aria-label={paramLabel(key)}
+          >
+            {courtOptions.map((c) => {
+              const on = picked.includes(c.value);
+              return (
+                <button
+                  key={c.value}
+                  type="button"
+                  aria-pressed={on}
+                  data-testid={`${tid(key)}-${c.value}`}
+                  onClick={() =>
+                    setParam(
+                      key,
+                      on
+                        ? picked.filter((v) => v !== c.value)
+                        : [...picked, c.value],
+                    )
+                  }
+                  className={cn(
+                    "h-8 rounded-md border px-2.5 text-xs font-medium transition-colors",
+                    on
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground hover:bg-accent",
+                  )}
+                >
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
+          <Hint text={PARAM_HINTS[key]} />
         </div>
       );
     }

@@ -1041,8 +1041,16 @@ def resolve_pinned_rounds(
             if not ko:
                 continue
             steps = sorted({(mm.stage_no, mm.round_no) for mm in ko})
+            # A third-place playoff shares the final's round number, so
+            # "final" used to drag it onto the show court too — and a court
+            # that must host both cannot hold them all (owner 2026-08-19:
+            # "we can choose one court for finals"). The two are told apart
+            # by the playoff's loser-fed sides, so each can be named.
+            only: str | None = None
             if rnd == "final":
-                target = steps[-1]
+                target, only = steps[-1], "final"
+            elif rnd == "third_place":
+                target, only = steps[-1], "third_place"
             elif rnd == "semi_final":
                 if len(steps) < 2:
                     continue
@@ -1058,8 +1066,13 @@ def resolve_pinned_rounds(
                 if target is None:
                     continue
             for mm in ko:
-                if (mm.stage_no, mm.round_no) == target:
-                    pin_of[mm.id] = r
+                if (mm.stage_no, mm.round_no) != target:
+                    continue
+                if only == "final" and mm.third_place:
+                    continue
+                if only == "third_place" and not mm.third_place:
+                    continue
+                pin_of[mm.id] = r
     return pin_of
 
 
@@ -2061,8 +2074,19 @@ def _schedule_once(
         bucket.append(m)
     spread.extend(_spread_conflicts(bucket, linked))
     by_order = spread
-    ordered = [m for m in by_order if m.id in pin_of] + \
-              [m for m in by_order if m.id not in pin_of]
+    # A pinned match is placed FIRST so it can claim its scarce window before
+    # anything else takes it. But when a phase barrier is also in play, going
+    # first would put the finals down before the rounds they must follow, and
+    # everything else would then have to fit around them — which is how
+    # pinning the finals to a show court cost 14 matches their slot (owner
+    # 2026-08-19). So pinned goes first WITHIN its phase, not before them all.
+    if finish_plans:
+        ordered = sorted(
+            by_order, key=lambda m: (_phase_sort(m), 0 if m.id in pin_of else 1),
+        )
+    else:
+        ordered = [m for m in by_order if m.id in pin_of] + \
+                  [m for m in by_order if m.id not in pin_of]
     for m in ordered:
         # A dependent whose in-run feeder failed to place can never be timed
         # correctly — propagate the failure instead of parking it anywhere.
