@@ -1021,6 +1021,62 @@ function SheetGroup({
     return BAND_TONES[(idx < 0 ? 0 : idx) % BAND_TONES.length];
   };
 
+  /** Entry status per competition for the legend (owner 2026-08-19: red =
+   * not entered, green with the team count once at least one team is
+   * properly sized). Mirrors the builder's grouping: explicit T2/T3 numbers
+   * are one team each; all on T1 splits balanced by the squad cap. */
+  const legendStatus = (
+    child: Field,
+    option: Option,
+  ): { teams: number; ok: boolean; short: boolean } => {
+    const teamNoKey = child.team_no_field;
+    const entries: number[] = [];
+    const byNo = new Map<number, number>();
+    let explicit = false;
+    for (const r of rows) {
+      const row = (r ?? {}) as Record<string, unknown>;
+      const picked = asArray(row[child.key]);
+      if (!picked.includes(String(option.value))) continue;
+      let no = 1;
+      if (teamNoKey) {
+        try {
+          const parsed: unknown = JSON.parse(String(row[teamNoKey] || "{}"));
+          const v = (parsed as Record<string, unknown> | null)?.[
+            String(option.value)
+          ];
+          no = Math.min(MAX_TEAMS, Math.max(1, Number(v) || 1));
+        } catch {
+          // team 1
+        }
+      }
+      if (no > 1) explicit = true;
+      entries.push(no);
+      byNo.set(no, (byNo.get(no) ?? 0) + 1);
+    }
+    const min = option.squad_min ?? 1;
+    const max = option.squad_max ?? Number.MAX_SAFE_INTEGER;
+    let sizes: number[];
+    if (explicit) {
+      sizes = [...byNo.values()];
+    } else {
+      const n = entries.length;
+      const count = n === 0 ? 0 : Math.max(1, Math.ceil(n / max));
+      sizes = [];
+      const base = count ? Math.floor(n / count) : 0;
+      let extra = count ? n % count : 0;
+      for (let i = 0; i < count; i++) {
+        sizes.push(base + (extra > 0 ? 1 : 0));
+        if (extra > 0) extra--;
+      }
+    }
+    const allOk = sizes.length > 0 && sizes.every((z) => z >= min && z <= max);
+    return {
+      teams: sizes.length,
+      ok: allOk,
+      short: sizes.length > 0 && !allOk,
+    };
+  };
+
   return (
     <div className="flex flex-col gap-2">
       {/* Every short code spelled out (owner 2026-08-18: "show all the full
@@ -1037,21 +1093,39 @@ function SheetGroup({
           <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
             {cols
               .filter((c): c is Extract<Col, { kind: "option" }> => c.kind === "option")
-              .map((c) => (
-                <span key={c.option.value} className="flex items-center gap-2 text-xs">
-                  <span
-                    className={cn(
-                      "shrink-0 rounded px-1.5 py-0.5 font-tabular text-[0.6875rem] font-semibold",
-                      legendToneOf(c.option.sport ?? ""),
-                    )}
-                  >
-                    {c.option.code}
-                  </span>
-                  <span className="min-w-0 truncate text-muted-foreground">
-                    {c.option.sport} · {t(c.option.label)}
-                  </span>
-                </span>
-              ))}
+              .map((c) => {
+                const st = legendStatus(c.child, c.option);
+                return (
+                    <span
+                      key={c.option.value}
+                      className="flex items-center gap-2 text-xs"
+                    >
+                      <span
+                        className={cn(
+                          "shrink-0 rounded px-1.5 py-0.5 font-tabular text-[0.6875rem] font-semibold",
+                          legendToneOf(c.option.sport ?? ""),
+                        )}
+                      >
+                        {c.option.code}
+                      </span>
+                      <span className="min-w-0 truncate text-muted-foreground">
+                        {c.option.sport} · {t(c.option.label)}
+                      </span>
+                      <span
+                        className={cn(
+                          "ml-auto shrink-0 whitespace-nowrap font-medium",
+                          st.ok ? "text-success" : "text-destructive",
+                        )}
+                      >
+                        {st.teams === 0
+                          ? t("Not entered")
+                          : st.short
+                            ? `${st.teams} ${st.teams === 1 ? t("team") : t("teams")} · ${t("short of players")}`
+                            : `${st.teams} ${st.teams === 1 ? t("team") : t("teams")}`}
+                      </span>
+                    </span>
+                );
+              })}
           </div>
         </div>
       ) : null}
