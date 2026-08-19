@@ -1824,7 +1824,13 @@ export function PublicFormPage(): React.ReactElement {
                 under its toolbar (owner 2026-08-18: the two pages should read
                 as one product). It says what the school has entered so far,
                 and appears as soon as a sport is ticked. */}
-            {entrySummary.length > 0 ? (
+            {/* The tally appears once it can MEAN something: on the sheet
+                itself, on review, or as soon as any entry exists. On step one
+                two zeros read as something broken (owner 2026-08-19). */}
+            {entrySummary.length > 0 &&
+            (isReview ||
+              entrySummary.some((g) => g.count > 0) ||
+              tabRunOf(current).length > 0) ? (
               <section
                 aria-label={t("Your entry so far")}
                 data-testid="entry-summary"
@@ -1842,6 +1848,9 @@ export function PublicFormPage(): React.ReactElement {
                     {g.name}
                     <span className="font-tabular text-sm font-semibold text-foreground">
                       {g.count}
+                    </span>
+                    <span className="text-[0.6875rem]">
+                      {g.count === 1 ? t("entry") : t("entries")}
                     </span>
                   </span>
                 ))}

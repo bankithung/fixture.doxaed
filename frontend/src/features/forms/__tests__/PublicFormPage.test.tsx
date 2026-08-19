@@ -1534,10 +1534,7 @@ describe("PublicFormPage · the participants are a two-tab sheet", () => {
 describe("PublicFormPage · the sheet locks impossible cells", () => {
   beforeEach(() => vi.resetAllMocks());
 
-  it("locks the other gender's columns and over-age categories", async () => {
-    // Owner 2026-08-18: "cannot select both boys and girls; U-14 based on the
-    // selected [birthday] should be locked".
-    vi.mocked(formsApi.publicGet).mockResolvedValue({
+  const lockSchemaPayload = {
       tournament_name: "ANPSA Dimapur",
       form: {
         id: "form1", title: "Team registration", description: "",
@@ -1577,7 +1574,12 @@ describe("PublicFormPage · the sheet locks impossible cells", () => {
           }],
         } as FormSchema,
       },
-    });
+  };
+
+  it("locks the other gender's columns and over-age categories", async () => {
+    // Owner 2026-08-18: "cannot select both boys and girls; U-14 based on the
+    // selected [birthday] should be locked".
+    vi.mocked(formsApi.publicGet).mockResolvedValue(lockSchemaPayload as never);
     renderPage();
     await screen.findByRole("heading", { name: /team registration/i });
     await userEvent.click(screen.getByTestId("row-add-participant_students"));
@@ -1592,5 +1594,23 @@ describe("PublicFormPage · the sheet locks impossible cells", () => {
     expect(screen.getByLabelText(/U-14 · Boys, Student 1/)).toBeDisabled();
     expect(screen.getByLabelText(/U-14 · Girls, Student 1/)).toBeEnabled();
     expect(screen.getByLabelText(/Open · Girls, Student 1/)).toBeEnabled();
+  });
+
+  it("the per-sport band counts competition ENTRIES, and says so", async () => {
+    // Owner 2026-08-19: two students with no ticks read "Table Tennis 0",
+    // which looked like a broken student count. The band counts ticks and
+    // names its unit.
+    vi.mocked(formsApi.publicGet).mockResolvedValue(lockSchemaPayload as never);
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+    await userEvent.click(screen.getByTestId("row-add-participant_students"));
+    // On the sheet itself the band shows, zeros included, unit named.
+    expect(screen.getByTestId("entry-summary")).toHaveTextContent(
+      /Table Tennis\s*0\s*entries/,
+    );
+    await userEvent.click(screen.getByLabelText(/U-14 · Girls, Student 1/));
+    expect(screen.getByTestId("entry-summary")).toHaveTextContent(
+      /Table Tennis\s*1\s*entry\b/,
+    );
   });
 });
