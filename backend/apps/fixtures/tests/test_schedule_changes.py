@@ -223,13 +223,11 @@ def test_limit_and_offset_page_the_feed_and_report_the_total():
     endpoint slices server-side and reports how many entries sit behind it."""
     admin, t, matches = _setup(n_teams=8)
     tz = ZoneInfo(t.time_zone)
-    # A day apart each, so no move lands on another match's slot at venue G —
-    # and inside the tournament's own calendar (August), because a move onto a
-    # date the calendar does not cover is now the hard `off_grid` violation.
+    # A day apart each, so no move lands on another match's slot at venue G.
     for i, m in enumerate(matches[:4]):
         reschedule_match(
             match=m, by=admin,
-            scheduled_at=datetime(2026, 8, 1 + i, 15, 0, tzinfo=tz),
+            scheduled_at=datetime(2026, 9, 1 + i, 15, 0, tzinfo=tz),
         )
 
     first = _client(admin).get(
