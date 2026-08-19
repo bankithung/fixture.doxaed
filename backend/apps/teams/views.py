@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.conf import settings as django_settings
 from django.db import IntegrityError, transaction
 from django.db.models import Count, F, Q
 from django.utils import timezone
@@ -28,9 +29,29 @@ from apps.teams.services.registration import (
 )
 from apps.teams.services.withdrawal import withdraw_team
 from apps.teams.throttling import RegistrationRateThrottle
+from apps.audit.models import ActorRole
+from apps.audit.services import emit_audit
 from apps.tournaments.models import Tournament
-from apps.tournaments.permissions import can_access_module
+from apps.tournaments.permissions import can_access_module, can_manage_tournament
 from apps.tournaments.scope import accessible_tournaments
+
+
+def _open_competitor_form(tournament):
+    """Whichever competitor-scoped form is open right now: during the
+    participants stage that is the sheet, later it is the team form. ONE code
+    per institution unlocks both, so callers must not insist on the team form
+    existing yet (spec 2026-08-17)."""
+    from apps.forms.constants import COMPETITOR_PURPOSES
+    from apps.forms.models import Form
+
+    return (
+        Form.objects.filter(
+            tournament=tournament, purpose__in=sorted(COMPETITOR_PURPOSES),
+            deleted_at__isnull=True, status="open",
+        )
+        .order_by("-created_at")
+        .first()
+    )
 
 
 def _can_register(user, tournament) -> bool:
@@ -596,9 +617,79 @@ class TeamAccessCodesView(GenericAPIView):
     """`POST /api/tournaments/{id}/team-codes/` — (re)issue team-registration
     access codes to registered institutions (manager-only). Default fills only
     institutions without a code (safe after late registrations); body
-    ``{"force": true}`` rotates every code."""
+    ``{"force": true}`` rotates every code. ``{"reveal": true}`` mints WITHOUT
+    emailing, for codes the host is about to read out themselves.
+
+    `GET` returns every school's code so the host can read and copy it (owner
+    2026-08-19: "it should show the codes for all so that i can see and copy
+    too"). Manager-only, never cached, and never merged into the institutions
+    list — that list is readable by any tournament member.
+
+    A code minted before codes were readable is an Argon2 hash with no
+    plaintext anywhere, so its row comes back ``readable: false`` rather than
+    pretending. Making it readable means minting a new one, which is why
+    minting keeps the replaced code working for `GRACE_DAYS`."""
 
     permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id):
+        from apps.teams.services.access import _grace_open, read_team_code
+
+        t = Tournament.objects.filter(
+            id=tournament_id, deleted_at__isnull=True
+        ).first()
+        if t is None or not accessible_tournaments(request.user).filter(
+            id=tournament_id
+        ).exists():
+            raise NotFound("tournament_not_found")
+        if not can_manage_tournament(request.user, t):
+            raise PermissionDenied("not_tournament_manager")
+        rows = []
+        for inst in (
+            Institution.objects.filter(
+                tournament=t, deleted_at__isnull=True
+            )
+            .exclude(status__in=["withdrawn", "rejected"])
+            .order_by("name")
+        ):
+            code = read_team_code(inst)
+            rows.append({
+                "institution_id": str(inst.id),
+                "name": inst.name,
+                "contact_email": inst.contact_email,
+                "code": code,
+                "has_code": bool(inst.team_code_hash),
+                "readable": bool(code),
+                "sent_at": inst.team_code_sent_at,
+                "grace_until": (
+                    inst.team_code_prev_until if _grace_open(inst) else None
+                ),
+            })
+        emit_audit(
+            actor_user=request.user,
+            actor_role=ActorRole.ADMIN,
+            event_type="team_access_codes_viewed",
+            target_type="tournament",
+            target_id=t.id,
+            organization_id=t.organization_id,
+            tournament_id=t.id,
+            payload_after={
+                "institutions": len(rows),
+                "readable": sum(1 for r in rows if r["readable"]),
+            },
+            request=request,
+        )
+        form = _open_competitor_form(t)
+        base = getattr(
+            django_settings, "PUBLIC_BASE_URL", "https://fixture.doxaed.com",
+        )
+        res = Response({
+            "codes": rows,
+            "form_url": f"{base}/f/{form.id}" if form else "",
+        })
+        # A page of live credentials must not sit in a proxy or a bfcache.
+        res["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+        return res
 
     def post(self, request, tournament_id):
         t = Tournament.objects.filter(
@@ -610,29 +701,20 @@ class TeamAccessCodesView(GenericAPIView):
             raise NotFound("tournament_not_found")
         if not can_access_module(request.user, t, "forms"):
             raise PermissionDenied("not_tournament_manager")
-        from apps.forms.models import Form
-
-        # Whichever competitor-scoped form is open right now: during the
-        # participants stage that is the sheet, later it is the team form. One
-        # code per institution unlocks both, so "resend" must not insist on the
-        # team form existing yet (spec 2026-08-17).
-        from apps.forms.constants import COMPETITOR_PURPOSES
-
-        form = (
-            Form.objects.filter(
-                tournament=t, purpose__in=sorted(COMPETITOR_PURPOSES),
-                deleted_at__isnull=True, status="open",
-            )
-            .order_by("-created_at")
-            .first()
-        )
+        form = _open_competitor_form(t)
         if form is None:
             raise DRFValidationError({"detail": "no_open_team_form"})
         from apps.teams.services.access import issue_team_access_codes
 
+        # "Make the codes readable": mint a fresh code for every school that
+        # has none we can read, WITHOUT emailing. Rotating is the only way to
+        # show a code that exists solely as a hash, and the grace window keeps
+        # the emailed original working meanwhile.
+        reveal = bool(request.data.get("reveal"))
         out = issue_team_access_codes(
-            tournament=t, form=form,
-            only_missing=not bool(request.data.get("force")),
+            tournament=t, form=form, send_email=not reveal,
+            only_unreadable=reveal,
+            only_missing=not reveal and not bool(request.data.get("force")),
             institution_ids=request.data.get("institution_ids") or None,
             request=request, actor=request.user,
         )

@@ -19,6 +19,10 @@ env = environ.Env(
 environ.Env.read_env(BASE_DIR / ".env")
 
 SECRET_KEY = env("SECRET_KEY")
+# Optional separate key for reversibly-stored admin-readable secrets (team
+# access codes). Falls back to SECRET_KEY, so nothing needs configuring; set it
+# when you want a SECRET_KEY leak not to also unlock those columns.
+FIELD_ENCRYPTION_KEY = env.str("FIELD_ENCRYPTION_KEY", default="")
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 

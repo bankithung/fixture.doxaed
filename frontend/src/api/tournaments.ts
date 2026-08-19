@@ -794,17 +794,42 @@ export const tournamentsApi = {
   /** Registered teams for a tournament. */
   teams: (id: string) => api.get<TeamRow[]>(`/api/tournaments/${id}/teams/`),
   /** (Re)email team-registration access codes (manager-only). Pass
-   *  `institution_ids` to send/resend to specific schools only. */
+   *  `institution_ids` to send/resend to specific schools only, or
+   *  `reveal` to mint readable codes WITHOUT emailing anyone. */
   issueTeamCodes: (
     id: string,
-    opts: { force?: boolean; institution_ids?: string[] } = {},
+    opts: {
+      force?: boolean;
+      reveal?: boolean;
+      institution_ids?: string[];
+    } = {},
   ) =>
     api.post<{
       sent: number;
+      failed: number;
       no_email: number;
       skipped: number;
+      minted: number;
       no_email_institutions: { id: string; name: string }[];
+      failed_institutions: { id: string; name: string }[];
     }>(`/api/tournaments/${id}/team-codes/`, opts),
+  /** Every school's access code, to read out or copy (manager-only).
+   *  A code minted before codes were readable comes back `readable: false`
+   *  with an empty `code` — it is an Argon2 hash and genuinely gone. */
+  teamCodes: (id: string) =>
+    api.get<{
+      codes: {
+        institution_id: string;
+        name: string;
+        contact_email: string;
+        code: string;
+        has_code: boolean;
+        readable: boolean;
+        sent_at: string | null;
+        grace_until: string | null;
+      }[];
+      form_url: string;
+    }>(`/api/tournaments/${id}/team-codes/`),
   /** All matches (the generated fixture). The server enriches each row with the
    * competition leaf label + assigned scorer/officials (the operations Matches
    * board reads those via `matchesEnriched`); plain consumers (bracket,

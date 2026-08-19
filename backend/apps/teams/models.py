@@ -511,10 +511,21 @@ class Institution(models.Model):
         related_name="institutions",
     )
     # Team-registration access code (emailed to the contact when Stage 2
-    # opens). Only the Django password hash is stored — never the plaintext —
-    # so a DB leak exposes nothing usable (PBKDF2-SHA256, salted).
+    # opens). The Argon2id hash is what VERIFICATION reads, always — a DB leak
+    # of this column alone exposes nothing usable.
     team_code_hash = models.TextField(blank=True, default="")
     team_code_sent_at = models.DateTimeField(null=True, blank=True)
+    # The same code encrypted (reversible), so the host can read it back and
+    # hand it over by phone when the email did not arrive (owner 2026-08-19).
+    # A convenience mirror only: nothing authenticates against this column, and
+    # it is never carried by a public or member-gated serializer. Empty for
+    # codes minted before this existed — those are hashes and gone for good.
+    team_code_enc = models.TextField(blank=True, default="")
+    # Rotation grace: the code we just replaced keeps verifying until this
+    # moment, so re-issuing to make a code readable never strands a school
+    # that is holding the emailed one.
+    team_code_prev_hash = models.TextField(blank=True, default="")
+    team_code_prev_until = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="institutions_created",

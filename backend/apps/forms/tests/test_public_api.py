@@ -430,14 +430,19 @@ def _team_answers(inst, name="Don Bosco A", player="P One"):
 
 
 def test_team_access_codes_issue_hash_and_email(mailoutbox):
-    """Issuing codes stores ONLY a password hash (never plaintext) and emails
-    the contact the link + code; re-issue keeps existing codes."""
+    """Issuing codes hashes the code for verification and emails the contact
+    the link + code; re-issue keeps existing codes.
+
+    Since 2026-08-19 a reversibly-encrypted copy rides alongside so the host
+    can read the code back (see teams/tests/test_access_codes.py) — but the
+    hash stays the only thing verification consults, and the plaintext is
+    still in neither column."""
     from apps.teams.services.access import issue_team_access_codes
 
     _admin_user, t, inst, team_form = _team_reg_fixture("issue")
     out = issue_team_access_codes(tournament=t, form=team_form)
     assert out == {
-        "sent": 1, "failed": 0, "no_email": 0, "skipped": 0,
+        "sent": 1, "failed": 0, "no_email": 0, "skipped": 0, "minted": 1,
         "no_email_institutions": [], "failed_institutions": [],
     }
     inst.refresh_from_db()

@@ -5,6 +5,7 @@ import {
   Check,
   ChevronRight,
   Clock,
+  Copy,
   KeyRound,
   Link2,
   Paperclip,
@@ -83,7 +84,32 @@ export function TeamsTab(): React.ReactElement {
 
   const refreshAfterCodes = (): void => {
     qc.invalidateQueries({ queryKey: ["t-institutions", id] });
+    qc.invalidateQueries({ queryKey: ["t-team-codes", id] });
   };
+  const copyText = async (text: string, title: string): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.push({ kind: "success", title });
+    } catch {
+      toast.push({ kind: "error", title: t("Could not copy") });
+    }
+  };
+  // Mint a fresh, readable code for every school whose code exists only as a
+  // hash. Nobody is locked out: the code already in their inbox keeps working
+  // for a week, which is the whole reason this is safe to press mid-event.
+  const revealCodes = useMutation({
+    mutationFn: () => tournamentsApi.issueTeamCodes(id, { reveal: true }),
+    onSuccess: (r) => {
+      refreshAfterCodes();
+      toast.push({
+        kind: "success",
+        title: t("Codes ready to read"),
+        description: `${r.minted} ${t("new codes. The old ones keep working for 7 days.")}`,
+      });
+    },
+    onError: () =>
+      toast.push({ kind: "error", title: t("Could not prepare the codes") }),
+  });
   // Send to ALL schools still missing a code.
   const issueAllCodes = useMutation({
     mutationFn: () => tournamentsApi.issueTeamCodes(id, {}),
@@ -164,6 +190,24 @@ export function TeamsTab(): React.ReactElement {
     queryFn: () => tournamentsApi.stage(id),
   });
   const canManage = stage.data?.can_manage ?? false;
+  // The codes themselves (owner 2026-08-19: "it should show the codes for all
+  // so that i can see and copy too"). Manager-only and fetched only while the
+  // drawer is open, so a page of live credentials is never sitting in the
+  // cache of a screen nobody asked for.
+  const codesQ = useQuery({
+    queryKey: ["t-team-codes", id],
+    queryFn: () => tournamentsApi.teamCodes(id),
+    enabled: codesOpen && canManage,
+    staleTime: 0,
+    gcTime: 0,
+  });
+  const codeRows = useMemo(() => codesQ.data?.codes ?? [], [codesQ.data]);
+  const codeByInst = useMemo(
+    () => new Map(codeRows.map((r) => [r.institution_id, r])),
+    [codeRows],
+  );
+  const readableRows = codeRows.filter((r) => r.readable);
+  const unreadable = codeRows.filter((r) => r.has_code && !r.readable).length;
   const teamForm =
     (forms.data ?? []).find((f) => f.stage === "team_registration") ??
     (forms.data ?? []).find((f) => f.purpose === "team_registration");
@@ -495,9 +539,60 @@ export function TeamsTab(): React.ReactElement {
         <div className="sdrawer-itemwrap">
           <p className="sdrawer-item text-xs text-muted-foreground">
             {t(
-              "Schools need their emailed code to register or edit teams. Check who gets one, then send.",
+              "Schools need their code to register or edit teams. Read one out, copy the lot, or email them.",
             )}
           </p>
+        </div>
+        {/* The codes, readable (owner 2026-08-19). A code minted before this
+            existed is an Argon2 hash with no plaintext anywhere, so it cannot
+            be shown; making it readable means minting a new one, and the one
+            already in the school's inbox keeps working for 7 days so nobody
+            is locked out mid-registration. */}
+        <div className="sdrawer-itemwrap">
+          <div className="sdrawer-item flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/20 px-2.5 py-2">
+            <span className="text-xs text-muted-foreground">
+              <span className="font-tabular font-medium text-foreground">
+                {readableRows.length}
+              </span>{" "}
+              {t("of")}{" "}
+              <span className="font-tabular">{codeRows.length}</span>{" "}
+              {t("codes readable")}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-auto"
+              data-testid="copy-all-codes"
+              disabled={readableRows.length === 0}
+              onClick={() =>
+                copyText(
+                  readableRows
+                    .map((r) => `${r.name}: ${r.code}`)
+                    .join("\n"),
+                  t("All codes copied"),
+                )
+              }
+            >
+              <Copy aria-hidden="true" className="h-3.5 w-3.5" />
+              {t("Copy all")}
+            </Button>
+            {unreadable > 0 ? (
+              <Button
+                size="sm"
+                data-testid="reveal-codes"
+                disabled={revealCodes.isPending}
+                onClick={() => revealCodes.mutate()}
+                title={t(
+                  "Mints a new code for each. The code already emailed keeps working for 7 days.",
+                )}
+              >
+                <KeyRound aria-hidden="true" className="h-3.5 w-3.5" />
+                {revealCodes.isPending
+                  ? t("Preparing…")
+                  : `${t("Show the other")} ${unreadable}`}
+              </Button>
+            ) : null}
+          </div>
         </div>
         {(() => {
           const insts = institutions.data ?? [];
@@ -574,6 +669,42 @@ export function TeamsTab(): React.ReactElement {
                             />
                           ) : null}
                         </label>
+                        {(() => {
+                          const row = codeByInst.get(inst.id);
+                          if (!row?.has_code) return null;
+                          if (!row.readable)
+                            return (
+                              <p className="pl-6 text-xs text-muted-foreground">
+                                {t("Code not readable, it was issued earlier")}
+                              </p>
+                            );
+                          return (
+                            <div className="flex items-center gap-2 pl-6">
+                              <code
+                                data-testid={`code-${inst.id}`}
+                                className="rounded border border-border bg-muted px-2 py-1 font-tabular text-sm font-medium tracking-[0.18em]"
+                              >
+                                {row.code}
+                              </code>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                aria-label={`${t("Copy the code for")} ${inst.name}`}
+                                onClick={() =>
+                                  copyText(row.code, t("Code copied"))
+                                }
+                              >
+                                <Copy aria-hidden="true" className="h-3.5 w-3.5" />
+                                {t("Copy")}
+                              </Button>
+                              {row.grace_until ? (
+                                <span className="text-[0.6875rem] text-muted-foreground">
+                                  {t("Old code still works")}
+                                </span>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
                         {!hasEmail ? (
                           <div className="flex flex-wrap items-center gap-2 pl-6">
                             <Input
