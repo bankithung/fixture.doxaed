@@ -70,7 +70,7 @@ const PDF_COLUMNS: [string, (r: PreviewRow) => string, string][] = [
   [t("Sport"), (r) => r.sportLabel, ""],
   [t("Category"), (r) => r.categoryLabel, "muted"],
   [t("Stage"), (r) => r.group || r.stageLabel, ""],
-  [t("Rd"), (r) => (r.round ? `R${r.round}` : "·"), "num"],
+  [t("Round"), (r) => r.roundLabel || "·", "muted"],
   [t("Team 1"), (r) => r.home, "team"],
   [t("Team 2"), (r) => r.away, "team"],
   [t("Status"), (r) => (r.placed ? t("Scheduled") : t("No time")), ""],
@@ -247,7 +247,9 @@ export function previewCourtGridHtml({
           const cells = slot.cells
             .map((r) => {
               if (!r) return `<td class="idle"></td>`;
-              const line = [r.group || r.stageLabel, `${t("Round")} ${r.round}`]
+              // "Knockout · Round 3" told an official nothing; the round's
+              // own name does (owner 2026-08-19).
+              const line = [r.group || r.stageLabel, r.roundLabel]
                 .filter(Boolean)
                 .join(" · ");
               return `<td class="cell">

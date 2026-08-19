@@ -106,12 +106,11 @@ const COLUMNS: Column[] = [
   },
   {
     key: "round",
-    label: "Rd",
-    align: "right",
-    width: 40,
+    label: "Round",
+    width: 76,
     cell: (r) => (
-      <span className="font-tabular text-muted-foreground">
-        {r.round ? `R${r.round}` : "·"}
+      <span className="text-muted-foreground">
+        {r.roundLabel || "·"}
       </span>
     ),
   },

@@ -34,6 +34,11 @@ export interface PreviewRow {
   /** "Group A" for a real group-stage match, else "". */
   group: string;
   round: number;
+  /** What this round is CALLED: "Final", "3rd place", "Semi-final", else
+   * "R3". A round number tells an organiser nothing about which match they
+   * are looking at (owner 2026-08-19: "the finals should be written as final
+   * and third as third"). */
+  roundLabel: string;
   home: string;
   away: string;
   placed: boolean;
@@ -236,6 +241,42 @@ export function matchRefLabels(
   return out;
 }
 
+/**
+ * The SHORT name of each match's round, for the sheet's own column.
+ *
+ * "Round 3" says nothing about which match it is; the same bracket step is
+ * round 2 in one category and round 4 in another. These are the words an
+ * organiser uses: the last round is the Final, the match between the two
+ * beaten semi-finalists is 3rd place, the round before is the Semi-final.
+ */
+export function roundLabels(
+  matches: readonly PreviewMatch[],
+): Map<string, string> {
+  const depth = new Map<string, number>();
+  for (const m of matches) {
+    if (m.stage !== "knockout") continue;
+    depth.set(m.leaf_key, Math.max(depth.get(m.leaf_key) ?? 0, m.round_no ?? 0));
+  }
+  const out = new Map<string, string>();
+  for (const m of matches) {
+    const last = depth.get(m.leaf_key) ?? 0;
+    const r = m.round_no ?? 0;
+    if (m.stage !== "knockout" || !last || !r) {
+      out.set(m.ref, r ? `R${r}` : "");
+      continue;
+    }
+    // A third-place playoff shares the final's round number; only its
+    // loser-fed sides tell the two apart.
+    const thirdPlace =
+      m.home?.source?.type === "loser_of" && m.away?.source?.type === "loser_of";
+    if (r === last) out.set(m.ref, thirdPlace ? t("3rd place") : t("Final"));
+    else if (r === last - 1) out.set(m.ref, t("Semi-final"));
+    else if (r === last - 2) out.set(m.ref, t("Quarter-final"));
+    else out.set(m.ref, `R${r}`);
+  }
+  return out;
+}
+
 /** Flatten previewed matches into spreadsheet rows. */
 export function buildRows(
   matches: readonly PreviewMatch[],
@@ -244,6 +285,7 @@ export function buildRows(
 ): PreviewRow[] {
   const unplaced = new Set(unscheduled);
   const refLabels = matchRefLabels(matches);
+  const roundNames = roundLabels(matches);
   return matches.map((m) => {
     const day = m.scheduled_at ? m.scheduled_at.slice(0, 10) : "";
     const start = clockOf(m.scheduled_at);
@@ -267,6 +309,7 @@ export function buildRows(
       stageLabel: t(STAGE_LABELS[m.stage] ?? m.stage),
       group: isGroup ? `${t("Group")} ${shortGroupName(m.group_label)}` : "",
       round: m.round_no ?? 0,
+      roundLabel: roundNames.get(m.ref) ?? (m.round_no ? `R${m.round_no}` : ""),
       home: sideName(m.home, teamNames, refLabels),
       away: sideName(m.away, teamNames, refLabels),
       placed: Boolean(m.scheduled_at) && !unplaced.has(m.ref),
