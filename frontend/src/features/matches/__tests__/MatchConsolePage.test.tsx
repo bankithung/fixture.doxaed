@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -160,7 +160,9 @@ describe("MatchConsolePage", () => {
 
   it("starts the match through the pre-match check, not one stray tap", async () => {
     // Owner 2026-08-17: Start is the first thing on the page, and pressing it
-    // shows who is on court before anything begins.
+    // asks once before anything begins. Since 2026-08-19 the sheet is already
+    // open when the page loads, so the first press opens the confirmation
+    // rather than revealing the teams.
     vi.mocked(liveApi.snapshot).mockResolvedValue(snap("scheduled"));
     vi.mocked(liveApi.transition).mockResolvedValue({} as never);
     renderConsole();
@@ -168,7 +170,7 @@ describe("MatchConsolePage", () => {
     await userEvent.click(await screen.findByTestId("start-match"));
     // The first press commits nothing — it opens the check.
     expect(liveApi.transition).not.toHaveBeenCalled();
-    expect(screen.getByText("Check who is on court")).toBeInTheDocument();
+    expect(screen.getByText("Start this match?")).toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId("confirm-start-match"));
     await waitFor(() =>
@@ -192,6 +194,67 @@ describe("MatchConsolePage", () => {
     // result path opens once the match is started, like every other control.
     expect(screen.queryByTestId("edit-scores")).toBeNull();
     expect(screen.queryByTestId("home-point")).toBeNull();
+    // And since 2026-08-19 the board is not merely inert, it is absent: a
+    // 0-0 scoreboard with game 1 marked live under a "start" button was two
+    // readings of the same match, one of them false.
+    expect(screen.queryByTestId("game-history")).toBeNull();
+    expect(screen.queryByText("Match score")).toBeNull();
+  });
+
+  it("names the competition, both squads and the crew before it will start", async () => {
+    // Owner 2026-08-19: the pre-match screen is a manual verification, so
+    // everything the scorer checks against the people in front of them has to
+    // be ON it — sport, category, teams, players, referees and teachers.
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      snap("scheduled", {
+        sport: "table_tennis",
+        sport_meta: { key: "table_tennis", name: "Table Tennis", family: "target" },
+        leaf_key: "table_tennis.open.girls.doubles",
+        venue: "Audi · T1",
+      } as never),
+    );
+    renderConsole();
+
+    const gate = await screen.findByTestId("pre-match-gate");
+    expect(within(gate).getByTestId("match-context")).toHaveTextContent(
+      "Table Tennis",
+    );
+    expect(within(gate).getByTestId("match-context")).toHaveTextContent(
+      "Girls",
+    );
+    expect(within(gate).getByText("Audi · T1")).toBeInTheDocument();
+    // Both squads, named as headings, with their players. (The folded lineup
+    // editor names them too, hence the role query rather than plain text.)
+    expect(
+      within(gate).getByRole("heading", { name: "Alpha" }),
+    ).toBeInTheDocument();
+    expect(
+      within(gate).getByRole("heading", { name: "Beta" }),
+    ).toBeInTheDocument();
+    expect(within(gate).getAllByText("Striker").length).toBeGreaterThan(0);
+    // A squad with nobody on it says so rather than rendering an empty column.
+    expect(
+      within(gate).getByText("No players listed for this team."),
+    ).toBeInTheDocument();
+  });
+
+  it("warns about an unassigned crew at the confirm, and starts anyway", async () => {
+    // The server has no precondition on scheduled -> live, and a crew assigned
+    // verbally is normal on the day. Saying so is right; blocking is not.
+    vi.mocked(liveApi.snapshot).mockResolvedValue(snap("scheduled"));
+    vi.mocked(liveApi.transition).mockResolvedValue({} as never);
+    renderConsole();
+
+    expect(await screen.findByTestId("gate-no-officials")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("start-match"));
+    expect(screen.getByTestId("start-warnings")).toHaveTextContent(
+      "No official is assigned to this match.",
+    );
+
+    await userEvent.click(screen.getByTestId("confirm-start-match"));
+    await waitFor(() =>
+      expect(liveApi.transition).toHaveBeenCalledWith("m1", "live"),
+    );
   });
 
   it("requires a confirm before completing (P7a mistake-proofing)", async () => {
@@ -474,10 +537,13 @@ describe("MatchConsolePage", () => {
     renderConsole();
     await screen.findAllByText("Alpha");
 
-    await userEvent.click(screen.getByTestId("lineup-view-court"));
+    // The editor is folded into the pre-match sheet now, so open it first.
+    await userEvent.click(screen.getByText("Edit team sheets"));
+    await userEvent.click(await screen.findByTestId("lineup-view-court"));
     // No native badminton visual: the generic flat list shows the roster.
     expect(screen.queryByTestId("football-pitch")).toBeNull();
-    expect(await screen.findByTestId("lineup-flat-side")).toBeInTheDocument();
-    expect(screen.getByText("Striker")).toBeInTheDocument();
+    const flat = await screen.findByTestId("lineup-flat-side");
+    // Scoped: the pre-match sheet lists the same player above.
+    expect(within(flat).getByText("Striker")).toBeInTheDocument();
   });
 });

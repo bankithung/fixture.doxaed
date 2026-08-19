@@ -618,20 +618,33 @@ export function MatchConsolePage(): React.ReactElement {
   // The console is a working surface, not a reading column: it fills the
   // shell on a phone/tablet and settles at 90% of the available width from
   // `lg` up (owner 2026-07-26), where the 5% gutters replace page padding.
-  return (
-    <div className="mx-auto flex w-full flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4 lg:w-[90%] lg:px-0">
-      {/* Before kickoff the gate leads the page (owner 2026-08-17): the Start
-          control belongs where it is seen, not at the foot of a board whose
-          every other control is inert until the match is live. */}
-      {match.status === "scheduled" ? (
+  const backLink = (
+    <Link
+      to={routes.tournamentMatches(id)}
+      className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
+      {t("Back to matches")}
+    </Link>
+  );
+
+  // Before kickoff the console IS the team sheet and nothing else (owner
+  // 2026-08-19). The board used to render underneath the gate, so a match that
+  // had not started showed "Confirm and start" above a 0-0 scoreboard with
+  // game 1 already marked live — two readings of the same match, one of them
+  // false. No sport module, recorder, event log or match report mounts here.
+  if (match.status === "scheduled") {
+    return (
+      <div className="mx-auto flex w-full flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4 lg:w-[90%] lg:px-0">
         <PreMatchGate
           match={match}
+          tournament={query.data?.tournament}
           officials={[
             ...(officialsQ.data?.scorer
               ? [{
                   id: officialsQ.data.scorer.id,
                   name: officialsQ.data.scorer.name,
-                  role: t("scorer"),
+                  role: "scorer",
                 }]
               : []),
             ...(officialsQ.data?.officials ?? []).map((o) => ({
@@ -640,8 +653,24 @@ export function MatchConsolePage(): React.ReactElement {
           ]}
           pending={tr.isPending}
           onStart={() => tr.mutate("live")}
+          back={backLink}
+          sheets={
+            <LineupPanel
+              matchId={matchId}
+              homeTeam={match.home_team}
+              awayTeam={match.away_team}
+              sportKey={match.sport_meta?.key ?? match.sport ?? ""}
+              family={family}
+              playersPerSide={match.players_per_side ?? null}
+            />
+          }
         />
-      ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto flex w-full flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4 lg:w-[90%] lg:px-0">
 
       {/* A sport module carries this context as its OWN heading inside the
           board (owner 2026-07-26), so the chassis renders this floating
@@ -754,15 +783,7 @@ export function MatchConsolePage(): React.ReactElement {
               </>
             ) : null
           }
-          back={
-            <Link
-              to={routes.tournamentMatches(id)}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
-              {t("Back to matches")}
-            </Link>
-          }
+          back={backLink}
         />
       ) : (
         <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm print:hidden">
@@ -827,18 +848,9 @@ export function MatchConsolePage(): React.ReactElement {
         </div>
       )}
 
-      {/* Pre-kickoff team sheets (lineups freeze at kickoff). */}
-      {match.status === "scheduled" ? (
-        <LineupPanel
-          matchId={matchId}
-          homeTeam={match.home_team}
-          awayTeam={match.away_team}
-          sportKey={match.sport_meta?.key ?? match.sport ?? ""}
-          family={family}
-          playersPerSide={match.players_per_side ?? null}
-        />
-      ) : null}
-
+      {/* Team sheets freeze at kickoff, so past this point they are read-only
+          and live inside the pre-match sheet, which is the only screen a
+          not-yet-started match has. */}
       {/* Record event (football only; set sports carry the recorder inside
           the board via extras). */}
       {live && timed ? (

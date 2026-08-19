@@ -11,8 +11,20 @@ export const OFFICIAL_ROLES: { value: string; label: string }[] = [
   { value: "commissioner", label: "Match commissioner" },
 ];
 
+/** Roles a person can HOLD but nobody assigns from the picker above: the
+ * scorer is its own seat on the match, and `linesman` arrived with sepak
+ * takraw. Kept apart so the picker's list stays the assignable set. */
+const EXTRA_ROLE_LABELS: Record<string, string> = {
+  linesman: "Linesman",
+  scorer: "Scorer",
+};
+
 export function officialRoleLabel(role: string): string {
-  return OFFICIAL_ROLES.find((r) => r.value === role)?.label ?? role;
+  return (
+    OFFICIAL_ROLES.find((r) => r.value === role)?.label ??
+    EXTRA_ROLE_LABELS[role] ??
+    role.replace(/_/g, " ")
+  );
 }
 
 export interface Candidate {
