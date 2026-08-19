@@ -225,8 +225,20 @@ if changed "^frontend/"; then
 fi
 
 # ---- 6. backend restart --------------------------------------------------------
-if changed "^backend/\|^deploy/gunicorn"; then
-  run "restart backend" sudo -n systemctl restart fixture || fail
+if changed "^backend/\|^deploy/gunicorn\|^deploy/fixture.service"; then
+  # reload, NOT restart. ExecReload=HUP makes gunicorn re-exec its workers with
+  # no dropped requests (measured 2026-08-19: 8/8 logins healthy through a
+  # reload vs ~15s of 502s through a restart, which locked the owner out
+  # mid-session). A restart is only actually required when the unit file or its
+  # environment changes -- python code and gunicorn.conf.py are both re-read by
+  # the re-forked workers.
+  if changed "^deploy/fixture.service"; then
+    run "install unit" sudo -n cp deploy/fixture.service /etc/systemd/system/fixture.service || fail
+    run "daemon-reload" sudo -n systemctl daemon-reload || fail
+    run "restart backend (unit file changed)" sudo -n systemctl restart fixture || fail
+  else
+    run "reload backend" sudo -n systemctl reload fixture || fail
+  fi
   # /api/me/ does not exist (it is /api/accounts/me/) so this check used to read
   # 404 and pass -- it would have gone green with the whole API unrouted. The
   # real endpoint answers 403 unauthenticated; 404 now means broken routing.

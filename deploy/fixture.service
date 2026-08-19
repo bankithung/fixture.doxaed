@@ -22,6 +22,17 @@ RestartSec=3
 KillMode=mixed
 TimeoutStopSec=30
 
+# Resource protection (2026-08-19). This box is 2 vCPU / 1.9GB and also hosts
+# dev work (test suites, tsc, vite builds). Without these the app competed with
+# them on equal terms and lost: workers were pushed into swap and served
+# requests in 7-30s while a Claude session ran 7 concurrent jobs.
+# MemoryMin is a GUARANTEE, not a cap - the kernel will not reclaim below it.
+# Applied live with `systemctl set-property` (no restart needed); these lines
+# keep the values if the unit is ever reinstalled on a fresh box.
+MemoryMin=400M
+CPUWeight=800
+IOWeight=800
+
 # Hardening
 NoNewPrivileges=true
 ProtectSystem=full
