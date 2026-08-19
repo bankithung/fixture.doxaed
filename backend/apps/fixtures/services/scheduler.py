@@ -606,16 +606,21 @@ def merge_stored_constraints(cfg: ScheduleConfig, constraints: list | None) -> l
                 str(x).strip() for x in (p.get("final_order") or [])
                 if isinstance(x, str) and str(x).strip()
             ]
+            solo = str(p.get("one_at_a_time") or "none").strip().lower()
+            if solo not in _FINISH_SOLO_NOTES:
+                solo = "none"
             if order:
                 cfg.constraint_rules.append(ScopedRule(
                     ctype, scope, True, weight,
-                    {"order": order, "final_order": final_order}, record=c))
+                    {"order": order, "final_order": final_order,
+                     "one_at_a_time": solo}, record=c))
                 names = ", ".join(_FINISH_PHASE_NOTES.get(x, x) for x in order)
                 notes.append(
                     f"Every competition finishes in phases ({scope}): {names}. "
                     "A phase starts only once the one before it has finished"
                     + (", and the last of them plays in the order you set."
                        if final_order else ".")
+                    + _FINISH_SOLO_NOTES[solo]
                 )
         elif ctype in ("even_spacing", "avoid_back_to_back"):
             notes.append(f"'{ctype}' is optimised by the built-in day-spread scoring.")
@@ -1174,6 +1179,16 @@ def closing_round_ok(
     return True
 
 
+# What each ``one_at_a_time`` answer earns in the generation notes.
+_FINISH_SOLO_NOTES: dict[str, str] = {
+    "none": "",
+    "sport": (
+        " Two of the last phase's matches never overlap within one sport,"
+        " though different sports still play at the same time."
+    ),
+    "all": " Only one of the last phase's matches plays at a time.",
+}
+
 # How each phase reads in the plain-language note the setup screen shows back.
 _FINISH_PHASE_NOTES: dict[str, str] = {
     "earlier": "all earlier rounds",
@@ -1194,6 +1209,10 @@ class FinishPlan:
     key_of: dict[str, tuple[int, int]]
     # match id -> phase token, for readable violations.
     phase_of: dict[str, str]
+    # match id -> the group it must have to itself, for matches of the LAST
+    # phase when the rule asks for one at a time ("" = every sport shares one
+    # group, i.e. one final anywhere). Empty map = they may share a slot.
+    solo_of: dict[str, str] = field(default_factory=dict)
 
 
 def resolve_finish_phases(
@@ -1248,8 +1267,10 @@ def resolve_finish_phases(
             if isinstance(x, str) and str(x).strip()
         ]
         last_phase = order[-1]
+        solo = str(r.params.get("one_at_a_time") or "none").strip().lower()
         key_of: dict[str, tuple[int, int]] = {}
         phase_of: dict[str, str] = {}
+        solo_of: dict[str, str] = {}
         for m in in_scope:
             steps = steps_by_leaf.get(m.leaf_key) or []
             step = (m.stage_no, m.round_no)
@@ -1267,8 +1288,12 @@ def resolve_finish_phases(
             )
             key_of[m.id] = (order.index(phase), sub)
             phase_of[m.id] = phase
+            if phase == last_phase and solo in ("sport", "all"):
+                solo_of[m.id] = m.sport if solo == "sport" else ""
         if key_of:
-            plans.append(FinishPlan(rule=r, key_of=key_of, phase_of=phase_of))
+            plans.append(FinishPlan(
+                rule=r, key_of=key_of, phase_of=phase_of, solo_of=solo_of,
+            ))
     return plans
 
 
@@ -1300,6 +1325,28 @@ def finish_phase_bounds(
             elif hi is None or ostart < hi:
                 hi = ostart
     return lo, hi
+
+
+def finish_solo_busy(
+    m: MatchSlotReq, plans: Sequence[FinishPlan],
+    placed: Mapping[str, tuple[datetime, datetime]],
+) -> list[tuple[datetime, datetime]]:
+    """Intervals ``m`` may not overlap because they already hold its group.
+
+    With ``one_at_a_time: sport`` a competition's final has its sport to
+    itself — one table tennis final at a time, while a sepak final runs in the
+    other hall (owner 2026-08-19). Computed once per match, like the phase
+    bounds; a match the rule does not cover gets an empty list.
+    """
+    out: list[tuple[datetime, datetime]] = []
+    for plan in plans:
+        group = plan.solo_of.get(m.id)
+        if group is None:
+            continue
+        for oid, span in placed.items():
+            if oid != m.id and plan.solo_of.get(oid) == group:
+                out.append(span)
+    return out
 
 
 def _pin_venue_ok(r: ScopedRule, venue: str, base_of: dict[str, str]) -> bool:
@@ -1387,10 +1434,12 @@ def schedule_matches(
     finish_plans = resolve_finish_phases(
         matches, [r for r in rules if r.type == "phased_finish"], cfg,
     )
-    # The window the already-placed phases leave the match being placed. Set
-    # once per match, just before its slot scan.
+    # The window the already-placed phases leave the match being placed, and
+    # the intervals that already hold its solo group. Set once per match, just
+    # before its slot scan.
     phase_lo: datetime | None = None
     phase_hi: datetime | None = None
+    phase_busy: list[tuple[datetime, datetime]] = []
 
     # Sub-venue expansion (§2.3): display name -> base name, and the parallel
     # units of each expanded base.
@@ -1541,6 +1590,11 @@ def schedule_matches(
             return False
         if phase_hi is not None and end > phase_hi:
             return False
+        # One final at a time within its group: a final shares no slot with
+        # another of the same sport, though the other hall may run its own.
+        for bstart, bend in phase_busy:
+            if dt < bend and bstart < end:
+                return False
         # Resource capacities (§2.4): officials/scorers cap concurrent
         # in-flight matches per sport (or tournament-wide for scope "all").
         for r in capacity_rules:
@@ -1832,16 +1886,16 @@ def schedule_matches(
         # match (not per candidate slot) — it only moves when something else
         # is placed.
         if finish_plans:
-            phase_lo, phase_hi = finish_phase_bounds(
-                m, finish_plans,
-                {
-                    mid: (start, end_of[mid])
-                    for mid, (start, _v) in assignments.items()
-                    if mid in end_of
-                },
-            )
+            spans = {
+                mid: (start, end_of[mid])
+                for mid, (start, _v) in assignments.items()
+                if mid in end_of
+            }
+            phase_lo, phase_hi = finish_phase_bounds(m, finish_plans, spans)
+            phase_busy = finish_solo_busy(m, finish_plans, spans)
         else:
             phase_lo = phase_hi = None
+            phase_busy = []
         pin = pin_of.get(m.id)
         chosen: tuple[datetime, str] | None = None
         best_score = float("-inf")
@@ -2364,6 +2418,23 @@ def validate_schedule(
                             "match_id": mid, "other_match_id": oid,
                             "phase": plan.phase_of.get(mid, ""),
                             "after_phase": plan.phase_of.get(oid, ""),
+                            "at": start.isoformat(),
+                        })
+                        break
+            # One at a time within a group (owner 2026-08-19): two finals of
+            # the same sport must never share a slot, though two sports may.
+            solo = [
+                (mid, assignments[mid][0], assignments[mid][0] + dur_of(mid), g)
+                for mid, g in plan.solo_of.items() if mid in assignments
+            ]
+            solo.sort(key=lambda x: x[1])
+            for i, (mid, start, end, group) in enumerate(solo):
+                for oid, ostart, oend, ogroup in solo[:i]:
+                    if ogroup == group and start < oend and ostart < end:
+                        violations.append({
+                            "code": "final_not_alone", "hard": True,
+                            "match_id": mid, "other_match_id": oid,
+                            "group": group,
                             "at": start.isoformat(),
                         })
                         break

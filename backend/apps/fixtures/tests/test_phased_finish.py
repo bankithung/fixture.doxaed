@@ -67,12 +67,13 @@ def _bracket(prefix: str, leaf: str) -> list[MatchSlotReq]:
     ]
 
 
-def _rules(order, final_order=None, scope="all"):
+def _rules(order, final_order=None, scope="all", solo=None, **cfg_over):
     stored = [{
         "type": "phased_finish", "scope": scope, "hard": True,
-        "params": {"order": order, "final_order": final_order or []},
+        "params": {"order": order, "final_order": final_order or [],
+                   **({"one_at_a_time": solo} if solo else {})},
     }]
-    cfg = _cfg()
+    cfg = _cfg(**cfg_over)
     merge_stored_constraints(cfg, validate_constraints(stored))
     return cfg
 
@@ -258,3 +259,86 @@ def test_an_empty_order_is_no_rule_at_all():
         "params": {"order": [], "final_order": ["girls"]},
     }]))
     assert [r for r in cfg.constraint_rules if r.type == "phased_finish"] == []
+
+# --------------------------------------- one final at a time, per sport
+SPK_G = "sepak_takraw.u_14.girls"
+
+
+def _overlaps(res, a, b, dur_a=30, dur_b=30):
+    sa, sb = _at(res, a), _at(res, b)
+    return sa < sb + timedelta(minutes=dur_b) and sb < sa + timedelta(minutes=dur_a)
+
+
+def test_two_finals_of_one_sport_never_share_a_slot():
+    # Owner 2026-08-19: "when one category's final is going on, no other final
+    # of the same sport can go on."
+    matches = _bracket("g", GIRLS) + _bracket("b", BOYS)
+    cfg = _rules(["semi_final", "third_place", "final"], solo="sport")
+    res = schedule_matches(matches, cfg)
+    assert not res.unscheduled
+    assert not _overlaps(res, "gf", "bf")
+
+
+def test_a_final_in_another_sport_may_run_at_the_same_time():
+    # "if different sports then how is it — sepak girls final going on, then
+    # at the same time TT categories' final can go on?" It can: different
+    # halls, different officials, nothing shared.
+    matches = _bracket("g", GIRLS) + _bracket("s", SPK_G)
+    cfg = _rules(["semi_final", "third_place", "final"], solo="sport")
+    res = schedule_matches(matches, cfg)
+    assert not res.unscheduled
+    assert _overlaps(res, "gf", "sf")
+
+
+def test_one_at_a_time_all_lets_nothing_share_the_finish():
+    matches = _bracket("g", GIRLS) + _bracket("s", SPK_G)
+    cfg = _rules(["semi_final", "third_place", "final"], solo="all")
+    res = schedule_matches(matches, cfg)
+    assert not res.unscheduled
+    assert not _overlaps(res, "gf", "sf")
+
+
+def test_without_the_setting_finals_may_share_a_slot():
+    # The default changes nothing: two courts, two finals, one time.
+    matches = _bracket("g", GIRLS) + _bracket("b", BOYS)
+    cfg = _rules(["semi_final", "third_place", "final"])
+    res = schedule_matches(matches, cfg)
+    assert _overlaps(res, "gf", "bf")
+
+
+def test_only_the_LAST_phase_is_held_to_one_at_a_time():
+    # The semis still run in parallel — serialising them would double the day
+    # for no reason the host asked for.
+    matches = _bracket("g", GIRLS) + _bracket("b", BOYS)
+    cfg = _rules(["semi_final", "third_place", "final"], solo="sport")
+    res = schedule_matches(matches, cfg)
+    assert _overlaps(res, "gs1", "bs1")
+
+
+def test_a_hand_moved_final_onto_another_is_reported():
+    matches = _bracket("g", GIRLS) + _bracket("b", BOYS)
+    cfg = _rules(["semi_final", "third_place", "final"], solo="sport")
+    res = schedule_matches(matches, cfg)
+    hacked = dict(res.assignments)
+    hacked["bf"] = res.assignments["gf"]  # both TT finals at one time
+    codes = [v["code"] for v in validate_schedule(hacked, matches, cfg)]
+    assert "final_not_alone" in codes
+
+
+def test_the_engines_own_schedule_passes_the_solo_check():
+    matches = _bracket("g", GIRLS) + _bracket("b", BOYS) + _bracket("s", SPK_G)
+    cfg = _rules(["semi_final", "third_place", "final"],
+                 final_order=["girls", "boys"], solo="sport")
+    res = schedule_matches(matches, cfg)
+    assert [v for v in validate_schedule(res.assignments, matches, cfg)
+            if v["code"] == "final_not_alone"] == []
+
+
+def test_an_unknown_answer_falls_back_to_letting_them_share():
+    cfg = _cfg()
+    merge_stored_constraints(cfg, validate_constraints([{
+        "type": "phased_finish", "scope": "all", "hard": True,
+        "params": {"order": ["final"], "one_at_a_time": "whenever"},
+    }]))
+    rule = [r for r in cfg.constraint_rules if r.type == "phased_finish"][0]
+    assert rule.params["one_at_a_time"] == "none"

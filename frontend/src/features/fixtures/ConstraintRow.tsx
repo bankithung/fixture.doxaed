@@ -22,6 +22,7 @@ const PARAM_LABELS: Record<string, string> = {
   venues: "Venues (names, comma-separated)",
   round: "Round (final / semi_final / number)",
   final_order: "Which of them plays first",
+  one_at_a_time: "Two of them at once",
   min_gap_minutes: "Min gap (minutes)",
   cross_venue_gap_minutes: "Cross-venue gap (minutes)",
   order: "Order, most important first",
@@ -41,6 +42,8 @@ const PARAM_HINTS: Record<string, string> = {
     "On, the closing days are kept for those rounds only. Off, earlier rounds may still fill the gaps.",
   final_order:
     "Orders the last phase only. One entry can be a whole sport, one category, or a word from the category name such as girls.",
+  one_at_a_time:
+    "Applies to the last phase. Within a sport keeps two finals off the same slot; other sports still play at that time, in their own hall.",
 };
 
 /** The phase list's own hint — keyed by KIND, because `phased_finish` stores
@@ -64,6 +67,9 @@ const PARAM_OPTION_LABELS: Record<string, string> = {
   "within:any": "Any two of its matches",
   "mode:sequential": "Finish one competition, then start the next",
   "mode:within_round": "All progress together, priority goes first",
+  "one_at_a_time:none": "Allowed, any number together",
+  "one_at_a_time:sport": "One at a time within a sport",
+  "one_at_a_time:all": "One at a time, whole tournament",
 };
 
 /** The literal the engine reads as "whatever the last scheduled day turns out

@@ -213,10 +213,18 @@ CONSTRAINT_TYPES: list[dict[str, Any]] = [
     # orders the LAST listed phase among itself, through the same competition
     # grammar the priority order uses — so "girls" then "boys" is two entries,
     # not one per category.
+    #
+    # ``one_at_a_time`` makes the last phase a solo act: with "sport", two
+    # finals of the SAME sport never overlap (one table tennis final at a
+    # time), while a sepak final may still run alongside one in the hall next
+    # door — which is the point of having two halls. "all" allows exactly one
+    # final anywhere; "none" (the default) leaves them free to share a slot.
     {"type": "phased_finish", "hard": True,
      "label": "Finish in phases: semi-finals, then third places, then finals",
-     "params_schema": {"order": "phase_order", "final_order": "order"},
-     "param_options": {"order": list(FINISH_PHASES)},
+     "params_schema": {"order": "phase_order", "final_order": "order",
+                       "one_at_a_time": "str"},
+     "param_options": {"order": list(FINISH_PHASES),
+                       "one_at_a_time": ["none", "sport", "all"]},
      "scopes": ["all", "sport", "leaf"], "layer": "S"},
 ]
 
