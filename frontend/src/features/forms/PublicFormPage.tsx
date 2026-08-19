@@ -552,17 +552,57 @@ export function PublicFormPage(): React.ReactElement {
     }
     return keys;
   }, [data]);
+  /** Each sheet group's tick columns and the option values they accept.
+   * A prior submission saved under an older schema can hold values these
+   * columns no longer offer (Grace's bare "table_tennis"), which the UI
+   * cannot show as a tick but prefix-matching would still act on. */
+  const tickColumns = useMemo(() => {
+    const map = new Map<string, { key: string; allowed: Set<string> }[]>();
+    for (const sec of data?.form?.schema?.sections ?? []) {
+      for (const f of sec.fields ?? []) {
+        if (f.type !== "group" || !f.repeatable) continue;
+        const cols = (f.fields ?? [])
+          .filter((c) => c.layout === "columns" && (c.options?.length ?? 0) > 0)
+          .map((c) => ({
+            key: c.key,
+            allowed: new Set((c.options ?? []).map((o) => String(o.value))),
+          }));
+        if (cols.length) map.set(f.key, cols);
+      }
+    }
+    return map;
+  }, [data]);
   const scrubPrefill = (
     pf: Record<string, unknown>,
   ): Record<string, unknown> =>
     Object.fromEntries(
-      Object.entries(pf).filter(
-        // The competition selection AND the auto sections' teams are DERIVED
-        // (from Stage-1 leaves and the sheet's ticks): a prior submission
-        // saved under an older flow blocked the synthesis and reviewed as
-        // "No players" beside a ticked student (owner 2026-08-19).
-        ([k]) => !compFieldKeys.has(k) && !autoTeamKeys.has(k),
-      ),
+      Object.entries(pf)
+        .filter(
+          // The competition selection AND the auto sections' teams are DERIVED
+          // (from Stage-1 leaves and the sheet's ticks): a prior submission
+          // saved under an older flow blocked the synthesis and reviewed as
+          // "No players" beside a ticked student (owner 2026-08-19).
+          ([k]) => !compFieldKeys.has(k) && !autoTeamKeys.has(k),
+        )
+        .map(([k, v]) => {
+          // Drop tick values the column no longer offers, so a stale key
+          // neither builds invisible teams nor fails submit validation.
+          const cols = tickColumns.get(k);
+          if (!cols || !Array.isArray(v)) return [k, v] as const;
+          const rows = v.map((r) => {
+            if (!r || typeof r !== "object") return r;
+            const row = { ...(r as Record<string, unknown>) };
+            for (const col of cols) {
+              if (Array.isArray(row[col.key])) {
+                row[col.key] = (row[col.key] as unknown[]).filter((x) =>
+                  col.allowed.has(String(x)),
+                );
+              }
+            }
+            return row;
+          });
+          return [k, rows] as const;
+        }),
     );
   /** The selected school's registered leaves (null until a school with a
    * registration is chosen → no scoping). */
@@ -717,11 +757,19 @@ export function PublicFormPage(): React.ReactElement {
         .find((g) => g.key === sheetKey)
         ?.fields?.find((c) => c.layout === "columns");
       if (!ticksChild) continue;
+      // Only a tick the column actually offers counts. A stale value from an
+      // older schema (bare "table_tennis") prefix-covers every leaf of the
+      // sport while showing no tick anywhere (owner 2026-08-19).
+      const offered = new Set(
+        (ticksChild.options ?? []).map((o) => String(o.value)),
+      );
       const members = sheet
         .filter((r) => {
           const row = (r ?? {}) as Record<string, unknown>;
           const declared = Array.isArray(row[ticksChild.key])
-            ? (row[ticksChild.key] as unknown[]).map(String)
+            ? (row[ticksChild.key] as unknown[]).map(String).filter((d) =>
+                offered.has(d),
+              )
             : [];
           return Boolean(row[idField]) && declared.some((d) => eventCovers(d, leaf));
         })
@@ -730,12 +778,22 @@ export function PublicFormPage(): React.ReactElement {
       let staffIds: string[] = [];
       if (staffChild?.seed_from_group && staffChild.seed_events && staffChild.seed_row_id) {
         const staffSheet = answers[staffChild.seed_from_group];
+        const staffOffered = new Set(
+          ((schema.sections ?? [])
+            .flatMap((x) => x.fields ?? [])
+            .find((g) => g.key === staffChild.seed_from_group)
+            ?.fields?.find((c) => c.key === staffChild.seed_events)
+            ?.options ?? []
+          ).map((o) => String(o.value)),
+        );
         if (Array.isArray(staffSheet)) {
           staffIds = staffSheet
             .filter((r) => {
               const row = (r ?? {}) as Record<string, unknown>;
               const declared = Array.isArray(row[staffChild.seed_events!])
-                ? (row[staffChild.seed_events!] as unknown[]).map(String)
+                ? (row[staffChild.seed_events!] as unknown[])
+                    .map(String)
+                    .filter((d) => staffOffered.size === 0 || staffOffered.has(d))
                 : [];
               return (
                 Boolean(row[staffChild.seed_row_id!]) &&
@@ -772,8 +830,18 @@ export function PublicFormPage(): React.ReactElement {
           ? (prev[b.teamKey] as Record<string, unknown>[])
           : [];
         const teams: Record<string, unknown>[] = [];
-        for (let at = 0; at < b.members.length; at += b.cap) {
-          const squad = b.members.slice(at, at + b.cap);
+        // Balanced split: 6 sepak players with a squad cap of 4 make two
+        // regus of 3, not a 4 and an illegal 2. Row order still decides who
+        // lands together.
+        const count = Math.max(1, Math.ceil(b.members.length / b.cap));
+        const base = Math.floor(b.members.length / count);
+        let extra = b.members.length % count;
+        let at = 0;
+        for (let ti = 0; ti < count && at < b.members.length; ti++) {
+          const size = base + (extra > 0 ? 1 : 0);
+          if (extra > 0) extra--;
+          const squad = b.members.slice(at, at + size);
+          at += size;
           const row: Record<string, unknown> = {
             [b.playersKey]: squad.map((id) => ({ [b.pickKey]: id })),
           };
@@ -818,6 +886,7 @@ export function PublicFormPage(): React.ReactElement {
       team: string;
       players: string[];
       staff: string[];
+      need: number;
     }[] = [];
     const nameOf = (
       sheetKey: string,
@@ -897,6 +966,10 @@ export function PublicFormPage(): React.ReactElement {
           team: String(row[nameChild?.key ?? ""] ?? "").trim(),
           players,
           staff,
+          need:
+            typeof playersChild?.min_items === "number"
+              ? playersChild.min_items
+              : 0,
         });
       }
     }
@@ -2010,6 +2083,13 @@ export function PublicFormPage(): React.ReactElement {
                                     {t("No players")}
                                   </span>
                                 )}
+                                {row.players.length > 0 &&
+                                row.players.length < row.need ? (
+                                  <div className="text-xs text-destructive">
+                                    {t("Needs at least")} {row.need}{" "}
+                                    {t("players")}
+                                  </div>
+                                ) : null}
                               </td>
                               <td className="border-b border-border px-3 py-2 text-muted-foreground">
                                 {row.staff.join(", ") || "·"}
