@@ -270,3 +270,45 @@ def test_seeds_api_allows_clearing_with_null():
     )
     assert r.status_code == 200, r.content
     assert Team.objects.get(id=teams[0].id).seed is None
+
+
+# ---------------- a group winner keeps the bye it earned (owner 2026-08-19)
+def test_the_same_group_repair_stays_inside_its_layer():
+    """Three groups qualify [A1, B1, C1, A2, B2, C2], and the bracket pairs C1
+    with C2. The repair used to trade C2 for the TOP seed, which handed a bye
+    to a runner-up and put two group winners in the same quarter-final —
+    "Group C top 1 vs Group A top 1", which is what the owner saw. The swap
+    belongs inside the runners-up layer."""
+    from apps.fixtures.services.generate import _cross_seed, _opening_pairs_bracket
+
+    quals = [["A1", "A2"], ["B1", "B2"], ["C1", "C2"]]
+    seeds = _cross_seed(quals)
+    winners = {"A1", "B1", "C1"}
+
+    # The two byes go to group WINNERS, not to a runner-up.
+    pairs = _opening_pairs_bracket(len(seeds))
+    byes = [
+        seeds[i] for i, j in pairs
+        if i < len(seeds) and j >= len(seeds)
+    ]
+    assert len(byes) == 2
+    assert set(byes) <= winners
+
+    for i, j in pairs:
+        if i >= len(seeds) or j >= len(seeds):
+            continue
+        a, b = seeds[i], seeds[j]
+        # No opening pair puts two group winners together...
+        assert not ({a, b} <= winners), f"{a} vs {b} are both group winners"
+        # ...and none is a same-group rematch.
+        assert a[0] != b[0], f"{a} vs {b} come from the same group"
+
+
+def test_two_groups_still_cross_cleanly():
+    """The even-group case never needed a repair; it must not change."""
+    from apps.fixtures.services.generate import _cross_seed, _opening_pairs_bracket
+
+    seeds = _cross_seed([["A1", "A2"], ["B1", "B2"]])
+    for i, j in _opening_pairs_bracket(len(seeds)):
+        if i < len(seeds) and j < len(seeds):
+            assert seeds[i][0] != seeds[j][0]

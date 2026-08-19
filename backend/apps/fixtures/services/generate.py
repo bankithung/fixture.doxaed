@@ -2129,15 +2129,34 @@ def _cross_seed(
 
     group_of = {tid: gi for gi, q in enumerate(quals) for tid in q}
     group_of.update(dict(extra or []))
-    _repair_same_group_pairs(seeds, group_of)
+    # Which finishing place each qualifier came from, so the repair below can
+    # keep a group winner out of a runner-up's slot.
+    layer_of = {
+        tid: place for place, layer in enumerate(layers) for tid in layer
+    }
+    _repair_same_group_pairs(seeds, group_of, layer_of)
     return seeds
 
 
-def _repair_same_group_pairs(seeds: list[str], group_of: dict) -> None:
+def _repair_same_group_pairs(
+    seeds: list[str], group_of: dict, layer_of: dict | None = None,
+) -> None:
     """Same-group round-1 avoidance over a seed list — the repair pass
     ``_cross_seed`` has always run, shared with ``knockout_seeding="overall"``
     (increment O). Swaps a conflicting pair member with another seed whose
-    own pair stays clean. In place, deterministic, best-effort."""
+    own pair stays clean. In place, deterministic, best-effort.
+
+    ``layer_of`` (finishing place per team: winners 0, runners-up 1, …) keeps
+    the swap INSIDE its layer, which is what this pass always claimed to do
+    and never did (owner 2026-08-19). Trading across layers fixes the
+    same-group pair by demoting a group winner: with three groups the seeds
+    are [A1, B1, C1, A2, B2, C2], the bracket pairs C1 with C2, and swapping
+    C2 for the top seed handed the BYE to a runner-up and put two group
+    winners in the same quarter-final. Swapping C2 with another runner-up
+    fixes the clash and leaves the winners where they earned to be. A swap
+    outside the layer is still tried if nothing inside it works, because a
+    same-group opening pair is the worse fault of the two.
+    """
     pairs = _opening_pairs_bracket(len(seeds))
 
     def same_group(i: int, j: int) -> bool:
@@ -2149,18 +2168,25 @@ def _repair_same_group_pairs(seeds: list[str], group_of: dict) -> None:
     for i, j in pairs:
         if not same_group(i, j):
             continue
-        # Swap seeds[j] with another same-layer seed whose pair stays clean.
-        for a, b in pairs:
-            for cand, partner in ((a, b), (b, a)):
-                if cand in (i, j) or cand >= len(seeds):
-                    continue
-                seeds[j], seeds[cand] = seeds[cand], seeds[j]
-                if not same_group(i, j) and not same_group(cand, partner):
-                    break
-                seeds[j], seeds[cand] = seeds[cand], seeds[j]  # undo
-            else:
-                continue
-            break
+        # Candidates in the conflicting seed's own layer first, then the rest.
+        want_layer = None if layer_of is None else layer_of.get(seeds[j])
+
+        def rank(c: int, want: object = want_layer) -> int:
+            if layer_of is None or c >= len(seeds):
+                return 0
+            return 0 if layer_of.get(seeds[c]) == want else 1
+
+        cands = [
+            (cand, partner)
+            for a, b in pairs
+            for cand, partner in ((a, b), (b, a))
+            if cand not in (i, j) and cand < len(seeds)
+        ]
+        for cand, partner in sorted(cands, key=lambda cp: (rank(cp[0]), cp[0])):
+            seeds[j], seeds[cand] = seeds[cand], seeds[j]
+            if not same_group(i, j) and not same_group(cand, partner):
+                break
+            seeds[j], seeds[cand] = seeds[cand], seeds[j]  # undo
 
 
 def _repair_same_institution_pairs(
