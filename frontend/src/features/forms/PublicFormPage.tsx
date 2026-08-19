@@ -538,6 +538,10 @@ export function PublicFormPage(): React.ReactElement {
    * every landing; a prior response saved under an older schema carries
    * values that match no current option (owner 2026-08-19: Grace's saved
    * branch keys blanked the whole matrix). */
+  /** Derived team groups the user has edited by hand this session — the
+   * synthesis leaves those alone; everything else it keeps in lockstep with
+   * the sheet's ticks. */
+  const dirtyTeams = useRef<Set<string>>(new Set());
   const autoTeamKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const sec of data?.form?.schema?.sections ?? []) {
@@ -621,6 +625,7 @@ export function PublicFormPage(): React.ReactElement {
       setErrorPaths({});
       setSheetTab(null);
       wantPrefill.current = true;
+      dirtyTeams.current.clear();
     }
   }, [answers, instField, compFieldKeys, schema]);
 
@@ -661,9 +666,12 @@ export function PublicFormPage(): React.ReactElement {
   // 2026-08-18): a tick on a student's row is the entry, so each auto
   // section's team group is synthesized — players chunked into squads of the
   // format's size, in row order, and every teacher whose "In charge of"
-  // ticks cover the sport attached to each team. Only an untouched group is
-  // written, so a hand-edited competition stays the school's own. Team names
-  // stay unset here; the institution-name effect fills them "<School> <TAG>-n".
+  // ticks cover the sport attached to each team. The derived groups MIRROR
+  // the ticks continuously (owner 2026-08-19: stale teams from earlier tick
+  // states piled up and outlived their students): unticking removes the team,
+  // re-chunking replaces it, and only a group the user edited by hand this
+  // session is left alone. Team names stay unset here; the institution-name
+  // effect fills them "<School> <TAG>-n" after each rebuild.
   useEffect(() => {
     const schema = data?.form?.schema;
     if (!schema) return;
@@ -759,9 +767,10 @@ export function PublicFormPage(): React.ReactElement {
       let touched = false;
       const next = { ...prev };
       for (const b of builds) {
-        const existing = prev[b.teamKey];
-        if (Array.isArray(existing) && existing.length > 0) continue;
-        if (b.members.length === 0) continue;
+        if (dirtyTeams.current.has(b.teamKey)) continue;
+        const existing = Array.isArray(prev[b.teamKey])
+          ? (prev[b.teamKey] as Record<string, unknown>[])
+          : [];
         const teams: Record<string, unknown>[] = [];
         for (let at = 0; at < b.members.length; at += b.cap) {
           const squad = b.members.slice(at, at + b.cap);
@@ -775,7 +784,21 @@ export function PublicFormPage(): React.ReactElement {
           }
           teams.push(row);
         }
-        next[b.teamKey] = teams;
+        // Compare only what the synthesis owns (players + teacher), so the
+        // name the other effect fills in does not read as a difference and
+        // the two effects converge instead of ping-ponging.
+        const sameShape =
+          existing.length === teams.length &&
+          teams.every((row, i) => {
+            const cur = (existing[i] ?? {}) as Record<string, unknown>;
+            const owned = (k?: string): boolean =>
+              !k ||
+              JSON.stringify(cur[k] ?? null) === JSON.stringify(row[k] ?? null);
+            return owned(b.playersKey) && owned(b.staffKey);
+          });
+        if (sameShape) continue;
+        if (teams.length === 0) delete next[b.teamKey];
+        else next[b.teamKey] = teams;
         touched = true;
       }
       return touched ? next : prev;
@@ -803,11 +826,13 @@ export function PublicFormPage(): React.ReactElement {
       id: string,
     ): string => {
       const rows = answers[sheetKey];
-      if (!Array.isArray(rows)) return id;
+      if (!Array.isArray(rows)) return "";
       const hit = rows.find(
         (r) => String((r as Record<string, unknown>)?.[idField] ?? "") === id,
       ) as Record<string, unknown> | undefined;
-      return String(hit?.[labelField] ?? "").trim() || id;
+      // An id with no sheet row behind it is a deleted person's residue,
+      // not a name. Show nothing rather than the raw id.
+      return String(hit?.[labelField] ?? "").trim();
     };
     for (const sec of reachableSections(schema, answers)) {
       if (!sec.auto) continue;
@@ -1128,6 +1153,9 @@ export function PublicFormPage(): React.ReactElement {
   const current = isReview ? undefined : steps[clamped];
 
   const setAnswer = (key: string, value: unknown) => {
+    // A hand edit to a derived team group (reached via the error walk) takes
+    // it out of the synthesis's hands for this session.
+    if (autoTeamKeys.has(key)) dirtyTeams.current.add(key);
     setAnswers((a) => ({ ...a, [key]: value }));
     setErrors((e) => {
       if (!e[key]) return e;

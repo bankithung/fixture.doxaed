@@ -1614,3 +1614,106 @@ describe("PublicFormPage · the sheet locks impossible cells", () => {
     );
   });
 });
+
+describe("PublicFormPage \u00b7 the built teams mirror the ticks", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  const mirrorPayload = {
+    tournament_name: "ANPSA Dimapur",
+    form: {
+      id: "form1", title: "Team registration", description: "",
+      confirmation_message: "Thanks",
+      schema: {
+        version: 1,
+        sections: [
+          {
+            key: "competitions", title: "Competitions",
+            fields: [{
+              key: "categories", type: "multi_choice", label: "Playing in",
+              options: [{ value: "tt.u14.girls", label: "U-14 \u00b7 Girls" }],
+            }],
+          },
+          {
+            key: "participants", title: "Your participants",
+            fields: [{
+              key: "participant_students", type: "group", label: "Student",
+              repeatable: true, row_key: "participant_id", layout: "sheet",
+              tab_label: "Students",
+              fields: [
+                { key: "participant_id", type: "hidden", label: "" },
+                { key: "participant_name", type: "short_text",
+                  label: "Full name", required: true },
+                { key: "participant_events", type: "multi_choice",
+                  label: "Playing in", layout: "columns",
+                  options: [
+                    { value: "tt.u14.girls", label: "U-14 \u00b7 Girls",
+                      sport: "Table Tennis", code: "UG" },
+                  ] },
+              ],
+            }],
+          },
+          {
+            key: "cat_tt_u14_girls", title: "Teams \u00b7 TT \u00b7 U-14 \u00b7 Girls",
+            auto: true,
+            visibility: { field: "categories", op: "includes", value: "tt.u14.girls" },
+            fields: [{
+              key: "teams_ttg", type: "group", label: "Team", repeatable: true,
+              fields: [
+                { key: "team_name_ttg", type: "short_text", label: "Team name",
+                  default_from: "institution", default_suffix: "TT" },
+                { key: "players_ttg", type: "group", label: "Players",
+                  repeatable: true, max_items: 2,
+                  fields: [{
+                    key: "player_pick", type: "dropdown", label: "Student",
+                    data_source: {
+                      type: "form_group", group: "participant_students",
+                      value_field: "participant_id", label_field: "participant_name",
+                    },
+                  }] },
+              ],
+            }],
+          },
+        ],
+      } as FormSchema,
+    },
+  };
+
+  it("rebuilds on re-chunk, and unticking removes the team", async () => {
+    // Owner 2026-08-19: teams synthesized from earlier tick states piled up
+    // (12 rows against 2 ticks) and a deleted student's raw row id printed
+    // as a player name. The derived groups must mirror the CURRENT ticks.
+    vi.mocked(formsApi.publicGet).mockResolvedValue(mirrorPayload as never);
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+    await userEvent.click(screen.getByRole("checkbox", { name: /U-14 \u00b7 Girls/ }));
+    await userEvent.click(screen.getByRole("button", { name: /participants/i }));
+
+    // Two students, both ticked into the one competition.
+    await userEvent.click(screen.getByTestId("row-add-participant_students"));
+    await userEvent.click(screen.getByTestId("row-add-participant_students"));
+    const names = screen.getAllByLabelText(/full name/i);
+    await userEvent.type(names[0], "Asha");
+    await userEvent.type(names[1], "Binu");
+    await userEvent.click(screen.getByLabelText(/U-14 \u00b7 Girls, Student 1/));
+    await userEvent.click(screen.getByLabelText(/U-14 \u00b7 Girls, Student 2/));
+
+    await userEvent.click(screen.getByRole("button", { name: /confirm & review/i }));
+    const table = await screen.findByTestId("review-teams");
+    expect(within(table).getByText("Asha, Binu")).toBeInTheDocument();
+
+    // Untick one: the squad re-chunks instead of freezing at first build.
+    await userEvent.click(screen.getByRole("button", { name: /back/i }));
+    await userEvent.click(screen.getByLabelText(/U-14 \u00b7 Girls, Student 2/));
+    await userEvent.click(screen.getByRole("button", { name: /confirm & review/i }));
+    const rebuilt = await screen.findByTestId("review-teams");
+    expect(within(rebuilt).getByText("Asha")).toBeInTheDocument();
+    expect(within(rebuilt).queryByText(/Binu/)).not.toBeInTheDocument();
+
+    // Untick the last one: no ticks, no teams, no table.
+    await userEvent.click(screen.getByRole("button", { name: /back/i }));
+    await userEvent.click(screen.getByLabelText(/U-14 \u00b7 Girls, Student 1/));
+    await userEvent.click(screen.getByRole("button", { name: /confirm & review/i }));
+    await screen.findByRole("button", { name: /back/i });
+    expect(screen.queryByTestId("review-teams")).not.toBeInTheDocument();
+  });
+});
