@@ -3,7 +3,6 @@ from __future__ import annotations
 from django.urls import path
 
 from apps.disputes.views import TournamentDisputeView
-from apps.matches.views import TournamentTiesView
 from apps.fixtures.views import (
     AdvancementRefireView,
     ControlRoomDayView,
@@ -24,6 +23,11 @@ from apps.fixtures.views import (
     TournamentVenueDetailView,
     TournamentVenuesView,
 )
+from apps.forms.views import (
+    GenerateInstitutionFormView,
+    GenerateTeamFormView,
+    TournamentFormsView,
+)
 from apps.lens.views import (
     LensCampaignsView,
     LensCloseView,
@@ -39,16 +43,12 @@ from apps.lens.views import (
     LensReopenView,
     LensShareCardView,
 )
-from apps.forms.views import (
-    GenerateInstitutionFormView,
-    GenerateTeamFormView,
-    TournamentFormsView,
-)
 from apps.matches.views import (
     TournamentLeadersView,
     TournamentMatchListView,
     TournamentStandingsView,
     TournamentSuspensionsView,
+    TournamentTiesView,
 )
 from apps.permissions.views import (
     TournamentGrantView,
@@ -60,15 +60,6 @@ from apps.streaming.views import (
     TournamentCourtStreamsView,
     TournamentStreamLinkDetailView,
     TournamentStreamLinksView,
-)
-from apps.teams.views_roster import (
-    TournamentRosterDetailView,
-    TournamentRosterView,
-)
-from apps.teams.views_tournament_houses import (
-    TournamentHouseDetailView,
-    TournamentHouseListView,
-    TournamentHouseMemberView,
 )
 from apps.teams.views import (
     InstitutionDetailView,
@@ -82,12 +73,22 @@ from apps.teams.views import (
     TeamWithdrawView,
     TournamentTeamsListView,
 )
+from apps.teams.views_roster import (
+    TournamentRosterDetailView,
+    TournamentRosterView,
+)
+from apps.teams.views_tournament_houses import (
+    TournamentHouseDetailView,
+    TournamentHouseListView,
+    TournamentHouseMemberView,
+)
 from apps.tournaments.views import (
     BulkAssignCrewView,
     ConstraintTypesView,
     TournamentAuditView,
     TournamentBulkInvitationView,
     TournamentCompleteView,
+    TournamentCopySetupView,
     TournamentDetailView,
     TournamentInvitationCreateView,
     TournamentInvitationResendView,
@@ -113,6 +114,11 @@ urlpatterns = [
         "<uuid:tournament_id>/",
         TournamentDetailView.as_view(),
         name="tournament-detail",
+    ),
+    path(
+        "<uuid:tournament_id>/copy-setup/",
+        TournamentCopySetupView.as_view(),
+        name="tournament-copy-setup",
     ),
     path(
         "<uuid:tournament_id>/settings/",

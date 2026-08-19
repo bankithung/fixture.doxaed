@@ -31,6 +31,7 @@ from apps.tournaments.serializers import (
     TournamentSerializer,
     TournamentStageTransitionSerializer,
 )
+from apps.tournaments.services.copy_setup import copy_fixture_setup
 from apps.tournaments.services.create import create_tournament
 from apps.tournaments.services.rules import (
     can_edit_rules,
@@ -627,6 +628,46 @@ class TournamentSettingsView(GenericAPIView):
         except ValueError as exc:
             raise DRFValidationError({"detail": str(exc)})
         return Response(_settings_payload(tournament, request.user))
+
+
+class TournamentCopySetupView(GenericAPIView):
+    """`POST /api/tournaments/{id}/copy-setup/` — take another tournament's
+    fixture setup.
+
+    Body: ``{source_tournament_id, parts?, dry_run?, event_id?}``. Manager on
+    BOTH tournaments; both must be in the same workspace. Copies only the
+    inputs the fixture generator reads — never teams, players, forms or
+    results. ``dry_run`` reports what would happen and writes nothing, which
+    is how a host checks a copy before taking it.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        target = _get_tournament_or_404(request.user, tournament_id)
+        if not can_manage_tournament(request.user, target):
+            raise PermissionDenied("not_tournament_manager")
+        source_id = request.data.get("source_tournament_id")
+        if not source_id:
+            raise DRFValidationError({"detail": "source_tournament_id_required"})
+        source = _get_tournament_or_404(request.user, source_id)
+        if not can_manage_tournament(request.user, source):
+            raise PermissionDenied("not_tournament_manager")
+        try:
+            report = copy_fixture_setup(
+                source=source,
+                target=target,
+                by=request.user,
+                parts=request.data.get("parts"),
+                dry_run=bool(request.data.get("dry_run")),
+                event_id=request.data.get("event_id"),
+                request=request,
+            )
+        except PermissionError as exc:
+            return Response({"detail": str(exc)}, status=403)
+        except ValueError as exc:
+            raise DRFValidationError({"detail": str(exc)})
+        return Response(report)
 
 
 class TournamentSportsView(GenericAPIView):
