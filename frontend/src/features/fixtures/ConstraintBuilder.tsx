@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpDown, CheckCheck, Save } from "lucide-react";
+import { ArrowUpDown, CheckCheck, Copy, Save } from "lucide-react";
 import {
   tournamentsApi,
   type ConstraintDraft,
@@ -16,6 +16,7 @@ import { invalidateTournament, qk } from "@/lib/queryKeys";
 import { t } from "@/lib/t";
 import { humanizeLeaf } from "@/features/controlroom/format";
 import { ConstraintRow } from "./ConstraintRow";
+import { CopySetupDialog } from "./CopySetupDialog";
 import { groupRules } from "./ruleGroups";
 
 /** Records the GlobalSetupWizard owns at scope:"all" — they appear here with
@@ -87,6 +88,7 @@ export function ConstraintBuilder({
 }): React.ReactElement {
   const qc = useQueryClient();
   const toast = useToast();
+  const [copying, setCopying] = useState(false);
   const [state, setState] = useState<{
     base: ConstraintRecord[];
     rows: ConstraintRecord[];
@@ -393,6 +395,18 @@ export function ConstraintBuilder({
         )}
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* A season of tuning is worth reusing (owner 2026-08-19): take
+              another tournament's rules, calendar and durations wholesale. */}
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="open-copy-setup"
+            onClick={() => setCopying(true)}
+            title={t("Take the rules and timings from another tournament")}
+          >
+            <Copy aria-hidden="true" className="h-3.5 w-3.5" />
+            {t("Copy from another tournament")}
+          </Button>
           <Button
             size="sm"
             disabled={!dirty || save.isPending}
@@ -404,6 +418,11 @@ export function ConstraintBuilder({
             {save.isPending ? t("Saving…") : t("Save rules")}
           </Button>
         </div>
+        <CopySetupDialog
+          tournamentId={tournamentId}
+          open={copying}
+          onClose={() => setCopying(false)}
+        />
       </div>
     </section>
   );

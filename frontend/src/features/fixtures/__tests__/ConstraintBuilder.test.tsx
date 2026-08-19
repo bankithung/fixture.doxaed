@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -24,6 +24,9 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       sports: vi.fn(),
       drawConfig: vi.fn(),
       updateDrawConfig: vi.fn(),
+      venues: vi.fn(),
+      list: vi.fn(),
+      copySetup: vi.fn(),
     },
   };
 });
@@ -84,6 +87,8 @@ function mount() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(tournamentsApi.venues).mockResolvedValue({ venues: [] } as never);
+  vi.mocked(tournamentsApi.list).mockResolvedValue([] as never);
   vi.mocked(tournamentsApi.settings).mockResolvedValue(SETTINGS);
   vi.mocked(tournamentsApi.updateSettings).mockResolvedValue(SETTINGS);
   vi.mocked(tournamentsApi.constraintTypes).mockResolvedValue(CATALOG);
@@ -213,5 +218,47 @@ describe("ConstraintBuilder", () => {
     });
     mount();
     expect(await screen.findByText("Checked")).toBeInTheDocument();
+  });
+});
+
+describe("ConstraintBuilder · copying another tournament's setup", () => {
+  it("checks before it copies, and says what would arrive", async () => {
+    // Owner 2026-08-19: a season of tuning should be reusable next year, and
+    // nothing should be written before the host has seen what arrives.
+    vi.mocked(tournamentsApi.list).mockResolvedValue([
+      { id: "t1", name: "This year" },
+      { id: "t2", name: "Last year" },
+    ] as never);
+    vi.mocked(tournamentsApi.copySetup).mockResolvedValue({
+      source_id: "t2",
+      source_name: "Last year",
+      parts: ["constraints", "draw_config", "scheduling_config"],
+      counts: { constraints: 14, draw_config: 3, scheduling_config: 0 },
+      unknown_competitions: ["chess.open"],
+      target_had: { constraints: 0, draw_config: 0 },
+      copied: false,
+      dry_run: true,
+    } as never);
+
+    mount();
+    await userEvent.click(await screen.findByTestId("open-copy-setup"));
+    const dialog = await screen.findByTestId("copy-setup-dialog");
+
+    // Nothing can be copied before a source is chosen.
+    expect(within(dialog).getByTestId("copy-setup-apply")).toBeDisabled();
+    await userEvent.click(within(dialog).getByLabelText("Copy from"));
+    await userEvent.click(screen.getByRole("option", { name: "Last year" }));
+    await userEvent.click(within(dialog).getByTestId("copy-setup-check"));
+
+    const report = await screen.findByTestId("copy-setup-report");
+    expect(report).toHaveTextContent("14");
+    expect(report).toHaveTextContent("Scheduling rules");
+    // A rule naming a competition this tournament lacks is called out.
+    expect(report).toHaveTextContent("chess.open");
+    // The check was a dry run: nothing was written.
+    expect(tournamentsApi.copySetup).toHaveBeenCalledWith(
+      "t1",
+      expect.objectContaining({ dry_run: true }),
+    );
   });
 });

@@ -915,6 +915,10 @@ export const tournamentsApi = {
   /** The workspace's venue pool (types + availability windows). */
   venues: (id: string) =>
     api.get<{ venues: VenueRecord[] }>(`/api/tournaments/${id}/venues/`),
+  /** Take another tournament's fixture setup. `dry_run` reports what would
+   * happen and writes nothing, which is how a host checks before taking it. */
+  copySetup: (id: string, body: CopySetupRequest) =>
+    api.post<CopySetupReport>(`/api/tournaments/${id}/copy-setup/`, body),
   createVenue: (id: string, body: Omit<VenueRecord, "id">) =>
     api.post<VenueRecord>(`/api/tournaments/${id}/venues/`, body),
   updateVenue: (
@@ -1389,6 +1393,29 @@ export interface ConstraintType {
 }
 
 /** A stored venue: physical facility with a type + availability windows. */
+export interface CopySetupRequest {
+  source_tournament_id: string;
+  /** Omitted = the fixture generator's own inputs. */
+  parts?: string[];
+  dry_run?: boolean;
+  event_id?: string;
+}
+
+/** What a copy did, or would do. */
+export interface CopySetupReport {
+  source_id: string;
+  source_name: string;
+  parts: string[];
+  counts: Record<string, number>;
+  /** Competitions the copied settings name that this tournament does not
+   * have — a rule that would read as set and do nothing. */
+  unknown_competitions: string[];
+  target_had: { constraints: number; draw_config: number };
+  copied: boolean;
+  dry_run?: boolean;
+  replayed?: boolean;
+}
+
 export interface VenueRecord {
   id: string;
   name: string;
