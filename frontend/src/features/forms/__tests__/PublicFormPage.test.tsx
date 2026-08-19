@@ -1567,7 +1567,8 @@ describe("PublicFormPage · the sheet locks impossible cells", () => {
                       sport: "Table Tennis", code: "UG", gender: "girls",
                       age: { op: "under", age: 14 } },
                     { value: "tt.open.girls", label: "Open · Girls",
-                      sport: "Table Tennis", code: "OG", gender: "girls" },
+                      sport: "Table Tennis", code: "OG", gender: "girls",
+                      squad_min: 1, squad_max: 1 },
                   ] },
               ],
             }],
@@ -1594,6 +1595,26 @@ describe("PublicFormPage · the sheet locks impossible cells", () => {
     expect(screen.getByLabelText(/U-14 · Boys, Student 1/)).toBeDisabled();
     expect(screen.getByLabelText(/U-14 · Girls, Student 1/)).toBeEnabled();
     expect(screen.getByLabelText(/Open · Girls, Student 1/)).toBeEnabled();
+  });
+
+  it("locks a competition once the school has 3 teams in it", async () => {
+    // Owner 2026-08-19: "max 3 teams" binds in singles too, where every
+    // ticked player is their own team, so the 4th tick locks.
+    vi.mocked(formsApi.publicGet).mockResolvedValue(lockSchemaPayload as never);
+    renderPage();
+    await screen.findByRole("heading", { name: /team registration/i });
+    for (let i = 0; i < 4; i++) {
+      await userEvent.click(screen.getByTestId("row-add-participant_students"));
+    }
+    for (let i = 1; i <= 3; i++) {
+      await userEvent.click(
+        screen.getByLabelText(`Open · Girls, Student ${i}`),
+      );
+    }
+    expect(screen.getByLabelText("Open · Girls, Student 4")).toBeDisabled();
+    // Unticking someone reopens the competition for the rest.
+    await userEvent.click(screen.getByLabelText("Open · Girls, Student 1"));
+    expect(screen.getByLabelText("Open · Girls, Student 4")).toBeEnabled();
   });
 
   it("the per-sport band counts competition ENTRIES, and says so", async () => {

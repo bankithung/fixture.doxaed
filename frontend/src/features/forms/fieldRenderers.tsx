@@ -993,6 +993,23 @@ function SheetGroup({
         }
       }
     }
+    // A school fields at most 3 teams per competition (owner 2026-08-19),
+    // singles included: a team there is one player, so the cap is 3 ticks.
+    // Only competition columns carry squad bounds; a full competition locks
+    // for students not already in it, never for those who are.
+    if (
+      eventsChild &&
+      (option.squad_min != null || option.squad_max != null) &&
+      !asArray(row[eventsChild.key]).includes(String(option.value))
+    ) {
+      const capacity = MAX_TEAMS * (option.squad_max ?? 1);
+      const ticked = rows.filter((r) =>
+        asArray((r ?? {})[eventsChild.key]).includes(String(option.value)),
+      ).length;
+      if (ticked >= capacity) {
+        return `${t("Max")} ${MAX_TEAMS} ${t("teams")}`;
+      }
+    }
     return null;
   };
   const rowLabel = t(field.label) || t("Item");
@@ -1069,7 +1086,10 @@ function SheetGroup({
         if (extra > 0) extra--;
       }
     }
-    const allOk = sizes.length > 0 && sizes.every((z) => z >= min && z <= max);
+    const allOk =
+      sizes.length > 0 &&
+      sizes.length <= MAX_TEAMS &&
+      sizes.every((z) => z >= min && z <= max);
     return {
       teams: sizes.length,
       ok: allOk,
@@ -1119,9 +1139,11 @@ function SheetGroup({
                       >
                         {st.teams === 0
                           ? t("Not entered")
-                          : st.short
-                            ? `${st.teams} ${st.teams === 1 ? t("team") : t("teams")} · ${t("short of players")}`
-                            : `${st.teams} ${st.teams === 1 ? t("team") : t("teams")}`}
+                          : st.teams > MAX_TEAMS
+                            ? `${st.teams} ${t("teams")} · ${t("max")} ${MAX_TEAMS}`
+                            : st.short
+                              ? `${st.teams} ${st.teams === 1 ? t("team") : t("teams")} · ${t("short of players")}`
+                              : `${st.teams} ${st.teams === 1 ? t("team") : t("teams")}`}
                       </span>
                     </span>
                 );
