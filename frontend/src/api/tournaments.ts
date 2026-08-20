@@ -1812,6 +1812,8 @@ export interface StagePayload {
   stage: string;
   status: string;
   order: string[];
+  /** How players are entered — `roster_first` means people were declared. */
+  roster_mode?: RosterMode;
   allowed_to: string[];
   can_manage: boolean;
   /** Organizer-only (creator / workspace admin): gates the Delete button. */

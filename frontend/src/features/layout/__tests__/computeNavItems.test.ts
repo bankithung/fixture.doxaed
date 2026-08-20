@@ -354,6 +354,37 @@ describe("computeTournamentNav", () => {
     expect(items.map((i) => i.key)).not.toContain("streams");
   });
 
+  it("a roster tournament keeps the people list in the ops rail", () => {
+    // The list of every declared student lives on the roster stage and as a
+    // view inside Team registration — both of which leave the rail at
+    // `ready`. Mid-event the organizer still needs "who is playing what"
+    // (owner 2026-08-20), so Operations carries it beside Schools & teams.
+    const ops = computeTournamentNav(TID, {
+      user: makeUser(["admin"], []),
+      slug: "acme",
+      stage: { ...readyStage({ can_manage: true }), roster_mode: "roster_first" },
+    }).find((g) => g.key === "operations")!;
+    const keys = ops.items.map((i) => i.key);
+    expect(keys).toContain("participants");
+    expect(keys.indexOf("participants")).toBe(keys.indexOf("directory") + 1);
+    const item = ops.items.find((i) => i.key === "participants")!;
+    expect(item.href).toBe(routes.tournamentParticipants(TID));
+    expect(item.locked).toBeFalsy();
+  });
+
+  it("an inline tournament has no people list in the ops rail", () => {
+    // Nothing is declared under `inline`, so the item would open an empty
+    // sheet. Same gate the setup rail uses.
+    const keys = flatKeys(
+      computeTournamentNav(TID, {
+        user: makeUser(["admin"], []),
+        slug: "acme",
+        stage: { ...readyStage({ can_manage: true }), roster_mode: "inline" },
+      }),
+    );
+    expect(keys).not.toContain("participants");
+  });
+
   it("ops items link to their operations routes", () => {
     const items = computeTournamentNav(TID, {
       user: makeUser(["admin"], []),
@@ -383,33 +414,17 @@ describe("computeTournamentNav", () => {
     expect(items.find((i) => i.key === "settings")?.href).toBe(routes.tournamentSettings(TID));
   });
 
-  // Participants (spec 2026-08-17). The rail follows the server's `order`, so
-  // it never has to know what turned the layer on.
-  const ROSTER_STAGE = {
-    ...STAGE,
-    order: [
-      "setup",
-      "org_registration",
-      "roster",
-      "team_registration",
-      "fixtures",
-      "ready",
-    ],
-    stages: [
-      { key: "setup", label: "Setup" },
-      { key: "org_registration", label: "Institution registration" },
-      { key: "roster", label: "Participants" },
-      { key: "team_registration", label: "Team registration" },
-      { key: "fixtures", label: "Fixtures" },
-      { key: "ready", label: "Ready" },
-    ],
-  };
+  // Participants (spec 2026-08-17). The funnel's roster STAGE was retired on
+  // 2026-08-18 — the sheet lives inside the team form now — so the rail reads
+  // `roster_mode` off the stage payload instead. Gating on the order was what
+  // silently removed the item from every rail (owner report 2026-08-20).
+  const ROSTER_STAGE = { ...STAGE, roster_mode: "roster_first" };
 
-  it("shows Participants only when the funnel has that stage", () => {
+  it("shows Participants only when the tournament declares its people", () => {
     const without = computeTournamentNav(TID, {
       user: makeUser(["admin"], []),
       slug: "acme",
-      stage: STAGE,
+      stage: { ...STAGE, roster_mode: "inline" },
     });
     expect(flatKeys(without)).not.toContain("participants");
 
@@ -419,7 +434,7 @@ describe("computeTournamentNav", () => {
       stage: ROSTER_STAGE,
     });
     const keys = flatKeys(withRoster);
-    // It sits where the funnel puts it: after the schools, before the teams.
+    // It sits where the people arrive: after the schools, before the teams.
     expect(keys.indexOf("participants")).toBe(keys.indexOf("teams") - 1);
     const item = withRoster
       .flatMap((g) => g.items)
@@ -427,7 +442,7 @@ describe("computeTournamentNav", () => {
     expect(item?.href).toBe(routes.tournamentParticipants(TID));
   });
 
-  it("locks Participants until the tournament reaches that stage", () => {
+  it("never locks Participants — it is not a step in the funnel", () => {
     const byKey = Object.fromEntries(
       computeTournamentNav(TID, {
         user: makeUser(["admin"], []),
@@ -437,7 +452,6 @@ describe("computeTournamentNav", () => {
         .flatMap((g) => g.items)
         .map((i) => [i.key, i]),
     );
-    expect(byKey.participants.locked).toBe(true);
-    expect(byKey.participants.lockLabel).toBe("Participants");
+    expect(byKey.participants.locked).toBeFalsy();
   });
 });

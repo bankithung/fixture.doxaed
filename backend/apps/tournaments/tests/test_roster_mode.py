@@ -67,6 +67,25 @@ def test_asking_for_participants_first_adds_no_stage():
     assert "roster" not in flow_order(t)
 
 
+def test_the_stage_payload_names_the_roster_mode():
+    """With the stage retired, ``order`` can no longer tell a client whether
+    anyone was declared — and the nav's people list gates on exactly that
+    (owner report 2026-08-20: the participants list had vanished from every
+    rail). The payload says it outright instead."""
+    admin = _verified("a@test.local")
+    c = _client(admin)
+    inline = c.post("/api/tournaments/", {"name": "Plain Cup"}, format="json")
+    roster = c.post(
+        "/api/tournaments/",
+        {"name": "Roster Cup", "roster_mode": "roster_first"},
+        format="json",
+    )
+    for created, mode in ((inline, "inline"), (roster, "roster_first")):
+        r = c.get(f"/api/tournaments/{created.data['id']}/stage/")
+        assert r.status_code == 200, r.data
+        assert r.data["roster_mode"] == mode
+
+
 def test_an_unknown_mode_is_refused():
     admin = _verified("a@test.local")
     r = _client(admin).post(

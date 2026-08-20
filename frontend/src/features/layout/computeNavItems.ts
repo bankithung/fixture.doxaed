@@ -86,6 +86,10 @@ export interface NavStage {
   stage: string;
   order: string[];
   stages: { key: string; label: string }[];
+  /** `roster_first` = the schools declared their people, so the participants
+   * list has something to show. The funnel no longer carries a roster STAGE
+   * (retired 2026-08-18), so `order` can no longer answer this. */
+  roster_mode?: string;
   /** Caller's manage flag + effective module codes (permission gating). */
   can_manage?: boolean;
   modules?: string[];
@@ -184,6 +188,9 @@ export function computeTournamentNav(
   // A section keyed to `stageKey` is locked until the tournament reaches it.
   const stageTwo = order[1] ?? "org_registration";
   const intraSchool = stageTwo === "house_setup";
+  // Participants-first tournaments have a declared people list; inline ones
+  // have nothing to read, so the item would open an empty sheet.
+  const rosterFirst = stage ? stage.roster_mode === "roster_first" : false;
   const gate = (stageKey: string | null): Pick<NavItem, "locked" | "lockLabel"> => {
     if (!stage || stageKey === null) return {};
     const rank = order.indexOf(stageKey);
@@ -273,6 +280,19 @@ export function computeTournamentNav(
         href: routes.tournamentTeams(tournamentId),
         icon: Building2,
       },
+      // The people list — every declared student and what they are entered in
+      // (owner 2026-08-20). It is reachable in setup as the roster stage and
+      // as a view inside Team registration, but both of those leave the rail
+      // once the fixtures exist, so an organizer mid-event had no way to the
+      // one list that answers "who is playing what".
+      rosterFirst
+        ? {
+            key: "participants",
+            label: t("Participants"),
+            href: routes.tournamentParticipants(tournamentId),
+            icon: UserSquare2,
+          }
+        : null,
       // Guest Lens: the shared event album captured by visiting schools
       // (QR pass cards, moderation, awards) — managers only.
       canManage
@@ -378,16 +398,16 @@ export function computeTournamentNav(
           ...gate("org_registration"),
         },
     // Participants (spec 2026-08-17) — present only for a tournament that
-    // declares its people before building teams. Derived from the server's
-    // `order`, like every other stage item, so the rail never has to know what
-    // turned the layer on.
-    order.includes("roster")
+    // declares its people before building teams. It reads `roster_mode` off
+    // the stage payload rather than the funnel: the roster STAGE was retired
+    // on 2026-08-18, which silently took this item with it even though the
+    // list it opens never went anywhere.
+    rosterFirst
       ? {
           key: "participants",
           label: t("Participants"),
           href: routes.tournamentParticipants(tournamentId),
           icon: UserSquare2,
-          ...gate("roster"),
         }
       : null,
     {

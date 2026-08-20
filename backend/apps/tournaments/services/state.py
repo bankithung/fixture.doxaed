@@ -697,6 +697,11 @@ def build_stage_payload(t: Tournament, user) -> dict:
         "stage": t.stage,
         "status": t.status,
         "order": list(seq),
+        # How players come into existence (spec 2026-08-17). The funnel no
+        # longer has a roster STAGE (retired 2026-08-18), so the order alone
+        # can no longer tell the nav whether anyone was declared — and the
+        # people list is exactly the surface that gates on it.
+        "roster_mode": t.roster_mode,
         "allowed_to": sorted(_allowed(t.stage, seq)),
         "can_manage": can_manage_tournament(user, t),
         # Organizer-only destructive rights (delete/deactivate) — the FE's
