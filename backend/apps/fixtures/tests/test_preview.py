@@ -16,6 +16,7 @@ from rest_framework.test import APIClient
 from apps.audit.models import AuditEvent
 from apps.fixtures.services.generate import compute_inputs_hash
 from apps.fixtures.services.preview import preview_fixtures
+from apps.fixtures.services.preview_pin import PIN_KEY
 from apps.matches.models import Match, MatchStatus
 from apps.teams.services.registration import register_school
 from apps.tournaments.models import (
@@ -70,7 +71,12 @@ def _register(t, n, leaf=LEAF_U15, school="S"):
 
 
 # ----------------------------------------------------------------- pureness
-def test_preview_persists_nothing():
+def test_preview_persists_no_fixture():
+    """A preview still commits NOTHING about the fixture. Since 2026-08-20 it
+    does write one thing — the draw's own seed, pinned so the same fixture
+    comes back on the next visit (see ``test_preview_pin``) — and that pin is
+    the ONLY key it may touch: no match rows, no scheduling config, no audit
+    event, and no draw-config LAYER."""
     admin = _verified("a@test.local")
     t = _tournament(admin)
     _register(t, 4)
@@ -84,7 +90,7 @@ def test_preview_persists_nothing():
     assert out["matches"] and all(m["scheduled_at"] for m in out["matches"])
     assert Match.objects.count() == 0          # zero rows touched
     t.refresh_from_db()
-    assert (t.draw_config or {}) == {}         # seed NOT persisted
+    assert set(t.draw_config or {}) == {PIN_KEY}  # the pin, and nothing else
     assert t.scheduling_config == {}           # config NOT persisted
     assert AuditEvent.objects.count() == audits_before  # no audit, no event_id
 

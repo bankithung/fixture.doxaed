@@ -1769,6 +1769,32 @@ export interface FixturePreview {
   warnings: unknown[];
   explanation: string[];
   leaf_key: string;
+  /** Whether this fixture is the SAVED one or a fresh draw, and why (owner
+   * 2026-08-20). The previewed draw is pinned server-side, so a revisit shows
+   * the same fixture until it is deliberately re-drawn or the entry list,
+   * format or pairing rules move under it. */
+  pin?: PreviewPin;
+  /** The draw overrides this fixture was drawn under, which Publish MUST
+   * replay alongside the seed: a seed is inert to a competition configured
+   * for registration order, so publishing a shuffled preview without it would
+   * commit the configured draw instead of the one on screen. */
+  draw_overrides?: DrawConfigLayer | null;
+}
+
+/** Why the fixture on screen is the one on screen. */
+export interface PreviewPin {
+  pinned: boolean;
+  /** When the pinned draw was made, ISO. */
+  created_at: string | null;
+  /** True when this call drew fresh instead of replaying the pin. */
+  redrawn: boolean;
+  /** `null` = the saved draw was replayed untouched. */
+  reason:
+    | "first_preview"
+    | "inputs_changed"
+    | "redraw_requested"
+    | "unplaceable"
+    | null;
 }
 
 /** One step in the setup stepper (server-computed; FE renders, never hardcodes). */

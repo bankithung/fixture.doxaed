@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -42,6 +42,7 @@ import { CourtLoadView } from "./CourtLoadView";
 import { GroupCompositionView } from "./GroupCompositionView";
 import { MatchesSpreadsheet } from "./MatchesSpreadsheet";
 import { PreviewToolbar, type ExportDoc } from "./PreviewToolbar";
+import { PreviewPinNote } from "./PreviewPinNote";
 import { buildDrawBrackets, buildDrawSheet } from "./drawModel";
 import { downloadDrawCsv, openDrawPdf } from "./drawExport";
 import { competitionLoads, courtDayLoads } from "./courtLoad";
@@ -161,11 +162,16 @@ export function DryRunPreviewPage(): React.ReactElement {
   // persisted — publish replays it together with the previewed seeds so what
   // was previewed is what commits.
   const [roll, setRoll] = useState(0);
+  // Which roll has already been drawn. "Try another draw" asks the server to
+  // ignore the pin and re-roll; that ask must be spent by exactly ONE fetch.
+  // Left sticky, every later refetch of the same page (toggling Fill the gaps,
+  // say) would silently re-roll the draw the organiser just accepted — the
+  // pin makes the re-drawn fixture come back on its own.
+  const drawnRoll = useRef(0);
   // Pack the days: re-simulate through the optimization pass. Off by default
   // so the first preview is the fast greedy one; the toggle is the owner's
   // "make the best possible fixture" and it re-runs in place.
   const [packed, setPacked] = useState(false);
-  const drawOverride = roll > 0 ? { seeding: "random" as const } : undefined;
   const [stale, setStale] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   // The spreadsheet's state: ERP filters, column sort, group bands.
@@ -216,19 +222,26 @@ export function DryRunPreviewPage(): React.ReactElement {
     staleTime: Infinity,
     gcTime: 0,
     retry: false,
-    queryFn: () =>
-      isAll
+    queryFn: () => {
+      // Spend the re-draw ask here: the fetch that carries it is the one that
+      // re-rolls, and the server pins the winner so every later fetch replays
+      // it instead of rolling again.
+      const fresh = roll > drawnRoll.current;
+      drawnRoll.current = roll;
+      const draw = fresh ? { seeding: "random" as const } : undefined;
+      return isAll
         ? tournamentsApi.previewAllFixtures(id, {
             schedule: schedule!,
-            ...(drawOverride ? { draw: drawOverride } : {}),
+            ...(draw ? { draw } : {}),
             include_schedule: true,
           })
         : tournamentsApi.previewFixtures(id, {
             ...(leaf ? { leaf_key: leaf } : {}),
             schedule: schedule!,
-            ...(drawOverride ? { draw: drawOverride } : {}),
+            ...(draw ? { draw } : {}),
             include_schedule: true,
-          }),
+          });
+    },
   });
 
   const teamNames = useMemo(
@@ -543,7 +556,10 @@ export function DryRunPreviewPage(): React.ReactElement {
         };
         return tournamentsApi.publishAllFixtures(id, {
           schedule: schedule!,
-          ...(drawOverride ? { draw: drawOverride } : {}),
+          // The overrides the PREVIEWED draw ran under, not whatever this tab
+          // last asked for: the fixture on screen may be a pinned re-draw
+          // from a previous visit, and publish has to commit that one.
+          ...(pv.draw_overrides ? { draw: pv.draw_overrides } : {}),
           ...(all.per_leaf_seed ? { per_leaf_seed: all.per_leaf_seed } : {}),
           ...(all.per_leaf_inputs_hash
             ? { per_leaf_inputs_hash: all.per_leaf_inputs_hash }
@@ -554,7 +570,9 @@ export function DryRunPreviewPage(): React.ReactElement {
         leafKey: leaf || undefined,
         // Both, or the seed is ignored: a seed only means anything to the
         // random seeding method.
-        ...(drawOverride ? { seeding: "random" as const } : {}),
+        ...(pv.draw_overrides?.seeding === "random"
+          ? { seeding: "random" as const }
+          : {}),
         ...(pv.seed != null ? { seed: pv.seed } : {}),
         expectedInputsHash: pv.inputs_hash,
       });
@@ -729,6 +747,8 @@ export function DryRunPreviewPage(): React.ReactElement {
               {label}
             </span>
           ) : null}
+          {/* Whether this is the saved draw or a fresh one, and why. */}
+          <PreviewPinNote pin={p?.pin} />
           <span className="hidden text-[0.6875rem] text-muted-foreground lg:inline">
             {t("This is a trial run. Nothing is saved until you publish.")}
           </span>

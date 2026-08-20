@@ -38,6 +38,17 @@ from apps.fixtures.services.generate import (
     plan_single_elimination,
     plan_swiss_round1,
 )
+from apps.fixtures.services.preview_pin import (
+    ALL_SCOPE,
+    leaf_scope,
+    pin_is_current,
+    pin_payload,
+    read_pin,
+    write_pin,
+)
+from apps.fixtures.services.preview_pin import (
+    fingerprint as pin_fingerprint,
+)
 from apps.fixtures.services.scheduler import (
     build_schedule_inputs,
     config_from_dict,
@@ -500,20 +511,56 @@ def preview_fixtures(
     including the ``seed`` Accept must replay and the ``expected_inputs_hash``
     guard value. Raises ValueError on bad config (the view maps it to 400).
     """
-    cfg = effective_draw_config(tournament, leaf_key, overrides=draw)
+    # The pinned draw (owner 2026-08-20): the same fixture comes back on every
+    # visit until it is deliberately re-drawn, or the entry list / format /
+    # pairing rules move under it and it has to be. ``draw`` overrides are the
+    # re-draw button, so they always ignore the pin.
+    scope = leaf_scope(leaf_key)
+    current = pin_fingerprint(tournament, [leaf_key])
+    pin = None if draw else read_pin(tournament, scope)
+    reason: str | None = None
+    used = draw
+    if pin_is_current(pin, current):
+        # Both halves of the pin, or the replay is not the pinned draw: the
+        # overrides it ran under, then the seed it settled on.
+        used = (pin or {}).get("overrides") or None
+    else:
+        reason = (
+            "redraw_requested" if draw
+            else "inputs_changed" if pin
+            else "first_preview"
+        )
+        pin = None
+
+    cfg = effective_draw_config(tournament, leaf_key, overrides=used)
     seeding = str(cfg.get("seeding") or "registration")
     seed = int(cfg["seed"]) if cfg.get("seed") is not None else None
-    if seeding == "random" and seed is None:
-        seed = _new_seed()  # returned for replay — never persisted here
+    if pin is not None:
+        pinned_seed = pin.get("seeds", {}).get(str(leaf_key or ""))
+        if pinned_seed is not None:
+            seed = int(pinned_seed)
+    elif seeding == "random" and seed is None:
+        seed = _new_seed()
 
     warnings: list[dict[str, Any]] = []
     plans = _plan_for_config(
         tournament, leaf_key, cfg, seed=seed, warnings=warnings,
     )
-    return _schedule_and_payload(
+    payload = _schedule_and_payload(
         tournament, plans, schedule=schedule, include_schedule=include_schedule,
         warnings=warnings, seed=seed, leaf_key=leaf_key,
     )
+    if reason is not None:
+        pin = write_pin(
+            tournament, scope, seeds={str(leaf_key or ""): seed},
+            overrides=draw, current=current,
+        )
+    payload["pin"] = pin_payload(pin, redrawn=reason is not None, reason=reason)
+    # What publish has to replay alongside the seed. A seed alone is inert to
+    # a competition configured for registration order, so a fixture previewed
+    # under a shuffle would commit as the configured draw without this.
+    payload["draw_overrides"] = dict(used) if used else None
+    return payload
 
 
 def _schedule_and_payload(
@@ -687,12 +734,14 @@ def preview_all_fixtures(
 
     def draw_once(
         fresh: bool, overrides: dict[str, Any] | None = ...,
+        pinned: dict[str, Any] | None = None,
     ) -> tuple[list[MatchPlan], dict, list, bool]:
         """One whole-tournament draw. ``fresh`` re-rolls the seed of every leaf
         that is drawn at random; returns whether anything could be re-rolled,
         so the caller knows a retry would differ at all. ``overrides`` defaults
         to the caller's ``draw``; pass None to draw the tournament exactly as
-        it is configured."""
+        it is configured. ``pinned`` replays a stored per-leaf seed instead of
+        rolling one, which is what makes a revisit show the SAME fixture."""
         use = draw if overrides is ... else overrides
         warnings: list[dict[str, Any]] = []
         all_plans: list[MatchPlan] = []
@@ -704,9 +753,14 @@ def preview_all_fixtures(
             cfg = effective_draw_config(tournament, lk, overrides=use)
             seeding = str(cfg.get("seeding") or "registration")
             seed = int(cfg["seed"]) if cfg.get("seed") is not None else None
+            replayed = pinned is not None and lk in pinned
+            if replayed and pinned[lk] is not None:
+                seed = int(pinned[lk])
             if seeding == "random":
-                if seed is None or fresh:
+                if seed is None or (fresh and not replayed):
                     seed = _new_seed()
+                # True describes the CONFIG, not this attempt: it is what tells
+                # the caller whether trying again could differ at all.
                 redrawable = True
             try:
                 plans = _plan_for_config(
@@ -726,6 +780,51 @@ def preview_all_fixtures(
 
     def unplaced_of(body: dict[str, Any]) -> int:
         return sum(1 for m in body.get("matches", []) if not m.get("scheduled_at"))
+
+    def finish(body: dict[str, Any], seeds: dict[str, int | None]) -> dict[str, Any]:
+        """The fields every all-competitions body carries, whichever path built
+        it: the seeds publish replays, the per-leaf drift guard (C11) and the
+        competition count."""
+        body["per_leaf_seed"] = seeds
+        body["per_leaf_inputs_hash"] = {
+            lk: compute_inputs_hash(tournament, lk or None) for lk in seeds
+        }
+        body["competitions"] = len(leaves)
+        return body
+
+    # The pinned draw (owner 2026-08-20: "it should be generated once and
+    # saved and not change until I press try another draw"). A pin that still
+    # describes the tournament as it stands is REPLAYED — no search, no
+    # re-roll, so the fixture on screen is the one that was there last time.
+    # A ``draw`` override IS the re-draw button and always ignores it.
+    leaf_keys: list[str | None] = [lf["leaf_key"] for lf in leaves]
+    current = pin_fingerprint(tournament, leaf_keys)
+    stored_pin = None if draw else read_pin(tournament, ALL_SCOPE)
+    pin_reason: str | None = (
+        "redraw_requested" if draw
+        else None if pin_is_current(stored_pin, current)
+        else "inputs_changed" if stored_pin
+        else "first_preview"
+    )
+    if pin_reason is None:
+        all_plans, per_leaf_seed, warnings, redrawable = draw_once(
+            False,
+            overrides=(stored_pin or {}).get("overrides") or None,
+            pinned=(stored_pin or {}).get("seeds") or {},
+        )
+        body = _schedule_and_payload(
+            tournament, all_plans, schedule=schedule,
+            include_schedule=include_schedule, warnings=warnings,
+            seed=None, leaf_key=None,
+        )
+        if not include_schedule or unplaced_of(body) == 0 or not redrawable:
+            body["pin"] = pin_payload(stored_pin, redrawn=False, reason=None)
+            body["draw_overrides"] = (stored_pin or {}).get("overrides") or None
+            return finish(body, per_leaf_seed)
+        # The calendar moved under the pinned draw and it no longer fits.
+        # Keeping it would mean showing a fixture with holes in it when a
+        # better one is a re-draw away, so search — and say why.
+        pin_reason = "unplaceable"
 
     best: dict[str, Any] | None = None
     best_seeds: dict[str, int | None] = {}
@@ -802,12 +901,20 @@ def preview_all_fixtures(
                 f"Tried {tried} draws and kept the one that gave every match a "
                 "time."
             )
-    payload["per_leaf_seed"] = per_leaf_seed
-    # Drift guard inputs for publish-all (C11): the stored-state hash per
-    # previewed leaf, so Accept can 409 when anything changed since preview
-    # (mirroring the single-leaf expected_inputs_hash contract).
-    payload["per_leaf_inputs_hash"] = {
-        lk: compute_inputs_hash(tournament, lk or None) for lk in per_leaf_seed
-    }
-    payload["competitions"] = len(leaves)
-    return payload
+    if pin_reason == "unplaceable":
+        payload.setdefault("explanation", []).append(
+            "The saved draw could no longer be given times on this calendar, "
+            "so it was drawn again."
+        )
+    # Pin the winner, so this is the fixture that comes back next time.
+    # ``kept_configured`` means the shuffle lost to the tournament's own draw
+    # and that draw is what is on screen, so the pin must record it as such —
+    # pinning the overrides here would replay a shuffle nobody is looking at.
+    used = None if kept_configured else draw
+    new_pin = write_pin(
+        tournament, ALL_SCOPE, seeds=best_seeds,
+        overrides=used, current=current,
+    )
+    payload["pin"] = pin_payload(new_pin, redrawn=True, reason=pin_reason)
+    payload["draw_overrides"] = dict(used) if used else None
+    return finish(payload, per_leaf_seed)

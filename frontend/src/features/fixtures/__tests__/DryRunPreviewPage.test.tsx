@@ -659,6 +659,12 @@ describe("DryRunPreviewPage", () => {
   });
 
   it("publishes a re-rolled draw as the random draw it previewed", async () => {
+    // Since the draw is pinned server-side (2026-08-20), the overrides that
+    // made it a shuffle come back in the preview BODY — the fixture on screen
+    // may be a re-draw from a previous visit that this tab never asked for.
+    vi.mocked(tournamentsApi.previewFixtures)
+      .mockResolvedValueOnce(PREVIEW)
+      .mockResolvedValue({ ...PREVIEW, draw_overrides: { seeding: "random" } });
     mount();
     await userEvent.click(await screen.findByTestId("regenerate-preview"));
     await waitFor(() =>
@@ -678,6 +684,11 @@ describe("DryRunPreviewPage", () => {
   });
 
   it("all-mode publishes the re-rolled draw with the same override", async () => {
+    vi.mocked(tournamentsApi.previewAllFixtures)
+      .mockResolvedValueOnce({ ...PREVIEW, competitions: 3 })
+      .mockResolvedValue({
+        ...PREVIEW, competitions: 3, draw_overrides: { seeding: "random" },
+      });
     mount("/tournaments/t1/fixtures/preview?all=1");
     await userEvent.click(await screen.findByTestId("regenerate-preview"));
     await waitFor(() =>
@@ -871,6 +882,86 @@ describe("DryRunPreviewPage \u00b7 a re-draw shows its work", () => {
     // A live region, so a screen reader is told too.
     expect(panel).toHaveAttribute("aria-live", "polite");
     expect(screen.getByTestId("preview-progress-elapsed")).toBeInTheDocument();
+  });
+});
+
+describe("DryRunPreviewPage \u00b7 the draw is saved, not re-rolled", () => {
+  // Owner 2026-08-20: "it should be generated once and saved and not change
+  // until I press try another draw", and "fresh draw need to be automatic".
+  it("says the fixture on screen is the saved one", async () => {
+    vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
+      ...PREVIEW,
+      pin: {
+        pinned: true, created_at: "2026-08-20T07:00:00Z",
+        redrawn: false, reason: null,
+      },
+    });
+    mount();
+    const note = await screen.findByTestId("preview-pin-note");
+    expect(note).toHaveTextContent("Saved draw");
+    expect(note).toHaveAttribute("data-reason", "saved");
+  });
+
+  it("explains a re-draw nobody asked for", async () => {
+    vi.mocked(tournamentsApi.previewFixtures).mockResolvedValue({
+      ...PREVIEW,
+      pin: {
+        pinned: true, created_at: "2026-08-20T07:00:00Z",
+        redrawn: true, reason: "inputs_changed",
+      },
+    });
+    mount();
+    const note = await screen.findByTestId("preview-pin-note");
+    expect(note).toHaveTextContent("Teams or rules changed");
+    expect(note).toHaveAttribute("data-reason", "inputs_changed");
+  });
+
+  it("spends the re-draw ask on ONE fetch, so later refetches keep the draw", async () => {
+    // Left sticky, toggling Fill the gaps after a re-draw would silently roll
+    // a THIRD draw. The pin brings the re-drawn fixture back on its own.
+    mount("/tournaments/t1/fixtures/preview?all=1");
+    await screen.findByTestId("matches-spreadsheet");
+    expect(vi.mocked(tournamentsApi.previewAllFixtures).mock.calls[0]![1].draw)
+      .toBeUndefined();
+
+    await userEvent.click(screen.getByTestId("regenerate-preview"));
+    await waitFor(() =>
+      expect(vi.mocked(tournamentsApi.previewAllFixtures)).toHaveBeenCalledTimes(2),
+    );
+    expect(vi.mocked(tournamentsApi.previewAllFixtures).mock.calls[1]![1].draw)
+      .toEqual({ seeding: "random" });
+
+    await userEvent.click(screen.getByTestId("pack-days-toggle"));
+    await waitFor(() =>
+      expect(vi.mocked(tournamentsApi.previewAllFixtures)).toHaveBeenCalledTimes(3),
+    );
+    expect(vi.mocked(tournamentsApi.previewAllFixtures).mock.calls[2]![1].draw)
+      .toBeUndefined();
+  });
+
+  it("publishes the draw that is on screen, not what this tab last asked for", async () => {
+    // The fixture may be a pinned re-draw from an earlier visit, so the
+    // overrides come from the PREVIEW body, never from local roll state.
+    vi.mocked(tournamentsApi.previewAllFixtures).mockResolvedValue({
+      ...PREVIEW,
+      competitions: 3,
+      per_leaf_seed: { "football.u15": 42 },
+      draw_overrides: { seeding: "random" },
+      pin: {
+        pinned: true, created_at: "2026-08-20T07:00:00Z",
+        redrawn: false, reason: null,
+      },
+    });
+    mount("/tournaments/t1/fixtures/preview?all=1");
+    await screen.findByTestId("matches-spreadsheet");
+    await userEvent.click(screen.getByTestId("accept-preview"));
+    await waitFor(() =>
+      expect(vi.mocked(tournamentsApi.publishAllFixtures)).toHaveBeenCalled(),
+    );
+    expect(vi.mocked(tournamentsApi.publishAllFixtures).mock.calls[0]![1]).toMatchObject({
+      draw: { seeding: "random" },
+      per_leaf_seed: { "football.u15": 42 },
+    });
   });
 });
 

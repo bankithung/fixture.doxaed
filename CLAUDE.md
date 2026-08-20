@@ -169,6 +169,39 @@ Placement order used to be `(stage_no, round_no, match_no)` with **no competitio
 - **It binds in the three places that must agree.** The greedy sorts by phase FIRST (`_phase_sort`), so every earlier-phase match is placed — and its end time known — before a later one is attempted, then gates on `finish_phase_bounds` (computed once per match, not per candidate slot). `validate_schedule` reports `phase_out_of_order`, which is also what stops the optimizer undoing the barrier (`_legal` runs the validator). A hand-moved final is judged by the same resolver the draw was built under.
 - **It is HARD, so it can make a tight day infeasible** — and that is the honest answer, not a bug: on the 2026 Dimapur clone the finals only fit once play ran to 15:30 instead of 15:00 (at 15:00 all ten finals were reported unplaced). `MatchRepairControls` now names all three codes, `closing_round_too_early`/`non_closing_round_too_late` included — they used to reach the screen as raw keys.
 
+## The previewed draw is PINNED (2026-08-20)
+
+The preview was a pure simulate that re-ran on every visit. That looked stable
+only because most competitions are seeded by registration order; a competition
+seeded at RANDOM minted a fresh seed every time, and a "Try another draw" the
+organizer liked was lost the moment they left the page. `services/preview_pin.py`
+saves the winning draw and every later preview replays it (PRD decision 88).
+
+- **A pin is a SEED, not a fixture** — and not only a seed: it stores the
+  `overrides` the draw ran under too. "Try another draw" works by overriding
+  every competition to random seeding, and a registration-seeded competition
+  IGNORES any seed handed to it, so replaying seeds alone hands back the
+  configured draw and silently loses the shuffle. Both halves, or it is not
+  the pinned draw.
+- It lives at `draw_config["preview_pin"][<scope>]`, which is inert to every
+  reader: `effective_draw_config` resolves only the `*` / `sport:<k>` / leaf
+  layers and copies only known keys, so the pin can never perturb the
+  `inputs_hash` that decides whether the pin itself is stale. Scopes are
+  `__all__`, `__whole__` and `leaf:<key>` — never a bare leaf key, and never
+  `*`, which IS a config layer.
+- **Three triggers redraw it**, all reported in the body's `pin` object:
+  `redraw_requested` (the button), `inputs_changed` (teams, format or pairing
+  rules moved — automatic, owner: "fresh draw need to be automatic") and
+  `unplaceable` (the pinned draw no longer fits the calendar). The CALENDAR is
+  deliberately OUTSIDE the fingerprint: lengthening a day re-times the fixture
+  without re-pairing it.
+- **The re-draw ask is spent by ONE fetch** (`drawnRoll` ref in
+  `DryRunPreviewPage`). Left sticky, toggling Fill the gaps after a re-draw
+  rolled a third draw; the pin brings the re-drawn one back on its own.
+- **Publish replays `draw_overrides` from the preview BODY**, never local roll
+  state — the fixture on screen may be a pinned re-draw from an earlier visit
+  that this tab never asked for.
+
 ## Preview has a third view: Courts (2026-08-17)
 
 `DryRunPreviewPage`'s `viewMode` is `sheet | draw | courts`, all reading the SAME filtered rows. `courtLoad.ts` is the pure model. The sheet is ordered by match, so it cannot answer "when is court 2 free" or "how many hours does U-14 boys singles take" — Courts does both. It splits idle time into **breaks you configured** vs **court standing free**; the sheet deliberately stays quiet about unexplained gaps, so this is the only surface that counts them. Unplaced matches hold no court and are charged no minutes.
