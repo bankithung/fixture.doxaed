@@ -41,7 +41,11 @@ import { LeafLabel } from "./LeafLabel";
 import { CourtLoadView } from "./CourtLoadView";
 import { GroupCompositionView } from "./GroupCompositionView";
 import { MatchesSpreadsheet } from "./MatchesSpreadsheet";
-import { PreviewToolbar } from "./PreviewToolbar";
+import { PreviewToolbar, type ExportDoc } from "./PreviewToolbar";
+import { buildDrawBrackets, buildDrawSheet } from "./drawModel";
+import { downloadDrawCsv, openDrawPdf } from "./drawExport";
+import { competitionLoads, courtDayLoads } from "./courtLoad";
+import { downloadCourtCsv, openCourtPdf } from "./courtExport";
 import {
   applyFilters,
   buildRows,
@@ -400,20 +404,129 @@ export function DryRunPreviewPage(): React.ReactElement {
     [label, allRows, filters, rows.length, groupBy, p],
   );
 
-  const onExportCsv = (): void => downloadPreviewCsv(rows, exportMeta);
-  const onExportPdf = (): void =>
-    openPreviewPdf({
-      rows,
-      sort,
-      groupBy,
-      occupancy: p?.matches,
-      blackouts,
-      meta: exportMeta,
-    });
-  // The second layout (owner 2026-08-19): the same filtered rows as a
-  // time-by-court grid, for an official standing at a table.
-  const onExportCourtGrid = (): void =>
-    openPreviewCourtGridPdf({ rows, meta: exportMeta });
+  // Competition names for leaves whose matches carry no rich group label —
+  // the readiness list is the same fallback the on-screen labels use.
+  const leafLabels = useMemo(
+    () =>
+      new Map(
+        (readiness.data?.competitions ?? []).map((c) => [c.leaf_key, c.label]),
+      ),
+    [readiness.data],
+  );
+
+  // The Draw view's own model, and the Courts view's own model. Both read the
+  // FILTERED rows, so an export carries exactly what the screen is showing.
+  const drawLeaves = useMemo(
+    () => buildDrawSheet(filteredMatches, teamNames, teamCrests),
+    [filteredMatches, teamNames, teamCrests],
+  );
+  const drawExportBrackets = useMemo(
+    () => buildDrawBrackets(filteredMatches, teamNames, teamCrests, leafLabels),
+    [filteredMatches, teamNames, teamCrests, leafLabels],
+  );
+  const courtLoads = useMemo(
+    () =>
+      courtDayLoads(
+        rows,
+        schedule?.daily_start ?? "09:00",
+        schedule?.daily_end ?? "18:00",
+        blackouts,
+      ),
+    [rows, schedule, blackouts],
+  );
+  const courtSports = useMemo(() => competitionLoads(rows), [rows]);
+
+  /**
+   * What the toolbar's two buttons write, per view (owner 2026-08-20: "add
+   * export for the draw and court so that i can print both, not just the
+   * sheet"). Every document is built from the filtered rows above, so the rule
+   * stays the one the sheet already followed: you export what you can see.
+   */
+  const { onExportCsv, pdfDocs, csvHint } = useMemo((): {
+    onExportCsv: () => void;
+    pdfDocs: ExportDoc[];
+    csvHint: string;
+  } => {
+    if (viewMode === "draw") {
+      return {
+        onExportCsv: () =>
+          downloadDrawCsv(drawLeaves, drawExportBrackets, exportMeta),
+        csvHint: t("Download the entry lists and pairings as a spreadsheet"),
+        pdfDocs: [
+          {
+            key: "draw",
+            label: t("Draw"),
+            hint: t("Entry lists and knockout pairings, one section per competition"),
+            run: () =>
+              openDrawPdf({
+                leaves: drawLeaves,
+                brackets: drawExportBrackets,
+                meta: exportMeta,
+              }),
+          },
+        ],
+      };
+    }
+    if (viewMode === "courts") {
+      return {
+        onExportCsv: () => downloadCourtCsv(courtLoads, courtSports, exportMeta),
+        csvHint: t("Download court time and free stretches as a spreadsheet"),
+        pdfDocs: [
+          {
+            key: "courts",
+            label: t("Court time"),
+            hint: t("Each court's day, plus the time every competition consumes"),
+            run: () =>
+              openCourtPdf({
+                loads: courtLoads,
+                sports: courtSports,
+                meta: exportMeta,
+              }),
+          },
+        ],
+      };
+    }
+    return {
+      onExportCsv: () => downloadPreviewCsv(rows, exportMeta),
+      csvHint: t("Download the rows you can see as a spreadsheet"),
+      pdfDocs: [
+        {
+          key: "list",
+          label: t("List"),
+          hint: t("One row per match, grouped as on screen"),
+          run: () =>
+            openPreviewPdf({
+              rows,
+              sort,
+              groupBy,
+              occupancy: p?.matches,
+              blackouts,
+              meta: exportMeta,
+            }),
+        },
+        // The second layout (owner 2026-08-19): the same filtered rows as a
+        // time-by-court grid, for an official standing at a table.
+        {
+          key: "grid",
+          label: t("Court grid"),
+          hint: t("Time down the side, courts across the top"),
+          run: () => openPreviewCourtGridPdf({ rows, meta: exportMeta }),
+        },
+      ],
+    };
+  }, [
+    viewMode,
+    rows,
+    sort,
+    groupBy,
+    blackouts,
+    p,
+    exportMeta,
+    drawLeaves,
+    drawExportBrackets,
+    courtLoads,
+    courtSports,
+  ]);
 
   /** Publish = the real generate + schedule endpoints replaying the previewed
    * seed, both guarded by `expected_inputs_hash` (D6/D10). */
@@ -575,6 +688,22 @@ export function DryRunPreviewPage(): React.ReactElement {
   }[]).find((w) => w?.code === "redraw_kept_configured");
   const unplacedCount = p?.unscheduled.length ?? 0;
   const filtersOn = rows.length !== allRows.length;
+
+  // The SAME toolbar sits above all three views — only what its two export
+  // buttons write changes with the view.
+  const toolbar = (
+    <PreviewToolbar
+      rows={allRows}
+      filters={filters}
+      onFilters={setFilters}
+      groupBy={groupBy}
+      onGroupBy={setGroupBy}
+      visible={rows.length}
+      onExportCsv={onExportCsv}
+      csvHint={csvHint}
+      pdfDocs={pdfDocs}
+    />
+  );
 
   return (
     <div className="flex w-full flex-col px-4 py-4 sm:px-6 lg:px-8">
@@ -845,17 +974,7 @@ export function DryRunPreviewPage(): React.ReactElement {
           </div>
         ) : viewMode === "courts" ? (
           <>
-            <PreviewToolbar
-              rows={allRows}
-              filters={filters}
-              onFilters={setFilters}
-              groupBy={groupBy}
-              onGroupBy={setGroupBy}
-              visible={rows.length}
-              onExportCsv={onExportCsv}
-              onExportPdf={onExportPdf}
-              onExportCourtGrid={onExportCourtGrid}
-            />
+            {toolbar}
             <div className="max-h-[65vh] overflow-auto">
               <CourtLoadView
                 rows={rows}
@@ -867,17 +986,7 @@ export function DryRunPreviewPage(): React.ReactElement {
           </>
         ) : viewMode === "sheet" ? (
           <>
-            <PreviewToolbar
-              rows={allRows}
-              filters={filters}
-              onFilters={setFilters}
-              groupBy={groupBy}
-              onGroupBy={setGroupBy}
-              visible={rows.length}
-              onExportCsv={onExportCsv}
-              onExportPdf={onExportPdf}
-              onExportCourtGrid={onExportCourtGrid}
-            />
+            {toolbar}
             <MatchesSpreadsheet
               rows={rows}
               sort={sort}
@@ -891,17 +1000,7 @@ export function DryRunPreviewPage(): React.ReactElement {
           </>
         ) : (
           <>
-            <PreviewToolbar
-              rows={allRows}
-              filters={filters}
-              onFilters={setFilters}
-              groupBy={groupBy}
-              onGroupBy={setGroupBy}
-              visible={rows.length}
-              onExportCsv={onExportCsv}
-              onExportPdf={onExportPdf}
-              onExportCourtGrid={onExportCourtGrid}
-            />
+            {toolbar}
             <div className="max-h-[65vh] overflow-auto px-3 py-3">
               {selectedLeaf ? (
                 /* ONE competition: its own panel — group stage, then the

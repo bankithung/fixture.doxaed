@@ -874,7 +874,44 @@ describe("DryRunPreviewPage \u00b7 a re-draw shows its work", () => {
   });
 });
 
-describe("DryRunPreviewPage \u00b7 the PDF has two layouts", () => {
+describe("DryRunPreviewPage \u00b7 every view prints itself", () => {
+  /** A stub tab that keeps whatever document was written into it. */
+  function tab() {
+    const write = vi.fn();
+    const open = vi.spyOn(window, "open").mockReturnValue({
+      document: { write, close: vi.fn() },
+      focus: vi.fn(),
+      print: vi.fn(),
+    } as never);
+    return { write, open };
+  }
+
+  it("prints the DRAW from the Draw view, not the run sheet", async () => {
+    // Owner 2026-08-20: "add export for the draw and court so that i can print
+    // both, not just the sheet." The export follows the view.
+    const { write, open } = tab();
+    mount();
+    await screen.findByTestId("matches-spreadsheet");
+    await userEvent.click(screen.getByTestId("preview-view-draw"));
+    await userEvent.click(screen.getByTestId("export-pdf"));
+    expect(write).toHaveBeenCalledWith(
+      expect.stringContaining("The draw: entry lists and knockout pairings"),
+    );
+    open.mockRestore();
+  });
+
+  it("prints the COURT report from the Courts view", async () => {
+    const { write, open } = tab();
+    mount();
+    await screen.findByTestId("matches-spreadsheet");
+    await userEvent.click(screen.getByTestId("preview-view-courts"));
+    await userEvent.click(screen.getByTestId("export-pdf"));
+    expect(write).toHaveBeenCalledWith(
+      expect.stringContaining("Court time by competition"),
+    );
+    open.mockRestore();
+  });
+
   it("offers the list and the court grid, both from the rows on screen", async () => {
     // Owner 2026-08-19: "we can have two options, one is the same current PDF
     // view and another is the attached image view" (time down, courts across).

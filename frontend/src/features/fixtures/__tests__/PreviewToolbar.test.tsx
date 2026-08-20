@@ -54,7 +54,7 @@ function mount(filters: GridFilters = EMPTY_FILTERS, visible = ROWS.length) {
       onGroupBy={onGroupBy}
       visible={visible}
       onExportCsv={onExportCsv}
-      onExportPdf={onExportPdf}
+      pdfDocs={[{ key: "list", label: "List", run: onExportPdf }]}
     />,
   );
   return { onFilters, onGroupBy, onExportCsv, onExportPdf };

@@ -56,14 +56,26 @@ function Chip({
   );
 }
 
+/** One printable document this view can produce. */
+export interface ExportDoc {
+  /** Stable key — it is also the menu item's testid (`export-pdf-<key>`). */
+  key: string;
+  label: string;
+  hint?: string;
+  run: () => void;
+}
+
 /**
- * The sheet's toolbar: a search box, ONE Filter button (the filters live in a
- * right-hand drawer — owner 2026-08-15, seven dropdowns were crowding the
+ * The preview's toolbar: a search box, ONE Filter button (the filters live in
+ * a right-hand drawer — owner 2026-08-15, seven dropdowns were crowding the
  * sheet), the applied filters restated as removable chips, the group-by
- * control, the visible/total tally and two exports — CSV for a spreadsheet,
- * PDF for the landscape run sheet — both carrying exactly what is on screen.
- * Selection is lifted so the page can drive the sheet and the competition
- * views from the same state.
+ * control, the visible/total tally and the exports.
+ *
+ * The exports carry WHAT IS ON SCREEN — the same rule the filters follow. The
+ * page hands in the current view's documents (owner 2026-08-20: the draw and
+ * the courts must print too, not just the sheet), so switching to Draw makes
+ * these buttons write the draw. One PDF layout renders as a button; several
+ * render as a menu.
  */
 export function PreviewToolbar({
   rows,
@@ -73,8 +85,8 @@ export function PreviewToolbar({
   onGroupBy,
   visible,
   onExportCsv,
-  onExportPdf,
-  onExportCourtGrid,
+  csvHint,
+  pdfDocs,
 }: {
   /** ALL rows (unfiltered) — facets count against them. */
   rows: PreviewRow[];
@@ -84,11 +96,11 @@ export function PreviewToolbar({
   onGroupBy: (g: GroupBy) => void;
   /** How many rows survive the current filters. */
   visible: number;
-  /** Both exports carry exactly what the filters are showing. */
+  /** The spreadsheet of the CURRENT view. */
   onExportCsv: () => void;
-  onExportPdf: () => void;
-  /** The second PDF layout: time down, courts across. */
-  onExportCourtGrid?: () => void;
+  csvHint?: string;
+  /** The printable documents of the CURRENT view, most useful first. */
+  pdfDocs: ExportDoc[];
 }): React.ReactElement {
   const [drawer, setDrawer] = useState(false);
 
@@ -187,42 +199,38 @@ export function PreviewToolbar({
             data-testid="export-csv"
             onClick={onExportCsv}
             className="px-2.5 text-xs"
-            title={t("Download the rows you can see as a spreadsheet")}
+            title={csvHint ?? t("Download what you can see as a spreadsheet")}
           >
             <Download aria-hidden="true" className="h-3.5 w-3.5" />
             {t("CSV")}
           </Button>
-          {onExportCourtGrid ? (
-            // Two layouts of the SAME filtered rows: the list, and the
-            // time-by-court grid an official reads at the table.
+          {pdfDocs.length > 1 ? (
+            // Several layouts of the SAME filtered rows: one menu, one item
+            // each, so nothing has to be guessed from a single PDF button.
             <ActionMenu label={t("PDF")} icon={FileText} data-testid="export-pdf">
-              <ActionMenuItem
-                data-testid="export-pdf-list"
-                onSelect={onExportPdf}
-                title={t("One row per match, grouped as on screen")}
-              >
-                {t("List")}
-              </ActionMenuItem>
-              <ActionMenuItem
-                data-testid="export-pdf-grid"
-                onSelect={onExportCourtGrid}
-                title={t("Time down the side, courts across the top")}
-              >
-                {t("Court grid")}
-              </ActionMenuItem>
+              {pdfDocs.map((doc) => (
+                <ActionMenuItem
+                  key={doc.key}
+                  data-testid={`export-pdf-${doc.key}`}
+                  onSelect={doc.run}
+                  title={doc.hint}
+                >
+                  {doc.label}
+                </ActionMenuItem>
+              ))}
             </ActionMenu>
-          ) : (
+          ) : pdfDocs.length === 1 ? (
             <Button
               variant="outline"
               data-testid="export-pdf"
-              onClick={onExportPdf}
+              onClick={pdfDocs[0]!.run}
               className="px-2.5 text-xs"
-              title={t("Print or save the rows you can see, landscape")}
+              title={pdfDocs[0]!.hint ?? t("Print or save what you can see")}
             >
               <FileText aria-hidden="true" className="h-3.5 w-3.5" />
               {t("PDF")}
             </Button>
-          )}
+          ) : null}
         </div>
       </div>
 

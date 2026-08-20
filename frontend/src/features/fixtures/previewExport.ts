@@ -1,6 +1,16 @@
 import type { PreviewMatch } from "@/api/tournaments";
 import { t } from "@/lib/t";
 import {
+  baseCss,
+  crestImg,
+  docFooter,
+  docHeader,
+  downloadCsv,
+  esc,
+  fileStem,
+  openPrintable,
+} from "./exportDoc";
+import {
   buildCourtGrid,
   fmtClock,
   groupRows,
@@ -28,9 +38,13 @@ export interface PreviewExportMeta {
   unplaced: number;
 }
 
-function fileStem(meta: PreviewExportMeta): string {
-  const slug = meta.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  return `fixture-preview-${slug || "schedule"}-${new Date().toISOString().slice(0, 10)}`;
+/** The trial-run warning every preview document carries, with the count of
+ * matches that still have no time when there are any. */
+export function draftNote(meta: PreviewExportMeta): string {
+  const base = t("Trial run. This schedule is not published yet.");
+  return meta.unplaced
+    ? `${base} ${meta.unplaced} ${t("match(es) still have no time.")}`
+    : base;
 }
 
 /** Download the rows the filters are showing, in the order they are shown. */
@@ -38,46 +52,7 @@ export function downloadPreviewCsv(
   rows: readonly PreviewRow[],
   meta: PreviewExportMeta,
 ): void {
-  // BOM so Excel reads school names as UTF-8.
-  const blob = new Blob(["﻿" + toCsv(rows)], {
-    type: "text/csv;charset=utf-8",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${fileStem(meta)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-/**
- * A team crest for a printed document, or NOTHING when the team has no badge.
- *
- * These pages are generated HTML, so `components/ui/TeamCrest` (and its
- * on-error fallback to initials) cannot run here. A printed sheet has no way
- * to recover from a missing image either: it would carry the browser's broken
- * -image icon onto the paper. So the rule is absolute — no crest, no tag.
- *
- * Styles are inline because the document is written into a fresh tab and must
- * survive being saved or re-opened on its own.
- */
-function crestImg(url: string, size = 14): string {
-  if (!url) return "";
-  return (
-    `<img src="${esc(url)}" alt="" width="${size}" height="${size}" ` +
-    `style="border-radius:50%;object-fit:cover;vertical-align:middle;` +
-    `margin-right:4px;border:1px solid #e5e7eb;background:#fff">`
-  );
+  downloadCsv(toCsv(rows), `${fileStem("preview", meta.title)}.csv`);
 }
 
 interface PdfColumn {
@@ -184,13 +159,6 @@ export function previewPdfHtml({
     })
     .join("");
 
-  const dateStr = new Date().toLocaleString(undefined, {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
   const scope =
     meta.shown === meta.total
       ? `${meta.total} ${t("matches")}`
@@ -198,22 +166,11 @@ export function previewPdfHtml({
 
   return `<!doctype html><html><head><meta charset="utf-8">
 <title>${esc(meta.title)} ${esc(t("preview"))}</title>
-<style>
-  * { box-sizing: border-box; margin: 0; }
-  body { font: 9.5px/1.35 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; color: #111827; padding: 24px; }
-  .band-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 3px solid #6840dd; padding-bottom: 8px; }
-  h1 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
-  .sub { color: #6b7280; font-size: 10px; margin-top: 2px; }
-  .brand { color: #6840dd; font-size: 10px; font-weight: 600; white-space: nowrap; }
-  .meta { color: #6b7280; font-size: 9px; margin-top: 6px; }
-  .filters { color: #6840dd; font-size: 9px; margin-top: 2px; }
-  .draft { color: #b45309; font-size: 9px; margin-top: 2px; font-weight: 600; }
+<style>${baseCss()}
   table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  thead { display: table-header-group; }
   th { text-align: left; font-size: 8px; text-transform: uppercase; letter-spacing: 0.06em; color: #374151;
        padding: 4px 5px; border-bottom: 1.5px solid #9ca3af; background: #f3f4f6; }
   td { padding: 3px 5px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
-  tr { break-inside: avoid; }
   tbody tr:nth-child(even) td { background: #fafafa; }
   .num { font-variant-numeric: tabular-nums; text-align: right; color: #4b5563; white-space: nowrap; }
   .muted { color: #6b7280; }
@@ -224,24 +181,14 @@ export function previewPdfHtml({
   .band-n { float: right; font-weight: 500; color: #6b7280; }
   tr.brk td { background: #fffbeb !important; color: #92400e; font-size: 8.5px; }
   tr.unplaced td { background: #fef3c7 !important; }
-  .foot { margin-top: 12px; color: #9ca3af; font-size: 8px; }
-  @page { size: A4 landscape; margin: 10mm; }
-  @media print { body { padding: 0; } }
 </style></head><body>
-  <div class="band-top">
-    <div>
-      <h1>${esc(meta.title)}</h1>
-      <p class="sub">${esc(t("Fixture preview"))} · ${esc(t("grouped by"))} ${esc(meta.groupLabel.toLowerCase())}</p>
-    </div>
-    <div class="brand">fixture.doxaed.com</div>
-  </div>
-  <p class="meta">${esc(t("Exported"))} ${esc(dateStr)} · ${esc(scope)}</p>
-  ${meta.filterSummary ? `<p class="filters">${esc(t("Filters applied"))}: ${esc(meta.filterSummary)}</p>` : ""}
-  <p class="draft">${esc(t("Trial run. This schedule is not published yet."))}${
-    meta.unplaced
-      ? ` ${esc(`${meta.unplaced} ${t("match(es) still have no time.")}`)}`
-      : ""
-  }</p>
+  ${docHeader({
+    title: meta.title,
+    subtitle: `${t("Fixture preview")} · ${t("grouped by")} ${meta.groupLabel.toLowerCase()}`,
+    scope,
+    filterSummary: meta.filterSummary,
+    note: draftNote(meta),
+  })}
   <table>
     <thead><tr><th style="width:1.6rem">#</th>${PDF_COLUMNS.map(
       (c) =>
@@ -249,7 +196,7 @@ export function previewPdfHtml({
     ).join("")}</tr></thead>
     <tbody>${body}</tbody>
   </table>
-  <p class="foot">${esc(t("Generated by Fixture"))} · fixture.doxaed.com</p>
+  ${docFooter()}
 </body></html>`;
 }
 
@@ -332,31 +279,17 @@ export function previewCourtGridHtml({
     })
     .join("");
 
-  const dateStr = new Date().toLocaleString(undefined, {
-    year: "numeric", month: "long", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-
   return `<!doctype html><html><head><meta charset="utf-8">
 <title>${esc(meta.title)} ${esc(t("court grid"))}</title>
-<style>
-  * { box-sizing: border-box; margin: 0; }
-  body { font: 9.5px/1.35 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; color: #111827; padding: 20px; background: #fff; }
-  .band-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 3px solid #6840dd; padding-bottom: 8px; }
-  h1 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
-  .sub { color: #6b7280; font-size: 10px; margin-top: 2px; }
-  .brand { color: #6840dd; font-size: 10px; font-weight: 600; white-space: nowrap; }
-  .meta { color: #6b7280; font-size: 9px; margin-top: 6px; }
-  .draft { color: #b45309; font-size: 9px; margin-top: 2px; font-weight: 600; }
+<style>${baseCss()}
+  body { padding: 20px; }
   h2 { font-size: 11px; font-weight: 600; margin: 14px 0 6px; color: #111827; }
   table.grid { width: 100%; border-collapse: separate; border-spacing: 0;
                border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
-  thead { display: table-header-group; }
   th { background: #1e293b; color: #fff; text-align: left; font-size: 9px;
        font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
        padding: 8px 10px; }
   th.time-h { width: 92px; }
-  tr { break-inside: avoid; }
   td { border-top: 1px solid #eef1f5; padding: 7px 10px; vertical-align: top; }
   tbody tr:nth-child(even) td { background: #fafbfc; }
   td.time { width: 92px; white-space: nowrap; background: #f7f8fa; }
@@ -377,20 +310,14 @@ export function previewCourtGridHtml({
   .none { margin-top: 12px; }
   .none h3 { font-size: 10px; color: #b45309; }
   .none li { font-size: 9px; color: #4b5563; }
-  .foot { margin-top: 12px; color: #9ca3af; font-size: 8px; }
-  @page { size: A4 landscape; margin: 10mm; }
-  @media print { body { padding: 0; } }
 </style></head><body>
-  <div class="band-top">
-    <div>
-      <h1>${esc(meta.title)}</h1>
-      <p class="sub">${esc(t("Every court, one view"))}</p>
-    </div>
-    <div class="brand">fixture.doxaed.com</div>
-  </div>
-  <p class="meta">${esc(t("Exported"))} ${esc(dateStr)} · ${esc(`${meta.shown} ${t("matches")}`)}</p>
-  ${meta.filterSummary ? `<p class="meta">${esc(t("Filters applied"))}: ${esc(meta.filterSummary)}</p>` : ""}
-  <p class="draft">${esc(t("Trial run. This schedule is not published yet."))}</p>
+  ${docHeader({
+    title: meta.title,
+    subtitle: t("Every court, one view"),
+    scope: `${meta.shown} ${t("matches")}`,
+    filterSummary: meta.filterSummary,
+    note: t("Trial run. This schedule is not published yet."),
+  })}
   ${body || `<p class="meta">${esc(t("No matches have a time yet."))}</p>`}
   ${
     unplaced.length
@@ -405,51 +332,8 @@ export function previewCourtGridHtml({
           .join("")}</ul></div>`
       : ""
   }
-  <p class="foot">${esc(t("Generated by Fixture"))} · fixture.doxaed.com</p>
+  ${docFooter()}
 </body></html>`;
-}
-
-/**
- * Raise the print dialog once the crests have actually arrived.
- *
- * A bare `setTimeout(print, 250)` is a guess, not a handshake. Every crest is
- * a signed URL the NEW tab has to fetch for itself, and a sheet can carry
- * hundreds of them; print while they are still in flight and the badges come
- * out of the printer as blank squares. So we wait on each image's own
- * load/error and only then print.
- *
- * The 1500ms ceiling is the other half of the deal: one dead crest URL must
- * never hold the dialog hostage, because the schedule on the page is the part
- * the reader actually came for. (Same handshake as
- * `features/tournaments/tabs/institutionExport.ts` — keep the two in step.)
- */
-function printWhenImagesReady(w: Window): void {
-  let printed = false;
-  const doPrint = (): void => {
-    if (printed) return;
-    printed = true;
-    w.print();
-  };
-  // Guarded: a document stub with no query API is still a printable window.
-  const all = w.document.querySelectorAll
-    ? Array.from(w.document.querySelectorAll("img"))
-    : [];
-  const pending = all.filter((img) => !img.complete);
-  if (!pending.length) {
-    setTimeout(doPrint, 250);
-    return;
-  }
-  let left = pending.length;
-  const settle = (): void => {
-    left -= 1;
-    // A beat after the last one so the layout it changed has painted.
-    if (left <= 0) setTimeout(doPrint, 50);
-  };
-  for (const img of pending) {
-    img.addEventListener("load", settle);
-    img.addEventListener("error", settle);
-  }
-  setTimeout(doPrint, 1500);
 }
 
 /** Open the court grid in a new tab and raise the print dialog. */
@@ -457,19 +341,10 @@ export function openPreviewCourtGridPdf(opts: {
   rows: readonly PreviewRow[];
   meta: PreviewExportMeta;
 }): void {
-  const w = window.open("", "_blank");
-  if (!w) return;
-  w.document.write(previewCourtGridHtml(opts));
-  w.document.close();
-  w.focus();
-  printWhenImagesReady(w);
+  openPrintable(previewCourtGridHtml(opts));
 }
 
-/**
- * Open the landscape run sheet in a new tab and raise the print dialog —
- * "Save as PDF" there gives the shareable file. Everything is inlined, so the
- * document needs no network and no PDF dependency.
- */
+/** Open the landscape run sheet in a new tab and raise the print dialog. */
 export function openPreviewPdf(opts: {
   rows: readonly PreviewRow[];
   sort: GridSort | null;
@@ -478,12 +353,5 @@ export function openPreviewPdf(opts: {
   blackouts?: readonly BlackoutWindow[];
   meta: PreviewExportMeta;
 }): void {
-  // NO "noopener": with it window.open returns null, leaving a blank tab we
-  // can never write into. The document is our own, same-origin.
-  const w = window.open("", "_blank");
-  if (!w) return;
-  w.document.write(previewPdfHtml(opts));
-  w.document.close();
-  w.focus();
-  printWhenImagesReady(w);
+  openPrintable(previewPdfHtml(opts));
 }
