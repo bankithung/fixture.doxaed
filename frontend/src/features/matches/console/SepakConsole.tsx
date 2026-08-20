@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/toast";
-import { isNetworkError } from "@/api/client";
+import { isRetryable } from "@/api/client";
 import { newEventId } from "@/lib/eventId";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -126,7 +126,7 @@ export function SepakConsole({
       refresh();
     },
     onError: (e, vars) => {
-      if (isNetworkError(e)) {
+      if (isRetryable(e)) {
         pendingRows.current = vars.rows;
         setSyncFailed(true);
         return;

@@ -178,14 +178,31 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.UserRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "60/min",
-        "user": "240/min",
+        # These two are BLAST-RADIUS caps against a runaway client, not
+        # anti-abuse budgets — every endpoint that actually needs a tight
+        # budget carries its own scope below.
+        #
+        # `anon` is keyed by IP, and a whole venue sits behind ONE NAT
+        # address: at 60/min a single live match ticking point-by-point
+        # (each tick refetches the public schedule/standings) locked out
+        # every spectator on the school wifi after ~5 of them opened the
+        # public page. `user` is keyed by account, and volunteers routinely
+        # share ONE organizer login across several courts, so the whole
+        # crew drew on a single 240/min bucket while tap scoring posts a
+        # request per point.
+        "anon": "600/min",
+        "user": "1200/min",
         # v1Users.md Appendix B.11: Org self-signup (Path B) 3/hr/IP.
         "signup": "3/hour",
         # Public school self-registration via shared link — anti-abuse cap.
         "school_registration": "30/hour",
         # Setup-assistant chat — bounds Gemini spend per user.
         "assistant": "30/min",
+        # Password reset: prod SMTP is real, and the endpoint mails an address
+        # the caller merely NAMES. It used to ride the default `anon` bucket,
+        # which raising it above would have turned into a mail amplifier.
+        # (`resend-verification` already carries the 3/hr signup throttle.)
+        "password_reset": "5/hour",
     },
 }
 

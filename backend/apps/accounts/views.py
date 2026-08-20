@@ -57,7 +57,7 @@ from apps.accounts.services import password_reset as password_reset_svc
 from apps.accounts.services import signup as signup_svc
 from apps.accounts.services import twofa as twofa_svc
 from apps.accounts.services.session_security import cycle_session_on_role_change
-from apps.accounts.throttling import SignupRateThrottle
+from apps.accounts.throttling import PasswordResetRateThrottle, SignupRateThrottle
 from apps.audit.models import ActorRole
 from apps.audit.services import emit_audit
 
@@ -367,6 +367,7 @@ def reauth_view(request: Request) -> Response:
 )
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([PasswordResetRateThrottle])
 def password_reset_request_view(request: Request) -> Response:
     serializer = PasswordResetRequestSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)

@@ -6,10 +6,15 @@
  * committed-but-timed-out request is deduped server-side (invariant 3) —
  * replay is always safe. Writes the server actually REJECTED (4xx/5xx) are
  * never queued or retried: the server saw them and decided.
+ *
+ * A 429 is the one 4xx that is NOT a decision: the server refused to look at
+ * the request because it arrived too fast, so it belongs with the unreachable
+ * class. Treating it as a rejection dropped the tap and told the scorer it
+ * did not count, which is the one thing this queue exists to prevent.
  */
 import { useSyncExternalStore } from "react";
 
-import { api, isNetworkError } from "@/api/client";
+import { api, isRetryable } from "@/api/client";
 
 export interface QueuedWrite {
   /** The write's idempotency key (event_id) — one logical tap, one entry. */
@@ -84,9 +89,9 @@ export function enqueueWrite(w: Omit<QueuedWrite, "queuedAt">): void {
   initOfflineQueue();
 }
 
-/** Replay FIFO. Stops (keeping the tail) while the server stays unreachable;
- * drops entries the server rejected and returns them so the caller can
- * surface what did not count. */
+/** Replay FIFO. Stops (keeping the tail) while the server stays unreachable
+ * or is throttling; drops entries the server rejected and returns them so the
+ * caller can surface what did not count. */
 export async function flushWrites(): Promise<QueuedWrite[]> {
   if (flushing) return [];
   flushing = true;
@@ -98,7 +103,7 @@ export async function flushWrites(): Promise<QueuedWrite[]> {
       try {
         await api.post(head.path, head.body);
       } catch (e) {
-        if (isNetworkError(e)) return rejected;
+        if (isRetryable(e)) return rejected;
         rejected.push(head);
       }
       items = read().filter((i) => i.id !== head.id);

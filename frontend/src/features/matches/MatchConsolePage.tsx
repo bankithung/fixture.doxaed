@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/Select";
 import { TeamCrest } from "@/components/ui/TeamCrest";
 import { useToast } from "@/components/ui/toast";
-import { isNetworkError } from "@/api/client";
+import { isRateLimited, isRetryable } from "@/api/client";
 import { newEventId } from "@/lib/eventId";
 import {
   enqueueWrite,
@@ -248,7 +248,7 @@ export function MatchConsolePage(): React.ReactElement {
       refresh();
     },
     onError: (e, vars) => {
-      if (isNetworkError(e)) {
+      if (isRetryable(e)) {
         // Server unreachable: the tap is parked on this phone and replayed
         // when the connection returns; its event_id makes the replay safe.
         enqueueWrite({
@@ -259,7 +259,9 @@ export function MatchConsolePage(): React.ReactElement {
         setMinute("");
         toast.push({
           kind: "info",
-          title: t("No connection. The tap is saved on this phone and will sync."),
+          title: isRateLimited(e)
+            ? t("Busy right now. The tap is saved and will sync.")
+            : t("No connection. The tap is saved on this phone and will sync."),
         });
         return;
       }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiFetch, isNetworkError } from "../client";
+import { apiFetch, isNetworkError, isRateLimited, isRetryable } from "../client";
 import { ApiError } from "@/types/api";
 
 function setCsrf(token: string): void {
@@ -20,6 +20,80 @@ const okJson = (body: unknown) =>
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
+
+const throttled = (retryAfter?: string) =>
+  new Response(JSON.stringify({ detail: "Request was throttled." }), {
+    status: 429,
+    headers: {
+      "Content-Type": "application/json",
+      ...(retryAfter ? { "Retry-After": retryAfter } : {}),
+    },
+  });
+
+describe("429 handling", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("classifies a 429 as rate-limited and retryable, but not a network error", () => {
+    const e = new ApiError(429, { detail: "Request was throttled." });
+    expect(isRateLimited(e)).toBe(true);
+    expect(isRetryable(e)).toBe(true);
+    expect(isNetworkError(e)).toBe(false);
+  });
+
+  it("retries a throttled GET and returns the eventual success", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(throttled("1"))
+      .mockResolvedValueOnce(okJson({ ok: true }));
+    const p = apiFetch("/api/x/");
+    await vi.runAllTimersAsync();
+    await expect(p).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it("retries a throttled write that carries an event_id (replay is deduped)", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(throttled())
+      .mockResolvedValueOnce(okJson({ ok: true }));
+    const p = apiFetch("/api/matches/m1/score/", {
+      method: "POST",
+      body: { set_scores: [[11, 7]], event_id: "e-1" },
+    });
+    await vi.runAllTimersAsync();
+    await expect(p).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it("does NOT retry a write with no idempotency key", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(throttled());
+    await expect(
+      apiFetch("/api/x/", { method: "POST", body: { a: 1 } }),
+    ).rejects.toMatchObject({ status: 429 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up after a bounded number of retries rather than hanging", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(throttled("1"));
+    const p = apiFetch("/api/x/");
+    const assertion = expect(p).rejects.toMatchObject({ status: 429 });
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+  });
+});
 
 describe("apiFetch", () => {
   beforeEach(() => {

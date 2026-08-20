@@ -24,6 +24,19 @@ beforeEach(() => {
 afterEach(() => clearWrites());
 
 describe("offlineQueue", () => {
+  it("keeps a throttled tap queued instead of reporting it as lost", async () => {
+    // A 429 during replay means the server never LOOKED at the write. Dropping
+    // it, as any other 4xx is dropped, told the scorer a point did not count
+    // when it simply had not been sent yet.
+    post.mockRejectedValue(new ApiError(429, { detail: "throttled" }));
+    enqueueWrite({ id: "e1", path: "/p", body: { event_id: "e1" } });
+
+    const rejected = await flushWrites();
+
+    expect(rejected).toEqual([]);
+    expect(pendingWrites()).toBe(1); // nothing lost, retried later
+  });
+
   it("dedupes by id: one logical tap enqueues once", () => {
     enqueueWrite({ id: "e1", path: "/api/matches/m1/events/", body: { a: 1 } });
     enqueueWrite({ id: "e1", path: "/api/matches/m1/events/", body: { a: 1 } });

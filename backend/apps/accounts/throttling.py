@@ -34,3 +34,21 @@ class SignupRateThrottle(SimpleRateThrottle):
         if ident is None:
             return None
         return self.cache_format % {"scope": self.scope, "ident": ident}
+
+
+class PasswordResetRateThrottle(SimpleRateThrottle):
+    """Per-IP rate limit for ``auth/password_reset_request``.
+
+    The endpoint sends real mail to an address the caller merely NAMES, so
+    it is an amplifier: it used to be bounded only by the default ``anon``
+    bucket, which is a blast-radius cap and not an anti-abuse budget.
+    Scope: ``password_reset``.
+    """
+
+    scope = "password_reset"
+
+    def get_cache_key(self, request, view) -> str | None:
+        ident = self.get_ident(request)
+        if ident is None:
+            return None
+        return self.cache_format % {"scope": self.scope, "ident": ident}

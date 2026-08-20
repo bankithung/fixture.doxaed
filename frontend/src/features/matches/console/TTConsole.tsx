@@ -13,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
-import { isNetworkError } from "@/api/client";
+import { isRetryable } from "@/api/client";
 import { newEventId } from "@/lib/eventId";
 import { t } from "@/lib/t";
 import type { TargetSportConsoleProps } from "./TargetSportConsole";
@@ -111,7 +111,7 @@ export function TTConsole({
       refresh();
     },
     onError: (e, vars) => {
-      if (isNetworkError(e)) {
+      if (isRetryable(e)) {
         pendingRows.current = vars.rows;
         setSyncFailed(true);
         return;

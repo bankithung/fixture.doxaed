@@ -124,3 +124,42 @@ def test_rate_limit_per_ip(settings):
         user__in=[user1, user2, user3]
     ).count()
     assert total == 2  # third blocked
+
+
+# --- anti-abuse budget ------------------------------------------------------
+# The endpoint mails an address the caller merely NAMES, so it is an
+# amplifier. It used to be bounded only by the default `anon` bucket; once
+# that was raised to a blast-radius cap (venue NAT / shared logins), this
+# endpoint needed a budget of its own.
+
+
+def test_password_reset_throttle_reads_its_own_budget_from_settings():
+    from apps.accounts.throttling import PasswordResetRateThrottle
+
+    throttle = PasswordResetRateThrottle()
+    assert throttle.rate == "5/hour"
+    assert throttle.num_requests == 5
+    assert throttle.duration == 3600
+
+
+def test_password_reset_endpoint_is_not_bounded_by_the_anon_bucket():
+    """A 6th reset request from one IP inside the hour is refused, even though
+    the shared `anon` ceiling is far higher."""
+    from django.conf import settings
+    from django.urls import reverse
+    from rest_framework import status
+    from rest_framework.test import APIClient
+
+    assert int(settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["anon"].split("/")[0]) > 5
+
+    UserFactory(email="victim@example.test")
+    api = APIClient()
+    url = reverse("accounts:password_reset_request")
+    for i in range(5):
+        r = api.post(url, data={"email": "victim@example.test"}, format="json",
+                     REMOTE_ADDR="203.0.113.9")
+        assert r.status_code == status.HTTP_200_OK, f"attempt {i}: {r.status_code}"
+
+    blocked = api.post(url, data={"email": "victim@example.test"}, format="json",
+                       REMOTE_ADDR="203.0.113.9")
+    assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, type UseMutationResult } from "@tanstack/react-query";
 import { liveApi } from "@/api/live";
 import { useToast } from "@/components/ui/toast";
-import { isNetworkError } from "@/api/client";
+import { isRateLimited, isRetryable } from "@/api/client";
 import { enqueueWrite } from "@/lib/offlineQueue";
 import { t } from "@/lib/t";
 
@@ -34,7 +34,7 @@ export function useAnnotate(
     mutationFn: (p: AnnotationPayload) => liveApi.recordEvent(matchId, p),
     onSuccess: () => refresh(),
     onError: (e, vars) => {
-      if (isNetworkError(e)) {
+      if (isRetryable(e)) {
         enqueueWrite({
           id: vars.event_id,
           path: `/api/matches/${matchId}/events/`,
@@ -42,7 +42,9 @@ export function useAnnotate(
         });
         toast.push({
           kind: "info",
-          title: t("No connection. The tap is saved on this phone and will sync."),
+          title: isRateLimited(e)
+            ? t("Busy right now. The tap is saved and will sync.")
+            : t("No connection. The tap is saved on this phone and will sync."),
         });
         return;
       }
