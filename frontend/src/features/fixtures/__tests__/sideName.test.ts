@@ -28,13 +28,13 @@ describe("sideName — group_position placeholders (Gap 4)", () => {
     ).toBe("Group A top 1");
   });
 
-  it("renders best-third placeholders as 'Best 3rd #1'", () => {
+  it("renders best-loser placeholders as 'Best loser 1'", () => {
     expect(
       sideName(
         { source: { type: "group_position", best_third: true, rank: 1 } },
         TEAMS,
       ),
-    ).toBe("Best 3rd #1");
+    ).toBe("Best loser 1");
   });
 
   it("never leaks the raw em-dash label", () => {

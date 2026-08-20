@@ -97,7 +97,12 @@ _STAGE_KEYS = {"id", "name", "type", "group_size", "balance_groups",
                "min_matches_per_team", "legs", "partition", "seeding",
                "third_place", "plate", "swiss_rounds", "from"}
 _FROM_KEYS = {"stage", "method", "advance_per_group", "advance_best_thirds",
-              "seeding"}
+              "seeding", "pairings", "meets"}
+#: How the qualifiers are arranged into the bracket. "cross"/"overall" are
+#: computed; "explicit" means the organiser wrote the round-1 sheet themselves
+#: (``from.pairings``), which is the only shape that can seat a best loser in a
+#: bracket drawn BEFORE the groups have played.
+_FROM_SEEDINGS = {"cross", "overall", "explicit"}
 
 # Legacy rules keys that act as a fallback layer below draw_config (§2.1).
 _LEGACY_RULES_KEYS = ("format", "group_size", "advance_per_group")
@@ -169,6 +174,57 @@ def _validate_stage_params(s: dict[str, Any]) -> None:
             raise ValueError("min_matches_per_team must be a positive integer")
 
 
+def _validate_authored_bracket(frm: dict[str, Any]) -> None:
+    """Shape-check an authored bracket (``from.pairings`` / ``from.meets``).
+
+    Only the SHAPE is checked here: whether the slots named are the slots that
+    actually qualify depends on how many groups the draw produces, which is not
+    known until the teams are in. ``authored_qualifier_pairs`` makes that call
+    at generation time, where the groups exist and the error can name them."""
+    pairings = frm.get("pairings")
+    if pairings is None:
+        if frm.get("seeding") == "explicit":
+            raise ValueError(
+                "from.seeding 'explicit' needs from.pairings: the round-1 "
+                "matches, written out"
+            )
+        if frm.get("meets") is not None:
+            raise ValueError("from.meets is only meaningful with from.pairings")
+        return
+    if not isinstance(pairings, list) or not pairings:
+        raise ValueError("from.pairings must be a non-empty list of pairs")
+    n = len(pairings)
+    if n & (n - 1):
+        raise ValueError(
+            "from.pairings must hold a power-of-two number of round-1 matches"
+        )
+    for pair in pairings:
+        if not isinstance(pair, list) or len(pair) != 2:
+            raise ValueError("each from.pairings entry must be a pair of slots")
+        for slot in pair:
+            if not isinstance(slot, str) or not slot.strip():
+                raise ValueError(
+                    'each qualifier slot must be a string like "A1" or "L1"'
+                )
+    meets = frm.get("meets")
+    if meets is None:
+        return
+    if not isinstance(meets, list) or len(meets) * 2 != n:
+        raise ValueError(f"from.meets must pair up all {n} round-1 matches")
+    seen: set[int] = set()
+    for pair in meets:
+        if not isinstance(pair, list) or len(pair) != 2:
+            raise ValueError("each from.meets entry must be a pair of match numbers")
+        for v in pair:
+            if not _is_int(v) or not 1 <= v <= n:
+                raise ValueError(
+                    f"from.meets refers to match {v!r}, but there are {n}"
+                )
+            seen.add(v)
+    if len(seen) != n:
+        raise ValueError("from.meets must name each round-1 match exactly once")
+
+
 def _validate_stages(stages: Any) -> None:
     """Validate the multi-stage plan (multi-stage design §3.4). None/[] is OK
     (single-stage). Enforces: known type, unique ids, a backward-only `from`
@@ -213,8 +269,11 @@ def _validate_stages(stages: Any) -> None:
             abt = frm.get("advance_best_thirds", 0)
             if not _is_int(abt) or abt < 0:
                 raise ValueError("from.advance_best_thirds must be an integer >= 0")
-            if "seeding" in frm and frm["seeding"] not in _KNOCKOUT_SEEDINGS:
-                raise ValueError("from.seeding must be 'cross' or 'overall'")
+            if "seeding" in frm and frm["seeding"] not in _FROM_SEEDINGS:
+                raise ValueError(
+                    "from.seeding must be 'cross', 'overall' or 'explicit'"
+                )
+            _validate_authored_bracket(frm)
 
     ids = [s["id"] for s in stages if "id" in s]
     if len(ids) != len(set(ids)):

@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { BracketSheetEditor } from "./BracketSheetEditor";
+import { defaultSheet } from "./bracketSheet";
 import {
   blankStage,
   isTerminal,
@@ -46,6 +48,23 @@ function Connector({
   testId: string;
 }): React.ReactElement {
   const from = stage.from ?? { advance_per_group: 2, advance_best_thirds: 0, seeding: "cross" };
+  // Switching to an authored bracket starts from a filled sheet rather than a
+  // blank grid: an empty one is invalid the moment it appears, which reads as
+  // an error the organizer caused.
+  const setSeeding = (v: string): void => {
+    if (v !== "explicit") {
+      onChange({ seeding: v as "cross" | "overall", pairings: undefined, meets: undefined });
+      return;
+    }
+    const size = from.pairings?.length ?? 4;
+    onChange({
+      seeding: "explicit",
+      pairings:
+        from.pairings
+        ?? defaultSheet(size, from.advance_per_group, from.advance_best_thirds),
+      meets: undefined,
+    });
+  };
   return (
     <div
       data-testid={testId}
@@ -81,20 +100,40 @@ function Connector({
         <div className="w-32" data-testid={`${testId}-seeding`}>
           <Select
             value={from.seeding}
-            onChange={(v) => onChange({ seeding: v as "cross" | "overall" })}
+            onChange={setSeeding}
             options={[
               { value: "cross", label: t("Cross-group") },
               { value: "overall", label: t("Overall rank") },
+              { value: "explicit", label: t("Write it myself") },
             ]}
             aria-label={t("Seeding")}
           />
         </div>
       </div>
-      <p className="mt-1.5 text-xs text-muted-foreground">
-        {t(
-          "Best runners-up are the strongest teams that did not finish top of their group. Cross-group seeding keeps group winners apart in the bracket.",
-        )}
-      </p>
+      {from.seeding === "explicit" ? (
+        <BracketSheetEditor
+          advancePerGroup={from.advance_per_group}
+          bestLosers={from.advance_best_thirds}
+          pairings={from.pairings ?? []}
+          meets={from.meets}
+          disabled={disabled}
+          testId={`${testId}-sheet`}
+          onChange={(patch) =>
+            onChange({
+              ...(patch.pairings ? { pairings: patch.pairings } : {}),
+              ...("meets" in patch
+                ? { meets: patch.meets === null ? undefined : patch.meets }
+                : {}),
+            })
+          }
+        />
+      ) : (
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          {t(
+            "Best runners-up are the strongest teams that did not finish top of their group. Cross-group seeding keeps group winners apart in the bracket.",
+          )}
+        </p>
+      )}
     </div>
   );
 }

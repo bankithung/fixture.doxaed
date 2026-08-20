@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import re
 from dataclasses import dataclass
 
 from django.db import transaction
@@ -2442,6 +2443,196 @@ def _positional_qualifier_slots(
     return slots
 
 
+#: One authored qualifier token: a group name + a finishing position ("A1" =
+#: Group A's winner), or "L<n>" for the n-th best LOSER — the strongest team
+#: that finished outside its group's qualifying places (what the rest of the
+#: code calls a "best third"). Case-insensitive.
+_SLOT_TOKEN = re.compile(r"^([A-Za-z]+)(\d+)$")
+#: The letter that introduces a best-loser token. A group actually named "L"
+#: would make the token ambiguous, so that combination is refused outright.
+_BEST_LOSER = "L"
+
+
+def group_short_name(label: str) -> str:
+    """``"Sepak Takraw · U-14 · Boys · Group A"`` → ``"A"``.
+
+    Mirrors the frontend's ``shortGroupName`` so an authored token means the
+    same thing on both sides of the wire."""
+    last = re.split(r"\s*[\u00b7\u2013\u2014-]\s*", label)[-1].strip()
+    return re.sub(r"^Group\s+", "", last, flags=re.IGNORECASE).strip()
+
+
+def _authored_slot(token: str, by_group: dict[str, str], best_losers: int) -> dict:
+    """One authored token → the bracket-slot POINTER it names.
+
+    Group slots become the same ``group_position`` pointer the positional
+    cross-seed emits; a best-loser slot becomes the results-free
+    ``{"best_third": True, "rank": n}`` variant, which only resolves once
+    EVERY group in the competition is final (there is no other moment at
+    which "best loser" has an answer)."""
+    if not isinstance(token, str) or not (mt := _SLOT_TOKEN.match(token.strip())):
+        raise ValueError(
+            f"{token!r} is not a qualifier slot: write a group and a place "
+            f'("A1" = Group A winner) or "L1" for the best loser'
+        )
+    name, num = mt.group(1), int(mt.group(2))
+    label = by_group.get(name.upper())
+    if label is not None:
+        if num < 1:
+            raise ValueError(f"{token!r}: a finishing place starts at 1")
+        return {"type": "group_position", "group_label": label, "position": num}
+    if name.upper() == _BEST_LOSER:
+        if not 1 <= num <= best_losers:
+            raise ValueError(
+                f"{token!r} needs {num} best loser(s) to qualify, but the "
+                f"competition advances {best_losers}"
+            )
+        return {"type": "group_position", "best_third": True, "rank": num}
+    raise ValueError(f"{token!r}: there is no group {name!r} in this competition")
+
+
+def authored_qualifier_pairs(
+    pairings: list, groups: list[str], *,
+    advance_per_group: int, advance_best_thirds: int,
+) -> list[tuple[dict, dict]]:
+    """The organiser's own round-1 pairings → bracket-slot pointer pairs.
+
+    An authored bracket is checked for COVERAGE, not merely for syntax: the
+    slots written down must be exactly the slots that qualify, each once. A
+    pairing sheet that quietly drops a qualifier (or seats one twice) is a
+    mistake the organiser cannot see on a bracket diagram — it shows up as a
+    team with no match on the morning of the event — so it is refused here,
+    where there is still somewhere to put the error."""
+    by_group = {group_short_name(g).upper(): g for g in groups}
+    if _BEST_LOSER in by_group and advance_best_thirds:
+        raise ValueError(
+            'a group named "L" clashes with the "L1" best-loser token; '
+            "rename the group or advance no best losers"
+        )
+    if not isinstance(pairings, list) or not pairings:
+        raise ValueError("an authored bracket needs at least one pairing")
+    pairs: list[tuple[dict, dict]] = []
+    seen: list[str] = []
+    for entry in pairings:
+        if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+            raise ValueError("each pairing must be a pair of qualifier slots")
+        sides = []
+        for token in entry:
+            sides.append(_authored_slot(token, by_group, advance_best_thirds))
+            seen.append(str(token).strip().upper())
+        pairs.append((sides[0], sides[1]))
+
+    expected = {
+        f"{group_short_name(g).upper()}{p}"
+        for g in groups for p in range(1, advance_per_group + 1)
+    } | {f"{_BEST_LOSER}{k}" for k in range(1, advance_best_thirds + 1)}
+    written = set(seen)
+    if len(seen) != len(written):
+        dupes = sorted({s for s in seen if seen.count(s) > 1})
+        raise ValueError(f"these slots are seated twice: {', '.join(dupes)}")
+    if written != expected:
+        missing = sorted(expected - written)
+        extra = sorted(written - expected)
+        detail = []
+        if missing:
+            detail.append(f"never plays: {', '.join(missing)}")
+        if extra:
+            detail.append(f"does not qualify: {', '.join(extra)}")
+        raise ValueError("; ".join(detail))
+    return pairs
+
+
+def _meets_order(meets: list, count: int) -> list[int]:
+    """``meets`` (1-based pairs of round-1 match numbers that meet in round 2)
+    → the order the round-1 winners enter the next round.
+
+    Without it the bracket is the usual adjacent tree: M1 v M2, M3 v M4. With
+    it the organiser says which quarter-final feeds which semi-final, which no
+    ordering of the pairings alone can express while ALSO keeping their own
+    match numbering."""
+    if meets is None:
+        return list(range(count))
+    if not isinstance(meets, list) or len(meets) * 2 != count:
+        raise ValueError(
+            f"meets must pair up all {count} round-1 matches"
+        )
+    order: list[int] = []
+    for entry in meets:
+        if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+            raise ValueError("each meets entry must be a pair of match numbers")
+        for n in entry:
+            if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= count:
+                raise ValueError(
+                    f"meets refers to match {n!r}, but there are {count} of them"
+                )
+            order.append(n - 1)
+    if len(set(order)) != count:
+        raise ValueError("meets must name each round-1 match exactly once")
+    return order
+
+
+def plan_knockout_from_pairings(
+    pairs: list[tuple[dict, dict]], *, meets: list | None = None,
+    stage: str = "knockout", leaf_key: str = "", sport: str = "",
+    third_place: bool = False, label_prefix: str = "",
+) -> list[MatchPlan]:
+    """Pure pairing core for an AUTHORED groups→knockout bracket: the
+    organiser writes the round-1 matches themselves instead of accepting the
+    positional cross-seed.
+
+    Round 1 is emitted in the order it was written, so the organiser's own
+    numbering (M1, M2, …) is what appears on the sheet. Later rounds pair the
+    survivors adjacently, in ``meets`` order where one was given. Sides are the
+    same pointers the cross-seeded draw uses, so advancement, the bracket view
+    and the scheduler need to know nothing about how the bracket was decided."""
+    n = len(pairs)
+    if n < 1:
+        raise ValueError("an authored bracket needs at least one pairing")
+    if n & (n - 1):
+        raise ValueError(
+            f"an authored bracket needs a power-of-two number of round-1 "
+            f"matches (1, 2, 4, 8…), not {n}"
+        )
+    order = _meets_order(meets, n)
+
+    bracket_label = label_prefix.rstrip(" \u00b7\u2014").strip()
+    common = {
+        "stage": stage, "leaf_key": leaf_key, "sport": sport,
+        "group_label": bracket_label,
+    }
+    plans: list[MatchPlan] = []
+    for home, away in pairs:
+        plans.append(MatchPlan(
+            round_no=1, home_source=home, away_source=away,
+            ref=len(plans), **common,
+        ))
+    refs = [plans[i].ref for i in order]
+
+    round_no = 2
+    while len(refs) > 1:
+        if third_place and len(refs) == 2:
+            plans.append(MatchPlan(
+                round_no=round_no,
+                home_source={"type": "loser_of", "ref": refs[0]},
+                away_source={"type": "loser_of", "ref": refs[1]},
+                ref=len(plans),
+                **{**common, "group_label":
+                    f"{bracket_label} · 3rd Place" if bracket_label else "3rd Place"},
+            ))
+        nxt: list[int] = []
+        for i in range(0, len(refs), 2):
+            plans.append(MatchPlan(
+                round_no=round_no,
+                home_source={"type": "winner_of", "ref": refs[i]},
+                away_source={"type": "winner_of", "ref": refs[i + 1]},
+                ref=len(plans), **common,
+            ))
+            nxt.append(plans[-1].ref)
+        refs = nxt
+        round_no += 1
+    return plans
+
+
 def plan_knockout_from_positions(
     slots: list[dict], *, stage: str = "knockout", leaf_key: str = "",
     sport: str = "", third_place: bool = False, label_prefix: str = "",
@@ -2513,14 +2704,23 @@ def plan_knockout_from_positions(
 
 def generate_eager_knockout_from_groups(
     *, tournament, advance_per_group: int = 2, leaf_key: str | None = None,
-    third_place: bool = False, stage_no: int = 0, warnings: list | None = None,
+    third_place: bool = False, stage_no: int = 0,
+    advance_best_thirds: int = 0, pairings: list | None = None,
+    meets: list | None = None, warnings: list | None = None,
 ) -> list[Match]:
     """Draw a groups→knockout bracket EAGERLY (before groups finish) as typed
     group_position pointers — the full bracket is visible immediately and fills
     in live (multi-stage §5.4, Mode A: positional cross-seeding, no best-thirds /
     overall reseed, which both need results). Idempotent per (knockout, leaf)
     scope. Returns [] (caller falls back to deferred) when there's no group
-    stage or fewer than 2 qualifiers."""
+    stage or fewer than 2 qualifiers.
+
+    ``pairings`` (an AUTHORED bracket) replaces the positional cross-seed with
+    the organiser's own round-1 sheet, and is the one eager shape that CAN
+    carry best losers: a best-loser slot is a pointer like any other, resolved
+    the moment every group in the competition is final. Without it the
+    best-thirds pool has no results-free expression, which is why the
+    cross-seeded eager draw still refuses ``advance_best_thirds``."""
     ko_scope = Match.objects.filter(
         tournament=tournament, stage="knockout", deleted_at__isnull=True,
     )
@@ -2540,17 +2740,28 @@ def generate_eager_knockout_from_groups(
     )
     if not groups:
         return []
-    slots = _positional_qualifier_slots(groups, advance_per_group)
-    if len(slots) < 2:
-        return []
 
     sport = sport_for_leaf(tournament.sports or [], leaf_key) if leaf_key else ""
-    plans = plan_knockout_from_positions(
-        slots, leaf_key=leaf_key or "", sport=sport, third_place=third_place,
-        label_prefix=(
-            f"{leaf_label(tournament.sports or [], leaf_key)} · " if leaf_key else ""
-        ),
+    label_prefix = (
+        f"{leaf_label(tournament.sports or [], leaf_key)} · " if leaf_key else ""
     )
+    if pairings:
+        plans = plan_knockout_from_pairings(
+            authored_qualifier_pairs(
+                pairings, groups, advance_per_group=advance_per_group,
+                advance_best_thirds=advance_best_thirds,
+            ),
+            meets=meets, leaf_key=leaf_key or "", sport=sport,
+            third_place=third_place, label_prefix=label_prefix,
+        )
+    else:
+        slots = _positional_qualifier_slots(groups, advance_per_group)
+        if len(slots) < 2:
+            return []
+        plans = plan_knockout_from_positions(
+            slots, leaf_key=leaf_key or "", sport=sport, third_place=third_place,
+            label_prefix=label_prefix,
+        )
     ih = compute_inputs_hash(tournament, leaf_key or None)
     for p in plans:
         p.inputs_hash = ih

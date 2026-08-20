@@ -76,6 +76,10 @@ def advance_from_match(match_id) -> list[Match]:
     # once this match's GROUP is fully final, standings positions resolve any
     # dependents declaring {"type": "group_position", "group_label", "position"}.
     resolved.extend(_resolve_group_positions(m))
+    # Best-loser slots in an AUTHORED bracket: unlike a group position, "the
+    # best team that did not qualify" has no answer until EVERY group in the
+    # competition has finished, so it is resolved on its own pass.
+    resolved.extend(_resolve_best_thirds(m))
     for dep in resolved:
         _settle_unopposed(dep)
     # Deferred multi-stage materialization: when this match's stage has fully
@@ -157,6 +161,92 @@ def _resolve_group_positions(m: Match) -> list[Match]:
                     if 1 <= pos <= len(rows):
                         setattr(dep, f"{side}_team_id", rows[pos - 1]["team_id"])
                         fields.append(f"{side}_team")
+            if fields:
+                dep.save(update_fields=[*fields, "updated_at"])
+                resolved.append(dep)
+    return resolved
+
+
+def _best_third_rank(tournament, leaf_key: str, advance_per_group: int) -> list:
+    """The teams that finished just outside the qualifying places, strongest
+    first, across every group of one competition.
+
+    The ordering is the per-game metric ``plan_knockout_qualifiers`` uses for
+    the same job, so a bracket drawn EAGERLY from best-loser pointers ranks
+    them exactly as the deferred draw would have. Groups of different sizes are
+    the norm here (11 teams became 4/4/3), which is precisely why the rate, not
+    the total, decides."""
+    from apps.fixtures.services.generate import _norm_rates
+    from apps.matches.services.standings import compute_standings
+
+    scope = Match.objects.filter(
+        tournament=tournament, stage="group", deleted_at__isnull=True,
+    )
+    if leaf_key:
+        scope = scope.filter(leaf_key=leaf_key)
+    groups = sorted(
+        g for g in scope.values_list("group_label", flat=True).distinct() if g
+    )
+    candidates = []
+    for g in groups:
+        rows = compute_standings(tournament, group_label=g)
+        if len(rows) <= advance_per_group:
+            continue  # a group with nobody left over contributes no loser
+        row = rows[advance_per_group]
+        ppg, gdpg, gfpg = _norm_rates(row)
+        candidates.append(((-ppg, -gdpg, -gfpg, row["name"]), row["team_id"]))
+    candidates.sort(key=lambda c: c[0])
+    return [tid for _key, tid in candidates]
+
+
+def _resolve_best_thirds(m: Match) -> list[Match]:
+    """Fill ``{"best_third": True, "rank": n}`` bracket slots once every group
+    in the competition is final. Mirrors ``_resolve_group_positions`` (same
+    lock, same write-only-what-this-answers discipline); the difference is the
+    trigger, which is the whole competition rather than one group."""
+    if m.stage != "group" or not m.group_label or m.status not in _FINAL:
+        return []
+    scope = Match.objects.filter(
+        tournament_id=m.tournament_id, stage="group", deleted_at__isnull=True,
+    )
+    if m.leaf_key:
+        scope = scope.filter(leaf_key=m.leaf_key)
+    if scope.exclude(status__in=_FINAL).exists():
+        return []  # some group of this competition is still playing
+
+    best_q = Q(home_source__best_third=True) | Q(away_source__best_third=True)
+    dep_scope = Match.objects.filter(
+        tournament_id=m.tournament_id, deleted_at__isnull=True,
+    ).filter(best_q)
+    if m.leaf_key:
+        dep_scope = dep_scope.filter(leaf_key=m.leaf_key)
+    if not dep_scope.exists():
+        return []
+
+    from apps.fixtures.services.draw_config import effective_stages
+
+    stages = effective_stages(m.tournament, m.leaf_key or None)
+    frm = next(
+        (s.get("from") or {} for s in stages if s.get("type") == "knockout"), {},
+    )
+    ranked = _best_third_rank(
+        m.tournament, m.leaf_key or "", int(frm.get("advance_per_group", 2)),
+    )
+    if not ranked:
+        return []
+
+    resolved: list[Match] = []
+    with transaction.atomic():
+        for dep in dep_scope.select_for_update().order_by("id"):
+            fields: list[str] = []
+            for side in ("home", "away"):
+                src = getattr(dep, f"{side}_source") or {}
+                if not src.get("best_third") or getattr(dep, f"{side}_team_id"):
+                    continue
+                rank = int(src.get("rank") or 0)
+                if 1 <= rank <= len(ranked):
+                    setattr(dep, f"{side}_team_id", ranked[rank - 1])
+                    fields.append(f"{side}_team")
             if fields:
                 dep.save(update_fields=[*fields, "updated_at"])
                 resolved.append(dep)

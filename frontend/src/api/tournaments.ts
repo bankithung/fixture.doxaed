@@ -1560,7 +1560,16 @@ export interface StageIntake {
   method?: "top_n_per_group" | string;
   advance_per_group: number;
   advance_best_thirds: number;
-  seeding: "cross" | "overall";
+  /** How the qualifiers are arranged. `explicit` = the organizer wrote the
+   * round-1 sheet themselves (`pairings`), the only shape that can seat a
+   * best loser in a bracket drawn before the groups have played. */
+  seeding: "cross" | "overall" | "explicit";
+  /** Round-1 matches in slot notation ("A1" = Group A winner, "L1" = best
+   * loser), in the organizer's own numbering. */
+  pairings?: string[][];
+  /** Which round-1 matches (1-based) meet in the next round. Omitted = the
+   * plain tree, M1 v M2. */
+  meets?: number[][];
 }
 
 /** One stage in a competition's multi-stage plan (draw_config[leaf].stages). */

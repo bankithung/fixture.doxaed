@@ -29,8 +29,10 @@ from apps.fixtures.services.generate import (
     _registered_teams,
     _small_group_max,
     _swiss_label,
+    authored_qualifier_pairs,
     compute_inputs_hash,
     plan_double_elimination,
+    plan_knockout_from_pairings,
     plan_knockout_from_positions,
     plan_knockout_qualifiers,
     plan_plate_for_plans,
@@ -161,6 +163,15 @@ def _groups_knockout_params(
             "advance_per_group": int(frm.get("advance_per_group", 2)),
             "advance_best_thirds": int(frm.get("advance_best_thirds", 0)),
             "third_place": bool(s1.get("third_place", False)),
+            # An AUTHORED bracket previews as the bracket that was authored,
+            # not as the cross-seed it replaces: the preview is what an
+            # organiser signs off, so showing them a different pairing sheet
+            # from the one that commits would make the sign-off meaningless.
+            "pairings": (
+                frm.get("pairings")
+                if str(frm.get("seeding", "cross")) == "explicit" else None
+            ),
+            "meets": frm.get("meets"),
         }
     if fmt == "groups_knockout":
         return {
@@ -172,6 +183,8 @@ def _groups_knockout_params(
             "advance_per_group": int(cfg.get("advance_per_group", 2)),
             "advance_best_thirds": int(cfg.get("advance_best_thirds") or 0),
             "third_place": bool(cfg.get("third_place", False)),
+            "pairings": None,
+            "meets": None,
         }
     return None
 
@@ -181,6 +194,7 @@ def _plan_groups_to_knockout_preview(
     seed: int | None, group_size: int, balance_groups: bool, legs: int,
     seeding: str, min_matches_per_team: int | None, advance_per_group: int,
     advance_best_thirds: int, third_place: bool, warnings: list,
+    pairings: list | None = None, meets: list | None = None,
 ) -> list[MatchPlan]:
     """Preview a two-stage groups→knockout: the entry round-robin plans PLUS a
     PLACEHOLDER knockout drawn from group-position pointers, timed AFTER the
@@ -213,18 +227,28 @@ def _plan_groups_to_knockout_preview(
     })
     if not groups:
         return entry
-    slots = _positional_qualifier_slots(groups, advance_per_group)
-    # Best-thirds (increment N) / overall-reseed (increment O): the COUNT is the
-    # committed bracket size; identities need standings, so each is a generic
-    # placeholder appended as a bottom seed ("Best 3rd #k").
-    for k in range(advance_best_thirds):
-        slots.append({"type": "group_position", "best_third": True, "rank": k + 1})
-    if len(slots) < 2:
-        return entry  # not enough qualifiers to form a bracket
-    knockout = plan_knockout_from_positions(
-        slots, leaf_key=leaf_key or "", sport=sport, third_place=third_place,
-        label_prefix=label_prefix,
-    )
+    if pairings:
+        knockout = plan_knockout_from_pairings(
+            authored_qualifier_pairs(
+                pairings, groups, advance_per_group=advance_per_group,
+                advance_best_thirds=advance_best_thirds,
+            ),
+            meets=meets, leaf_key=leaf_key or "", sport=sport,
+            third_place=third_place, label_prefix=label_prefix,
+        )
+    else:
+        slots = _positional_qualifier_slots(groups, advance_per_group)
+        # Best-thirds (increment N) / overall-reseed (increment O): the COUNT is
+        # the committed bracket size; identities need standings, so each is a
+        # generic placeholder appended as a bottom seed ("Best loser k").
+        for k in range(advance_best_thirds):
+            slots.append({"type": "group_position", "best_third": True, "rank": k + 1})
+        if len(slots) < 2:
+            return entry  # not enough qualifiers to form a bracket
+        knockout = plan_knockout_from_positions(
+            slots, leaf_key=leaf_key or "", sport=sport, third_place=third_place,
+            label_prefix=label_prefix,
+        )
     for p in knockout:
         p.stage_no = 1  # times after the groups (scheduler orders by stage_no)
     # Rebase the knockout block's refs (and its winner_of/loser_of pointers) past

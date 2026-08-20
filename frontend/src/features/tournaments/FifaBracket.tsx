@@ -44,7 +44,7 @@ const HEADER_H = 32;
 const LABEL_H = 18; // "3rd place" caption above a consolation card
 
 /** Human label for an unresolved bracket slot from its typed pointer:
- * group_position -> "Group A top 1" / "Best 3rd #1"; winner/loser pointers are
+ * group_position -> "Group A top 1" / "Best loser 1"; winner/loser pointers are
  * not entrants (they resolve from an earlier match) so they return null. */
 export function sourceLabel(src: MatchSource | null | undefined): string | null {
   if (!src) return null;

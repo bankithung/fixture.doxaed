@@ -76,12 +76,19 @@ def _generate_entry_stage(tournament, leaf_key: str, stage: dict, warnings: list
 
 def _maybe_eager_next_knockout(tournament, leaf_key: str, stages: list, warnings: list):
     """Mode A (multi-stage §5.4): when stage 0 is a group stage and the VERY
-    next stage is a knockout sourcing from it by positional cross-seed (no
-    best-thirds / overall reseed — both need results), draw that knockout
-    EAGERLY so the full bracket is visible up front and fills in live as groups
-    finish. Returns [] (knockout stays DEFERRED to materialize_ready_stages) for
-    any other shape, or if eager drawing fails — the deferred path is the
-    always-correct fallback."""
+    next stage is a knockout sourcing from it, draw that knockout EAGERLY so
+    the full bracket is visible up front and fills in live as groups finish.
+    Returns [] (knockout stays DEFERRED to materialize_ready_stages) for any
+    other shape, or if eager drawing fails — the deferred path is the
+    always-correct fallback.
+
+    Two eager shapes qualify. The positional cross-seed needs no results, but
+    cannot express a best-third slot, so it still refuses one. An AUTHORED
+    bracket (``seeding: "explicit"`` + ``pairings``) names every slot itself,
+    best losers included — so a best-loser pointer is drawn now and answered
+    the moment the last group match ends, instead of holding the whole bracket
+    back until then. That matters on a two-day event: a deferred bracket has
+    no matches to put on the calendar when the calendar is built."""
     if stages[0].get("type") != "round_robin" or len(stages) < 2:
         return []
     nxt = stages[1]
@@ -89,8 +96,12 @@ def _maybe_eager_next_knockout(tournament, leaf_key: str, stages: list, warnings
     if (
         nxt.get("type") != "knockout"
         or _stage_idx(stages, frm.get("stage"), 0) != 0
-        or int(frm.get("advance_best_thirds", 0)) != 0
-        or str(frm.get("seeding", "cross")) != "cross"
+    ):
+        return []
+    seeding = str(frm.get("seeding", "cross"))
+    pairings = frm.get("pairings") if seeding == "explicit" else None
+    if not pairings and (
+        seeding != "cross" or int(frm.get("advance_best_thirds", 0)) != 0
     ):
         return []
     from apps.fixtures.services.generate import generate_eager_knockout_from_groups
@@ -101,6 +112,8 @@ def _maybe_eager_next_knockout(tournament, leaf_key: str, stages: list, warnings
             advance_per_group=int(frm.get("advance_per_group", 2)),
             leaf_key=leaf_key or None,
             third_place=bool(nxt.get("third_place", False)),
+            advance_best_thirds=int(frm.get("advance_best_thirds", 0)),
+            pairings=pairings, meets=frm.get("meets"),
             stage_no=1, warnings=warnings,
         )
     except Exception:  # pragma: no cover - defensive: deferred path still works
