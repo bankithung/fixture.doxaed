@@ -18,8 +18,11 @@ export interface DialogProps {
    *  drawer); on sm+ it centers exactly like the default.
    *  "side" is the right-hand drawer: full height, half the viewport from sm
    *  up, full width on a phone, sliding in from the edge. Use it when the work
-   *  inside wants room and the list behind it is worth keeping in view. */
-  variant?: "center" | "sheet" | "side";
+   *  inside wants room and the list behind it is worth keeping in view.
+   *  "drawer" is the reading drawer: a bottom sheet on a phone (where the
+   *  reachable edge is the bottom one) that becomes a 70%-wide right-hand
+   *  drawer from `md` up. Use it for detail ABOUT a row the list still shows. */
+  variant?: "center" | "sheet" | "side" | "drawer";
   children: React.ReactNode;
 }
 
@@ -104,6 +107,8 @@ export function Dialog({
         "fixed inset-0 z-50 flex bg-black/50 motion-safe:animate-fade-in",
         variant === "sheet" && "items-end justify-center sm:items-center sm:p-4",
         variant === "side" && "items-stretch justify-end",
+        variant === "drawer" &&
+          "items-end justify-center md:items-stretch md:justify-end",
         variant === "center" && "items-center justify-center p-4",
       )}
       onClick={(e) => {
@@ -120,6 +125,9 @@ export function Dialog({
           variant === "center" && "max-w-md rounded-lg p-6",
           variant === "side" &&
             "h-full overflow-y-auto border-y-0 border-r-0 p-5 sm:w-1/2 sm:p-6 motion-safe:animate-slide-in-right",
+          variant === "drawer" &&
+            "flex max-h-[88vh] flex-col overflow-hidden rounded-t-2xl border-x-0 border-b-0 motion-safe:animate-slide-in-up " +
+              "md:h-full md:max-h-none md:w-[70%] md:rounded-none md:border-y-0 md:border-r-0 md:motion-safe:animate-slide-in-right",
         )}
       >
         {children}

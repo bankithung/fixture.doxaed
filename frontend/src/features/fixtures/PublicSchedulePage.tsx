@@ -52,6 +52,7 @@ import {
 } from "./publicMatchCard";
 import { CourtBoard, courtDefaultFits } from "./CourtBoard";
 import { MatchSheet } from "./MatchSheet";
+import { MatchDrawer } from "./MatchDrawer";
 import { PublicBracketBoard, CompetitionBracket } from "./PublicBracketBoard";
 
 /** The one earned card: live matches, lifted out of position so they're never
@@ -768,11 +769,13 @@ function TimeBoard({
   matches,
   timeZone,
   numbers,
+  linkFor,
 }: {
   day: string;
   matches: PublicScheduleMatch[];
   timeZone: string;
   numbers: Map<string, number>;
+  linkFor?: (m: PublicScheduleMatch) => string;
 }): React.ReactElement {
   const ordered = useMemo(
     () =>
@@ -798,6 +801,7 @@ function TimeBoard({
           numbers={numbers}
           showCourt
           idScope="byTime"
+          linkFor={linkFor}
         />
       </div>
     </div>
@@ -1071,6 +1075,20 @@ export function PublicSchedulePage(): React.ReactElement {
     ? scopeMatches.filter((m) => teamHit(m, q)).length
     : scopeMatches.length;
   const dayShown = dayMatches.filter((m) => teamHit(m, q));
+
+  /** The open match is a URL param, so a row is a real link (middle-click
+   * opens the sheet with that match already open), Back closes the drawer and
+   * a pasted link lands on the same match. */
+  const openId = params.get("match") ?? "";
+  const openMatch = openId
+    ? allMatches.find((m) => m.id === openId)
+    : undefined;
+  const matchHref = (m: PublicScheduleMatch): string => {
+    const p = new URLSearchParams(params);
+    p.set("match", m.id);
+    p.delete("tab");
+    return `?${p.toString()}`;
+  };
 
   const todayLabel = isPreTournament ? t("Next match day") : t("Today");
   const pickScope = (key: string): void => {
@@ -1414,6 +1432,7 @@ export function PublicSchedulePage(): React.ReactElement {
                           timeZone={tz}
                           courts={query.data.courts}
                           numbers={numbers}
+                          linkFor={matchHref}
                         />
                       ) : (
                         <TimeBoard
@@ -1421,6 +1440,7 @@ export function PublicSchedulePage(): React.ReactElement {
                           matches={dayShown}
                           timeZone={tz}
                           numbers={numbers}
+                          linkFor={matchHref}
                         />
                       )}
                       <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-3 print:hidden sm:px-4">
@@ -1470,6 +1490,20 @@ export function PublicSchedulePage(): React.ReactElement {
         </div>
         <div className="-mx-4 flex flex-col">{scopeList}</div>
       </Dialog>
+
+      {/* One match, over the sheet that lists it. Closing REPLACES the entry
+          rather than pushing another, so Back from a closed drawer leaves the
+          page instead of re-opening it. */}
+      {openId ? (
+        <MatchDrawer
+          matchId={openId}
+          matchNo={numbers.get(openId)}
+          watchUrl={openMatch?.watch_url}
+          tab={params.get("tab") ?? "overview"}
+          onTab={(key) => setParam({ tab: key === "overview" ? null : key })}
+          onClose={() => setParam({ match: null, tab: null })}
+        />
+      ) : null}
     </div>
   );
 }

@@ -98,10 +98,12 @@ function Lane({
   lane,
   timeZone,
   numbers,
+  linkFor,
 }: {
   lane: CourtLane;
   timeZone: string;
   numbers: Map<string, number>;
+  linkFor?: (m: PublicScheduleMatch) => string;
 }): React.ReactElement {
   const left = lane.matches.length - lane.played;
   // "Next up" is the first match on this court that has not been played and is
@@ -144,6 +146,7 @@ function Lane({
         numbers={numbers}
         idScope={`court-${lane.name}`}
         nextId={nextId}
+        linkFor={linkFor}
       />
     </section>
   );
@@ -156,12 +159,14 @@ export function CourtBoard({
   timeZone,
   courts,
   numbers,
+  linkFor,
 }: {
   day: string;
   matches: PublicScheduleMatch[];
   timeZone: string;
   courts: PublicCourtLink[] | undefined;
   numbers: Map<string, number>;
+  linkFor?: (m: PublicScheduleMatch) => string;
 }): React.ReactElement {
   const lanes = useMemo(
     () => buildCourtLanes(matches, courts),
@@ -188,6 +193,7 @@ export function CourtBoard({
           lane={lane}
           timeZone={timeZone}
           numbers={numbers}
+          linkFor={linkFor}
         />
       ))}
     </div>

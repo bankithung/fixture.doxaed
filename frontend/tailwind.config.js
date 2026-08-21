@@ -158,6 +158,12 @@ export default {
           from: { transform: "translateX(100%)" },
           to: { transform: "translateX(0)" },
         },
+        // The same drawer on a phone, where the reachable edge is the bottom
+        // one: up off the bottom edge, in.
+        "slide-in-up": {
+          from: { transform: "translateY(100%)" },
+          to: { transform: "translateY(0)" },
+        },
       },
       animation: {
         "fade-in": "fade-in 180ms ease-out both",
@@ -169,6 +175,8 @@ export default {
         sweep: "sweep 2.4s linear infinite",
         "slide-in-right":
           "slide-in-right 260ms cubic-bezier(0.25,0.46,0.45,0.94) both",
+        "slide-in-up":
+          "slide-in-up 260ms cubic-bezier(0.25,0.46,0.45,0.94) both",
       },
     },
   },

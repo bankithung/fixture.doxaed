@@ -568,12 +568,13 @@ describe("PublicSchedulePage", () => {
     expect(within(sheet).getAllByTestId("team-crest-fallback").length).toBeGreaterThan(0);
   });
 
-  it("the whole match row opens the match centre; team names still open their team page", async () => {
+  it("the whole match row opens the match drawer; team names still open their team page", async () => {
     mount();
     const m1 = await screen.findByTestId("court-Main Ground-row-m1");
-    // Stretched link over the row -> the match centre (lineups, court view).
+    // Stretched link over the row -> this match, opened over the sheet. It is
+    // a real link, so middle-click opens the sheet with it already open.
     const row = within(m1).getByRole("link", { name: /vs/i });
-    expect(row).toHaveAttribute("href", "/m/m1");
+    expect(row.getAttribute("href")).toContain("match=m1");
     // The team name is still its own link, above the stretched one.
     const team = within(m1).getByRole("link", { name: "Alpha FC" });
     expect(team.getAttribute("href")).toContain("/team/");

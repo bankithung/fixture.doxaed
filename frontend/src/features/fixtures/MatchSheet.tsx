@@ -127,6 +127,10 @@ export interface MatchSheetProps {
   /** The match this sheet's queue is waiting on, flagged in its status cell —
    * a court's one live question when nothing on it is on yet. */
   nextId?: string;
+  /** Where a row leads. Defaults to the full match hub; the public match
+   * centre points it at its own drawer instead, which is still a real link
+   * (middle-click opens the sheet with that match already open). */
+  linkFor?: (m: PublicScheduleMatch) => string;
 }
 
 export function MatchSheet({
@@ -136,6 +140,7 @@ export function MatchSheet({
   showCourt = false,
   idScope = "sheet",
   nextId,
+  linkFor,
 }: MatchSheetProps): React.ReactElement {
   const heads = [
     {
@@ -210,7 +215,7 @@ export function MatchSheet({
                 >
                   {/* The whole row opens the match centre. */}
                   <Link
-                    to={routes.liveViewer(m.id)}
+                    to={linkFor ? linkFor(m) : routes.liveViewer(m.id)}
                     aria-label={`${t("Match")} ${no ?? ""} ${m.home?.name ?? t("To be decided")} ${t("vs")} ${m.away?.name ?? t("To be decided")}`}
                     className="absolute inset-0 z-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   />
