@@ -529,11 +529,11 @@ describe("PublicSchedulePage", () => {
     await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
 
     const doc = await screen.findByTestId("fixture-print-doc");
-    const detailed = within(doc).getByTestId("print-page-groups-detailed");
+    const detailed = within(doc).getByTestId("print-page-group-Group A-detailed");
     await waitFor(() => expect(detailed).toHaveTextContent("Asen Jamir"));
     // The teams pass of the same competition names nobody.
     expect(
-      within(doc).getByTestId("print-page-groups-teams"),
+      within(doc).getByTestId("print-page-group-Group A-teams"),
     ).not.toHaveTextContent("Asen Jamir");
   });
 
@@ -551,7 +551,7 @@ describe("PublicSchedulePage", () => {
     expect(
       within(doc).getByTestId("print-page-comp-knockout-detailed"),
     ).toBeInTheDocument();
-    expect(within(doc).queryByTestId("print-page-groups-teams")).toBeNull();
+    expect(within(doc).queryByTestId("print-page-group-Group A-teams")).toBeNull();
     // A bracket has to fit one page whole, so a deep draw prints small: the
     // same matches also print as a full-size order of play.
     expect(
@@ -561,12 +561,13 @@ describe("PublicSchedulePage", () => {
       within(doc).getByTestId("print-page-comp-knockout-sheet-detailed"),
     ).toBeInTheDocument();
 
-    // A competition with a group stage prints the sheet as well.
+    // A competition with a group stage prints it too, ONE GROUP PER PAGE —
+    // never two groups sharing a sheet with nothing to say where one ends.
     await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
     await waitFor(() =>
       expect(
         within(screen.getByTestId("fixture-print-doc")).getByTestId(
-          "print-page-groups-teams",
+          "print-page-group-Group A-teams",
         ),
       ).toBeInTheDocument(),
     );

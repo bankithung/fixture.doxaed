@@ -240,43 +240,37 @@ export const FixturePrintDoc = memo(function FixturePrintDoc({
       );
       const ko = koOnly(comp.matches);
       const out: React.ReactElement[] = [];
-      if (groups.length > 0) {
+      // ONE GROUP, ONE PAGE (owner 2026-08-21). Stacked into a single section
+      // they ran across page boundaries: a group's heading could sit at the
+      // foot of one page with its matches overleaf, and two groups shared a
+      // page with nothing to say where one ended. A group is a thing an
+      // organiser pins up on its own.
+      for (const g of groups) {
+        const ms = g.matches
+          .filter((m) => m.stage !== "knockout")
+          .sort((a, b) =>
+            (a.scheduled_at ?? "~") < (b.scheduled_at ?? "~") ? -1 : 1,
+          );
         out.push(
           <Page
-            key={`groups-${tag}`}
-            testid={`print-page-groups-${tag}`}
+            key={`group-${g.key}-${tag}`}
+            testid={`print-page-group-${g.label}-${tag}`}
             tournamentName={tournamentName}
-            title={`${label} · ${t("Group stage")}`}
+            title={`${label} · ${g.label}`}
+            meta={`${ms.length} ${t("matches")}`}
             detailed={detailed}
           >
-            <div className="flex flex-col gap-4">
-              {groups.map((g) => {
-                const ms = g.matches
-                  .filter((m) => m.stage !== "knockout")
-                  .sort((a, b) =>
-                    (a.scheduled_at ?? "~") < (b.scheduled_at ?? "~") ? -1 : 1,
-                  );
-                return (
-                  <div
-                    key={g.key}
-                    className="overflow-hidden rounded-lg border border-border"
-                  >
-                    <h2 className="border-b border-border px-3 py-1.5 text-sm font-semibold">
-                      {g.label}
-                    </h2>
-                    <MatchSheet
-                      matches={ms}
-                      timeZone={timeZone}
-                      numbers={numbers}
-                      showCourt
-                      showDay={days > 1}
-                      showCompetition={false}
-                      idScope={`print-${tag}-${comp.key}-${g.key}`}
-                      rosters={sheet}
-                    />
-                  </div>
-                );
-              })}
+            <div className="overflow-hidden rounded-lg border border-border">
+              <MatchSheet
+                matches={ms}
+                timeZone={timeZone}
+                numbers={numbers}
+                showCourt
+                showDay={days > 1}
+                showCompetition={false}
+                idScope={`print-${tag}-${comp.key}-${g.key}`}
+                rosters={sheet}
+              />
             </div>
           </Page>,
         );
