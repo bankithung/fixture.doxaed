@@ -7,10 +7,12 @@ import {
 import { liveApi } from "@/api/live";
 import {
   tournamentsApi,
+  type MatchSource,
   type PublicSchedulePayload,
   type PublicScheduleMatch,
   type StandingsGroup,
 } from "@/api/tournaments";
+import { groupPositionLabel } from "./groupSlotLabel";
 import { isSetSport } from "@/lib/setDisplay";
 import { t } from "@/lib/t";
 import { useEventStream } from "@/lib/useEventStream";
@@ -195,4 +197,82 @@ export function buildCompetitions(
     });
   }
   return comps.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/**
+ * The NUMBER printed against every match, counted WITHIN its own competition —
+ * the same number the generated fixture sheet carries (owner 2026-08-19, see
+ * `previewGrid.matchNumbers`), so "Winner of match 5" can be found by eye on
+ * any surface that prints it.
+ *
+ * The order is the DRAW's, not the calendar's — competition, then stage, then
+ * round, then the match's place in that round — so a number never moves when
+ * the schedule is repaired. `match_no` is the tournament-wide sequence the
+ * generator hands out in emission order, which is exactly the tie-break the
+ * preview reads off its `ref`; the two therefore agree match for match.
+ */
+export function matchNumbers(
+  matches: readonly PublicScheduleMatch[],
+): Map<string, number> {
+  const order = [...matches].sort(
+    (a, b) =>
+      (a.leaf_key || "").localeCompare(b.leaf_key || "") ||
+      (a.stage || "").localeCompare(b.stage || "") ||
+      (a.stage_no ?? 0) - (b.stage_no ?? 0) ||
+      (a.round_no ?? 0) - (b.round_no ?? 0) ||
+      (a.match_no ?? 0) - (b.match_no ?? 0) ||
+      a.id.localeCompare(b.id),
+  );
+  const perLeaf = new Map<string, number>();
+  const out = new Map<string, number>();
+  for (const m of order) {
+    const key = m.leaf_key || "_";
+    const n = (perLeaf.get(key) ?? 0) + 1;
+    perLeaf.set(key, n);
+    out.set(m.id, n);
+  }
+  return out;
+}
+
+/**
+ * Who a side is when no team has reached it yet. A slot must SAY what it is
+ * waiting on — "TBD" alone tells a parent nothing, and the whole point of the
+ * typed pointers (invariant 9) is that the answer is known:
+ *   winner_of / loser_of  -> "Winner of M12" / "Loser of M12"
+ *   group_position        -> "Group A top 2" / "Best loser 1"
+ * Returns null only when the pointer genuinely names nothing.
+ */
+export function slotLabel(
+  src: MatchSource | null | undefined,
+  numbers: Map<string, number>,
+): string | null {
+  if (!src) return null;
+  if (src.type === "group_position") return groupPositionLabel(src);
+  if (src.type === "winner_of" || src.type === "loser_of") {
+    const ref = src.match_id ?? (src as Record<string, unknown>).ref;
+    const n = ref != null ? numbers.get(String(ref)) : undefined;
+    if (n == null) return null;
+    return src.type === "loser_of"
+      ? `${t("Loser of M")}${n}`
+      : `${t("Winner of M")}${n}`;
+  }
+  return null;
+}
+
+/** The side that won, once one has: `null` while a match is unplayed, live or
+ * drawn. Walkovers count — a walkover HAS a winner. */
+export function winnerOf(
+  m: PublicScheduleMatch,
+): PublicScheduleMatch["home"] | null {
+  if (!FINAL_STATUSES.has(m.status)) return null;
+  const h = m.home_score ?? 0;
+  const a = m.away_score ?? 0;
+  if (h === a) {
+    // A drawn knockout is decided on penalties, never left without a winner.
+    const hp = m.home_pens;
+    const ap = m.away_pens;
+    if (hp == null || ap == null || hp === ap) return null;
+    return hp > ap ? m.home : m.away;
+  }
+  return h > a ? m.home : m.away;
 }

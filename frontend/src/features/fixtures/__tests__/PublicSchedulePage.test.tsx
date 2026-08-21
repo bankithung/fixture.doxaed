@@ -72,6 +72,20 @@ const PAYLOAD: PublicSchedulePayload = {
       status: "scheduled", day: "2026-06-21",
       scheduled_at: "2026-06-21T04:00:00Z", venue: "Side Pitch",
       home: null, away: null, home_score: null, away_score: null,
+      // typed pointers (invariant 9): the semi waits on two group finishers
+      home_source: { type: "group_position", group_label: "Football · U-17 · Boys · Group A", position: 1 },
+      away_source: { type: "group_position", group_label: "Football · U-17 · Boys · Group A", position: 2 },
+      ...LIVE_FIELDS,
+    },
+    {
+      id: "m6", leaf_key: "football.u17", leaf_label: "Football · U-17 · Boys",
+      stage: "knockout", group_label: "", round_no: 2, match_no: 6,
+      status: "scheduled", day: "2026-06-21",
+      scheduled_at: "2026-06-21T06:00:00Z", venue: "Side Pitch",
+      home: null, away: null, home_score: null, away_score: null,
+      // the final waits on the winner of m3, which the sheet numbers M1
+      home_source: { type: "winner_of", match_id: "m3" },
+      away_source: { type: "tbd" },
       ...LIVE_FIELDS,
     },
     {
@@ -165,7 +179,7 @@ beforeEach(() => {
 });
 
 describe("PublicSchedulePage", () => {
-  it("defaults to the COURT board: one lane per court, in kick-off order, ZERO dashes", async () => {
+  it("defaults to ONE SHEET PER COURT, with a column for every fact, ZERO dashes", async () => {
     const { container } = mount();
     // smart default day = nearest >= today, else first day → 2026-06-20
     const day = await screen.findByTestId("public-day-2026-06-20");
@@ -178,31 +192,45 @@ describe("PublicSchedulePage", () => {
     // A day is five tables each with its own queue, so that is how it reads:
     // the ground's two games together, the table-tennis game on its own table.
     const ground = within(day).getByTestId("court-lane-Main Ground");
-    expect(within(ground).getByTestId("public-match-m1")).toBeInTheDocument();
-    expect(within(ground).getByTestId("public-match-m2")).toBeInTheDocument();
-    expect(within(ground).queryByTestId("public-match-m5")).toBeNull();
+    expect(within(ground).getByTestId("court-Main Ground-row-m1")).toBeInTheDocument();
+    expect(within(ground).getByTestId("court-Main Ground-row-m2")).toBeInTheDocument();
+    expect(within(ground).queryByTestId("court-Main Ground-row-m5")).toBeNull();
     expect(
       within(within(day).getByTestId("court-lane-Table Hall")).getByTestId(
-        "public-match-m5",
+        "court-Table Hall-row-m5",
       ),
     ).toBeInTheDocument();
     // the lane says how far through its own queue it is
     expect(ground).toHaveTextContent("1/2 played");
 
-    const m1 = within(ground).getByTestId("public-match-m1");
+    // It is a real sheet: named columns, one row per match, everything aligned.
+    const sheet = within(ground).getByTestId("court-Main Ground-table");
+    for (const h of ["No", "Time", "Home", "Away", "Score", "Winner", "Status"]) {
+      expect(within(sheet).getByRole("columnheader", { name: h })).toBeInTheDocument();
+    }
+
+    const m1 = within(ground).getByTestId("court-Main Ground-row-m1");
+    // The number the DRAW gave it, counted within its own competition, so a
+    // bracket pointer elsewhere can be looked up by eye.
+    expect(within(m1).getByTestId("court-Main Ground-no-m1")).toHaveTextContent("M1");
+    expect(
+      within(ground).getByTestId("court-Main Ground-no-m2"),
+    ).toHaveTextContent("M2");
     expect(m1).toHaveTextContent("09:00"); // 03:30Z in Asia/Kolkata (invariant 14)
     // the row still names its game via chips (never the dashed blob)
     expect(within(m1).getByText("Football")).toBeInTheDocument();
     expect(within(m1).getByText("U15")).toBeInTheDocument(); // "U-15" hyphen stripped
-    // Stacked, one side per line: a 35-character school name gets the row's
-    // whole width instead of an ellipsis either side of a centred score.
-    expect(within(m1).getByTestId("score-m1-home")).toHaveTextContent("2");
-    expect(within(m1).getByTestId("score-m1-away")).toHaveTextContent("1");
-    expect(within(m1).getByTestId("score-m1-home").className).toContain(
-      "font-semibold",
-    );
+    expect(within(m1).getByTestId("sheet-score-m1")).toHaveTextContent("2-1");
+    expect(within(m1).getByTestId("sheet-detail-m1")).toHaveTextContent("(4-3 pens)");
+    // A winner column, not a bolded name to infer one from.
+    expect(
+      within(m1).getByTestId("court-Main Ground-winner-m1"),
+    ).toHaveTextContent("Alpha FC");
     expect(m1).toHaveTextContent("Full time");
-    expect(within(m1).getByTestId("points-m1")).toHaveTextContent("(4-3 pens)");
+    // Nothing has been played on the live row, so its winner cell says so.
+    expect(
+      within(ground).queryByTestId("court-Main Ground-winner-m2"),
+    ).toBeNull();
 
     // the en/em dash is the #1 tell: it must appear NOWHERE on the page
     expect(screen.queryByText(/Football · U-15 · Boys/)).toBeNull();
@@ -213,6 +241,26 @@ describe("PublicSchedulePage", () => {
     expect(screen.queryByTestId("app-sidebar")).toBeNull();
     expect(screen.getByRole("navigation", { name: "Tournament views" })).toBeInTheDocument();
     expect(screen.queryByTestId("public-competition-football.u15")).toBeNull();
+  });
+
+  it("says what an empty slot is WAITING ON, never a bare TBD", async () => {
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+    await userEvent.click(screen.getByTestId("day-pick-2026-06-21"));
+    await userEvent.click(screen.getByTestId("view-courts"));
+    const pitch = await screen.findByTestId("court-lane-Side Pitch");
+
+    // The semi waits on two group finishers...
+    const semi = within(pitch).getByTestId("court-Side Pitch-row-m3");
+    expect(semi).toHaveTextContent("Group A top 1");
+    expect(semi).toHaveTextContent("Group A top 2");
+    // ...and the final waits on the winner of that semi, named by the SAME
+    // number the semi's own row prints.
+    expect(within(semi).getByTestId("court-Side Pitch-no-m3")).toHaveTextContent("M1");
+    const final = within(pitch).getByTestId("court-Side Pitch-row-m6");
+    expect(final).toHaveTextContent("Winner of M1");
+    // A pointer with nothing to name is the only thing left saying so.
+    expect(final).toHaveTextContent("To be decided");
   });
 
   it("flags the next match on a court, and drops the lanes on a one-court day", async () => {
@@ -238,15 +286,26 @@ describe("PublicSchedulePage", () => {
     expect(within(next).getByTestId("flag-m3")).toHaveTextContent("Next up");
   });
 
-  it("switches the day board to a clock reading (By time)", async () => {
+  it("switches the day to ONE sheet in clock order, court in its own column", async () => {
     mount();
     await screen.findByTestId("public-day-2026-06-20");
     await userEvent.click(screen.getByTestId("view-time"));
 
     const day = await screen.findByTestId("public-day-2026-06-20");
-    const slot = within(day).getByTestId("slot-09:00");
-    expect(slot).toHaveTextContent("09:00");
-    expect(within(slot).getByTestId("public-match-m1")).toBeInTheDocument();
+    const sheet = within(day).getByTestId("byTime-table");
+    // Same columns as a court's sheet plus the court itself, so a row never
+    // changes meaning between views.
+    expect(
+      within(sheet).getByRole("columnheader", { name: "Court" }),
+    ).toBeInTheDocument();
+    const rows = within(sheet).getAllByTestId(/^byTime-row-/);
+    expect(rows.map((r) => r.getAttribute("data-testid"))).toEqual([
+      "byTime-row-m1",
+      "byTime-row-m2",
+      "byTime-row-m5",
+    ]);
+    expect(rows[0]!).toHaveTextContent("Main Ground");
+    expect(rows[2]!).toHaveTextContent("Table Hall");
     // the clock reading has no lanes
     expect(within(day).queryByTestId("court-lane-Main Ground")).toBeNull();
   });
@@ -257,9 +316,12 @@ describe("PublicSchedulePage", () => {
     expect(within(band).getByTestId("live-tile-m2")).toBeInTheDocument();
     expect(within(band).getByTestId("live-tile-m5")).toBeInTheDocument();
     // inline live row still carries the pulse + period for context
-    const m2 = screen.getByTestId("public-match-m2");
+    const m2 = screen.getByTestId("court-Main Ground-row-m2");
     expect(within(m2).getByTestId("live-pulse")).toBeInTheDocument();
     expect(m2).toHaveTextContent("Live");
+    expect(screen.getByTestId("court-Main Ground-row-m1")).toHaveTextContent(
+      "Full time",
+    );
   });
 
   it("scopes the Now-playing band to the open competition, and hides it when that competition has nothing live", async () => {
@@ -288,19 +350,18 @@ describe("PublicSchedulePage", () => {
 
   it("shows live points: period chip, set scores, shootout result (ASCII)", async () => {
     mount();
-    const m2 = await screen.findByTestId("public-match-m2");
+    const m2 = await screen.findByTestId("court-Main Ground-row-m2");
     expect(within(m2).getByTestId("period-m2")).toHaveTextContent("first half");
     // Live set sport (tap scoring): the HEADLINE is the running set's points;
     // sets won + finished sets ride the sub-line; the chip derives "Set N"
     // from the set list (football current_period never labels a set sport).
-    const m5 = screen.getByTestId("public-match-m5");
-    // The rightmost number is the one being watched: the running set's points.
-    expect(within(m5).getByTestId("score-m5-home")).toHaveTextContent("8");
-    expect(within(m5).getByTestId("score-m5-away")).toHaveTextContent("11");
-    // Sets won ride beside them, small.
-    expect(within(m5).getByTestId("sets-m5-home")).toHaveTextContent("1");
-    expect(within(m5).getByTestId("sets-m5-away")).toHaveTextContent("1");
-    expect(within(m5).getByTestId("points-m5")).toHaveTextContent("Sets 1-1 · 11-7");
+    const m5 = screen.getByTestId("court-Table Hall-row-m5");
+    // The score column carries the running set's points; sets won and the
+    // finished sets ride under it.
+    expect(within(m5).getByTestId("sheet-score-m5")).toHaveTextContent("8-11");
+    expect(within(m5).getByTestId("sheet-detail-m5")).toHaveTextContent(
+      "Sets 1-1 · 11-7",
+    );
     expect(within(m5).getByTestId("period-m5")).toHaveTextContent("Set 2");
   });
 
@@ -324,15 +385,13 @@ describe("PublicSchedulePage", () => {
     expect(within(panel).queryByTestId("group-standing-tm1")).toBeNull();
   });
 
-  it("keeps Up next under the live band, scoped, and moves on when a match ends", async () => {
+  it("drops Up next from the match day (each court flags its own), keeps it per competition", async () => {
     mount();
     await screen.findByTestId("public-day-2026-06-20");
 
-    // Today: the tournament's next unplayed matches, live ones excluded
-    const band = screen.getByTestId("upnext-band");
-    expect(within(band).getByTestId("public-match-m3")).toBeInTheDocument();
-    expect(within(band).queryByTestId("public-match-m2")).toBeNull(); // live
-    expect(within(band).queryByTestId("public-match-m1")).toBeNull(); // played
+    // The day board answers "what is next" per COURT, in the sheet itself, so
+    // a band guessing at it tournament-wide is a second, worse answer.
+    expect(screen.queryByTestId("upnext-band")).toBeNull();
 
     // a competition shows only its own next match
     await userEvent.click(screen.getByTestId("rail-comp-football.u17"));
@@ -357,12 +416,12 @@ describe("PublicSchedulePage", () => {
     await waitFor(() =>
       expect(screen.getByTestId("filter-count")).toHaveTextContent("1 of 3"),
     );
-    expect(screen.getByTestId("public-match-m5")).toBeInTheDocument();
-    expect(screen.queryByTestId("public-match-m1")).toBeNull();
+    expect(screen.getByTestId("court-Table Hall-row-m5")).toBeInTheDocument();
+    expect(screen.queryByTestId("court-Main Ground-row-m1")).toBeNull();
 
     await userEvent.click(screen.getByTestId("filter-clear"));
     await waitFor(() =>
-      expect(screen.getByTestId("public-match-m1")).toBeInTheDocument(),
+      expect(screen.getByTestId("court-Main Ground-row-m1")).toBeInTheDocument(),
     );
   });
 
@@ -462,21 +521,25 @@ describe("PublicSchedulePage", () => {
 
   it("badges every team: crest when it has one, initials when it does not, nothing for a TBD side", async () => {
     mount();
-    const m1 = await screen.findByTestId("public-match-m1");
-    expect(within(m1).getByTestId("team-crest")).toHaveAttribute("src", ALPHA_CREST);
-    expect(within(m1).getByTestId("team-crest-fallback")).toHaveTextContent("BF");
-
-    // A bracket slot with no team yet gets NEITHER: there is nobody to badge.
-    const m3 = within(screen.getByTestId("upnext-band")).getByTestId(
-      "public-match-m3",
+    const m1 = await screen.findByTestId("court-Main Ground-row-m1");
+    // Alpha wears its crest in both the Home cell and the Winner cell.
+    expect(within(m1).getAllByTestId("team-crest")[0]).toHaveAttribute(
+      "src",
+      ALPHA_CREST,
     );
-    expect(within(m3).queryByTestId("team-crest")).toBeNull();
-    expect(within(m3).queryByTestId("team-crest-fallback")).toBeNull();
+    expect(within(m1).getByTestId("team-crest-fallback")).toHaveTextContent("BF");
 
     // The badge stays inside the team link, so it opens the team page and
     // never steals the link's accessible name.
     const team = within(m1).getByRole("link", { name: "Alpha FC" });
     expect(within(team).getByTestId("team-crest")).toBeInTheDocument();
+
+    // A bracket slot with no team yet gets NEITHER: there is nobody to badge.
+    await userEvent.click(screen.getByTestId("day-pick-2026-06-21"));
+    await userEvent.click(screen.getByTestId("view-courts"));
+    const m3 = await screen.findByTestId("court-Side Pitch-row-m3");
+    expect(within(m3).queryByTestId("team-crest")).toBeNull();
+    expect(within(m3).queryByTestId("team-crest-fallback")).toBeNull();
   });
 
   it("scales the crest up on the Now-playing hero", async () => {
@@ -507,7 +570,7 @@ describe("PublicSchedulePage", () => {
 
   it("the whole match row opens the match centre; team names still open their team page", async () => {
     mount();
-    const m1 = await screen.findByTestId("public-match-m1");
+    const m1 = await screen.findByTestId("court-Main Ground-row-m1");
     // Stretched link over the row -> the match centre (lineups, court view).
     const row = within(m1).getByRole("link", { name: /vs/i });
     expect(row).toHaveAttribute("href", "/m/m1");

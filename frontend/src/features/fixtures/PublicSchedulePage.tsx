@@ -33,6 +33,7 @@ import {
   FINAL_STATUSES,
   LIVE_STATUSES,
   buildCompetitions,
+  matchNumbers,
   shortGroup,
   splitLabel,
   usePublicTournament,
@@ -50,6 +51,7 @@ import {
   teamHit,
 } from "./publicMatchCard";
 import { CourtBoard, courtDefaultFits } from "./CourtBoard";
+import { MatchSheet } from "./MatchSheet";
 import { PublicBracketBoard, CompetitionBracket } from "./PublicBracketBoard";
 
 /** The one earned card: live matches, lifted out of position so they're never
@@ -105,6 +107,9 @@ function LiveBand({
 }): React.ReactElement | null {
   if (matches.length === 0) return null;
   const single = matches.length === 1;
+  // Five courts can all be live at once, and five hero tiles push the sheet a
+  // screen and a half down. Past two, the band tiles tighter.
+  const many = matches.length > 2;
   return (
     <section
       data-testid="live-band"
@@ -117,7 +122,13 @@ function LiveBand({
           {matches.length}
         </span>
       </div>
-      <div className={cn("grid gap-3", !single && "lg:grid-cols-2")}>
+      <div
+        className={cn(
+          "grid gap-3",
+          !single && "sm:grid-cols-2",
+          many && "xl:grid-cols-3",
+        )}
+      >
         {matches.map((m) => {
           const sv = liveSetView(m);
           const sm = statusMeta(m.status);
@@ -135,7 +146,12 @@ function LiveBand({
                 aria-hidden="true"
                 className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-primary/10 blur-3xl"
               />
-              <div className="relative flex flex-col items-center gap-3 px-4 py-6 sm:px-6">
+              <div
+                className={cn(
+                  "relative flex flex-col items-center gap-3 px-4 sm:px-6",
+                  many ? "py-4" : "py-6",
+                )}
+              >
                 <span
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
@@ -175,7 +191,11 @@ function LiveBand({
                       aria-label={t("Open the match centre")}
                       className={cn(
                         "block rounded-md px-1 font-tabular font-semibold tabular-nums transition-colors hover:text-primary",
-                        single ? "text-4xl sm:text-6xl" : "text-4xl sm:text-5xl",
+                        single
+                          ? "text-4xl sm:text-6xl"
+                          : many
+                            ? "text-3xl sm:text-4xl"
+                            : "text-4xl sm:text-5xl",
                       )}
                     >
                       {score[0]}
@@ -739,66 +759,47 @@ function CompetitionByDay({
   );
 }
 
-/** Cross-competition ORDER OF PLAY for ONE day in a single time-ordered list
- * (not grouped by sport), each row carrying its own competition chips so you
- * still know the game. Thin time-slot headers break the run when the kick-off
- * changes. The alternative to the court board, for anyone who reads a day as a
- * clock rather than as a set of tables. */
+/** The same day as ONE sheet in kick-off order, with the court in its own
+ * column — for anyone who reads a day as a clock rather than as a set of
+ * tables. Same columns as a court's sheet, so switching view never changes
+ * what a row means. */
 function TimeBoard({
   day,
   matches,
   timeZone,
+  numbers,
 }: {
   day: string;
   matches: PublicScheduleMatch[];
   timeZone: string;
+  numbers: Map<string, number>;
 }): React.ReactElement {
-  // Group by kick-off time so the slot reads once, in chronological order.
-  const slots = useMemo(() => {
-    const ordered = [...matches].sort((a, b) =>
-      (a.scheduled_at ?? "~") < (b.scheduled_at ?? "~") ? -1 : 1,
-    );
-    const by = new Map<string, PublicScheduleMatch[]>();
-    for (const m of ordered) {
-      const time = m.scheduled_at
-        ? fmtKickoff(m.scheduled_at, timeZone)
-        : t("TBD");
-      if (!by.has(time)) by.set(time, []);
-      by.get(time)!.push(m);
-    }
-    return [...by.entries()];
-  }, [matches, timeZone]);
+  const ordered = useMemo(
+    () =>
+      [...matches].sort((a, b) =>
+        (a.scheduled_at ?? "~") < (b.scheduled_at ?? "~") ? -1 : 1,
+      ),
+    [matches],
+  );
 
-  if (slots.length === 0) {
+  if (ordered.length === 0) {
     return (
       <p className="p-6 text-center text-sm text-muted-foreground">
         {t("No matches on this day.")}
       </p>
     );
   }
-
   return (
-    <div data-testid={`public-day-${day}`} className="overflow-hidden bg-card">
-      {slots.map(([time, ms]) => (
-        <div key={time} data-testid={`slot-${time}`}>
-          <h3 className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-muted px-4 py-1.5 font-tabular text-xs font-semibold text-muted-foreground">
-            {time}
-            <span className="font-normal">
-              {ms.length} {ms.length === 1 ? t("match") : t("matches")}
-            </span>
-          </h3>
-          <ul className="divide-y divide-border">
-            {ms.map((m) => (
-              <MatchCard
-                key={m.id}
-                match={m}
-                timeZone={timeZone}
-                labels="slot"
-              />
-            ))}
-          </ul>
-        </div>
-      ))}
+    <div data-testid={`public-day-${day}`} className="p-3 sm:p-4">
+      <div className="overflow-hidden rounded-lg border border-border">
+        <MatchSheet
+          matches={ordered}
+          timeZone={timeZone}
+          numbers={numbers}
+          showCourt
+          idScope="byTime"
+        />
+      </div>
     </div>
   );
 }
@@ -905,6 +906,10 @@ export function PublicSchedulePage(): React.ReactElement {
     }
     setParams(p, { replace: true });
   };
+
+  /** Fixture match numbers come off the WHOLE tournament, never the filtered
+   * day: "Winner of M12" may point at a match on another day or court. */
+  const numbers = useMemo(() => matchNumbers(allMatches), [allMatches]);
 
   const competitions = useMemo(
     () => buildCompetitions(allMatches, standingsQ.data?.groups),
@@ -1345,19 +1350,27 @@ export function PublicSchedulePage(): React.ReactElement {
                   {selected === "knockout" ? null : (
                     <>
                       <LiveBand matches={bandLive} timeZone={tz} />
-                      <UpNextBand matches={bandMatches} timeZone={tz} />
+                      {/* A match day carries no "Up next" band: every court's
+                          sheet flags its OWN next match, which is the answer
+                          the band was guessing at (owner 2026-08-21). */}
+                      {selectedComp ? (
+                        <UpNextBand matches={bandMatches} timeZone={tz} />
+                      ) : null}
                       <FollowedBand matches={bandMatches} timeZone={tz} />
                     </>
                   )}
                   {selectedComp && view === "table" ? (
                     <CompetitionTables comp={selectedComp} />
                   ) : null}
-                  {selected === "knockout" ? null : (
+                  {/* The leader board is leaving the match centre for a page
+                      of its own (owner 2026-08-21); the match day is the first
+                      scope it has come off. */}
+                  {selected === "knockout" || !selectedComp ? null : (
                     <PublicLeaders
                       slug={slug}
                       id={id}
                       flat
-                      leafKey={selectedComp?.key}
+                      leafKey={selectedComp.key}
                     />
                   )}
 
@@ -1400,12 +1413,14 @@ export function PublicSchedulePage(): React.ReactElement {
                           matches={dayShown}
                           timeZone={tz}
                           courts={query.data.courts}
+                          numbers={numbers}
                         />
                       ) : (
                         <TimeBoard
                           day={day}
                           matches={dayShown}
                           timeZone={tz}
+                          numbers={numbers}
                         />
                       )}
                       <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-3 print:hidden sm:px-4">

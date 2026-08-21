@@ -7,20 +7,21 @@ import { WatchLiveLink } from "@/features/live/WatchLiveLink";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { FINAL_STATUSES, LIVE_STATUSES } from "./publicTournament";
-import { LivePulse, MatchCard } from "./publicMatchCard";
+import { LivePulse } from "./publicMatchCard";
+import { MatchSheet } from "./MatchSheet";
 
 /**
- * The order of play for ONE day, grouped by COURT — the default view of the
- * public match centre.
+ * The order of play for ONE day, ONE SHEET PER COURT — the default and main
+ * view of the public match centre.
  *
  * A tournament day is a physical thing: five tables running side by side, each
- * with its own queue. "When does my daughter play, and where do I stand" is
- * answered by the court's running order, and a purely time-ordered list buries
- * it: at 09:00 five matches start at once and the court is a word in small grey
- * text. One lane per court, each in kick-off order, IS the board pinned up at
- * the venue.
+ * with its own queue. "When does she play, and where do I stand" is answered
+ * by a court's running order, and a single time-ordered list buries it — at
+ * 09:00 five matches start at once and the court is a word in small grey text.
+ * A court per sheet IS the board pinned up at the venue, and every court gets
+ * the full width so its columns actually line up (owner 2026-08-21).
  *
- * It only earns the default when there is more than one court (see
+ * Court grouping only earns the default when there is more than one court (see
  * `courtDefaultFits`); on a single-court day a lane is the day list with an
  * extra heading.
  */
@@ -96,29 +97,33 @@ export function courtDefaultFits(matches: PublicScheduleMatch[]): boolean {
 function Lane({
   lane,
   timeZone,
+  numbers,
 }: {
   lane: CourtLane;
   timeZone: string;
+  numbers: Map<string, number>;
 }): React.ReactElement {
-  // "Next up" marks the first match on this court that has not been played and
-  // is not already on: the one question a lane exists to answer.
+  const left = lane.matches.length - lane.played;
+  // "Next up" is the first match on this court that has not been played and is
+  // not already on — the one question a court's own sheet exists to answer.
   const nextId = lane.matches.find(
     (m) => !FINAL_STATUSES.has(m.status) && !LIVE_STATUSES.has(m.status),
   )?.id;
-  const done = lane.played === lane.matches.length;
   return (
     <section
       data-testid={`court-lane-${lane.name}`}
       className={cn(
         "flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card",
-        lane.live > 0 && "border-primary/40 ring-1 ring-primary/20",
+        lane.live > 0 && "border-primary/40",
       )}
     >
-      {/* Sticky so the court stays named while a long queue scrolls past it. */}
-      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-muted px-3 py-2 sm:px-4">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-3 py-2 sm:px-4">
         {lane.live > 0 ? <LivePulse /> : null}
         <h3 className="min-w-0 truncate text-sm font-semibold">{lane.name}</h3>
-        <span className="ml-auto flex shrink-0 items-center gap-2">
+        <span className="font-tabular text-xs text-muted-foreground">
+          {lane.matches.length} {lane.matches.length === 1 ? t("match") : t("matches")}
+        </span>
+        <span className="ml-auto flex shrink-0 items-center gap-3">
           <WatchLiveLink
             url={lane.link?.is_streaming ? lane.link.watch_url : null}
             variant="ghost"
@@ -127,38 +132,36 @@ function Lane({
             label={`${t("Watch live")} ${lane.name}`}
           />
           <span className="font-tabular text-xs text-muted-foreground">
-            {done
+            {left === 0
               ? t("All played")
               : `${lane.played}/${lane.matches.length} ${t("played")}`}
           </span>
         </span>
       </div>
-      <ul className="divide-y divide-border">
-        {lane.matches.map((m) => (
-          <MatchCard
-            key={m.id}
-            match={m}
-            timeZone={timeZone}
-            labels="court"
-            flag={m.id === nextId ? t("Next up") : undefined}
-          />
-        ))}
-      </ul>
+      <MatchSheet
+        matches={lane.matches}
+        timeZone={timeZone}
+        numbers={numbers}
+        idScope={`court-${lane.name}`}
+        nextId={nextId}
+      />
     </section>
   );
 }
 
-/** One day's matches as one lane per court. */
+/** One day's matches as one full-width sheet per court. */
 export function CourtBoard({
   day,
   matches,
   timeZone,
   courts,
+  numbers,
 }: {
   day: string;
   matches: PublicScheduleMatch[];
   timeZone: string;
   courts: PublicCourtLink[] | undefined;
+  numbers: Map<string, number>;
 }): React.ReactElement {
   const lanes = useMemo(
     () => buildCourtLanes(matches, courts),
@@ -175,12 +178,17 @@ export function CourtBoard({
   return (
     <div
       data-testid={`public-day-${day}`}
-      // Lanes are independent queues, so they tile and each keeps its own
-      // height (`items-start`); a phone gets one full-width lane at a time.
-      className="grid grid-cols-1 items-start gap-3 p-3 sm:p-4 lg:grid-cols-2 2xl:grid-cols-3"
+      // One court per row, full width: eight columns of a fixture sheet need
+      // the whole panel, and two half-width sheets line up with nothing.
+      className="flex flex-col gap-4 p-3 sm:p-4"
     >
       {lanes.map((lane) => (
-        <Lane key={lane.key} lane={lane} timeZone={timeZone} />
+        <Lane
+          key={lane.key}
+          lane={lane}
+          timeZone={timeZone}
+          numbers={numbers}
+        />
       ))}
     </div>
   );
