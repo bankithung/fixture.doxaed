@@ -8,7 +8,13 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from apps.fixtures.models import Court, Venue
+from apps.fixtures.models import Court, FixtureSnapshot, Venue
+from apps.fixtures.services.snapshots import (
+    RestoreBlocked,
+    capture,
+    capture_quiet,
+    restore,
+)
 from apps.fixtures.services.courts import materialise_courts
 from apps.fixtures.services.draw_config import (
     DEFAULT_DRAW_CONFIG,
@@ -105,6 +111,13 @@ class GenerateFixturesView(GenericAPIView):
         seed_used = seed
         if seed_used is None and seeding == "random":
             seed_used = ((t.draw_config or {}).get(leaf_key or "*") or {}).get("seed")
+        # Freeze the fixture this draw produced (fixture versions, 2026-08-21):
+        # a later re-draw overwrites it, and an organiser who preferred this one
+        # needs a way back to it.
+        capture_quiet(
+            t, kind=FixtureSnapshot.Kind.GENERATED,
+            label=("Drew %s" % leaf_key) if leaf_key else "Drew all competitions",
+        )
         return Response(
             {
                 "generated": len(matches), "format": fmt, "leaf_key": leaf_key,
@@ -381,6 +394,10 @@ class PublishAllFixturesView(GenericAPIView):
             )
         except (ValueError, TypeError) as e:
             raise DRFValidationError({"detail": str(e)})
+        capture_quiet(
+            t, kind=FixtureSnapshot.Kind.GENERATED,
+            label="Published all competitions",
+        )
         return Response(
             {
                 "competitions": drawn,
@@ -1454,3 +1471,117 @@ class PublicTournamentStandingsView(GenericAPIView):
             for lbl in labels
         ]
         return Response({"groups": groups})
+
+
+def _snapshot_row(s: FixtureSnapshot, *, payload: bool = False) -> dict:
+    out = {
+        "id": str(s.id),
+        "kind": s.kind,
+        "kind_label": s.get_kind_display(),
+        "label": s.label,
+        "match_count": s.match_count,
+        "summary": s.summary or {},
+        "created_at": s.created_at.isoformat(),
+        "created_by": (
+            {"id": str(s.created_by_id), "email": s.created_by.email}
+            if s.created_by_id else None
+        ),
+    }
+    if payload:
+        out["matches"] = s.payload
+    return out
+
+
+class TournamentFixtureSnapshotsView(GenericAPIView):
+    """`GET|POST /api/tournaments/{id}/fixture-versions/` — every fixture this
+    tournament has had, newest first, and a way to freeze the current one.
+
+    A fixture is redrawn, rescheduled and hand-repaired over its life and each
+    pass used to overwrite the last. These are the versions: an organiser can
+    look back at what was generated, compare it with what is live, and put an
+    earlier one back (fixture versions, 2026-08-21).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def _tournament(self, request, tournament_id):
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        if not can_access_module(request.user, t, "tournament.bracket_editor"):
+            raise PermissionDenied("not_tournament_manager")
+        return t
+
+    def get(self, request, tournament_id):
+        t = self._tournament(request, tournament_id)
+        rows = (
+            FixtureSnapshot.objects.filter(tournament=t)
+            .select_related("created_by")
+            .order_by("-created_at")[:100]
+        )
+        return Response({"versions": [_snapshot_row(s) for s in rows]})
+
+    def post(self, request, tournament_id):
+        t = self._tournament(request, tournament_id)
+        label = str(request.data.get("label") or "").strip()
+        snap = capture(
+            t, kind=FixtureSnapshot.Kind.MANUAL, label=label,
+            by=request.user, request=request,
+        )
+        if snap is None:
+            raise DRFValidationError({"detail": "no_fixture_to_save"})
+        return Response(_snapshot_row(snap), status=201)
+
+
+class FixtureSnapshotDetailView(GenericAPIView):
+    """`GET /api/fixture-versions/{sid}/` — one frozen fixture in full, every
+    match as it stood, so it can be read or printed without restoring it."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, snapshot_id):
+        snap = (
+            FixtureSnapshot.objects.select_related("tournament", "created_by")
+            .filter(id=snapshot_id).first()
+        )
+        if snap is None or not accessible_tournaments(request.user).filter(
+            id=snap.tournament_id
+        ).exists():
+            raise NotFound("snapshot_not_found")
+        if not can_access_module(
+            request.user, snap.tournament, "tournament.bracket_editor",
+        ):
+            raise PermissionDenied("not_tournament_manager")
+        return Response(_snapshot_row(snap, payload=True))
+
+
+class FixtureSnapshotRestoreView(GenericAPIView):
+    """`POST /api/fixture-versions/{sid}/restore/` — put that fixture back.
+
+    Refused once anything has been played: a fixture with results in it is no
+    longer a plan to rewind. The fixture being replaced is frozen first, so the
+    restore itself can be undone.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, snapshot_id):
+        snap = (
+            FixtureSnapshot.objects.select_related("tournament")
+            .filter(id=snapshot_id).first()
+        )
+        if snap is None or not accessible_tournaments(request.user).filter(
+            id=snap.tournament_id
+        ).exists():
+            raise NotFound("snapshot_not_found")
+        if not can_access_module(
+            request.user, snap.tournament, "tournament.bracket_editor",
+        ):
+            raise PermissionDenied("not_tournament_manager")
+        try:
+            counts = restore(snap, by=request.user, request=request)
+        except RestoreBlocked as e:
+            raise DRFValidationError({"detail": str(e)})
+        # `counts` already carries a `restored` COUNT, so a boolean of the same
+        # name would be silently overwritten by it. `ok` says it happened.
+        return Response({"ok": True, **counts})

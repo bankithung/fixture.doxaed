@@ -202,6 +202,15 @@ saves the winning draw and every later preview replays it (PRD decision 88).
   state — the fixture on screen may be a pinned re-draw from an earlier visit
   that this tab never asked for.
 
+## Every fixture is kept: versions, not overwrites (2026-08-21)
+
+A fixture is drawn, scheduled, repaired and re-drawn, and each pass used to overwrite the last with nothing kept — an organiser who preferred yesterday's draw had no way back to it. `fixtures.FixtureSnapshot` + `services/snapshots.py` freeze the whole fixture; `FixtureVersionsPage` (`/tournaments/:id/fixtures/versions`, Operations nav, manager-gated) lists them and puts one back.
+
+- **Capture is automatic**, so the history exists without anyone remembering to save: `GenerateFixturesView` and `PublishAllFixturesView` capture `generated`, `apply_schedule` captures `scheduled`, and the page's own button captures `manual`. `capture_quiet` swallows its own failures — the fixture is the product, the history is the convenience.
+- **The payload carries each match's OWN id**, which is the whole reason a restore is safe: rebuilding rows with fresh ids would restore a bracket whose every `winner_of`/`loser_of` pointer dangled (invariant 9). Restore writes back onto those rows, undeletes what the snapshot has, and soft-deletes what it does not.
+- **A played match blocks a restore**, in both directions: refused if the tournament has a result now, and refused if the SNAPSHOT was taken after one (it would resurrect a corrected result). The fixture being replaced is frozen first, so a restore can itself be undone.
+- `{"ok": True, **counts}` on the restore endpoint, never `{"restored": True, **counts}` — `counts` already has a `restored` COUNT and the boolean was being silently overwritten by it.
+
 ## The public match centre is ONE page (2026-08-21)
 
 `features/fixtures/PublicSchedulePage.tsx` is the whole public viewer bar Standings. Matches and Knockout were two pages over the SAME fetch, so a parent hopped pages to answer one question. There are now two tabs (`PublicViewerTabs`: Matches, Standings) and the draw is a **scope** of the match centre.

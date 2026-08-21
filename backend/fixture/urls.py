@@ -34,6 +34,8 @@ from apps.badges.views import (
     TournamentBadgesView,
 )
 from apps.fixtures.views import (
+    FixtureSnapshotDetailView,
+    FixtureSnapshotRestoreView,
     PublicTournamentScheduleView,
     PublicTournamentStandingsView,
 )
@@ -50,6 +52,17 @@ from apps.teams.views import PublicTeamCalendarView
 
 api_v1 = [
     path("accounts/", include("apps.accounts.urls")),
+    # One frozen fixture: read it, or put it back.
+    path(
+        "fixture-versions/<uuid:snapshot_id>/",
+        FixtureSnapshotDetailView.as_view(),
+        name="fixture-version-detail",
+    ),
+    path(
+        "fixture-versions/<uuid:snapshot_id>/restore/",
+        FixtureSnapshotRestoreView.as_view(),
+        name="fixture-version-restore",
+    ),
     path("orgs/", include("apps.organizations.urls")),
     # P4: claim-your-school — registrant contact graduates to operator tenant.
     path(

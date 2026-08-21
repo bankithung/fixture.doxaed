@@ -478,6 +478,47 @@ export interface PublicScheduleSide {
 }
 
 /** One match of the public read-only schedule (trust layer, increment H). */
+
+/** One frozen fixture: every match as it stood at that moment. */
+export interface FixtureVersion {
+  id: string;
+  kind: "generated" | "scheduled" | "manual" | "restored";
+  kind_label: string;
+  label: string;
+  match_count: number;
+  summary: {
+    competitions?: string[];
+    competition_count?: number;
+    days?: string[];
+    scheduled?: number;
+    played?: number;
+  };
+  created_at: string;
+  created_by: { id: string; email: string } | null;
+  /** Only on the detail read. */
+  matches?: FixtureVersionMatch[];
+}
+
+/** A match inside a frozen fixture (the snapshot's own serialisation). */
+export interface FixtureVersionMatch {
+  id: string;
+  stage: string;
+  stage_no: number;
+  group_label: string;
+  round_no: number;
+  match_no: number;
+  home_team_id: string | null;
+  away_team_id: string | null;
+  home_source: MatchSource | null;
+  away_source: MatchSource | null;
+  status: string;
+  home_score: number | null;
+  away_score: number | null;
+  leaf_key: string;
+  scheduled_at: string | null;
+  venue: string;
+}
+
 export interface PublicScheduleMatch {
   id: string;
   leaf_key: string;
@@ -1154,6 +1195,32 @@ export const tournamentsApi = {
       has_matches: boolean;
     }>(`/api/tournaments/${id}/draw-config/`, body),
   /** Server-computed readiness checklist (§5.1) — the FE never replicates it. */
+  // --- Fixture versions: every fixture this tournament has had ---
+  /** Newest first. Manager-gated, org-scoped. */
+  fixtureVersions: (id: string) =>
+    api.get<{ versions: FixtureVersion[] }>(
+      `/api/tournaments/${id}/fixture-versions/`,
+    ),
+  /** Freeze the fixture as it stands now. */
+  saveFixtureVersion: (id: string, label: string) =>
+    api.post<FixtureVersion>(`/api/tournaments/${id}/fixture-versions/`, {
+      label,
+    }),
+  /** One frozen fixture in full, every match, without restoring it. */
+  fixtureVersion: (versionId: string) =>
+    api.get<FixtureVersion>(`/api/fixture-versions/${versionId}/`),
+  /** Put that fixture back. Refused once anything has been played. */
+  restoreFixtureVersion: (versionId: string) =>
+    api.post<{
+      ok: boolean;
+      /** How many matches were written back, created afresh and retired. */
+      restored: number;
+      created: number;
+      removed: number;
+    }>(
+      `/api/fixture-versions/${versionId}/restore/`,
+      {},
+    ),
   fixtureReadiness: (id: string) =>
     api.get<FixtureReadiness>(`/api/tournaments/${id}/fixture-readiness/`),
   // --- Match-day repair seam (spec §7) ---

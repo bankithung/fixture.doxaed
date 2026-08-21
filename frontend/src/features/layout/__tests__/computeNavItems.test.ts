@@ -275,6 +275,9 @@ describe("computeTournamentNav", () => {
       "my-tasks",
       "control",
       "matches",
+      // Every fixture this tournament has had, beside the fixture pages it
+      // belongs with (owner 2026-08-21).
+      "fixture-versions",
       "standings",
       "leaders",
       "crew",

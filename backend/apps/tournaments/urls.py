@@ -6,6 +6,8 @@ from apps.disputes.views import TournamentDisputeView
 from apps.fixtures.views import (
     AdvancementRefireView,
     ControlRoomDayView,
+    FixtureSnapshotDetailView,
+    FixtureSnapshotRestoreView,
     GenerateFixturesView,
     PreviewAllFixturesView,
     PreviewFixturesView,
@@ -16,6 +18,7 @@ from apps.fixtures.views import (
     SwissNextRoundView,
     TournamentCourtDetailView,
     TournamentCourtsView,
+    TournamentFixtureSnapshotsView,
     TournamentDrawConfigView,
     TournamentFixtureReadinessView,
     TournamentFixturesView,
@@ -264,6 +267,12 @@ urlpatterns = [
         "<uuid:tournament_id>/draw-config/",
         TournamentDrawConfigView.as_view(),
         name="tournament-draw-config",
+    ),
+    # Every fixture this tournament has had, and a way back to one.
+    path(
+        "<uuid:tournament_id>/fixture-versions/",
+        TournamentFixtureSnapshotsView.as_view(),
+        name="tournament-fixture-versions",
     ),
     path(
         "<uuid:tournament_id>/fixture-readiness/",

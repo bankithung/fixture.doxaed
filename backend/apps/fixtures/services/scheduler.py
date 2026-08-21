@@ -3489,6 +3489,15 @@ def apply_schedule(
             )
         tournament.scheduling_config = stored_cfg
         tournament.save(update_fields=["scheduling_config", "updated_at"])
+        # Freeze what the run produced, so an organiser can come back to this
+        # exact calendar after a later re-run (fixture versions, 2026-08-21).
+        from apps.fixtures.services.snapshots import capture_quiet
+        from apps.fixtures.models import FixtureSnapshot as _Snap
+
+        capture_quiet(
+            tournament, kind=_Snap.Kind.SCHEDULED,
+            label=("Scheduled %s" % leaf_key) if leaf_key else "Scheduled",
+        )
         audit = emit_audit(
             actor_user=by,
             actor_role=ActorRole.ADMIN,

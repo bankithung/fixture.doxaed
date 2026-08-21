@@ -116,6 +116,9 @@ export const routes = {
   /** Operations: full leader board (all scorers, team stats, badges). */
   tournamentLeaders: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/leaders`,
+  /** Every fixture this tournament has had, and a way back to one. */
+  tournamentFixtureVersions: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/fixtures/versions`,
   /** Operations: full schedule change history (audit feed). */
   tournamentChanges: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/changes`,

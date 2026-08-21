@@ -132,3 +132,59 @@ class Court(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover
         return self.name
+
+
+class FixtureSnapshot(models.Model):
+    """A frozen copy of a tournament's whole fixture at one moment.
+
+    The fixture is regenerated, rescheduled and hand-repaired over a
+    tournament's life, and until now each pass overwrote the last with nothing
+    kept: an organiser who liked yesterday's draw had no way back to it, and no
+    way to show a school what changed. A snapshot is the answer — every match
+    as it stood, restorable, and cheap enough to take on every generation.
+
+    ``payload`` is the list of serialised matches (see services/snapshots.py);
+    it carries each match's own id, so restoring puts the SAME rows back and
+    every winner_of/loser_of pointer between them still resolves.
+    """
+
+    class Kind(models.TextChoices):
+        GENERATED = "generated", "Fixture generated"
+        SCHEDULED = "scheduled", "Schedule run"
+        MANUAL = "manual", "Saved by hand"
+        RESTORED = "restored", "Restored from an earlier fixture"
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="fixture_snapshots",
+    )
+    tournament = models.ForeignKey(
+        "tournaments.Tournament", on_delete=models.CASCADE,
+        related_name="fixture_snapshots",
+    )
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.MANUAL)
+    # What the organiser will recognise it by ("after the sepak re-group").
+    label = models.CharField(max_length=120, blank=True)
+    match_count = models.PositiveIntegerField(default=0)
+    # Denormalised so the list page needs no payload read: competitions, days
+    # and how many matches already have a result.
+    summary = models.JSONField(default=dict, blank=True)
+    payload = models.JSONField(default=list, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="fixture_snapshots",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "fixtures_fixturesnapshot"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["tournament", "-created_at"], name="fixsnap_trn_created_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - admin convenience
+        return f"{self.tournament_id} · {self.created_at:%Y-%m-%d %H:%M} · {self.match_count}"

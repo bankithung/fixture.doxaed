@@ -16,6 +16,7 @@ import {
   UserCog,
   Users,
   UserSquare2,
+  History,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { User } from "@/types/user";
@@ -235,6 +236,18 @@ export function computeTournamentNav(
             label: t("Matches"),
             href: routes.tournamentMatches(tournamentId),
             icon: ListChecks,
+          }
+        : null,
+      // Every fixture this tournament has had (owner 2026-08-21). A draw is
+      // redrawn, rescheduled and repaired, and each pass used to overwrite the
+      // last; this is the way back to an earlier one. Manager-gated to match
+      // the server — restoring rewrites the fixture.
+      canManage
+        ? {
+            key: "fixture-versions",
+            label: t("Fixture versions"),
+            href: routes.tournamentFixtureVersions(tournamentId),
+            icon: History,
           }
         : null,
       // Live outcomes — visible to every member (read).

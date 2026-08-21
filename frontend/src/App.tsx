@@ -73,6 +73,7 @@ const StreamLinksPage = lazy(() => import("@/features/tournaments/ops/StreamLink
 const StreamSetupPage = lazy(() => import("@/features/tournaments/ops/StreamSetupPage").then((m) => ({ default: m.StreamSetupPage })));
 const BracketPage = lazy(() => import("@/features/tournaments/BracketPage").then((m) => ({ default: m.BracketPage })));
 const DryRunPreviewPage = lazy(() => import("@/features/fixtures/DryRunPreviewPage").then((m) => ({ default: m.DryRunPreviewPage })));
+const FixtureVersionsPage = lazy(() => import("@/features/fixtures/FixtureVersionsPage").then((m) => ({ default: m.FixtureVersionsPage })));
 const PublicSchedulePage = lazy(() => import("@/features/fixtures/PublicSchedulePage").then((m) => ({ default: m.PublicSchedulePage })));
 const RegistrationFormPage = lazy(() => import("@/features/registration/RegistrationFormPage").then((m) => ({ default: m.RegistrationFormPage })));
 const FormsListPage = lazy(() => import("@/features/forms/FormsListPage").then((m) => ({ default: m.FormsListPage })));
@@ -283,6 +284,10 @@ export default function App(): React.ReactElement {
                   element={<BracketPage />}
                 />
                 {/* Full-page dry-run preview (fixture-engine redesign §6.5). */}
+                <Route
+                  path="/tournaments/:id/fixtures/versions"
+                  element={<FixtureVersionsPage />}
+                />
                 <Route
                   path="/tournaments/:id/fixtures/preview"
                   element={<DryRunPreviewPage />}
