@@ -7,7 +7,7 @@ import { BracketView } from "@/features/tournaments/BracketView";
 import { t } from "@/lib/t";
 import { buildCourtLanes } from "./CourtBoard";
 import { MatchSheet } from "./MatchSheet";
-import { fmtDay } from "./publicMatchCard";
+import { fmtDay, fmtDayShort } from "./publicMatchCard";
 import { toMatchRow, type Bracket } from "./bracketModel";
 import {
   splitLabel,
@@ -96,6 +96,31 @@ function Page({
       {children}
     </section>
   );
+}
+
+/**
+ * What the SAVED FILE is called: the scope first, the tournament after.
+ *
+ * Every browser takes the PDF's default file name from `document.title`, and
+ * this page's title is the tournament — so a viewer who exported four
+ * categories ended up with four files called the same thing (owner
+ * 2026-08-21). The scope leads because that is the half a downloads list has
+ * to be scanned by; the tournament follows so a file still says where it came
+ * from once it leaves the folder.
+ */
+export function printTitleFor(scope: PrintScope, tournamentName: string): string {
+  const parts: string[] = [];
+  if (scope.kind === "knockout") {
+    parts.push(t("Knockout"));
+    if (scope.bracket) parts.push(splitLabel(scope.bracket.label).join(" "));
+  } else if (scope.kind === "competition") {
+    parts.push(splitLabel(scope.comp.label).join(" "));
+  } else {
+    if (scope.day) parts.push(fmtDayShort(scope.day));
+    parts.push(t("Order of play"));
+  }
+  if (tournamentName) parts.push(tournamentName);
+  return parts.filter(Boolean).join(" - ");
 }
 
 /** A competition's knockout only — the group stage prints as a sheet above. */

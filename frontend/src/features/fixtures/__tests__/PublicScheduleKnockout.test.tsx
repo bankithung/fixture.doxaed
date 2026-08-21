@@ -186,27 +186,36 @@ describe("the knockout draw inside the match centre", () => {
     expect(screen.queryByTestId("bracket-tt.u14")).toBeNull();
   });
 
-  it("is one click from the matches, and never offered when there is none", async () => {
+  it("is off the rail — a competition carries its own draw", async () => {
     vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(
       payload([SEMI, GROUP_MATCH]),
     );
     mount("/t/cup/t1/schedule");
-    // The rail pins it beside Today: no second page, no second fetch.
     await screen.findByTestId("rail-today");
-    await userEvent.click(screen.getByTestId("rail-knockout"));
-    expect(await screen.findByTestId("bracket-board")).toBeInTheDocument();
-    expect(tournamentsApi.publicSchedule).toHaveBeenCalledTimes(1);
+    // The pinned Knockout scope is gone (owner 2026-08-21): it was a second
+    // door to trees every competition already shows below its own page.
+    expect(screen.queryByTestId("rail-knockout")).toBeNull();
+    expect(screen.getByTestId("rail-comp-tt.u14")).toBeInTheDocument();
+    // The scope itself still resolves, so an old link still lands on it.
+    expect(screen.queryByTestId("bracket-board")).toBeNull();
   });
 
-  it("hides the knockout scope entirely when nothing has reached a bracket", async () => {
+  it("still answers an old ?comp=knockout link, and falls back with no draw", async () => {
+    vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(
+      payload([SEMI, GROUP_MATCH]),
+    );
+    const board = mount("/t/cup/t1/schedule?comp=knockout");
+    expect(await screen.findByTestId("bracket-board")).toBeInTheDocument();
+    expect(tournamentsApi.publicSchedule).toHaveBeenCalledTimes(1);
+    board.unmount();
+
+    // Nothing has reached a bracket: the scope resolves to the day board
+    // rather than an empty one.
     vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(
       payload([GROUP_MATCH]),
     );
-    mount("/t/cup/t1/schedule");
+    mount("/t/cup/t1/schedule?comp=knockout");
     await screen.findByTestId("rail-today");
-    expect(screen.queryByTestId("rail-knockout")).toBeNull();
-    // ...and asking for it by URL falls back to the day board rather than an
-    // empty scope.
     expect(screen.queryByTestId("bracket-board")).toBeNull();
   });
 

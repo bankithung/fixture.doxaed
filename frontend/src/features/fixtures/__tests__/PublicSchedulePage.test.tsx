@@ -494,6 +494,26 @@ describe("PublicSchedulePage", () => {
     expect(
       document.getElementById("fixture-print-page")?.textContent,
     ).toContain("landscape");
+    // The SAVED FILE is named for what was exported, scope first: every
+    // browser takes the PDF's file name from the document title, and the
+    // page's own title is the tournament, so four exports used to save four
+    // identically-named files (owner 2026-08-21).
+    expect(document.title).toBe(
+      "Sat, Jun 20 - Order of play - Nagaland Schools Cup",
+    );
+  });
+
+  it("names the file after the competition when one is open", async () => {
+    const print = vi.fn();
+    window.print = print;
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+    await userEvent.click(screen.getByTestId("rail-comp-football.u17"));
+    await userEvent.click(screen.getByTestId("print-button"));
+    await waitFor(() => expect(print).toHaveBeenCalled());
+    expect(document.title).toBe(
+      "Football U-17 Boys - Nagaland Schools Cup",
+    );
   });
 
   it("the second pass names the players; the first stays by team", async () => {

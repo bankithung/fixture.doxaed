@@ -18,14 +18,32 @@ function drop(): void {
   document.getElementById(STYLE_ID)?.remove();
 }
 
+/** Characters no filesystem wants in a name. The browser derives the "Save as
+ * PDF" filename from `document.title`, so whatever we put there IS the file
+ * name a viewer ends up with. */
+const UNSAFE = /[\\/:*?"<>|\u0000-\u001f]+/g;
+
+function clean(title: string): string {
+  return title.replace(UNSAFE, " ").replace(/\s+/g, " ").trim();
+}
+
 /**
  * Print the current page in landscape. The caller has already rendered the
  * print document (`hidden print:block`); this only decides the paper and opens
  * the dialog — "Save as PDF" is a destination of that dialog on every browser,
  * so one control serves both Print and Export PDF.
+ *
+ * `title` names the SAVED FILE. Every browser takes the PDF's default file
+ * name from `document.title`, and the page's own title is the tournament — so
+ * without this, every export a viewer saved was called the same thing and the
+ * downloads folder was unreadable (owner 2026-08-21). It is restored the
+ * moment the dialog closes; the page keeps its own title.
  */
-export function printLandscape(): void {
+export function printLandscape(title?: string): void {
   drop();
+  const wasTitle = document.title;
+  const wanted = title ? clean(title) : "";
+  if (wanted) document.title = wanted;
   const style = document.createElement("style");
   style.id = STYLE_ID;
   style.media = "print";
@@ -35,6 +53,9 @@ export function printLandscape(): void {
   const cleanup = (): void => {
     window.removeEventListener("afterprint", cleanup);
     drop();
+    // Only put it back if nothing else has moved on (a navigation may have
+    // set its own title while the dialog was open).
+    if (wanted && document.title === wanted) document.title = wasTitle;
   };
   window.addEventListener("afterprint", cleanup);
   // A browser that never fires afterprint (some mobile shells) would otherwise

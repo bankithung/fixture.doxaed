@@ -55,7 +55,11 @@ import {
   NamesToggle,
 } from "./PublicBracketBoard";
 import { buildBrackets, pickBracket } from "./bracketModel";
-import { FixturePrintDoc, type PrintScope } from "./FixturePrintDoc";
+import {
+  FixturePrintDoc,
+  printTitleFor,
+  type PrintScope,
+} from "./FixturePrintDoc";
 import { printLandscape } from "./printFixture";
 
 /** The one earned card: live matches, lifted out of position so they're never
@@ -325,17 +329,17 @@ function ScopeList({
   onSelect,
   todayLabel,
   todayLive,
-  hasKnockout,
-  koCount,
 }: {
   sports: { sport: string; comps: Competition[] }[];
   selected: string;
   onSelect: (key: string) => void;
   todayLabel: string;
   todayLive: number;
-  hasKnockout: boolean;
-  koCount: number;
 }): React.ReactElement {
+  // No Knockout entry (owner 2026-08-21): every competition already carries
+  // its own draw below its page, so a pinned scope holding all of them was a
+  // second door to the same trees. `?comp=knockout` still resolves, so old
+  // links and the /bracket redirect keep landing on the board.
   return (
     <>
       <div className="pt-2">
@@ -347,16 +351,6 @@ function ScopeList({
           label={todayLabel}
           live={todayLive > 0}
         />
-        {hasKnockout ? (
-          <ScopeButton
-            testid="rail-knockout"
-            active={selected === "knockout"}
-            onClick={() => onSelect("knockout")}
-            icon={GitMerge}
-            label={t("Knockout")}
-            count={koCount}
-          />
-        ) : null}
       </div>
       {sports.map((s) => (
         <div key={s.sport} className="mt-1 flex flex-col">
@@ -618,20 +612,6 @@ export function PublicSchedulePage(): React.ReactElement {
     id,
     wantRosters || namesOn,
   );
-  useEffect(() => {
-    if (!printQueued) return;
-    const go = (): void => {
-      setPrintQueued(false);
-      printLandscape();
-    };
-    // Rosters are a bonus, never a blocker: a read that fails or never lands
-    // prints the fixture anyway, with "No team sheet" where the names would
-    // be. The wait is long because printing a whole tournament's detailed
-    // pass as "No team sheet" is worse than waiting — and the prefetch below
-    // means the answer is usually already here by the time it is clicked.
-    const h = window.setTimeout(go, rostersSettled ? 60 : 15000);
-    return () => window.clearTimeout(h);
-  }, [printQueued, rostersSettled]);
 
   /** Scope, view and day live in the URL: what a viewer is looking at is what
    * they share, and coming back to a bookmark lands on the same board. */
@@ -822,6 +802,21 @@ export function PublicSchedulePage(): React.ReactElement {
     ],
   );
 
+  useEffect(() => {
+    if (!printQueued) return;
+    const go = (): void => {
+      setPrintQueued(false);
+      printLandscape(printTitleFor(printScope, tournamentName ?? ""));
+    };
+    // Rosters are a bonus, never a blocker: a read that fails or never lands
+    // prints the fixture anyway, with "No team sheet" where the names would
+    // be. The wait is long because printing a whole tournament's detailed
+    // pass as "No team sheet" is worse than waiting — and the prefetch below
+    // means the answer is usually already here by the time it is clicked.
+    const h = window.setTimeout(go, rostersSettled ? 60 : 15000);
+    return () => window.clearTimeout(h);
+  }, [printQueued, rostersSettled, printScope, tournamentName]);
+
   const printButton = (
     <Button
       size="sm"
@@ -864,8 +859,6 @@ export function PublicSchedulePage(): React.ReactElement {
       onSelect={pickScope}
       todayLabel={todayLabel}
       todayLive={liveMatches.length}
-      hasKnockout={hasKnockout}
-      koCount={koMatches.length}
     />
   );
 
