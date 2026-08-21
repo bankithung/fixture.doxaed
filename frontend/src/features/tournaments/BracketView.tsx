@@ -4,6 +4,7 @@ import { TeamCrest } from "@/components/ui/TeamCrest";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { LeafLabel } from "@/features/fixtures/LeafLabel";
+import type { RosterIndex } from "@/features/fixtures/publicTournament";
 import { FifaBracket } from "./FifaBracket";
 
 /** Drop a trailing "3rd Place" playoff segment so a knockout band heading reads
@@ -135,6 +136,11 @@ export function BracketView({
   timeZone,
   matchNumbers,
   linkFor,
+  rosters,
+  fitWidth,
+  fitHeight,
+  idScope,
+  wrapNames,
 }: {
   matches: MatchRow[];
   /** IANA TZ for kickoff formatting + the bracket footnote (omit = viewer local). */
@@ -143,6 +149,19 @@ export function BracketView({
   matchNumbers?: Map<string, number>;
   /** What a card opens (see FifaBracket). */
   linkFor?: (m: MatchRow) => string;
+  /** Present = the detailed draw: every card names its players (see
+   * FifaBracket). */
+  rosters?: RosterIndex;
+  /** Scale the tree into this box instead of scrolling it (see FifaBracket) —
+   * what a printed page needs, both ways. */
+  fitWidth?: number;
+  fitHeight?: number;
+  /** Namespaces the card testids when one page draws the same tree twice
+   * (see FifaBracket). */
+  idScope?: string;
+  /** Grow the cards until the longest name fits, and wrap it (see
+   * FifaBracket). */
+  wrapNames?: boolean;
 }): React.ReactElement {
   const bands = useMemo(() => {
     // Groups key on leaf_key + group_label so two DIFFERENT categories that
@@ -215,6 +234,11 @@ export function BracketView({
             timeZone={timeZone}
             matchNumbers={matchNumbers}
             linkFor={linkFor}
+            rosters={rosters}
+            fitWidth={fitWidth}
+            fitHeight={fitHeight}
+            idScope={idScope}
+            wrapNames={wrapNames}
           />
         </div>
       ))}

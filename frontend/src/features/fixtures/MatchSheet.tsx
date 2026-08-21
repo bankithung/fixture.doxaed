@@ -1,5 +1,8 @@
 import { Link, useParams } from "react-router-dom";
-import { type PublicScheduleMatch } from "@/api/tournaments";
+import {
+  type PublicRosterPlayer,
+  type PublicScheduleMatch,
+} from "@/api/tournaments";
 import { TeamCrest } from "@/components/ui/TeamCrest";
 import { WatchLiveLink } from "@/features/live/WatchLiveLink";
 import { routes } from "@/lib/routes";
@@ -11,6 +14,7 @@ import {
   LIVE_STATUSES,
   slotLabel,
   winnerOf,
+  type RosterIndex,
 } from "./publicTournament";
 import { LabelChips } from "./publicTournamentViews";
 import { StatusPill, fmtDayShort, fmtKickoff } from "./publicMatchCard";
@@ -30,17 +34,51 @@ import { StatusPill, fmtDayShort, fmtKickoff } from "./publicMatchCard";
  *    never a bare "TBD".
  */
 
+/** The names a team entered, under the team that entered them — the detailed
+ * pass of the printed fixture. A team with no published sheet says so rather
+ * than leaving the reader wondering whether it has no players or the export
+ * dropped them. */
+function TeamSheet({
+  players,
+}: {
+  players: PublicRosterPlayer[] | undefined;
+}): React.ReactElement {
+  if (!players || players.length === 0) {
+    return (
+      <span className="mt-0.5 block pl-[1.375rem] text-[0.6875rem] italic leading-tight text-muted-foreground">
+        {t("No team sheet")}
+      </span>
+    );
+  }
+  return (
+    <ol className="mt-0.5 flex flex-col gap-px pl-[1.375rem] text-[0.6875rem] leading-tight text-muted-foreground">
+      {players.map((p) => (
+        <li key={p.id} className="whitespace-normal">
+          {p.jersey_no != null ? (
+            <span className="font-tabular">{p.jersey_no}. </span>
+          ) : null}
+          {p.name}
+          {p.captain ? ` (${t("C")})` : ""}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 /** One side of a match: the team, or the slot it is waiting on. */
 function TeamCell({
   side,
   source,
   numbers,
   winner,
+  rosters,
 }: {
   side: PublicScheduleMatch["home"];
   source: PublicScheduleMatch["home_source"];
   numbers: Map<string, number>;
   winner: boolean;
+  /** Present = the detailed pass: name every player under the team. */
+  rosters?: RosterIndex;
 }): React.ReactElement {
   const { slug = "", id = "" } = useParams();
   if (!side) {
@@ -56,7 +94,7 @@ function TeamCell({
       </span>
     );
   }
-  return (
+  const link = (
     <Link
       to={routes.publicTeam(slug, id, side.id)}
       className={cn(
@@ -68,6 +106,13 @@ function TeamCell({
       <TeamCrest src={side.crest} name={side.name} size="xs" />
       <span className="truncate">{side.name}</span>
     </Link>
+  );
+  if (!rosters) return link;
+  return (
+    <span className="block">
+      {link}
+      <TeamSheet players={rosters.get(side.id)} />
+    </span>
   );
 }
 
@@ -137,6 +182,10 @@ export interface MatchSheetProps {
    * centre points it at its own drawer instead, which is still a real link
    * (middle-click opens the sheet with that match already open). */
   linkFor?: (m: PublicScheduleMatch) => string;
+  /** Present = the DETAILED sheet: the same fixture, with every player named
+   * under the team that entered them. Used by the printed fixture's second
+   * pass; the screen reads by team. */
+  rosters?: RosterIndex;
 }
 
 export function MatchSheet({
@@ -149,6 +198,7 @@ export function MatchSheet({
   idScope = "sheet",
   nextId,
   linkFor,
+  rosters,
 }: MatchSheetProps): React.ReactElement {
   const heads = [
     {
@@ -169,8 +219,16 @@ export function MatchSheet({
     ...(showCompetition
       ? [{ key: "event", label: t("Competition"), cls: "w-52 text-left" }]
       : []),
-    { key: "home", label: t("Home"), cls: "min-w-[9rem] text-left" },
-    { key: "away", label: t("Away"), cls: "min-w-[9rem] text-left" },
+    {
+      key: "home",
+      label: t("Home"),
+      cls: rosters ? "min-w-[14rem] text-left" : "min-w-[9rem] text-left",
+    },
+    {
+      key: "away",
+      label: t("Away"),
+      cls: rosters ? "min-w-[14rem] text-left" : "min-w-[9rem] text-left",
+    },
     { key: "score", label: t("Score"), cls: "w-24 text-right" },
     { key: "winner", label: t("Winner"), cls: "w-40 text-left" },
     { key: "status", label: t("Status"), cls: "w-28 text-left" },
@@ -194,6 +252,10 @@ export function MatchSheet({
               <th
                 key={h.key}
                 scope="col"
+                // Names the column for the print stylesheet: on paper the
+                // screen's fixed widths are wrong (they are cut for a 62rem
+                // board) and each column needs its own share of the page.
+                data-col={h.key}
                 title={"title" in h ? (h.title as string) : undefined}
                 className={cn("px-3 py-1.5 font-semibold", h.cls)}
               >
@@ -220,6 +282,7 @@ export function MatchSheet({
                 )}
               >
                 <td
+                  data-col="no"
                   className={cn(
                     "px-3 py-2 align-middle",
                     // border-collapse drops a border set on the <tr>, so the
@@ -244,43 +307,59 @@ export function MatchSheet({
                   </span>
                 </td>
                 {showDay ? (
-                  <td className="whitespace-nowrap px-3 py-2 align-middle text-xs text-muted-foreground">
+                  <td data-col="day" className="whitespace-nowrap px-3 py-2 align-middle text-xs text-muted-foreground">
                     {m.day ? fmtDayShort(m.day) : t("TBD")}
                   </td>
                 ) : null}
-                <td className="whitespace-nowrap px-3 py-2 align-middle font-tabular text-xs">
+                <td data-col="time" className="whitespace-nowrap px-3 py-2 align-middle font-tabular text-xs">
                   {fmtKickoff(m.scheduled_at, timeZone)}
                 </td>
                 {showCourt ? (
-                  <td className="truncate px-3 py-2 align-middle text-xs text-muted-foreground">
+                  <td data-col="court" className="truncate px-3 py-2 align-middle text-xs text-muted-foreground">
                     {m.venue || t("No court yet")}
                   </td>
                 ) : null}
                 {showCompetition ? (
-                  <td className="px-3 py-2 align-middle">
+                  <td data-col="event" className="px-3 py-2 align-middle">
                     <LabelChips label={m.leaf_label} />
                   </td>
                 ) : null}
-                <td className="max-w-0 px-3 py-2 align-middle">
+                <td
+                  data-col="home"
+                  className={cn(
+                    "px-3 py-2",
+                    // A team sheet is a block, so its cell tops out with the
+                    // name; a bare team name still centres on its row.
+                    rosters ? "align-top" : "max-w-0 align-middle",
+                  )}
+                >
                   <TeamCell
                     side={m.home}
                     source={m.home_source}
                     numbers={numbers}
                     winner={Boolean(win && m.home && win.id === m.home.id)}
+                    rosters={rosters}
                   />
                 </td>
-                <td className="max-w-0 px-3 py-2 align-middle">
+                <td
+                  data-col="away"
+                  className={cn(
+                    "px-3 py-2",
+                    rosters ? "align-top" : "max-w-0 align-middle",
+                  )}
+                >
                   <TeamCell
                     side={m.away}
                     source={m.away_source}
                     numbers={numbers}
                     winner={Boolean(win && m.away && win.id === m.away.id)}
+                    rosters={rosters}
                   />
                 </td>
-                <td className="px-3 py-2 text-right align-middle">
+                <td data-col="score" className="px-3 py-2 text-right align-middle">
                   <ScoreCell m={m} />
                 </td>
-                <td className="max-w-0 px-3 py-2 align-middle">
+                <td data-col="winner" className="max-w-0 px-3 py-2 align-middle">
                   {win ? (
                     <span
                       data-testid={`${idScope}-winner-${m.id}`}
@@ -299,7 +378,7 @@ export function MatchSheet({
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-2 align-middle">
+                <td data-col="status" className="px-3 py-2 align-middle">
                   <span className="flex flex-wrap items-center gap-1.5">
                     <StatusPill status={m.status} />
                     {m.id === nextId ? (

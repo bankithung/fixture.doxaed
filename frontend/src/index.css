@@ -230,6 +230,73 @@
     background: white !important;
     color: black !important;
   }
+
+  /* The fixture export (FixturePrintDoc) is the same boards the page shows,
+     not a stripped B&W lookalike — so the ink has to survive the trip.
+     Browsers drop backgrounds by default; a live tint, the sheet's header
+     band and the purple bracket are all carrying meaning here. */
+  .print-doc,
+  .print-doc * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Paper has a width and no scrollbar. The sheets are built to scroll
+     sideways on a phone (`min-w-[62rem]` inside `overflow-x-auto`), which on
+     paper would simply crop the last four columns: let them size to the page
+     instead, and let a long name wrap rather than ellipsis away. */
+  .print-doc .overflow-x-auto {
+    overflow: visible !important;
+  }
+  .print-doc table {
+    min-width: 0 !important;
+    width: 100%;
+    table-layout: auto;
+  }
+  /* The sheet's column widths are cut for a 62rem screen board, where the two
+     name columns are the ones that give. On paper that turned every school
+     name into three wrapped lines and a 15-match court into three pages, so
+     each column gets its own share of the page instead (`data-col` on the
+     sheet's cells names them). Row height is set by the tallest cell, so the
+     win is in NOT letting one column wrap three deep. */
+  .print-doc table th {
+    width: auto;
+  }
+  .print-doc table th[data-col="event"] {
+    width: 15rem;
+  }
+  .print-doc table th[data-col="home"],
+  .print-doc table th[data-col="away"] {
+    width: 20%;
+  }
+  .print-doc table [data-col="no"],
+  .print-doc table [data-col="day"],
+  .print-doc table [data-col="time"],
+  .print-doc table [data-col="score"],
+  .print-doc table [data-col="status"] {
+    white-space: nowrap;
+  }
+  .print-doc table .truncate,
+  .print-doc table .max-w-0 {
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+  /* A column header repeats at the top of every page a long court sheet runs
+     onto, and no row is ever split down the middle by a page break. */
+  .print-doc thead {
+    display: table-header-group;
+  }
+  .print-doc tr,
+  .print-doc section > header {
+    break-inside: avoid;
+  }
+  /* Screen-only affordances inside a printed board: the Watch live buttons
+     are a link nobody can follow on paper. */
+  .print-doc [data-testid^="watch-"] {
+    display: none !important;
+  }
 }
 
 /* Org-chart tree — the Review step renders Sports -> categories -> competitions

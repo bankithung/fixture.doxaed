@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   useQuery,
   useQueryClient,
@@ -8,6 +8,7 @@ import { liveApi } from "@/api/live";
 import {
   tournamentsApi,
   type MatchSource,
+  type PublicRosterPlayer,
   type PublicSchedulePayload,
   type PublicScheduleMatch,
   type StandingsGroup,
@@ -83,6 +84,42 @@ export function usePublicTournament(
   });
 
   return { scheduleQ, standingsQ, connected };
+}
+
+/** Team id -> the names that team entered. Empty (never undefined) for a team
+ * with no roster published, so a caller can render "no team sheet" instead of
+ * a blank. */
+export type RosterIndex = Map<string, PublicRosterPlayer[]>;
+
+/** Every team's line-up, fetched ONLY when someone asks for the printed
+ * fixture. It is a second request over the whole tournament, and the screen
+ * never needs it — the fixture on screen is read by team.
+ *
+ * `enabled` stays true once flipped, so the print document survives in the DOM
+ * and a second Print is instant. */
+export function usePublicRosters(
+  slug: string,
+  id: string,
+  enabled: boolean,
+): { rosters: RosterIndex; settled: boolean } {
+  const q = useQuery({
+    queryKey: ["public-rosters", slug, id],
+    queryFn: () => tournamentsApi.publicRosters(slug, id),
+    enabled: enabled && Boolean(slug && id),
+    retry: false,
+    // Rosters change when a school edits its entry, not every tick, and a
+    // reprint minutes later must not re-fetch the whole tournament.
+    staleTime: 5 * 60_000,
+  });
+  const rosters = useMemo(() => {
+    const map: RosterIndex = new Map();
+    for (const team of q.data?.teams ?? []) map.set(team.id, team.players);
+    return map;
+  }, [q.data]);
+  // "Settled", not "loaded": a tournament whose rosters fail to load still
+  // prints — the detailed pass says "No team sheet" rather than holding the
+  // dialog shut.
+  return { rosters, settled: !enabled || q.isFetched || q.isError };
 }
 
 /** Competition labels arrive joined by separators ("Sepak Takraw — U-14 —

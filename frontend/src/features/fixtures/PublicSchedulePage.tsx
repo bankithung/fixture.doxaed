@@ -15,13 +15,11 @@ import { useFollows } from "@/lib/follows";
 import { type PublicScheduleMatch } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { Select } from "@/components/ui/Select";
 import { WatchLiveLink } from "@/features/live/WatchLiveLink";
 import { routes } from "@/lib/routes";
 import { liveSetView } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { TeamCrest } from "@/components/ui/TeamCrest";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { PublicViewerTabs } from "@/features/live/PublicViewerHeader";
 import { ShareButton } from "@/features/live/ShareButton";
@@ -32,8 +30,8 @@ import {
   LIVE_STATUSES,
   buildCompetitions,
   matchNumbers,
-  shortGroup,
   splitLabel,
+  usePublicRosters,
   usePublicTournament,
   type Competition,
 } from "./publicTournament";
@@ -51,7 +49,14 @@ import {
 import { CourtBoard, courtDefaultFits } from "./CourtBoard";
 import { MatchSheet } from "./MatchSheet";
 import { MatchDrawer } from "./MatchDrawer";
-import { PublicBracketBoard, CompetitionBracket } from "./PublicBracketBoard";
+import {
+  PublicBracketBoard,
+  CompetitionBracket,
+  NamesToggle,
+} from "./PublicBracketBoard";
+import { buildBrackets, pickBracket } from "./bracketModel";
+import { FixturePrintDoc, type PrintScope } from "./FixturePrintDoc";
+import { printLandscape } from "./printFixture";
 
 /** The one earned card: live matches, lifted out of position so they're never
  * buried, and pinned regardless of which competition/day is selected. Each
@@ -461,181 +466,6 @@ function GroupStageSheets({
   );
 }
 
-function stageLabel(m: PublicScheduleMatch): string {
-  if (m.group_label) return shortGroup(m.group_label, m.leaf_label);
-  if (m.stage === "knockout") return `${t("R")}${m.round_no}`;
-  return m.stage;
-}
-
-/**
- * Print-only order-of-play for ONE chosen day (increment L): grouped by venue
- * then kick-off time, one page per venue (`break-after-page`), plain B&W tables.
- */
-function PrintSheet({
-  day,
-  matches,
-  tournamentName,
-  timeZone,
-}: {
-  day: string;
-  matches: PublicScheduleMatch[];
-  tournamentName: string;
-  timeZone: string;
-}): React.ReactElement | null {
-  const venues = useMemo(() => {
-    const by = new Map<string, PublicScheduleMatch[]>();
-    const ordered = [...matches].sort((a, b) =>
-      (a.scheduled_at ?? "") < (b.scheduled_at ?? "") ? -1 : 1,
-    );
-    for (const m of ordered) {
-      const v = m.venue || t("Unassigned venue");
-      if (!by.has(v)) by.set(v, []);
-      by.get(v)!.push(m);
-    }
-    return [...by.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [matches]);
-
-  if (venues.length === 0) return null;
-  return (
-    <div data-testid="print-sheet" className="hidden print:block">
-      {venues.map(([venue, ms]) => (
-        <section
-          key={venue}
-          data-testid={`print-venue-${venue}`}
-          className="break-after-page pb-6 last:break-after-auto"
-        >
-          <h1 className="text-lg font-semibold">
-            {tournamentName} · {t("Order of play")}
-          </h1>
-          <p className="pb-3 text-sm">
-            {fmtDay(day)} · {venue}
-          </p>
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr>
-                {[t("Time"), t("Match"), t("Competition"), t("Stage")].map(
-                  (h) => (
-                    <th
-                      key={h}
-                      className="border-b-2 border-border py-1 pr-3 text-left font-semibold"
-                    >
-                      {h}
-                    </th>
-                  ),
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {ms.map((m) => (
-                <tr key={m.id}>
-                  <td className="border-b border-border py-1 pr-3 font-tabular">
-                    {fmtKickoff(m.scheduled_at, timeZone)}
-                  </td>
-                  {/* Crests print too (owner ask): they are real <img>, and a
-                      teamless side keeps its plain "TBD" so the column never
-                      grows a badge for nobody. */}
-                  <td className="border-b border-border py-1 pr-3">
-                    <span className="flex items-center gap-1.5">
-                      {m.home ? (
-                        <TeamCrest
-                          src={m.home.crest}
-                          name={m.home.name}
-                          size="xs"
-                        />
-                      ) : null}
-                      <span>{m.home?.name ?? t("TBD")}</span>
-                      <span className="text-muted-foreground">{t("vs")}</span>
-                      {m.away ? (
-                        <TeamCrest
-                          src={m.away.crest}
-                          name={m.away.name}
-                          size="xs"
-                        />
-                      ) : null}
-                      <span>{m.away?.name ?? t("TBD")}</span>
-                    </span>
-                  </td>
-                  <td className="border-b border-border py-1 pr-3">
-                    {splitLabel(m.leaf_label).join(" / ")}
-                  </td>
-                  <td className="border-b border-border py-1">
-                    {stageLabel(m)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      ))}
-    </div>
-  );
-}
-
-/** Print one day's order of play for this competition. The sheets above are
- * the screen answer; this is the sheet that goes on the wall. */
-function CompetitionPrint({
-  comp,
-  tournamentName,
-  timeZone,
-  printDay,
-  setPrintDay,
-}: {
-  comp: Competition;
-  tournamentName: string;
-  timeZone: string;
-  printDay: string;
-  setPrintDay: (d: string) => void;
-}): React.ReactElement | null {
-  const days = useMemo(() => {
-    const byDay = new Map<string, PublicScheduleMatch[]>();
-    for (const m of comp.matches) {
-      if (!m.day) continue;
-      if (!byDay.has(m.day)) byDay.set(m.day, []);
-      byDay.get(m.day)!.push(m);
-    }
-    return [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
-  }, [comp.matches]);
-
-  if (days.length === 0) return null;
-  const effective = printDay && days.some(([d]) => d === printDay)
-    ? printDay
-    : days[0]![0];
-  const matches = days.find(([d]) => d === effective)?.[1] ?? [];
-
-  return (
-    <>
-      <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-3 print:hidden sm:px-4">
-        <span className="text-xs text-muted-foreground">
-          {t("Print a day's order of play")}
-        </span>
-        <Select
-          size="sm"
-          className="w-48"
-          aria-label={t("Day to print")}
-          value={effective}
-          onChange={setPrintDay}
-          options={days.map(([d]) => ({ value: d, label: fmtDay(d) }))}
-        />
-        <Button
-          size="sm"
-          variant="outline"
-          data-testid="print-button"
-          onClick={() => window.print()}
-        >
-          <Printer aria-hidden className="h-3.5 w-3.5" />
-          {t("Print")}
-        </Button>
-      </div>
-      <PrintSheet
-        day={effective}
-        matches={matches}
-        tournamentName={tournamentName}
-        timeZone={timeZone}
-      />
-    </>
-  );
-}
-
 /** The same day as ONE sheet in kick-off order, with the court in its own
  * column — for anyone who reads a day as a clock rather than as a set of
  * tables. Same columns as a court's sheet, so switching view never changes
@@ -774,7 +604,34 @@ export function PublicSchedulePage(): React.ReactElement {
   const hasKnockout = koMatches.length > 0;
 
   const [teamQ, setTeamQ] = useState("");
-  const [printDay, setPrintDay] = useState("");
+
+  /** Printing pulls a SECOND read (every team's line-up) that the screen never
+   * needs, so it is fetched on the first Print and kept from then on. The
+   * print document then already exists when the dialog opens. */
+  const [wantRosters, setWantRosters] = useState(false);
+  const [printQueued, setPrintQueued] = useState(false);
+  /** The bracket's Player names switch, in the URL like every other choice on
+   * this page, so a draw showing who is playing is a shareable link. */
+  const namesOn = params.get("names") === "1";
+  const { rosters, settled: rostersSettled } = usePublicRosters(
+    slug,
+    id,
+    wantRosters || namesOn,
+  );
+  useEffect(() => {
+    if (!printQueued) return;
+    const go = (): void => {
+      setPrintQueued(false);
+      printLandscape();
+    };
+    // Rosters are a bonus, never a blocker: a read that fails or never lands
+    // prints the fixture anyway, with "No team sheet" where the names would
+    // be. The wait is long because printing a whole tournament's detailed
+    // pass as "No team sheet" is worse than waiting — and the prefetch below
+    // means the answer is usually already here by the time it is clicked.
+    const h = window.setTimeout(go, rostersSettled ? 60 : 15000);
+    return () => window.clearTimeout(h);
+  }, [printQueued, rostersSettled]);
 
   /** Scope, view and day live in the URL: what a viewer is looking at is what
    * they share, and coming back to a bookmark lands on the same board. */
@@ -913,7 +770,12 @@ export function PublicSchedulePage(): React.ReactElement {
   const visibleCount = q
     ? scopeMatches.filter((m) => teamHit(m, q)).length
     : scopeMatches.length;
-  const dayShown = dayMatches.filter((m) => teamHit(m, q));
+  // Memoised because the printed fixture is built from exactly this list, and
+  // the paper must not be rebuilt on every live tick.
+  const dayShown = useMemo(
+    () => dayMatches.filter((m) => teamHit(m, q)),
+    [dayMatches, q],
+  );
 
   /** The open match is a URL param, so a row is a real link (middle-click
    * opens the sheet with that match already open), Back closes the drawer and
@@ -929,6 +791,74 @@ export function PublicSchedulePage(): React.ReactElement {
     return `?${p.toString()}`;
   };
   const matchHref = (m: PublicScheduleMatch): string => matchHrefById(m.id);
+
+  /** ONE resolver for the knockout scope, shared with the board itself, so
+   * Print gives back the draw on screen and not a different competition. */
+  const koBrackets = useMemo(() => buildBrackets(koMatches), [koMatches]);
+
+  /** Print exports EXACTLY what is on screen: this scope, this view, this day,
+   * this search. Anything else and the paper stops matching the board. */
+  const koSport = params.get("kosport") ?? "";
+  const koComp = params.get("kocomp") ?? "";
+  const courts = query.data?.courts;
+  const printScope: PrintScope = useMemo(
+    () =>
+      selected === "knockout"
+        ? {
+            kind: "knockout",
+            bracket: pickBracket(koBrackets, koSport, koComp),
+            rows: koMatches.filter(
+              (m) =>
+                (m.leaf_key || "_") ===
+                pickBracket(koBrackets, koSport, koComp)?.key,
+            ),
+          }
+        : selectedComp
+          ? { kind: "competition", comp: selectedComp, days: allDays.length }
+          : { kind: "day", day, view, matches: dayShown, courts },
+    [
+      selected,
+      selectedComp,
+      koBrackets,
+      koMatches,
+      koSport,
+      koComp,
+      allDays.length,
+      day,
+      view,
+      dayShown,
+      courts,
+    ],
+  );
+
+  const printButton = (
+    <Button
+      size="sm"
+      variant="outline"
+      data-testid="print-button"
+      disabled={printQueued}
+      aria-label={t("Print this fixture or save it as a PDF")}
+      className="shrink-0"
+      // Reaching for the button is the signal to go and get the line-ups, so
+      // the dialog opens on a document that already has the names in it.
+      onPointerEnter={() => setWantRosters(true)}
+      onFocus={() => setWantRosters(true)}
+      onClick={() => {
+        setWantRosters(true);
+        setPrintQueued(true);
+      }}
+    >
+      <Printer aria-hidden className="h-3.5 w-3.5" />
+      {printQueued ? (
+        t("Preparing")
+      ) : (
+        <>
+          <span className="hidden sm:inline">{t("Print")} / </span>
+          {t("PDF")}
+        </>
+      )}
+    </Button>
+  );
 
   const todayLabel = isPreTournament ? t("Next match day") : t("Today");
   const pickScope = (key: string): void => {
@@ -1037,7 +967,7 @@ export function PublicSchedulePage(): React.ReactElement {
           </p>
         </main>
       ) : (
-        <main className="flex w-full flex-1 flex-col p-0 print:p-0 sm:px-6 sm:py-4 lg:px-8">
+        <main className="flex w-full flex-1 flex-col p-0 print:hidden sm:px-6 sm:py-4 lg:px-8">
           {/* ONE section, nothing outside it (owner 2026-07-26): the tournament
               name, the scope navigator and the whole panel live on a single
               surface, divided by hairlines. */}
@@ -1154,19 +1084,24 @@ export function PublicSchedulePage(): React.ReactElement {
                         {t("matches")}
                       </span>
 
-                      <div className="ml-auto hidden shrink-0 sm:block">
-                        {searchBox}
+                      {/* The board's own actions, top right: search, then
+                          Print. Printing used to sit at the very BOTTOM of a
+                          court board, a screen and a half below the fixture it
+                          prints (owner 2026-08-21). */}
+                      <div className="ml-auto flex shrink-0 items-center gap-2">
+                        <div className="hidden sm:block">{searchBox}</div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={t("Search teams")}
+                          aria-expanded={searchOpen}
+                          className="shrink-0 sm:hidden"
+                          onClick={() => setSearchOpen((v) => !v)}
+                        >
+                          <Search aria-hidden className="h-4 w-4" />
+                        </Button>
+                        {printButton}
                       </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={t("Search teams")}
-                        aria-expanded={searchOpen}
-                        className="ml-auto shrink-0 sm:hidden"
-                        onClick={() => setSearchOpen((v) => !v)}
-                      >
-                        <Search aria-hidden className="h-4 w-4" />
-                      </Button>
                     </div>
 
                     {searchOpen ? (
@@ -1222,6 +1157,11 @@ export function PublicSchedulePage(): React.ReactElement {
                       timeZone={tz}
                       numbers={numbers}
                       linkFor={matchHrefById}
+                      rosters={namesOn ? rosters : undefined}
+                      namesOn={namesOn}
+                      onNames={(next) =>
+                        setParam({ names: next ? "1" : null })
+                      }
                     />
                   ) : selectedComp ? (
                     /* ONE page per category: its tables, then its group stage
@@ -1239,25 +1179,30 @@ export function PublicSchedulePage(): React.ReactElement {
                         (m) => m.stage === "knockout",
                       ) ? (
                         <section className="flex flex-col border-t border-border">
-                          <h2 className="px-3 pt-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground sm:px-4">
-                            {t("Knockout")}
-                          </h2>
+                          <div className="flex flex-wrap items-center gap-2 px-3 pt-3 sm:px-4">
+                            <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                              {t("Knockout")}
+                            </h2>
+                            <span className="ml-auto">
+                              <NamesToggle
+                                on={namesOn}
+                                onChange={(next) =>
+                                  setParam({ names: next ? "1" : null })
+                                }
+                                testid="comp-names-toggle"
+                              />
+                            </span>
+                          </div>
                           <CompetitionBracket
                             matches={selectedComp.matches}
                             timeZone={tz}
                             leafKey={selectedComp.key}
                             numbers={numbers}
                             linkFor={matchHrefById}
+                            rosters={namesOn ? rosters : undefined}
                           />
                         </section>
                       ) : null}
-                      <CompetitionPrint
-                        comp={selectedComp}
-                        tournamentName={query.data.tournament.name}
-                        timeZone={tz}
-                        printDay={printDay}
-                        setPrintDay={setPrintDay}
-                      />
                     </>
                   ) : (
                     <>
@@ -1284,28 +1229,6 @@ export function PublicSchedulePage(): React.ReactElement {
                           linkFor={matchHref}
                         />
                       )}
-                      <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-3 print:hidden sm:px-4">
-                        <span className="text-xs text-muted-foreground">
-                          {t("Print this day's order of play")}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          data-testid="print-day-button"
-                          onClick={() => window.print()}
-                        >
-                          <Printer aria-hidden className="h-3.5 w-3.5" />
-                          {t("Print")}
-                        </Button>
-                      </div>
-                      {day ? (
-                        <PrintSheet
-                          day={day}
-                          matches={dayMatches}
-                          tournamentName={query.data.tournament.name}
-                          timeZone={tz}
-                        />
-                      ) : null}
                     </>
                   )}
                 </section>
@@ -1314,6 +1237,19 @@ export function PublicSchedulePage(): React.ReactElement {
           </div>
         </main>
       )}
+
+      {/* Paper. Hidden on screen, and the ONLY thing that prints: the same
+          boards, in landscape, first by team and then again with every player
+          named. */}
+      {query.data ? (
+        <FixturePrintDoc
+          tournamentName={query.data.tournament.name}
+          timeZone={tz}
+          numbers={numbers}
+          rosters={rosters}
+          scope={printScope}
+        />
+      ) : null}
 
       {/* The scope map on a phone: the same list the rail shows, in the house
           bottom drawer (focus trap, Escape and backdrop dismiss come with it). */}

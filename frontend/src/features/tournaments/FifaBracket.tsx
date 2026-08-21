@@ -4,6 +4,8 @@ import { Check, ChevronLeft, ChevronRight, Shield } from "lucide-react";
 import type { MatchRow, MatchSource } from "@/api/tournaments";
 import { TeamCrest } from "@/components/ui/TeamCrest";
 import { groupPositionLabel } from "@/features/fixtures/groupSlotLabel";
+import type { RosterIndex } from "@/features/fixtures/publicTournament";
+import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
 /* ---------------------------------------------------------------------------
@@ -43,6 +45,78 @@ const ROW = 106; // vertical pitch between round-1 card centres
 const COL_GAP = 60; // horizontal gap between round columns
 const HEADER_H = 32;
 const LABEL_H = 18; // "3rd place" caption above a consolation card
+
+/** What the tree is laid out from. The board's own shape is the default and is
+ * never touched; PAPER needs a different one and the layout has to be told —
+ * a card grown under a fixed row pitch would sit on top of its neighbour, and
+ * a card whose content outgrows it silently CLIPS (a school lost its whole
+ * team sheet and its neighbour lost half a name that way). */
+interface Geom {
+  cardW: number;
+  cardH: number;
+  row: number;
+  /** Let a long school name wrap instead of ellipsing. On screen a card is one
+   * of forty on a scrolling board and a truncated name is recoverable — you
+   * open the match. Paper has nothing to open, so a printed draw must carry
+   * the whole name (owner 2026-08-21). */
+  wrap: boolean;
+}
+
+const BOARD: Geom = { cardW: CARD_W, cardH: CARD_H, row: ROW, wrap: false };
+
+/** A card's own text metrics, in px, at the sizes TeamRow renders. */
+const TITLE_LH = 16; // text-xs
+const NAME_LH = 13; // the player lines
+const SIDE_PAD = 12; // py-1.5, top and bottom
+/** Everything on a side's first line that is NOT the name: badge + gap,
+ * the cell's px-3, and room for a score. */
+const NAME_CHROME = 78;
+/** Inter at 12px, averaged over school names (which are mostly caps). */
+const CHAR_W = 6.4;
+
+/**
+ * Cards sized for THIS bracket's worst case, so nothing is ever clipped: the
+ * longest label decides how many lines a name takes, and the longest team
+ * sheet decides how many player lines sit under it. Sized once for the whole
+ * tree, so every card in a column still lines up.
+ *
+ * `tight` halves the leaf pitch — see below. It is for PAPER only; a board on
+ * screen scrolls and keeps the roomy spacing.
+ */
+function fitGeom(
+  matches: MatchRow[],
+  rosters: RosterIndex | undefined,
+  tight: boolean,
+): Geom {
+  const cardW = rosters ? 320 : 264;
+  const perLine = Math.max(8, Math.floor((cardW - NAME_CHROME) / CHAR_W));
+  let longest = 0;
+  let names = 0;
+  for (const m of matches) {
+    for (const side of [m.home_team, m.away_team]) {
+      // An unresolved slot's label ("Winner of M12") is short; a school name
+      // is not, and both are drawn in the same row.
+      longest = Math.max(longest, (side?.name ?? "").length);
+      if (side && rosters) {
+        names = Math.max(names, rosters.get(side.id)?.length ?? 0);
+      }
+    }
+  }
+  const titleLines = Math.min(3, Math.max(1, Math.ceil(longest / perLine)));
+  // Beyond six the card would own the page; the knockout also prints as a
+  // full-size order-of-play sheet, which carries every name.
+  const nameLines = rosters ? Math.min(Math.max(names, 1), 6) : 0;
+  const sideH = SIDE_PAD + titleLines * TITLE_LH + nameLines * NAME_LH;
+  const cardH = META_H + sideH * 2 + 1;
+  // A first-round card spans TWO leaf rows (it is centred between its two
+  // entrants), so the board's pitch leaves a card-and-a-half of air between
+  // neighbours — fine on a scrolling board, and on paper it is the single
+  // reason a readable tree would not fit. Half a card plus a gap puts 26px
+  // between neighbours and roughly halves the height, which is what buys the
+  // scale back. `layoutBracket` pads the ends for it.
+  const row = tight ? Math.round((cardH + 26) / 2) : cardH + 24;
+  return { cardW, cardH, row, wrap: true };
+}
 
 /** Human label for an unresolved bracket slot from its typed pointer:
  * group_position -> "Group A top 1" / "Best loser 1"; winner/loser pointers are
@@ -233,7 +307,8 @@ function TeamBadge({
   );
 }
 
-/** One side of a match card: crest/monogram, name, winner check, score. */
+/** One side of a match card: crest/monogram, name, winner check, score — and,
+ * on the detailed pass, the names that side actually fields. */
 function TeamRow({
   label,
   crest,
@@ -241,6 +316,8 @@ function TeamRow({
   pens,
   win,
   isTeam,
+  players,
+  wrap,
 }: {
   label: string | null;
   crest?: string;
@@ -248,43 +325,89 @@ function TeamRow({
   pens: number | null;
   win: boolean;
   isTeam: boolean;
+  /** Present = the detailed pass: the names this side fields. */
+  players?: string[];
+  /** Let the team name wrap instead of ellipsing — see Geom.wrap. */
+  wrap?: boolean;
 }): React.ReactElement {
   const soft = !isTeam;
+  const detailed = players !== undefined;
   return (
     <div
-      className="flex flex-1 items-center gap-2 px-3"
+      className={cn(
+        "flex flex-1 gap-2 px-3",
+        detailed ? "flex-col justify-center py-1.5" : "items-center",
+      )}
       style={{ borderLeft: `2px solid ${win ? C.gold : "transparent"}` }}
     >
-      {isTeam ? (
-        <TeamBadge label={label ?? ""} crest={crest} />
-      ) : (
-        <Shield aria-hidden className="h-[20px] w-[20px] shrink-0" style={{ color: C.dim }} strokeWidth={1.5} />
-      )}
-      <span
-        className="min-w-0 flex-1 truncate text-xs"
-        style={{
-          color: soft ? C.dim : win ? C.text : "rgba(255,255,255,0.85)",
-          fontStyle: soft ? "italic" : "normal",
-          fontWeight: win ? 600 : 500,
-        }}
-      >
-        {label ?? t("TBD")}
-      </span>
-      {win && isTeam ? <Check aria-hidden className="h-3 w-3 shrink-0" style={{ color: C.gold }} strokeWidth={3} /> : null}
-      {score != null ? (
+      <div className="flex items-center gap-2">
+        {isTeam ? (
+          <TeamBadge label={label ?? ""} crest={crest} />
+        ) : (
+          <Shield aria-hidden className="h-[20px] w-[20px] shrink-0" style={{ color: C.dim }} strokeWidth={1.5} />
+        )}
         <span
-          className="ml-0.5 font-tabular text-[0.6875rem] tabular-nums"
-          style={{ color: win ? C.goldHi : C.dim, fontWeight: win ? 600 : 500 }}
+          className={cn(
+            "min-w-0 flex-1 text-xs",
+            wrap ? "whitespace-normal break-words" : "truncate",
+          )}
+          style={{
+            color: soft ? C.dim : win ? C.text : "rgba(255,255,255,0.85)",
+            fontStyle: soft ? "italic" : "normal",
+            fontWeight: win ? 600 : 500,
+          }}
         >
-          {score}
-          {pens != null ? (
-            <span style={{ color: C.dim }} className="ml-0.5 text-[0.5625rem]">
-              ({pens})
-            </span>
-          ) : null}
+          {label ?? t("TBD")}
         </span>
+        {win && isTeam ? <Check aria-hidden className="h-3 w-3 shrink-0" style={{ color: C.gold }} strokeWidth={3} /> : null}
+        {score != null ? (
+          <span
+            className="ml-0.5 font-tabular text-[0.6875rem] tabular-nums"
+            style={{ color: win ? C.goldHi : C.dim, fontWeight: win ? 600 : 500 }}
+          >
+            {score}
+            {pens != null ? (
+              <span style={{ color: C.dim }} className="ml-0.5 text-[0.5625rem]">
+                ({pens})
+              </span>
+            ) : null}
+          </span>
+        ) : null}
+      </div>
+      {/* Names only under a side that HAS names. An unresolved slot already
+          says what it is waiting on ("Group A top 1") — a second line under it
+          reading "not decided yet" says the same thing again, on every card of
+          an undrawn bracket. */}
+      {detailed && isTeam ? (
+        <ol className="flex flex-col pl-[28px]" style={{ color: C.dim }}>
+          {players.length === 0 ? (
+            <li className="text-[0.625rem] italic leading-[13px]">
+              {t("No team sheet")}
+            </li>
+          ) : (
+            players.map((n, i) => (
+              <li key={`${n}-${i}`} className="text-[0.625rem] leading-[13px]">
+                {n}
+              </li>
+            ))
+          )}
+        </ol>
       ) : null}
     </div>
+  );
+}
+
+/** The name lines for one side on the detailed pass: undefined (= not the
+ * detailed pass) when no roster index was supplied, so an ordinary board card
+ * is byte-for-byte what it always was. */
+function sheetFor(
+  team: MatchRow["home_team"],
+  rosters: RosterIndex | undefined,
+): string[] | undefined {
+  if (!rosters) return undefined;
+  if (!team) return [];
+  return (rosters.get(team.id) ?? []).map((p) =>
+    p.jersey_no != null ? `${p.jersey_no}. ${p.name}` : p.name,
   );
 }
 
@@ -294,11 +417,18 @@ function MatchCard({
   tz,
   no,
   linkFor,
+  geom,
+  rosters,
+  idScope,
 }: {
   match: MatchRow;
   tz?: string;
   no: Map<string, number>;
   linkFor?: (m: MatchRow) => string;
+  geom: Geom;
+  /** Present = the detailed pass: every card names its players. */
+  rosters?: RosterIndex;
+  idScope?: string;
 }): React.ReactElement {
   const home = entrant(match.home_team, match.home_source, no);
   const away = entrant(match.away_team, match.away_source, no);
@@ -321,12 +451,12 @@ function MatchCard({
   // whole app, which threw the reader back to the top of the page and refetched
   // everything just to open one match.
   const shell = {
-    "data-testid": `bracket-card-${match.id}`,
+    "data-testid": `${idScope ? `${idScope}-` : ""}bracket-card-${match.id}`,
     "aria-label": label,
     className:
       "flex w-full flex-col overflow-hidden rounded-md transition-shadow hover:shadow-lg",
     style: {
-      height: CARD_H,
+      height: geom.cardH,
       background: C.box,
       border: `1.5px solid ${C.gold}`,
       boxShadow: "inset 0 1px 0 rgba(255,255,255,.06)",
@@ -356,9 +486,9 @@ function MatchCard({
           </span>
         ) : null}
       </div>
-      <TeamRow label={home.label} crest={home.crest} isTeam={home.isTeam} score={match.home_score} pens={hasPens ? match.home_pens ?? null : null} win={win === "home"} />
+      <TeamRow label={home.label} crest={home.crest} isTeam={home.isTeam} score={match.home_score} pens={hasPens ? match.home_pens ?? null : null} win={win === "home"} players={sheetFor(match.home_team, rosters)} wrap={geom.wrap} />
       <div style={{ height: 1, background: C.divider }} />
-      <TeamRow label={away.label} crest={away.crest} isTeam={away.isTeam} score={match.away_score} pens={hasPens ? match.away_pens ?? null : null} win={win === "away"} />
+      <TeamRow label={away.label} crest={away.crest} isTeam={away.isTeam} score={match.away_score} pens={hasPens ? match.away_pens ?? null : null} win={win === "away"} players={sheetFor(match.away_team, rosters)} wrap={geom.wrap} />
     </>
   );
   return linkFor ? (
@@ -424,7 +554,7 @@ interface BracketLayout {
  * Falls back to round_no columns with even spacing when the pointers don't form
  * one clean rooted tree.
  */
-function layoutBracket(matches: MatchRow[]): BracketLayout {
+function layoutBracket(matches: MatchRow[], g: Geom): BracketLayout {
   const byId = new Map(matches.map((m) => [m.id, m]));
   const feedersByParent = new Map<string, string[]>();
   const parent = new Map<string, string>();
@@ -440,8 +570,12 @@ function layoutBracket(matches: MatchRow[]): BracketLayout {
     }
   }
   const roots = matches.filter((m) => !parent.has(m.id));
-  const colX = (c: number): number => c * (CARD_W + COL_GAP);
+  const colX = (c: number): number => c * (g.cardW + COL_GAP);
   const pos = new Map<string, { x: number; y: number }>();
+  // With a pitch tighter than a card (print), the first leaf's centre would
+  // sit less than half a card from the top and the card would be cut. Push
+  // every row down by the shortfall and give the canvas the same back.
+  const pad = Math.max(0, (g.cardH - g.row) / 2 + 6);
 
   // Clean single-elimination tree? one root, every match reachable from it.
   const depth = new Map<string, number>();
@@ -494,7 +628,7 @@ function layoutBracket(matches: MatchRow[]): BracketLayout {
             ghosts.push({ parentId: id, feederId: fid, x: colX(c), y: fy });
           }
         } else {
-          const y = (slot + 0.5) * ROW;
+          const y = pad + (slot + 0.5) * g.row;
           centers.push(y);
           slot += 1;
           // Entering later than the first round = an entry bye through the
@@ -537,15 +671,15 @@ function layoutBracket(matches: MatchRow[]): BracketLayout {
       feedersByParent,
       ghosts,
       colLabels: roundsSorted.map((_, c) => ({
-        x: colX(c) + CARD_W / 2,
+        x: colX(c) + g.cardW / 2,
         label: classic
           ? roundNameByDepth(lastCol - c)
           : c === lastCol
             ? t("Final")
             : `${t("Round")} ${c + 1}`,
       })),
-      H: Math.max(slot, 1) * ROW,
-      canvasW: cols * CARD_W + (cols - 1) * COL_GAP,
+      H: Math.max(slot, 1) * g.row + pad * 2,
+      canvasW: cols * g.cardW + (cols - 1) * COL_GAP,
       finalX: colX(lastCol),
       finalY,
     };
@@ -560,10 +694,16 @@ function layoutBracket(matches: MatchRow[]): BracketLayout {
   }
   const keys = [...byRound.keys()].sort((a, b) => a - b);
   const maxCount = Math.max(1, ...keys.map((r) => byRound.get(r)!.length));
-  const H = maxCount * ROW;
+  const H = maxCount * g.row + pad * 2;
+  const lo = g.cardH / 2 + 4;
   keys.forEach((r, c) => {
     const col = byRound.get(r)!.slice().sort((a, b) => a.match_no - b.match_no);
-    col.forEach((m, i) => pos.set(m.id, { x: colX(c), y: ((i + 0.5) * H) / col.length }));
+    col.forEach((m, i) =>
+      pos.set(m.id, {
+        x: colX(c),
+        y: Math.min(Math.max(((i + 0.5) * H) / col.length, lo), H - lo),
+      }),
+    );
   });
   const lastCol = byRound.get(keys[keys.length - 1] ?? 0) ?? [];
   return {
@@ -571,11 +711,11 @@ function layoutBracket(matches: MatchRow[]): BracketLayout {
     feedersByParent,
     ghosts: [],
     colLabels: keys.map((r, c) => ({
-      x: colX(c) + CARD_W / 2,
+      x: colX(c) + g.cardW / 2,
       label: roundName(byRound.get(r)!.length * 2),
     })),
     H,
-    canvasW: Math.max(1, keys.length) * CARD_W + (keys.length - 1) * COL_GAP,
+    canvasW: Math.max(1, keys.length) * g.cardW + (keys.length - 1) * COL_GAP,
     finalX: colX(Math.max(0, keys.length - 1)),
     finalY: (lastCol[0] && pos.get(lastCol[0].id)?.y) || H / 2,
   };
@@ -591,6 +731,11 @@ export function FifaBracket({
   timeZone,
   matchNumbers,
   linkFor,
+  rosters,
+  fitWidth,
+  fitHeight,
+  idScope,
+  wrapNames,
 }: {
   columns: [number, MatchRow[]][];
   timeZone?: string;
@@ -602,6 +747,25 @@ export function FifaBracket({
   matchNumbers?: Map<string, number>;
   /** What a card opens. Omitted, the card is not a link. */
   linkFor?: (m: MatchRow) => string;
+  /** Present = the DETAILED draw: every card names the players each side
+   * fields, on cards grown to hold them. The board itself never passes this. */
+  rosters?: RosterIndex;
+  /** Scale the whole tree to fit this many px instead of scrolling it. A
+   * printed page cannot be scrolled, so the export hands it the paper width;
+   * on screen the tree keeps its arrows and its own size. */
+  fitWidth?: number;
+  /** ...and the paper height. A page cannot be scrolled DOWN either, and a
+   * bracket that overflows one is not continued on the next — it is sliced
+   * through the middle of a card. Both bounds, or the tree is cropped. */
+  fitHeight?: number;
+  /** Namespaces the card testids when the SAME tree is drawn twice on one
+   * page (the board on screen, and again inside the print document). */
+  idScope?: string;
+  /** Grow every card until the LONGEST name in this bracket fits, and let it
+   * wrap. The public boards ask for it (owner 2026-08-21): a draw that reads
+   * "Holy Cross Higher Secondar…" does not say who is playing. The default is
+   * the board's own compact card, which the preview and ops views keep. */
+  wrapNames?: boolean;
 }): React.ReactElement {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [nav, setNav] = useState({ start: true, end: true });
@@ -654,8 +818,15 @@ export function FifaBracket({
     );
   }
 
+  // Cards grow to hold what they carry — a wrapped school name, and the team
+  // sheet under it — whenever a caller asks. Nothing else changed: a caller
+  // that asks for neither (the preview, the ops board) gets the board's own
+  // compact card, exactly as before.
+  const paper = fitWidth != null || fitHeight != null;
+  const geom =
+    paper || wrapNames || rosters ? fitGeom(all, rosters, paper) : BOARD;
   const { pos, feedersByParent, ghosts, colLabels, H, canvasW, finalX, finalY } =
-    layoutBracket(bracketMatches);
+    layoutBracket(bracketMatches, geom);
 
   // Number every card (M1, M2 …) top-to-bottom within each column, left to
   // right — so an unresolved slot can point at "Winner of M3" instead of a
@@ -680,8 +851,8 @@ export function FifaBracket({
   }
 
   // Consolation cards stack in the Final column, below the Final.
-  const consTop = finalY + CARD_H / 2 + 32;
-  const consBlock = LABEL_H + 6 + CARD_H + 24;
+  const consTop = finalY + geom.cardH / 2 + 32;
+  const consBlock = LABEL_H + 6 + geom.cardH + 24;
   const canvasH = Math.max(
     H,
     consolation.length ? consTop + consolation.length * consBlock : H,
@@ -725,15 +896,15 @@ export function FifaBracket({
       if (!kpos) continue;
       const via = rerouted.get(k);
       if (via) {
-        hline(kpos.x + CARD_W, via.x, kpos.y);
+        hline(kpos.x + geom.cardW, via.x, kpos.y);
         kp.push({ x: via.x, y: via.y });
       } else {
         kp.push(kpos);
       }
     }
     if (kp.length === 0) continue;
-    const bus = (Math.max(...kp.map((k) => k.x + CARD_W)) + p.x) / 2;
-    for (const k of kp) hline(k.x + CARD_W, bus, k.y);
+    const bus = (Math.max(...kp.map((k) => k.x + geom.cardW)) + p.x) / 2;
+    for (const k of kp) hline(k.x + geom.cardW, bus, k.y);
     const ys = [...kp.map((k) => k.y), p.y];
     vline(bus, Math.min(...ys), Math.max(...ys));
     hline(bus, p.x, p.y);
@@ -742,8 +913,8 @@ export function FifaBracket({
   const cards = bracketMatches.map((m) => {
     const p = pos.get(m.id) ?? { x: 0, y: H / 2 };
     return (
-      <div key={`m-${m.id}`} className="absolute" style={{ left: p.x, top: p.y - CARD_H / 2, width: CARD_W }}>
-        <MatchCard match={m} tz={timeZone} no={matchNo} linkFor={linkFor} />
+      <div key={`m-${m.id}`} className="absolute" style={{ left: p.x, top: p.y - geom.cardH / 2, width: geom.cardW }}>
+        <MatchCard match={m} tz={timeZone} no={matchNo} linkFor={linkFor} geom={geom} rosters={rosters} idScope={idScope} />
       </div>
     );
   });
@@ -751,7 +922,12 @@ export function FifaBracket({
   // Ghost "Bye" cards: the slot had no opponent in this round and advances
   // automatically (a real-tournament bye), shown instead of a silent gap.
   // Mid-bracket byes name the slot by its feeder match ("Winner of M18").
-  const GHOST_H = 60;
+  // A bye card carries a school name too, and on paper it must not ellipse it
+  // any more than a match card does — so it grows with the printed card, up to
+  // what the row pitch allows.
+  const GHOST_H = geom.wrap
+    ? Math.min(geom.row - 6, Math.max(60, Math.round(geom.cardH * 0.6)))
+    : 60;
   const ghostLabel = (g: ByeGhost): string =>
     g.label ??
     (g.feederId != null && matchNo.get(g.feederId) != null
@@ -762,12 +938,12 @@ export function FifaBracket({
       key={`b-${i}`}
       role="group"
       aria-label={`${ghostLabel(g)} ${t("bye, advances to the next round")}`}
-      data-testid="bracket-bye"
+      data-testid={`${idScope ? `${idScope}-` : ""}bracket-bye`}
       className="absolute flex flex-col justify-center gap-1 rounded-md px-3 py-2"
       style={{
         left: g.x,
         top: g.y - GHOST_H / 2,
-        width: CARD_W,
+        width: geom.cardW,
         height: GHOST_H,
         background: "rgba(0,0,0,0.16)",
         border: "1.5px dashed rgba(201,165,88,0.55)",
@@ -775,7 +951,13 @@ export function FifaBracket({
     >
       <div className="flex items-center gap-2">
         {g.isTeam ? <TeamBadge label={g.label ?? ""} crest={g.crest} /> : null}
-        <span className="min-w-0 flex-1 truncate text-xs font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>
+        <span
+          className={cn(
+            "min-w-0 flex-1 text-xs font-medium",
+            geom.wrap ? "whitespace-normal break-words" : "truncate",
+          )}
+          style={{ color: "rgba(255,255,255,0.85)" }}
+        >
           {ghostLabel(g)}
         </span>
         <span
@@ -785,9 +967,13 @@ export function FifaBracket({
           {t("Bye")}
         </span>
       </div>
-      <span className="truncate text-[0.625rem]" style={{ color: C.dim }}>
-        {t("Advances automatically")}
-      </span>
+      {/* On paper the name may take two lines and the row pitch is tight; the
+          BYE pill beside it already says what a bye is. */}
+      {geom.wrap ? null : (
+        <span className="truncate text-[0.625rem]" style={{ color: C.dim }}>
+          {t("Advances automatically")}
+        </span>
+      )}
     </div>
   ));
 
@@ -797,7 +983,18 @@ export function FifaBracket({
   );
   const hasDates =
     bracketMatches.some((m) => m.scheduled_at) || consolation.some((m) => m.scheduled_at);
-  const canScroll = !(nav.start && nav.end);
+  // A page cannot be scrolled: given the paper width the whole tree is scaled
+  // down to fit it, arrows and all removed. `transform` (not `zoom`) because
+  // the tree is an absolutely-positioned pixel canvas and must scale as ONE
+  // object, connectors included.
+  const treeH = HEADER_H + canvasH;
+  const fit = Math.min(
+    1,
+    fitWidth ? fitWidth / canvasW : 1,
+    fitHeight ? fitHeight / treeH : 1,
+  );
+  const fitted = fitWidth != null || fitHeight != null;
+  const canScroll = !fitted && !(nav.start && nav.end);
 
   const arrowBtn = (dir: 1 | -1, disabled: boolean): React.ReactElement => (
     <button
@@ -839,11 +1036,39 @@ export function FifaBracket({
         ref={scrollRef}
         onScroll={sync}
         onKeyDown={onKeyDown}
-        tabIndex={0}
-        className="overflow-x-auto focus:outline-none"
-        style={{ scrollbarWidth: "thin" }}
+        tabIndex={fitted ? -1 : 0}
+        className={fitted ? "" : "overflow-x-auto focus:outline-none"}
+        style={
+          fitted
+            ? {
+                width: Math.ceil(canvasW * fit),
+                height: Math.ceil(treeH * fit) + 1,
+                // `transform` scales what is PAINTED, never the layout box, so
+                // to the printer the child is still a full-size tree and it
+                // paginates on that — the final round landed overleaf even
+                // though it fitted on the page. Clipping to the scaled box is
+                // what makes the fragmenter agree with the eye; nothing is
+                // lost, the tree is scaled to exactly this.
+                overflow: "hidden",
+                // Height is usually the binding constraint, which leaves the
+                // page wider than the scaled tree: centre it rather than
+                // hanging it off the left edge of an empty sheet.
+                marginInline: "auto",
+              }
+            : { scrollbarWidth: "thin" }
+        }
       >
-        <div style={{ width: canvasW }}>
+        <div
+          style={
+            fitted
+              ? {
+                  width: canvasW,
+                  transform: `scale(${fit})`,
+                  transformOrigin: "top left",
+                }
+              : { width: canvasW }
+          }
+        >
           {/* round headers, one per column (named by distance-to-final) */}
           <div className="relative" style={{ width: canvasW, height: HEADER_H }}>
             {colLabels.map((h, c) => (
@@ -864,11 +1089,11 @@ export function FifaBracket({
             {consolation.map((m, i) => {
               const top = consTop + i * consBlock;
               return (
-                <div key={`c-${m.id}`} className="absolute" style={{ left: finalX, top, width: CARD_W }}>
+                <div key={`c-${m.id}`} className="absolute" style={{ left: finalX, top, width: geom.cardW }}>
                   <span className="mb-1.5 block text-[0.625rem] font-semibold uppercase tracking-wider" style={{ color: C.goldHi }}>
                     {consolationLabel(m)}
                   </span>
-                  <MatchCard match={m} tz={timeZone} no={matchNo} linkFor={linkFor} />
+                  <MatchCard match={m} tz={timeZone} no={matchNo} linkFor={linkFor} geom={geom} rosters={rosters} idScope={idScope} />
                 </div>
               );
             })}

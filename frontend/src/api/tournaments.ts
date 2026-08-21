@@ -570,6 +570,25 @@ export interface PublicCourtLink {
   is_streaming: boolean;
 }
 
+/** One name on a printed team sheet (public: name + shirt number only). */
+export interface PublicRosterPlayer {
+  id: string;
+  name: string;
+  jersey_no: number | null;
+  captain: boolean;
+}
+
+export interface PublicTeamRoster {
+  id: string;
+  name: string;
+  school: string;
+  players: PublicRosterPlayer[];
+}
+
+export interface PublicRostersPayload {
+  teams: PublicTeamRoster[];
+}
+
 export interface PublicSchedulePayload {
   tournament: {
     id: string;
@@ -1284,6 +1303,14 @@ export const tournamentsApi = {
   publicSchedule: (slug: string, id: string) =>
     api.get<PublicSchedulePayload>(
       `/api/public/tournaments/${encodeURIComponent(slug)}/${id}/schedule/`,
+    ),
+  /** Every team's line-up in ONE read (AllowAny; same slug+UUID gating as
+   * the public schedule). What the printed fixture's detailed pass needs to
+   * name the players instead of only the teams — a request per team would be
+   * hundreds on a real tournament. */
+  publicRosters: (slug: string, id: string) =>
+    api.get<PublicRostersPayload>(
+      `/api/public/tournaments/${encodeURIComponent(slug)}/${id}/rosters/`,
     ),
   /** Public read-only standings (AllowAny; same slug+UUID gating as the
    * public schedule — control room spec §2.d). */

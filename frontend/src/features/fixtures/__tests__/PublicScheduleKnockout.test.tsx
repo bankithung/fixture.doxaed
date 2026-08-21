@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -32,6 +32,7 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       ...actual.tournamentsApi,
       publicSchedule: vi.fn(),
       publicStandings: vi.fn(),
+      publicRosters: vi.fn(),
     },
   };
 });
@@ -116,6 +117,18 @@ function mount(entry = "/t/cup/t1/schedule?comp=knockout") {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(tournamentsApi.publicStandings).mockResolvedValue({ groups: [] });
+  vi.mocked(tournamentsApi.publicRosters).mockResolvedValue({
+    teams: [
+      {
+        id: "h",
+        name: "Asen",
+        school: "North",
+        players: [
+          { id: "p1", name: "Asen Jamir", jersey_no: null, captain: false },
+        ],
+      },
+    ],
+  });
 });
 
 describe("the knockout draw inside the match centre", () => {
@@ -237,6 +250,67 @@ describe("the knockout draw inside the match centre", () => {
     // ...and the bracket behind it is still mounted, never re-fetched.
     expect(screen.getByTestId("bracket-tt.u14")).toBeInTheDocument();
     expect(tournamentsApi.publicSchedule).toHaveBeenCalledTimes(1);
+  });
+
+  it("prints the SELECTED draw: the tree, then the same draw as a sheet", async () => {
+    vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(
+      payload([SEMI, { ...SEMI, id: "k2", leaf_key: "tt.u17", leaf_label: "Table Tennis · U17" }]),
+    );
+    mount("/t/cup/t1/schedule?comp=knockout&kosport=Table%20Tennis&kocomp=tt.u17");
+    await screen.findByTestId("bracket-tt.u17");
+
+    const doc = screen.getByTestId("fixture-print-doc");
+    // The tree — the flow is how a draw is read, and it is what prints first.
+    expect(
+      within(doc).getByTestId("print-page-knockout-teams"),
+    ).toBeInTheDocument();
+    // ...and beside it the same matches at full size. A bracket has to fit one
+    // page whole, so a deep draw prints small; a knockout-only category has no
+    // group sheet to fall back on, so the draw carries its own.
+    const sheet = within(doc).getByTestId("print-page-knockout-sheet-teams");
+    expect(sheet).toHaveTextContent("Order of play");
+    // The tree that prints is the one on screen, not another competition's.
+    expect(
+      within(doc).getByTestId("print-teams-bracket-card-k2"),
+    ).toBeInTheDocument();
+    expect(
+      within(doc).queryByTestId("print-teams-bracket-card-sf1"),
+    ).toBeNull();
+    // Both again with the names.
+    expect(
+      within(doc).getByTestId("print-page-knockout-detailed"),
+    ).toBeInTheDocument();
+    expect(
+      within(doc).getByTestId("print-page-knockout-sheet-detailed"),
+    ).toBeInTheDocument();
+  });
+
+  it("names the players on the board itself, behind one switch", async () => {
+    vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(payload([SEMI]));
+    mount();
+    await screen.findByTestId("bracket-tt.u14");
+    const board = screen.getByTestId("bracket-board");
+    // A draw names TEAMS until you ask otherwise, and the roster read is not
+    // made at all until then.
+    expect(board).not.toHaveTextContent("Asen Jamir");
+    expect(tournamentsApi.publicRosters).not.toHaveBeenCalled();
+
+    const toggle = screen.getByTestId("bracket-names-toggle");
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(toggle);
+
+    // Scoped to the board: the print document holds a second, hidden copy.
+    await waitFor(() =>
+      expect(screen.getByTestId("bracket-board")).toHaveTextContent(
+        "Asen Jamir",
+      ),
+    );
+    expect(tournamentsApi.publicRosters).toHaveBeenCalledWith("cup", "t1");
+    // It rides the URL, so a board showing who is playing is a shareable link.
+    expect(screen.getByTestId("bracket-names-toggle")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
   });
 
   it("keeps old /bracket links alive, selection and all", async () => {

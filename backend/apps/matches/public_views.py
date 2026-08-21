@@ -173,6 +173,53 @@ class PublicInstitutionRecordView(GenericAPIView):
         return Response(data)
 
 
+class PublicTournamentRostersView(GenericAPIView):
+    """`GET /api/public/tournaments/{slug}/{id}/rosters/` — every team's
+    line-up in ONE read, so a printed fixture can name the players instead of
+    only the teams.
+
+    The same names `PublicTeamRecordView` already publishes per team; this is
+    the bulk read, because the printed order of play needs all of them at once
+    and a request per team would be hundreds. Names and shirt numbers only —
+    the same PII posture as the rest of the public surface (no DOB, no
+    contact, no documents).
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, slug, tournament_id):
+        from apps.teams.models import Player
+
+        t = _public_tournament_or_404(slug, tournament_id)
+        by_team: dict[str, list[dict]] = {}
+        rows = (
+            Player.objects.filter(tournament=t, deleted_at__isnull=True)
+            .select_related("person")
+            # Shirt number first when a team uses them, then name: a team
+            # sheet is read in the order it is pinned up.
+            .order_by("team_id", "jersey_no", "person__full_name")
+        )
+        for p in rows:
+            by_team.setdefault(str(p.team_id), []).append({
+                "id": str(p.id),
+                "name": p.person.full_name if p.person_id else "",
+                "jersey_no": p.jersey_no,
+                "captain": p.captain,
+            })
+        teams = [
+            {
+                "id": str(team.id),
+                "name": team.name,
+                "school": team.school,
+                "players": by_team.get(str(team.id), []),
+            }
+            for team in Team.objects.filter(
+                tournament=t, deleted_at__isnull=True
+            ).order_by("name")
+        ]
+        return Response({"teams": teams})
+
+
 class MyTodayView(GenericAPIView):
     """`GET /api/me/today/` — the operator command center feed: everything
     live or scheduled today across EVERY tournament the caller can access,

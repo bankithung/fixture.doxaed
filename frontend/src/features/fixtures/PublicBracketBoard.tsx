@@ -1,49 +1,49 @@
 import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import { type MatchRow, type PublicScheduleMatch } from "@/api/tournaments";
+import { Users } from "lucide-react";
+import { type PublicScheduleMatch } from "@/api/tournaments";
 import { BracketView } from "@/features/tournaments/BracketView";
+import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { splitLabel } from "./publicTournament";
+import { buildBrackets, pickBracket, toMatchRow } from "./bracketModel";
+import { splitLabel, type RosterIndex } from "./publicTournament";
 import { Bookmark } from "./publicTournamentViews";
 
-/** Public schedule row to the MatchRow shape BracketView renders (set-sport
- * winners already fall out of home/away_score = sets won). */
-export function toMatchRow(m: PublicScheduleMatch): MatchRow {
-  const team = (s: PublicScheduleMatch["home"]) =>
-    s
-      ? { id: s.id, name: s.name, short_name: s.short_name, crest: s.crest }
-      : null;
-  return {
-    id: m.id,
-    stage: m.stage,
-    group_label: m.group_label,
-    round_no: m.round_no,
-    match_no: m.match_no,
-    status: m.status,
-    home_team: team(m.home),
-    away_team: team(m.away),
-    home_score: m.home_score,
-    away_score: m.away_score,
-    sport: m.sport,
-    set_scores: m.set_scores,
-    leaf_key: m.leaf_key,
-    venue: m.venue,
-    scoring: null,
-    scheduled_at: m.scheduled_at,
-    home_pens: m.home_pens,
-    away_pens: m.away_pens,
-    stage_no: m.stage_no,
-    // pass the typed pointers through so an unresolved slot shows "Group A #1"
-    home_source: m.home_source,
-    away_source: m.away_source,
-  };
-}
-
-interface Bracket {
-  key: string;
-  label: string;
-  sport: string;
-  matches: MatchRow[];
+/**
+ * "Show the players" — one switch, sitting on the board it changes.
+ *
+ * A draw names TEAMS, which for a school event is a school and a suffix
+ * ("Grace Academy TT-1"); who is actually playing is the next question every
+ * parent asks, and until now the only answer was to open each match. Flipping
+ * it grows every card to hold its team sheet (owner 2026-08-21).
+ */
+export function NamesToggle({
+  on,
+  onChange,
+  testid = "bracket-names-toggle",
+}: {
+  on: boolean;
+  onChange: (next: boolean) => void;
+  testid?: string;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      data-testid={testid}
+      onClick={() => onChange(!on)}
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+        on
+          ? "border-primary bg-primary/10 text-primary"
+          : "border-border text-muted-foreground hover:bg-muted",
+      )}
+    >
+      <Users aria-hidden className="h-3.5 w-3.5" />
+      {t("Player names")}
+    </button>
+  );
 }
 
 /** One competition's knockout tree, exactly as the standalone Knockout page
@@ -55,6 +55,7 @@ export function CompetitionBracket({
   leafKey,
   numbers,
   linkFor,
+  rosters,
 }: {
   matches: PublicScheduleMatch[];
   timeZone: string | undefined;
@@ -63,6 +64,8 @@ export function CompetitionBracket({
    * the sheet above prints as M12. */
   numbers?: Map<string, number>;
   linkFor?: (id: string) => string;
+  /** Set = the Player names switch is on: every card names its team sheet. */
+  rosters?: RosterIndex;
 }): React.ReactElement {
   const rows = useMemo(
     () => matches.filter((m) => m.stage === "knockout").map(toMatchRow),
@@ -79,6 +82,8 @@ export function CompetitionBracket({
         timeZone={timeZone}
         matchNumbers={numbers}
         linkFor={linkFor ? (m) => linkFor(m.id) : undefined}
+        rosters={rosters}
+        wrapNames
       />
     </div>
   );
@@ -111,41 +116,24 @@ export function PublicBracketBoard({
   timeZone,
   numbers,
   linkFor,
+  rosters,
+  namesOn,
+  onNames,
 }: {
   matches: PublicScheduleMatch[];
   timeZone: string | undefined;
   numbers?: Map<string, number>;
   linkFor?: (id: string) => string;
+  /** Set = the Player names switch is on: every card names its team sheet. */
+  rosters?: RosterIndex;
+  namesOn?: boolean;
+  onNames?: (next: boolean) => void;
 }): React.ReactElement {
   const [params, setParams] = useSearchParams();
 
   // One bracket per competition leaf (TT Singles, Sepak Takraw, ...) — only the
   // knockout matches; the group stage lives on the competition's own view.
-  const bySport = useMemo(() => {
-    const byLeaf = new Map<string, Bracket>();
-    for (const m of matches) {
-      if (m.stage !== "knockout") continue;
-      const key = m.leaf_key || "_";
-      let b = byLeaf.get(key);
-      if (!b) {
-        const label = m.leaf_label || t("Bracket");
-        b = {
-          key,
-          label,
-          sport: splitLabel(label)[0] ?? t("Bracket"),
-          matches: [],
-        };
-        byLeaf.set(key, b);
-      }
-      b.matches.push(toMatchRow(m));
-    }
-    const grouped = new Map<string, Bracket[]>();
-    for (const b of byLeaf.values()) {
-      if (!grouped.has(b.sport)) grouped.set(b.sport, []);
-      grouped.get(b.sport)!.push(b);
-    }
-    return [...grouped.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [matches]);
+  const bySport = useMemo(() => buildBrackets(matches), [matches]);
 
   const sportParam = params.get("kosport") ?? "";
   const compParam = params.get("kocomp") ?? "";
@@ -156,9 +144,10 @@ export function PublicBracketBoard({
     () => bySport.find(([s]) => s === sport)?.[1] ?? [],
     [bySport, sport],
   );
-  const comp = compsOfSport.some((c) => c.key === compParam)
-    ? compParam
-    : (compsOfSport[0]?.key ?? "");
+  // The SAME resolver the printed draw uses, so Print can never hand back a
+  // different bracket from the one on screen.
+  const picked = pickBracket(bySport, sportParam, compParam);
+  const comp = picked?.key ?? "";
   const shown = compsOfSport.filter((c) => c.key === comp);
 
   const setFilter = (next: { sport?: string; comp?: string }): void => {
@@ -224,6 +213,11 @@ export function PublicBracketBoard({
               <span className="font-tabular text-xs text-muted-foreground">
                 {b.matches.length} {t("matches")}
               </span>
+              {onNames ? (
+                <span className="ml-auto">
+                  <NamesToggle on={Boolean(namesOn)} onChange={onNames} />
+                </span>
+              ) : null}
             </div>
             <div className="overflow-x-auto">
               <BracketView
@@ -231,6 +225,8 @@ export function PublicBracketBoard({
                 timeZone={timeZone}
                 matchNumbers={numbers}
                 linkFor={linkFor ? (m) => linkFor(m.id) : undefined}
+                rosters={rosters}
+                wrapNames
               />
             </div>
           </section>

@@ -25,6 +25,7 @@ from apps.matches.public_views import (
     PublicTeamRecordView,
     PublicTournamentDirectoryView,
     PublicTournamentLeadersView,
+    PublicTournamentRostersView,
 )
 from apps.teams.views_houses import InstitutionClaimView  # noqa: E402
 from apps.badges.views import (
@@ -180,6 +181,13 @@ api_v1 = [
         "public/tournaments/<slug:slug>/<uuid:tournament_id>/schedule/",
         PublicTournamentScheduleView.as_view(),
         name="public-tournament-schedule",
+    ),
+    # Every team's line-up in one read — what the printed fixture needs to
+    # name players instead of only teams (same PII posture as the schedule).
+    path(
+        "public/tournaments/<slug:slug>/<uuid:tournament_id>/rosters/",
+        PublicTournamentRostersView.as_view(),
+        name="public-tournament-rosters",
     ),
     # Control room (spec 2026-06-12 §2.d): public read-only standings.
     path(

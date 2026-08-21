@@ -17,6 +17,7 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       ...actual.tournamentsApi,
       publicSchedule: vi.fn(),
       publicStandings: vi.fn(),
+      publicRosters: vi.fn(),
     },
   };
 });
@@ -124,6 +125,30 @@ const STANDINGS = {
   ],
 };
 
+/** The second read the PRINT needs and the screen never does: who each team
+ * actually fields. */
+const ROSTERS = {
+  teams: [
+    {
+      id: "tm1",
+      name: "Alpha FC",
+      school: "Alpha",
+      players: [
+        { id: "p1", name: "Asen Jamir", jersey_no: 7, captain: true },
+        { id: "p2", name: "Bendang Ao", jersey_no: 3, captain: false },
+      ],
+    },
+    {
+      id: "tm2",
+      name: "Bravo FC",
+      school: "Bravo",
+      players: [
+        { id: "p3", name: "Chubala Imchen", jersey_no: null, captain: false },
+      ],
+    },
+  ],
+};
+
 class MockEventSource {
   static instances: MockEventSource[] = [];
   static CONNECTING = 0;
@@ -176,6 +201,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(PAYLOAD);
   vi.mocked(tournamentsApi.publicStandings).mockResolvedValue(STANDINGS);
+  vi.mocked(tournamentsApi.publicRosters).mockResolvedValue(ROSTERS);
 });
 
 describe("PublicSchedulePage", () => {
@@ -441,19 +467,109 @@ describe("PublicSchedulePage", () => {
     );
   });
 
-  it("competition → a day's order of play still prints, per venue", async () => {
+  it("prints the day the reader is on, ONE page per court, in landscape", async () => {
     const print = vi.fn();
     window.print = print;
     mount();
     await screen.findByTestId("public-day-2026-06-20");
 
+    // The paper is the same board: a page per court, exactly the lanes the
+    // screen shows, and not the day rolled into one list.
+    const doc = screen.getByTestId("fixture-print-doc");
+    expect(
+      within(doc).getByTestId("print-page-court-Main Ground-teams"),
+    ).toBeInTheDocument();
+    expect(
+      within(doc).getByTestId("print-page-court-Table Hall-teams"),
+    ).toBeInTheDocument();
+    // ...and then the SAME fixture again, with the names.
+    expect(
+      within(doc).getByTestId("print-page-court-Main Ground-detailed"),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("print-button"));
+    await waitFor(() => expect(print).toHaveBeenCalled());
+    // A fixture sheet is wide; portrait would crop it. The rule is injected
+    // for this print only, never left in the stylesheet.
+    expect(
+      document.getElementById("fixture-print-page")?.textContent,
+    ).toContain("landscape");
+  });
+
+  it("the second pass names the players; the first stays by team", async () => {
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+    await userEvent.click(screen.getByTestId("print-button"));
+
+    const doc = screen.getByTestId("fixture-print-doc");
+    const teams = within(doc).getByTestId("print-page-court-Main Ground-teams");
+    const detailed = await within(doc).findByTestId(
+      "print-page-court-Main Ground-detailed",
+    );
+    await waitFor(() =>
+      expect(detailed).toHaveTextContent("7. Asen Jamir"),
+    );
+    expect(detailed).toHaveTextContent("Alpha FC");
+    // Captain is marked, a player with no shirt number still reads.
+    expect(detailed).toHaveTextContent("(C)");
+    expect(detailed).toHaveTextContent("Chubala Imchen");
+    // Teams with no published sheet say so instead of printing a blank.
+    expect(detailed).toHaveTextContent("No team sheet");
+    // The by-team pass is untouched by any of it.
+    expect(teams).toHaveTextContent("Alpha FC");
+    expect(teams).not.toHaveTextContent("Asen Jamir");
+  });
+
+  it("names the players on the printed BRACKET too, not only the sheet", async () => {
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+    await userEvent.click(screen.getByTestId("print-button"));
+    // u15 has Alpha FC in a group match and u17 is the knockout: open the one
+    // competition whose bracket carries a resolved team.
+    await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
+
+    const doc = await screen.findByTestId("fixture-print-doc");
+    const detailed = within(doc).getByTestId("print-page-groups-detailed");
+    await waitFor(() => expect(detailed).toHaveTextContent("Asen Jamir"));
+    // The teams pass of the same competition names nobody.
+    expect(
+      within(doc).getByTestId("print-page-groups-teams"),
+    ).not.toHaveTextContent("Asen Jamir");
+  });
+
+  it("a competition prints its group sheets and then its bracket", async () => {
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
     await userEvent.click(screen.getByTestId("rail-comp-football.u17"));
 
-    // print sheet renders the chosen day's per-venue order of play
-    const sheet = await screen.findByTestId("print-sheet");
-    expect(within(sheet).getByTestId("print-venue-Side Pitch")).toBeInTheDocument();
-    await userEvent.click(screen.getByTestId("print-button"));
-    expect(print).toHaveBeenCalled();
+    const doc = await screen.findByTestId("fixture-print-doc");
+    // u17 is knockout-only, so there is nothing to table — the tree is the
+    // whole page, twice.
+    expect(
+      within(doc).getByTestId("print-page-comp-knockout-teams"),
+    ).toBeInTheDocument();
+    expect(
+      within(doc).getByTestId("print-page-comp-knockout-detailed"),
+    ).toBeInTheDocument();
+    expect(within(doc).queryByTestId("print-page-groups-teams")).toBeNull();
+    // A bracket has to fit one page whole, so a deep draw prints small: the
+    // same matches also print as a full-size order of play.
+    expect(
+      within(doc).getByTestId("print-page-comp-knockout-sheet-teams"),
+    ).toBeInTheDocument();
+    expect(
+      within(doc).getByTestId("print-page-comp-knockout-sheet-detailed"),
+    ).toBeInTheDocument();
+
+    // A competition with a group stage prints the sheet as well.
+    await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId("fixture-print-doc")).getByTestId(
+          "print-page-groups-teams",
+        ),
+      ).toBeInTheDocument(),
+    );
   });
 
   it("stays on the polling indicator when SSE is unavailable", async () => {
@@ -568,9 +684,10 @@ describe("PublicSchedulePage", () => {
   it("prints the crests on the order of play", async () => {
     mount();
     await screen.findByTestId("public-day-2026-06-20");
-    await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
 
-    const sheet = await screen.findByTestId("print-sheet");
+    const sheet = within(screen.getByTestId("fixture-print-doc")).getByTestId(
+      "print-page-court-Main Ground-teams",
+    );
     const printed = within(sheet).getAllByTestId("team-crest");
     expect(printed[0]).toHaveAttribute("src", ALPHA_CREST);
     // Small enough that the table still fits the page.
