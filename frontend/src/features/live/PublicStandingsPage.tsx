@@ -23,7 +23,7 @@ import { PublicViewerHeader } from "./PublicViewerHeader";
 export function PublicStandingsPage(): React.ReactElement {
   const { slug = "", id = "" } = useParams();
   const [params, setParams] = useSearchParams();
-  const { scheduleQ, standingsQ, connected, hasKnockout } = usePublicTournament(
+  const { scheduleQ, standingsQ, connected } = usePublicTournament(
     slug,
     id,
   );
@@ -102,7 +102,6 @@ export function PublicStandingsPage(): React.ReactElement {
         tournamentName={tournamentName}
         active="standings"
         connected={connected}
-        showKnockout={hasKnockout !== false}
       />
       <main className="flex w-full flex-1 flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8">
         {loading ? (

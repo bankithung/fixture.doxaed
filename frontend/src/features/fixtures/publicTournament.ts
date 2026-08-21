@@ -15,11 +15,12 @@ import { isSetSport } from "@/lib/setDisplay";
 import { t } from "@/lib/t";
 import { useEventStream } from "@/lib/useEventStream";
 
-/** Shared data + label logic for the public tournament panel (Matches /
- * Standings / Knockout). All three tabs read the SAME two queries (identical
- * keys, 30 s staleTime) so switching tabs is an instant cache hit,
- * Google-sports-panel style; the SSE tick invalidates both so every tab
- * advances live. Presentational pieces live in publicTournamentViews.tsx. */
+/** Shared data + label logic for the public tournament pages (Matches, which
+ * carries the knockout draw as a scope of its own, and Standings). Both read
+ * the SAME two queries (identical keys, 30 s staleTime) so switching is an
+ * instant cache hit, Google-sports-panel style; the SSE tick invalidates both
+ * so every view advances live. Presentational pieces live in
+ * publicTournamentViews.tsx. */
 
 export const LIVE_STATUSES = new Set([
   "live",
@@ -33,9 +34,6 @@ export interface PublicTournamentData {
   scheduleQ: UseQueryResult<PublicSchedulePayload>;
   standingsQ: UseQueryResult<{ groups: StandingsGroup[] }>;
   connected: boolean;
-  /** undefined until the schedule loads; then whether ANY knockout-stage
-   * match exists (the Knockout tab hides when false). */
-  hasKnockout: boolean | undefined;
 }
 
 /** The one shared fetch behind the public tabs: SSE tick stream (debounced
@@ -82,11 +80,7 @@ export function usePublicTournament(
     refetchInterval: connected ? false : 60_000,
   });
 
-  const hasKnockout = scheduleQ.data
-    ? scheduleQ.data.matches.some((m) => m.stage === "knockout")
-    : undefined;
-
-  return { scheduleQ, standingsQ, connected, hasKnockout };
+  return { scheduleQ, standingsQ, connected };
 }
 
 /** Competition labels arrive joined by separators ("Sepak Takraw — U-14 —

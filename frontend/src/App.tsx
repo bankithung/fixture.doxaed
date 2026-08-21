@@ -82,7 +82,7 @@ const PublicFormPage = lazy(() => import("@/features/forms/PublicFormPage").then
 const PublicDirectoryPage = lazy(() => import("@/features/forms/PublicDirectoryPage").then((m) => ({ default: m.PublicDirectoryPage })));
 const LiveViewerPage = lazy(() => import("@/features/live/LiveViewerPage").then((m) => ({ default: m.LiveViewerPage })));
 const PublicStandingsPage = lazy(() => import("@/features/live/PublicStandingsPage").then((m) => ({ default: m.PublicStandingsPage })));
-const PublicBracketPage = lazy(() => import("@/features/live/PublicBracketPage").then((m) => ({ default: m.PublicBracketPage })));
+const PublicBracketRedirect = lazy(() => import("@/features/live/PublicBracketRedirect").then((m) => ({ default: m.PublicBracketRedirect })));
 const PublicTeamPage = lazy(() => import("@/features/live/PublicTeamPage").then((m) => ({ default: m.PublicTeamPage })));
 const PublicSchoolPage = lazy(() => import("@/features/live/PublicSchoolPage").then((m) => ({ default: m.PublicSchoolPage })));
 const ExplorePage = lazy(() => import("@/features/live/ExplorePage").then((m) => ({ default: m.ExplorePage })));
@@ -191,17 +191,18 @@ export default function App(): React.ReactElement {
               <Route path="/f/:formId" element={<PublicFormPage />} />
               <Route path="/r/:token" element={<PublicFormPage />} />
               <Route path="/m/:matchId" element={<LiveViewerPage />} />
-              {/* Public read-only tournament panel (trust layer): Matches,
-                  Standings, Knockout as instant tabs over one shared fetch ·
-                  all SSE-live, no login. The legacy /live scoreboard redirects
-                  to Matches (live matches pin into its Now-playing band). */}
+              {/* Public read-only tournament panel (trust layer): ONE match
+                  centre (day boards by court or clock, every competition, and
+                  the knockout draw) plus Standings, over one shared fetch ·
+                  all SSE-live, no login. The legacy /live scoreboard and
+                  /bracket page both redirect into it. */}
               <Route path="/t/:slug/:id/schedule" element={<PublicSchedulePage />} />
               <Route
                 path="/t/:slug/:id/standings"
                 element={<PublicStandingsPage />}
               />
               <Route path="/t/:slug/:id/live" element={<PublicLiveRedirect />} />
-              <Route path="/t/:slug/:id/bracket" element={<PublicBracketPage />} />
+              <Route path="/t/:slug/:id/bracket" element={<PublicBracketRedirect />} />
               <Route path="/t/:slug/:id/team/:teamId" element={<PublicTeamPage />} />
               <Route path="/t/:slug/:id/school/:instId" element={<PublicSchoolPage />} />
               {/* Guest Lens: QR-card upload page + the public shared album. */}

@@ -147,9 +147,11 @@ export const routes = {
   /** Legacy live-scores URL; redirects to the Matches tab (live band). */
   publicLive: (slug: string, id: string) =>
     `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/live`,
-  /** Public, read-only knockout bracket per competition (no login). */
+  /** Public, read-only knockout bracket per competition (no login). It is a
+   * scope of the match centre, not a page of its own (owner 2026-08-21); the
+   * old /bracket path still resolves here through a redirect. */
   publicBracket: (slug: string, id: string) =>
-    `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/bracket`,
+    `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/schedule?comp=knockout`,
   /**
    * OBS broadcast scoreboard overlay for ONE court — the URL an operator
    * pastes into a Browser Source once for the whole tournament. `court` is the

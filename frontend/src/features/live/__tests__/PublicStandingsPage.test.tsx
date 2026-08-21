@@ -191,15 +191,7 @@ describe("PublicStandingsPage", () => {
     expect(alpha).toHaveAttribute("href", "/t/cup/t1/team/tm1");
   });
 
-  it("hides the Knockout tab when the tournament has no knockout matches", async () => {
-    mount();
-    await screen.findByTestId("standings-sport-Football");
-    expect(screen.getByTestId("viewer-tab-schedule")).toHaveTextContent("Matches");
-    expect(screen.getByTestId("viewer-tab-standings")).toHaveTextContent("Standings");
-    expect(screen.queryByTestId("viewer-tab-bracket")).toBeNull();
-  });
-
-  it("shows the Knockout tab once knockout-stage matches exist", async () => {
+  it("offers TWO tabs: the knockout draw is a scope of Matches, not a page", async () => {
     vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(
       payload([
         FOOTBALL,
@@ -208,7 +200,11 @@ describe("PublicStandingsPage", () => {
     );
     mount();
     await screen.findByTestId("standings-sport-Football");
-    expect(screen.getByTestId("viewer-tab-bracket")).toHaveTextContent("Knockout");
+    expect(screen.getByTestId("viewer-tab-schedule")).toHaveTextContent("Matches");
+    expect(screen.getByTestId("viewer-tab-standings")).toHaveTextContent("Standings");
+    // Even with a knockout stage in the payload there is no third tab: the
+    // draw lives beside the matches (owner 2026-08-21).
+    expect(screen.queryByTestId("viewer-tab-bracket")).toBeNull();
   });
 
   it("renders an empty state when no group standings exist", async () => {

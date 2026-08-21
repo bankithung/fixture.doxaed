@@ -165,21 +165,42 @@ beforeEach(() => {
 });
 
 describe("PublicSchedulePage", () => {
-  it("defaults to a TIME-ordered order of play (not grouped by game), ZERO dashes", async () => {
+  it("defaults to the COURT board: one lane per court, in kick-off order, ZERO dashes", async () => {
     const { container } = mount();
     // smart default day = nearest >= today, else first day → 2026-06-20
     const day = await screen.findByTestId("public-day-2026-06-20");
     expect(tournamentsApi.publicSchedule).toHaveBeenCalledWith("nagaland-cup", "t1");
+    expect(screen.getByTestId("view-courts")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
 
-    // ordered by kick-off time: a time-slot header carries the time, NOT a
-    // competition section (m1 09:00, m2 11:00, m5 12:00 in Asia/Kolkata)
-    const slot = within(day).getByTestId("slot-09:00");
-    expect(slot).toHaveTextContent("09:00"); // 03:30Z in Asia/Kolkata (invariant 14)
-    const m1 = within(slot).getByTestId("public-match-m1");
+    // A day is five tables each with its own queue, so that is how it reads:
+    // the ground's two games together, the table-tennis game on its own table.
+    const ground = within(day).getByTestId("court-lane-Main Ground");
+    expect(within(ground).getByTestId("public-match-m1")).toBeInTheDocument();
+    expect(within(ground).getByTestId("public-match-m2")).toBeInTheDocument();
+    expect(within(ground).queryByTestId("public-match-m5")).toBeNull();
+    expect(
+      within(within(day).getByTestId("court-lane-Table Hall")).getByTestId(
+        "public-match-m5",
+      ),
+    ).toBeInTheDocument();
+    // the lane says how far through its own queue it is
+    expect(ground).toHaveTextContent("1/2 played");
+
+    const m1 = within(ground).getByTestId("public-match-m1");
+    expect(m1).toHaveTextContent("09:00"); // 03:30Z in Asia/Kolkata (invariant 14)
     // the row still names its game via chips (never the dashed blob)
     expect(within(m1).getByText("Football")).toBeInTheDocument();
     expect(within(m1).getByText("U15")).toBeInTheDocument(); // "U-15" hyphen stripped
-    expect(m1).toHaveTextContent("2 - 1"); // ASCII scoreboard hyphen
+    // Stacked, one side per line: a 35-character school name gets the row's
+    // whole width instead of an ellipsis either side of a centred score.
+    expect(within(m1).getByTestId("score-m1-home")).toHaveTextContent("2");
+    expect(within(m1).getByTestId("score-m1-away")).toHaveTextContent("1");
+    expect(within(m1).getByTestId("score-m1-home").className).toContain(
+      "font-semibold",
+    );
     expect(m1).toHaveTextContent("Full time");
     expect(within(m1).getByTestId("points-m1")).toHaveTextContent("(4-3 pens)");
 
@@ -192,6 +213,42 @@ describe("PublicSchedulePage", () => {
     expect(screen.queryByTestId("app-sidebar")).toBeNull();
     expect(screen.getByRole("navigation", { name: "Tournament views" })).toBeInTheDocument();
     expect(screen.queryByTestId("public-competition-football.u15")).toBeNull();
+  });
+
+  it("flags the next match on a court, and drops the lanes on a one-court day", async () => {
+    mount();
+    const day = await screen.findByTestId("public-day-2026-06-20");
+    // m1 is played and m2 is live, so neither is "next"; the ground has no
+    // waiting match at all and flags nothing.
+    expect(within(day).queryByTestId("flag-m1")).toBeNull();
+    expect(within(day).queryByTestId("flag-m2")).toBeNull();
+
+    // Day two runs on ONE pitch: a lane per court is just the day list with an
+    // extra heading, so the board opens on the clock reading instead.
+    await userEvent.click(screen.getByTestId("day-pick-2026-06-21"));
+    await screen.findByTestId("public-day-2026-06-21");
+    expect(screen.getByTestId("view-time")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    // Ask for the lanes anyway and the pitch names its next match.
+    await userEvent.click(screen.getByTestId("view-courts"));
+    const next = await screen.findByTestId("court-lane-Side Pitch");
+    expect(within(next).getByTestId("flag-m3")).toHaveTextContent("Next up");
+  });
+
+  it("switches the day board to a clock reading (By time)", async () => {
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+    await userEvent.click(screen.getByTestId("view-time"));
+
+    const day = await screen.findByTestId("public-day-2026-06-20");
+    const slot = within(day).getByTestId("slot-09:00");
+    expect(slot).toHaveTextContent("09:00");
+    expect(within(slot).getByTestId("public-match-m1")).toBeInTheDocument();
+    // the clock reading has no lanes
+    expect(within(day).queryByTestId("court-lane-Main Ground")).toBeNull();
   });
 
   it("pins live matches in the Now-playing band and pulses only live rows", async () => {
@@ -237,7 +294,12 @@ describe("PublicSchedulePage", () => {
     // sets won + finished sets ride the sub-line; the chip derives "Set N"
     // from the set list (football current_period never labels a set sport).
     const m5 = screen.getByTestId("public-match-m5");
-    expect(m5).toHaveTextContent("8 - 11");
+    // The rightmost number is the one being watched: the running set's points.
+    expect(within(m5).getByTestId("score-m5-home")).toHaveTextContent("8");
+    expect(within(m5).getByTestId("score-m5-away")).toHaveTextContent("11");
+    // Sets won ride beside them, small.
+    expect(within(m5).getByTestId("sets-m5-home")).toHaveTextContent("1");
+    expect(within(m5).getByTestId("sets-m5-away")).toHaveTextContent("1");
     expect(within(m5).getByTestId("points-m5")).toHaveTextContent("Sets 1-1 · 11-7");
     expect(within(m5).getByTestId("period-m5")).toHaveTextContent("Set 2");
   });
