@@ -202,6 +202,16 @@ saves the winning draw and every later preview replays it (PRD decision 88).
   state — the fixture on screen may be a pinned re-draw from an earlier visit
   that this tab never asked for.
 
+## The public match centre is ONE page (2026-08-21)
+
+`features/fixtures/PublicSchedulePage.tsx` is the whole public viewer bar Standings. Matches and Knockout were two pages over the SAME fetch, so a parent hopped pages to answer one question. There are now two tabs (`PublicViewerTabs`: Matches, Standings) and the draw is a **scope** of the match centre.
+
+- **The scope navigator is ONE list** (`ScopeList`) rendered into the desktop rail and the phone's `Dialog variant="sheet"`, so the two cannot drift: Today, Knockout (pinned, only when a knockout match exists), then every competition under its sport. Scope, view and day ride the URL (`?comp=&view=&day=`), so a board is shareable; the bracket board keeps its own `kosport`/`kocomp` params so it never collides with `comp`.
+- **The bracket flow UI is untouched** (owner: it is the best way to read a draw). `PublicBracketBoard.tsx` is the old page's bookmarked board lifted verbatim — `BracketView`/`FifaBracket` unchanged. `/t/:slug/:id/bracket` is now `PublicBracketRedirect`, mapping the old `sport`/`comp` params onto the board's.
+- **A day reads BY COURT by default** (`CourtBoard.tsx`). A day is five tables each with its own queue, and a time-ordered list buries that: at 09:00 five matches start at once and the court is small grey text. Lanes follow the payload's own `courts` order (then numeric name collation, so "T10" never precedes "T2"), carry their own played count, flag their **Next up**, and park courtless matches last. `courtDefaultFits` withholds the default on a one-court day — one lane is the day list with an extra heading. "By time" is one tap away.
+- **The match row is STACKED** (`publicMatchCard.tsx`, shared by every public list): meta line, then one side per line with its number hard right. A centred `Home 2 - 1 Away` turned "Dimapur Government Higher Secondary School" into two ellipses on a phone and inside a lane. While a set match is live the rightmost number is the **running set's points** (what is actually being watched) with sets won small beside it; once it is over that number is sets won. Testids: `side-`/`score-`/`sets-<id>-home|away`.
+- A competition opens on its tables, or straight on its **bracket** when it has no group stage to table.
+
 ## Preview has a third view: Courts (2026-08-17)
 
 `DryRunPreviewPage`'s `viewMode` is `sheet | draw | courts`, all reading the SAME filtered rows. `courtLoad.ts` is the pure model. The sheet is ordered by match, so it cannot answer "when is court 2 free" or "how many hours does U-14 boys singles take" — Courts does both. It splits idle time into **breaks you configured** vs **court standing free**; the sheet deliberately stays quiet about unexplained gaps, so this is the only surface that counts them. Unplaced matches hold no court and are charged no minutes.
