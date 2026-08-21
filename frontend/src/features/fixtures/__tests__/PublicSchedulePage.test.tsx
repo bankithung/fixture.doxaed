@@ -365,21 +365,13 @@ describe("PublicSchedulePage", () => {
     expect(within(m5).getByTestId("period-m5")).toHaveTextContent("Set 2");
   });
 
-  it("a competition is ONE page: tables, then its group stage as a sheet", async () => {
+  it("a competition is ONE page: its group stage as a sheet, nothing else", async () => {
     mount();
     await screen.findByTestId("public-day-2026-06-20");
     await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
 
-    // every table of the competition sits together, above the fixtures, so a
-    // multi-group category reads in one glance
-    const tables = await screen.findByTestId("public-tables-football.u15");
-    const row = within(tables).getByTestId("group-standing-tm1");
-    expect(row).toHaveTextContent("Alpha FC");
-    expect(row).toHaveTextContent("3");
-
-    // the fixtures follow under their group heading as a SHEET with columns,
-    // not a stack of cards, and with no second copy of the table around them
-    const panel = screen.getByTestId("public-competition-football.u15");
+    // The fixtures are a SHEET with columns, under their group heading.
+    const panel = await screen.findByTestId("public-competition-football.u15");
     expect(panel).toHaveTextContent("Group stage");
     expect(
       within(panel).getByTestId("comp-football.u15-row-m1"),
@@ -387,30 +379,13 @@ describe("PublicSchedulePage", () => {
     expect(
       within(panel).getByTestId("comp-football.u15-row-m2"),
     ).toBeInTheDocument();
-    expect(within(panel).queryByTestId("group-standing-tm1")).toBeNull();
-    // The sheet already IS the order of play, so there is nothing to switch to.
+
+    // Standings have their own tab, so the page does not repeat them
+    // (owner 2026-08-21), and there is nothing to switch views between.
+    expect(screen.queryByTestId("public-tables-football.u15")).toBeNull();
+    expect(screen.queryByTestId("group-standing-tm1")).toBeNull();
     expect(screen.queryByTestId("view-day")).toBeNull();
     expect(screen.queryByTestId("panel-standings")).toBeNull();
-  });
-
-  it("numbers the bracket like the sheet, and names every waiting slot", async () => {
-    mount();
-    await screen.findByTestId("public-day-2026-06-20");
-    await userEvent.click(screen.getByTestId("rail-comp-football.u17"));
-    const bracket = await screen.findByTestId("bracket-football.u17");
-
-    // The tree used to number its OWN cards 1..N, so "Winner of M1" on a
-    // bracket and "M1" on a sheet named two different games. It now prints
-    // the fixture numbering both surfaces share.
-    expect(bracket).toHaveTextContent("M1");
-    expect(bracket).toHaveTextContent("M2");
-    // No side has arrived yet, and every one of them says what it waits on.
-    expect(bracket).toHaveTextContent("Group A top 1");
-    expect(bracket).toHaveTextContent("Group A top 2");
-    expect(bracket).toHaveTextContent("Winner of M1");
-    // A card opens the match over the page, like a sheet row.
-    const card = within(bracket).getByTestId("bracket-card-m3");
-    expect(card.getAttribute("href")).toContain("match=m3");
   });
 
   it("a knockout-only competition is the BRACKET alone, no fixture table", async () => {
@@ -426,25 +401,25 @@ describe("PublicSchedulePage", () => {
     expect(screen.queryByTestId("view-bracket")).toBeNull();
   });
 
-  it("drops Up next from the match day (each court flags its own), keeps it per competition", async () => {
+  it("has no Up next band anywhere: the sheet flags its own next match", async () => {
     mount();
     await screen.findByTestId("public-day-2026-06-20");
-
-    // The day board answers "what is next" per COURT, in the sheet itself, so
-    // a band guessing at it tournament-wide is a second, worse answer.
+    // The day board answers "what is next" per COURT, inside the sheet.
     expect(screen.queryByTestId("upnext-band")).toBeNull();
 
-    // a competition shows only its own next match
-    await userEvent.click(screen.getByTestId("rail-comp-football.u17"));
-    await waitFor(() =>
-      expect(
-        within(screen.getByTestId("upnext-band")).getByTestId("public-match-m3"),
-      ).toBeInTheDocument(),
-    );
+    // A competition does the same, once, in the Status column of whichever
+    // group holds its next match. U-15's two group games are played and live,
+    // so nothing there is waiting and nothing is flagged.
     await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
-    await waitFor(() =>
-      expect(screen.queryByTestId("upnext-band")).toBeNull(),
-    );
+    const panel = await screen.findByTestId("public-competition-football.u15");
+    expect(screen.queryByTestId("upnext-band")).toBeNull();
+    expect(within(panel).queryByTestId("flag-m1")).toBeNull();
+    expect(within(panel).queryByTestId("flag-m2")).toBeNull();
+
+    // A knockout-only competition has no sheet at all, so no band either.
+    await userEvent.click(screen.getByTestId("rail-comp-football.u17"));
+    await screen.findByTestId("bracket-football.u17");
+    expect(screen.queryByTestId("upnext-band")).toBeNull();
   });
 
   it("filters the active scope by a team search and clears", async () => {

@@ -5,7 +5,6 @@ import {
   Clock,
   Columns3,
   GitMerge,
-  ListOrdered,
   Printer,
   Search,
   Star,
@@ -38,7 +37,7 @@ import {
   usePublicTournament,
   type Competition,
 } from "./publicTournament";
-import { GroupTable, LabelChips } from "./publicTournamentViews";
+import { LabelChips } from "./publicTournamentViews";
 import {
   LivePulse,
   MatchCard,
@@ -263,94 +262,6 @@ function LiveBand({
   );
 }
 
-/** What follows the live game (owner 2026-08-13). A finished match empties the
- * live band on the next tick, and the question a viewer has at that moment is
- * "what's on now?" — so the answer sits directly under it. Scoped like every
- * other band: the open category's next matches, or the tournament's on Today.
- * Matches whose slot has already passed but never started fall back in below
- * the genuinely upcoming ones rather than posing as next. */
-function UpNextBand({
-  matches,
-  timeZone,
-}: {
-  matches: PublicScheduleMatch[];
-  timeZone: string;
-}): React.ReactElement | null {
-  const next = useMemo(() => {
-    const now = new Date().toISOString();
-    const waiting = matches
-      .filter(
-        (m) =>
-          m.scheduled_at &&
-          !FINAL_STATUSES.has(m.status) &&
-          !LIVE_STATUSES.has(m.status),
-      )
-      .sort((a, b) =>
-        (a.scheduled_at ?? "") < (b.scheduled_at ?? "") ? -1 : 1,
-      );
-    const upcoming = waiting.filter((m) => (m.scheduled_at ?? "") >= now);
-    return (upcoming.length > 0 ? upcoming : waiting).slice(0, 3);
-  }, [matches]);
-
-  if (next.length === 0) return null;
-  return (
-    <section
-      data-testid="upnext-band"
-      className="border-b border-border bg-card"
-    >
-      <p className="flex items-center gap-1.5 border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-        <Clock aria-hidden="true" className="h-3.5 w-3.5" />
-        {t("Up next")}
-      </p>
-      <ul className="divide-y divide-border">
-        {next.map((m) => (
-          <MatchCard key={m.id} match={m} timeZone={timeZone} />
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-/** Every group table of one competition, side by side and directly under the
- * live band (owner 2026-08-13): the whole category's standings read in one
- * glance instead of one table per screen with a fixture list between them.
- * The fixtures still live under their own group heading further down. */
-function CompetitionTables({
-  comp,
-}: {
-  comp: Competition;
-}): React.ReactElement | null {
-  const tables = comp.groups.filter((g) => (g.standing?.rows.length ?? 0) > 0);
-  if (tables.length === 0) return null;
-  return (
-    <section
-      data-testid={`public-tables-${comp.key}`}
-      className="border-b border-border bg-card"
-    >
-      <p className="flex items-center gap-1.5 border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-        <ListOrdered aria-hidden="true" className="h-3.5 w-3.5" />
-        {t("Standings")}
-      </p>
-      {/* Two per row and no more (owner 2026-08-13): a third column squeezes
-          "Dimapur Government Higher Secondary School" into an ellipsis. */}
-      <div className="grid grid-cols-1 gap-3 p-3 sm:p-4 md:grid-cols-2">
-        {tables.map((g) => (
-          <div
-            key={g.key}
-            data-testid={`public-table-${comp.key}-${g.key}`}
-            className="flex flex-col overflow-hidden rounded-lg border border-border"
-          >
-            <h3 className="border-b border-border px-4 py-2 text-sm font-semibold">
-              {g.label}
-            </h3>
-            <GroupTable rows={g.standing!.rows} family={comp.family} />
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 /** One entry of the scope navigator (the rail on a desk, the sheet on a
  * phone) — Today, Knockout, or one competition. */
 function ScopeButton({
@@ -501,6 +412,18 @@ function GroupStageSheets({
     }))
     .filter((g) => g.shown.length > 0);
   if (groups.length === 0) return null;
+  // The competition's OWN next match, flagged in the Status column of whichever
+  // group holds it. One flag for the competition, not one per group: three
+  // "Next up" chips would each be answering a question nobody asked.
+  const nextId = comp.matches
+    .filter(
+      (m) =>
+        m.scheduled_at &&
+        !FINAL_STATUSES.has(m.status) &&
+        !LIVE_STATUSES.has(m.status),
+    )
+    .sort((a, b) => ((a.scheduled_at ?? "") < (b.scheduled_at ?? "") ? -1 : 1))[0]
+    ?.id;
   return (
     <section
       data-testid={`public-competition-${comp.key}`}
@@ -529,6 +452,7 @@ function GroupStageSheets({
             showDay={days > 1}
             showCompetition={false}
             idScope={`comp-${comp.key}`}
+            nextId={nextId}
             linkFor={linkFor}
           />
         </div>
@@ -1279,22 +1203,17 @@ export function PublicSchedulePage(): React.ReactElement {
                     ) : null}
                   </div>
 
-                  {/* The one earned card: live, pinned inside the selection,
-                      then what follows it, then the tables it feeds. */}
+                  {/* Live is the one band left. "Up next" is gone: a sheet
+                      flags its OWN next match in the Status column, which is
+                      the same answer without a second list to read. Standings
+                      are gone too — they have their own tab (owner
+                      2026-08-21). */}
                   {selected === "knockout" ? null : (
                     <>
                       <LiveBand matches={bandLive} timeZone={tz} />
-                      {/* A match day carries no "Up next" band: every court's
-                          sheet flags its OWN next match, which is the answer
-                          the band was guessing at (owner 2026-08-21). */}
-                      {selectedComp ? (
-                        <UpNextBand matches={bandMatches} timeZone={tz} />
-                      ) : null}
                       <FollowedBand matches={bandMatches} timeZone={tz} />
                     </>
                   )}
-                  {/* The leader board has left the match centre for a page of
-                      its own (owner 2026-08-21). */}
 
                   {/* Body */}
                   {selected === "knockout" ? (
@@ -1308,7 +1227,6 @@ export function PublicSchedulePage(): React.ReactElement {
                     /* ONE page per category: its tables, then its group stage
                        as a sheet, then its knockout as the bracket BELOW. */
                     <>
-                      <CompetitionTables comp={selectedComp} />
                       <GroupStageSheets
                         comp={selectedComp}
                         timeZone={tz}
