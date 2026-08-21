@@ -39,7 +39,7 @@ describe("slotLabel", () => {
     expect(slotLabel("A1")).toBe("Group A winner");
     expect(slotLabel("B2")).toBe("Group B runner-up");
     expect(slotLabel("C3")).toBe("Group C place 3");
-    expect(slotLabel("L2")).toBe("Best loser 2");
+    expect(slotLabel("L2")).toBe("Best Non-Qualifier 2");
   });
 });
 

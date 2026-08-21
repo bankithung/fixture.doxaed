@@ -119,7 +119,7 @@ function fitGeom(
 }
 
 /** Human label for an unresolved bracket slot from its typed pointer:
- * group_position -> "Group A top 1" / "Best loser 1"; winner/loser pointers are
+ * group_position -> "Group A top 1" / "Best Non-Qualifier 1"; winner/loser are
  * not entrants (they resolve from an earlier match) so they return null. */
 export function sourceLabel(src: MatchSource | null | undefined): string | null {
   if (!src) return null;

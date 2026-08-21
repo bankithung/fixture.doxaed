@@ -52,13 +52,14 @@ export function slotOptions(
   return out;
 }
 
-/** "A1" reads as "Group A winner"; "L1" as "Best loser 1". */
+/** "A1" reads as "Group A winner"; "L1" as "Best Non-Qualifier 1". */
 export function slotLabel(slot: string): string {
   const m = /^([A-Za-z]+)(\d+)$/.exec(slot.trim());
   if (!m) return slot;
   const [, name, num] = m;
   const place = Number(num);
-  if (name!.toUpperCase() === BEST_LOSER) return `${t("Best loser")} ${place}`;
+  if (name!.toUpperCase() === BEST_LOSER)
+    return `${t("Best Non-Qualifier")} ${place}`;
   const ordinal =
     place === 1 ? t("winner") : place === 2 ? t("runner-up") : `${t("place")} ${place}`;
   return `${t("Group")} ${name!.toUpperCase()} ${ordinal}`;

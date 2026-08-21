@@ -282,7 +282,7 @@ export function matchNumbers(
  * waiting on — "TBD" alone tells a parent nothing, and the whole point of the
  * typed pointers (invariant 9) is that the answer is known:
  *   winner_of / loser_of  -> "Winner of M12" / "Loser of M12"
- *   group_position        -> "Group A top 2" / "Best loser 1"
+ *   group_position        -> "Group A top 2" / "Best Non-Qualifier 1"
  * Returns null only when the pointer genuinely names nothing.
  */
 export function slotLabel(

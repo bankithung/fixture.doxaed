@@ -43,7 +43,7 @@ describe("BracketSheetEditor", () => {
 
   it("lets the organizer seat a best loser against a group winner", () => {
     render(<Harness initial={[["A1", "C2"], ["A2", "C1"], ["B1", "L2"], ["B2", "L1"]]} />);
-    pick("sheet-slot-0-1", "Best loser 1");
+    pick("sheet-slot-0-1", "Best Non-Qualifier 1");
     // A1 v L1 is now written; the sheet flags L1's old seat as empty-handed.
     pick("sheet-slot-3-1", "Group C runner-up");
     expect(screen.queryByTestId("sheet-problems")).toBeNull();

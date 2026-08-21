@@ -23,7 +23,7 @@ type SlotPointer = Record<string, unknown>;
  * slot. Shared by the FIFA bracket (FifaBracket.sourceLabel) and the preview
  * chips (sideName) so the two ALWAYS agree and neither ever leaks the raw
  * em-dash legacy label.
- *   { best_third, rank }      → "Best loser 1"
+ *   { best_third, rank }      → "Best Non-Qualifier 1"
  *   { group_label, position } → "Group A top 2"  (the rule the organiser set:
  *                               top 1 / 2 / 3 of each group advance)
  * Returns null when the pointer has nothing positional to show.
@@ -39,11 +39,14 @@ export function groupPositionLabel(
         : typeof src.position === "number"
           ? src.position
           : null;
-    // "Best loser", not "best 3rd": the slot is the strongest team that
-    // finished OUTSIDE its group's qualifying places, which is third only
-    // when two advance. It is also the organizer's own word for it, and the
-    // one the bracket editor writes ("L1"), so screen and sheet agree.
-    return rank ? `${t("Best loser")} ${rank}` : t("Best loser");
+    // "Best Non-Qualifier", not "best 3rd": the slot is the strongest team
+    // that finished OUTSIDE its group's qualifying places, which is third
+    // only when two advance. Not the old wording either (owner 2026-08-21):
+    // these are children, and a board at the venue should not call a team
+    // that nearly qualified a loser.
+    return rank
+      ? `${t("Best Non-Qualifier")} ${rank}`
+      : t("Best Non-Qualifier");
   }
   const position = typeof src.position === "number" ? src.position : null;
   if (position) {

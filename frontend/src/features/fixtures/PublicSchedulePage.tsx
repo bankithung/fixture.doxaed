@@ -804,15 +804,7 @@ export function PublicSchedulePage(): React.ReactElement {
   const printScope: PrintScope = useMemo(
     () =>
       selected === "knockout"
-        ? {
-            kind: "knockout",
-            bracket: pickBracket(koBrackets, koSport, koComp),
-            rows: koMatches.filter(
-              (m) =>
-                (m.leaf_key || "_") ===
-                pickBracket(koBrackets, koSport, koComp)?.key,
-            ),
-          }
+        ? { kind: "knockout", bracket: pickBracket(koBrackets, koSport, koComp) }
         : selectedComp
           ? { kind: "competition", comp: selectedComp, days: allDays.length }
           : { kind: "day", day, view, matches: dayShown, courts },
@@ -820,7 +812,6 @@ export function PublicSchedulePage(): React.ReactElement {
       selected,
       selectedComp,
       koBrackets,
-      koMatches,
       koSport,
       koComp,
       allDays.length,

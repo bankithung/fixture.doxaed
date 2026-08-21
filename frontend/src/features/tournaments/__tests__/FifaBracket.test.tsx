@@ -25,7 +25,7 @@ describe("sourceLabel", () => {
 
   it("labels a best_third placeholder via the shared helper", () => {
     expect(sourceLabel({ type: "group_position", best_third: true, rank: 1 }))
-      .toBe("Best loser 1");
+      .toBe("Best Non-Qualifier 1");
   });
 
   it("strips the full em-dash legacy label down to 'Group A top 2'", () => {

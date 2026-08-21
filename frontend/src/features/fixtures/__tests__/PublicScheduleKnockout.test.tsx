@@ -252,7 +252,7 @@ describe("the knockout draw inside the match centre", () => {
     expect(tournamentsApi.publicSchedule).toHaveBeenCalledTimes(1);
   });
 
-  it("prints the SELECTED draw: the tree, then the same draw as a sheet", async () => {
+  it("prints the SELECTED draw as the tree, and nothing else", async () => {
     vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(
       payload([SEMI, { ...SEMI, id: "k2", leaf_key: "tt.u17", leaf_label: "Table Tennis · U17" }]),
     );
@@ -260,15 +260,15 @@ describe("the knockout draw inside the match centre", () => {
     await screen.findByTestId("bracket-tt.u17");
 
     const doc = screen.getByTestId("fixture-print-doc");
-    // The tree — the flow is how a draw is read, and it is what prints first.
+    // The tree, and ONLY the tree: a knockout is read as a flow chart, so the
+    // order-of-play table that used to print beside it is gone (owner
+    // 2026-08-21).
     expect(
       within(doc).getByTestId("print-page-knockout-teams"),
     ).toBeInTheDocument();
-    // ...and beside it the same matches at full size. A bracket has to fit one
-    // page whole, so a deep draw prints small; a knockout-only category has no
-    // group sheet to fall back on, so the draw carries its own.
-    const sheet = within(doc).getByTestId("print-page-knockout-sheet-teams");
-    expect(sheet).toHaveTextContent("Order of play");
+    expect(
+      within(doc).queryByTestId("print-page-knockout-sheet-teams"),
+    ).toBeNull();
     // The tree that prints is the one on screen, not another competition's.
     expect(
       within(doc).getByTestId("print-teams-bracket-card-k2"),
@@ -276,12 +276,9 @@ describe("the knockout draw inside the match centre", () => {
     expect(
       within(doc).queryByTestId("print-teams-bracket-card-sf1"),
     ).toBeNull();
-    // Both again with the names.
+    // And again with the names.
     expect(
       within(doc).getByTestId("print-page-knockout-detailed"),
-    ).toBeInTheDocument();
-    expect(
-      within(doc).getByTestId("print-page-knockout-sheet-detailed"),
     ).toBeInTheDocument();
   });
 

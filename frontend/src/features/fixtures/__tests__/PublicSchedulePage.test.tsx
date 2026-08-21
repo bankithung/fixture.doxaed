@@ -552,14 +552,12 @@ describe("PublicSchedulePage", () => {
       within(doc).getByTestId("print-page-comp-knockout-detailed"),
     ).toBeInTheDocument();
     expect(within(doc).queryByTestId("print-page-group-Group A-teams")).toBeNull();
-    // A bracket has to fit one page whole, so a deep draw prints small: the
-    // same matches also print as a full-size order of play.
+    // The tree, and ONLY the tree: a knockout is read as a flow chart, and an
+    // order-of-play table beside it says the same thing twice (owner
+    // 2026-08-21).
     expect(
-      within(doc).getByTestId("print-page-comp-knockout-sheet-teams"),
-    ).toBeInTheDocument();
-    expect(
-      within(doc).getByTestId("print-page-comp-knockout-sheet-detailed"),
-    ).toBeInTheDocument();
+      within(doc).queryByTestId("print-page-comp-knockout-sheet-teams"),
+    ).toBeNull();
 
     // A competition with a group stage prints it too, ONE GROUP PER PAGE —
     // never two groups sharing a sheet with nothing to say where one ends.

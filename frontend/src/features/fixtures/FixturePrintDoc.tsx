@@ -48,13 +48,7 @@ export type PrintScope =
       courts: PublicCourtLink[] | undefined;
     }
   | { kind: "competition"; comp: Competition; days: number }
-  | {
-      kind: "knockout";
-      bracket: Bracket | null;
-      /** The same matches as `bracket`, unconverted — the tree is drawn from
-       * MatchRow, its companion sheet from the public rows. */
-      rows: PublicScheduleMatch[];
-    };
+  | { kind: "knockout"; bracket: Bracket | null };
 
 /** The box a bracket has to fit on ONE A4 landscape page, in CSS px: 277mm
  * across and 190mm down, less the tree's own padding, the page header and the
@@ -109,53 +103,6 @@ function koOnly(matches: PublicScheduleMatch[]): PublicScheduleMatch[] {
   return matches.filter((m) => m.stage === "knockout");
 }
 
-/**
- * The knockout as a plain order of play, printed BESIDE its own tree.
- *
- * The tree is how a draw is read and it is what the owner asked to keep. But a
- * bracket has to fit one page whole — a card sliced by a page break is worse
- * than a small one — and a 16-entry singles draw only fits at about a third
- * size. At that scale the tree still says who plays whom and when; it does not
- * say it legibly, and a knockout-only category (every table-tennis event here)
- * has no group sheet to fall back on. So the same matches also print as the
- * sheet every other board uses: same columns, same numbering, full size.
- */
-function KnockoutSheet({
-  rows,
-  timeZone,
-  numbers,
-  rosters,
-  idScope,
-  showDay,
-}: {
-  rows: PublicScheduleMatch[];
-  timeZone: string;
-  numbers: Map<string, number>;
-  rosters: RosterIndex | undefined;
-  idScope: string;
-  showDay: boolean;
-}): React.ReactElement {
-  // Round order, then the draw's own number within the round: a knockout is
-  // read forward through its rounds, not by kick-off time.
-  const ordered = [...rows].sort(
-    (a, b) => a.round_no - b.round_no || a.match_no - b.match_no,
-  );
-  return (
-    <div className="overflow-hidden rounded-lg border border-border">
-      <MatchSheet
-        matches={ordered}
-        timeZone={timeZone}
-        numbers={numbers}
-        showCourt
-        showDay={showDay}
-        showCompetition={false}
-        idScope={idScope}
-        rosters={rosters}
-      />
-    </div>
-  );
-}
-
 /** Memoised: the page re-renders on every live tick, and the paper is a second
  * and third copy of the whole scope. It only changes when the scope, the
  * numbering or the rosters do. */
@@ -192,13 +139,15 @@ export const FixturePrintDoc = memo(function FixturePrintDoc({
     if (scope.kind === "knockout") {
       const b = scope.bracket;
       if (!b) return [];
-      const title = `${t("Knockout")} · ${splitLabel(b.label).join(" · ")}`;
+      // The tree, and ONLY the tree (owner 2026-08-21): a knockout is read as
+      // a flow chart, and the order-of-play table beside it said the same
+      // thing again in a shape nobody reads a draw in.
       return [
         <Page
           key={`ko-${tag}`}
           testid={`print-page-knockout-${tag}`}
           tournamentName={tournamentName}
-          title={title}
+          title={`${t("Knockout")} · ${splitLabel(b.label).join(" · ")}`}
           meta={`${b.matches.length} ${t("matches")}`}
           detailed={detailed}
         >
@@ -210,23 +159,6 @@ export const FixturePrintDoc = memo(function FixturePrintDoc({
             fitWidth={PAGE_W}
             fitHeight={PAGE_H}
             idScope={`print-${tag}`}
-          />
-        </Page>,
-        <Page
-          key={`kosheet-${tag}`}
-          testid={`print-page-knockout-sheet-${tag}`}
-          tournamentName={tournamentName}
-          title={`${title} · ${t("Order of play")}`}
-          meta={`${scope.rows.length} ${t("matches")}`}
-          detailed={detailed}
-        >
-          <KnockoutSheet
-            rows={scope.rows}
-            timeZone={timeZone}
-            numbers={numbers}
-            rosters={sheet}
-            idScope={`print-${tag}-kosheet`}
-            showDay
           />
         </Page>,
       ];
@@ -291,25 +223,6 @@ export const FixturePrintDoc = memo(function FixturePrintDoc({
               numbers={numbers}
               rosters={sheet}
               idScope={`print-${tag}`}
-            />
-          </Page>,
-        );
-        out.push(
-          <Page
-            key={`compkosheet-${tag}`}
-            testid={`print-page-comp-knockout-sheet-${tag}`}
-            tournamentName={tournamentName}
-            title={`${label} · ${t("Knockout")} · ${t("Order of play")}`}
-            meta={`${ko.length} ${t("matches")}`}
-            detailed={detailed}
-          >
-            <KnockoutSheet
-              rows={ko}
-              timeZone={timeZone}
-              numbers={numbers}
-              rosters={sheet}
-              idScope={`print-${tag}-${comp.key}-kosheet`}
-              showDay={days > 1}
             />
           </Page>,
         );

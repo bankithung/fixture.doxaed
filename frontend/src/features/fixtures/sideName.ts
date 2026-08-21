@@ -3,7 +3,7 @@ import { t } from "@/lib/t";
 import { groupPositionLabel } from "./groupSlotLabel";
 
 /** Resolve a previewed side to a display name: real team, typed source
- * pointer ("Winner of p3", "Group A #1", "Best loser 1") or TBD. Shared by the
+ * pointer ("Winner of p3", "Group A #1", "Best Non-Qualifier 1") or TBD. Shared by the
  * MatchesByDayGrid chips and the preview page's unscheduled list. */
 export function sideName(
   side: PreviewSide,
