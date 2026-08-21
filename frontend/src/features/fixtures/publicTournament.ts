@@ -171,7 +171,13 @@ export function buildCompetitions(
             ? t("Knockout")
             : gk === "__other"
               ? t("Fixtures")
-              : shortGroup(gk, label) || gk,
+              // `|| gk` used to leak the raw "Sepak Takraw · U-14 · Boys"
+              // blob as a heading whenever the group label added nothing to
+              // the competition label — which is every knockout band.
+              : shortGroup(gk, label) ||
+                (gms.some((m) => m.stage === "knockout")
+                  ? t("Knockout")
+                  : t("Fixtures")),
         matches: gms,
         standing: gk.startsWith("__") ? undefined : stMap.get(gk),
       }));

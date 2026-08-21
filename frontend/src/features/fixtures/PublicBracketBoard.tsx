@@ -53,14 +53,19 @@ export function CompetitionBracket({
   matches,
   timeZone,
   leafKey,
+  numbers,
+  linkFor,
 }: {
   matches: PublicScheduleMatch[];
   timeZone: string | undefined;
   leafKey: string;
+  /** Fixture numbering, so "Winner of M12" on the tree names the same match
+   * the sheet above prints as M12. */
+  numbers?: Map<string, number>;
+  linkFor?: (id: string) => string;
 }): React.ReactElement {
   const rows = useMemo(
-    () =>
-      matches.filter((m) => m.stage === "knockout").map(toMatchRow),
+    () => matches.filter((m) => m.stage === "knockout").map(toMatchRow),
     [matches],
   );
   if (rows.length === 0) return <NoBracket />;
@@ -69,7 +74,12 @@ export function CompetitionBracket({
       data-testid={`bracket-${leafKey}`}
       className="overflow-x-auto p-3 sm:p-4"
     >
-      <BracketView matches={rows} timeZone={timeZone} />
+      <BracketView
+        matches={rows}
+        timeZone={timeZone}
+        matchNumbers={numbers}
+        linkFor={linkFor ? (m) => linkFor(m.id) : undefined}
+      />
     </div>
   );
 }
@@ -99,9 +109,13 @@ function NoBracket(): React.ReactElement {
 export function PublicBracketBoard({
   matches,
   timeZone,
+  numbers,
+  linkFor,
 }: {
   matches: PublicScheduleMatch[];
   timeZone: string | undefined;
+  numbers?: Map<string, number>;
+  linkFor?: (id: string) => string;
 }): React.ReactElement {
   const [params, setParams] = useSearchParams();
 
@@ -212,7 +226,12 @@ export function PublicBracketBoard({
               </span>
             </div>
             <div className="overflow-x-auto">
-              <BracketView matches={b.matches} timeZone={timeZone} />
+              <BracketView
+                matches={b.matches}
+                timeZone={timeZone}
+                matchNumbers={numbers}
+                linkFor={linkFor ? (m) => linkFor(m.id) : undefined}
+              />
             </div>
           </section>
         ))}

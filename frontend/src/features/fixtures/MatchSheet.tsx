@@ -13,7 +13,7 @@ import {
   winnerOf,
 } from "./publicTournament";
 import { LabelChips } from "./publicTournamentViews";
-import { StatusPill, fmtKickoff } from "./publicMatchCard";
+import { StatusPill, fmtDayShort, fmtKickoff } from "./publicMatchCard";
 
 /**
  * The order of play as a SHEET: one aligned row per match, the way a fixture
@@ -122,6 +122,12 @@ export interface MatchSheetProps {
   /** Name the court in its own column — the by-time sheet needs it; a court's
    * own sheet does not (its heading already says it). */
   showCourt?: boolean;
+  /** Name the day. A single competition runs across days, so its own sheet
+   * needs it; a match day's does not. */
+  showDay?: boolean;
+  /** Name the competition. A mixed sheet must (the match number is counted
+   * within one); a competition's own sheet already is one. */
+  showCompetition?: boolean;
   /** Namespaces the testids when several sheets share a page. */
   idScope?: string;
   /** The match this sheet's queue is waiting on, flagged in its status cell —
@@ -138,6 +144,8 @@ export function MatchSheet({
   timeZone,
   numbers,
   showCourt = false,
+  showDay = false,
+  showCompetition = true,
   idScope = "sheet",
   nextId,
   linkFor,
@@ -153,11 +161,14 @@ export function MatchSheet({
       // never hidden.
       title: t("Match number within its competition"),
     },
+    ...(showDay ? [{ key: "day", label: t("Day"), cls: "w-24 text-left" }] : []),
     { key: "time", label: t("Time"), cls: "w-16 text-left" },
     ...(showCourt
       ? [{ key: "court", label: t("Court"), cls: "w-28 text-left" }]
       : []),
-    { key: "event", label: t("Competition"), cls: "w-52 text-left" },
+    ...(showCompetition
+      ? [{ key: "event", label: t("Competition"), cls: "w-52 text-left" }]
+      : []),
     { key: "home", label: t("Home"), cls: "min-w-[9rem] text-left" },
     { key: "away", label: t("Away"), cls: "min-w-[9rem] text-left" },
     { key: "score", label: t("Score"), cls: "w-24 text-right" },
@@ -172,7 +183,10 @@ export function MatchSheet({
     <div className="overflow-x-auto">
       <table
         data-testid={`${idScope}-table`}
-        className="w-full min-w-[62rem] border-collapse text-sm"
+        className={cn(
+          "w-full border-collapse text-sm",
+          showCompetition ? "min-w-[62rem]" : "min-w-[46rem]",
+        )}
       >
         <thead>
           <tr className="border-b border-border bg-muted text-[0.625rem] uppercase tracking-wide text-muted-foreground">
@@ -229,6 +243,11 @@ export function MatchSheet({
                     {no != null ? `M${no}` : ""}
                   </span>
                 </td>
+                {showDay ? (
+                  <td className="whitespace-nowrap px-3 py-2 align-middle text-xs text-muted-foreground">
+                    {m.day ? fmtDayShort(m.day) : t("TBD")}
+                  </td>
+                ) : null}
                 <td className="whitespace-nowrap px-3 py-2 align-middle font-tabular text-xs">
                   {fmtKickoff(m.scheduled_at, timeZone)}
                 </td>
@@ -237,9 +256,11 @@ export function MatchSheet({
                     {m.venue || t("No court yet")}
                   </td>
                 ) : null}
-                <td className="px-3 py-2 align-middle">
-                  <LabelChips label={m.leaf_label} />
-                </td>
+                {showCompetition ? (
+                  <td className="px-3 py-2 align-middle">
+                    <LabelChips label={m.leaf_label} />
+                  </td>
+                ) : null}
                 <td className="max-w-0 px-3 py-2 align-middle">
                   <TeamCell
                     side={m.home}

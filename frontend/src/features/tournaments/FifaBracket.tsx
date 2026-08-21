@@ -174,7 +174,9 @@ function fmtKickoff(iso: string, tz?: string): string {
   if (Number.isNaN(d.getTime())) return "";
   const now = new Date();
   const day = (x: Date): string => x.toLocaleDateString("en-CA", opt({}));
-  const time = d.toLocaleTimeString([], opt({ hour: "numeric", minute: "2-digit" }));
+  // 24-hour, like every other clock on the platform: a bracket card sits
+  // beside a fixture sheet reading "09:00" and must not say "9:00 AM".
+  const time = d.toLocaleTimeString([], opt({ hour: "2-digit", minute: "2-digit", hour12: false }));
   const dd = day(d);
   if (dd === day(now)) return `${t("Today")}, ${time}`;
   if (dd === day(new Date(now.getTime() + 86_400_000))) return `${t("Tomorrow")}, ${time}`;
@@ -286,7 +288,17 @@ function TeamRow({
 }
 
 /** A single match drawn as a card: kickoff/status strip + both sides. */
-function MatchCard({ match, tz, no }: { match: MatchRow; tz?: string; no: Map<string, number> }): React.ReactElement {
+function MatchCard({
+  match,
+  tz,
+  no,
+  linkFor,
+}: {
+  match: MatchRow;
+  tz?: string;
+  no: Map<string, number>;
+  linkFor?: (m: MatchRow) => string;
+}): React.ReactElement {
   const home = entrant(match.home_team, match.home_source, no);
   const away = entrant(match.away_team, match.away_source, no);
   const num = no.get(match.id);
@@ -294,14 +306,23 @@ function MatchCard({ match, tz, no }: { match: MatchRow; tz?: string; no: Map<st
   const badge = statusBadge(match);
   const kickoff = match.scheduled_at ? fmtKickoff(match.scheduled_at, tz) : "";
   const hasPens = match.home_pens != null && match.away_pens != null;
+  const label = `${home.label ?? t("TBD")} ${match.home_score ?? ""} ${t("vs")} ${
+    away.label ?? t("TBD")
+  } ${match.away_score ?? ""}${badge ? ` ${badge.text}` : ""}`
+    .replace(/\s+/g, " ")
+    .trim();
+  // A card is a dead end without this: the tree says who and when, never where
+  // or who is in the line-up. Where a caller can say what a card opens (the
+  // public bracket points at its own match drawer), the whole card is that
+  // link; the preview has no match to open yet, so it stays a plain group.
+  const Box = linkFor ? "a" : "div";
+  const boxProps = linkFor
+    ? { href: linkFor(match), "aria-label": label }
+    : { role: "group", "aria-label": label };
   return (
-    <div
-      role="group"
-      aria-label={`${home.label ?? t("TBD")} ${match.home_score ?? ""} ${t("vs")} ${
-        away.label ?? t("TBD")
-      } ${match.away_score ?? ""}${badge ? ` ${badge.text}` : ""}`
-        .replace(/\s+/g, " ")
-        .trim()}
+    <Box
+      {...boxProps}
+      data-testid={`bracket-card-${match.id}`}
       className="flex w-full flex-col overflow-hidden rounded-md transition-shadow hover:shadow-lg"
       style={{
         height: CARD_H,
@@ -334,7 +355,7 @@ function MatchCard({ match, tz, no }: { match: MatchRow; tz?: string; no: Map<st
       <TeamRow label={home.label} crest={home.crest} isTeam={home.isTeam} score={match.home_score} pens={hasPens ? match.home_pens ?? null : null} win={win === "home"} />
       <div style={{ height: 1, background: C.divider }} />
       <TeamRow label={away.label} crest={away.crest} isTeam={away.isTeam} score={match.away_score} pens={hasPens ? match.away_pens ?? null : null} win={win === "away"} />
-    </div>
+    </Box>
   );
 }
 
@@ -555,9 +576,19 @@ function layoutBracket(matches: MatchRow[]): BracketLayout {
 export function FifaBracket({
   columns,
   timeZone,
+  matchNumbers,
+  linkFor,
 }: {
   columns: [number, MatchRow[]][];
   timeZone?: string;
+  /** The numbers to print on the cards, keyed by match id. Supply the FIXTURE
+   * numbering (per competition, group stage included) wherever the same
+   * matches are also listed as a sheet — otherwise "Winner of M3" on the tree
+   * and "M3" on the sheet name two different games. Omitted (the preview, which
+   * has no fixture yet), the tree numbers its own cards. */
+  matchNumbers?: Map<string, number>;
+  /** What a card opens. Omitted, the card is not a link. */
+  linkFor?: (m: MatchRow) => string;
 }): React.ReactElement {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [nav, setNav] = useState({ start: true, end: true });
@@ -615,16 +646,25 @@ export function FifaBracket({
 
   // Number every card (M1, M2 …) top-to-bottom within each column, left to
   // right — so an unresolved slot can point at "Winner of M3" instead of a
-  // guessed name. Consolation matches number after the bracket.
+  // guessed name. Consolation matches number after the bracket. A caller that
+  // already numbers these matches (the public fixture numbering) wins outright:
+  // two numberings of one match is worse than none.
   const matchNo = new Map<string, number>();
-  [...bracketMatches]
-    .sort((a, b) => {
-      const pa = pos.get(a.id) ?? { x: 1e9, y: 1e9 };
-      const pb = pos.get(b.id) ?? { x: 1e9, y: 1e9 };
-      return pa.x - pb.x || pa.y - pb.y;
-    })
-    .forEach((m, i) => matchNo.set(m.id, i + 1));
-  consolation.forEach((m, i) => matchNo.set(m.id, bracketMatches.length + i + 1));
+  if (matchNumbers) {
+    for (const m of all) {
+      const n = matchNumbers.get(m.id);
+      if (n != null) matchNo.set(m.id, n);
+    }
+  } else {
+    [...bracketMatches]
+      .sort((a, b) => {
+        const pa = pos.get(a.id) ?? { x: 1e9, y: 1e9 };
+        const pb = pos.get(b.id) ?? { x: 1e9, y: 1e9 };
+        return pa.x - pb.x || pa.y - pb.y;
+      })
+      .forEach((m, i) => matchNo.set(m.id, i + 1));
+    consolation.forEach((m, i) => matchNo.set(m.id, bracketMatches.length + i + 1));
+  }
 
   // Consolation cards stack in the Final column, below the Final.
   const consTop = finalY + CARD_H / 2 + 32;
@@ -690,7 +730,7 @@ export function FifaBracket({
     const p = pos.get(m.id) ?? { x: 0, y: H / 2 };
     return (
       <div key={`m-${m.id}`} className="absolute" style={{ left: p.x, top: p.y - CARD_H / 2, width: CARD_W }}>
-        <MatchCard match={m} tz={timeZone} no={matchNo} />
+        <MatchCard match={m} tz={timeZone} no={matchNo} linkFor={linkFor} />
       </div>
     );
   });
@@ -815,7 +855,7 @@ export function FifaBracket({
                   <span className="mb-1.5 block text-[0.625rem] font-semibold uppercase tracking-wider" style={{ color: C.goldHi }}>
                     {consolationLabel(m)}
                   </span>
-                  <MatchCard match={m} tz={timeZone} no={matchNo} />
+                  <MatchCard match={m} tz={timeZone} no={matchNo} linkFor={linkFor} />
                 </div>
               );
             })}

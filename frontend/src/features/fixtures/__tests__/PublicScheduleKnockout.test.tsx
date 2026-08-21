@@ -185,23 +185,25 @@ describe("the knockout draw inside the match centre", () => {
     expect(screen.queryByTestId("bracket-board")).toBeNull();
   });
 
-  it("shows a competition's own bracket from its view switcher", async () => {
+  it("puts a competition's own bracket BELOW its page, never in a second tab", async () => {
     vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(
       payload([SEMI, GROUP_MATCH]),
     );
     mount("/t/cup/t1/schedule");
     await screen.findByTestId("rail-today");
     await userEvent.click(screen.getByTestId("rail-comp-tt.u14"));
-    // A knockout-only competition has no table to open on, so it opens on the
-    // bracket itself.
+    // A knockout-only competition has no group stage to sheet: the tree alone.
     expect(await screen.findByTestId("bracket-tt.u14")).toBeInTheDocument();
-    expect(screen.getByTestId("view-bracket")).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    // A group-stage competition is not offered one.
-    await userEvent.click(screen.getByTestId("rail-comp-sepak.u14"));
+    expect(screen.queryByTestId("public-competition-tt.u14")).toBeNull();
+    // ...and there is no view to switch to; the page is the whole competition.
     expect(screen.queryByTestId("view-bracket")).toBeNull();
+
+    // A group-stage competition sheets its groups and grows no bracket.
+    await userEvent.click(screen.getByTestId("rail-comp-sepak.u14"));
+    expect(
+      await screen.findByTestId("public-competition-sepak.u14"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("bracket-sepak.u14")).toBeNull();
   });
 
   it("keeps old /bracket links alive, selection and all", async () => {

@@ -133,10 +133,16 @@ function GroupTable({
 export function BracketView({
   matches,
   timeZone,
+  matchNumbers,
+  linkFor,
 }: {
   matches: MatchRow[];
   /** IANA TZ for kickoff formatting + the bracket footnote (omit = viewer local). */
   timeZone?: string;
+  /** Fixture numbering to print on the cards (see FifaBracket). */
+  matchNumbers?: Map<string, number>;
+  /** What a card opens (see FifaBracket). */
+  linkFor?: (m: MatchRow) => string;
 }): React.ReactElement {
   const bands = useMemo(() => {
     // Groups key on leaf_key + group_label so two DIFFERENT categories that
@@ -204,7 +210,12 @@ export function BracketView({
           <h3 className="mb-2">
             <LeafLabel label={band.label} size="md" />
           </h3>
-          <FifaBracket columns={band.columns} timeZone={timeZone} />
+          <FifaBracket
+            columns={band.columns}
+            timeZone={timeZone}
+            matchNumbers={matchNumbers}
+            linkFor={linkFor}
+          />
         </div>
       ))}
     </div>

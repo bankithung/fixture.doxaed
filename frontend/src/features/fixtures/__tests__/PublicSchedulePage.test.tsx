@@ -365,7 +365,7 @@ describe("PublicSchedulePage", () => {
     expect(within(m5).getByTestId("period-m5")).toHaveTextContent("Set 2");
   });
 
-  it("rail → competition reveals the standings hero + fixtures in one click", async () => {
+  it("a competition is ONE page: tables, then its group stage as a sheet", async () => {
     mount();
     await screen.findByTestId("public-day-2026-06-20");
     await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
@@ -377,12 +377,53 @@ describe("PublicSchedulePage", () => {
     expect(row).toHaveTextContent("Alpha FC");
     expect(row).toHaveTextContent("3");
 
-    // the fixtures follow under their group heading, with no second copy of
-    // the table wrapped around them
+    // the fixtures follow under their group heading as a SHEET with columns,
+    // not a stack of cards, and with no second copy of the table around them
     const panel = screen.getByTestId("public-competition-football.u15");
-    expect(within(panel).getByTestId("public-match-m1")).toBeInTheDocument();
-    expect(within(panel).getByTestId("public-match-m2")).toBeInTheDocument();
+    expect(panel).toHaveTextContent("Group stage");
+    expect(
+      within(panel).getByTestId("comp-football.u15-row-m1"),
+    ).toBeInTheDocument();
+    expect(
+      within(panel).getByTestId("comp-football.u15-row-m2"),
+    ).toBeInTheDocument();
     expect(within(panel).queryByTestId("group-standing-tm1")).toBeNull();
+    // The sheet already IS the order of play, so there is nothing to switch to.
+    expect(screen.queryByTestId("view-day")).toBeNull();
+    expect(screen.queryByTestId("panel-standings")).toBeNull();
+  });
+
+  it("numbers the bracket like the sheet, and names every waiting slot", async () => {
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+    await userEvent.click(screen.getByTestId("rail-comp-football.u17"));
+    const bracket = await screen.findByTestId("bracket-football.u17");
+
+    // The tree used to number its OWN cards 1..N, so "Winner of M1" on a
+    // bracket and "M1" on a sheet named two different games. It now prints
+    // the fixture numbering both surfaces share.
+    expect(bracket).toHaveTextContent("M1");
+    expect(bracket).toHaveTextContent("M2");
+    // No side has arrived yet, and every one of them says what it waits on.
+    expect(bracket).toHaveTextContent("Group A top 1");
+    expect(bracket).toHaveTextContent("Group A top 2");
+    expect(bracket).toHaveTextContent("Winner of M1");
+    // A card opens the match over the page, like a sheet row.
+    const card = within(bracket).getByTestId("bracket-card-m3");
+    expect(card.getAttribute("href")).toContain("match=m3");
+  });
+
+  it("a knockout-only competition is the BRACKET alone, no fixture table", async () => {
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+    await userEvent.click(screen.getByTestId("rail-comp-football.u17"));
+
+    // Every U-17 match is a knockout tie, so there is no group stage to sheet
+    // and no table to stand above it: the tree says it all.
+    expect(await screen.findByTestId("bracket-football.u17")).toBeInTheDocument();
+    expect(screen.queryByTestId("public-competition-football.u17")).toBeNull();
+    expect(screen.queryByTestId("public-tables-football.u17")).toBeNull();
+    expect(screen.queryByTestId("view-bracket")).toBeNull();
   });
 
   it("drops Up next from the match day (each court flags its own), keeps it per competition", async () => {
@@ -425,21 +466,16 @@ describe("PublicSchedulePage", () => {
     );
   });
 
-  it("competition → Order of play: day sections, unscheduled bucket, print", async () => {
+  it("competition → a day's order of play still prints, per venue", async () => {
     const print = vi.fn();
     window.print = print;
     mount();
     await screen.findByTestId("public-day-2026-06-20");
 
     await userEvent.click(screen.getByTestId("rail-comp-football.u17"));
-    await userEvent.click(screen.getByTestId("view-day"));
-
-    expect(await screen.findByTestId("public-day-2026-06-21")).toBeInTheDocument();
-    const bucket = screen.getByTestId("public-unscheduled");
-    expect(within(bucket).getByTestId("public-match-m4")).toBeInTheDocument();
 
     // print sheet renders the chosen day's per-venue order of play
-    const sheet = screen.getByTestId("print-sheet");
+    const sheet = await screen.findByTestId("print-sheet");
     expect(within(sheet).getByTestId("print-venue-Side Pitch")).toBeInTheDocument();
     await userEvent.click(screen.getByTestId("print-button"));
     expect(print).toHaveBeenCalled();
@@ -558,7 +594,6 @@ describe("PublicSchedulePage", () => {
     mount();
     await screen.findByTestId("public-day-2026-06-20");
     await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
-    await userEvent.click(screen.getByTestId("view-day"));
 
     const sheet = await screen.findByTestId("print-sheet");
     const printed = within(sheet).getAllByTestId("team-crest");

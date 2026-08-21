@@ -134,9 +134,13 @@ describe("PublicSchedulePage on a phone", () => {
     // fixtures, no court lanes, and the other sport's match gone.
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByTestId("scope-picker")).toHaveTextContent("Table Tennis");
-    const fixtures = await screen.findByTestId("public-day-2026-08-17");
-    expect(within(fixtures).getByTestId("public-match-m1")).toBeInTheDocument();
-    expect(within(fixtures).queryByTestId("public-match-m2")).toBeNull();
+    const fixtures = await screen.findByTestId(
+      "public-competition-tt.u14.boys",
+    );
+    expect(
+      within(fixtures).getByTestId("comp-tt.u14.boys-row-m1"),
+    ).toBeInTheDocument();
+    expect(within(fixtures).queryByTestId("comp-tt.u14.boys-row-m2")).toBeNull();
     expect(screen.queryByTestId("court-lane-Audi · T1")).toBeNull();
   });
 

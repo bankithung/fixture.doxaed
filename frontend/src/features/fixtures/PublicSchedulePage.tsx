@@ -17,7 +17,6 @@ import { type PublicScheduleMatch } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/Select";
-import { PublicLeaders } from "@/features/live/PublicLeaders";
 import { WatchLiveLink } from "@/features/live/WatchLiveLink";
 import { routes } from "@/lib/routes";
 import { liveSetView } from "@/lib/setDisplay";
@@ -465,64 +464,76 @@ function ScopeList({
   );
 }
 
-/** One competition's fixtures, un-collapsed, under their group heading. The
- * tables themselves sit above in `CompetitionTables` (all of them together);
- * repeating each one over its own fixture list only pushed the next group off
- * the screen. The panel is one surface; groups are hairline units. */
-function CompetitionStandings({
+/**
+ * ONE competition, ONE page (owner 2026-08-21): its group stage as a proper
+ * sheet, then its knockout as the bracket BELOW — never a second tab, and
+ * never knockout rows inside the fixture list, where every side reads "TBD"
+ * because no team has reached them yet.
+ *
+ * A knockout-only competition (every table-tennis category here) has no group
+ * stage to table, so it is the bracket alone: the tree already says who plays
+ * whom, when, and what each empty slot is waiting on.
+ */
+function GroupStageSheets({
   comp,
   timeZone,
+  numbers,
   q,
+  days,
+  linkFor,
 }: {
   comp: Competition;
   timeZone: string;
+  numbers: Map<string, number>;
   q: string;
-}): React.ReactElement {
+  /** Show the Day column only when the competition actually spans days. */
+  days: number;
+  linkFor?: (m: PublicScheduleMatch) => string;
+}): React.ReactElement | null {
   const groups = comp.groups
     .map((g) => ({
       ...g,
-      shown: q ? g.matches.filter((m) => teamHit(m, q)) : g.matches,
+      shown: (q ? g.matches.filter((m) => teamHit(m, q)) : g.matches)
+        .filter((m) => m.stage !== "knockout")
+        .sort((a, b) =>
+          (a.scheduled_at ?? "~") < (b.scheduled_at ?? "~") ? -1 : 1,
+        ),
     }))
-    // A group with no fixture left to show is now an empty card: its table
-    // already stands above, so there is nothing here to render.
     .filter((g) => g.shown.length > 0);
-  if (groups.length === 0) {
-    return (
-      <p className="p-6 text-center text-sm text-muted-foreground">
-        {t("No matches match these filters.")}
-      </p>
-    );
-  }
+  if (groups.length === 0) return null;
   return (
-    <div
+    <section
       data-testid={`public-competition-${comp.key}`}
-      className="grid grid-cols-1 items-start gap-x-6 gap-y-4 p-3 sm:p-4 xl:grid-cols-2"
+      className="flex flex-col gap-4 border-t border-border p-3 sm:p-4"
     >
+      <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        {t("Group stage")}
+      </h2>
       {groups.map((g) => (
         <div
           key={g.key}
           data-testid={`public-group-${comp.key}-${g.key}`}
           className="flex flex-col overflow-hidden rounded-lg border border-border bg-card"
         >
-          <h3 className="flex items-center gap-2 border-b border-border px-4 py-2 text-sm font-semibold">
+          <h3 className="flex items-center gap-2 border-b border-border px-3 py-2 text-sm font-semibold sm:px-4">
             {g.label}
             <span className="font-tabular text-xs font-normal text-muted-foreground">
               {g.shown.length}
             </span>
           </h3>
-          <ul className="divide-y divide-border">
-            {g.shown.map((m) => (
-              <MatchCard
-                key={m.id}
-                match={m}
-                timeZone={timeZone}
-                labels="none"
-              />
-            ))}
-          </ul>
+          <MatchSheet
+            matches={g.shown}
+            timeZone={timeZone}
+            numbers={numbers}
+            showCourt
+            showDay={days > 1}
+            showCompetition={false}
+            idScope={`comp-${comp.key}`}
+            linkFor={linkFor}
+          />
         </div>
       ))}
-    </div>
+    </section>
   );
 }
 
@@ -636,126 +647,67 @@ function PrintSheet({
   );
 }
 
-/** Order-of-play for one competition across days, with print. */
-function CompetitionByDay({
+/** Print one day's order of play for this competition. The sheets above are
+ * the screen answer; this is the sheet that goes on the wall. */
+function CompetitionPrint({
   comp,
   tournamentName,
   timeZone,
-  q,
   printDay,
   setPrintDay,
 }: {
   comp: Competition;
   tournamentName: string;
   timeZone: string;
-  q: string;
   printDay: string;
   setPrintDay: (d: string) => void;
-}): React.ReactElement {
-  const matches = q ? comp.matches.filter((m) => teamHit(m, q)) : comp.matches;
-  const { days, unscheduled } = useMemo(() => {
+}): React.ReactElement | null {
+  const days = useMemo(() => {
     const byDay = new Map<string, PublicScheduleMatch[]>();
-    const loose: PublicScheduleMatch[] = [];
-    for (const m of matches) {
-      if (!m.day) {
-        loose.push(m);
-        continue;
-      }
+    for (const m of comp.matches) {
+      if (!m.day) continue;
       if (!byDay.has(m.day)) byDay.set(m.day, []);
       byDay.get(m.day)!.push(m);
     }
-    return {
-      days: [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)),
-      unscheduled: loose,
-    };
-  }, [matches]);
+    return [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  }, [comp.matches]);
 
-  const effectivePrintDay = printDay || days[0]?.[0] || "";
-  const printMatches = days.find(([d]) => d === effectivePrintDay)?.[1] ?? [];
+  if (days.length === 0) return null;
+  const effective = printDay && days.some(([d]) => d === printDay)
+    ? printDay
+    : days[0]![0];
+  const matches = days.find(([d]) => d === effective)?.[1] ?? [];
 
   return (
     <>
-      {days.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2 px-3 pt-3 print:hidden sm:px-4">
-          <span className="text-xs text-muted-foreground">
-            {t("Print a day's order of play")}
-          </span>
-          <Select
-            size="sm"
-            className="w-48"
-            aria-label={t("Day to print")}
-            value={effectivePrintDay}
-            onChange={setPrintDay}
-            options={days.map(([d]) => ({ value: d, label: fmtDay(d) }))}
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            data-testid="print-button"
-            onClick={() => window.print()}
-          >
-            <Printer aria-hidden className="h-3.5 w-3.5" />
-            {t("Print")}
-          </Button>
-        </div>
-      ) : null}
-
-      <div className="flex flex-col gap-3 p-3 print:hidden sm:p-4">
-        {days.map(([day, ms]) => (
-          <section
-            key={day}
-            data-testid={`public-day-${day}`}
-            className="overflow-hidden rounded-lg border border-border bg-card"
-          >
-            <h3 className="border-b border-border bg-muted px-4 py-2 text-sm font-semibold">
-              {fmtDay(day)}
-              <span className="ml-2 font-tabular text-xs font-normal text-muted-foreground">
-                {ms.length} {ms.length === 1 ? t("match") : t("matches")}
-              </span>
-            </h3>
-            <ul className="divide-y divide-border">
-              {ms.map((m) => (
-                <MatchCard
-                  key={m.id}
-                  match={m}
-                  timeZone={timeZone}
-                  labels="group"
-                />
-              ))}
-            </ul>
-          </section>
-        ))}
-
-        {unscheduled.length ? (
-          <section
-            data-testid="public-unscheduled"
-            className="overflow-hidden rounded-lg border border-border bg-card"
-          >
-            <h3 className="border-b border-border bg-muted px-4 py-2 text-sm font-semibold">
-              {t("Time to be announced")}
-            </h3>
-            <ul className="divide-y divide-border">
-              {unscheduled.map((m) => (
-                <MatchCard
-                  key={m.id}
-                  match={m}
-                  timeZone={timeZone}
-                  labels="group"
-                />
-              ))}
-            </ul>
-          </section>
-        ) : null}
-      </div>
-
-      {effectivePrintDay ? (
-        <PrintSheet
-          day={effectivePrintDay}
-          matches={printMatches}
-          tournamentName={tournamentName}
-          timeZone={timeZone}
+      <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-3 print:hidden sm:px-4">
+        <span className="text-xs text-muted-foreground">
+          {t("Print a day's order of play")}
+        </span>
+        <Select
+          size="sm"
+          className="w-48"
+          aria-label={t("Day to print")}
+          value={effective}
+          onChange={setPrintDay}
+          options={days.map(([d]) => ({ value: d, label: fmtDay(d) }))}
         />
-      ) : null}
+        <Button
+          size="sm"
+          variant="outline"
+          data-testid="print-button"
+          onClick={() => window.print()}
+        >
+          <Printer aria-hidden className="h-3.5 w-3.5" />
+          {t("Print")}
+        </Button>
+      </div>
+      <PrintSheet
+        day={effective}
+        matches={matches}
+        tournamentName={tournamentName}
+        timeZone={timeZone}
+      />
     </>
   );
 }
@@ -990,36 +942,11 @@ export function PublicSchedulePage(): React.ReactElement {
    * to COURTS whenever the day actually runs on more than one court; a
    * competition opens on its tables, or straight on its bracket when it has no
    * group stage to table. */
-  const views: ViewOption[] = selectedComp
-    ? [
-        ...(selectedComp.groups.some((g) => (g.standing?.rows.length ?? 0) > 0)
-          ? [
-              {
-                key: "table",
-                label: t("Standings"),
-                testid: "panel-standings",
-                icon: ListOrdered,
-              },
-            ]
-          : []),
-        {
-          key: "days",
-          label: t("Order of play"),
-          testid: "view-day",
-          icon: CalendarDays,
-        },
-        ...(selectedComp.matches.some((m) => m.stage === "knockout")
-          ? [
-              {
-                key: "bracket",
-                label: t("Knockout"),
-                testid: "view-bracket",
-                icon: GitMerge,
-              },
-            ]
-          : []),
-      ]
-    : selected === "knockout"
+  /** Only a match day has views to switch between. A competition is ONE page
+   * now — tables, then its group stage, then its bracket — and the knockout
+   * scope is the board itself. */
+  const views: ViewOption[] =
+    selectedComp || selected === "knockout"
       ? []
       : [
           {
@@ -1036,19 +963,7 @@ export function PublicSchedulePage(): React.ReactElement {
           },
         ];
 
-  const has = (k: string): boolean => views.some((v) => v.key === k);
-  const defaultView = selectedComp
-    ? // Tables first when there are tables. A knockout-only competition has
-      // none, and its bracket is the clearest thing it owns, so it opens there
-      // rather than on a list of times.
-      has("table")
-      ? "table"
-      : has("bracket")
-        ? "bracket"
-        : "days"
-    : courtDefaultFits(dayMatches)
-      ? "courts"
-      : "time";
+  const defaultView = courtDefaultFits(dayMatches) ? "courts" : "time";
   const viewParam = params.get("view") ?? "";
   const view = views.some((v) => v.key === viewParam) ? viewParam : defaultView;
 
@@ -1083,12 +998,13 @@ export function PublicSchedulePage(): React.ReactElement {
   const openMatch = openId
     ? allMatches.find((m) => m.id === openId)
     : undefined;
-  const matchHref = (m: PublicScheduleMatch): string => {
+  const matchHrefById = (mid: string): string => {
     const p = new URLSearchParams(params);
-    p.set("match", m.id);
+    p.set("match", mid);
     p.delete("tab");
     return `?${p.toString()}`;
   };
+  const matchHref = (m: PublicScheduleMatch): string => matchHrefById(m.id);
 
   const todayLabel = isPreTournament ? t("Next match day") : t("Today");
   const pickScope = (key: string): void => {
@@ -1377,47 +1293,54 @@ export function PublicSchedulePage(): React.ReactElement {
                       <FollowedBand matches={bandMatches} timeZone={tz} />
                     </>
                   )}
-                  {selectedComp && view === "table" ? (
-                    <CompetitionTables comp={selectedComp} />
-                  ) : null}
-                  {/* The leader board is leaving the match centre for a page
-                      of its own (owner 2026-08-21); the match day is the first
-                      scope it has come off. */}
-                  {selected === "knockout" || !selectedComp ? null : (
-                    <PublicLeaders
-                      slug={slug}
-                      id={id}
-                      flat
-                      leafKey={selectedComp.key}
-                    />
-                  )}
+                  {/* The leader board has left the match centre for a page of
+                      its own (owner 2026-08-21). */}
 
                   {/* Body */}
                   {selected === "knockout" ? (
-                    <PublicBracketBoard matches={koMatches} timeZone={tz} />
+                    <PublicBracketBoard
+                      matches={koMatches}
+                      timeZone={tz}
+                      numbers={numbers}
+                      linkFor={matchHrefById}
+                    />
                   ) : selectedComp ? (
-                    view === "table" ? (
-                      <CompetitionStandings
+                    /* ONE page per category: its tables, then its group stage
+                       as a sheet, then its knockout as the bracket BELOW. */
+                    <>
+                      <CompetitionTables comp={selectedComp} />
+                      <GroupStageSheets
                         comp={selectedComp}
                         timeZone={tz}
+                        numbers={numbers}
                         q={q}
+                        days={allDays.length}
+                        linkFor={matchHref}
                       />
-                    ) : view === "bracket" ? (
-                      <CompetitionBracket
-                        matches={selectedComp.matches}
-                        timeZone={tz}
-                        leafKey={selectedComp.key}
-                      />
-                    ) : (
-                      <CompetitionByDay
+                      {selectedComp.matches.some(
+                        (m) => m.stage === "knockout",
+                      ) ? (
+                        <section className="flex flex-col border-t border-border">
+                          <h2 className="px-3 pt-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground sm:px-4">
+                            {t("Knockout")}
+                          </h2>
+                          <CompetitionBracket
+                            matches={selectedComp.matches}
+                            timeZone={tz}
+                            leafKey={selectedComp.key}
+                            numbers={numbers}
+                            linkFor={matchHrefById}
+                          />
+                        </section>
+                      ) : null}
+                      <CompetitionPrint
                         comp={selectedComp}
                         tournamentName={query.data.tournament.name}
                         timeZone={tz}
-                        q={q}
                         printDay={printDay}
                         setPrintDay={setPrintDay}
                       />
-                    )
+                    </>
                   ) : (
                     <>
                       {isPreTournament && day ? (
