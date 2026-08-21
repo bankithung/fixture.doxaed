@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Check, ChevronLeft, ChevronRight, Shield } from "lucide-react";
 import type { MatchRow, MatchSource } from "@/api/tournaments";
 import { TeamCrest } from "@/components/ui/TeamCrest";
@@ -315,22 +316,25 @@ function MatchCard({
   // or who is in the line-up. Where a caller can say what a card opens (the
   // public bracket points at its own match drawer), the whole card is that
   // link; the preview has no match to open yet, so it stays a plain group.
-  const Box = linkFor ? "a" : "div";
-  const boxProps = linkFor
-    ? { href: linkFor(match), "aria-label": label }
-    : { role: "group", "aria-label": label };
-  return (
-    <Box
-      {...boxProps}
-      data-testid={`bracket-card-${match.id}`}
-      className="flex w-full flex-col overflow-hidden rounded-md transition-shadow hover:shadow-lg"
-      style={{
-        height: CARD_H,
-        background: C.box,
-        border: `1.5px solid ${C.gold}`,
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,.06)",
-      }}
-    >
+  //
+  // It has to be a ROUTER link, not a bare <a>: a plain anchor reloads the
+  // whole app, which threw the reader back to the top of the page and refetched
+  // everything just to open one match.
+  const shell = {
+    "data-testid": `bracket-card-${match.id}`,
+    "aria-label": label,
+    className:
+      "flex w-full flex-col overflow-hidden rounded-md transition-shadow hover:shadow-lg",
+    style: {
+      height: CARD_H,
+      background: C.box,
+      border: `1.5px solid ${C.gold}`,
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,.06)",
+    } as React.CSSProperties,
+  };
+  const body = (
+    <>
+
       <div className="flex items-center gap-1.5 px-3" style={{ height: META_H, background: "rgba(0,0,0,.2)" }}>
         {num != null ? (
           <span className="shrink-0 font-tabular text-[0.625rem] font-semibold" style={{ color: C.goldHi }}>
@@ -355,7 +359,16 @@ function MatchCard({
       <TeamRow label={home.label} crest={home.crest} isTeam={home.isTeam} score={match.home_score} pens={hasPens ? match.home_pens ?? null : null} win={win === "home"} />
       <div style={{ height: 1, background: C.divider }} />
       <TeamRow label={away.label} crest={away.crest} isTeam={away.isTeam} score={match.away_score} pens={hasPens ? match.away_pens ?? null : null} win={win === "away"} />
-    </Box>
+    </>
+  );
+  return linkFor ? (
+    <Link to={linkFor(match)} {...shell}>
+      {body}
+    </Link>
+  ) : (
+    <div role="group" {...shell}>
+      {body}
+    </div>
   );
 }
 

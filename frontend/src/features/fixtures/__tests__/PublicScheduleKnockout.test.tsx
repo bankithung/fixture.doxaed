@@ -12,6 +12,18 @@ import { PublicBracketRedirect } from "@/features/live/PublicBracketRedirect";
  * same FifaBracket trees, no page load. These are the old page's tests, moved
  * onto the merged page, plus the redirect that keeps shared links alive. */
 
+vi.mock("@/api/live", async () => {
+  const actual = await vi.importActual<typeof import("@/api/live")>("@/api/live");
+  return {
+    ...actual,
+    liveApi: {
+      snapshot: vi.fn().mockResolvedValue(null),
+      streamUrl: (s: string, i: string) =>
+        `/api/public/tournaments/${s}/${i}/stream/`,
+    },
+  };
+});
+
 vi.mock("@/api/tournaments", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/tournaments")>();
   return {
@@ -204,6 +216,27 @@ describe("the knockout draw inside the match centre", () => {
       await screen.findByTestId("public-competition-sepak.u14"),
     ).toBeInTheDocument();
     expect(screen.queryByTestId("bracket-sepak.u14")).toBeNull();
+  });
+
+  it("opens a bracket card IN PLACE, without reloading the page", async () => {
+    vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(
+      payload([SEMI, GROUP_MATCH]),
+    );
+    mount("/t/cup/t1/schedule?comp=tt.u14");
+    const card = await screen.findByTestId("bracket-card-sf1");
+    // A bare <a href> would reload the whole app; jsdom does not navigate for
+    // one at all, so the drawer would never appear. A router link does.
+    expect(card.getAttribute("href")).toContain("match=sf1");
+    // A bare <a href> reloads the whole app; the href would also still be the
+    // raw relative "?comp=..." rather than a path the router resolved.
+    expect(card.getAttribute("href")).toBe(
+      "/t/cup/t1/schedule?comp=tt.u14&match=sf1",
+    );
+    await userEvent.click(card);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    // ...and the bracket behind it is still mounted, never re-fetched.
+    expect(screen.getByTestId("bracket-tt.u14")).toBeInTheDocument();
+    expect(tournamentsApi.publicSchedule).toHaveBeenCalledTimes(1);
   });
 
   it("keeps old /bracket links alive, selection and all", async () => {
