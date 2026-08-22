@@ -11,12 +11,18 @@ export function ActionMenu({
   label,
   icon: Icon,
   align = "end",
+  size = "default",
+  disabled,
   children,
   "data-testid": testid,
 }: {
   label: string;
   icon?: React.ComponentType<{ className?: string; "aria-hidden"?: boolean | "true" }>;
   align?: "start" | "end";
+  /** `sm` matches a `size="sm"` Button, for menus that sit in a row of them. */
+  size?: "sm" | "default";
+  /** Shut while the action it triggers is already running. */
+  disabled?: boolean;
   children: React.ReactNode;
   "data-testid"?: string;
 }): React.ReactElement {
@@ -46,10 +52,19 @@ export function ActionMenu({
         data-testid={testid}
         aria-haspopup="menu"
         aria-expanded={open}
+        disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-md border border-border bg-card text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+          size === "sm" ? "h-8 px-3" : "h-9 px-3",
+        )}
       >
-        {Icon ? <Icon aria-hidden="true" className="h-4 w-4" /> : null}
+        {Icon ? (
+          <Icon
+            aria-hidden="true"
+            className={size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4"}
+          />
+        ) : null}
         {label}
         <ChevronDown
           aria-hidden="true"

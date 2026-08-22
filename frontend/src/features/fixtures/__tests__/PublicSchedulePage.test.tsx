@@ -197,6 +197,14 @@ function mount() {
   );
 }
 
+/** Print is a MENU, not a button: open it, then pick which passes to print. */
+async function clickPrint(
+  pass: "teams" | "detailed" | "both" = "both",
+): Promise<void> {
+  await userEvent.click(screen.getByTestId("print-menu"));
+  await userEvent.click(screen.getByTestId(`print-${pass}`));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(PAYLOAD);
@@ -487,7 +495,7 @@ describe("PublicSchedulePage", () => {
       within(doc).getByTestId("print-page-court-Main Ground-detailed"),
     ).toBeInTheDocument();
 
-    await userEvent.click(screen.getByTestId("print-button"));
+    await clickPrint();
     await waitFor(() => expect(print).toHaveBeenCalled());
     // A fixture sheet is wide; portrait would crop it. The rule is injected
     // for this print only, never left in the stylesheet.
@@ -509,7 +517,7 @@ describe("PublicSchedulePage", () => {
     mount();
     await screen.findByTestId("public-day-2026-06-20");
     await userEvent.click(screen.getByTestId("rail-comp-football.u17"));
-    await userEvent.click(screen.getByTestId("print-button"));
+    await clickPrint();
     await waitFor(() => expect(print).toHaveBeenCalled());
     expect(document.title).toBe(
       "Football U-17 Boys - Nagaland Schools Cup",
@@ -519,7 +527,7 @@ describe("PublicSchedulePage", () => {
   it("the second pass names the players; the first stays by team", async () => {
     mount();
     await screen.findByTestId("public-day-2026-06-20");
-    await userEvent.click(screen.getByTestId("print-button"));
+    await clickPrint();
 
     const doc = screen.getByTestId("fixture-print-doc");
     const teams = within(doc).getByTestId("print-page-court-Main Ground-teams");
@@ -540,10 +548,54 @@ describe("PublicSchedulePage", () => {
     expect(teams).not.toHaveTextContent("Asen Jamir");
   });
 
+  it("prints ONE pass when the reader asks for one, and names the file for it", async () => {
+    // Every export used to be the whole fixture twice over, so an organiser
+    // after an order of play binned half the printout (owner 2026-08-22).
+    const print = vi.fn();
+    window.print = print;
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+
+    await clickPrint("teams");
+    await waitFor(() => expect(print).toHaveBeenCalled());
+    const doc = screen.getByTestId("fixture-print-doc");
+    expect(
+      within(doc).getByTestId("print-page-court-Main Ground-teams"),
+    ).toBeInTheDocument();
+    expect(
+      within(doc).queryByTestId("print-page-court-Main Ground-detailed"),
+    ).toBeNull();
+    // The saved file says which pass it is, so the team sheet and the player
+    // sheet of one day are two files a downloads list can tell apart.
+    expect(document.title).toBe(
+      "Sat, Jun 20 - Order of play - Nagaland Schools Cup",
+    );
+  });
+
+  it("prints the player pass alone when that is what was asked for", async () => {
+    const print = vi.fn();
+    window.print = print;
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+
+    await clickPrint("detailed");
+    await waitFor(() => expect(print).toHaveBeenCalled());
+    const doc = screen.getByTestId("fixture-print-doc");
+    expect(
+      within(doc).getByTestId("print-page-court-Main Ground-detailed"),
+    ).toBeInTheDocument();
+    expect(
+      within(doc).queryByTestId("print-page-court-Main Ground-teams"),
+    ).toBeNull();
+    expect(document.title).toBe(
+      "Sat, Jun 20 - Order of play - With player names - Nagaland Schools Cup",
+    );
+  });
+
   it("names the players on the printed BRACKET too, not only the sheet", async () => {
     mount();
     await screen.findByTestId("public-day-2026-06-20");
-    await userEvent.click(screen.getByTestId("print-button"));
+    await clickPrint();
     // u15 has Alpha FC in a group match and u17 is the knockout: open the one
     // competition whose bracket carries a resolved team.
     await userEvent.click(screen.getByTestId("rail-comp-football.u15"));

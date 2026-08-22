@@ -14,6 +14,7 @@ import {
 import { useFollows } from "@/lib/follows";
 import { type PublicScheduleMatch } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
+import { ActionMenu, ActionMenuItem } from "@/components/ui/menu";
 import { Dialog } from "@/components/ui/dialog";
 import { WatchLiveLink } from "@/features/live/WatchLiveLink";
 import { routes } from "@/lib/routes";
@@ -60,7 +61,11 @@ import {
   printTitleFor,
   type PrintScope,
 } from "./FixturePrintDoc";
-import { printLandscape } from "./printFixture";
+import {
+  passLabel,
+  printLandscape,
+  type PrintPasses,
+} from "./printFixture";
 
 /** The one earned card: live matches, lifted out of position so they're never
  * buried, and pinned regardless of which competition/day is selected. Each
@@ -604,6 +609,9 @@ export function PublicSchedulePage(): React.ReactElement {
    * print document then already exists when the dialog opens. */
   const [wantRosters, setWantRosters] = useState(false);
   const [printQueued, setPrintQueued] = useState(false);
+  /** Which passes the pending export prints (owner 2026-08-22). Both is what
+   * Print always did, and stays the default. */
+  const [printPasses, setPrintPasses] = useState<PrintPasses>("both");
   /** The bracket's Player names switch, in the URL like every other choice on
    * this page, so a draw showing who is playing is a shareable link. */
   const namesOn = params.get("names") === "1";
@@ -806,44 +814,70 @@ export function PublicSchedulePage(): React.ReactElement {
     if (!printQueued) return;
     const go = (): void => {
       setPrintQueued(false);
-      printLandscape(printTitleFor(printScope, tournamentName ?? ""));
+      printLandscape(printTitleFor(printScope, tournamentName ?? "", printPasses));
     };
     // Rosters are a bonus, never a blocker: a read that fails or never lands
     // prints the fixture anyway, with "No team sheet" where the names would
     // be. The wait is long because printing a whole tournament's detailed
     // pass as "No team sheet" is worse than waiting — and the prefetch below
     // means the answer is usually already here by the time it is clicked.
-    const h = window.setTimeout(go, rostersSettled ? 60 : 15000);
+    // A team-names export never waits: it has no names to be missing.
+    const needsRosters = printPasses !== "teams";
+    const h = window.setTimeout(
+      go,
+      !needsRosters || rostersSettled ? 60 : 15000,
+    );
     return () => window.clearTimeout(h);
-  }, [printQueued, rostersSettled, printScope, tournamentName]);
+  }, [printQueued, rostersSettled, printScope, tournamentName, printPasses]);
 
+  const queuePrint = (passes: PrintPasses): void => {
+    setPrintPasses(passes);
+    setPrintQueued(true);
+  };
+
+  /**
+   * Print is a MENU, not a button (owner 2026-08-22): every export used to be
+   * the whole fixture twice over, by team and then again with every player
+   * named, so an organiser after an order of play for the wall binned half of
+   * what came out of the printer. The three items are the two passes and the
+   * pair of them; both stays the default, and the wording matches the line
+   * each pass prints under on the page itself.
+   */
   const printButton = (
-    <Button
-      size="sm"
-      variant="outline"
-      data-testid="print-button"
-      disabled={printQueued}
-      aria-label={t("Print this fixture or save it as a PDF")}
+    <div
       className="shrink-0"
-      // Reaching for the button is the signal to go and get the line-ups, so
+      // Reaching for the control is the signal to go and get the line-ups, so
       // the dialog opens on a document that already has the names in it.
       onPointerEnter={() => setWantRosters(true)}
       onFocus={() => setWantRosters(true)}
-      onClick={() => {
-        setWantRosters(true);
-        setPrintQueued(true);
-      }}
     >
-      <Printer aria-hidden className="h-3.5 w-3.5" />
-      {printQueued ? (
-        t("Preparing")
-      ) : (
-        <>
-          <span className="hidden sm:inline">{t("Print")} / </span>
-          {t("PDF")}
-        </>
-      )}
-    </Button>
+      <ActionMenu
+        size="sm"
+        icon={Printer}
+        disabled={printQueued}
+        data-testid="print-menu"
+        label={printQueued ? t("Preparing") : t("Print / PDF")}
+      >
+        <ActionMenuItem
+          data-testid="print-teams"
+          onSelect={() => queuePrint("teams")}
+        >
+          {passLabel(false)}
+        </ActionMenuItem>
+        <ActionMenuItem
+          data-testid="print-detailed"
+          onSelect={() => queuePrint("detailed")}
+        >
+          {passLabel(true)}
+        </ActionMenuItem>
+        <ActionMenuItem
+          data-testid="print-both"
+          onSelect={() => queuePrint("both")}
+        >
+          {t("Both")}
+        </ActionMenuItem>
+      </ActionMenu>
+    </div>
   );
 
   const todayLabel = isPreTournament ? t("Next match day") : t("Today");
@@ -1232,6 +1266,7 @@ export function PublicSchedulePage(): React.ReactElement {
           numbers={numbers}
           rosters={rosters}
           scope={printScope}
+          passes={printPasses}
         />
       ) : null}
 

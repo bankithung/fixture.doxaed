@@ -8,6 +8,25 @@
  * print in the app — the badge cards, a match report. So the rule is injected
  * for the duration of ONE print and removed again on `afterprint`.
  */
+import { t } from "@/lib/t";
+
+/**
+ * Which passes of a fixture go on paper. `teams` is the order of play as the
+ * board shows it; `detailed` is the same fixture again with every player named
+ * under the team that entered them; `both` prints one after the other.
+ *
+ * Both was the only option there was, so an organiser who wanted an order of
+ * play for the wall threw away half of every export (owner 2026-08-22).
+ */
+export type PrintPasses = "teams" | "detailed" | "both";
+
+/** What a pass prints under, in its page header and in the saved file's name.
+ * Lives here so the menu that picks a pass and the page that prints it cannot
+ * word it two different ways. */
+export function passLabel(detailed: boolean): string {
+  return detailed ? t("With player names") : t("Order of play");
+}
+
 const STYLE_ID = "fixture-print-page";
 
 /** A4 landscape with a 10mm margin: 277mm of usable width, which is what the

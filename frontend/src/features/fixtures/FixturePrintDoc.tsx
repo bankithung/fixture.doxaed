@@ -7,6 +7,7 @@ import { BracketView } from "@/features/tournaments/BracketView";
 import { t } from "@/lib/t";
 import { buildCourtLanes } from "./CourtBoard";
 import { MatchSheet } from "./MatchSheet";
+import { passLabel, type PrintPasses } from "./printFixture";
 import { fmtDay, fmtDayShort } from "./publicMatchCard";
 import { toMatchRow, type Bracket } from "./bracketModel";
 import {
@@ -27,11 +28,14 @@ import {
  *     A print stylesheet does the rest (`.print-doc` in index.css): colours
  *     kept, headers repeated on every page, no row split across a page break.
  *
- *  2. Every fixture prints TWICE (owner 2026-08-21): first by team, exactly as
- *     shown, then the same fixture again with every player named under the
+ *  2. A fixture prints in two PASSES (owner 2026-08-21): first by team, exactly
+ *     as shown, then the same fixture again with every player named under the
  *     team that entered them. The knockout is the same tree both times — the
  *     detailed pass grows the cards to hold the names rather than swapping the
- *     draw for a list, because the flow IS how a draw is read.
+ *     draw for a list, because the flow IS how a draw is read. Which passes go
+ *     on paper is the reader's call (`passes`, owner 2026-08-22): both was the
+ *     only option, so an organiser who wanted the order of play on a wall had
+ *     to throw away half of every export.
  *
  * The doc is `hidden print:block`: it costs nothing on screen and is already
  * in the DOM when the print dialog opens (a document built inside `onclick`
@@ -89,7 +93,7 @@ function Page({
           <p className="text-sm text-muted-foreground">{title}</p>
         </div>
         <p className="text-xs text-muted-foreground">
-          {detailed ? t("With player names") : t("Order of play")}
+          {passLabel(detailed)}
           {meta ? ` · ${meta}` : ""}
         </p>
       </header>
@@ -107,8 +111,15 @@ function Page({
  * 2026-08-21). The scope leads because that is the half a downloads list has
  * to be scanned by; the tournament follows so a file still says where it came
  * from once it leaves the folder.
+ *
+ * A single-pass export names its pass too, so the team sheet and the player
+ * sheet of one scope are two files a downloads list can tell apart.
  */
-export function printTitleFor(scope: PrintScope, tournamentName: string): string {
+export function printTitleFor(
+  scope: PrintScope,
+  tournamentName: string,
+  passes: PrintPasses = "both",
+): string {
   const parts: string[] = [];
   if (scope.kind === "knockout") {
     parts.push(t("Knockout"));
@@ -118,6 +129,10 @@ export function printTitleFor(scope: PrintScope, tournamentName: string): string
   } else {
     if (scope.day) parts.push(fmtDayShort(scope.day));
     parts.push(t("Order of play"));
+  }
+  if (passes !== "both") {
+    const label = passLabel(passes === "detailed");
+    if (!parts.includes(label)) parts.push(label);
   }
   if (tournamentName) parts.push(tournamentName);
   return parts.filter(Boolean).join(" - ");
@@ -137,6 +152,7 @@ export const FixturePrintDoc = memo(function FixturePrintDoc({
   numbers,
   rosters,
   scope,
+  passes = "both",
 }: {
   tournamentName: string;
   timeZone: string;
@@ -145,6 +161,8 @@ export const FixturePrintDoc = memo(function FixturePrintDoc({
    * sheet" per side rather than disappearing. */
   rosters: RosterIndex;
   scope: PrintScope;
+  /** Which passes go on paper. Defaults to the historic both. */
+  passes?: PrintPasses;
 }): React.ReactElement | null {
   const lanes = useMemo(
     () =>
@@ -307,12 +325,15 @@ export const FixturePrintDoc = memo(function FixturePrintDoc({
     ));
   };
 
-  const teams = pass(false);
-  if (teams.length === 0) return null;
+  // A pass is built only when it is asked for: the detailed one is the whole
+  // fixture over again, and it is exactly the half a team-names export drops.
+  const teams = passes === "detailed" ? [] : pass(false);
+  const detailed = passes === "teams" ? [] : pass(true);
+  if (teams.length === 0 && detailed.length === 0) return null;
   return (
     <div data-testid="fixture-print-doc" className="print-doc hidden print:block">
       {teams}
-      {pass(true)}
+      {detailed}
     </div>
   );
 });
