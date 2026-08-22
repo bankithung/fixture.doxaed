@@ -669,6 +669,8 @@ export function ControlRoomPage(): React.ReactElement {
     userId: user?.id ?? null,
   };
 
+  const tz = data?.tournament.time_zone ?? "UTC";
+
   // Delay visibility stays client-side from the schedule-changes feed (§2.a).
   const changes = useQuery({
     queryKey: [...qk.scheduleChanges(id), "control-room"],
@@ -676,8 +678,8 @@ export function ControlRoomPage(): React.ReactElement {
     enabled: data !== undefined && data.days.length > 0,
   });
   const delays = useMemo(
-    () => delayMap(changes.data?.results ?? []),
-    [changes.data],
+    () => delayMap(changes.data?.results ?? [], tz),
+    [changes.data, tz],
   );
 
   const allMatches = useMemo(
@@ -697,7 +699,6 @@ export function ControlRoomPage(): React.ReactElement {
     }));
   }, [allMatches]);
 
-  const tz = data?.tournament.time_zone ?? "UTC";
   const selectedDay = day ?? data?.day ?? "";
 
   // Member view: a plain member (no manage / no scheduling) who is the assigned

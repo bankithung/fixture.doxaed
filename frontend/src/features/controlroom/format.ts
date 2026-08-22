@@ -90,21 +90,35 @@ export interface SlotDelay {
   at: string;
 }
 
+/** Feed kinds that RE-PLAN the calendar rather than run late on it: a rain-day
+ * `shift_day` and a scheduler re-run both move slots by design, often by whole
+ * days. Counting them as delay made a fixture shifted 11 days read "63 running
+ * late", every row chipped "+15840 min" (owner 2026-08-22). Change history is
+ * where a re-plan is read; the board states lateness only. */
+const REPLAN_KINDS = new Set(["day_shifted", "engine_rerun"]);
+
 /**
  * Latest positive slot move per match, from the (reverse-chrono) schedule-
  * changes feed — drives the queue rail's "+25 min" delay chips (spec §1.1).
+ *
+ * A delay is a move that keeps the match on its OWN day (tournament TZ,
+ * invariant 14): running late is a thing that happens to a match day, so a
+ * move onto a different date is a reschedule and carries no chip.
  */
 export function delayMap(
   entries: ScheduleChangeEntry[],
+  tz: string,
 ): Map<string, SlotDelay> {
   const seen = new Set<string>();
   const out = new Map<string, SlotDelay>();
   for (const e of entries) {
     if (seen.has(e.match_id)) continue; // newest entry per match wins
-    seen.add(e.match_id);
+    seen.add(e.match_id); // ...and a re-plan SUPERSEDES an older delay
+    if (REPLAN_KINDS.has(e.kind)) continue;
     const oldAt = e.old?.scheduled_at;
     const newAt = e.new?.scheduled_at;
     if (!oldAt || !newAt) continue; // lock/unlock rows carry no slots
+    if (tzDate(oldAt, tz) !== tzDate(newAt, tz)) continue; // moved days
     const minutes = Math.round(
       (new Date(newAt).getTime() - new Date(oldAt).getTime()) / 60_000,
     );
