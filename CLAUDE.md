@@ -227,6 +227,16 @@ A fixture is drawn, scheduled, repaired and re-drawn, and each pass used to over
 - **The bracket prints the FIXTURE numbering** (`FifaBracket`'s new `matchNumbers` prop, fed from `publicTournament.matchNumbers`). Its own positional 1..N numbering meant "Winner of M3" on the tree and "M3" on the sheet named different games; the preview, which has no fixture yet, still falls back to it. `linkFor` makes a card open the match drawer, so the tree is not a dead end. Card clocks are 24h, like every other clock.
 - **The stacked card row** (`publicMatchCard.tsx`) now only serves the Now playing / Up next / Following bands.
 
+## The public viewer has a THIRD tab: Schools (2026-08-22)
+
+Matches answers "what is being played" and Standings answers "who is winning". Neither answered the question a parent, a coach and a visiting school ask first: **is my school in this, and in which events**. `features/fixtures/PublicEntriesPage.tsx` (`/t/:slug/:id/schools`, third tab in `PublicViewerTabs`) is that grid — schools down, competitions across — over `GET /api/public/tournaments/{slug}/{id}/entries/` (`matches/public_views.py::PublicTournamentEntriesView`).
+
+- **It reads ENTRIES (`Team` rows), never `Match` rows.** A school appears the moment it registers, before any draw exists, and an entry that never produced a match (a bye, a single-entry category) cannot go missing. Withdrawn/rejected/disqualified teams are excluded — the matrix is a participation statement.
+- **The columns come from the tournament's own category tree** (`iter_leaves`), not from the entries: a category nobody entered is still a real column, and its empty column IS the answer to "is anyone playing it". An entry whose leaf no longer resolves is appended as its own column, so nothing is invisible.
+- **A cell carries the COUNT, not just a tick** — two pairs in Open Boys Doubles is not the same fact as one, and that count is what a coach is checking. Not entered is a quiet dash, never a red cross: an alarm colour in two thirds of the grid is noise. The row and column totals restate the pattern in numbers.
+- **A school with no entry is dropped once anyone has entered**; before any team exists the matrix falls back to the registered schools, so the tab is never empty during registration.
+- Display lives in ONE pure module, `entriesMatrix.ts`: the short column codes (deduped — two identical codes would make the legend map one code to two competitions), the sport bands, the search/sport/sort ordering, the CSV. A sport filter scopes the row totals too, or a filtered board would contradict itself. `sport`/`sort` ride the URL; the sticky school column is width-BOUNDED (unbounded, school names take a whole phone and the grid opens on no data).
+
 ## Preview has a third view: Courts (2026-08-17)
 
 `DryRunPreviewPage`'s `viewMode` is `sheet | draw | courts`, all reading the SAME filtered rows. `courtLoad.ts` is the pure model. The sheet is ordered by match, so it cannot answer "when is court 2 free" or "how many hours does U-14 boys singles take" — Courts does both. It splits idle time into **breaks you configured** vs **court standing free**; the sheet deliberately stays quiet about unexplained gaps, so this is the only surface that counts them. Unplaced matches hold no court and are charged no minutes.

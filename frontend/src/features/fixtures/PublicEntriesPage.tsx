@@ -408,10 +408,14 @@ export function PublicEntriesPage(): React.ReactElement {
                       </caption>
                       <thead>
                         <tr>
+                          {/* Bounded, not natural width: left to size itself
+                              the school names take the whole of a phone and
+                              the first tick sits off-screen, so the grid opens
+                              on no data at all. */}
                           <th
                             rowSpan={2}
                             scope="col"
-                            className="sticky left-0 z-20 border-b border-border bg-card px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                            className="sticky left-0 z-20 w-52 min-w-52 max-w-52 border-b border-r border-border bg-card px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:w-72 sm:min-w-72 sm:max-w-72 lg:w-[23rem] lg:min-w-[23rem] lg:max-w-[23rem]"
                           >
                             {t("School")}
                           </th>
@@ -466,10 +470,7 @@ export function PublicEntriesPage(): React.ReactElement {
                             >
                               <th
                                 scope="row"
-                                className={cn(
-                                  "sticky left-0 z-10 border-b border-border px-3 py-2 text-left font-normal",
-                                  i % 2 ? "bg-card" : "bg-card",
-                                )}
+                                className="sticky left-0 z-10 w-52 min-w-52 max-w-52 border-b border-r border-border bg-card px-3 py-2 text-left font-normal sm:w-72 sm:min-w-72 sm:max-w-72 lg:w-[23rem] lg:min-w-[23rem] lg:max-w-[23rem]"
                               >
                                 <Link
                                   to={routes.publicSchool(slug, id, row.id)}
@@ -480,7 +481,7 @@ export function PublicEntriesPage(): React.ReactElement {
                                     name={row.name}
                                     size="md"
                                   />
-                                  <span className="min-w-0">
+                                  <span className="min-w-0 flex-1">
                                     <span className="block truncate text-sm font-medium group-hover:text-primary">
                                       {row.name}
                                     </span>
@@ -520,7 +521,7 @@ export function PublicEntriesPage(): React.ReactElement {
                         <tr>
                           <th
                             scope="row"
-                            className="sticky left-0 z-10 bg-card px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                            className="sticky left-0 z-10 w-52 min-w-52 max-w-52 border-r border-border bg-card px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:w-72 sm:min-w-72 sm:max-w-72 lg:w-[23rem] lg:min-w-[23rem] lg:max-w-[23rem]"
                           >
                             {t("Schools entered")}
                           </th>
