@@ -589,6 +589,46 @@ export interface PublicRostersPayload {
   teams: PublicTeamRoster[];
 }
 
+/** One competition column of the public entries matrix — the tournament's own
+ * category tree, so a category nobody entered is still a real column. */
+export interface PublicEntryCompetition {
+  leaf_key: string;
+  sport_key: string;
+  sport_name: string;
+  /** Segment names BELOW the sport ("U-14", "Boys", "Singles"). The short
+   * column code is derived from these, so no naming scheme is hardcoded. */
+  path: string[];
+  label: string;
+  /** Entries in this competition across every school. */
+  teams: number;
+  /** Schools with at least one entry in it. */
+  schools: number;
+}
+
+/** One school's row of the entries matrix. */
+export interface PublicEntryInstitution {
+  id: string;
+  name: string;
+  short_name: string;
+  region: string;
+  /** Signed crest URL, "" when the school has none. */
+  crest: string;
+  /** leaf_key -> what this school entered there. Absent key = not entered. */
+  entries: Record<string, { teams: number; names: string[] }>;
+  team_count: number;
+  competition_count: number;
+  /** Entries with no category set: counted in team_count, in no column. */
+  uncategorized: number;
+}
+
+/** Who is in what: schools x competitions, read off ENTRIES not fixtures. */
+export interface PublicEntriesPayload {
+  tournament: { id: string; slug: string; name: string; status: string };
+  competitions: PublicEntryCompetition[];
+  institutions: PublicEntryInstitution[];
+  totals: { schools: number; competitions: number; teams: number };
+}
+
 export interface PublicSchedulePayload {
   tournament: {
     id: string;
@@ -1311,6 +1351,13 @@ export const tournamentsApi = {
   publicRosters: (slug: string, id: string) =>
     api.get<PublicRostersPayload>(
       `/api/public/tournaments/${encodeURIComponent(slug)}/${id}/rosters/`,
+    ),
+  /** Who is in what: one row per school, one column per competition. Reads
+   * entries (teams), not the fixture, so it is right before the draw exists
+   * and never drops a school whose category produced no match. */
+  publicEntries: (slug: string, id: string) =>
+    api.get<PublicEntriesPayload>(
+      `/api/public/tournaments/${encodeURIComponent(slug)}/${id}/entries/`,
     ),
   /** Public read-only standings (AllowAny; same slug+UUID gating as the
    * public schedule — control room spec §2.d). */

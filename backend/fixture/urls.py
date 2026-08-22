@@ -24,6 +24,7 @@ from apps.matches.public_views import (
     PublicInstitutionRecordView,
     PublicTeamRecordView,
     PublicTournamentDirectoryView,
+    PublicTournamentEntriesView,
     PublicTournamentLeadersView,
     PublicTournamentRostersView,
 )
@@ -176,6 +177,13 @@ api_v1 = [
         "public/tournaments/<slug:slug>/<uuid:tournament_id>/institutions/<uuid:inst_id>/record/",
         PublicInstitutionRecordView.as_view(),
         name="public-institution-record",
+    ),
+    # Who is in what: one row per school, one column per competition. Reads
+    # ENTRIES (teams), not the fixture, so it is right before the draw exists.
+    path(
+        "public/tournaments/<slug:slug>/<uuid:tournament_id>/entries/",
+        PublicTournamentEntriesView.as_view(),
+        name="public-tournament-entries",
     ),
     path(
         "public/tournaments/<slug:slug>/<uuid:tournament_id>/schedule/",

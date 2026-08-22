@@ -83,6 +83,7 @@ const PublicFormPage = lazy(() => import("@/features/forms/PublicFormPage").then
 const PublicDirectoryPage = lazy(() => import("@/features/forms/PublicDirectoryPage").then((m) => ({ default: m.PublicDirectoryPage })));
 const LiveViewerPage = lazy(() => import("@/features/live/LiveViewerPage").then((m) => ({ default: m.LiveViewerPage })));
 const PublicStandingsPage = lazy(() => import("@/features/live/PublicStandingsPage").then((m) => ({ default: m.PublicStandingsPage })));
+const PublicEntriesPage = lazy(() => import("@/features/fixtures/PublicEntriesPage").then((m) => ({ default: m.PublicEntriesPage })));
 const PublicBracketRedirect = lazy(() => import("@/features/live/PublicBracketRedirect").then((m) => ({ default: m.PublicBracketRedirect })));
 const PublicTeamPage = lazy(() => import("@/features/live/PublicTeamPage").then((m) => ({ default: m.PublicTeamPage })));
 const PublicSchoolPage = lazy(() => import("@/features/live/PublicSchoolPage").then((m) => ({ default: m.PublicSchoolPage })));
@@ -201,6 +202,12 @@ export default function App(): React.ReactElement {
               <Route
                 path="/t/:slug/:id/standings"
                 element={<PublicStandingsPage />}
+              />
+              {/* Who is in what: schools x competitions, read off ENTRIES, so
+                  it answers before a draw exists (owner 2026-08-22). */}
+              <Route
+                path="/t/:slug/:id/schools"
+                element={<PublicEntriesPage />}
               />
               <Route path="/t/:slug/:id/live" element={<PublicLiveRedirect />} />
               <Route path="/t/:slug/:id/bracket" element={<PublicBracketRedirect />} />

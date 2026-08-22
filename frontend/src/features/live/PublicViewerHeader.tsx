@@ -6,14 +6,17 @@ import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
-type Tab = "schedule" | "standings";
+type Tab = "schedule" | "standings" | "entries";
 
-/** The public-viewer tabs (Matches / Standings), Google-sports-panel style.
+/** The public-viewer tabs (Matches / Standings / Schools), Google-sports-panel
+ * style.
  * Standalone so a page can mount it under its own richer header. There is no
  * Live tab: live matches pin into the Matches tab's "Now playing" band (the
  * old /live route redirects there). There is no Knockout tab either: the draw
  * is a scope INSIDE Matches now (owner 2026-08-21), so following a bracket
- * never costs a page load. */
+ * never costs a page load. Schools is its own tab, not a scope: it answers a
+ * question about ENTRIES rather than about a day's play, and it is the first
+ * thing a parent or a visiting school looks for (owner 2026-08-22). */
 export function PublicViewerTabs({
   slug,
   id,
@@ -26,6 +29,7 @@ export function PublicViewerTabs({
   const tabs: { key: Tab; label: string; to: string }[] = [
     { key: "schedule", label: t("Matches"), to: routes.publicSchedule(slug, id) },
     { key: "standings", label: t("Standings"), to: routes.publicStandings(slug, id) },
+    { key: "entries", label: t("Schools"), to: routes.publicEntries(slug, id) },
   ];
   return (
     <nav className="flex gap-1" aria-label={t("Tournament views")}>
@@ -51,7 +55,7 @@ export function PublicViewerTabs({
 
 /**
  * Shared chrome for the public, login-free tournament viewer pages (matches,
- * standings). Brand + tournament name + the tabs + a "Live" badge that lights
+ * standings, schools). Brand + tournament name + the tabs + a "Live" badge that lights
  * when the SSE tick stream is connected. Lives outside the authenticated
  * AppShell, exactly like the /m/ match viewer.
  */

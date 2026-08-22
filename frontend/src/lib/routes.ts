@@ -135,6 +135,9 @@ export const routes = {
   /** Public group standings, every competition's tables (no login). */
   publicStandings: (slug: string, id: string) =>
     `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/standings`,
+  /** Public entries matrix: which school is in which competition (no login). */
+  publicEntries: (slug: string, id: string) =>
+    `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/schools`,
   /** Guest Lens campaign list (manager landing: all photo campaigns). */
   tournamentLens: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/lens`,

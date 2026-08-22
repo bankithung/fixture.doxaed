@@ -569,3 +569,157 @@ def models_q_window(start, end):
     from django.db.models import Q
 
     return Q(status="scheduled", scheduled_at__gte=start, scheduled_at__lte=end)
+
+
+class PublicTournamentEntriesView(GenericAPIView):
+    """`GET /api/public/tournaments/{slug}/{id}/entries/` — WHO IS IN WHAT.
+
+    The public match centre answers "what is being played"; nothing answered
+    "which schools entered which competition", which is the first question a
+    parent, a coach and a visiting school all ask (owner 2026-08-22). This is
+    that read: one row per institution, one column per competition, a count of
+    the entries in each cell.
+
+    **Entries, not fixtures.** It reads ``Team`` rows, never ``Match`` rows, so
+    a school that entered a category is listed the moment it registers — before
+    the draw exists, and whether or not its category ever produced a match. A
+    matrix derived from the fixture would silently drop an entry that took a bye
+    or a walkover, which is exactly the entry a viewer is checking for.
+
+    **The competition columns come from the tournament's own category tree**
+    (``iter_leaves``), not from the entries — a category nobody entered is still
+    a real column, and its empty column IS the answer to "is anyone playing it".
+    A leaf key that no longer resolves (a category renamed after teams entered)
+    is appended from the entries themselves, so no entry is ever invisible.
+
+    Withdrawn / rejected / disqualified teams are excluded: they are not
+    participating, and the matrix is a participation statement.
+    """
+
+    permission_classes = [AllowAny]
+
+    #: Team statuses that count as "entered". A draft or pending row is an
+    #: in-progress submission, not yet a public entry.
+    LIVE_TEAM_STATUSES = ("registered", "draft", "pending_approval")
+
+    def get(self, request, slug, tournament_id):
+        from apps.tournaments.services.sports import iter_leaves
+
+        t = _public_tournament_or_404(slug, tournament_id)
+
+        leaves = iter_leaves(t.sports)
+        # {leaf_key: column}, insertion-ordered = the tree's own order, which
+        # is the order the organiser authored the categories in.
+        columns: dict[str, dict] = {
+            leaf["leaf_key"]: {
+                "leaf_key": leaf["leaf_key"],
+                "sport_key": leaf["sport_key"],
+                "sport_name": leaf["sport_name"],
+                # Segment names BELOW the sport ("U14", "Boys", "Singles").
+                # The client builds both the full label and the short code
+                # from these, so nothing here hardcodes a naming scheme.
+                "path": list(leaf["path"]),
+                "label": leaf["label"],
+                "teams": 0,
+                "schools": 0,
+            }
+            for leaf in leaves
+        }
+
+        teams = list(
+            Team.objects.filter(
+                tournament=t,
+                deleted_at__isnull=True,
+                status__in=self.LIVE_TEAM_STATUSES,
+            )
+            .select_related("institution")
+            .order_by("name")
+        )
+
+        # An entry whose category no longer resolves still gets a column, so
+        # the row can never lie by omission.
+        for tm in teams:
+            key = tm.leaf_key or ""
+            if key and key not in columns:
+                columns[key] = {
+                    "leaf_key": key,
+                    "sport_key": key.split(".", 1)[0],
+                    "sport_name": key.split(".", 1)[0],
+                    "path": key.split(".")[1:],
+                    "label": key,
+                    "teams": 0,
+                    "schools": 0,
+                }
+
+        institutions = {
+            str(i.id): i
+            for i in Institution.objects.filter(
+                tournament=t, deleted_at__isnull=True
+            ).order_by("name")
+        }
+
+        # {inst_id: {leaf_key: [team names]}}
+        entries: dict[str, dict[str, list[str]]] = {}
+        uncategorized: dict[str, int] = {}
+        for tm in teams:
+            iid = str(tm.institution_id) if tm.institution_id else ""
+            if not iid or iid not in institutions:
+                continue
+            key = tm.leaf_key or ""
+            if not key:
+                uncategorized[iid] = uncategorized.get(iid, 0) + 1
+                continue
+            entries.setdefault(iid, {}).setdefault(key, []).append(tm.name)
+
+        for by_leaf in entries.values():
+            for key, names in by_leaf.items():
+                col = columns[key]
+                col["teams"] += len(names)
+                col["schools"] += 1
+
+        rows = []
+        for iid, inst in institutions.items():
+            by_leaf = entries.get(iid, {})
+            rows.append({
+                "id": iid,
+                "name": inst.name,
+                "short_name": inst.short_name,
+                "region": inst.region,
+                "crest": crest_url(inst.logo_ref),
+                "entries": {
+                    key: {"teams": len(names), "names": names}
+                    for key, names in by_leaf.items()
+                },
+                "team_count": (
+                    sum(len(n) for n in by_leaf.values()) + uncategorized.get(iid, 0)
+                ),
+                "competition_count": len(by_leaf),
+                # Teams entered with no category set — counted in the total so
+                # the numbers reconcile, but placeable in no column.
+                "uncategorized": uncategorized.get(iid, 0),
+            })
+
+        # A school that entered something leads; the rest keep alphabetical
+        # order so a viewer scanning for their own school still finds it.
+        rows.sort(key=lambda r: (0 if r["team_count"] else 1, r["name"].lower()))
+        # Before any team exists every row is empty and the sort is a no-op —
+        # the matrix is then simply the registered schools, which is the honest
+        # answer during registration.
+        if any(r["team_count"] for r in rows):
+            rows = [r for r in rows if r["team_count"]]
+
+        return Response({
+            "tournament": {
+                "id": str(t.id),
+                "slug": t.slug,
+                "name": t.name,
+                "status": t.status,
+            },
+            "competitions": list(columns.values()),
+            "institutions": rows,
+            "totals": {
+                "schools": len(rows),
+                "competitions": len(columns),
+                "teams": sum(r["team_count"] for r in rows),
+            },
+        })
