@@ -643,6 +643,60 @@ describe("PublicSchedulePage", () => {
     );
   });
 
+  it("a group stage prints WHO IS IN each group, ahead of the order of play", async () => {
+    // The order of play names a team once per match, scattered down nine
+    // columns, so the printout could not answer the first question a group
+    // stage is asked (owner 2026-08-22).
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+    await clickPrint();
+    await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
+
+    const doc = await screen.findByTestId("fixture-print-doc");
+    const page = within(doc).getByTestId("print-page-groups-teams");
+    const card = within(page).getByTestId("print-teams-lineup-group-Group A");
+    // Every team drawn into the group, once each — not once per match — in
+    // the order the draw put them there.
+    const rows = within(card).getAllByRole("listitem");
+    expect(rows).toHaveLength(4);
+    expect(rows.map((li) => li.textContent)).toEqual([
+      expect.stringContaining("Alpha FC"),
+      expect.stringContaining("Bravo FC"),
+      expect.stringContaining("Carol FC"),
+      expect.stringContaining("Delta FC"),
+    ]);
+    expect(card).toHaveTextContent("4 teams");
+
+    // It LEADS the export: composition, then the order of play, then the tree.
+    const sheet = within(doc).getByTestId("print-page-group-Group A-teams");
+    expect(
+      page.compareDocumentPosition(sheet) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // The detailed pass names the squad under each team, from the same team
+    // sheet the match rows use.
+    const detailed = within(doc).getByTestId("print-page-groups-detailed");
+    await waitFor(() => expect(detailed).toHaveTextContent("Asen Jamir"));
+    expect(detailed).toHaveTextContent("Chubala Imchen");
+    // Teams with no published sheet say so rather than printing a blank.
+    expect(detailed).toHaveTextContent("No team sheet");
+    expect(page).not.toHaveTextContent("Asen Jamir");
+  });
+
+  it("prints no composition for a knockout-only competition", async () => {
+    // Nobody is in a bracket band yet, which is what the tree already says.
+    mount();
+    await screen.findByTestId("public-day-2026-06-20");
+    await userEvent.click(screen.getByTestId("rail-comp-football.u17"));
+    const doc = await screen.findByTestId("fixture-print-doc");
+    await waitFor(() =>
+      expect(
+        within(doc).getByTestId("print-page-comp-knockout-teams"),
+      ).toBeInTheDocument(),
+    );
+    expect(within(doc).queryByTestId("print-page-groups-teams")).toBeNull();
+  });
+
   it("stays on the polling indicator when SSE is unavailable", async () => {
     mount();
     await screen.findByTestId("public-day-2026-06-20");

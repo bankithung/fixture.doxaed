@@ -11,6 +11,7 @@ import {
   type PublicRosterPlayer,
   type PublicSchedulePayload,
   type PublicScheduleMatch,
+  type PublicScheduleSide,
   type StandingsGroup,
 } from "@/api/tournaments";
 import { groupPositionLabel } from "./groupSlotLabel";
@@ -240,6 +241,52 @@ export function buildCompetitions(
     });
   }
   return comps.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** One group and the teams drawn into it. */
+export type GroupLineup = {
+  key: string;
+  label: string;
+  teams: PublicScheduleSide[];
+};
+
+/**
+ * WHO IS IN WHICH GROUP, per competition (owner 2026-08-22).
+ *
+ * A group's membership is nowhere in the payload — it is only implied by that
+ * group's matches — so a reader of the printed order of play had to
+ * reconstruct it by scanning every row for names, which is exactly the
+ * question a group stage is asked first ("which group are we in, and who do
+ * we play?"). The lineup is read back off the fixture itself: home side then
+ * away side of every group match in DRAW order (not the calendar's, so the
+ * list never moves when the schedule is repaired), deduped by team id so a
+ * team that plays four matches is named once.
+ *
+ * Knockout bands are skipped: nobody is in them yet, which is what the tree
+ * says already.
+ */
+export function groupLineups(comp: Competition): GroupLineup[] {
+  const out: GroupLineup[] = [];
+  for (const g of comp.groups) {
+    const ms = g.matches
+      .filter((m) => m.stage !== "knockout")
+      .sort(
+        (a, b) =>
+          (a.stage_no ?? 0) - (b.stage_no ?? 0) ||
+          (a.round_no ?? 0) - (b.round_no ?? 0) ||
+          (a.match_no ?? 0) - (b.match_no ?? 0),
+      );
+    if (ms.length === 0) continue;
+    const teams = new Map<string, PublicScheduleSide>();
+    for (const m of ms) {
+      for (const side of [m.home, m.away]) {
+        if (side && !teams.has(side.id)) teams.set(side.id, side);
+      }
+    }
+    if (teams.size === 0) continue;
+    out.push({ key: g.key, label: g.label, teams: [...teams.values()] });
+  }
+  return out;
 }
 
 /**

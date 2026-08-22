@@ -37,8 +37,12 @@ import { StatusPill, fmtDayShort, fmtKickoff } from "./publicMatchCard";
 /** The names a team entered, under the team that entered them — the detailed
  * pass of the printed fixture. A team with no published sheet says so rather
  * than leaving the reader wondering whether it has no players or the export
- * dropped them. */
-function TeamSheet({
+ * dropped them.
+ *
+ * Exported because the printed group composition names its players the same
+ * way: two lists of the same team's players in two shapes would read as two
+ * different squads. */
+export function TeamSheet({
   players,
 }: {
   players: PublicRosterPlayer[] | undefined;

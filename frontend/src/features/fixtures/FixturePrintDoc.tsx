@@ -3,16 +3,20 @@ import {
   type PublicCourtLink,
   type PublicScheduleMatch,
 } from "@/api/tournaments";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { BracketView } from "@/features/tournaments/BracketView";
+import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { buildCourtLanes } from "./CourtBoard";
-import { MatchSheet } from "./MatchSheet";
+import { MatchSheet, TeamSheet } from "./MatchSheet";
 import { passLabel, type PrintPasses } from "./printFixture";
 import { fmtDay, fmtDayShort } from "./publicMatchCard";
 import { toMatchRow, type Bracket } from "./bracketModel";
 import {
+  groupLineups,
   splitLabel,
   type Competition,
+  type GroupLineup,
   type RosterIndex,
 } from "./publicTournament";
 
@@ -36,6 +40,12 @@ import {
  *     on paper is the reader's call (`passes`, owner 2026-08-22): both was the
  *     only option, so an organiser who wanted the order of play on a wall had
  *     to throw away half of every export.
+ *
+ *  3. A competition with a GROUP STAGE leads with its composition (owner
+ *     2026-08-22): one card per group naming the teams drawn into it. On
+ *     screen that question is answered by the standings tab and the group's
+ *     own sheet sitting in front of the reader; a printout leaves both behind,
+ *     and the order of play alone only names a team once per match.
  *
  * The doc is `hidden print:block`: it costs nothing on screen and is already
  * in the DOM when the print dialog opens (a document built inside `onclick`
@@ -143,6 +153,85 @@ function koOnly(matches: PublicScheduleMatch[]): PublicScheduleMatch[] {
   return matches.filter((m) => m.stage === "knockout");
 }
 
+/** How many group cards sit across one landscape page. Tailwind needs the
+ * class whole, so the count is a lookup and not a template. Player names make
+ * a card three times as tall, so the detailed pass stays at two. */
+const COLS: Record<number, string> = {
+  1: "grid-cols-1",
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+};
+
+/**
+ * WHO IS IN WHICH GROUP — the page a fixture booklet opens with (owner
+ * 2026-08-22).
+ *
+ * The order of play names each team once per match, scattered down nine
+ * columns, so the first question a group stage is asked ("which group are we
+ * in, and who else is in it?") could only be answered by reading every row.
+ * This is that answer as a list: one card per group, its teams numbered in
+ * draw order, and on the detailed pass every player under the team that
+ * entered them — the same `TeamSheet` the match rows use, so one squad never
+ * reads two ways.
+ *
+ * PAPER ONLY. On screen the group's sheet is already open in front of the
+ * reader with its standings a tab away; it is the printout that leaves both
+ * behind.
+ */
+function GroupLineups({
+  groups,
+  rosters,
+  idScope,
+}: {
+  groups: GroupLineup[];
+  /** Present = the detailed pass. */
+  rosters: RosterIndex | undefined;
+  idScope: string;
+}): React.ReactElement {
+  const cols = COLS[Math.min(rosters ? 2 : 3, groups.length)] ?? "grid-cols-3";
+  return (
+    <div className={cn("grid gap-3", cols)}>
+      {groups.map((g) => (
+        <section
+          key={g.key}
+          data-testid={`${idScope}-group-${g.label}`}
+          // A group is a unit: sliced across a page break it stops being a
+          // list of who is in it.
+          className="break-inside-avoid overflow-hidden rounded-lg border border-border"
+        >
+          <h2 className="flex items-baseline justify-between gap-2 border-b border-border bg-muted px-2 py-1">
+            <span className="text-[0.6875rem] font-semibold uppercase tracking-wide">
+              {g.label}
+            </span>
+            <span className="font-tabular text-[0.6875rem] text-muted-foreground">
+              {g.teams.length} {t("teams")}
+            </span>
+          </h2>
+          <ol>
+            {g.teams.map((team, i) => (
+              <li
+                key={team.id}
+                className="flex gap-2 border-b border-border px-2 py-1 text-xs last:border-b-0"
+              >
+                <span className="w-4 shrink-0 text-right font-tabular text-muted-foreground">
+                  {i + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <TeamCrest src={team.crest} name={team.name} size="xs" />
+                    <span className="min-w-0">{team.name}</span>
+                  </span>
+                  {rosters ? <TeamSheet players={rosters.get(team.id)} /> : null}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 /** Memoised: the page re-renders on every live tick, and the paper is a second
  * and third copy of the whole scope. It only changes when the scope, the
  * numbering or the rosters do. */
@@ -215,6 +304,29 @@ export const FixturePrintDoc = memo(function FixturePrintDoc({
       );
       const ko = koOnly(comp.matches);
       const out: React.ReactElement[] = [];
+      // The composition comes FIRST, the way a fixture booklet reads: who is
+      // in which group, then the order of play, then the tree. A
+      // knockout-only competition has no groups and prints none of it.
+      const lineups = groupLineups(comp);
+      if (lineups.length > 0) {
+        const teamCount = lineups.reduce((n, g) => n + g.teams.length, 0);
+        out.push(
+          <Page
+            key={`groups-${tag}`}
+            testid={`print-page-groups-${tag}`}
+            tournamentName={tournamentName}
+            title={`${label} · ${t("Groups")}`}
+            meta={`${lineups.length} ${t("groups")} · ${teamCount} ${t("teams")}`}
+            detailed={detailed}
+          >
+            <GroupLineups
+              groups={lineups}
+              rosters={sheet}
+              idScope={`print-${tag}-lineup`}
+            />
+          </Page>,
+        );
+      }
       // ONE GROUP, ONE PAGE (owner 2026-08-21). Stacked into a single section
       // they ran across page boundaries: a group's heading could sit at the
       // foot of one page with its matches overleaf, and two groups shared a
