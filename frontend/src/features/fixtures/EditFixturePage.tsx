@@ -1,6 +1,7 @@
 import {
   Fragment,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -9,6 +10,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  CheckCircle2,
   ClipboardCheck,
   History,
   RotateCcw,
@@ -444,6 +446,28 @@ export function EditFixturePage(): React.ReactElement {
     }
   };
 
+  // The rule check re-runs BY ITSELF whenever the fixture or the draft moves,
+  // so every row's status chip below is live — including breaks that were
+  // already in the fixture before anyone touched this page.
+  const checkSeq = useRef(0);
+  useEffect(() => {
+    if (!payload) return;
+    const mine = ++checkSeq.current;
+    const timer = window.setTimeout(() => {
+      void tournamentsApi
+        .fixtureEditValidate(id, buildEdits())
+        .then((r) => {
+          if (checkSeq.current === mine) setReport(r);
+        })
+        .catch(() => {
+          /* transient — the manual Check button can retry */
+        });
+    }, 600);
+    return () => window.clearTimeout(timer);
+    // buildEdits reads draft/payload; the two deps cover it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payload, draft, id]);
+
   const submit = async () => {
     setSubmitting(true);
     try {
@@ -576,11 +600,19 @@ export function EditFixturePage(): React.ReactElement {
               : "border-border bg-card",
           )}
         >
-          <p className="font-medium">
-            {newHardCount > 0
-              ? t(`${newHardCount} rule violation(s) created by this draft`)
-              : t("No new rule violations — this draft respects every rule.")}
-          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <p className="font-medium">
+              {newHardCount > 0
+                ? t(`${newHardCount} rule violation(s) created by this draft`)
+                : t("No new rule violations — this draft respects every rule.")}
+            </p>
+            <span className="font-tabular text-xs text-muted-foreground">
+              {report.violations.filter((v) => v.pre_existing).length}{" "}
+              {t("pre-existing")} ·{" "}
+              {report.violations.filter((v) => !v.pre_existing).length}{" "}
+              {t("new")} · {checking ? t("checking…") : t("up to date")}
+            </span>
+          </div>
           {report.violations.length > 0 ? (
             <ul className="mt-2 space-y-1">
               {report.violations.map((v, i) => (
@@ -960,8 +992,11 @@ function CourtSheet({
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-1.5 text-xs capitalize text-muted-foreground">
-                    {m.status}
+                  <td className="px-3 py-1.5">
+                    <MatchRuleStatus
+                      status={m.status}
+                      violations={vlist}
+                    />
                   </td>
                 </tr>
               </Fragment>
@@ -970,6 +1005,52 @@ function CourtSheet({
         </tbody>
       </SpreadTable>
     </section>
+  );
+}
+
+/** Per-match rule status: green tick when this match follows every rule;
+ * otherwise a chip naming each break (red = created by the draft, amber =
+ * already broken in the current fixture). */
+function MatchRuleStatus({
+  status,
+  violations,
+}: {
+  status: string;
+  violations: FixtureViolation[];
+}): React.ReactElement {
+  const fresh = violations.filter((v) => !v.pre_existing);
+  const pre = violations.filter((v) => v.pre_existing);
+  if (violations.length === 0) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+        <CheckCircle2
+          aria-hidden="true"
+          className="h-3.5 w-3.5 text-success"
+        />
+        <span data-testid="rule-ok">{t("OK")}</span>
+        {status !== "scheduled" ? (
+          <span className="capitalize">· {status}</span>
+        ) : null}
+      </span>
+    );
+  }
+  return (
+    <span className="flex flex-col gap-0.5">
+      {fresh.length > 0 ? (
+        <span className="inline-flex w-fit items-center gap-1 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[11px] font-medium text-destructive">
+          <AlertTriangle aria-hidden="true" className="h-3 w-3" />
+          {humanizeCode(fresh[0].code)}
+          {fresh.length > 1 ? ` +${fresh.length - 1}` : ""}
+        </span>
+      ) : null}
+      {pre.length > 0 ? (
+        <span className="inline-flex w-fit items-center gap-1 rounded-full bg-warning-muted px-1.5 py-0.5 text-[11px] font-medium text-warning">
+          <AlertTriangle aria-hidden="true" className="h-3 w-3" />
+          {t("Existing")}: {humanizeCode(pre[0].code)}
+          {pre.length > 1 ? ` +${pre.length - 1}` : ""}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
