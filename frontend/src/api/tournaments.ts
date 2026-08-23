@@ -413,6 +413,8 @@ export interface FixtureEditMatch extends MatchRow {
 
 export interface FixtureEditPayload {
   matches: FixtureEditMatch[];
+  /** Sport names for the bookmark tabs (key -> display name). */
+  sports: { key: string; name: string }[];
   teams_by_leaf: Record<string, { id: string; name: string }[]>;
   courts: { id: string; name: string; venue_name: string }[];
   venues: string[];

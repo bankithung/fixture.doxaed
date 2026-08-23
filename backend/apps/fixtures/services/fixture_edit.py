@@ -139,8 +139,17 @@ def editable_fixture(tournament) -> dict[str, Any]:
         for lf in iter_leaves(tournament.sports or [])
         if lf.get("leaf_key")
     ]
+    # Sport names for the workbench's bookmark tabs (a leaf label reads
+    # "U-14 · Boys · Singles" — the SPORT name lives on the tournament's
+    # sports list, not on any leaf).
+    sports = [
+        {"key": s.get("key"), "name": s.get("name") or s.get("key")}
+        for s in (tournament.sports or [])
+        if isinstance(s, dict) and s.get("key")
+    ]
     return {
         "matches": rows,
+        "sports": sports,
         "teams_by_leaf": teams_by_leaf,
         "courts": courts,
         "venues": venues,

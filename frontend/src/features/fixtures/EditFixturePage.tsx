@@ -356,11 +356,12 @@ export function EditFixturePage(): React.ReactElement {
   const sportLabel = useCallback(
     (key: string) => {
       if (!payload) return key || t("General");
-      const leaf = payload.leaves.find((l) =>
-        (l.leaf_key || "").startsWith(key ? `${key}.` : ""),
-      );
-      if (leaf?.label) return leaf.label.split("·")[0].trim();
-      return key ? key.replace(/_/g, " ") : t("General");
+      // The SPORT name comes from the tournament's sports list — a leaf label
+      // only names a category ("U-14 · Boys · Singles"), never the game.
+      const sport = payload.sports?.find((sp) => sp.key === key);
+      if (sport?.name) return sport.name;
+      if (!key) return t("General");
+      return key.replace(/_/g, " ");
     },
     [payload],
   );
@@ -667,7 +668,7 @@ export function EditFixturePage(): React.ReactElement {
                 )}
               >
                 {sportLabel(key)}
-                <span className="ml-1.5 font-tabular text-xs text-muted-foreground">
+                <span className="ml-1 inline font-tabular text-xs text-muted-foreground">
                   {merged.filter((m) => (m.sport || "") === key).length}
                 </span>
               </button>
