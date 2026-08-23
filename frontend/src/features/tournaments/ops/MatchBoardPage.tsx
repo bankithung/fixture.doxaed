@@ -9,6 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
 import type { ControlRoomPerms } from "@/features/controlroom/MatchActionsMenu";
 import { MatchSheet } from "@/features/controlroom/MatchSheet";
+import { Link } from "react-router-dom";
+import { PencilLine } from "lucide-react";
+import { routes } from "@/lib/routes";
 import { ShiftDayDialog } from "@/features/fixtures/ShiftDayDialog";
 import {
   fmtDayLabel,
@@ -266,6 +269,16 @@ export function MatchesBoardPage(): React.ReactElement {
         <span className="font-tabular text-xs text-muted-foreground">
           {counts.done}/{counts.total} {t("played")}
         </span>
+      ) : null}
+      {perms.canSchedule ? (
+        <Link
+          to={routes.tournamentMatchesEdit(id)}
+          data-testid="edit-fixture"
+          className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <PencilLine aria-hidden="true" className="h-3.5 w-3.5" />
+          {t("Edit fixture")}
+        </Link>
       ) : null}
       {perms.canSchedule ? (
         <button

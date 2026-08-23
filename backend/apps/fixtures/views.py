@@ -576,6 +576,91 @@ class SwapFixtureSlotsView(GenericAPIView):
         })
 
 
+class FixtureEditView(GenericAPIView):
+    """The fixture EDIT workbench (owner ask, 2026-08-23).
+
+    Gate: `tournament.schedule_editor` — the same verb as every other repair
+    surface. Nothing here mutates until the APPLY below; the page's edits are
+    a client-side draft.
+
+    GET    `…/fixtures/edit/`          → the whole editable fixture + every
+                                          dropdown option (teams per leaf,
+                                          courts), no free text anywhere.
+    POST   `…/fixtures/edit/validate/` → run the FULL rule set over the draft
+                                          (slots + team re-points); returns
+                                          structured violations tagged with
+                                          `pre_existing` so the UI separates
+                                          "you broke this" from "it was
+                                          already broken".
+    PUT    `…/fixtures/edit/apply/`    → commit the reviewed draft atomically:
+                                          pre-change snapshot, one audit row,
+                                          live ticks. Hard NEW violations 409
+                                          unless `force: true`. Idempotent on
+                                          `event_id`.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def _tournament(self, request, tournament_id):
+        from apps.tournaments.models import Tournament
+
+        if not accessible_tournaments(request.user).filter(id=tournament_id).exists():
+            raise NotFound("tournament_not_found")
+        t = Tournament.objects.select_related("organization").get(id=tournament_id)
+        if not can_access_module(request.user, t, "tournament.schedule_editor"):
+            raise PermissionDenied("not_tournament_manager")
+        return t
+
+    def get(self, request, tournament_id):
+        from apps.fixtures.services.fixture_edit import editable_fixture
+
+        return Response(editable_fixture(self._tournament(request, tournament_id)))
+
+    def post(self, request, tournament_id):
+        from apps.fixtures.services.fixture_edit import validate_fixture_edits
+
+        return Response(
+            validate_fixture_edits(
+                self._tournament(request, tournament_id), request.data or {}
+            )
+        )
+
+    def put(self, request, tournament_id):
+        import uuid as _uuid
+
+        from django.core.exceptions import ValidationError
+
+        from apps.fixtures.services.fixture_edit import apply_fixture_edits
+
+        t = self._tournament(request, tournament_id)
+        edits = dict(request.data or {})
+        event_id = edits.pop("event_id", None)
+        try:
+            return Response(
+                apply_fixture_edits(
+                    tournament=t,
+                    edits=edits,
+                    by=request.user,
+                    event_id=event_id,
+                    request=request,
+                )
+            )
+        except ValidationError as exc:
+            code = str(getattr(exc, "message", exc) or exc)
+            if code == "new_violations":
+                from apps.fixtures.services.fixture_edit import validate_fixture_edits
+
+                report = validate_fixture_edits(t, edits)
+                return Response(
+                    {"detail": "schedule_conflicts",
+                     "violations": report["violations"]},
+                    status=409,
+                )
+            raise DRFValidationError({"detail": code}) from exc
+        except ValueError as exc:
+            raise DRFValidationError({"detail": str(exc)}) from exc
+
+
 class ShiftFixturesDayView(GenericAPIView):
     """`POST /api/tournaments/{id}/fixtures/shift-day/` — rain-day shift
     (repair seam, increment D). Body `{from_date, to_date?, leaf_key?,

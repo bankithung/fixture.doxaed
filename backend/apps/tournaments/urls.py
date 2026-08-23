@@ -8,6 +8,7 @@ from apps.fixtures.views import (
     ControlRoomDayView,
     FixtureSnapshotDetailView,
     FixtureSnapshotRestoreView,
+    FixtureEditView,
     GenerateFixturesView,
     PreviewAllFixturesView,
     PreviewFixturesView,
@@ -275,6 +276,11 @@ urlpatterns = [
         name="tournament-draw-config",
     ),
     # Every fixture this tournament has had, and a way back to one.
+    path(
+        "<uuid:tournament_id>/fixtures/edit/",
+        FixtureEditView.as_view(),
+        name="tournament-fixture-edit",
+    ),
     path(
         "<uuid:tournament_id>/fixture-versions/",
         TournamentFixtureSnapshotsView.as_view(),

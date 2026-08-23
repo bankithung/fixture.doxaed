@@ -401,6 +401,77 @@ export interface MatchOfficialRow {
 }
 
 /** A MatchSerializer row enriched for the cockpit. */
+/** A match row as the fixture EDIT workbench consumes it (server-shaped to
+ * MatchRow so BracketView renders knockout drafts without mapping). */
+export interface FixtureEditMatch extends MatchRow {
+  court_id: string | null;
+  home_editable: boolean;
+  away_editable: boolean;
+  /** false once live/done — the workbench refuses touched matches. */
+  editable: boolean;
+}
+
+export interface FixtureEditPayload {
+  matches: FixtureEditMatch[];
+  teams_by_leaf: Record<string, { id: string; name: string }[]>;
+  courts: { id: string; name: string; venue_name: string }[];
+  venues: string[];
+  days: string[];
+  leaves: { leaf_key: string; label?: string }[];
+  time_zone: string;
+}
+
+/** One draft slot move: chosen from dropdowns, never typed. */
+export interface FixtureSlotEdit {
+  match_id: string;
+  /** ISO datetime (tournament-local). */
+  start: string;
+  /** Court id — the server resolves the venue NAME from the court row. */
+  court_id?: string;
+  /** Venue name only for off-court strings that already exist. */
+  venue?: string;
+}
+
+/** One draft side re-point. Sides fed by winner_of/loser_of are refused by
+ * the server and disabled in the UI (invariant 9). */
+export interface FixtureTeamEdit {
+  match_id: string;
+  home?: string | null;
+  away?: string | null;
+}
+
+export interface FixtureEdits {
+  slots: FixtureSlotEdit[];
+  teams: FixtureTeamEdit[];
+}
+
+export interface FixtureViolation {
+  code: string;
+  hard?: boolean;
+  match_id?: string;
+  other_match_id?: string;
+  team_id?: string;
+  venue?: string;
+  at?: string;
+  date?: string;
+  pre_existing?: boolean;
+  [k: string]: unknown;
+}
+
+export interface FixtureValidationReport {
+  violations: FixtureViolation[];
+  new_violations: FixtureViolation[];
+  slot_count: number;
+  team_count: number;
+}
+
+export interface FixtureApplyReport {
+  applied: boolean;
+  replayed?: boolean;
+  counts: { slots: number; teams: number };
+  violations?: FixtureViolation[];
+}
+
 export interface ControlRoomMatch extends MatchRow {
   /** Human label of the competition leaf ("" = whole-tournament draw). */
   leaf_label: string;
@@ -1232,6 +1303,29 @@ export const tournamentsApi = {
     `/api/tournaments/${id}/clone/`,
     body ?? {},
   ),
+  // --- Fixture EDIT workbench (draft → validate → apply) ---
+  /** The whole editable fixture + every dropdown option. Read-only. */
+  fixtureEdit: (id: string) =>
+    api.get<FixtureEditPayload>(`/api/tournaments/${id}/fixtures/edit/`),
+  /** Validate a DRAFT against the full rule set. Never mutates. */
+  fixtureEditValidate: (
+    id: string,
+    edits: FixtureEdits,
+  ) =>
+    api.post<FixtureValidationReport>(
+      `/api/tournaments/${id}/fixtures/edit/validate/`,
+      edits,
+    ),
+  /** Commit the reviewed draft. 409 `schedule_conflicts` on new hard
+   * violations unless force. Idempotent on event_id. */
+  fixtureEditApply: (
+    id: string,
+    edits: FixtureEdits & { event_id?: string },
+  ) =>
+    api.put<FixtureApplyReport>(
+      `/api/tournaments/${id}/fixtures/edit/apply/`,
+      edits,
+    ),
   /** Switch how players are entered (spec 2026-08-17). 409 `roster_mode_locked`
    * once teams exist — by then the team form's pickers are already bound to
    * the list, and the people declared would be stranded. */

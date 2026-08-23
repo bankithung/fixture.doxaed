@@ -96,6 +96,10 @@ export const routes = {
   /** Operations: flat, filterable tournament-wide matches board. */
   tournamentMatches: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/matches`,
+  /** The fixture EDIT workbench: draft edits, rule-checked, applied only on
+   * confirm (owner 2026-08-23). */
+  tournamentMatchesEdit: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/matches/edit`,
   /** Operations: an invited member's own assigned matches (scoring seat or any
    * officiating slot). Visible to every member — it only ever shows theirs. */
   tournamentMyTasks: (id: string) =>
