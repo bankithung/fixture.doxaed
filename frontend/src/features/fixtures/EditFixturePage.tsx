@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import {
   tournamentsApi,
-  type RosterMember,
   type FixtureEditMatch,
   type FixtureEditPayload,
   type FixtureEdits,
@@ -34,7 +33,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
 import { BracketView } from "@/features/tournaments/BracketView";
 import { humanizeLeaf } from "@/features/controlroom/format";
@@ -261,7 +259,7 @@ export function EditFixturePage(): React.ReactElement {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [activeSport, setActiveSport] = useState<string>("");
-  const [studentsOpen, setStudentsOpen] = useState(false);
+  const [showStudents, setShowStudents] = useState(false);
 
   const query = useQuery({
     queryKey: ["fixture-edit", id],
@@ -562,21 +560,17 @@ export function EditFixturePage(): React.ReactElement {
       <div className="flex flex-wrap items-center gap-3 border-b border-border p-4">
         <div>
           <h1 className="page-title">{t("Edit fixture")}</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {t(
-              "Changes stay a DRAFT until you review and submit. Every value is picked from a list; rules are checked before anything lands.",
-            )}
-          </p>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button
-            variant="outline"
+            variant={showStudents ? "default" : "outline"}
             size="sm"
-            onClick={() => setStudentsOpen(true)}
-            data-testid="view-students"
+            aria-pressed={showStudents}
+            onClick={() => setShowStudents((v) => !v)}
+            data-testid="show-students"
           >
             <Users aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
-            {t("All students")}
+            {t("Show students")}
           </Button>
           {dirtyCount > 0 ? (
             <>
@@ -713,6 +707,8 @@ export function EditFixturePage(): React.ReactElement {
             stored={storedWidths}
             onStore={storeWidths}
             draft={draft}
+            showStudents={showStudents}
+            playersByTeam={payload.players_by_team ?? {}}
             timeOptions={timeOptions}
             teamsFor={(leafKey) =>
               payload.teams_by_leaf[leafKey] ?? payload.teams_by_leaf[""] ?? []
@@ -729,11 +725,6 @@ export function EditFixturePage(): React.ReactElement {
           <section>
             <header className="mb-2">
               <h3 className="font-semibold">{t("Knockout")}</h3>
-              <p className="text-xs text-muted-foreground">
-                {t(
-                  "The draw as a tree. Click a card to re-slot it — sides fed by another match's winner or loser are decided on the court, not here.",
-                )}
-              </p>
             </header>
             {/* wrapNames grows every card until the LONGEST school name fits
                 and wraps - no more truncated "Grace Academy Higher Secondar…".
@@ -765,13 +756,6 @@ export function EditFixturePage(): React.ReactElement {
       />
 
       </div>
-
-      {/* All students */}
-      <StudentsDialog
-        open={studentsOpen}
-        onOpenChange={setStudentsOpen}
-        tournamentId={id}
-      />
 
       {/* Review & submit */}
       <Dialog
@@ -822,119 +806,6 @@ export function EditFixturePage(): React.ReactElement {
   );
 }
 
-/** Every declared participant, one dialog: students grouped by school, each
- * naming the competitions they ended up in. Read-only - the participants
- * workbench owns edits. */
-function StudentsDialog({
-  open,
-  onOpenChange,
-  tournamentId,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  tournamentId: string;
-}): React.ReactElement {
-  const [q, setQ] = useState("");
-  const query = useQuery({
-    queryKey: ["fixture-edit-students", tournamentId],
-    queryFn: () => tournamentsApi.roster(tournamentId),
-    enabled: open,
-  });
-  const members: RosterMember[] = useMemo(() => {
-    const all = query.data?.members ?? [];
-    const needle = q.trim().toLowerCase();
-    if (!needle) return all;
-    return all.filter(
-      (m) =>
-        m.full_name.toLowerCase().includes(needle) ||
-        (m.institution?.name ?? "").toLowerCase().includes(needle),
-    );
-  }, [query.data, q]);
-  const bySchool = useMemo(() => {
-    const map = new Map<string, { name: string; rows: RosterMember[] }>();
-    for (const m of members) {
-      const key = m.institution?.id ?? "_";
-      if (!map.has(key))
-        map.set(key, { name: m.institution?.name ?? t("No school"), rows: [] });
-      map.get(key)!.rows.push(m);
-    }
-    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [members]);
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      ariaLabel={t("All students")}
-    >
-      <DialogHeader>
-        <DialogTitle>{t("All students")}</DialogTitle>
-        <DialogDescription>
-          {query.data
-            ? t(
-                `${query.data.counts.students} student(s), ${query.data.counts.teachers} teacher(s) declared across every school.`,
-              )
-            : t("Loading…")}
-        </DialogDescription>
-      </DialogHeader>
-      <Input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder={t("Search name or school…")}
-        aria-label={t("Search participants")}
-        className="mb-2"
-      />
-      <div className="max-h-80 space-y-3 overflow-y-auto rounded-lg border border-border p-3">
-        {bySchool.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            {t("No participants declared yet.")}
-          </p>
-        ) : (
-          bySchool.map((school) => (
-            <div key={school.name}>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {school.name}
-              </p>
-              <ul className="mt-1 divide-y divide-border/60">
-                {school.rows.map((m) => (
-                  <li
-                    key={m.id}
-                    className="flex items-center justify-between gap-2 py-1 text-sm"
-                  >
-                    <span className="min-w-0 truncate">
-                      {m.full_name}
-                      {m.kind === "teacher" ? (
-                        <span className="ml-1.5 rounded bg-secondary px-1 py-0.5 text-[10px] uppercase text-secondary-foreground">
-                          {t("Teacher")}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {m.entries.length > 0
-                        ? m.entries
-                            .map((e) =>
-                              humanizeLeaf(
-                                (e as { leaf_key?: string }).leaf_key ?? "",
-                              ),
-                            )
-                            .filter(Boolean)
-                            .join(", ")
-                        : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))
-        )}
-      </div>
-      <DialogFooter>
-        <Button onClick={() => onOpenChange(false)}>{t("Close")}</Button>
-      </DialogFooter>
-    </Dialog>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // One COURT'S spreadsheet. Group-stage matches sit under GROUP BAND rows so
 // the sheet reads "Group A" then its teams' matches, exactly like a wall
@@ -948,6 +819,8 @@ function CourtSheet({
   stored,
   onStore,
   draft,
+  showStudents,
+  playersByTeam,
   timeOptions,
   teamsFor,
   violationsByMatch,
@@ -961,6 +834,11 @@ function CourtSheet({
   stored: Record<string, number[]>;
   onStore: (id: string, widths: number[]) => void;
   draft: Draft;
+  showStudents: boolean;
+  playersByTeam: Record<
+    string,
+    { id: string; name: string; jersey_no: number | null; captain: boolean }[]
+  >;
   timeOptions: string[];
   teamsFor: (leafKey: string) => { id: string; name: string }[];
   violationsByMatch: Map<string, FixtureViolation[]>;
@@ -1114,6 +992,9 @@ function CourtSheet({
                         {sideWaiting(m, "home", matchNosOf(matches))}
                       </span>
                     )}
+                    {showStudents && m.home_team ? (
+                      <StudentList players={playersByTeam[m.home_team.id] ?? []} />
+                    ) : null}
                   </td>
                   <td className="px-3 py-1.5">
                     {m.away_editable ? (
@@ -1136,6 +1017,9 @@ function CourtSheet({
                         {sideWaiting(m, "away", matchNosOf(matches))}
                       </span>
                     )}
+                    {showStudents && m.away_team ? (
+                      <StudentList players={playersByTeam[m.away_team.id] ?? []} />
+                    ) : null}
                   </td>
                   <td className="px-3 py-1.5">
                     <MatchRuleStatus
@@ -1150,6 +1034,37 @@ function CourtSheet({
         </tbody>
       </SpreadTable>
     </section>
+  );
+}
+
+/** The students ONE side fields, shown under a team cell while the
+ * "Show students" toggle is on. */
+function StudentList({
+  players,
+}: {
+  players: {
+    id: string;
+    name: string;
+    jersey_no: number | null;
+    captain: boolean;
+  }[];
+}): React.ReactElement | null {
+  if (players.length === 0) return null;
+  return (
+    <ul
+      className="mt-1 space-y-0.5 border-t border-border/60 pt-1 text-[11px] leading-tight text-muted-foreground"
+      data-testid="student-list"
+    >
+      {players.map((p) => (
+        <li key={p.id} className="flex items-center gap-1">
+          {p.jersey_no != null ? (
+            <span className="font-tabular">{p.jersey_no}</span>
+          ) : null}
+          <span className="truncate">{p.name}</span>
+          {p.captain ? <span title={t("Captain")}>©</span> : null}
+        </li>
+      ))}
+    </ul>
   );
 }
 

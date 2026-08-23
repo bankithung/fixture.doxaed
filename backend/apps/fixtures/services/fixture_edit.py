@@ -139,6 +139,27 @@ def editable_fixture(tournament) -> dict[str, Any]:
         for lf in iter_leaves(tournament.sports or [])
         if lf.get("leaf_key")
     ]
+    # Students per team, so the workbench's "show students" toggle can reveal
+    # WHO each side fields without leaving the spreadsheet.
+    players_by_team: dict[str, list[dict[str, Any]]] = {}
+    from apps.matches.models import MatchStatus as _MS
+    from apps.teams.models import Player as _Player
+
+    for p in (
+        _Player.objects.filter(
+            tournament=tournament, deleted_at__isnull=True
+        ).select_related("person")
+        .order_by("team_id", "jersey_no", "person__full_name")
+    ):
+        players_by_team.setdefault(str(p.team_id), []).append(
+            {
+                "id": str(p.id),
+                "name": p.person.full_name,
+                "jersey_no": p.jersey_no,
+                "captain": p.captain,
+            }
+        )
+
     # Sport names for the workbench's bookmark tabs (a leaf label reads
     # "U-14 · Boys · Singles" — the SPORT name lives on the tournament's
     # sports list, not on any leaf).
@@ -150,6 +171,7 @@ def editable_fixture(tournament) -> dict[str, Any]:
     return {
         "matches": rows,
         "sports": sports,
+        "players_by_team": players_by_team,
         "teams_by_leaf": teams_by_leaf,
         "courts": courts,
         "venues": venues,

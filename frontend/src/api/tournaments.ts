@@ -415,6 +415,11 @@ export interface FixtureEditPayload {
   matches: FixtureEditMatch[];
   /** Sport names for the bookmark tabs (key -> display name). */
   sports: { key: string; name: string }[];
+  /** Students fielded per team - powers the "Show students" toggle. */
+  players_by_team: Record<
+    string,
+    { id: string; name: string; jersey_no: number | null; captain: boolean }[]
+  >;
   teams_by_leaf: Record<string, { id: string; name: string }[]>;
   courts: { id: string; name: string; venue_name: string }[];
   venues: string[];
