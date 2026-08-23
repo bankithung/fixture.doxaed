@@ -753,6 +753,10 @@ export function EditFixturePage(): React.ReactElement {
               <BracketView
                 matches={activeKnockout}
                 timeZone={payload.time_zone}
+                /* The FIXTURE numbering (the same # as the Matches board and
+                   every court sheet) - not the tree's own positional count,
+                   so "M53" here IS match 53 everywhere else. */
+                matchNumbers={matchNos}
                 linkFor={(m) => `?m=${m.id}`}
                 wrapNames
                 editIcon
