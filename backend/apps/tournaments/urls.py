@@ -90,6 +90,7 @@ from apps.tournaments.views import (
     ConstraintTypesView,
     TournamentAuditView,
     TournamentBulkInvitationView,
+    TournamentCloneView,
     TournamentCompleteView,
     TournamentCopySetupView,
     TournamentDetailView,
@@ -122,6 +123,11 @@ urlpatterns = [
         "<uuid:tournament_id>/copy-setup/",
         TournamentCopySetupView.as_view(),
         name="tournament-copy-setup",
+    ),
+    path(
+        "<uuid:tournament_id>/clone/",
+        TournamentCloneView.as_view(),
+        name="tournament-clone",
     ),
     path(
         "<uuid:tournament_id>/settings/",

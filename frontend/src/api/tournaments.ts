@@ -1222,6 +1222,16 @@ export const tournamentsApi = {
    * stable). Manager-allowed; the server enforces the permission. */
   rename: (id: string, name: string) =>
     api.patch<Tournament>(`/api/tournaments/${id}/`, { name }),
+  /** Fork a tournament END-TO-END into your own workspace: settings, venues,
+   * forms, teams, players and the whole fixture with scores/event history —
+   * a fully independent copy; later edits never touch the original. */
+  clone: (
+    id: string,
+    body?: { name?: string; organization_id?: string; include_matches?: boolean; event_id?: string },
+  ) => api.post<{ id: string; slug: string; name: string }>(
+    `/api/tournaments/${id}/clone/`,
+    body ?? {},
+  ),
   /** Switch how players are entered (spec 2026-08-17). 409 `roster_mode_locked`
    * once teams exist — by then the team form's pickers are already bound to
    * the list, and the people declared would be stranded. */

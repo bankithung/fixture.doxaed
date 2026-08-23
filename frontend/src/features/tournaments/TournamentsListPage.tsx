@@ -14,6 +14,7 @@ import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { RenameTournamentButton } from "./RenameTournamentButton";
+import { CloneTournamentButton } from "./CloneTournamentButton";
 import { canManageTournament } from "./tournamentPermissions";
 
 /**
@@ -437,6 +438,12 @@ function TournamentCard({
         ) : null}
         <span className="font-tabular">{formatCreated(tn.created_at)}</span>
         <span className="ml-auto flex items-center gap-1">
+          {/* Clone is open to EVERY user — the fork lands in their own
+              workspace and never touches this tournament. */}
+          <CloneTournamentButton
+            tournamentId={tn.id}
+            currentName={tn.name}
+          />
           {canManage ? (
             <RenameTournamentButton tournamentId={tn.id} currentName={tn.name} />
           ) : null}

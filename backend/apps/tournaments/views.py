@@ -670,6 +670,80 @@ class TournamentCopySetupView(GenericAPIView):
         return Response(report)
 
 
+class TournamentCloneView(GenericAPIView):
+    """`POST /api/tournaments/{id}/clone/` — fork a tournament END-TO-END.
+
+    Any authenticated user may clone any tournament (owner ask: "any user can
+    clone any tournament"). The clone is an EXACT replica — settings, venues
+    and court reservations, forms, institutions, teams, players, the fixture
+    with scores and event history — and lands in the CALLER's workspace
+    (default: their personal workspace; pass ``organization_id`` for a real
+    one they belong to). Nothing is written into the source's tenant. Body:
+    ``{name?, organization_id?, include_matches?, event_id?}``.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id):
+        from django.shortcuts import get_object_or_404 as _goo4
+
+        from apps.organizations.models import MembershipRole, Organization, OrganizationMembership
+        from apps.organizations.services.workspace import provision_personal_workspace
+        from apps.tournaments.services.clone import clone_tournament
+
+        source = _goo4(
+            Tournament,
+            id=tournament_id,
+            deleted_at__isnull=True,
+        )
+        org_id = request.data.get("organization_id")
+        if org_id:
+            membership = OrganizationMembership.objects.filter(
+                user=request.user,
+                organization_id=org_id,
+                is_active=True,
+                role__in=[MembershipRole.ADMIN, MembershipRole.MEMBER],
+            ).first()
+            if membership is None:
+                return Response({"detail": "not_a_member_of_organization"}, status=403)
+            org = Organization.objects.get(id=org_id)
+        else:
+            org = provision_personal_workspace(
+                user=request.user,
+                name=(
+                    request.user.get_full_name()
+                    or request.user.email
+                    or "Workspace"
+                ),
+                request=request,
+            )
+        name = (request.data.get("name") or "").strip() or None
+        if name and len(name) > 200:
+            raise DRFValidationError({"detail": "name_too_long"})
+        try:
+            clone = clone_tournament(
+                source=source,
+                target_org=org,
+                by=request.user,
+                name=name,
+                include_matches=bool(request.data.get("include_matches", True)),
+                event_id=request.data.get("event_id"),
+                request=request,
+            )
+        except ValueError as exc:
+            raise DRFValidationError({"detail": str(exc)})
+        return Response(
+            {
+                "id": str(clone.id),
+                "slug": clone.slug,
+                "name": clone.name,
+                "organization_id": str(org.id),
+                "status": clone.status,
+            },
+            status=201,
+        )
+
+
 class TournamentSportsView(GenericAPIView):
     """`GET/PUT /api/tournaments/{id}/sports/` — the sports this tournament runs.
 
