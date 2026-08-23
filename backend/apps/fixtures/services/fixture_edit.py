@@ -49,7 +49,7 @@ def _tournament_tz(tournament):
     return ZoneInfo(getattr(tournament, "time_zone", None) or "Asia/Kolkata")
 
 
-def _serialize_match(m) -> dict[str, Any]:
+def _serialize_match(m, crests: dict[str, str] | None = None) -> dict[str, Any]:
 
     def src(side) -> dict[str, Any] | None:
         return dict(side) if side else None
@@ -78,11 +78,23 @@ def _serialize_match(m) -> dict[str, Any]:
         "court_id": str(m.court_id) if m.court_id else None,
         "venue": m.venue,
         "home_team": (
-            {"id": str(m.home_team_id), "name": m.home_team.name}
+            {
+                "id": str(m.home_team_id),
+                "name": m.home_team.name,
+                "short_name": getattr(m.home_team, "short_name", "") or "",
+                # The school's badge - a signed capability URL like every
+                # other fixture surface renders (crest resolver, one map).
+                "crest": (crests or {}).get(str(m.home_team_id), ""),
+            }
             if m.home_team_id else None
         ),
         "away_team": (
-            {"id": str(m.away_team_id), "name": m.away_team.name}
+            {
+                "id": str(m.away_team_id),
+                "name": m.away_team.name,
+                "short_name": getattr(m.away_team, "short_name", "") or "",
+                "crest": (crests or {}).get(str(m.away_team_id), ""),
+            }
             if m.away_team_id else None
         ),
         "home_source": src(m.home_source),
@@ -99,12 +111,18 @@ def editable_fixture(tournament) -> dict[str, Any]:
     from apps.teams.models import Team
     from apps.tournaments.services.sports import iter_leaves
 
-    matches = (
+    matches = list(
         tournament.matches.filter(deleted_at__isnull=True)
-        .select_related("home_team", "away_team", "court")
+        .select_related("home_team", "away_team", "court", "home_team__institution",
+                        "away_team__institution")
         .order_by("stage_no", "round_no", "match_no")
     )
-    rows = [_serialize_match(m) for m in matches]
+    from apps.teams.services.crest import crest_map
+
+    crest_urls = crest_map(
+        [tm for m in matches for tm in (m.home_team, m.away_team) if tm]
+    )
+    rows = [_serialize_match(m, crest_urls) for m in matches]
 
     # Dropdown options: each competition leaf offers ITS OWN registered teams.
     teams_by_leaf: dict[str, list[dict[str, Any]]] = {}
