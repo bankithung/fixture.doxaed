@@ -25,6 +25,7 @@ import {
   type FixtureViolation,
   type MiniTeam,
 } from "@/api/tournaments";
+import type { RosterIndex } from "@/features/fixtures/publicTournament";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -423,6 +424,25 @@ export function EditFixturePage(): React.ReactElement {
     [merged],
   );
 
+  /** Team -> students, in the shape BracketView's detailed cards read. */
+  const rosterIndex: RosterIndex = useMemo(() => {
+    const map: RosterIndex = new Map();
+    for (const [teamId, players] of Object.entries(
+      payload?.players_by_team ?? {},
+    )) {
+      map.set(
+        teamId,
+        players.map((p) => ({
+          id: p.id,
+          name: p.name,
+          jersey_no: p.jersey_no,
+          captain: p.captain,
+        })),
+      );
+    }
+    return map;
+  }, [payload]);
+
   const dirtyCount =
     Object.keys(draft.slots).length + Object.keys(draft.teams).length;
 
@@ -735,6 +755,8 @@ export function EditFixturePage(): React.ReactElement {
                 timeZone={payload.time_zone}
                 linkFor={(m) => `?m=${m.id}`}
                 wrapNames
+                editIcon
+                rosters={rosterIndex}
               />
             </div>
           </section>

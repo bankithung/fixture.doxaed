@@ -420,6 +420,7 @@ function MatchCard({
   geom,
   rosters,
   idScope,
+  editIcon,
 }: {
   match: MatchRow;
   tz?: string;
@@ -429,6 +430,7 @@ function MatchCard({
   /** Present = the detailed pass: every card names its players. */
   rosters?: RosterIndex;
   idScope?: string;
+  editIcon?: boolean;
 }): React.ReactElement {
   const home = entrant(match.home_team, match.home_source, no);
   const away = entrant(match.away_team, match.away_source, no);
@@ -474,6 +476,11 @@ function MatchCard({
         <span className="min-w-0 flex-1 truncate text-[0.625rem] font-medium" style={{ color: C.dim }}>
           {kickoff}
         </span>
+        {editIcon ? (
+          <span aria-hidden="true" className="shrink-0 opacity-70" title="Edit">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={C.goldHi} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+          </span>
+        ) : null}
         {badge ? (
           <span
             className="shrink-0 text-[0.5625rem] font-semibold uppercase tracking-wider"
@@ -736,6 +743,7 @@ export function FifaBracket({
   fitHeight,
   idScope,
   wrapNames,
+  editIcon,
 }: {
   columns: [number, MatchRow[]][];
   timeZone?: string;
@@ -761,6 +769,9 @@ export function FifaBracket({
   /** Namespaces the card testids when the SAME tree is drawn twice on one
    * page (the board on screen, and again inside the print document). */
   idScope?: string;
+  /** Show a small pencil badge on each card so a reader knows the card opens
+   * an editor (the fixture workbench). */
+  editIcon?: boolean;
   /** Grow every card until the LONGEST name in this bracket fits, and let it
    * wrap. The public boards ask for it (owner 2026-08-21): a draw that reads
    * "Holy Cross Higher Secondar…" does not say who is playing. The default is
@@ -914,7 +925,7 @@ export function FifaBracket({
     const p = pos.get(m.id) ?? { x: 0, y: H / 2 };
     return (
       <div key={`m-${m.id}`} className="absolute" style={{ left: p.x, top: p.y - geom.cardH / 2, width: geom.cardW }}>
-        <MatchCard match={m} tz={timeZone} no={matchNo} linkFor={linkFor} geom={geom} rosters={rosters} idScope={idScope} />
+        <MatchCard match={m} tz={timeZone} no={matchNo} linkFor={linkFor} geom={geom} rosters={rosters} idScope={idScope} editIcon={editIcon} />
       </div>
     );
   });
@@ -1093,7 +1104,7 @@ export function FifaBracket({
                   <span className="mb-1.5 block text-[0.625rem] font-semibold uppercase tracking-wider" style={{ color: C.goldHi }}>
                     {consolationLabel(m)}
                   </span>
-                  <MatchCard match={m} tz={timeZone} no={matchNo} linkFor={linkFor} geom={geom} rosters={rosters} idScope={idScope} />
+                  <MatchCard match={m} tz={timeZone} no={matchNo} linkFor={linkFor} geom={geom} rosters={rosters} idScope={idScope} editIcon={editIcon} />
                 </div>
               );
             })}

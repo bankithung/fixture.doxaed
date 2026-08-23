@@ -141,8 +141,11 @@ export function BracketView({
   fitHeight,
   idScope,
   wrapNames,
+  editIcon,
 }: {
   matches: MatchRow[];
+  /** Pencil badge on every card (see FifaBracket). */
+  editIcon?: boolean;
   /** IANA TZ for kickoff formatting + the bracket footnote (omit = viewer local). */
   timeZone?: string;
   /** Fixture numbering to print on the cards (see FifaBracket). */
@@ -239,6 +242,7 @@ export function BracketView({
             fitHeight={fitHeight}
             idScope={idScope}
             wrapNames={wrapNames}
+            editIcon={editIcon}
           />
         </div>
       ))}
