@@ -23,6 +23,9 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { PublicViewerTabs } from "@/features/live/PublicViewerHeader";
+import { AlbumPanel } from "@/features/lens/PublicAlbumPage";
+import { lensApi } from "@/api/lens";
+import { useQuery } from "@tanstack/react-query";
 import { ShareButton } from "@/features/live/ShareButton";
 import { ThemeToggle } from "@/features/theme/ThemeToggle";
 import { BrandLogo } from "@/components/ui/BrandLogo";
@@ -576,7 +579,66 @@ function ViewSwitch({
  * Live over the public SSE tick stream (control room spec §3.3) with a 60 s
  * poll fallback, full-width, in its own minimal chrome (no app shell).
  */
+/**
+ * THE UNIFIED PUBLIC PAGE (owner 2026-08-23): the photo album is a VIEW of
+ * the match centre (`?view=album`) - one URL to share, one tab strip. The
+ * view switch happens here, OUTSIDE the hooks-heavy inner component, so both
+ * surfaces keep a stable hook order.
+ */
 export function PublicSchedulePage(): React.ReactElement {
+  const { slug = "", id = "" } = useParams();
+  const [params] = useSearchParams();
+  if (params.get("view") === "album") {
+    return <AlbumView slug={slug} id={id} campaignId={params.get("campaign") ?? ""} />;
+  }
+  return <PublicScheduleInner />;
+}
+
+/** The album as a first-class citizen of the public chrome. */
+function AlbumView({
+  slug,
+  id,
+  campaignId,
+}: {
+  slug: string;
+  id: string;
+  campaignId: string;
+}): React.ReactElement {
+  const q = useQuery({
+    queryKey: ["public-tournament-name", slug, id],
+    queryFn: () => lensApi.publicAlbum(slug, id, campaignId || undefined),
+    retry: false,
+  });
+  const tournamentName = q.data?.campaign?.title;
+  return (
+    <div className="flex min-h-screen flex-col">
+      <header className="flex h-14 items-center gap-2 border-b border-border bg-card px-4 sm:px-6">
+        <Link
+          to={routes.landing()}
+          className="flex items-center gap-2 rounded-md font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <BrandLogo className="h-7 w-7 rounded-lg" />
+          {t("Fixture")}
+        </Link>
+        <span className="ml-2 min-w-0 truncate text-sm text-muted-foreground">
+          {tournamentName ?? t("Photos")}
+        </span>
+        <div className="ml-auto flex items-center gap-1">
+          <ShareButton title={tournamentName} />
+          <ThemeToggle />
+        </div>
+      </header>
+      <div className="border-b border-border bg-card px-4 sm:px-6">
+        <PublicViewerTabs slug={slug} id={id} active="album" />
+      </div>
+      <main className="flex w-full flex-1 flex-col px-0 py-0 sm:px-6 sm:py-6">
+        <AlbumPanel slug={slug} id={id} campaignId={campaignId} />
+      </main>
+    </div>
+  );
+}
+
+function PublicScheduleInner(): React.ReactElement {
   const { slug = "", id = "" } = useParams();
   const { up } = useBreakpoint();
   const wideRail = up("lg");
@@ -958,7 +1020,11 @@ export function PublicSchedulePage(): React.ReactElement {
         </div>
       </header>
       <div className="border-b border-border bg-card px-4 print:hidden sm:px-6">
-        <PublicViewerTabs slug={slug} id={id} active="schedule" />
+        <PublicViewerTabs
+          slug={slug}
+          id={id}
+          active={params.get("view") === "album" ? "album" : "schedule"}
+        />
       </div>
 
       {query.isLoading ? (

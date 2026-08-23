@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Award, Camera, ChevronLeft, ChevronRight } from "lucide-react";
+import { Award, Camera, ChevronLeft, ChevronRight, ScanLine } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { lensApi, type PublicAlbumPhoto } from "@/api/lens";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import { Dialog } from "@/components/ui/dialog";
@@ -9,6 +10,7 @@ import { Select } from "@/components/ui/Select";
 import { ShareButton } from "@/features/live/ShareButton";
 import { ThemeToggle } from "@/features/theme/ThemeToggle";
 import { InfiniteWall } from "./InfiniteWall";
+import { QrScanDialog } from "./QrScanDialog";
 import { qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
@@ -31,11 +33,20 @@ import { t } from "@/lib/t";
  * exactly the list the wall is showing.
  */
 
-export function PublicAlbumPage(): React.ReactElement {
-  const { slug = "", id = "", campaignId = "" } = useParams();
+export function AlbumPanel({
+  slug,
+  id,
+  campaignId = "",
+}: {
+  slug: string;
+  id: string;
+  campaignId?: string;
+}): React.ReactElement {
   const [category, setCategory] = useState<string>("");
   const [school, setSchool] = useState<string>("");
   const [openRef, setOpenRef] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  const navigate = useNavigate();
 
   const q = useQuery({
     queryKey: [...qk.publicAlbum(slug, id), campaignId],
@@ -128,27 +139,7 @@ export function PublicAlbumPage(): React.ReactElement {
   );
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-card px-4 py-3 sm:px-6">
-        <Link
-          to={routes.landing()}
-          className="flex items-center gap-2 rounded-md font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <BrandLogo className="h-7 w-7 rounded-lg" />
-          {t("Fixture")}
-        </Link>
-        <Link
-          to={routes.publicSchedule(slug, id)}
-          className="ml-2 min-w-0 truncate text-sm text-muted-foreground hover:text-foreground"
-        >
-          {t("Tournament page")}
-        </Link>
-        <span className="ml-auto" />
-        <ShareButton title={campaign?.title} />
-        <ThemeToggle />
-      </header>
-
-      <main className="flex w-full flex-1 flex-col px-0 py-0 sm:px-6 sm:py-6">
+    <>
         {/* One combined section: nothing about this album sits outside it. */}
         <section className="flex min-w-0 flex-1 flex-col overflow-hidden border-y border-border bg-card sm:rounded-xl sm:border sm:shadow-sm">
           {q.isLoading ? (
@@ -271,7 +262,28 @@ export function PublicAlbumPage(): React.ReactElement {
             </>
           )}
         </section>
-      </main>
+
+      {/* Scan the poster's QR right here: the phone opens its camera, reads
+          the join link, and walks into the school-code upload flow. */}
+      <div className="pointer-events-none fixed bottom-4 left-1/2 z-20 -translate-x-1/2">
+        <Button
+          size="lg"
+          onClick={() => setScanOpen(true)}
+          data-testid="scan-upload"
+          className="pointer-events-auto shadow-lg"
+        >
+          <ScanLine aria-hidden="true" className="mr-2 h-5 w-5" />
+          {t("Scan & upload")}
+        </Button>
+      </div>
+      <QrScanDialog
+        open={scanOpen}
+        onOpenChange={setScanOpen}
+        onToken={(token) => {
+          setScanOpen(false);
+          navigate(`/lens/join/${token}`);
+        }}
+      />
 
       {/* Lightbox. */}
       <Dialog
@@ -327,6 +339,42 @@ export function PublicAlbumPage(): React.ReactElement {
           </div>
         ) : null}
       </Dialog>
+    </>
+  );
+}
+
+/** The standalone route's chrome around the same panel. */
+export function PublicAlbumPage(): React.ReactElement {
+  const { slug = "", id = "", campaignId = "" } = useParams();
+  const q = useQuery({
+    queryKey: [...qk.publicAlbum(slug, id), campaignId],
+    queryFn: () => lensApi.publicAlbum(slug, id, campaignId || undefined),
+    enabled: Boolean(slug && id),
+    retry: false,
+  });
+  return (
+    <div className="flex min-h-screen flex-col">
+      <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-card px-4 py-3 sm:px-6">
+        <Link
+          to={routes.landing()}
+          className="flex items-center gap-2 rounded-md font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <BrandLogo className="h-7 w-7 rounded-lg" />
+          {t("Fixture")}
+        </Link>
+        <Link
+          to={routes.publicSchedule(slug, id)}
+          className="ml-2 min-w-0 truncate text-sm text-muted-foreground hover:text-foreground"
+        >
+          {t("Tournament page")}
+        </Link>
+        <span className="ml-auto" />
+        <ShareButton title={q.data?.campaign?.title} />
+        <ThemeToggle />
+      </header>
+      <main className="flex w-full flex-1 flex-col px-0 py-0 sm:px-6 sm:py-6">
+        <AlbumPanel slug={slug} id={id} campaignId={campaignId} />
+      </main>
     </div>
   );
 }

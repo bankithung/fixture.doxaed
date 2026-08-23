@@ -1,8 +1,10 @@
 import { Suspense, lazy, useEffect } from "react";
 import {
   BrowserRouter,
+  Navigate,
   Route,
   Routes,
+  useParams,
   useNavigate,
 } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -63,6 +65,14 @@ const TournamentMembersPage = lazy(() => import("@/features/tournaments/Tourname
 const TournamentAuditPage = lazy(() => import("@/features/tournaments/TournamentAuditPage").then((m) => ({ default: m.TournamentAuditPage })));
 const MatchConsolePage = lazy(() => import("@/features/matches/MatchConsolePage").then((m) => ({ default: m.MatchConsolePage })));
 const ControlRoomPage = lazy(() => import("@/features/controlroom/ControlRoomPage").then((m) => ({ default: m.ControlRoomPage })));
+function AlbumRedirect(): React.ReactElement {
+  const { slug = "", id = "", campaignId } = useParams();
+  const to = `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/schedule?view=album${
+    campaignId ? `&campaign=${encodeURIComponent(campaignId)}` : ""
+  }`;
+  return <Navigate to={to} replace />;
+}
+
 const MatchesBoardPage = lazy(() => import("@/features/tournaments/ops/MatchBoardPage").then((m) => ({ default: m.MatchesBoardPage })));
 const EditFixturePage = lazy(() => import("@/features/fixtures/EditFixturePage").then((m) => ({ default: m.EditFixturePage })));
 const MyTasksPage = lazy(() => import("@/features/tournaments/ops/MyTasksPage").then((m) => ({ default: m.MyTasksPage })));
@@ -104,7 +114,6 @@ const ModuleMatrixPage = lazy(() => import("@/features/permissions/ModuleMatrixP
 const LensCampaignListPage = lazy(() => import("@/features/lens/LensCampaignListPage").then((m) => ({ default: m.LensCampaignListPage })));
 const LensConsolePage = lazy(() => import("@/features/lens/LensConsolePage").then((m) => ({ default: m.LensConsolePage })));
 const LensJoinPage = lazy(() => import("@/features/lens/LensJoinPage").then((m) => ({ default: m.LensJoinPage })));
-const PublicAlbumPage = lazy(() => import("@/features/lens/PublicAlbumPage").then((m) => ({ default: m.PublicAlbumPage })));
 
 /** Listen for global auth events fired by the query client. */
 function AuthBusBridge(): null {
@@ -219,8 +228,16 @@ export default function App(): React.ReactElement {
                   which hands over to the upload page once a school has typed
                   its code (owner 2026-08-13). */}
               <Route path="/lens/join/:token" element={<LensJoinPage />} />
-              <Route path="/t/:slug/:id/album" element={<PublicAlbumPage />} />
-              <Route path="/t/:slug/:id/album/:campaignId" element={<PublicAlbumPage />} />
+              {/* The album lives INSIDE the public match centre now
+                  (owner 2026-08-23): one unified page. Old links land there. */}
+              <Route
+                path="/t/:slug/:id/album"
+                element={<AlbumRedirect />}
+              />
+              <Route
+                path="/t/:slug/:id/album/:campaignId"
+                element={<AlbumRedirect />}
+              />
               <Route path="/explore" element={<ExplorePage />} />
               <Route path="/cert/:awardId" element={<CertificatePage />} />
               <Route path="/t/:slug/:id/display" element={<VenueDisplayPage />} />

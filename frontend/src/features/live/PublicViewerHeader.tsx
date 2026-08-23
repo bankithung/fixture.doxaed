@@ -6,7 +6,7 @@ import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
-type Tab = "schedule" | "standings" | "entries";
+type Tab = "schedule" | "standings" | "entries" | "album";
 
 /** The public-viewer tabs (Matches / Standings / Schools), Google-sports-panel
  * style.
@@ -30,6 +30,7 @@ export function PublicViewerTabs({
     { key: "schedule", label: t("Matches"), to: routes.publicSchedule(slug, id) },
     { key: "standings", label: t("Standings"), to: routes.publicStandings(slug, id) },
     { key: "entries", label: t("Schools"), to: routes.publicEntries(slug, id) },
+    { key: "album", label: t("Photos"), to: `${routes.publicSchedule(slug, id)}?view=album` },
   ];
   return (
     <nav className="flex gap-1" aria-label={t("Tournament views")}>
