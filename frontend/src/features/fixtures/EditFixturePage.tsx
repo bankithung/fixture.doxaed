@@ -1,4 +1,10 @@
-import { useCallback, useMemo, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -14,6 +20,7 @@ import {
   type FixtureEdits,
   type FixtureValidationReport,
   type FixtureViolation,
+  type MiniTeam,
 } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,25 +38,31 @@ import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
 /**
- * The fixture EDIT workbench (owner ask, 2026-08-23). One dedicated page:
+ * The fixture EDIT workbench (owner ask, 2026-08-23; spreadsheet re-cut same
+ * day). One dedicated page, shaped like the tool a host actually knows:
  *
- * - GROUP matches in a TABLE — every editable value is a DROPDOWN (time slot
- *   chosen from the fixture's own slots, court from real court rows, each
- *   side from the competition's registered teams) and a row DRAGGED onto
- *   another swaps their slots. No free text anywhere.
- * - KNOCKOUT matches in the FLOW-CHART view (the same BracketView the public
- *   board uses) — click a card to open its editor; sides fed by
- *   winner_of/loser_of stay read-only because invariant 9 keeps pointers
- *   typed.
+ * - BOOKMARK TABS per sport — each game gets its own tab, exactly grouped.
+ * - Inside a tab, one SPREADSHEET per COURT — the day reads top-to-bottom
+ *   like a printed session sheet. An extra sheet catches unassigned slots.
+ * - GROUP matches carry a GROUP BAND row (Group A …) with that group's teams'
+ *   matches nested beneath it.
+ * - REAL spreadsheet columns — every column edge drags to resize, widths
+ *   remembered per table.
+ * - NO free text anywhere: times come from the fixture's own slots, courts
+ *   from court rows, sides from the competition's registered teams. Dragging
+ *   a row onto another swaps their slots.
+ * - KNOCKOUT renders as the flow-chart tree (the public BracketView); click a
+ *   card to edit it. Pointer-fed sides are read-only (invariant 9).
  * - NOTHING touches the real fixture until review + confirm: edits live in a
- *   local DRAFT (persisted to localStorage), validated against the full rule
- *   set on demand, then applied atomically with one audit row + snapshot.
+ *   DRAFT (persisted), validated against the full rule set, applied in one
+ *   atomic step with a pre-change snapshot.
  */
 
 type SlotDraft = { start?: string; court_id?: string; venue?: string };
 type TeamDraft = { home?: string | null; away?: string | null };
 
 const draftKey = (id: string) => `fixture-edit-draft-${id}`;
+const colWidthsKey = (id: string) => `fixture-edit-colwidths-${id}`;
 
 interface Draft {
   slots: Record<string, SlotDraft>;
@@ -66,6 +79,16 @@ function loadDraft(id: string): Draft {
   return { slots: {}, teams: {} };
 }
 
+function loadWidths(id: string): Record<string, number[]> {
+  try {
+    const raw = localStorage.getItem(colWidthsKey(id));
+    if (raw) return JSON.parse(raw) as Record<string, number[]>;
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
 function humanizeCode(code: string): string {
   const map: Record<string, string> = {
     venue_double_booked: t("Court double-booked"),
@@ -78,13 +101,16 @@ function humanizeCode(code: string): string {
     court_capacity_exceeded: t("More matches than the court can hold"),
     team_blackout: t("Team has a blackout that day"),
     closing_round_too_early: t("Closing round scheduled too early"),
-    non_closing_round_too_late: t("Non-closing round scheduled on the final days"),
+    non_closing_round_too_late: t(
+      "Non-closing round scheduled on the final days",
+    ),
     phase_out_of_order: t("Finish phase played out of order"),
     pinned_round_venue: t("Round must be played on its pinned venue"),
     linked_team_overlap: t("Shared player would overlap"),
   };
   return (
-    map[code] ?? code.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    map[code] ??
+    code.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
   );
 }
 
@@ -101,15 +127,135 @@ function fmtSlot(iso: string): string {
   });
 }
 
+function fmtTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Resizable-column primitives — a real spreadsheet lets you widen a column by
+// dragging its edge, and remembers it.
+// ---------------------------------------------------------------------------
+
+const MIN_COL = 56;
+
+function ColumnResizeHandle({
+  onDelta,
+}: {
+  onDelta: (dx: number) => void;
+}): React.ReactElement {
+  const start = useRef<number | null>(null);
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    start.current = e.clientX;
+    const move = (ev: MouseEvent) => {
+      if (start.current == null) return;
+      onDelta(ev.clientX - start.current);
+      start.current = ev.clientX;
+    };
+    const up = () => {
+      start.current = null;
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      document.body.style.cursor = "";
+    };
+    document.body.style.cursor = "col-resize";
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+
+  return (
+    <span
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={t("Resize column")}
+      onMouseDown={onMouseDown}
+      onClick={(e) => e.stopPropagation()}
+      className="absolute right-0 top-0 z-10 flex h-full w-2 cursor-col-resize touch-none items-center justify-center opacity-0 transition-opacity hover:opacity-100 group-th:hover:opacity-60"
+      data-testid="col-resizer"
+    >
+      <span className="h-6 w-[3px] rounded-full bg-primary/70" />
+    </span>
+  );
+}
+
+/** One spreadsheet table: fixed layout, per-column px widths, draggable
+ * edges. Widths persist under `widthsId`. */
+function SpreadTable({
+  widthsId,
+  columns,
+  children,
+  stored,
+  onStore,
+}: {
+  widthsId: string;
+  /** `[label, defaultPx]` per column. */
+  columns: [string, number][];
+  children: React.ReactNode;
+  stored: Record<string, number[]>;
+  onStore: (id: string, widths: number[]) => void;
+}): React.ReactElement {
+  const widths = useMemo(() => {
+    const saved = stored[widthsId];
+    return columns.map(([, def], i) =>
+      typeof saved?.[i] === "number" && saved[i] >= MIN_COL ? saved[i] : def,
+    );
+  }, [columns, stored, widthsId]);
+
+  const resize = (i: number, dx: number) => {
+    const next = [...widths];
+    next[i] = Math.max(MIN_COL, next[i] + dx);
+    onStore(widthsId, next);
+  };
+
+  return (
+    <table
+      className="w-full table-fixed border-collapse text-sm"
+      style={{ minWidth: widths.reduce((a, b) => a + b, 0) }}
+      data-testid={`sheet-${widthsId}`}
+    >
+      <thead>
+        <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+          {columns.map(([label], i) => (
+            <th
+              key={i}
+              // `group-th` lets the handle appear on hover of THIS cell only.
+              className="group-th relative select-none px-3 py-2 font-medium"
+              style={{ width: widths[i], minWidth: widths[i] }}
+            >
+              {label}
+              <ColumnResizeHandle onDelta={(dx) => resize(i, dx)} />
+            </th>
+          ))}
+        </tr>
+      </thead>
+      {children}
+    </table>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
 export function EditFixturePage(): React.ReactElement {
   const { id = "" } = useParams();
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [draft, setDraft] = useState<Draft>(() => loadDraft(id));
+  const [storedWidths, setStoredWidths] = useState<Record<string, number[]>>(() =>
+    loadWidths(id),
+  );
   const [report, setReport] = useState<FixtureValidationReport | null>(null);
   const [checking, setChecking] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [activeSport, setActiveSport] = useState<string>("");
 
   const query = useQuery({
     queryKey: ["fixture-edit", id],
@@ -129,6 +275,21 @@ export function EditFixturePage(): React.ReactElement {
     [id],
   );
 
+  const storeWidths = useCallback(
+    (tableId: string, widths: number[]) => {
+      setStoredWidths((prev) => {
+        const next = { ...prev, [tableId]: widths };
+        try {
+          localStorage.setItem(colWidthsKey(id), JSON.stringify(next));
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+    },
+    [id],
+  );
+
   const discard = useCallback(() => {
     persist({ slots: {}, teams: {} });
     setReport(null);
@@ -137,6 +298,25 @@ export function EditFixturePage(): React.ReactElement {
   // ---- merged view: payload rows with the DRAFT laid over them ----------
   const merged = useMemo(() => {
     if (!payload) return [];
+    const findTeam = (tid: string | null | undefined): MiniTeam | null => {
+      if (tid == null) return null;
+      // Prefer an ORIGINAL row (full MiniTeam incl. crest).
+      const orig = payload.matches.find(
+        (x) => x.home_team?.id === tid || x.away_team?.id === tid,
+      );
+      const fromOrig =
+        orig?.home_team?.id === tid
+          ? orig.home_team
+          : orig?.away_team?.id === tid
+            ? orig.away_team
+            : null;
+      if (fromOrig) return fromOrig;
+      for (const list of Object.values(payload.teams_by_leaf)) {
+        const hit = list.find((x) => x.id === tid);
+        if (hit) return { ...hit, short_name: hit.name.slice(0, 12), crest: "" };
+      }
+      return null;
+    };
     return payload.matches.map((m): FixtureEditMatch => {
       const sd = draft.slots[m.id];
       const td = draft.teams[m.id];
@@ -145,54 +325,87 @@ export function EditFixturePage(): React.ReactElement {
         out = {
           ...out,
           scheduled_at: sd.start ?? out.scheduled_at,
-          court_id: sd.court_id ?? out.court_id,
+          court_id: sd.court_id != null && sd.court_id !== "" ? sd.court_id : out.court_id,
           venue:
-            sd.court_id != null
-              ? (payload?.courts.find((c) => c.id === sd.court_id)?.name ??
+            sd.court_id != null && sd.court_id !== ""
+              ? (payload.courts.find((c) => c.id === sd.court_id)?.name ??
                 out.venue)
               : (sd.venue ?? out.venue),
         };
       }
-      if (td && payload) {
-        const find = (tid: string | null | undefined) => {
-          if (tid == null) return null;
-          // Prefer the ORIGINAL row (full MiniTeam shape incl. crest).
-          const orig = payload.matches.find(
-            (x) =>
-              x.home_team?.id === tid ||
-              x.away_team?.id === tid,
-          );
-          const fromOrig =
-            orig?.home_team?.id === tid
-              ? orig.home_team
-              : orig?.away_team?.id === tid
-                ? orig.away_team
-                : null;
-          if (fromOrig) return fromOrig;
-          for (const list of Object.values(payload.teams_by_leaf)) {
-            const hit = list.find((x) => x.id === tid);
-            if (hit)
-              return { ...hit, short_name: hit.name.slice(0, 12), crest: "" };
-          }
-          return null;
-        };
-        if ("home" in td)
-          out = { ...out, home_team: find(td.home) ?? out.home_team };
-        if ("away" in td)
-          out = { ...out, away_team: find(td.away) ?? out.away_team };
+      if (td) {
+        if ("home" in td) out = { ...out, home_team: findTeam(td.home) ?? out.home_team };
+        if ("away" in td) out = { ...out, away_team: findTeam(td.away) ?? out.away_team };
       }
       return out;
     });
   }, [payload, draft]);
 
-  const groupMatches = useMemo(
-    () => merged.filter((m) => m.stage !== "knockout"),
-    [merged],
+  // ---- SPORT TABS --------------------------------------------------------
+  const sports = useMemo(() => {
+    const keys: string[] = [];
+    for (const m of merged) {
+      if (m.sport && !keys.includes(m.sport)) keys.push(m.sport);
+      if (!m.sport && !keys.includes("")) keys.push("");
+    }
+    return keys;
+  }, [merged]);
+
+  const sportLabel = useCallback(
+    (key: string) => {
+      if (!payload) return key || t("General");
+      const leaf = payload.leaves.find((l) =>
+        (l.leaf_key || "").startsWith(key ? `${key}.` : ""),
+      );
+      if (leaf?.label) return leaf.label.split("·")[0].trim();
+      return key ? key.replace(/_/g, " ") : t("General");
+    },
+    [payload],
   );
-  const knockoutMatches = useMemo(
-    () => merged.filter((m) => m.stage === "knockout"),
-    [merged],
+
+  // An unset tab falls back to the FIRST sport — derived, never an effect.
+  const effectiveSport = activeSport || sports[0] || "";
+  const activeMatches = useMemo(
+    () => merged.filter((m) => (m.sport || "") === effectiveSport),
+    [merged, effectiveSport],
   );
+  const activeGroup = useMemo(
+    () => activeMatches.filter((m) => m.stage !== "knockout"),
+    [activeMatches],
+  );
+  const activeKnockout = useMemo(
+    () => activeMatches.filter((m) => m.stage === "knockout"),
+    [activeMatches],
+  );
+
+  /** Court sections, in the payload's own court order; unmatched courts last;
+   * unassigned slots get their own sheet at the end. */
+  const courtSheets = useMemo(() => {
+    if (!payload) return [];
+    const buckets = new Map<string, FixtureEditMatch[]>();
+    for (const m of activeGroup) {
+      const key = m.court_id ?? "";
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key)!.push(m);
+    }
+    const ordered: { courtId: string; name: string; matches: FixtureEditMatch[] }[] =
+      [];
+    for (const c of payload.courts) {
+      const list = buckets.get(c.id);
+      if (list?.length) {
+        ordered.push({ courtId: c.id, name: c.name, matches: list });
+        buckets.delete(c.id);
+      }
+    }
+    for (const [key, list] of buckets) {
+      ordered.push({
+        courtId: key,
+        name: key ? t("Other courts") : t("No court assigned"),
+        matches: list,
+      });
+    }
+    return ordered;
+  }, [activeGroup, payload]);
 
   const timeOptions = useMemo(() => {
     const set = new Set<string>();
@@ -289,9 +502,7 @@ export function EditFixturePage(): React.ReactElement {
     const map = new Map<string, FixtureViolation[]>();
     for (const v of report?.violations ?? []) {
       for (const key of [v.match_id, v.other_match_id]) {
-        if (key) {
-          map.set(key, [...(map.get(key) ?? []), v]);
-        }
+        if (key) map.set(key, [...(map.get(key) ?? []), v]);
       }
     }
     return map;
@@ -325,7 +536,7 @@ export function EditFixturePage(): React.ReactElement {
             )}
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           {dirtyCount > 0 ? (
             <>
               <span className="rounded-full bg-warning-muted px-2.5 py-1 text-xs font-medium text-warning">
@@ -399,207 +610,94 @@ export function EditFixturePage(): React.ReactElement {
         </div>
       ) : null}
 
-      {/* GROUP STAGE — table */}
-      <section className="rounded-xl border border-border bg-card shadow-sm">
-        <header className="border-b border-border px-4 py-3">
-          <h2 className="font-semibold">{t("Group stage")}</h2>
-          <p className="text-xs text-muted-foreground">
-            {t(
-              "Pick times, courts and teams from the lists — or drag a row onto another to swap their slots.",
-            )}
-          </p>
-        </header>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[62rem] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-3 py-2 font-medium">{t("No")}</th>
-                <th className="px-3 py-2 font-medium">{t("Group")}</th>
-                <th className="px-3 py-2 font-medium">{t("Time")}</th>
-                <th className="px-3 py-2 font-medium">{t("Court")}</th>
-                <th className="px-3 py-2 font-medium">{t("Home")}</th>
-                <th className="px-3 py-2 font-medium">{t("Away")}</th>
-                <th className="px-3 py-2 font-medium">{t("Status")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {groupMatches.map((m) => {
-                const changed = draft.slots[m.id] || draft.teams[m.id];
-                const teams =
-                  payload.teams_by_leaf[m.leaf_key] ??
-                  payload.teams_by_leaf[""] ??
-                  [];
-                const vlist = violationsByMatch.get(m.id) ?? [];
-                const hasNew = vlist.some((v) => !v.pre_existing);
-                return (
-                  <tr
-                    key={m.id}
-                    draggable={m.editable}
-                    data-testid={`edit-row-${m.match_no}`}
-                    onDragStart={(e) =>
-                      e.dataTransfer.setData("text/match-id", m.id)
-                    }
-                    onDragOver={
-                      m.editable
-                        ? (e) => e.preventDefault()
-                        : undefined
-                    }
-                    onDrop={
-                      m.editable
-                        ? (e) => {
-                            e.preventDefault();
-                            const other = e.dataTransfer.getData("text/match-id");
-                            if (other) swapSlots(other, m.id);
-                          }
-                        : undefined
-                    }
-                    className={cn(
-                      "border-b border-border/60",
-                      m.editable && "cursor-grab hover:bg-secondary/40",
-                      !m.editable && "opacity-60",
-                      hasNew && "bg-destructive/5",
-                    )}
-                  >
-                    <td className="px-3 py-2 font-tabular">{m.match_no}</td>
-                    <td className="max-w-[14rem] truncate px-3 py-2">
-                      {m.group_label || humanizeLeaf(m.leaf_key) || "—"}
-                    </td>
-                    <td className="px-3 py-2">
-                      <Select
-                        size="sm"
-                        aria-label={t("Time slot")}
-                        value={m.scheduled_at ?? ""}
-                        disabled={!m.editable}
-                        onChange={(v) => setSlot(m.id, { start: v })}
-                        options={[
-                          ...(m.scheduled_at
-                            ? [
-                                {
-                                  value: m.scheduled_at,
-                                  label: fmtSlot(m.scheduled_at),
-                                },
-                              ]
-                            : []),
-                          ...timeOptions
-                            .filter((ts) => ts !== m.scheduled_at)
-                            .map((ts) => ({ value: ts, label: fmtSlot(ts) })),
-                        ]}
-                      />
-                      {changed ? (
-                        <span className="mt-1 block text-[11px] font-medium text-warning">
-                          {t("edited")}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-2">
-                      <Select
-                        size="sm"
-                        aria-label={t("Court")}
-                        value={m.court_id ?? ""}
-                        disabled={!m.editable}
-                        searchable
-                        onChange={(v) =>
-                          setSlot(
-                            m.id,
-                            v === ""
-                              ? { court_id: "", venue: "" }
-                              : { court_id: v },
-                          )
-                        }
-                        options={[
-                          { value: "", label: t("Unassigned") },
-                          ...payload.courts.map((c) => ({
-                            value: c.id,
-                            label: c.name,
-                          })),
-                        ]}
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      {m.home_editable ? (
-                        <Select
-                          size="sm"
-                          aria-label={t("Home team")}
-                          value={m.home_team?.id ?? ""}
-                          disabled={!m.editable}
-                          searchable
-                          onChange={(v) =>
-                            setTeams(m.id, { home: v === "" ? null : v })
-                          }
-                          options={[
-                            { value: "", label: t("TBD") },
-                            ...teams.map((tm) => ({
-                              value: tm.id,
-                              label: tm.name,
-                            })),
-                          ]}
-                        />
-                      ) : (
-                        <span className="text-xs italic text-muted-foreground">
-                          {sideWaiting(m, "home", matchNos)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      {m.away_editable ? (
-                        <Select
-                          size="sm"
-                          aria-label={t("Away team")}
-                          value={m.away_team?.id ?? ""}
-                          disabled={!m.editable}
-                          searchable
-                          onChange={(v) =>
-                            setTeams(m.id, { away: v === "" ? null : v })
-                          }
-                          options={[
-                            { value: "", label: t("TBD") },
-                            ...teams.map((tm) => ({
-                              value: tm.id,
-                              label: tm.name,
-                            })),
-                          ]}
-                        />
-                      ) : (
-                        <span className="text-xs italic text-muted-foreground">
-                          {sideWaiting(m, "away", matchNos)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-xs capitalize text-muted-foreground">
-                      {m.status}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {/* SPORT BOOKMARK TABS */}
+      {sports.length > 1 ? (
+        <div
+          role="tablist"
+          aria-label={t("Sports")}
+          className="-mb-px flex gap-1 overflow-x-auto"
+          data-testid="sport-tabs"
+        >
+          {sports.map((key) => {
+            const active = key === effectiveSport;
+            return (
+              <button
+                key={key || "_"}
+                role="tab"
+                type="button"
+                aria-selected={active}
+                onClick={() => setActiveSport(key)}
+                className={cn(
+                  "-mb-px whitespace-nowrap rounded-t-lg border border-b-0 px-4 py-2 text-sm font-medium capitalize transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  active
+                    ? "border-border bg-card text-foreground"
+                    : "border-transparent text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
+                )}
+              >
+                {sportLabel(key)}
+                <span className="ml-1.5 font-tabular text-xs text-muted-foreground">
+                  {merged.filter((m) => (m.sport || "") === key).length}
+                </span>
+              </button>
+            );
+          })}
         </div>
-      </section>
+      ) : null}
 
-      {/* KNOCKOUT — flow-chart view */}
-      {knockoutMatches.length > 0 ? (
-        <section className="rounded-xl border border-border bg-card shadow-sm">
-          <header className="border-b border-border px-4 py-3">
-            <h2 className="font-semibold">{t("Knockout")}</h2>
-            <p className="text-xs text-muted-foreground">
-              {t(
-                "The draw as a tree. Click a card to re-slot it — sides fed by another match's winner or loser are decided on the court, not here.",
-              )}
-            </p>
-          </header>
-          <div className="p-4">
+      {/* COURT SHEETS for the active sport */}
+      <div className="flex flex-col gap-5 rounded-b-xl rounded-tr-xl border border-border bg-card p-4 shadow-sm">
+        {courtSheets.length === 0 && activeKnockout.length === 0 ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">
+            {t("No matches in this sport yet.")}
+          </p>
+        ) : null}
+
+        {courtSheets.map((sheet) => (
+          <CourtSheet
+            key={sheet.courtId || "__none__"}
+            sheetName={sheet.name}
+            matches={[...sheet.matches].sort((a, b) =>
+              (a.group_label || "").localeCompare(b.group_label || "") ||
+              (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? ""),
+            )}
+            widthsId={`${activeSport}:${sheet.courtId || "none"}`}
+            stored={storedWidths}
+            onStore={storeWidths}
+            draft={draft}
+            timeOptions={timeOptions}
+            teamsFor={(leafKey) =>
+              payload.teams_by_leaf[leafKey] ?? payload.teams_by_leaf[""] ?? []
+            }
+            violationsByMatch={violationsByMatch}
+            onSetSlot={setSlot}
+            onSetTeams={setTeams}
+            onSwap={swapSlots}
+          />
+        ))}
+
+        {/* KNOCKOUT — flow-chart view, still scoped to this sport tab */}
+        {activeKnockout.length > 0 ? (
+          <section>
+            <header className="mb-2">
+              <h3 className="font-semibold">{t("Knockout")}</h3>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "The draw as a tree. Click a card to re-slot it — sides fed by another match's winner or loser are decided on the court, not here.",
+                )}
+              </p>
+            </header>
             <BracketView
-              matches={knockoutMatches}
+              matches={activeKnockout}
               timeZone={payload.time_zone}
               linkFor={(m) => `?m=${m.id}`}
             />
-          </div>
-        </section>
-      ) : null}
+          </section>
+        ) : null}
+      </div>
 
       {/* Knockout card editor */}
       <KnockoutEditorDialog
-        match={knockoutMatches.find((m) => m.id === editTarget) ?? null}
+        match={merged.find((m) => m.id === editTarget) ?? null}
         payload={payload}
         matchNos={matchNos}
         onClose={() => {
@@ -660,6 +758,228 @@ export function EditFixturePage(): React.ReactElement {
   );
 }
 
+// ---------------------------------------------------------------------------
+// One COURT'S spreadsheet. Group-stage matches sit under GROUP BAND rows so
+// the sheet reads "Group A" then its teams' matches, exactly like a wall
+// sheet. Knockout rows (if any landed on this court) follow their own band.
+// ---------------------------------------------------------------------------
+
+function CourtSheet({
+  sheetName,
+  matches,
+  widthsId,
+  stored,
+  onStore,
+  draft,
+  timeOptions,
+  teamsFor,
+  violationsByMatch,
+  onSetSlot,
+  onSetTeams,
+  onSwap,
+}: {
+  sheetName: string;
+  matches: FixtureEditMatch[];
+  widthsId: string;
+  stored: Record<string, number[]>;
+  onStore: (id: string, widths: number[]) => void;
+  draft: Draft;
+  timeOptions: string[];
+  teamsFor: (leafKey: string) => { id: string; name: string }[];
+  violationsByMatch: Map<string, FixtureViolation[]>;
+  onSetSlot: (id: string, patch: SlotDraft) => void;
+  onSetTeams: (id: string, patch: TeamDraft) => void;
+  onSwap: (aId: string, bId: string) => void;
+}): React.ReactElement | null {
+  const COLUMNS: [string, number][] = [
+    [t("No"), 64],
+    [t("Time"), 110],
+    [t("Category"), 190],
+    [t("Home"), 240],
+    [t("Away"), 240],
+    [t("Status"), 100],
+  ];
+
+  // Band rows are computed ONCE per render into a flat list — no mutable
+  // state shared across row renders.
+  const rows = useMemo(() => {
+    const out: ({ kind: "band"; label: string } | { kind: "match"; m: FixtureEditMatch })[] =
+      [];
+    let lastBand: string | null = null;
+    for (const m of matches) {
+      const isKo = m.stage === "knockout";
+      const band = isKo
+        ? t("Knockout")
+        : m.group_label || humanizeLeaf(m.leaf_key) || t("General");
+      if (band !== lastBand) {
+        out.push({ kind: "band", label: band });
+        lastBand = band;
+      }
+      out.push({ kind: "match", m });
+    }
+    return out;
+  }, [matches]);
+
+  if (matches.length === 0) return null;
+
+  return (
+    <section className="overflow-x-auto rounded-lg border border-border">
+      <div className="sticky-header flex items-center justify-between border-b border-border bg-muted/60 px-3 py-2">
+        <h3 className="font-semibold">{sheetName}</h3>
+        <span className="font-tabular text-xs text-muted-foreground">
+          {matches.length}
+        </span>
+      </div>
+      <SpreadTable
+        widthsId={widthsId}
+        columns={COLUMNS}
+        stored={stored}
+        onStore={onStore}
+      >
+        <tbody>
+          {rows.map((row) => {
+            if (row.kind === "band") {
+              return (
+                <tr key={`band-${row.label}`}>
+                  <td
+                    colSpan={COLUMNS.length}
+                    className="border-y border-border bg-secondary/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-secondary-foreground"
+                  >
+                    {row.label}
+                  </td>
+                </tr>
+              );
+            }
+            const m = row.m;
+            const changed =
+              draft.slots[m.id] &&
+              (draft.slots[m.id].start || draft.slots[m.id].court_id != null);
+            const teamsChanged =
+              draft.teams[m.id] &&
+              (("home" in draft.teams[m.id]) || ("away" in draft.teams[m.id]));
+            const teams = teamsFor(m.leaf_key);
+            const vlist = violationsByMatch.get(m.id) ?? [];
+            const hasNew = vlist.some((v) => !v.pre_existing);
+            return (
+              <Fragment key={m.id}>
+                <tr
+                  draggable={m.editable}
+                  data-testid={`edit-row-${m.match_no}`}
+                  onDragStart={(e) =>
+                    e.dataTransfer.setData("text/match-id", m.id)
+                  }
+                  onDragOver={m.editable ? (e) => e.preventDefault() : undefined}
+                  onDrop={
+                    m.editable
+                      ? (e) => {
+                          e.preventDefault();
+                          const other = e.dataTransfer.getData("text/match-id");
+                          if (other) onSwap(other, m.id);
+                        }
+                      : undefined
+                  }
+                  className={cn(
+                    "border-b border-border/60",
+                    m.editable && "cursor-grab hover:bg-secondary/30",
+                    !m.editable && "opacity-60",
+                    hasNew && "bg-destructive/5",
+                  )}
+                >
+                  <td className="px-3 py-1.5 font-tabular">{m.match_no}</td>
+                  <td className="px-3 py-1.5">
+                    <Select
+                      size="sm"
+                      aria-label={t("Time slot")}
+                      value={m.scheduled_at ?? ""}
+                      disabled={!m.editable}
+                      onChange={(v) => onSetSlot(m.id, { start: v })}
+                      options={[
+                        ...(m.scheduled_at
+                          ? [
+                              {
+                                value: m.scheduled_at,
+                                label: fmtTime(m.scheduled_at),
+                              },
+                            ]
+                          : []),
+                        ...timeOptions
+                          .filter((ts) => ts !== m.scheduled_at)
+                          .map((ts) => ({ value: ts, label: fmtSlot(ts) })),
+                      ]}
+                    />
+                    {changed || teamsChanged ? (
+                      <span className="mt-0.5 block text-[11px] font-medium text-warning">
+                        {t("edited")}
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="truncate px-3 py-1.5 text-xs text-muted-foreground">
+                    {humanizeLeaf(m.leaf_key) || "—"}
+                  </td>
+                  <td className="px-3 py-1.5">
+                    {m.home_editable ? (
+                      <Select
+                        size="sm"
+                        aria-label={t("Home team")}
+                        value={m.home_team?.id ?? ""}
+                        disabled={!m.editable}
+                        searchable
+                        onChange={(v) =>
+                          onSetTeams(m.id, { home: v === "" ? null : v })
+                        }
+                        options={[
+                          { value: "", label: t("TBD") },
+                          ...teams.map((tm) => ({ value: tm.id, label: tm.name })),
+                        ]}
+                      />
+                    ) : (
+                      <span className="text-xs italic text-muted-foreground">
+                        {sideWaiting(m, "home", matchNosOf(matches))}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-1.5">
+                    {m.away_editable ? (
+                      <Select
+                        size="sm"
+                        aria-label={t("Away team")}
+                        value={m.away_team?.id ?? ""}
+                        disabled={!m.editable}
+                        searchable
+                        onChange={(v) =>
+                          onSetTeams(m.id, { away: v === "" ? null : v })
+                        }
+                        options={[
+                          { value: "", label: t("TBD") },
+                          ...teams.map((tm) => ({ value: tm.id, label: tm.name })),
+                        ]}
+                      />
+                    ) : (
+                      <span className="text-xs italic text-muted-foreground">
+                        {sideWaiting(m, "away", matchNosOf(matches))}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-1.5 text-xs capitalize text-muted-foreground">
+                    {m.status}
+                  </td>
+                </tr>
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </SpreadTable>
+    </section>
+  );
+}
+
+/** match_no lookup scoped to one sheet — enough for pointer labels there. */
+function matchNosOf(
+  matches: FixtureEditMatch[],
+): Map<string, number> {
+  return new Map(matches.map((m) => [m.id, m.match_no] as const));
+}
+
 function sideWaiting(
   m: FixtureEditMatch,
   side: "home" | "away",
@@ -667,7 +987,10 @@ function sideWaiting(
 ): string {
   const src = side === "home" ? m.home_source : m.away_source;
   const type = src?.type;
-  const no = src && "match_id" in src ? matchNos.get(String(src.match_id)) : undefined;
+  const no =
+    src && "match_id" in src
+      ? matchNos.get(String(src.match_id))
+      : undefined;
   if (type === "winner_of")
     return no ? t(`Winner of M${no}`) : t("Winner of an earlier match");
   if (type === "loser_of")
@@ -677,8 +1000,7 @@ function sideWaiting(
   return t("To be decided");
 }
 
-/** Time/court editor for ONE knockout card. Teams are read-only here when a
- * pointer feeds them; direct sides still get dropdowns. */
+/** Time/court editor for ONE knockout card. Teams read-only when pointer-fed. */
 function KnockoutEditorDialog({
   match,
   payload,
@@ -703,7 +1025,11 @@ function KnockoutEditorDialog({
   const vlist = violations.get(match.id) ?? [];
 
   return (
-    <Dialog open={!!match} onOpenChange={(o) => !o && onClose()} ariaLabel={t("Edit match")}>
+    <Dialog
+      open={!!match}
+      onOpenChange={(o) => !o && onClose()}
+      ariaLabel={t("Edit match")}
+    >
       <DialogHeader>
         <DialogTitle>{`M${match.match_no}`}</DialogTitle>
         <DialogDescription>
@@ -729,7 +1055,9 @@ function KnockoutEditorDialog({
           id="ko-court"
           value={match.court_id ?? ""}
           searchable
-          onChange={(v) => onSetSlot(match.id, v === "" ? { court_id: "" } : { court_id: v })}
+          onChange={(v) =>
+            onSetSlot(match.id, v === "" ? { court_id: "" } : { court_id: v })
+          }
           options={[
             { value: "", label: t("Unassigned") },
             ...payload.courts.map((c) => ({ value: c.id, label: c.name })),
@@ -739,7 +1067,10 @@ function KnockoutEditorDialog({
           <ul className="space-y-1 text-xs">
             {vlist.map((v, i) => (
               <li key={i} className="flex items-center gap-1.5">
-                <AlertTriangle aria-hidden="true" className="h-3 w-3 shrink-0 text-warning" />
+                <AlertTriangle
+                  aria-hidden="true"
+                  className="h-3 w-3 shrink-0 text-warning"
+                />
                 {humanizeCode(v.code)}
               </li>
             ))}
@@ -752,4 +1083,3 @@ function KnockoutEditorDialog({
     </Dialog>
   );
 }
-
