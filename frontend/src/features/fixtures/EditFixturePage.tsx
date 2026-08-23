@@ -14,9 +14,11 @@ import {
   ClipboardCheck,
   History,
   RotateCcw,
+  Users,
 } from "lucide-react";
 import {
   tournamentsApi,
+  type RosterMember,
   type FixtureEditMatch,
   type FixtureEditPayload,
   type FixtureEdits,
@@ -32,6 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
 import { BracketView } from "@/features/tournaments/BracketView";
 import { humanizeLeaf } from "@/features/controlroom/format";
@@ -258,6 +261,7 @@ export function EditFixturePage(): React.ReactElement {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [activeSport, setActiveSport] = useState<string>("");
+  const [studentsOpen, setStudentsOpen] = useState(false);
 
   const query = useQuery({
     queryKey: ["fixture-edit", id],
@@ -550,9 +554,12 @@ export function EditFixturePage(): React.ReactElement {
   const editTarget = params.get("m");
 
   return (
-    <div className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
+    // ONE section: header, rule status, sport tabs and every sheet live in
+    // this single card - the workbench is one object on the page.
+    <div className="flex w-full flex-col px-4 py-6 sm:px-6 lg:px-8">
+      <div className="rounded-xl border border-border bg-card shadow-sm">
       {/* Header + draft state */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border p-4">
         <div>
           <h1 className="page-title">{t("Edit fixture")}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
@@ -562,6 +569,15 @@ export function EditFixturePage(): React.ReactElement {
           </p>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setStudentsOpen(true)}
+            data-testid="view-students"
+          >
+            <Users aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+            {t("All students")}
+          </Button>
           {dirtyCount > 0 ? (
             <>
               <span className="rounded-full bg-warning-muted px-2.5 py-1 text-xs font-medium text-warning">
@@ -595,7 +611,7 @@ export function EditFixturePage(): React.ReactElement {
         <div
           role="status"
           className={cn(
-            "rounded-xl border p-4 text-sm",
+            "m-4 rounded-xl border p-4 text-sm",
             newHardCount > 0
               ? "border-destructive/40 bg-destructive/5"
               : "border-border bg-card",
@@ -648,7 +664,7 @@ export function EditFixturePage(): React.ReactElement {
         <div
           role="tablist"
           aria-label={t("Sports")}
-          className="-mb-px flex gap-1 overflow-x-auto"
+          className="-mb-px flex gap-1 overflow-x-auto border-b border-border px-3 pt-1"
           data-testid="sport-tabs"
         >
           {sports.map((key) => {
@@ -678,7 +694,7 @@ export function EditFixturePage(): React.ReactElement {
       ) : null}
 
       {/* COURT SHEETS for the active sport */}
-      <div className="flex flex-col gap-5 rounded-b-xl rounded-tr-xl border border-border bg-card p-4 shadow-sm">
+      <div className="flex flex-col gap-5 p-4">
         {courtSheets.length === 0 && activeKnockout.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
             {t("No matches in this sport yet.")}
@@ -719,11 +735,17 @@ export function EditFixturePage(): React.ReactElement {
                 )}
               </p>
             </header>
-            <BracketView
-              matches={activeKnockout}
-              timeZone={payload.time_zone}
-              linkFor={(m) => `?m=${m.id}`}
-            />
+            {/* wrapNames grows every card until the LONGEST school name fits
+                and wraps - no more truncated "Grace Academy Higher Secondar…".
+                The scroll container keeps it responsive on a phone. */}
+            <div className="-mx-1 overflow-x-auto px-1 pb-1">
+              <BracketView
+                matches={activeKnockout}
+                timeZone={payload.time_zone}
+                linkFor={(m) => `?m=${m.id}`}
+                wrapNames
+              />
+            </div>
           </section>
         ) : null}
       </div>
@@ -740,6 +762,15 @@ export function EditFixturePage(): React.ReactElement {
         }}
         onSetSlot={setSlot}
         violations={violationsByMatch}
+      />
+
+      </div>
+
+      {/* All students */}
+      <StudentsDialog
+        open={studentsOpen}
+        onOpenChange={setStudentsOpen}
+        tournamentId={id}
       />
 
       {/* Review & submit */}
@@ -788,6 +819,119 @@ export function EditFixturePage(): React.ReactElement {
         </DialogFooter>
       </Dialog>
     </div>
+  );
+}
+
+/** Every declared participant, one dialog: students grouped by school, each
+ * naming the competitions they ended up in. Read-only - the participants
+ * workbench owns edits. */
+function StudentsDialog({
+  open,
+  onOpenChange,
+  tournamentId,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  tournamentId: string;
+}): React.ReactElement {
+  const [q, setQ] = useState("");
+  const query = useQuery({
+    queryKey: ["fixture-edit-students", tournamentId],
+    queryFn: () => tournamentsApi.roster(tournamentId),
+    enabled: open,
+  });
+  const members: RosterMember[] = useMemo(() => {
+    const all = query.data?.members ?? [];
+    const needle = q.trim().toLowerCase();
+    if (!needle) return all;
+    return all.filter(
+      (m) =>
+        m.full_name.toLowerCase().includes(needle) ||
+        (m.institution?.name ?? "").toLowerCase().includes(needle),
+    );
+  }, [query.data, q]);
+  const bySchool = useMemo(() => {
+    const map = new Map<string, { name: string; rows: RosterMember[] }>();
+    for (const m of members) {
+      const key = m.institution?.id ?? "_";
+      if (!map.has(key))
+        map.set(key, { name: m.institution?.name ?? t("No school"), rows: [] });
+      map.get(key)!.rows.push(m);
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [members]);
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      ariaLabel={t("All students")}
+    >
+      <DialogHeader>
+        <DialogTitle>{t("All students")}</DialogTitle>
+        <DialogDescription>
+          {query.data
+            ? t(
+                `${query.data.counts.students} student(s), ${query.data.counts.teachers} teacher(s) declared across every school.`,
+              )
+            : t("Loading…")}
+        </DialogDescription>
+      </DialogHeader>
+      <Input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder={t("Search name or school…")}
+        aria-label={t("Search participants")}
+        className="mb-2"
+      />
+      <div className="max-h-80 space-y-3 overflow-y-auto rounded-lg border border-border p-3">
+        {bySchool.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            {t("No participants declared yet.")}
+          </p>
+        ) : (
+          bySchool.map((school) => (
+            <div key={school.name}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {school.name}
+              </p>
+              <ul className="mt-1 divide-y divide-border/60">
+                {school.rows.map((m) => (
+                  <li
+                    key={m.id}
+                    className="flex items-center justify-between gap-2 py-1 text-sm"
+                  >
+                    <span className="min-w-0 truncate">
+                      {m.full_name}
+                      {m.kind === "teacher" ? (
+                        <span className="ml-1.5 rounded bg-secondary px-1 py-0.5 text-[10px] uppercase text-secondary-foreground">
+                          {t("Teacher")}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {m.entries.length > 0
+                        ? m.entries
+                            .map((e) =>
+                              humanizeLeaf(
+                                (e as { leaf_key?: string }).leaf_key ?? "",
+                              ),
+                            )
+                            .filter(Boolean)
+                            .join(", ")
+                        : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        )}
+      </div>
+      <DialogFooter>
+        <Button onClick={() => onOpenChange(false)}>{t("Close")}</Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 
