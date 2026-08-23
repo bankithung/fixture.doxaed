@@ -25,8 +25,9 @@ The contract that shapes this module:
 """
 from __future__ import annotations
 
+import itertools
 import uuid as _uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from django.db import transaction
@@ -142,7 +143,6 @@ def editable_fixture(tournament) -> dict[str, Any]:
     # Students per team, so the workbench's "show students" toggle can reveal
     # WHO each side fields without leaving the spreadsheet.
     players_by_team: dict[str, list[dict[str, Any]]] = {}
-    from apps.matches.models import MatchStatus as _MS
     from apps.teams.models import Player as _Player
 
     for p in (
@@ -272,6 +272,100 @@ def _parse_edits(tournament, edits: dict[str, Any]) -> tuple[dict, dict]:
     return slots, teams
 
 
+def _student_rest_violations(
+    tournament,
+    assignments: dict[str, tuple[datetime, str]],
+    reqs,
+    cfg,
+    match_cache: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Per-STUDENT rest breaks across DIFFERENT teams (the hole the school
+    and team-level rules cannot see: a girl fielded by her school's doubles
+    pair AND her singles entry). A constraint record is NOT required - the
+    workbench judges the actual rosters against the sport's own rest rule."""
+    from apps.fixtures.services.repair import _duration_minutes
+    from apps.teams.models import Player
+
+    # Required rest per sport, from the tournament's min_rest_minutes records.
+    rest_by_sport: dict[str, int] = {}
+    global_rest = 5
+    for c in tournament.constraints or []:
+        if not isinstance(c, dict) or c.get("type") != "min_rest_minutes":
+            continue
+        minutes = int((c.get("params") or {}).get("minutes") or 0)
+        scope = str(c.get("scope") or "")
+        if scope.startswith("sport:"):
+            rest_by_sport[scope.split(":", 1)[1]] = minutes
+        elif scope == "all" or scope == "":
+            global_rest = minutes
+
+    dur_by_match = {
+        r.id: timedelta(
+            minutes=_duration_minutes(tournament, r.sport, cfg.slot_minutes)
+        )
+        for r in reqs
+    }
+
+    # person -> [(match_id, start, end)]
+    by_person: dict[int, list[tuple[str, datetime, datetime]]] = {}
+    rows = (
+        Player.objects.filter(tournament=tournament, deleted_at__isnull=True)
+        .select_related("person", "team")
+    )
+    for p in rows:
+        tid = str(p.team_id)
+        for mid, (start, _venue) in assignments.items():
+            m = match_cache.get(mid)
+            if m is None or tid not in (str(m.home_team_id), str(m.away_team_id)):
+                continue
+            end = start + dur_by_match.get(mid, timedelta(minutes=cfg.slot_minutes))
+            by_person.setdefault(p.person_id, []).append((mid, start, end))
+
+    out: list[dict[str, Any]] = []
+    seen: set[tuple] = set()
+    for pid, slots in by_person.items():
+        if len(slots) < 2:
+            continue
+        from apps.teams.models import Person
+
+        name = (
+            Person.objects.filter(id=pid)
+            .values_list("full_name", flat=True)
+            .first()
+            or "?"
+        )
+        ordered = sorted(slots, key=lambda x: x[1])
+        for (a_mid, _a_start, a_end), (b_mid, b_s, _b_e) in itertools.pairwise(
+            ordered
+        ):
+            if b_s >= a_end and (b_s - a_end).total_seconds() / 60 >= _rest_for(
+                b_mid, rest_by_sport, global_rest, match_cache
+            ):
+                continue
+            key = (*sorted([a_mid, b_mid]), pid)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                "code": "insufficient_student_rest",
+                "hard": True,
+                "match_id": b_mid,
+                "other_match_id": a_mid,
+                "student": name,
+                "gap_minutes": max(0, round((b_s - a_end).total_seconds() / 60)),
+                "required_minutes": _rest_for(
+                    b_mid, rest_by_sport, global_rest, match_cache
+                ),
+            })
+    return out
+
+
+def _rest_for(mid, rest_by_sport, global_rest, cache) -> int:
+    m = cache.get(mid)
+    sport = getattr(m, "sport", "") if m else ""
+    return rest_by_sport.get(sport, global_rest)
+
+
 def validate_fixture_edits(tournament, edits: dict[str, Any]) -> dict[str, Any]:
     """Run the FULL rule set over the proposed schedule and report what breaks.
 
@@ -315,7 +409,9 @@ def validate_fixture_edits(tournament, edits: dict[str, Any]) -> dict[str, Any]:
         tournament=tournament,
         id__in=[r.id for r in reqs],
         deleted_at__isnull=True,
-    ).select_related("court")
+    ).select_related("court", "home_team", "away_team")
+    # The student-rest helper reads matches by id; keep them at hand.
+    match_cache = {str(m.id): m for m in db_rows}
     for m in db_rows:
         if m.scheduled_at is not None:
             current[str(m.id)] = (_local(m.scheduled_at, tz), m.venue)
@@ -327,9 +423,17 @@ def validate_fixture_edits(tournament, edits: dict[str, Any]) -> dict[str, Any]:
     baseline = validate_schedule(
         dict(current), reqs, cfg, preoccupied=preoccupied, linked=linked
     )
+    baseline_student = _student_rest_violations(
+        tournament, current, reqs, cfg, match_cache
+    )
     pre_existing = {_violation_identity(v) for v in baseline}
+    # Same identity function for BOTH families so "already broken" is judged
+    # one way.
+    pre_existing |= {_violation_identity(v) for v in baseline_student}
     violations = validate_schedule(
         proposed, reqs, cfg, preoccupied=preoccupied, linked=linked
+    ) + _student_rest_violations(
+        tournament, proposed, reqs, cfg, match_cache
     )
     out = []
     for v in violations:

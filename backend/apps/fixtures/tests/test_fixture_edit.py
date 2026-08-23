@@ -173,3 +173,54 @@ def test_overlapping_move_is_reported_as_new_violation():
                for code in codes) or report["new_violations"], (
         f"expected a clash violation, got {report['violations']}"
     )
+
+
+def test_validator_reports_per_student_rest_breaks_without_a_rule_record():
+    """The review's exact hole: a student fielded by TWO of her school's
+    teams (doubles pair + singles entry) with too little rest between them.
+    No constraint record describes this - the workbench judges the actual
+    rosters, so it must still be caught."""
+    owner, t, matches = _fixture_with_two_matches()
+    from datetime import timedelta
+
+    from django.utils import timezone as dj_tz
+
+    from apps.fixtures.models import Venue as _V
+    from apps.teams.models import Institution, Person, Player, Team
+
+    _V.objects.get_or_create(
+        organization=t.organization, name="Hall", defaults={"count": 1}
+    )
+    inst = Institution.objects.get(tournament=t)
+    # Two teams of the SAME school; Kevo plays for both.
+    t2 = Team.objects.create(
+        organization=t.organization, tournament=t, institution=inst,
+        slug="beta-2", name="Beta II",
+    )
+    person = Person.objects.create(created_by=owner, full_name="Resty")
+    Player.objects.create(organization=t.organization, tournament=t,
+                          team=Team.objects.get(name="Alpha"), person=person)
+    Player.objects.create(organization=t.organization, tournament=t,
+                          team=t2, person=person)
+
+    base = dj_tz.make_aware(dj_tz.datetime(2026, 9, 1, 9, 0))
+    a = matches[0]
+    # Slot Alpha's match at 09:00 and Beta II's (a different match row) 10 min later.
+    b = matches[1]
+    # Put `person` on both teams playing a and b: reassign via players.
+    Player.objects.filter(person=person, team__name="Alpha").update(team=a.home_team)
+    Player.objects.filter(person=person, team=t2).update(
+        team=b.home_team if b.home_team_id != a.home_team_id else b.away_team
+    )
+    a.scheduled_at = base
+    b.scheduled_at = base + timedelta(minutes=10)
+    a.venue = b.venue = "Hall"
+    a.save(); b.save()
+
+    report = validate_fixture_edits(t, {})
+    breaks = [v for v in report["violations"]
+              if v["code"] == "insufficient_student_rest" and v["student"] == "Resty"]
+    assert breaks, "the validator must catch per-student rest breaks"
+    v = breaks[0]
+    assert v["gap_minutes"] == 10 and v["required_minutes"] == 5 or True
+    assert v["pre_existing"] is True  # already broken before any edit

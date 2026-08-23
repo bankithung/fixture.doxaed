@@ -111,6 +111,7 @@ function humanizeCode(code: string): string {
     phase_out_of_order: t("Finish phase played out of order"),
     pinned_round_venue: t("Round must be played on its pinned venue"),
     linked_team_overlap: t("Shared player would overlap"),
+    insufficient_student_rest: t("Student has too little rest"),
   };
   return (
     map[code] ??
@@ -662,8 +663,15 @@ export function EditFixturePage(): React.ReactElement {
                     )}
                   />
                   <span className="font-medium">{humanizeCode(v.code)}</span>
+                  {v.student ? (
+                    <span className="text-xs">{String(v.student)}</span>
+                  ) : null}
                   <span className="font-tabular text-xs text-muted-foreground">
-                    {v.at ? fmtSlot(v.at) : v.date ? v.date : ""}
+                    {v.gap_minutes != null
+                      ? t(`${v.gap_minutes} min gap · needs ${v.required_minutes}`)
+                      : v.at
+                        ? fmtSlot(v.at)
+                        : (v.date ?? "")}
                     {v.pre_existing ? ` · ${t("already broken today")}` : ""}
                   </span>
                 </li>
@@ -760,7 +768,9 @@ export function EditFixturePage(): React.ReactElement {
                 linkFor={(m) => `?m=${m.id}`}
                 wrapNames
                 editIcon
-                rosters={rosterIndex}
+                /* Students on the cards ONLY while the toggle is on - the
+                   same switch that reveals them in the court sheets. */
+                rosters={showStudents ? rosterIndex : undefined}
               />
             </div>
           </section>
@@ -778,6 +788,7 @@ export function EditFixturePage(): React.ReactElement {
           setParams(next, { replace: true });
         }}
         onSetSlot={setSlot}
+        onSetTeams={setTeams}
         violations={violationsByMatch}
       />
 
@@ -1174,6 +1185,7 @@ function KnockoutEditorDialog({
   matchNos,
   onClose,
   onSetSlot,
+  onSetTeams,
   violations,
 }: {
   match: FixtureEditMatch | null;
@@ -1181,6 +1193,7 @@ function KnockoutEditorDialog({
   matchNos: Map<string, number>;
   onClose: () => void;
   onSetSlot: (id: string, patch: { start?: string; court_id?: string }) => void;
+  onSetTeams: (id: string, patch: TeamDraft) => void;
   violations: Map<string, FixtureViolation[]>;
 }): React.ReactElement {
   const timeOptions = useMemo(() => {
@@ -1206,6 +1219,55 @@ function KnockoutEditorDialog({
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-3 py-1">
+        {/* Direct sides are editable here too - pointer sides stay read-only. */}
+        {match.home_editable || match.away_editable ? (
+          <div className="grid grid-cols-2 gap-3">
+            {match.home_editable ? (
+              <div>
+                <label className="mb-1 block text-sm font-medium" htmlFor="ko-home">
+                  {t("Home")}
+                </label>
+                <Select
+                  id="ko-home"
+                  size="sm"
+                  searchable
+                  value={match.home_team?.id ?? ""}
+                  onChange={(v) =>
+                    onSetTeams(match.id, { home: v === "" ? null : v })
+                  }
+                  options={[
+                    { value: "", label: t("TBD") },
+                    ...(payload.teams_by_leaf[match.leaf_key] ?? []).map(
+                      (tm) => ({ value: tm.id, label: tm.name }),
+                    ),
+                  ]}
+                />
+              </div>
+            ) : null}
+            {match.away_editable ? (
+              <div>
+                <label className="mb-1 block text-sm font-medium" htmlFor="ko-away">
+                  {t("Away")}
+                </label>
+                <Select
+                  id="ko-away"
+                  size="sm"
+                  searchable
+                  value={match.away_team?.id ?? ""}
+                  onChange={(v) =>
+                    onSetTeams(match.id, { away: v === "" ? null : v })
+                  }
+                  options={[
+                    { value: "", label: t("TBD") },
+                    ...(payload.teams_by_leaf[match.leaf_key] ?? []).map(
+                      (tm) => ({ value: tm.id, label: tm.name }),
+                    ),
+                  ]}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <label className="block text-sm font-medium" htmlFor="ko-time">
           {t("Time slot")}
         </label>
