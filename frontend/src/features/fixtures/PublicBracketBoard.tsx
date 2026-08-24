@@ -14,8 +14,8 @@ import { Bookmark } from "./publicTournamentViews";
  *
  * A draw names TEAMS, which for a school event is a school and a suffix
  * ("Grace Academy TT-1"); who is actually playing is the next question every
- * parent asks, and until now the only answer was to open each match. Flipping
- * it grows every card to hold its team sheet (owner 2026-08-21).
+ * parent asks. The board answers it by DEFAULT (owner 2026-08-24) and this
+ * switch is the opt-out that folds the team sheets back away.
  */
 export function NamesToggle({
   on,
@@ -64,7 +64,8 @@ export function CompetitionBracket({
    * the sheet above prints as M12. */
   numbers?: Map<string, number>;
   linkFor?: (id: string) => string;
-  /** Set = the Player names switch is on: every card names its team sheet. */
+  /** Set = the Player names switch is on (the default): every card names its
+   * team sheet. */
   rosters?: RosterIndex;
 }): React.ReactElement {
   const rows = useMemo(
@@ -124,7 +125,8 @@ export function PublicBracketBoard({
   timeZone: string | undefined;
   numbers?: Map<string, number>;
   linkFor?: (id: string) => string;
-  /** Set = the Player names switch is on: every card names its team sheet. */
+  /** Set = the Player names switch is on (the default): every card names its
+   * team sheet. */
   rosters?: RosterIndex;
   namesOn?: boolean;
   onNames?: (next: boolean) => void;

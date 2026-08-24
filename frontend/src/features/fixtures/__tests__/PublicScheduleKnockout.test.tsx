@@ -291,31 +291,47 @@ describe("the knockout draw inside the match centre", () => {
     ).toBeInTheDocument();
   });
 
-  it("names the players on the board itself, behind one switch", async () => {
+  it("names the players by DEFAULT, and the switch turns them OFF", async () => {
     vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(payload([SEMI]));
     mount();
     await screen.findByTestId("bracket-tt.u14");
-    const board = screen.getByTestId("bracket-board");
-    // A draw names TEAMS until you ask otherwise, and the roster read is not
-    // made at all until then.
-    expect(board).not.toHaveTextContent("Asen Jamir");
-    expect(tournamentsApi.publicRosters).not.toHaveBeenCalled();
-
-    const toggle = screen.getByTestId("bracket-names-toggle");
-    expect(toggle).toHaveAttribute("aria-checked", "false");
-    await userEvent.click(toggle);
-
-    // Scoped to the board: the print document holds a second, hidden copy.
-    await waitFor(() =>
-      expect(screen.getByTestId("bracket-board")).toHaveTextContent(
-        "Asen Jamir",
-      ),
+    // Who is playing is the first question a parent asks, so the board opens
+    // with the team sheets already grown in (owner 2026-08-24) — and the
+    // roster read fires with the page, not on first flip.
+    expect(screen.getByTestId("bracket-board")).toHaveTextContent(
+      "Asen Jamir",
     );
-    expect(tournamentsApi.publicRosters).toHaveBeenCalledWith("cup", "t1");
-    // It rides the URL, so a board showing who is playing is a shareable link.
+    await waitFor(() =>
+      expect(tournamentsApi.publicRosters).toHaveBeenCalledWith("cup", "t1"),
+    );
     expect(screen.getByTestId("bracket-names-toggle")).toHaveAttribute(
       "aria-checked",
       "true",
+    );
+
+    await userEvent.click(screen.getByTestId("bracket-names-toggle"));
+
+    // Off is the opt-out: `names=0` is written, and the sheets fold away.
+    expect(screen.getByTestId("bracket-board")).not.toHaveTextContent(
+      "Asen Jamir",
+    );
+    expect(screen.getByTestId("bracket-names-toggle")).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
+
+  it("keeps names off when a shared link carries the explicit opt-out", async () => {
+    vi.mocked(tournamentsApi.publicSchedule).mockResolvedValue(payload([SEMI]));
+    mount("/t/cup/t1/schedule?comp=knockout&names=0");
+    await screen.findByTestId("bracket-tt.u14");
+    const board = screen.getByTestId("bracket-board");
+    expect(board).not.toHaveTextContent("Asen Jamir");
+    // No names asked for, no roster read made.
+    expect(tournamentsApi.publicRosters).not.toHaveBeenCalled();
+    expect(screen.getByTestId("bracket-names-toggle")).toHaveAttribute(
+      "aria-checked",
+      "false",
     );
   });
 

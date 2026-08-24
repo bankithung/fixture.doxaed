@@ -675,8 +675,11 @@ function PublicScheduleInner(): React.ReactElement {
    * Print always did, and stays the default. */
   const [printPasses, setPrintPasses] = useState<PrintPasses>("both");
   /** The bracket's Player names switch, in the URL like every other choice on
-   * this page, so a draw showing who is playing is a shareable link. */
-  const namesOn = params.get("names") === "1";
+   * this page, so a draw showing who is playing is a shareable link.
+   * Names are the DEFAULT (owner 2026-08-24 — who is playing is the first
+   * question a parent asks, it should not need a toggle); `names=0` is the
+   * explicit opt-out and its only value. */
+  const namesOn = params.get("names") !== "0";
   const { rosters, settled: rostersSettled } = usePublicRosters(
     slug,
     id,
@@ -1244,7 +1247,7 @@ function PublicScheduleInner(): React.ReactElement {
                       rosters={namesOn ? rosters : undefined}
                       namesOn={namesOn}
                       onNames={(next) =>
-                        setParam({ names: next ? "1" : null })
+                        setParam({ names: next ? null : "0" })
                       }
                     />
                   ) : selectedComp ? (
@@ -1271,7 +1274,7 @@ function PublicScheduleInner(): React.ReactElement {
                               <NamesToggle
                                 on={namesOn}
                                 onChange={(next) =>
-                                  setParam({ names: next ? "1" : null })
+                                  setParam({ names: next ? null : "0" })
                                 }
                                 testid="comp-names-toggle"
                               />
