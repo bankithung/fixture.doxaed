@@ -113,15 +113,19 @@ beforeEach(() => {
 afterEach(() => setWidth(REAL_WIDTH));
 
 describe("PublicSchedulePage on a phone", () => {
-  it("replaces the rail with one scope button that opens the whole map", async () => {
+  it("replaces the rail with one floating FILTER button that opens the whole map", async () => {
     mount();
     await screen.findByTestId("public-day-2026-08-17");
 
-    // No rail, and no list of every competition burning screen height.
-    expect(screen.getByTestId("scope-picker")).toHaveTextContent("Today");
+    // No rail, no list of every competition burning screen height, and no
+    // top-bar picker either: the way into the map is the floating button at
+    // the bottom, which names what you are looking at (owner 2026-08-24).
+    expect(screen.queryByTestId("scope-picker")).toBeNull();
     expect(screen.queryByTestId("rail-comp-tt.u14.boys")).toBeNull();
+    const fab = screen.getByTestId("scope-fab");
+    expect(fab).toHaveTextContent("Today");
 
-    await userEvent.click(screen.getByTestId("scope-picker"));
+    await userEvent.click(fab);
     const sheet = await screen.findByRole("dialog");
     // The SAME list the desktop rail renders, so the two can never drift.
     expect(within(sheet).getByTestId("rail-today")).toBeInTheDocument();
@@ -133,7 +137,7 @@ describe("PublicSchedulePage on a phone", () => {
     // Picking closes the drawer and the panel is that competition's: its own
     // fixtures, no court lanes, and the other sport's match gone.
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByTestId("scope-picker")).toHaveTextContent("Table Tennis");
+    expect(screen.getByTestId("scope-fab")).toHaveTextContent("Table Tennis");
     const fixtures = await screen.findByTestId(
       "public-competition-tt.u14.boys",
     );

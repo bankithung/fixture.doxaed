@@ -1118,6 +1118,10 @@ function PublicScheduleInner(): React.ReactElement {
                       scroller of twenty categories is not a map. */}
                   <div className="sticky top-0 z-20 flex flex-col gap-2 border-b border-border bg-card px-3 py-2.5 print:hidden sm:px-4">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      {/* On a phone there is no rail: the current scope lives
+                          on the floating filter button at the bottom of the
+                          screen instead of a control that scrolled away (owner
+                          2026-08-24). */}
                       {wideRail ? (
                         <span className="flex min-w-0 shrink-0 items-center gap-2 text-sm font-semibold">
                           {selected === "today" ? (
@@ -1137,23 +1141,7 @@ function PublicScheduleInner(): React.ReactElement {
                             scopeName
                           )}
                         </span>
-                      ) : (
-                        <button
-                          type="button"
-                          data-testid="scope-picker"
-                          onClick={() => setScopeOpen(true)}
-                          className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-left text-sm font-medium"
-                        >
-                          <Trophy
-                            aria-hidden
-                            className="h-4 w-4 shrink-0 text-primary"
-                          />
-                          <span className="min-w-0 truncate">{scopeName}</span>
-                          <span className="ml-auto shrink-0 font-tabular text-xs text-muted-foreground">
-                            {t("Change")}
-                          </span>
-                        </button>
-                      )}
+                      ) : null}
 
                       <ViewSwitch
                         options={views}
@@ -1337,6 +1325,33 @@ function PublicScheduleInner(): React.ReactElement {
           scope={printScope}
           passes={printPasses}
         />
+      ) : null}
+
+      {/* The phone's floating FILTER button: the way into the competition map
+          from anywhere on the page. It carries the current scope as its label,
+          so it answers "what am I looking at" as well as opening the picker —
+          the job the old top-bar button did before it scrolled away (owner
+          2026-08-24). Same fixed-bottom pattern as the album's Scan & upload.
+          Desktop keeps the rail, so the button exists only below lg. */}
+      {!wideRail ? (
+        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-4 print:hidden">
+          <button
+            type="button"
+            data-testid="scope-fab"
+            onClick={() => setScopeOpen(true)}
+            className="pointer-events-auto inline-flex h-11 max-w-full items-center gap-2 rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground shadow-lg hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {selected === "knockout" ? (
+              <GitMerge aria-hidden className="h-4 w-4 shrink-0" />
+            ) : (
+              <Trophy aria-hidden className="h-4 w-4 shrink-0" />
+            )}
+            <span className="min-w-0 truncate">{scopeName}</span>
+            <span className="shrink-0 rounded-full bg-primary-foreground/20 px-2 py-0.5 font-tabular text-[0.6875rem]">
+              {t("Filter")}
+            </span>
+          </button>
+        </div>
       ) : null}
 
       {/* The scope map on a phone: the same list the rail shows, in the house
