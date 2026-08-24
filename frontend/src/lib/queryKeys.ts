@@ -43,6 +43,7 @@ export const qk = {
   lensCampaigns: (id: string) => ["t-lens-campaigns", id] as const,
   /** Guest Lens photo moderation list — extend with filter params. */
   lensPhotos: (id: string) => ["t-lens-photos", id] as const,
+  lensStories: (id: string) => ["t-lens-stories", id] as const,
   /** Public pass context for the no-login upload page (keyed on the token). */
   lensPass: (token: string) => ["lens-pass", token] as const,
   /** Public shared album (approved photos, slug+UUID pair). */

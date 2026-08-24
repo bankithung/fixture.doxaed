@@ -23,6 +23,7 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from apps.audit.services import emit_audit
 from apps.lens.models import LensPhoto
+from apps.lens.services import stories
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 ACCEPTED_TYPES = {"image/jpeg", "image/png", "image/webp"}
@@ -97,6 +98,16 @@ def add_photo(*, pass_, file, caption="", category="", event_id=None):
     category = (category or "").strip()[:100]
     if category and category not in (campaign.award_categories or []):
         raise DRFValidationError({"detail": "unknown_category"})
+    story_category = bool(category) and stories.is_story_category(
+        campaign, category,
+    )
+    if story_category:
+        # Story entries are capped per ENTRY, not per photo; the frame cap
+        # needs the school's existing story row before any bytes are coded.
+        story = stories.story_for_upload(
+            pass_=pass_, campaign=campaign, category=category,
+        )
+        stories.check_story_room(story=story, campaign=campaign)
 
     image_bytes, thumb_bytes, width, height = _reencode(file)
 
@@ -109,14 +120,17 @@ def add_photo(*, pass_, file, caption="", category="", event_id=None):
         ).count()
         if used >= campaign.max_photos_per_institution:
             raise DRFValidationError({"detail": "quota_exceeded"})
-        cat_limit = (campaign.category_limits or {}).get(category)
-        if category and cat_limit is not None:
-            used_in_category = LensPhoto.objects.filter(
-                campaign=campaign, institution=pass_.institution,
-                category=category,
-            ).count()
-            if used_in_category >= cat_limit:
-                raise DRFValidationError({"detail": "category_quota_exceeded"})
+        if not story_category:
+            cat_limit = (campaign.category_limits or {}).get(category)
+            if category and cat_limit is not None:
+                used_in_category = LensPhoto.objects.filter(
+                    campaign=campaign, institution=pass_.institution,
+                    category=category,
+                ).count()
+                if used_in_category >= cat_limit:
+                    raise DRFValidationError(
+                        {"detail": "category_quota_exceeded"}
+                    )
         photo = LensPhoto(
             organization=campaign.organization,
             campaign=campaign,
@@ -134,6 +148,8 @@ def add_photo(*, pass_, file, caption="", category="", event_id=None):
         photo.image.save("photo.jpg", ContentFile(image_bytes), save=False)
         photo.thumb.save("thumb.jpg", ContentFile(thumb_bytes), save=False)
         photo.save()
+    if story_category:
+        photo = stories.attach_photo(pass_=pass_, photo=photo, category=category)
     return photo
 
 
@@ -149,9 +165,29 @@ def remove_own_photo(*, pass_, upload_ref):
         raise NotFound("photo_not_found")
     if photo.status != "pending":
         raise DRFValidationError({"detail": "photo_locked"})
+    story = photo.story
     photo.image.delete(save=False)
     photo.thumb.delete(save=False)
     photo.delete()
+    if story is not None:
+        stories.remove_photo_from_story(photo)
+
+
+def set_story_title(*, pass_, story_id, title: str):
+    from apps.lens.services import stories as story_service
+
+    return story_service.set_title(
+        pass_=pass_, story_id=story_id, title=title,
+    )
+
+
+def reorder_story_photo(*, pass_, story_id, upload_ref, position: int):
+    from apps.lens.services import stories as story_service
+
+    return story_service.move_photo(
+        pass_=pass_, story_id=story_id, upload_ref=upload_ref,
+        position=position,
+    )
 
 
 # --- quarantine (spec D7) -----------------------------------------------------

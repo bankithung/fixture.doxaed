@@ -21,10 +21,11 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from apps.lens.models import LensCampaign, LensPass, LensPhoto
+from apps.lens.models import LensCampaign, LensPass, LensPhoto, LensStory
 from apps.lens.services import campaign as campaign_service
 from apps.lens.services import passes as pass_service
 from apps.lens.services import photos as photo_service
+from apps.lens.services import stories as stories_service
 from apps.lens.throttling import LensJoinThrottle, LensUploadThrottle
 from apps.tournaments.models import Tournament, TournamentStatus
 from apps.tournaments.permissions import can_manage_tournament
@@ -51,6 +52,8 @@ def _campaign_payload(c: LensCampaign) -> dict:
         "max_photos_per_institution": c.max_photos_per_institution,
         "award_categories": list(c.award_categories or []),
         "category_limits": dict(c.category_limits or {}),
+        "story_categories": list(c.story_categories or []),
+        "story_photos_per_entry": c.story_photos_per_entry,
         "is_open": c.is_open,
         # Whether a card exists, never its token.
         "share_minted_at": (
@@ -481,6 +484,86 @@ class LensPhotoAwardView(GenericAPIView):
         return Response({"photo": _photo_payload(p)})
 
 
+# --- manager: photo-story entries --------------------------------------------
+
+class LensStoryListView(GenericAPIView):
+    """`GET /api/tournaments/{id}/lens/stories/?status=&category=` — every
+    photo-story entry with its ordered frames."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id):
+        t = _get_managed_tournament(request, tournament_id)
+        c = _resolve_campaign_or_none(request, t)
+        if c is None:
+            return Response({"stories": []})
+        qs = (
+            LensStory.objects.filter(campaign=c)
+            .select_related("institution")
+            .order_by("-created_at")
+        )
+        status = request.query_params.get("status") or ""
+        if status == "pending":
+            qs = qs.filter(hidden_at__isnull=True, approved_at__isnull=True)
+        elif status == "approved":
+            qs = qs.filter(hidden_at__isnull=True, approved_at__isnull=False)
+        elif status == "hidden":
+            qs = qs.filter(hidden_at__isnull=False)
+        inst = photo_service.as_uuid(request.query_params.get("institution_id"))
+        if inst is not None:
+            qs = qs.filter(institution_id=inst)
+        category = request.query_params.get("category") or ""
+        if category:
+            qs = qs.filter(category=category)
+        return Response({"stories": [_story_payload(s) for s in qs]})
+
+
+def _get_story(tournament, story_id):
+    from apps.lens.services import stories as story_service
+
+    return story_service.get_managed_story(tournament, story_id)
+
+
+class LensStoryApproveView(GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id, story_id):
+        t = _get_managed_tournament(request, tournament_id)
+        s = stories_service.approve_story(
+            story=_get_story(t, story_id), by=request.user,
+            event_id=_event_id(request), request=request,
+        )
+        return Response({"story": _story_payload(s)})
+
+
+class LensStoryHideView(GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id, story_id):
+        t = _get_managed_tournament(request, tournament_id)
+        s = stories_service.hide_story(
+            story=_get_story(t, story_id), by=request.user,
+            reason=str(request.data.get("reason") or ""),
+            event_id=_event_id(request), request=request,
+        )
+        return Response({"story": _story_payload(s)})
+
+
+class LensStoryAwardView(GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tournament_id, story_id):
+        t = _get_managed_tournament(request, tournament_id)
+        category = request.data.get("category")
+        if not isinstance(category, str):
+            raise DRFValidationError({"detail": "category_required"})
+        s = stories_service.award_story(
+            story=_get_story(t, story_id), by=request.user, category=category,
+            event_id=_event_id(request), request=request,
+        )
+        return Response({"story": _story_payload(s)})
+
+
 # --- public: the shared card ------------------------------------------------
 
 def _share_or_404(token: str) -> LensCampaign:
@@ -579,9 +662,43 @@ def _own_photo_payload(p: LensPhoto) -> dict:
         "thumb_url": _media_url(p.thumb.name),
         "caption": p.caption,
         "category": p.category,
+        "story_id": str(p.story_id) if p.story_id else None,
+        "position": p.position,
         "status": status,
         "created_at": p.created_at.isoformat(),
     }
+
+
+def _story_payload(s, *, own: bool = False) -> dict:
+    """One story entry. ``own=True`` is the uploader's view (hidden reads as
+    "removed", moderation vocabulary stays server-side); manager and public
+    views read the full state."""
+    frames = list(s.photos.order_by("position", "created_at"))
+    out = {
+        "id": str(s.id),
+        "institution_id": str(s.institution_id),
+        "institution_name": s.institution.name,
+        "title": s.title,
+        "category": s.category,
+        "award_category": s.award_category,
+        "photos": [
+            {
+                "upload_ref": str(ph.upload_ref),
+                "url": _media_url(ph.image.name),
+                "thumb_url": _media_url(ph.thumb.name),
+                "caption": ph.caption,
+                "position": ph.position,
+                "created_at": ph.created_at.isoformat(),
+                **({} if own else {"status": ph.status}),
+            }
+            for ph in frames
+        ],
+        "created_at": s.created_at.isoformat(),
+    }
+    if not own:
+        out["status"] = s.status
+        out["hidden_reason"] = s.hidden_reason
+    return out
 
 
 class LensPassContextView(GenericAPIView):
@@ -613,6 +730,8 @@ class LensPassContextView(GenericAPIView):
                 "max_photos_per_institution": c.max_photos_per_institution,
                 "award_categories": list(c.award_categories or []),
                 "category_limits": dict(c.category_limits or {}),
+                "story_categories": list(c.story_categories or []),
+                "story_photos_per_entry": c.story_photos_per_entry,
             },
             "quota": {
                 "used": len(photos),
@@ -620,6 +739,12 @@ class LensPassContextView(GenericAPIView):
                 "by_category": by_category,
             },
             "photos": [_own_photo_payload(ph) for ph in photos],
+            "stories": [
+                _story_payload(s, own=True)
+                for s in LensStory.objects.filter(
+                    campaign=c, institution=p.institution,
+                ).select_related("institution").order_by("created_at")
+            ],
         })
 
 
@@ -656,6 +781,44 @@ class LensPassPhotoDetailView(GenericAPIView):
         return Response({"removed": True})
 
 
+class LensPassStoryTitleView(GenericAPIView):
+    """`POST /api/lens/p/{token}/stories/{story_id}/title/` — the school names
+    its photo-story entry ("A title for the photo story"). Own-story scoped;
+    locked once moderated."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [LensUploadThrottle]
+
+    def post(self, request, token, story_id):
+        p = _resolve_or_404(token)
+        story = photo_service.set_story_title(
+            pass_=p, story_id=story_id,
+            title=str(request.data.get("title") or ""),
+        )
+        return Response({"story": _story_payload(story, own=True)})
+
+
+class LensPassStoryOrderView(GenericAPIView):
+    """`POST /api/lens/p/{token}/stories/{story_id}/order/` — move one of the
+    school's frames to 1-based `position`, closing the gap. This is how the
+    intended reading order of a photo story gets authored."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [LensUploadThrottle]
+
+    def post(self, request, token, story_id):
+        p = _resolve_or_404(token)
+        raw = request.data.get("upload_ref") or ""
+        try:
+            position = int(request.data.get("position"))
+        except (TypeError, ValueError):
+            raise DRFValidationError({"detail": "invalid_position"}) from None
+        story = photo_service.reorder_story_photo(
+            pass_=p, story_id=story_id, upload_ref=raw, position=position,
+        )
+        return Response({"story": _story_payload(story, own=True)})
+
+
 # --- public: shared album ------------------------------------------------------
 
 class PublicTournamentAlbumView(GenericAPIView):
@@ -682,10 +845,13 @@ class PublicTournamentAlbumView(GenericAPIView):
                 "award_categories": [],
                 "institutions": [],
                 "photos": [],
+                "stories": [],
+                "story_categories": [],
             })
         approved = (
             LensPhoto.objects.filter(
-                campaign=c, hidden_at__isnull=True, approved_at__isnull=False
+                campaign=c, hidden_at__isnull=True, approved_at__isnull=False,
+                story__isnull=True,
             )
             .select_related("institution")
             .order_by("-created_at")
@@ -708,9 +874,19 @@ class PublicTournamentAlbumView(GenericAPIView):
                 "award_category": p.award_category,
                 "created_at": p.created_at.isoformat(),
             })
+        stories_qs = (
+            LensStory.objects.filter(
+                campaign=c, hidden_at__isnull=True, approved_at__isnull=False,
+            )
+            .select_related("institution")
+            .prefetch_related("photos")
+            .order_by("-created_at")
+        )
         return Response({
             "campaign": {"title": c.title, "tagline": c.tagline},
             "award_categories": list(c.award_categories or []),
+            "story_categories": list(c.story_categories or []),
             "institutions": sorted(by_inst.values(), key=lambda r: r["name"]),
             "photos": rows,
+            "stories": [_story_payload(s) for s in stories_qs],
         })

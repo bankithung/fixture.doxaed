@@ -55,7 +55,10 @@ const PASS_CTX: LensPassContext = {
     max_photos_per_institution: 36,
     award_categories: ["Best Team Spirit"],
     category_limits: {},
+    story_categories: [],
+    story_photos_per_entry: 4,
   },
+  stories: [],
   quota: { used: 0, max: 36, by_category: {} },
   photos: [],
 };

@@ -85,6 +85,8 @@ interface SettingsDraft {
   max_photos_per_institution: number;
   award_categories: string[];
   category_limits: Record<string, number>;
+  story_categories: string[];
+  story_photos_per_entry: number;
 }
 
 function draftFrom(c: LensCampaign | null): SettingsDraft {
@@ -96,6 +98,8 @@ function draftFrom(c: LensCampaign | null): SettingsDraft {
     max_photos_per_institution: c?.max_photos_per_institution ?? 36,
     award_categories: c?.award_categories ?? DEFAULT_CATEGORIES,
     category_limits: c?.category_limits ?? {},
+    story_categories: c?.story_categories ?? [],
+    story_photos_per_entry: c?.story_photos_per_entry ?? 4,
   };
 }
 
@@ -126,6 +130,8 @@ function SettingsFields({
       ...draft,
       award_categories: draft.award_categories.filter((c) => c !== cat),
       category_limits: limits,
+      // A removed category cannot remain a story format either.
+      story_categories: draft.story_categories.filter((c) => c !== cat),
     });
   };
   const setLimit = (cat: string, raw: string): void => {
@@ -184,6 +190,38 @@ function SettingsFields({
         <p className="text-xs text-muted-foreground">
           {t("Schools pick a category for each upload. Set a per school photo limit for a category, or leave it blank for no limit.")}
         </p>
+        {draft.story_categories.length > 0 ? (
+          <div className="flex items-end gap-2 rounded-md bg-muted px-2.5 py-2">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="lens-story-cap" className="text-xs">
+                {t("Photographs per photo story")}
+              </Label>
+              <input
+                id="lens-story-cap"
+                type="number"
+                min={1}
+                max={12}
+                data-testid="story-frame-cap"
+                className={cn(FIELD, "w-24 font-tabular")}
+                value={draft.story_photos_per_entry}
+                onChange={(e) =>
+                  onChange({
+                    ...draft,
+                    story_photos_per_entry: Math.min(
+                      12,
+                      Math.max(1, Number(e.target.value) || 1),
+                    ),
+                  })
+                }
+              />
+            </div>
+            <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+              {t(
+                "Marked categories accept ONE titled photo story per school instead of separate photos.",
+              )}
+            </p>
+          </div>
+        ) : null}
         {draft.award_categories.length > 0 ? (
           <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
             {draft.award_categories.map((cat) => (
@@ -204,6 +242,29 @@ function SettingsFields({
                   value={draft.category_limits[cat] ?? ""}
                   onChange={(e) => setLimit(cat, e.target.value)}
                 />
+                <label
+                  className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
+                  title={t(
+                    "A photo-story entry: one titled set of photographs per school, judged together",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-[var(--primary)]"
+                    aria-label={`${t("Photo story entry")} ${cat}`}
+                    data-testid={`story-${cat}`}
+                    checked={draft.story_categories.includes(cat)}
+                    onChange={(e) =>
+                      onChange({
+                        ...draft,
+                        story_categories: e.target.checked
+                          ? [...draft.story_categories, cat]
+                          : draft.story_categories.filter((c) => c !== cat),
+                      })
+                    }
+                  />
+                  {t("Story")}
+                </label>
                 <button
                   type="button"
                   aria-label={`${t("Remove category")} ${cat}`}
@@ -258,7 +319,9 @@ function SettingsFields({
   );
 }
 
-function statusChip(photo: LensPhoto): React.ReactElement {
+function statusChip(photo: {
+  status: LensPhoto["status"];
+}): React.ReactElement {
   return (
     <span
       className={cn(
@@ -342,7 +405,12 @@ export function LensConsolePage(): React.ReactElement {
   const [instFilter, setInstFilter] = useState<string>("");
   const [catFilter, setCatFilter] = useState<string>("");
   const [lightbox, setLightbox] = useState<string | null>(null);
-  const [hideTarget, setHideTarget] = useState<LensPhoto | null>(null);
+  // The hide-with-reason dialog serves both surfaces: single photos and whole
+  // photo-story entries (a story hides as ONE unit, frames quarantined with it).
+  const [hideTarget, setHideTarget] = useState<{
+    kind: "photo" | "story";
+    id: string;
+  } | null>(null);
   const [hideReason, setHideReason] = useState("");
   const [pickCategory, setPickCategory] = useState<string | null>(null);
   /** Judging one prize by ranking; null = the awards overview. */
@@ -407,6 +475,15 @@ export function LensConsolePage(): React.ReactElement {
       !(campaign?.award_categories ?? []).includes(p.award_category),
   );
 
+  // Photo-story entries moderate and award at ENTRY level (one unit), never
+  // frame by frame.
+  const storiesQ = useQuery({
+    queryKey: qk.lensStories(id),
+    queryFn: () => lensApi.stories(id, campaignId, { status: statusFilter }),
+    enabled: Boolean(campaignId && (campaign?.story_categories ?? []).length > 0),
+  });
+  const stories = storiesQ.data?.stories ?? [];
+
   // The settings form starts from the campaign (or the defaults pre-open) and
   // only becomes local state once the manager edits something — no effect
   // needed to sync it after a refetch.
@@ -416,6 +493,7 @@ export function LensConsolePage(): React.ReactElement {
   const invalidate = (): void => {
     void qc.invalidateQueries({ queryKey: qk.lens(id) });
     void qc.invalidateQueries({ queryKey: qk.lensPhotos(id) });
+    void qc.invalidateQueries({ queryKey: qk.lensStories(id) });
   };
   const fail = (e: unknown): void => {
     push({ kind: "error", title: errMsg(e) });
@@ -548,6 +626,44 @@ export function LensConsolePage(): React.ReactElement {
       push({
         kind: "success",
         title: vars.category ? t("Winner chosen") : t("Award cleared"),
+      });
+    },
+    onError: fail,
+  });
+  const approveStoryM = useMutation({
+    mutationFn: (storyId: string) =>
+      lensApi.approveStory(id, storyId, { event_id: newEventId() }),
+    onSuccess: () => {
+      invalidate();
+      push({ kind: "success", title: t("Story approved") });
+    },
+    onError: fail,
+  });
+  const hideStoryM = useMutation({
+    mutationFn: (vars: { storyId: string; reason: string }) =>
+      lensApi.hideStory(id, vars.storyId, {
+        event_id: newEventId(),
+        reason: vars.reason || undefined,
+      }),
+    onSuccess: () => {
+      invalidate();
+      setHideTarget(null);
+      setHideReason("");
+      push({ kind: "success", title: t("Story hidden") });
+    },
+    onError: fail,
+  });
+  const awardStoryM = useMutation({
+    mutationFn: (vars: { storyId: string; category: string }) =>
+      lensApi.awardStory(id, vars.storyId, {
+        event_id: newEventId(),
+        category: vars.category,
+      }),
+    onSuccess: () => {
+      invalidate();
+      push({
+        kind: "success",
+        title: t("Winner chosen"),
       });
     },
     onError: fail,
@@ -1009,6 +1125,108 @@ export function LensConsolePage(): React.ReactElement {
 
         {tab === "moderate" ? (
           <>
+          {(campaign?.story_categories ?? []).length > 0 && stories.length > 0 ? (
+            <section
+              className="border-b border-border bg-muted/30"
+              data-testid="stories-panel"
+            >
+              <div className="flex items-center gap-2 px-3 pt-3">
+                <h3 className="panel-title">{t("Photo stories")}</h3>
+                <span className="font-tabular text-xs text-muted-foreground">
+                  {stories.length}
+                </span>
+                <p className="ml-auto hidden text-xs text-muted-foreground sm:block">
+                  {t("Each story is one entry: its photographs are judged together, in order.")}
+                </p>
+              </div>
+              <ul className="flex flex-col gap-2 p-3">
+                {stories.map((s) => (
+                  <li
+                    key={s.id}
+                    className="rounded-lg border border-border bg-card p-2.5"
+                    data-testid={`story-${s.id}`}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="min-w-0 truncate text-sm font-semibold">
+                        {s.title || t("Untitled story")}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {s.institution_name} · {s.category}
+                      </span>
+                      {statusChip(s)}
+                      {s.award_category ? (
+                        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[0.625rem] font-medium text-primary">
+                          {s.award_category}
+                        </span>
+                      ) : null}
+                      <div className="ml-auto flex items-center gap-1.5">
+                        {s.status === "pending" ? (
+                          <Button
+                            size="sm"
+                            data-testid={`approve-story-${s.id}`}
+                            disabled={approveStoryM.isPending}
+                            onClick={() => approveStoryM.mutate(s.id)}
+                          >
+                            {t("Approve")}
+                          </Button>
+                        ) : null}
+                        {s.status !== "hidden" ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setHideTarget({ kind: "story", id: s.id })
+                            }
+                          >
+                            {t("Hide")}
+                          </Button>
+                        ) : null}
+                        {s.status === "approved" ? (
+                          <Select
+                            size="sm"
+                            aria-label={`${t("Award category for")} ${s.title || s.institution_name}`}
+                            value={s.award_category}
+                            onChange={(cat) =>
+                              awardStoryM.mutate({ storyId: s.id, category: cat })
+                            }
+                            options={[
+                              { value: "", label: t("No award") },
+                              ...(campaign?.award_categories ?? []).map((c) => ({
+                                value: c,
+                                label: c,
+                              })),
+                            ]}
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                      {[...s.photos]
+                        .sort((a, b) => a.position - b.position)
+                        .map((f) => (
+                          <figure key={f.upload_ref} className="w-20 shrink-0">
+                            <img
+                              src={f.thumb_url}
+                              alt={f.caption || t("Uploaded photo")}
+                              loading="lazy"
+                              className="aspect-square w-full rounded-md border border-border object-cover"
+                            />
+                            <figcaption className="mt-0.5 flex items-center gap-1 text-[0.625rem] text-muted-foreground">
+                              <span className="font-tabular font-semibold">
+                                {f.position}
+                              </span>
+                              <span className="min-w-0 truncate">
+                                {f.caption || t("No caption")}
+                              </span>
+                            </figcaption>
+                          </figure>
+                        ))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
             <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5">
               {(
@@ -1400,7 +1618,7 @@ export function LensConsolePage(): React.ReactElement {
                   className="text-destructive"
                   data-testid="hide-btn"
                   onClick={() => {
-                    setHideTarget(lightboxPhoto);
+                    setHideTarget({ kind: "photo", id: lightboxPhoto.id });
                     setHideReason("");
                   }}
                 >
@@ -1435,9 +1653,15 @@ export function LensConsolePage(): React.ReactElement {
         {hideTarget ? (
           <>
             <DialogHeader>
-              <DialogTitle>{t("Hide this photo?")}</DialogTitle>
+              <DialogTitle>
+                {hideTarget.kind === "story"
+                  ? t("Hide this photo story?")
+                  : t("Hide this photo?")}
+              </DialogTitle>
               <DialogDescription>
-                {t("It leaves the public album and its file is quarantined. You can approve it again later.")}
+                {hideTarget.kind === "story"
+                  ? t("The whole entry leaves the public album and its photographs are quarantined. You can approve it again later.")
+                  : t("It leaves the public album and its file is quarantined. You can approve it again later.")}
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-1.5">
@@ -1457,9 +1681,19 @@ export function LensConsolePage(): React.ReactElement {
                 variant="destructive"
                 data-testid="confirm-hide-btn"
                 disabled={hideM.isPending}
-                onClick={() =>
-                  hideM.mutate({ photoId: hideTarget.id, reason: hideReason })
-                }
+                onClick={() => {
+                  if (hideTarget.kind === "story") {
+                    hideStoryM.mutate({
+                      storyId: hideTarget.id,
+                      reason: hideReason,
+                    });
+                  } else {
+                    hideM.mutate({
+                      photoId: hideTarget.id,
+                      reason: hideReason,
+                    });
+                  }
+                }}
               >
                 {t("Hide photo")}
               </Button>

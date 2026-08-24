@@ -3,6 +3,8 @@ import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   Camera,
   CheckCircle2,
   Loader2,
@@ -42,6 +44,8 @@ function uploadErr(e: unknown): string {
       return t("Your school reached its photo limit.");
     case "category_quota_exceeded":
       return t("Your school reached this category's photo limit.");
+    case "story_full":
+      return t("This photo story already holds all its photographs.");
     case "unknown_category":
       return t("This category is no longer on the campaign. Reload the page.");
     case "file_too_large":
@@ -100,6 +104,8 @@ export function LensUploadPage({
   const [deleteRef, setDeleteRef] = useState<string | null>(null);
   // "" = no category picked yet (campaigns without categories stay on "").
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
+  // Local draft of the story title while editing (null = show what is saved).
+  const [titleDraft, setTitleDraft] = useState<string | null>(null);
 
   const q = useQuery({
     queryKey: qk.lensPass(token),
@@ -143,10 +149,30 @@ export function LensUploadPage({
   const limits = ctx.campaign.category_limits ?? {};
   const byCategory = ctx.quota.by_category ?? {};
   const category = selectedCat ?? categories[0] ?? "";
+  const storyCategories = ctx.campaign.story_categories ?? [];
+  const isStoryCat = storyCategories.includes(category);
+  // The school's single entry for the selected story category (one per
+  // school+category, enforced server-side).
+  const story = isStoryCat
+    ? (ctx.stories.find((s) => s.category === category) ?? null)
+    : null;
+  const storyFrames = story
+    ? [...story.photos].sort((a, b) => a.position - b.position)
+    : [];
+  const open = ctx.campaign.is_open;
   const catLimit = category ? limits[category] : undefined;
   const catUsed = category ? (byCategory[category] ?? 0) : 0;
-  const catRemaining =
-    catLimit === undefined ? Infinity : Math.max(0, catLimit - catUsed);
+  // A STORY category's own cap counts ENTRIES, not photos — what bounds the
+  // picker here is how many frames the entry still lacks.
+  const catRemaining = isStoryCat
+    ? Math.max(
+        0,
+        ctx.campaign.story_photos_per_entry -
+          (story ? storyFrames.length : 0),
+      )
+    : catLimit === undefined
+      ? Infinity
+      : Math.max(0, catLimit - catUsed);
   // What the picker can actually accept right now: the overall cap and, when
   // the selected category has its own limit, that category's cap too.
   const effectiveRemaining = Math.min(remaining, catRemaining);
@@ -219,6 +245,19 @@ export function LensUploadPage({
     }
   };
 
+  const moveFrame = async (uploadRef: string, position: number): Promise<void> => {
+    if (!story) return;
+    try {
+      await lensApi.reorderStory(token, story.id, {
+        upload_ref: uploadRef,
+        position,
+      });
+      void qc.invalidateQueries({ queryKey: qk.lensPass(token) });
+    } catch {
+      push({ kind: "error", title: t("Could not reorder the story.") });
+    }
+  };
+
   return (
     <PublicShell tournamentName={ctx.tournament.name}>
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-6">
@@ -281,9 +320,17 @@ export function LensUploadPage({
                     className="flex flex-wrap gap-1.5"
                   >
                     {categories.map((cat) => {
-                      const capN = limits[cat];
-                      const usedN = byCategory[cat] ?? 0;
-                      const full = capN !== undefined && usedN >= capN;
+                      const catIsStory = storyCategories.includes(cat);
+                      const capN = catIsStory
+                        ? ctx.campaign.story_photos_per_entry
+                        : limits[cat];
+                      const usedN = catIsStory
+                        ? (ctx.stories
+                            .find((s) => s.category === cat)
+                            ?.photos.length ?? 0)
+                        : (byCategory[cat] ?? 0);
+                      const full =
+                        !catIsStory && capN !== undefined && usedN >= capN;
                       return (
                         <button
                           key={cat}
@@ -316,7 +363,13 @@ export function LensUploadPage({
                       className="text-xs text-muted-foreground"
                       data-testid="category-full-hint"
                     >
-                      {t("This category is full for your school. Pick another one.")}
+                      {isStoryCat
+                        ? t(
+                            "Your photo story holds all its photographs. Remove one to replace it.",
+                          )
+                        : t(
+                            "This category is full for your school. Pick another one.",
+                          )}
                     </p>
                   ) : null}
                 </div>
@@ -416,6 +469,109 @@ export function LensUploadPage({
         )}
 
         {/* My photos. */}
+        {story ? (
+          /* A photo-story entry is authored as ONE work: its title and the
+             intended order of its frames live here, beside the frames. */
+          <section className="panel" data-testid="story-panel">
+            <div className="panel-header">
+              <h2 className="panel-title">{t("Your photo story")}</h2>
+              <span className="font-tabular text-xs text-muted-foreground">
+                {storyFrames.length}/{ctx.campaign.story_photos_per_entry}
+              </span>
+            </div>
+            <div className="flex flex-col gap-3 p-3">
+              <div className="flex items-end gap-2">
+                <label className="min-w-0 flex-1 text-xs font-medium">
+                  {t("Story title")}
+                  <input
+                    value={titleDraft ?? story.title ?? ""}
+                    data-testid="story-title-input"
+                    disabled={running || !open}
+                    maxLength={120}
+                    placeholder={t("Give this story a title")}
+                    onChange={(e) => setTitleDraft(e.target.value)}
+                    className="mt-1 h-9 w-full rounded-md border border-border bg-card px-2.5 text-sm"
+                  />
+                </label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="story-title-save"
+                  disabled={running || !open || (titleDraft ?? "") === (story.title ?? "")}
+                  onClick={async () => {
+                    try {
+                      await lensApi.setStoryTitle(token, story.id, titleDraft ?? "");
+                      push({ kind: "success", title: t("Title saved") });
+                      void qc.invalidateQueries({ queryKey: qk.lensPass(token) });
+                    } catch {
+                      push({ kind: "error", title: t("Could not save the title.") });
+                    }
+                  }}
+                >
+                  {t("Save")}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "The judges read these photographs together, in this order. Use the arrows to arrange them.",
+                )}
+              </p>
+              <ol className="flex flex-col gap-2" data-testid="story-frames">
+                {storyFrames.map((f, idx) => (
+                  <li
+                    key={f.upload_ref}
+                    className="flex items-center gap-2.5 rounded-lg border border-border p-2"
+                    data-testid={`story-frame-${f.position}`}
+                  >
+                    <span className="font-tabular w-5 shrink-0 text-center text-sm font-semibold text-muted-foreground">
+                      {f.position}
+                    </span>
+                    <img
+                      src={f.thumb_url}
+                      alt={f.caption || t("Uploaded photo")}
+                      loading="lazy"
+                      className="h-14 w-14 shrink-0 rounded-md border border-border object-cover"
+                    />
+                    <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                      {f.caption || t("No caption")}
+                    </p>
+                    <div className="flex shrink-0 flex-col gap-0.5">
+                      <button
+                        type="button"
+                        aria-label={t("Move earlier")}
+                        data-testid={`frame-up-${f.position}`}
+                        disabled={running || !open || idx === 0}
+                        onClick={() => void moveFrame(f.upload_ref, f.position - 1)}
+                        className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                      >
+                        <ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={t("Move later")}
+                        data-testid={`frame-down-${f.position}`}
+                        disabled={running || !open || idx === storyFrames.length - 1}
+                        onClick={() => void moveFrame(f.upload_ref, f.position + 1)}
+                        className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                      >
+                        <ArrowDown aria-hidden="true" className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </section>
+        ) : null}
+
+        {story === null && isStoryCat && open ? (
+          <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+            {t(
+              "The first photo you add to this category starts your photo story.",
+            )}
+          </p>
+        ) : null}
+
         <section className="panel">
           <div className="panel-header">
             <h2 className="panel-title">{t("Your photos")}</h2>

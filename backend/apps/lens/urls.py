@@ -11,6 +11,8 @@ from apps.lens.views import (
     LensPassContextView,
     LensPassPhotoDetailView,
     LensPassPhotosView,
+    LensPassStoryOrderView,
+    LensPassStoryTitleView,
 )
 
 urlpatterns = [
@@ -25,5 +27,15 @@ urlpatterns = [
         "p/<str:token>/photos/<uuid:upload_ref>/",
         LensPassPhotoDetailView.as_view(),
         name="lens-pass-photo-detail",
+    ),
+    path(
+        "p/<str:token>/stories/<uuid:story_id>/title/",
+        LensPassStoryTitleView.as_view(),
+        name="lens-pass-story-title",
+    ),
+    path(
+        "p/<str:token>/stories/<uuid:story_id>/order/",
+        LensPassStoryOrderView.as_view(),
+        name="lens-pass-story-order",
     ),
 ]

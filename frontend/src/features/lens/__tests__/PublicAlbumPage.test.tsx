@@ -21,6 +21,8 @@ vi.mock("@/api/lens", async (importOriginal) => {
 const ALBUM: PublicAlbum = {
   campaign: { title: "Guest Lens", tagline: "36 Shots Challenge" },
   award_categories: ["Best Team Spirit", "Best Action Shot"],
+  story_categories: [],
+  stories: [],
   institutions: [
     { id: "i1", name: "Grace School", count: 2 },
     { id: "i2", name: "Pine Academy", count: 1 },
@@ -206,8 +208,10 @@ describe("PublicAlbumPage", () => {
     vi.mocked(lensApi.publicAlbum).mockResolvedValue({
       campaign: null,
       award_categories: [],
+      story_categories: [],
       institutions: [],
       photos: [],
+      stories: [],
     });
     mount();
 

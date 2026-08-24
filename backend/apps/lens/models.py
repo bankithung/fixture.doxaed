@@ -71,8 +71,19 @@ class LensCampaign(models.Model):
     award_categories = models.JSONField(default=default_award_categories, blank=True)
     # Optional per-institution cap for each category: {category_name: int}.
     # A category absent from the dict has no cap of its own (only the overall
-    # max_photos_per_institution applies).
+    # max_photos_per_institution applies). For a STORY category (see
+    # ``story_categories``) the same number counts ENTRIES (stories), not
+    # photos — one story of four photos under a limit of 1 uses 1.
     category_limits = models.JSONField(default=dict, blank=True)
+    # Photo-story entries ("Beyond the Court", spec request 2026-08-21): the
+    # award categories in this list accept ONE grouped entry per school — N
+    # photographs uploaded as one titled, ordered unit and judged together —
+    # instead of N individual photos. A category not listed behaves exactly
+    # as before. Must be a subset of ``award_categories``.
+    story_categories = models.JSONField(default=list, blank=True)
+    # How many photographs one story entry holds (the competition's "four
+    # photographs arranged in the intended order").
+    story_photos_per_entry = models.PositiveSmallIntegerField(default=4)
     opened_at = models.DateTimeField(null=True, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
@@ -137,6 +148,76 @@ class LensPass(models.Model):
         return f"LensPass({self.institution_id})"
 
 
+class LensStory(models.Model):
+    """One photo-story ENTRY: a school's titled, ordered set of photographs
+    judged together as a single unit (never as separate photos). The member
+    :class:`LensPhoto` rows carry the bytes and their ``position``; this row
+    carries the title, the moderation state and any award.
+
+    One story per (campaign, institution, category) — the competition rule is
+    "each school may submit ONE photo story" — enforced here in SQL so a race
+    between two tabs cannot mint two entries.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="lens_stories",
+    )
+    campaign = models.ForeignKey(
+        LensCampaign, on_delete=models.CASCADE, related_name="stories"
+    )
+    institution = models.ForeignKey(
+        "teams.Institution", on_delete=models.CASCADE, related_name="lens_stories"
+    )
+    access_pass = models.ForeignKey(
+        LensPass, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="stories",
+    )
+    # The story category this entry competes in; always one of the campaign's
+    # ``story_categories``.
+    category = models.CharField(max_length=100)
+    title = models.CharField(max_length=120, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    hidden_at = models.DateTimeField(null=True, blank=True)
+    hidden_reason = models.CharField(max_length=200, blank=True)
+    award_category = models.CharField(max_length=100, blank=True)
+    approved_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="lens_stories_approved",
+    )
+    hidden_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="lens_stories_hidden",
+    )
+    event_id = models.UUIDField(unique=True, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "lens_story"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["campaign", "institution", "category"],
+                name="uniq_lens_story_per_school_category",
+            )]
+        indexes = [
+            models.Index(
+                fields=["campaign", "institution"], name="lens_story_camp_inst_idx"
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - repr aid
+        return f"LensStory({self.category}, {self.institution_id})"
+
+    @property
+    def status(self) -> str:
+        if self.hidden_at is not None:
+            return "hidden"
+        if self.approved_at is not None:
+            return "approved"
+        return "pending"
+
+
 class LensPhoto(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
     organization = models.ForeignKey(
@@ -167,6 +248,16 @@ class LensPhoto(models.Model):
     # The campaign category the uploader filed this photo under ("" = none;
     # photos from before categories became upload buckets stay blank).
     category = models.CharField(max_length=100, blank=True)
+    # Photo-story membership (nullable = an ordinary individual photo). A
+    # story photo belongs to exactly one LensStory; SET_NULL keeps the album's
+    # moderated content alive if a story row were ever removed directly.
+    story = models.ForeignKey(
+        "lens.LensStory", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="photos",
+    )
+    # 1-based order within the story — "arranged in the intended order". 0 =
+    # unordered (an ordinary photo, or a legacy row).
+    position = models.PositiveSmallIntegerField(default=0)
     approved_at = models.DateTimeField(null=True, blank=True)
     hidden_at = models.DateTimeField(null=True, blank=True)
     hidden_reason = models.CharField(max_length=200, blank=True)

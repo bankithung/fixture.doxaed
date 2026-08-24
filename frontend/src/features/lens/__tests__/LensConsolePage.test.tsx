@@ -56,6 +56,8 @@ const CAMPAIGN: LensCampaign = {
   max_photos_per_institution: 36,
   award_categories: ["Best Team Spirit", "Best Action Shot"],
   category_limits: {},
+  story_categories: [],
+  story_photos_per_entry: 4,
   is_open: true,
   opened_at: "2026-07-10T05:00:00Z",
   closed_at: null,

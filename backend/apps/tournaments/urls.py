@@ -46,6 +46,10 @@ from apps.lens.views import (
     LensPhotoListView,
     LensReopenView,
     LensShareCardView,
+    LensStoryApproveView,
+    LensStoryAwardView,
+    LensStoryHideView,
+    LensStoryListView,
 )
 from apps.matches.views import (
     TournamentLeadersView,
@@ -530,5 +534,25 @@ urlpatterns = [
         "<uuid:tournament_id>/lens/photos/<uuid:photo_id>/award/",
         LensPhotoAwardView.as_view(),
         name="tournament-lens-photo-award",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/stories/",
+        LensStoryListView.as_view(),
+        name="tournament-lens-stories",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/stories/<uuid:story_id>/approve/",
+        LensStoryApproveView.as_view(),
+        name="tournament-lens-story-approve",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/stories/<uuid:story_id>/hide/",
+        LensStoryHideView.as_view(),
+        name="tournament-lens-story-hide",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/stories/<uuid:story_id>/award/",
+        LensStoryAwardView.as_view(),
+        name="tournament-lens-story-award",
     ),
 ]

@@ -89,6 +89,24 @@ export function AlbumPanel({
     [q.data, awarded],
   );
 
+  // Photo-story entries render as ONE unit each (title + frames in order).
+  // A story whose category was removed from the campaign must not leak here,
+  // same rule as orphaned photo awards above.
+  const liveStoryCategories = useMemo(
+    () => new Set(q.data?.story_categories ?? []),
+    [q.data],
+  );
+  const stories = useMemo(
+    () =>
+      (q.data?.stories ?? []).filter(
+        (s) =>
+          liveStoryCategories.has(s.category) &&
+          (!school || s.institution_name === school) &&
+          (!category || s.category === category),
+      ),
+    [q.data, liveStoryCategories, category, school],
+  );
+
   const openIdx = photos.findIndex((p) => p.upload_ref === openRef);
   const openPhoto: PublicAlbumPhoto | null =
     openIdx >= 0 ? photos[openIdx] : null;
@@ -148,7 +166,7 @@ export function AlbumPanel({
             <p role="alert" className="px-4 py-16 text-center text-sm text-destructive">
               {t("This album could not be loaded.")}
             </p>
-          ) : !campaign || total === 0 ? (
+          ) : !campaign || (total === 0 && (q.data?.stories ?? []).length === 0) ? (
             <div
               className="flex flex-col items-center gap-2 px-4 py-16 text-center"
               data-testid="album-empty"
@@ -175,6 +193,67 @@ export function AlbumPanel({
                   {t("schools")}
                 </p>
               </div>
+
+              {/* Photo stories first: they are entries, not wall tiles, so
+                  they read best before the endless drift begins. */}
+              {stories.length > 0 ? (
+                <div
+                  aria-label={t("Photo stories")}
+                  className="border-b border-border px-4 py-3 sm:px-5"
+                  data-testid="album-stories"
+                >
+                  <p className="pb-2 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {t("Photo stories")}
+                  </p>
+                  <ul className="flex flex-col gap-3">
+                    {stories.map((s) => (
+                      <li
+                        key={s.id}
+                        className="rounded-lg border border-border bg-card p-2.5 shadow-sm"
+                        data-testid={`album-story-${s.id}`}
+                      >
+                        <div className="flex flex-wrap items-center gap-1.5 pb-2">
+                          <span className="text-sm font-semibold">
+                            {s.title || t("Untitled story")}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {s.institution_name}
+                          </span>
+                          {s.award_category &&
+                          liveCategories.has(s.award_category) ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                              <Award aria-hidden="true" className="h-3 w-3" />
+                              {s.award_category}
+                            </span>
+                          ) : null}
+                        </div>
+                        <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {[...s.photos]
+                            .sort((a, b) => a.position - b.position)
+                            .map((f) => (
+                              <li key={f.upload_ref}>
+                                <img
+                                  src={f.url}
+                                  alt={f.caption || s.institution_name}
+                                  loading="lazy"
+                                  className="aspect-[4/3] w-full rounded-md border border-border object-cover"
+                                />
+                                <p className="mt-0.5 flex items-start gap-1 text-[0.6875rem] leading-snug text-muted-foreground">
+                                  <span className="font-tabular font-semibold text-foreground">
+                                    {f.position}
+                                  </span>
+                                  <span className="min-w-0">
+                                    {f.caption || t("No caption")}
+                                  </span>
+                                </p>
+                              </li>
+                            ))}
+                        </ol>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               {/* Prize winners lead: they are the editorial top of the album. */}
               {winners.length > 0 ? (

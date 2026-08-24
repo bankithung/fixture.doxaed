@@ -19,6 +19,8 @@ SETTING_FIELDS = (
     "max_photos_per_institution",
     "award_categories",
     "category_limits",
+    "story_categories",
+    "story_photos_per_entry",
 )
 
 
@@ -39,11 +41,28 @@ def _clean_settings(changes: dict) -> dict:
                 ) from None
             if not 1 <= value <= 500:
                 raise DRFValidationError({"detail": "invalid_max_photos"})
-        elif key == "award_categories":
+        elif key == "story_photos_per_entry":
+            if isinstance(value, bool) or not isinstance(value, (int, str)):
+                raise DRFValidationError(
+                    {"detail": "invalid_story_photos_per_entry"}
+                )
+            try:
+                value = int(value)
+            except ValueError:
+                raise DRFValidationError(
+                    {"detail": "invalid_story_photos_per_entry"}
+                ) from None
+            if not 1 <= value <= 12:
+                raise DRFValidationError(
+                    {"detail": "invalid_story_photos_per_entry"}
+                )
+        elif key == "award_categories" or key == "story_categories":
             if not isinstance(value, list) or not all(
                 isinstance(c, str) and c.strip() for c in value
             ):
-                raise DRFValidationError({"detail": "invalid_award_categories"})
+                raise DRFValidationError(
+                    {"detail": f"invalid_{key}"}
+                )
             value = [c.strip()[:100] for c in value]
         elif key == "category_limits":
             if not isinstance(value, dict):
@@ -93,6 +112,19 @@ def _prune_limits(fields: dict, campaign: LensCampaign | None) -> None:
         campaign is not None and pruned != (campaign.category_limits or {})
     ):
         fields["category_limits"] = pruned
+    # A story category must remain an award category too: removing "Beyond the
+    # Court" from the awards silently drops it as a story format as well.
+    story_cats = fields.get(
+        "story_categories",
+        list(campaign.story_categories or []) if campaign else None,
+    )
+    if story_cats is None:
+        story_cats = []
+    pruned_stories = [c for c in story_cats if c in categories]
+    if "story_categories" in fields or (
+        campaign is not None and pruned_stories != (campaign.story_categories or [])
+    ):
+        fields["story_categories"] = pruned_stories
 
 
 def _snapshot(campaign: LensCampaign) -> dict:
@@ -102,6 +134,8 @@ def _snapshot(campaign: LensCampaign) -> dict:
         "max_photos_per_institution": campaign.max_photos_per_institution,
         "award_categories": campaign.award_categories,
         "category_limits": campaign.category_limits,
+        "story_categories": campaign.story_categories,
+        "story_photos_per_entry": campaign.story_photos_per_entry,
         "opened_at": campaign.opened_at.isoformat() if campaign.opened_at else None,
         "closed_at": campaign.closed_at.isoformat() if campaign.closed_at else None,
     }

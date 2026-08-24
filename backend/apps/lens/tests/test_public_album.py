@@ -105,4 +105,6 @@ def test_no_campaign_returns_null_album():
         "award_categories": [],
         "institutions": [],
         "photos": [],
+        "stories": [],
+        "story_categories": [],
     }

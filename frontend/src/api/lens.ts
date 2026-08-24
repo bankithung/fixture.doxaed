@@ -18,6 +18,11 @@ export interface LensCampaign {
   /** Optional per-school cap for each category; a missing key means only the
    * overall max_photos_per_institution applies. */
   category_limits: Record<string, number>;
+  /** Award categories that accept ONE grouped, titled, ordered photo-story
+   * entry per school (judged together), instead of individual photos. */
+  story_categories: string[];
+  /** How many photographs one story entry holds. */
+  story_photos_per_entry: number;
   is_open: boolean;
   opened_at: string | null;
   closed_at: string | null;
@@ -71,6 +76,8 @@ export interface LensSettingsBody {
   max_photos_per_institution?: number;
   award_categories?: string[];
   category_limits?: Record<string, number>;
+  story_categories?: string[];
+  story_photos_per_entry?: number;
 }
 
 /** One printable QR pass card. The plaintext `token` is shown ONCE — it lives
@@ -136,7 +143,40 @@ export interface LensOwnPhoto {
   thumb_url: string;
   caption: string;
   category: string;
+  /** Set when the photo belongs to one of the school's photo stories. */
+  story_id: string | null;
+  position: number;
   status: "pending" | "approved" | "removed";
+  created_at: string;
+}
+
+/** One frame inside a story payload — the uploader's and public view share
+ * it; manager payloads add `status`. */
+export interface LensStoryFrame {
+  upload_ref: string;
+  url: string;
+  thumb_url: string;
+  caption: string;
+  position: number;
+  created_at: string;
+  status?: LensPhotoStatus;
+}
+
+/** A photo-story ENTRY as its school sees it (hidden reads as "removed").
+ * The public album reuses the shape; the manager list adds status. */
+export interface LensOwnStory {
+  id: string;
+  title: string;
+  category: string;
+  photos: LensStoryFrame[];
+}
+
+export interface LensStoryRow extends LensOwnStory {
+  institution_id: string;
+  institution_name: string;
+  award_category: string;
+  status: LensPhotoStatus;
+  hidden_reason: string;
   created_at: string;
 }
 
@@ -152,6 +192,8 @@ export interface LensPassContext {
     max_photos_per_institution: number;
     award_categories: string[];
     category_limits: Record<string, number>;
+    story_categories: string[];
+    story_photos_per_entry: number;
   };
   quota: {
     used: number;
@@ -159,6 +201,7 @@ export interface LensPassContext {
     by_category: Record<string, number>;
   };
   photos: LensOwnPhoto[];
+  stories: LensOwnStory[];
 }
 
 export interface PublicAlbumPhoto {
@@ -172,11 +215,24 @@ export interface PublicAlbumPhoto {
   created_at: string;
 }
 
+/** A photo story on the public album: judged as ONE entry, shown as one
+ * titled strip of frames in their intended order. */
+export interface PublicAlbumStory {
+  id: string;
+  institution_name: string;
+  title: string;
+  category: string;
+  award_category: string;
+  photos: LensStoryFrame[];
+}
+
 export interface PublicAlbum {
   campaign: { title: string; tagline: string } | null;
   award_categories: string[];
+  story_categories: string[];
   institutions: { id: string; name: string; count: number }[];
   photos: PublicAlbumPhoto[];
+  stories: PublicAlbumStory[];
 }
 
 const base = (tid: string): string =>
@@ -280,6 +336,47 @@ export const lensApi = {
       body,
     ),
 
+  /** Photo-story entries: list + moderate + award at ENTRY level. */
+  stories: (
+    tid: string,
+    campaignId: string,
+    params: { status?: string; institution_id?: string; category?: string } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    if (campaignId) qs.set("campaign", campaignId);
+    if (params.status) qs.set("status", params.status);
+    if (params.institution_id)
+      qs.set("institution_id", params.institution_id);
+    if (params.category) qs.set("category", params.category);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.get<{ stories: LensStoryRow[] }>(
+      `${base(tid)}/stories/${suffix}`,
+    );
+  },
+  approveStory: (tid: string, storyId: string, body: { event_id: string }) =>
+    api.post<{ story: LensStoryRow }>(
+      `${base(tid)}/stories/${encodeURIComponent(storyId)}/approve/`,
+      body,
+    ),
+  hideStory: (
+    tid: string,
+    storyId: string,
+    body: { event_id: string; reason?: string },
+  ) =>
+    api.post<{ story: LensStoryRow }>(
+      `${base(tid)}/stories/${encodeURIComponent(storyId)}/hide/`,
+      body,
+    ),
+  awardStory: (
+    tid: string,
+    storyId: string,
+    body: { event_id: string; category: string },
+  ) =>
+    api.post<{ story: LensStoryRow }>(
+      `${base(tid)}/stories/${encodeURIComponent(storyId)}/award/`,
+      body,
+    ),
+
   /** The door behind the shared card: what album this is, and which schools
    * can sign in. */
   joinContext: (token: string) =>
@@ -305,6 +402,23 @@ export const lensApi = {
   removeOwn: (token: string, uploadRef: string) =>
     api.delete<{ removed: boolean }>(
       `/api/lens/p/${encodeURIComponent(token)}/photos/${encodeURIComponent(uploadRef)}/`,
+    ),
+  /** Name the school's photo-story entry. Locked once moderated. */
+  setStoryTitle: (token: string, storyId: string, title: string) =>
+    api.post<{ story: LensOwnStory }>(
+      `/api/lens/p/${encodeURIComponent(token)}/stories/${encodeURIComponent(storyId)}/title/`,
+      { title },
+    ),
+  /** Move one of the entry's frames to 1-based `position` — the intended
+   * reading order of a photo story. */
+  reorderStory: (
+    token: string,
+    storyId: string,
+    body: { upload_ref: string; position: number },
+  ) =>
+    api.post<{ story: LensOwnStory }>(
+      `/api/lens/p/${encodeURIComponent(token)}/stories/${encodeURIComponent(storyId)}/order/`,
+      body,
     ),
 
   /** Public shared album (approved photos only; slug+UUID pair). One album per
