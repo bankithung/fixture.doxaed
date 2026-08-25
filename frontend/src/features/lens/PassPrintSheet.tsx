@@ -81,8 +81,11 @@ export function PassPrintSheet({
   };
 
   return (
-    <section className="panel" data-testid="print-sheet">
-      <div className="panel-header justify-between print:hidden">
+    /* A BAND of the console panel now, not its own card: the console is one
+       combined section, so this renders as a bordered strip inside it (the
+       print output itself is unchanged — poster + slips only). */
+    <div data-testid="print-sheet" className="border-b border-border">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2.5 print:hidden">
         <h3 className="panel-title">{t("The card everyone scans")}</h3>
         <div className="flex items-center gap-2">
           {card ? (
@@ -105,11 +108,13 @@ export function PassPrintSheet({
       </div>
 
       {card ? (
-        /* The one moment the QR exists. Say so, then get out of the way. */
+        /* The card stays available on this device (the console caches the
+           minted copy), so this is a working poster view, not a one-time
+           reveal — but it is still worth printing now. */
         <>
           <p className="border-b border-border bg-warning-muted px-4 py-2 text-xs font-medium text-warning print:hidden">
             {t(
-              "This is the only time the QR is shown. Print it now, or copy the link and keep it somewhere safe.",
+              "This card stays available here on this device. Print it now, and copy the link as a backup.",
             )}
           </p>
           <div className="p-3 print:p-0">
@@ -260,6 +265,6 @@ export function PassPrintSheet({
           </div>
         </div>
       ) : null}
-    </section>
+    </div>
   );
 }

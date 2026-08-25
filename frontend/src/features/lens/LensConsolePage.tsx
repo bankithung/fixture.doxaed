@@ -390,7 +390,12 @@ export function LensConsolePage(): React.ReactElement {
   // no cards yet opens on Cards (the setup step). Settings is a tab you visit,
   // not the front page. `null` = "use the derived default"; a click pins it.
   const [tabState, setTab] = useState<TabKey | null>(null);
-  const [shareCard, setShareCard] = useState<LensShareCard | null>(null);
+  // A card minted THIS SESSION, before the refetch lands. The standing copy
+  // comes from the per-device cache below.
+  const [freshMint, setFreshMint] = useState<LensShareCard | null>(null);
+  // The minted card is cached per-campaign on this device so the poster stays
+  // viewable and re-printable (the server keeps only a hash, spec D12).
+  const cardCacheKey = `lens:card:${campaignId}`;
   const [codes, setCodes] = useState<LensCode[]>([]);
   const [confirm, setConfirm] = useState<
     | { kind: "close" }
@@ -427,6 +432,8 @@ export function LensConsolePage(): React.ReactElement {
     enabled: Boolean(id),
   });
   const campaign = overviewQ.data?.campaign ?? null;
+  /** When the card in use was minted; null = none has ever been made. */
+  const mintedAt = campaign?.share_minted_at ?? null;
   // Derived default landing tab (see the tabState comment above).
   const defaultTab: TabKey =
     (overviewQ.data?.stats.passes_active ?? 0) > 0 ? "moderate" : "cards";
@@ -439,7 +446,17 @@ export function LensConsolePage(): React.ReactElement {
   const codedCount = (overviewQ.data?.passes ?? []).filter(
     (p) => p.has_code,
   ).length;
-  const missingCodes = (overviewQ.data?.passes ?? []).length - codedCount;
+  // Schools missing a code are BOTH kinds: invited but not yet coded, AND
+  // schools that registered after the last issue and have no card at all
+  // (issue_codes creates their pass rows). Counting only existing rows made
+  // the very first Generate read as "nothing to do" and locked the button
+  // precisely when no school could sign in (owner 2026-08-24).
+  const institutionsTotal = overviewQ.data?.stats.institutions_total ?? 0;
+  const passRows = (overviewQ.data?.passes ?? []).length;
+  const notInvited = Math.max(0, institutionsTotal - passRows);
+  const missingCodes =
+    notInvited +
+    (overviewQ.data?.passes ?? []).filter((p) => !p.has_code).length;
   const copyCode = async (code: string): Promise<void> => {
     try {
       await navigator.clipboard.writeText(code);
@@ -529,7 +546,19 @@ export function LensConsolePage(): React.ReactElement {
       lensApi.shareCard(id, campaignId, { event_id: newEventId() }),
     onSuccess: (res) => {
       invalidate();
-      setShareCard(res.card);
+      setFreshMint(res.card);
+      // Keep the card on THIS device so the poster is re-viewable and
+      // re-printable any time — the server stores only a hash (spec D12),
+      // so this cache is the one honest copy. The mint timestamp is stamped
+      // back once the refetch lands.
+      try {
+        localStorage.setItem(
+          cardCacheKey,
+          JSON.stringify({ ...res.card, minted_at: null }),
+        );
+      } catch {
+        /* private mode: the card just stays on screen for this visit */
+      }
       push({ kind: "success", title: t("Card ready") });
     },
     onError: fail,
@@ -695,6 +724,46 @@ export function LensConsolePage(): React.ReactElement {
     return () => window.removeEventListener("keydown", onKey);
   }, [lightboxPhoto, lightboxIdx, photos]);
 
+  // Derived every render from the device cache — an idempotent read, not
+  // state, so there is no effect/setState dance to keep them in sync.
+  const cachedCard = useMemo((): (LensShareCard & { minted_at: string | null }) | null => {
+    if (!mintedAt) return null;
+    try {
+      const raw = localStorage.getItem(cardCacheKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as LensShareCard & {
+        minted_at: string | null;
+      };
+      // A timestamp that neither matches nor awaits stamping means the card
+      // was replaced elsewhere: this copy is a retired poster.
+      if (parsed.minted_at !== null && parsed.minted_at !== mintedAt)
+        return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }, [mintedAt, cardCacheKey]);
+
+  // External-system writes only — never setState here.
+  useEffect(() => {
+    try {
+      if (!mintedAt || !cachedCard) {
+        if (!mintedAt) localStorage.removeItem(cardCacheKey);
+        return;
+      }
+      if (cachedCard.minted_at === null) {
+        localStorage.setItem(
+          cardCacheKey,
+          JSON.stringify({ ...cachedCard, minted_at: mintedAt }),
+        );
+      }
+    } catch {
+      /* private mode: the card just stays on screen for this visit */
+    }
+  }, [mintedAt, cachedCard, cardCacheKey]);
+
+  const shareCard = freshMint ?? cachedCard;
+
   const slug = tournamentQ.data?.slug ?? "";
   const copyAlbumLink = async (): Promise<void> => {
     if (!slug) return;
@@ -775,7 +844,13 @@ export function LensConsolePage(): React.ReactElement {
 
   return (
     <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="flex flex-wrap items-center gap-3 print:hidden">
+      {/* ONE combined panel (owner 2026-08-25): the back button, title, the
+          printable card, stats, tabs and every tab's content are sections of
+          a single surface — nothing floats between cards any more. Print
+          still gets ONLY the poster: every screen-only band is print:hidden
+          and PassPrintSheet owns its own ink-safe output. */}
+      <section className="panel" data-testid="lens-board">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border px-3 py-3 print:hidden sm:px-4">
         <Link
           to={routes.tournamentLens(id)}
           data-testid="lens-back"
@@ -813,9 +888,7 @@ export function LensConsolePage(): React.ReactElement {
         ) : null}
       </div>
 
-      {/* The printable poster lives OUTSIDE the print:hidden board so it can
-          actually print. The QR exists only in the mint response, so it shows
-          until the manager leaves the page. */}
+      {/* The printable poster, as a band of the same panel. */}
       {tab === "cards" ? (
         <PassPrintSheet
           card={shareCard}
@@ -836,11 +909,7 @@ export function LensConsolePage(): React.ReactElement {
         />
       ) : null}
 
-      {/* ONE board: the stats, the bookmark tabs, and the active tab's toolbar
-          + content are a single card (not a tabs panel stacked over a separate
-          content panel). */}
-      <section className="panel print:hidden">
-        <div className="grid grid-cols-3 divide-x divide-border border-b border-border sm:grid-cols-6">
+        <div className="grid grid-cols-3 divide-x divide-border border-b border-border print:hidden sm:grid-cols-6">
           {statCells.map((cell) => (
             <div key={cell.label} className="px-3 py-2.5">
               <p className="text-[0.625rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
@@ -853,7 +922,7 @@ export function LensConsolePage(): React.ReactElement {
         <div
           role="tablist"
           aria-label={t("Guest Lens sections")}
-          className="flex gap-0.5 overflow-x-auto border-b border-border px-2"
+          className="flex gap-0.5 overflow-x-auto border-b border-border px-2 print:hidden"
         >
           {TABS.map((tb) => (
             <button
@@ -924,7 +993,7 @@ export function LensConsolePage(): React.ReactElement {
             <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
               <h3 className="panel-title">{t("School codes")}</h3>
               <span className="font-tabular text-xs text-muted-foreground">
-                {codedCount}/{overview.passes.length}
+                {codedCount}/{institutionsTotal}
               </span>
               <div className="ml-auto flex items-center gap-2">
                 {/* Two actions, because they are two different decisions: fill
@@ -975,7 +1044,13 @@ export function LensConsolePage(): React.ReactElement {
             </p>
             {overview.passes.length === 0 ? (
               <p className="px-4 py-3 text-sm text-muted-foreground">
-                {t("No schools yet. Generate codes to let each school sign in.")}
+                {notInvited > 0
+                  ? `${notInvited} ${t(
+                      "schools are waiting for a code. Generate codes creates each school's card and shows its code once.",
+                    )}`
+                  : t(
+                      "No schools yet. Codes appear here once schools register.",
+                    )}
               </p>
             ) : isMobile ? (
               <ul className="divide-y divide-border">

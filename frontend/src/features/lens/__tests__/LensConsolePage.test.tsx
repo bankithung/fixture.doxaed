@@ -264,6 +264,51 @@ describe("LensConsolePage", () => {
     expect(screen.getAllByAltText(/QR code/)).toHaveLength(1);
   });
 
+  it("keeps the minted card showable on this device, not one-time only", async () => {
+    // Mint once (this caches the card under the campaign), then come back in
+    // a fresh mount — the poster must still be here to view and re-print.
+    mount();
+    await userEvent.click(await screen.findByTestId("lens-tab-cards"));
+    await userEvent.click(await screen.findByTestId("mint-share-card-btn"));
+    await screen.findByTestId("share-card");
+
+    vi.mocked(lensApi.overview).mockResolvedValue({
+      ...OVERVIEW,
+      campaign: { ...CAMPAIGN, share_minted_at: "2026-08-25T09:00:00Z" },
+    });
+    mount();
+    await userEvent.click(await screen.findByTestId("lens-tab-cards"));
+
+    expect(await screen.findByTestId("share-card")).toBeInTheDocument();
+    expect(screen.getByTestId("print-cards-btn")).toBeInTheDocument();
+  });
+
+  it("drops a cached card that was replaced from another device", async () => {
+    localStorage.setItem(
+      "lens:card:c1",
+      JSON.stringify({
+        campaign_id: "c1",
+        title: "Guest Lens",
+        tagline: "36 Shots Challenge",
+        join_url: "https://x/lens/join/old",
+        token: "old",
+        qr_data_uri: "data:image/png;base64,OLD",
+        minted_at: "2026-08-20T09:00:00Z",
+      }),
+    );
+    vi.mocked(lensApi.overview).mockResolvedValue({
+      ...OVERVIEW,
+      campaign: { ...CAMPAIGN, share_minted_at: "2026-08-25T09:00:00Z" },
+    });
+    mount();
+    await userEvent.click(await screen.findByTestId("lens-tab-cards"));
+
+    // The timestamp mismatch means the wall poster is NOT this copy: showing
+    // it would let the host re-print a retired QR.
+    expect(await screen.findByTestId("card-active-since")).toBeInTheDocument();
+    expect(screen.queryByTestId("share-card")).toBeNull();
+  });
+
   it("will not retire the poster on the wall without asking", async () => {
     vi.mocked(lensApi.overview).mockResolvedValue({
       ...OVERVIEW,
@@ -296,10 +341,11 @@ describe("LensConsolePage", () => {
     mount();
 
     await userEvent.click(await screen.findByTestId("lens-tab-cards"));
-    // The school in OVERVIEW has no code, so the gap-filling action is live
-    // and says how many it will cover.
+    // The school in OVERVIEW has no code — and two more schools have no card
+    // at all yet — so the gap-filling action is live and says how many it
+    // will cover (all of them).
     const fill = await screen.findByTestId("issue-codes-btn");
-    expect(fill).toHaveTextContent("(1)");
+    expect(fill).toHaveTextContent("(3)");
     await userEvent.click(fill);
 
     await waitFor(() => expect(lensApi.issueCodes).toHaveBeenCalledTimes(1));
@@ -323,6 +369,7 @@ describe("LensConsolePage", () => {
   it("cannot fill gaps when there are none, and offers a full re-issue instead", async () => {
     vi.mocked(lensApi.overview).mockResolvedValue({
       ...OVERVIEW,
+      stats: { ...OVERVIEW.stats, institutions_total: 1 },
       passes: [{ ...OVERVIEW.passes[0], has_code: true }],
     });
     mount();
