@@ -107,9 +107,13 @@ def remove_photo_from_story(photo: LensPhoto) -> None:  # type: ignore[unused]
         story.delete()
 
 
-def set_title(*, pass_: LensPass, story_id: object, title: str) -> LensStory:
-    """The school names its entry. Own-story scoped: a pass can only rename
-    ITS school's story (invariant 2 at the credential layer)."""
+def set_title(
+    *, pass_: LensPass, story_id: object, title: str,
+    description: str | None = None,
+) -> LensStory:
+    """The school names its entry (title mandatory at submit time) and may
+    add an OPTIONAL description. Own-story scoped: a pass can only edit ITS
+    school's story (invariant 2 at the credential layer)."""
     story = (
         LensStory.objects.filter(
             id=as_uuid_or_404(story_id),
@@ -122,7 +126,10 @@ def set_title(*, pass_: LensPass, story_id: object, title: str) -> LensStory:
     if story.status != "pending":
         raise DRFValidationError({"detail": "photo_locked"})
     story.title = (title or "").strip()[:120]
-    story.save(update_fields=["title"])
+    if description is not None:
+        story.description = (description or "").strip()[:1000]
+    story.save(update_fields=["title", "description"]
+               if description is not None else ["title"])
     return story
 
 

@@ -214,6 +214,65 @@ describe("LensUploadPage", () => {
     expect(screen.getByTestId("category-full-hint")).toBeInTheDocument();
   });
 
+  it("requires a story title in the preview before a story batch uploads", async () => {
+    const STORY = "Beyond the Court - A Photo Story";
+    vi.mocked(lensApi.passContext).mockResolvedValue({
+      ...CTX,
+      campaign: {
+        ...CTX.campaign,
+        award_categories: [STORY],
+        category_limits: { [STORY]: 1 },
+        story_categories: [STORY],
+        story_photos_per_entry: 4,
+      },
+      stories: [],
+    });
+    vi.mocked(lensApi.upload).mockResolvedValue({
+      photo: {
+        upload_ref: "sf1",
+        url: "/m/sf1.jpg",
+        thumb_url: "/m/sf1_t.jpg",
+        caption: "",
+        category: STORY,
+        story_id: "s9",
+        position: 1,
+        status: "pending",
+        created_at: "2026-08-25T10:00:00Z",
+      },
+    });
+    mount();
+    await screen.findByTestId("category-picker");
+
+    await userEvent.upload(screen.getByTestId("file-input"), [
+      new File(["a"], "a.jpg", { type: "image/jpeg" }),
+    ]);
+    const review = await screen.findByTestId("review-area");
+
+    // The preview step demands the title first; Upload stays locked.
+    const titleInput = within(review).getByTestId("review-story-title");
+    expect(
+      within(review).getByTestId("confirm-upload-btn"),
+    ).toBeDisabled();
+    expect(within(review).getByText(/A story title is required/i));
+
+    // Optional description rides along only when filled.
+    await userEvent.type(
+      within(review).getByTestId("review-story-description"),
+      "From warm-up to podium",
+    );
+    await userEvent.type(titleInput, "Road to the final");
+    await userEvent.click(within(review).getByTestId("confirm-upload-btn"));
+
+    await waitFor(() => expect(lensApi.upload).toHaveBeenCalledTimes(1));
+    // The entry the uploads created is named immediately.
+    await waitFor(() =>
+      expect(lensApi.setStoryTitle).toHaveBeenCalledWith("tok123", "s9", {
+        title: "Road to the final",
+        description: "From warm-up to podium",
+      }),
+    );
+  });
+
   it("shows the closed state without an uploader when the campaign closed", async () => {
     vi.mocked(lensApi.passContext).mockResolvedValue({
       ...CTX,
@@ -258,6 +317,7 @@ describe("LensUploadPage", () => {
         {
           id: "s1",
           title: "",
+          description: "",
           category: STORY,
           photos: [
             {
@@ -307,10 +367,8 @@ describe("LensUploadPage", () => {
       "Road to the final",
     );
     await userEvent.click(screen.getByTestId("story-title-save"));
-    expect(lensApi.setStoryTitle).toHaveBeenCalledWith(
-      "tok123",
-      "s1",
-      "Road to the final",
-    );
+    expect(lensApi.setStoryTitle).toHaveBeenCalledWith("tok123", "s1", {
+      title: "Road to the final",
+    });
   });
 });

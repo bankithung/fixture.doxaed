@@ -693,6 +693,7 @@ def _story_payload(s, *, own: bool = False) -> dict:
         "institution_id": str(s.institution_id),
         "institution_name": s.institution.name,
         "title": s.title,
+        "description": s.description,
         "category": s.category,
         "award_category": s.award_category,
         "photos": [
@@ -808,6 +809,11 @@ class LensPassStoryTitleView(GenericAPIView):
         story = photo_service.set_story_title(
             pass_=p, story_id=story_id,
             title=str(request.data.get("title") or ""),
+            description=(
+                str(request.data.get("description"))
+                if request.data.get("description") is not None
+                else None
+            ),
         )
         return Response({"story": _story_payload(story, own=True)})
 

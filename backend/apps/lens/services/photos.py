@@ -173,11 +173,12 @@ def remove_own_photo(*, pass_, upload_ref):
         stories.remove_photo_from_story(photo)
 
 
-def set_story_title(*, pass_, story_id, title: str):
+def set_story_title(*, pass_, story_id, title: str, description: str | None = None):
     from apps.lens.services import stories as story_service
 
     return story_service.set_title(
         pass_=pass_, story_id=story_id, title=title,
+        description=description,
     )
 
 

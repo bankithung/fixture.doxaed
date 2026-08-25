@@ -184,6 +184,9 @@ class LensStory(models.Model):
     # ``story_categories``.
     category = models.CharField(max_length=100)
     title = models.CharField(max_length=120, blank=True)
+    # Optional free-text description of the entry ("optional description").
+    # The TITLE is the mandatory part of a submission; this never is.
+    description = models.TextField(blank=True, default="")
     approved_at = models.DateTimeField(null=True, blank=True)
     hidden_at = models.DateTimeField(null=True, blank=True)
     hidden_reason = models.CharField(max_length=200, blank=True)

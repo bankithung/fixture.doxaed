@@ -170,6 +170,8 @@ export interface LensStoryFrame {
 export interface LensOwnStory {
   id: string;
   title: string;
+  /** Optional free text; the TITLE is the mandatory part of an entry. */
+  description: string;
   category: string;
   photos: LensStoryFrame[];
 }
@@ -412,11 +414,16 @@ export const lensApi = {
     api.delete<{ removed: boolean }>(
       `/api/lens/p/${encodeURIComponent(token)}/photos/${encodeURIComponent(uploadRef)}/`,
     ),
-  /** Name the school's photo-story entry. Locked once moderated. */
-  setStoryTitle: (token: string, storyId: string, title: string) =>
+  /** Name the school's photo-story entry (title mandatory at submit time)
+   * and optionally give it a description. Locked once moderated. */
+  setStoryTitle: (
+    token: string,
+    storyId: string,
+    body: { title: string; description?: string },
+  ) =>
     api.post<{ story: LensOwnStory }>(
       `/api/lens/p/${encodeURIComponent(token)}/stories/${encodeURIComponent(storyId)}/title/`,
-      { title },
+      body,
     ),
   /** Move one of the entry's frames to 1-based `position` — the intended
    * reading order of a photo story. */

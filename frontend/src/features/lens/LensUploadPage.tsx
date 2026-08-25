@@ -140,8 +140,16 @@ export function LensUploadPage({
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   // Picked photos awaiting confirmation.
   const [picked, setPicked] = useState<PickedPhoto[]>([]);
-  // Local draft of the story title while editing (null = show what is saved).
+  // Local draft of the story title/description: used BOTH in the review step
+  // (mandatory title before upload) and in the story band afterwards.
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  const [descDraft, setDescDraft] = useState<string | null>(null);
+  const [storyDescDraft, setStoryDescDraft] = useState("");
+  const resetStoryDrafts = (): void => {
+    setTitleDraft(null);
+    setStoryDescDraft("");
+  };
+  const storyTitleDraft = titleDraft ?? "";
 
   const q = useQuery({
     queryKey: qk.lensPass(token),
@@ -301,6 +309,12 @@ export function LensUploadPage({
 
   const confirmUpload = async (): Promise<void> => {
     if (picked.length === 0 || running) return;
+    // A story entry names itself at submit time: title is MANDATORY here,
+    // description optional (owner 2026-08-25).
+    const isStoryBatch =
+      isStoryCat && category !== "" && picked.length > 0;
+    const storyTitle = storyTitleDraft.trim();
+    if (isStoryBatch && !storyTitle) return;
     const batch: UploadItem[] = picked.map((p) => ({
       key: p.key,
       name: p.file.name,
@@ -308,6 +322,7 @@ export function LensUploadPage({
     }));
     setItems(batch);
     setRunning(true);
+    let storyId: string | null = null;
     // Sequential on purpose: school connections choke on parallel uploads,
     // and the per-file list stays honest about what is actually in flight.
     for (let i = 0; i < picked.length; i += 1) {
@@ -319,14 +334,33 @@ export function LensUploadPage({
         fd.append("file", compact, compact.name);
         if (category) fd.append("category", category);
         fd.append("event_id", newEventId());
-        await lensApi.upload(token, fd);
+        const res = await lensApi.upload(token, fd);
+        storyId = res.photo.story_id ?? storyId;
         setItem(photo.key, { state: "done" });
       } catch (e) {
         setItem(photo.key, { state: "error", error: uploadErr(e) });
       }
     }
+    // Name the entry the uploads just created.
+    if (isStoryBatch && storyId) {
+      try {
+        await lensApi.setStoryTitle(token, storyId, {
+          title: storyTitle,
+          ...(storyDescDraft.trim() ? { description: storyDescDraft.trim() } : {}),
+        });
+        push({ kind: "success", title: t("Story saved") });
+      } catch {
+        push({
+          kind: "error",
+          title: t(
+            "Uploaded, but the title could not be saved. Set it below.",
+          ),
+        });
+      }
+    }
     setRunning(false);
     clearPicked();
+    resetStoryDrafts();
     void qc.invalidateQueries({ queryKey: qk.lensPass(token) });
   };
 
@@ -529,6 +563,38 @@ export function LensUploadPage({
                       </li>
                     ))}
                   </ul>
+
+                  {/* A STORY batch names itself here, BEFORE uploading:
+                      title is mandatory, description optional. */}
+                  {isStoryCat ? (
+                    <div className="mt-2.5 flex flex-col gap-2">
+                      <input
+                        value={titleDraft ?? ""}
+                        data-testid="review-story-title"
+                        maxLength={120}
+                        placeholder={`${t("Story title")} *`}
+                        aria-label={t("Story title")}
+                        onChange={(e) => setTitleDraft(e.target.value)}
+                        className="h-10 w-full rounded-md border border-border bg-card px-2.5 text-sm"
+                      />
+                      <textarea
+                        value={storyDescDraft}
+                        data-testid="review-story-description"
+                        rows={2}
+                        maxLength={1000}
+                        placeholder={t("Description (optional)")}
+                        aria-label={t("Description")}
+                        onChange={(e) => setStoryDescDraft(e.target.value)}
+                        className="w-full rounded-md border border-border bg-card px-2.5 py-2 text-sm"
+                      />
+                      {!storyTitleDraft.trim() ? (
+                        <p className="text-xs text-destructive">
+                          {t("A story title is required.")}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   <div className="mt-2.5 flex items-center gap-2">
                     <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                       {category
@@ -546,7 +612,10 @@ export function LensUploadPage({
                     <Button
                       size="sm"
                       onClick={() => void confirmUpload()}
-                      disabled={picked.length === 0}
+                      disabled={
+                        picked.length === 0 ||
+                        (isStoryCat && !storyTitleDraft.trim())
+                      }
                       data-testid="confirm-upload-btn"
                     >
                       {t("Upload")} ({picked.length})
@@ -626,7 +695,7 @@ export function LensUploadPage({
                 </span>
               </div>
               <div className="flex flex-col gap-2.5 p-3 sm:p-4">
-                <div className="flex items-end gap-2">
+                <div className="flex flex-col gap-2">
                   <input
                     value={titleDraft ?? story.title ?? ""}
                     data-testid="story-title-input"
@@ -635,20 +704,42 @@ export function LensUploadPage({
                     placeholder={t("Story title")}
                     aria-label={t("Story title")}
                     onChange={(e) => setTitleDraft(e.target.value)}
-                    className="h-9 min-w-0 flex-1 rounded-md border border-border bg-card px-2.5 text-sm"
+                    className="h-10 w-full rounded-md border border-border bg-card px-2.5 text-sm"
+                  />
+                  <textarea
+                    value={descDraft ?? story.description ?? ""}
+                    data-testid="story-desc-input"
+                    disabled={running || !open}
+                    maxLength={1000}
+                    rows={2}
+                    placeholder={t("Description (optional)")}
+                    aria-label={t("Description")}
+                    onChange={(e) => setDescDraft(e.target.value)}
+                    className="w-full rounded-md border border-border bg-card px-2.5 py-2 text-sm"
                   />
                   <Button
                     variant="outline"
                     size="sm"
+                    className="self-start"
                     data-testid="story-title-save"
-                    disabled={running || !open || (titleDraft ?? "") === (story.title ?? "")}
+                    disabled={
+                      running ||
+                      !open ||
+                      ((titleDraft ?? "") === (story.title ?? "") &&
+                        (descDraft ?? "") === (story.description ?? ""))
+                    }
                     onClick={async () => {
                       try {
-                        await lensApi.setStoryTitle(token, story.id, titleDraft ?? "");
-                        push({ kind: "success", title: t("Title saved") });
+                        await lensApi.setStoryTitle(token, story.id, {
+                          title: titleDraft ?? "",
+                          ...(descDraft !== null
+                            ? { description: descDraft }
+                            : {}),
+                        });
+                        push({ kind: "success", title: t("Story saved") });
                         void qc.invalidateQueries({ queryKey: qk.lensPass(token) });
                       } catch {
-                        push({ kind: "error", title: t("Could not save the title.") });
+                        push({ kind: "error", title: t("Could not save the story.") });
                       }
                     }}
                   >
