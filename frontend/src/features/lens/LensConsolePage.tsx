@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -20,7 +20,6 @@ import {
   type LensCode,
   type LensPhoto,
   type LensSettingsBody,
-  type LensShareCard,
 } from "@/api/lens";
 import { tournamentsApi } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
@@ -43,7 +42,7 @@ import { t } from "@/lib/t";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { ApiError } from "@/types/api";
 import { AwardRankBoard } from "./AwardRankBoard";
-import { CodeSlips, ShareCardStrip } from "./PassPrintSheet";
+import { ShareCardStrip } from "./PassPrintSheet";
 
 type TabKey = "campaign" | "cards" | "moderate" | "awards";
 
@@ -394,13 +393,10 @@ export function LensConsolePage(): React.ReactElement {
   // no cards yet opens on Cards (the setup step). Settings is a tab you visit,
   // not the front page. `null` = "use the derived default"; a click pins it.
   const [tabState, setTab] = useState<TabKey | null>(null);
-  // A card minted THIS SESSION, before the refetch lands. The standing copy
-  // comes from the per-device cache below.
-  const [freshMint, setFreshMint] = useState<LensShareCard | null>(null);
-  // The minted card is cached per-campaign on this device so the poster stays
-  // viewable and re-printable (the server keeps only a hash, spec D12).
-  const cardCacheKey = `lens:card:${campaignId}`;
-  const [codes, setCodes] = useState<LensCode[]>([]);
+
+  // The device cache IS the one code list now; this tick just tells the
+  // derived memo to re-read it after a mutation writes to it.
+  const [codeCacheTick, bumpCodeCache] = useReducer((x: number) => x + 1, 0);
   const [confirm, setConfirm] = useState<
     | { kind: "close" }
     | { kind: "reopen" }
@@ -438,15 +434,22 @@ export function LensConsolePage(): React.ReactElement {
   const campaign = overviewQ.data?.campaign ?? null;
   /** When the card in use was minted; null = none has ever been made. */
   const mintedAt = campaign?.share_minted_at ?? null;
+
+  // The card IN USE, from the server (Fernet-encrypted at rest, decrypted
+  // only through the manager-gated GET) — so the SAME poster survives any
+  // refresh and any device. No more one-time reveal, no local cache.
+  const shareCardQ = useQuery({
+    queryKey: [...qk.lens(id), "share-card", campaignId],
+    queryFn: () => lensApi.currentShareCard(id, campaignId),
+    enabled: Boolean(campaignId && mintedAt),
+    staleTime: Infinity,
+  });
+  const shareCard = shareCardQ.data?.card ?? null;
   // Derived default landing tab (see the tabState comment above).
   const defaultTab: TabKey =
     (overviewQ.data?.stats.passes_active ?? 0) > 0 ? "moderate" : "cards";
   const tab = tabState ?? defaultTab;
 
-  // Plaintext codes exist only in the response that created them, so the table
-  // shows a code for the schools issued in THIS session and "Set" for the rest.
-  const codeFor = (passId: string): string =>
-    codes.find((c) => c.pass_id === passId)?.code ?? "";
   const codedCount = (overviewQ.data?.passes ?? []).filter(
     (p) => p.has_code,
   ).length;
@@ -515,6 +518,9 @@ export function LensConsolePage(): React.ReactElement {
     void qc.invalidateQueries({ queryKey: qk.lens(id) });
     void qc.invalidateQueries({ queryKey: qk.lensPhotos(id) });
     void qc.invalidateQueries({ queryKey: qk.lensStories(id) });
+    void qc.invalidateQueries({
+      queryKey: [...qk.lens(id), "share-card", campaignId],
+    });
   };
   const fail = (e: unknown): void => {
     push({ kind: "error", title: errMsg(e) });
@@ -548,21 +554,8 @@ export function LensConsolePage(): React.ReactElement {
   const shareCardM = useMutation({
     mutationFn: () =>
       lensApi.shareCard(id, campaignId, { event_id: newEventId() }),
-    onSuccess: (res) => {
+    onSuccess: () => {
       invalidate();
-      setFreshMint(res.card);
-      // Keep the card on THIS device so the poster is re-viewable and
-      // re-printable any time — the server stores only a hash (spec D12),
-      // so this cache is the one honest copy. The mint timestamp is stamped
-      // back once the refetch lands.
-      try {
-        localStorage.setItem(
-          cardCacheKey,
-          JSON.stringify({ ...res.card, minted_at: null }),
-        );
-      } catch {
-        /* private mode: the card just stays on screen for this visit */
-      }
       push({ kind: "success", title: t("Card ready") });
     },
     onError: fail,
@@ -592,10 +585,7 @@ export function LensConsolePage(): React.ReactElement {
       } catch {
         /* private mode: codes stay on screen for this visit */
       }
-      setCodes((cur) => [
-        ...res.codes,
-        ...cur.filter((c) => !res.codes.some((n) => n.pass_id === c.pass_id)),
-      ]);
+      bumpCodeCache();
       push({
         kind: "success",
         title: res.codes.length
@@ -610,10 +600,20 @@ export function LensConsolePage(): React.ReactElement {
       lensApi.rotate(id, passId, { event_id: newEventId() }),
     onSuccess: (res) => {
       invalidate();
-      setCodes((cur) => [
-        res.code,
-        ...cur.filter((c) => c.pass_id !== res.code.pass_id),
-      ]);
+      try {
+        const key = `lens:codes:${campaignId}`;
+        const prev = JSON.parse(localStorage.getItem(key) ?? "[]") as CachedCode[];
+        localStorage.setItem(
+          key,
+          JSON.stringify([
+            { ...res.code, set_at: null },
+            ...prev.filter((c) => c.pass_id !== res.code.pass_id),
+          ]),
+        );
+      } catch {
+        /* ignore */
+      }
+      bumpCodeCache();
       push({ kind: "success", title: t("Code regenerated") });
     },
     onError: fail,
@@ -623,7 +623,17 @@ export function LensConsolePage(): React.ReactElement {
       lensApi.revoke(id, passId, { event_id: newEventId() }),
     onSuccess: (_res, passId) => {
       invalidate();
-      setCodes((cur) => cur.filter((c) => c.pass_id !== passId));
+      try {
+        const key = `lens:codes:${campaignId}`;
+        const prev = JSON.parse(localStorage.getItem(key) ?? "[]") as CachedCode[];
+        localStorage.setItem(
+          key,
+          JSON.stringify(prev.filter((c) => c.pass_id !== passId)),
+        );
+      } catch {
+        /* ignore */
+      }
+      bumpCodeCache();
       push({ kind: "success", title: t("School removed from the album") });
     },
     onError: fail,
@@ -743,51 +753,13 @@ export function LensConsolePage(): React.ReactElement {
     return () => window.removeEventListener("keydown", onKey);
   }, [lightboxPhoto, lightboxIdx, photos]);
 
-  // Derived every render from the device cache — an idempotent read, not
-  // state, so there is no effect/setState dance to keep them in sync.
-  const cachedCard = useMemo((): (LensShareCard & { minted_at: string | null }) | null => {
-    if (!mintedAt) return null;
-    try {
-      const raw = localStorage.getItem(cardCacheKey);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw) as LensShareCard & {
-        minted_at: string | null;
-      };
-      // A timestamp that neither matches nor awaits stamping means the card
-      // was replaced elsewhere: this copy is a retired poster.
-      if (parsed.minted_at !== null && parsed.minted_at !== mintedAt)
-        return null;
-      return parsed;
-    } catch {
-      return null;
-    }
-  }, [mintedAt, cardCacheKey]);
-
-  // External-system writes only — never setState here.
-  useEffect(() => {
-    try {
-      if (!mintedAt || !cachedCard) {
-        if (!mintedAt) localStorage.removeItem(cardCacheKey);
-        return;
-      }
-      if (cachedCard.minted_at === null) {
-        localStorage.setItem(
-          cardCacheKey,
-          JSON.stringify({ ...cachedCard, minted_at: mintedAt }),
-        );
-      }
-    } catch {
-      /* private mode: the card just stays on screen for this visit */
-    }
-  }, [mintedAt, cachedCard, cardCacheKey]);
-
-  const shareCard = freshMint ?? cachedCard;
-
-  // Codes this device may still SHOW: everything issued in this session,
-  // plus cached copies whose stamp still matches the pass row's code_set_at.
-  // A regenerated or rotated code changes that timestamp, so its cached twin
-  // disappears instead of sending a teacher to a lockout with a dead code.
+  
+  // The ONE code list: every entry this device has issued or rotated whose
+  // stamp still matches the pass row's code_set_at. A regenerated or rotated
+  // code changes that timestamp, so its stale twin disappears instead of
+  // sending a teacher to a lockout with a dead code.
   const visibleCodes = useMemo(() => {
+    void codeCacheTick;
     const byPass = new Map(
       (overviewQ.data?.passes ?? []).map((p) => [p.id, p]),
     );
@@ -799,23 +771,16 @@ export function LensConsolePage(): React.ReactElement {
     } catch {
       cached = [];
     }
-    const validCache: LensCode[] = [];
+    const valid: LensCode[] = [];
     for (const c of cached) {
       const pass = byPass.get(c.pass_id);
       if (!pass || !pass.has_code) continue;
-      if (c.set_at === null) {
-        // Issued here but not yet stamped: good until the stamp lands.
-        validCache.push(c);
-      } else if (c.set_at === pass.code_set_at) {
-        validCache.push(c);
-      }
+      if (c.set_at === null || c.set_at === pass.code_set_at) valid.push(c);
     }
-    const merged = [...codes];
-    for (const c of validCache) {
-      if (!merged.some((m) => m.pass_id === c.pass_id)) merged.push(c);
-    }
-    return merged;
-  }, [codes, overviewQ.data?.passes, campaignId]);
+    return valid;
+  }, [codeCacheTick, overviewQ.data?.passes, campaignId]);
+  const codeFor = (passId: string): string =>
+    visibleCodes.find((c) => c.pass_id === passId)?.code ?? "";
 
   // Stamp fresh entries with their pass's code_set_at and prune anything
   // rotated or revoked (external-system writes only, never setState).
@@ -1078,7 +1043,9 @@ export function LensConsolePage(): React.ReactElement {
 
         {tab === "cards" ? (
           <>
-            <CodeSlips codes={visibleCodes} />
+            {/* ONE list (owner 2026-08-25): the school table below IS the
+                code list — each row shows its readable code while this
+                device holds a still-valid copy. */}
             <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
               <h3 className="panel-title">{t("School codes")}</h3>
               <span className="font-tabular text-xs text-muted-foreground">

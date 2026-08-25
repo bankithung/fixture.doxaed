@@ -322,10 +322,21 @@ class LensReopenView(GenericAPIView):
 
 class LensShareCardView(GenericAPIView):
     """`POST /api/tournaments/{id}/lens/share-card/` — mint the campaign's ONE
-    card. The plaintext token (and its QR) appear only here: re-minting
-    invalidates the poster already on the wall, so it is never automatic."""
+    card; re-minting invalidates the poster already on the wall, so it is
+    never automatic.
+
+    `GET` — the card IN USE, decrypted for the manager (owner 2026-08-25):
+    the poster is re-viewable and re-printable after any refresh, on any
+    device. `{"card": null}` when nothing has been minted yet."""
 
     permission_classes = [IsAuthenticated]
+
+    def get(self, request, tournament_id):
+        t = _get_managed_tournament(request, tournament_id)
+        c = _resolve_campaign_or_none(request, t)
+        if c is None:
+            return Response({"card": None})
+        return Response({"card": pass_service.current_card(c)})
 
     def post(self, request, tournament_id):
         t = _get_managed_tournament(request, tournament_id)

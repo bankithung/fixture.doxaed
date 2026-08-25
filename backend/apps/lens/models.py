@@ -66,6 +66,12 @@ class LensCampaign(models.Model):
     # so the host prints one poster instead of 35 cards. sha256 at rest like
     # the pass tokens it replaces; plaintext returned once from the mint call.
     share_token_hash = models.CharField(max_length=128, blank=True, db_index=True)
+    # The same token, Fernet-encrypted under the deployment secret (owner
+    # 2026-08-25): lets the manager re-view and re-print the SAME card after
+    # any refresh, instead of one-time-only. The hash above stays the
+    # verification path; this ciphertext is readable only through the
+    # manager-gated endpoint.
+    share_token_encrypted = models.TextField(blank=True, default="")
     share_minted_at = models.DateTimeField(null=True, blank=True)
     max_photos_per_institution = models.PositiveIntegerField(default=36)
     award_categories = models.JSONField(default=default_award_categories, blank=True)

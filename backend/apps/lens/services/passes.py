@@ -193,7 +193,14 @@ def mint_share_card(*, campaign, by, event_id=None, request=None):
     with transaction.atomic():
         campaign.share_token_hash = _hash(token)
         campaign.share_minted_at = timezone.now()
-        campaign.save(update_fields=["share_token_hash", "share_minted_at"])
+        campaign.share_token_encrypted = _encrypt(token)
+        campaign.save(
+            update_fields=[
+                "share_token_hash",
+                "share_minted_at",
+                "share_token_encrypted",
+            ]
+        )
         emit_audit(
             actor_user=by,
             actor_role="admin",
@@ -219,6 +226,49 @@ def share_card_payload(campaign, token: str) -> dict:
         "token": token,
         "qr_data_uri": _qr_data_uri(url),
     }
+
+
+# --- recoverable card (owner 2026-08-25) -------------------------------------
+# The hash-at-rest rule made the QR a one-time reveal, which meant a host who
+# lost the printout had to REPLACE the card — retiring a poster that was
+# still on the wall. The token is now also stored ENCRYPTED at rest
+# (Fernet, keyed off the deployment secret), so the manager can re-view and
+# re-print the SAME card forever. The hash stays the verification path; the
+# ciphertext is only ever readable through the manager-gated endpoint.
+
+from cryptography.fernet import Fernet  # noqa: E402
+from django.core.exceptions import ImproperlyConfigured  # noqa: E402
+
+_FERNET_KEY = None
+
+
+def _fernet() -> Fernet:
+    global _FERNET_KEY
+    if _FERNET_KEY is None:
+        secret = django_settings.SECRET_KEY
+        if not secret:
+            raise ImproperlyConfigured("SECRET_KEY required for lens cards")
+        digest = hashlib.sha256(secret.encode()).digest()
+        _FERNET_KEY = base64.urlsafe_b64encode(digest)
+    return Fernet(_FERNET_KEY)
+
+
+def _encrypt(token: str) -> str:
+    return _fernet().encrypt(token.encode()).decode()
+
+
+def current_card(campaign):
+    """The card in use, decrypted for the manager — or None. This is what
+    makes the poster re-viewable and re-printable after any refresh."""
+    if not campaign.share_token_encrypted or not campaign.share_token_hash:
+        return None
+    try:
+        token = _fernet().decrypt(
+            campaign.share_token_encrypted.encode()
+        ).decode()
+    except Exception:
+        return None
+    return share_card_payload(campaign, token)
 
 
 def resolve_share(token_plaintext: str):

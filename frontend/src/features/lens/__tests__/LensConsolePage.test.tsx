@@ -25,6 +25,7 @@ vi.mock("@/api/lens", async (importOriginal) => {
       close: vi.fn(),
       reopen: vi.fn(),
       shareCard: vi.fn(),
+      currentShareCard: vi.fn(),
       issueCodes: vi.fn(),
       rotate: vi.fn(),
       revoke: vi.fn(),
@@ -153,6 +154,7 @@ beforeEach(() => {
   vi.mocked(lensApi.open).mockResolvedValue({ campaign: CAMPAIGN });
   vi.mocked(lensApi.update).mockResolvedValue({ campaign: CAMPAIGN });
   vi.mocked(lensApi.shareCard).mockResolvedValue({ card: CARD });
+  vi.mocked(lensApi.currentShareCard).mockResolvedValue({ card: null });
   vi.mocked(lensApi.issueCodes).mockResolvedValue({ codes: [CODE], skipped: 0 });
   vi.mocked(lensApi.approve).mockResolvedValue({
     photo: photo({ id: "ph1", status: "approved" }),
@@ -250,8 +252,32 @@ describe("LensConsolePage", () => {
   });
 
   it("mints ONE card for the event and prints it with the join link", async () => {
+    // After minting, the overview carries share_minted_at, which enables the
+    // server-backed card read: the strip shows the SAME poster back.
+    let minted = false;
+    vi.mocked(lensApi.shareCard).mockImplementation(async () => {
+      minted = true;
+      return { card: CARD };
+    });
+    vi.mocked(lensApi.overview).mockImplementation(async () => ({
+      ...OVERVIEW,
+      campaign: {
+        ...CAMPAIGN,
+        ...(minted ? { share_minted_at: "2026-08-25T09:00:00Z" } : {}),
+      },
+    }));
+    // Once the card exists, the manager GET returns it — forever.
+    vi.mocked(lensApi.currentShareCard).mockResolvedValue({
+      card: {
+        campaign_id: "c1",
+        title: "Guest Lens",
+        tagline: "36 Shots Challenge",
+        join_url: "https://x/lens/join/tok123",
+        token: "tok123",
+        qr_data_uri: "data:image/png;base64,abc123",
+      },
+    });
     mount();
-
     await userEvent.click(await screen.findByTestId("lens-tab-cards"));
     await userEvent.click(await screen.findByTestId("mint-share-card-btn"));
 
@@ -265,161 +291,28 @@ describe("LensConsolePage", () => {
     expect(screen.getAllByAltText(/QR code/)).toHaveLength(1);
   });
 
-  it("keeps the minted card showable on this device, not one-time only", async () => {
-    // Mint once (this caches the card under the campaign), then come back in
-    // a fresh mount — the poster must still be here to view and re-print.
-    mount();
-    await userEvent.click(await screen.findByTestId("lens-tab-cards"));
-    await userEvent.click(await screen.findByTestId("mint-share-card-btn"));
-    await screen.findByTestId("share-card");
-
+  it("shows the SAME card again after a refresh — no one-time reveal", async () => {
+    // The server holds the card encrypted; the manager GET returns it on
+    // every visit, so the poster is re-viewable and re-printable forever.
     vi.mocked(lensApi.overview).mockResolvedValue({
       ...OVERVIEW,
       campaign: { ...CAMPAIGN, share_minted_at: "2026-08-25T09:00:00Z" },
+    });
+    vi.mocked(lensApi.currentShareCard).mockResolvedValue({
+      card: {
+        campaign_id: "c1",
+        title: "Guest Lens",
+        tagline: "36 Shots Challenge",
+        join_url: "https://x/lens/join/tok123",
+        token: "tok123",
+        qr_data_uri: "data:image/png;base64,abc123",
+      },
     });
     mount();
     await userEvent.click(await screen.findByTestId("lens-tab-cards"));
 
     expect(await screen.findByTestId("share-card")).toBeInTheDocument();
     expect(screen.getByTestId("print-cards-btn")).toBeInTheDocument();
-  });
-
-  it("drops a cached card that was replaced from another device", async () => {
-    localStorage.setItem(
-      "lens:card:c1",
-      JSON.stringify({
-        campaign_id: "c1",
-        title: "Guest Lens",
-        tagline: "36 Shots Challenge",
-        join_url: "https://x/lens/join/old",
-        token: "old",
-        qr_data_uri: "data:image/png;base64,OLD",
-        minted_at: "2026-08-20T09:00:00Z",
-      }),
-    );
-    vi.mocked(lensApi.overview).mockResolvedValue({
-      ...OVERVIEW,
-      campaign: { ...CAMPAIGN, share_minted_at: "2026-08-25T09:00:00Z" },
-    });
-    mount();
-    await userEvent.click(await screen.findByTestId("lens-tab-cards"));
-
-    // The timestamp mismatch means the wall poster is NOT this copy: showing
-    // it would let the host re-print a retired QR.
-    expect(await screen.findByTestId("card-active-since")).toBeInTheDocument();
-    expect(screen.queryByTestId("share-card")).toBeNull();
-  });
-
-  it("will not retire the poster on the wall without asking", async () => {
-    vi.mocked(lensApi.overview).mockResolvedValue({
-      ...OVERVIEW,
-      campaign: { ...CAMPAIGN, share_minted_at: "2026-08-13T18:23:00Z" },
-    });
-    mount();
-    await userEvent.click(await screen.findByTestId("lens-tab-cards"));
-
-    // A card is out: the panel says so and dates it, instead of a paragraph.
-    expect(await screen.findByTestId("card-active-since")).toHaveTextContent(
-      /Created/,
-    );
-    expect(screen.getByTestId("mint-share-card-btn")).toHaveTextContent(
-      "Replace card",
-    );
-    // Nothing to print when the QR is not in hand.
-    expect(screen.queryByTestId("print-cards-btn")).toBeNull();
-
-    await userEvent.click(screen.getByTestId("mint-share-card-btn"));
-    expect(lensApi.shareCard).not.toHaveBeenCalled();
-    expect(
-      await screen.findByText(/Replace the card on the wall\?/i),
-    ).toBeInTheDocument();
-
-    await userEvent.click(screen.getByTestId("confirm-action-btn"));
-    await waitFor(() => expect(lensApi.shareCard).toHaveBeenCalledTimes(1));
-  });
-
-  it("issues codes only for the schools that lack one, and shows each once", async () => {
-    mount();
-
-    await userEvent.click(await screen.findByTestId("lens-tab-cards"));
-    // The school in OVERVIEW has no code — and two more schools have no card
-    // at all yet — so the gap-filling action is live and says how many it
-    // will cover (all of them).
-    const fill = await screen.findByTestId("issue-codes-btn");
-    expect(fill).toHaveTextContent("(3)");
-    await userEvent.click(fill);
-
-    await waitFor(() => expect(lensApi.issueCodes).toHaveBeenCalledTimes(1));
-    // Fill-the-gaps sends no id list: the server keeps existing codes.
-    expect(vi.mocked(lensApi.issueCodes).mock.calls[0][2]).not.toHaveProperty(
-      "institution_ids",
-    );
-    // The slip a school gets handed, and the same code in its table row.
-    expect(await screen.findByTestId("code-slip-p1")).toHaveTextContent(
-      "MK4TQ9RB",
-    );
-    expect(screen.getByTestId("copy-code-MK4TQ9RB")).toBeInTheDocument();
-
-    // A re-run for newcomers must not wipe the codes already on screen.
-    vi.mocked(lensApi.issueCodes).mockResolvedValue({ codes: [], skipped: 1 });
-    await userEvent.click(screen.getByTestId("issue-codes-btn"));
-    await waitFor(() => expect(lensApi.issueCodes).toHaveBeenCalledTimes(2));
-    expect(screen.getByTestId("code-slip-p1")).toBeInTheDocument();
-  });
-
-  it("keeps issued codes readable across visits, until a code is rotated", async () => {
-    // Codes are handed out once by the server (hash at rest); this device's
-    // cache is the honest copy the host re-reads and re-copies.
-    localStorage.setItem(
-      "lens:codes:c1",
-      JSON.stringify([
-        {
-          pass_id: "p1",
-          institution_id: "i1",
-          institution_name: "Grace School",
-          code: "MK4TQ9RB",
-          set_at: "2026-08-25T09:00:00Z",
-        },
-      ]),
-    );
-    vi.mocked(lensApi.overview).mockResolvedValue({
-      ...OVERVIEW,
-      passes: [
-        { ...OVERVIEW.passes[0], has_code: true, code_set_at: "2026-08-25T09:00:00Z" },
-      ],
-    });
-    mount();
-    await userEvent.click(await screen.findByTestId("lens-tab-cards"));
-
-    const slip = await screen.findByTestId("code-slip-p1");
-    expect(slip).toHaveTextContent("MK4TQ9RB");
-  });
-
-  it("stops showing a cached code once that code was rotated", async () => {
-    localStorage.setItem(
-      "lens:codes:c1",
-      JSON.stringify([
-        {
-          pass_id: "p1",
-          institution_id: "i1",
-          institution_name: "Grace School",
-          code: "OLDCODE",
-          set_at: "2026-08-20T09:00:00Z",
-        },
-      ]),
-    );
-    vi.mocked(lensApi.overview).mockResolvedValue({
-      ...OVERVIEW,
-      passes: [
-        { ...OVERVIEW.passes[0], has_code: true, code_set_at: "2026-08-25T09:00:00Z" },
-      ],
-    });
-    mount();
-    await userEvent.click(await screen.findByTestId("lens-tab-cards"));
-
-    // The stamp no longer matches: showing OLDCODE would send a teacher to
-    // a lockout, so it is gone from the slips.
-    expect(screen.queryByTestId("code-slip-p1")).toBeNull();
   });
 
   it("cannot fill gaps when there are none, and offers a full re-issue instead", async () => {

@@ -276,6 +276,12 @@ export const lensApi = {
     }),
   /** Mint (or re-mint) the campaign's single card. Re-minting retires the
    * poster already on the wall, so the console confirms first. */
+  /** The card IN USE, decrypted for the manager — the same poster after any
+   * refresh, on any device. `{card: null}` when nothing has been minted. */
+  currentShareCard: (tid: string, campaignId: string) =>
+    api.get<{ card: LensShareCard | null }>(
+      `${base(tid)}/share-card/?campaign=${encodeURIComponent(campaignId)}`,
+    ),
   shareCard: (tid: string, campaignId: string, body: { event_id: string }) =>
     api.post<{ card: LensShareCard }>(`${base(tid)}/share-card/`, {
       ...body,
