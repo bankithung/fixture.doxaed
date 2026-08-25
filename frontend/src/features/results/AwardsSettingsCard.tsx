@@ -421,14 +421,17 @@ export function AwardsSettingsCard({
                       </span>
                     ) : null}
                   </div>
-                  {g.include.length > 0 && missingSports(g.include).length ? (
+                  {g.include.length > 0 ? (
                     <p
                       data-testid={`awards-group-warn-${gi}`}
-                      className="rounded-md bg-warning-muted px-2 py-1 text-[0.6875rem] text-warning"
+                      className="rounded-md bg-muted px-2 py-1 text-[0.6875rem] text-muted-foreground"
                     >
-                      {t("This group leaves out every")}{" "}
-                      {missingSports(g.include).join(", ")}{" "}
-                      {t("competition. A competition added later stays out too.")}
+                      {missingSports(g.include).length
+                        ? `${t("Leaves out every")} ${missingSports(g.include).join(", ")} ${t("competition.")} `
+                        : ""}
+                      {t(
+                        "This is a fixed list: a competition added later will not join it.",
+                      )}
                     </p>
                   ) : null}
                   <details className="text-xs">
