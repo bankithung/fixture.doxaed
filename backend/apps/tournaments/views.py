@@ -630,6 +630,70 @@ class TournamentSettingsView(GenericAPIView):
         return Response(_settings_payload(tournament, request.user))
 
 
+class TournamentAwardsView(GenericAPIView):
+    """`GET`/`PATCH /api/tournaments/{id}/awards/` — the medal tally setup.
+
+    Spec: docs/superpowers/specs/2026-08-25-results-medal-tally-design.md.
+
+    The points a placing is worth, the category groups a champion is named for,
+    and any placing the host set by hand. PATCH is manager-only and idempotent
+    on ``event_id`` (invariant 3).
+
+    Deliberately NOT behind the invariant-7 rules freeze: a host has to be able
+    to change the ladder on the morning of the meet, and a ladder decides a
+    trophy rather than a result. GET is readable by anyone who can see the
+    tournament, so the settings screen and the public tab agree.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def _payload(self, tournament, user):
+        from apps.tournaments.services.awards import (
+            effective_awards, suggest_groups,
+        )
+        from apps.tournaments.services.sports import iter_leaves
+
+        return {
+            "awards": effective_awards(tournament),
+            # The category tree, so the group builder offers real competitions
+            # instead of asking the host to type leaf keys.
+            "competitions": [
+                {
+                    "leaf_key": leaf["leaf_key"],
+                    "sport_key": leaf["sport_key"],
+                    "sport_name": leaf["sport_name"],
+                    "path": list(leaf["path"]),
+                    "label": leaf["label"],
+                }
+                for leaf in iter_leaves(tournament.sports)
+            ],
+            "suggested_groups": suggest_groups(tournament.sports),
+            "can_manage": can_manage_tournament(user, tournament),
+        }
+
+    def get(self, request, tournament_id):
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        return Response(self._payload(tournament, request.user))
+
+    def patch(self, request, tournament_id):
+        from apps.tournaments.services.awards import update_awards
+
+        tournament = _get_tournament_or_404(request.user, tournament_id)
+        if not can_manage_tournament(request.user, tournament):
+            raise PermissionDenied("not_tournament_manager")
+        try:
+            tournament = update_awards(
+                tournament=tournament,
+                awards=request.data.get("awards") or {},
+                by=request.user,
+                event_id=request.data.get("event_id"),
+                request=request,
+            )
+        except ValueError as exc:
+            raise DRFValidationError({"detail": str(exc)})
+        return Response(self._payload(tournament, request.user))
+
+
 class TournamentCopySetupView(GenericAPIView):
     """`POST /api/tournaments/{id}/copy-setup/` — take another tournament's
     fixture setup.

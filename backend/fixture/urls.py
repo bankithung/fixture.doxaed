@@ -25,6 +25,7 @@ from apps.matches.public_views import (
     PublicTeamRecordView,
     PublicTournamentDirectoryView,
     PublicTournamentEntriesView,
+    PublicTournamentResultsView,
     PublicTournamentLeadersView,
     PublicTournamentRostersView,
 )
@@ -184,6 +185,11 @@ api_v1 = [
         "public/tournaments/<slug:slug>/<uuid:tournament_id>/entries/",
         PublicTournamentEntriesView.as_view(),
         name="public-tournament-entries",
+    ),
+    path(
+        "public/tournaments/<slug:slug>/<uuid:tournament_id>/results/",
+        PublicTournamentResultsView.as_view(),
+        name="public-tournament-results",
     ),
     path(
         "public/tournaments/<slug:slug>/<uuid:tournament_id>/schedule/",

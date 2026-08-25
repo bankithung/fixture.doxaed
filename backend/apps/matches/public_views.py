@@ -723,3 +723,29 @@ class PublicTournamentEntriesView(GenericAPIView):
                 "teams": sum(r["team_count"] for r in rows),
             },
         })
+
+
+class PublicTournamentResultsView(GenericAPIView):
+    """`GET /api/public/tournaments/{slug}/{id}/results/` — THE MEDAL TALLY.
+
+    Spec: docs/superpowers/specs/2026-08-25-results-medal-tally-design.md.
+
+    The reference is the sheet the host retypes into Word after every meet:
+    schools down, one column per event, the cell holding the PLACING and the
+    row ending in medal counts. This is that sheet, computed — plus the points
+    ANPSA argue about (5/3/2 by default, the host's own ladder in practice),
+    the champion of each authored category group, and the students behind the
+    medals, which no paper tally has ever been able to say.
+
+    Placings are DERIVED from the fixture (see matches.services.placings), so
+    the tally is right the moment a final ends and cannot drift from the
+    result. One payload feeds all three views of the tab.
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, slug, tournament_id):
+        from apps.matches.services.results import results_payload
+
+        t = _public_tournament_or_404(slug, tournament_id)
+        return Response(results_payload(t))

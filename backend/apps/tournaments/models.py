@@ -208,6 +208,13 @@ class Tournament(models.Model):
     # invariant 10 (inputs_hash staleness), not the invariant-7 freeze. See
     # apps.fixtures.services.draw_config for the whitelist + layering.
     draw_config = models.JSONField(default=dict, blank=True)
+    # Medal tally + trophy configuration (spec 2026-08-25): the points a
+    # placing is worth, the category groups a champion is named for, and any
+    # placing the host set by hand. Deliberately OUTSIDE `rules`: the ladder
+    # decides a trophy, not a result, and a host must be able to change it
+    # DURING the meet — which the invariant-7 freeze would forbid. See
+    # apps.tournaments.services.awards.
+    awards = models.JSONField(default=dict, blank=True)
     rules_frozen_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

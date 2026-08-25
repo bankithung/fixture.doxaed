@@ -105,6 +105,7 @@ from apps.tournaments.views import (
     TournamentMemberDetailView,
     TournamentMembersView,
     TournamentPresetsView,
+    TournamentAwardsView,
     TournamentSettingsView,
     TournamentSportsMetaView,
     TournamentSportsView,
@@ -133,6 +134,11 @@ urlpatterns = [
         "<uuid:tournament_id>/clone/",
         TournamentCloneView.as_view(),
         name="tournament-clone",
+    ),
+    path(
+        "<uuid:tournament_id>/awards/",
+        TournamentAwardsView.as_view(),
+        name="tournament-awards",
     ),
     path(
         "<uuid:tournament_id>/settings/",
