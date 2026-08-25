@@ -418,27 +418,28 @@ export function LensUploadPage({
       <main className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6 sm:py-6">
         <section className="panel overflow-hidden" data-testid="upload-root">
           {/* Header: album name, your school, and the way out. */}
-          <header className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-3 sm:px-4">
-            <h1 className="min-w-0 truncate text-base font-semibold tracking-tight">
-              {ctx.campaign.title}
-            </h1>
-            <span
+          {/* Phone-tight header: the SCHOOL is the title, and the switch is
+              an icon button on the same row (owner 2026-08-25) — no wrap,
+              no album-name noise. */}
+          <header className="flex items-center gap-2 border-b border-border px-3 py-3 sm:px-4">
+            <h1
               data-testid="school-chip"
-              className="max-w-[10rem] truncate rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary sm:max-w-xs"
+              className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight"
               title={ctx.institution.name}
             >
               {ctx.institution.name}
-            </span>
+            </h1>
             <Button
               variant="outline"
               size="sm"
-              className="ml-auto shrink-0"
+              className="shrink-0"
               onClick={switchSchool}
               data-testid="switch-school"
+              aria-label={t("Switch school")}
               title={t("Sign in as a different school")}
             >
-              <ArrowLeftRight aria-hidden="true" className="h-3.5 w-3.5" />
-              {t("Switch school")}
+              <ArrowLeftRight aria-hidden="true" className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("Switch school")}</span>
             </Button>
           </header>
 
