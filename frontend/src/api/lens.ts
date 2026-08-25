@@ -48,6 +48,9 @@ export interface LensPassRow {
   /** Whether a code exists — never the code itself, which the server returns
    * only in the response of the call that generated it. */
   has_code: boolean;
+  /** When the current code was issued; lets a device-cached copy of a code
+   * detect that it was rotated (here or elsewhere) and stop showing it. */
+  code_set_at: string | null;
   photos_used: number;
   last_minted_at: string | null;
 }

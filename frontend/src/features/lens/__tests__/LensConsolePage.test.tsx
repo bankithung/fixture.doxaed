@@ -82,6 +82,7 @@ const OVERVIEW: LensOverview = {
       institution_name: "Grace School",
       is_active: true,
       has_code: false,
+      code_set_at: null,
       photos_used: 4,
       last_minted_at: "2026-07-10T06:00:00Z",
     },
@@ -364,6 +365,61 @@ describe("LensConsolePage", () => {
     await userEvent.click(screen.getByTestId("issue-codes-btn"));
     await waitFor(() => expect(lensApi.issueCodes).toHaveBeenCalledTimes(2));
     expect(screen.getByTestId("code-slip-p1")).toBeInTheDocument();
+  });
+
+  it("keeps issued codes readable across visits, until a code is rotated", async () => {
+    // Codes are handed out once by the server (hash at rest); this device's
+    // cache is the honest copy the host re-reads and re-copies.
+    localStorage.setItem(
+      "lens:codes:c1",
+      JSON.stringify([
+        {
+          pass_id: "p1",
+          institution_id: "i1",
+          institution_name: "Grace School",
+          code: "MK4TQ9RB",
+          set_at: "2026-08-25T09:00:00Z",
+        },
+      ]),
+    );
+    vi.mocked(lensApi.overview).mockResolvedValue({
+      ...OVERVIEW,
+      passes: [
+        { ...OVERVIEW.passes[0], has_code: true, code_set_at: "2026-08-25T09:00:00Z" },
+      ],
+    });
+    mount();
+    await userEvent.click(await screen.findByTestId("lens-tab-cards"));
+
+    const slip = await screen.findByTestId("code-slip-p1");
+    expect(slip).toHaveTextContent("MK4TQ9RB");
+  });
+
+  it("stops showing a cached code once that code was rotated", async () => {
+    localStorage.setItem(
+      "lens:codes:c1",
+      JSON.stringify([
+        {
+          pass_id: "p1",
+          institution_id: "i1",
+          institution_name: "Grace School",
+          code: "OLDCODE",
+          set_at: "2026-08-20T09:00:00Z",
+        },
+      ]),
+    );
+    vi.mocked(lensApi.overview).mockResolvedValue({
+      ...OVERVIEW,
+      passes: [
+        { ...OVERVIEW.passes[0], has_code: true, code_set_at: "2026-08-25T09:00:00Z" },
+      ],
+    });
+    mount();
+    await userEvent.click(await screen.findByTestId("lens-tab-cards"));
+
+    // The stamp no longer matches: showing OLDCODE would send a teacher to
+    // a lockout, so it is gone from the slips.
+    expect(screen.queryByTestId("code-slip-p1")).toBeNull();
   });
 
   it("cannot fill gaps when there are none, and offers a full re-issue instead", async () => {

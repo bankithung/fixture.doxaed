@@ -43,9 +43,13 @@ import { t } from "@/lib/t";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { ApiError } from "@/types/api";
 import { AwardRankBoard } from "./AwardRankBoard";
-import { PassPrintSheet } from "./PassPrintSheet";
+import { CodeSlips, ShareCardStrip } from "./PassPrintSheet";
 
 type TabKey = "campaign" | "cards" | "moderate" | "awards";
+
+/** A device-cached issued code plus the rotation stamp that keeps it honest:
+ * when the pass row's code_set_at moves, this copy stops being shown. */
+type CachedCode = LensCode & { set_at: string | null };
 
 const DEFAULT_CATEGORIES = [
   "Best Team Spirit",
@@ -572,7 +576,22 @@ export function LensConsolePage(): React.ReactElement {
     onSuccess: (res) => {
       invalidate();
       // Merge, never replace: a manager who issues for newcomers must not lose
-      // the codes still on screen from the first run.
+      // the codes still on screen from the first run — and this device keeps
+      // them readable afterwards (hash at rest server-side; the cache is the
+      // one honest copy, dropped automatically when a code is rotated).
+      try {
+        const key = `lens:codes:${campaignId}`;
+        const prev = JSON.parse(localStorage.getItem(key) ?? "[]") as CachedCode[];
+        localStorage.setItem(
+          key,
+          JSON.stringify([
+            ...prev.filter((c) => !res.codes.some((n) => n.pass_id === c.pass_id)),
+            ...res.codes.map((c) => ({ ...c, set_at: null })),
+          ]),
+        );
+      } catch {
+        /* private mode: codes stay on screen for this visit */
+      }
       setCodes((cur) => [
         ...res.codes,
         ...cur.filter((c) => !res.codes.some((n) => n.pass_id === c.pass_id)),
@@ -764,6 +783,77 @@ export function LensConsolePage(): React.ReactElement {
 
   const shareCard = freshMint ?? cachedCard;
 
+  // Codes this device may still SHOW: everything issued in this session,
+  // plus cached copies whose stamp still matches the pass row's code_set_at.
+  // A regenerated or rotated code changes that timestamp, so its cached twin
+  // disappears instead of sending a teacher to a lockout with a dead code.
+  const visibleCodes = useMemo(() => {
+    const byPass = new Map(
+      (overviewQ.data?.passes ?? []).map((p) => [p.id, p]),
+    );
+    let cached: CachedCode[] = [];
+    try {
+      cached = JSON.parse(
+        localStorage.getItem(`lens:codes:${campaignId}`) ?? "[]",
+      ) as CachedCode[];
+    } catch {
+      cached = [];
+    }
+    const validCache: LensCode[] = [];
+    for (const c of cached) {
+      const pass = byPass.get(c.pass_id);
+      if (!pass || !pass.has_code) continue;
+      if (c.set_at === null) {
+        // Issued here but not yet stamped: good until the stamp lands.
+        validCache.push(c);
+      } else if (c.set_at === pass.code_set_at) {
+        validCache.push(c);
+      }
+    }
+    const merged = [...codes];
+    for (const c of validCache) {
+      if (!merged.some((m) => m.pass_id === c.pass_id)) merged.push(c);
+    }
+    return merged;
+  }, [codes, overviewQ.data?.passes, campaignId]);
+
+  // Stamp fresh entries with their pass's code_set_at and prune anything
+  // rotated or revoked (external-system writes only, never setState).
+  useEffect(() => {
+    // No overview yet = an EMPTY pass list, not a rotated one; pruning now
+    // would wipe the cache before the real rows arrive.
+    if (!overviewQ.data) return;
+    const key = `lens:codes:${campaignId}`;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const cached = JSON.parse(raw) as CachedCode[];
+      const byPass = new Map(
+        (overviewQ.data?.passes ?? []).map((p) => [p.id, p]),
+      );
+      const kept: CachedCode[] = [];
+      let changed = false;
+      for (const c of cached) {
+        const pass = byPass.get(c.pass_id);
+        // Revoked or removed school: the copy dies with its pass row.
+        if (!pass || !pass.has_code) {
+          changed = true;
+          continue;
+        }
+        if (c.set_at === null && pass.code_set_at !== null) {
+          kept.push({ ...c, set_at: pass.code_set_at });
+          changed = true;
+        } else {
+          kept.push(c);
+        }
+      }
+      if (changed || kept.length !== cached.length)
+        localStorage.setItem(key, JSON.stringify(kept));
+    } catch {
+      /* ignore */
+    }
+  }, [overviewQ.data?.passes, campaignId]);
+
   const slug = tournamentQ.data?.slug ?? "";
   const copyAlbumLink = async (): Promise<void> => {
     if (!slug) return;
@@ -888,26 +978,24 @@ export function LensConsolePage(): React.ReactElement {
         ) : null}
       </div>
 
-      {/* The printable poster, as a band of the same panel. */}
-      {tab === "cards" ? (
-        <PassPrintSheet
-          card={shareCard}
-          codes={codes}
-          // Replacing a card retires the poster already on the wall, so it
-          // asks first; the first mint has nothing to lose and just runs.
-          onMint={() =>
-            campaign.share_minted_at
-              ? setConfirm({ kind: "new-card" })
-              : shareCardM.mutate()
-          }
-          minting={shareCardM.isPending}
-          mintedAt={campaign.share_minted_at}
-          tournamentName={tournamentQ.data?.name ?? ""}
-          title={campaign.title}
-          tagline={campaign.tagline}
-          consentNote={campaign.consent_note}
-        />
-      ) : null}
+      {/* The card EVERYONE scans — a permanent band, on every tab (owner
+          2026-08-25): QR visible at all times, print/copy/replace at hand. */}
+      <ShareCardStrip
+        card={shareCard}
+        // Replacing a card retires the poster already on the wall, so it
+        // asks first; the first mint has nothing to lose and just runs.
+        onMint={() =>
+          campaign.share_minted_at
+            ? setConfirm({ kind: "new-card" })
+            : shareCardM.mutate()
+        }
+        minting={shareCardM.isPending}
+        mintedAt={campaign.share_minted_at}
+        tournamentName={tournamentQ.data?.name ?? ""}
+        title={campaign.title}
+        tagline={campaign.tagline}
+        consentNote={campaign.consent_note}
+      />
 
         <div className="grid grid-cols-3 divide-x divide-border border-b border-border print:hidden sm:grid-cols-6">
           {statCells.map((cell) => (
@@ -990,6 +1078,7 @@ export function LensConsolePage(): React.ReactElement {
 
         {tab === "cards" ? (
           <>
+            <CodeSlips codes={visibleCodes} />
             <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
               <h3 className="panel-title">{t("School codes")}</h3>
               <span className="font-tabular text-xs text-muted-foreground">

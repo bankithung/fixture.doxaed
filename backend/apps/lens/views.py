@@ -78,6 +78,9 @@ def _pass_payload(p: LensPass, photos_used: int) -> dict:
         # Whether the school HAS a code, never the code: the plaintext exists
         # only in the response of the call that generated it.
         "has_code": bool(p.code_hash),
+        "code_set_at": (
+            p.code_set_at.isoformat() if p.code_set_at else None
+        ),
         "photos_used": photos_used,
         "last_minted_at": p.last_minted_at.isoformat() if p.last_minted_at else None,
     }
