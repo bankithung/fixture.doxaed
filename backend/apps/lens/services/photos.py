@@ -173,6 +173,23 @@ def remove_own_photo(*, pass_, upload_ref):
         stories.remove_photo_from_story(photo)
 
 
+def edit_own_caption(*, pass_, upload_ref, caption: str):
+    """Teacher fixes the caption of their OWN PENDING photo (the host owns
+    moderated content — approved/hidden photos are locked, like removal)."""
+    photo = LensPhoto.objects.filter(
+        campaign=pass_.campaign,
+        institution=pass_.institution,
+        upload_ref=as_uuid(upload_ref),
+    ).first()
+    if photo is None:
+        raise NotFound("photo_not_found")
+    if photo.status != "pending":
+        raise DRFValidationError({"detail": "photo_locked"})
+    photo.caption = (caption or "").strip()[:200]
+    photo.save(update_fields=["caption"])
+    return photo
+
+
 def set_story_title(*, pass_, story_id, title: str, description: str | None = None):
     from apps.lens.services import stories as story_service
 

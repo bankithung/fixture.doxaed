@@ -18,6 +18,7 @@ vi.mock("@/api/lens", async (importOriginal) => {
       passContext: vi.fn(),
       upload: vi.fn(),
       removeOwn: vi.fn(),
+      editOwnCaption: vi.fn(),
       setStoryTitle: vi.fn(),
       reorderStory: vi.fn(),
     },
@@ -212,6 +213,40 @@ describe("LensUploadPage", () => {
     expect(screen.getByTestId("file-input")).toBeDisabled();
     expect(screen.getByText("Category limit reached")).toBeInTheDocument();
     expect(screen.getByTestId("category-full-hint")).toBeInTheDocument();
+  });
+
+  it("opens an own photo as a preview with an editable caption", async () => {
+    mount();
+    await screen.findByTestId("own-photo-r1");
+
+    // Tap the pending photo: the preview sheet opens with its details.
+    await userEvent.click(screen.getByTestId("preview-r1"));
+    expect(await screen.findByTestId("preview-image")).toHaveAttribute(
+      "src",
+      "/media/lens_photos/c1/r1.jpg",
+    );
+    const input = screen.getByTestId("caption-input");
+    expect(input).toBeEnabled();
+
+    // Fixing the caption saves and refetches, so grid + quota stay honest.
+    vi.mocked(lensApi.editOwnCaption).mockResolvedValue({
+      photo: { ...CTX.photos[0], caption: "The winning spike" },
+    });
+    await userEvent.clear(input);
+    await userEvent.type(input, "The winning spike");
+    await userEvent.click(screen.getByTestId("save-caption-btn"));
+    await waitFor(() =>
+      expect(lensApi.editOwnCaption).toHaveBeenCalledWith(
+        "tok123",
+        "r1",
+        "The winning spike",
+      ),
+    );
+
+    // Remove is reachable from the same sheet.
+    await userEvent.click(screen.getByTestId("preview-r1"));
+    await userEvent.click(await screen.findByTestId("remove-from-preview-btn"));
+    expect(screen.getByTestId("confirm-delete-btn")).toBeInTheDocument();
   });
 
   it("requires a story title in the preview before a story batch uploads", async () => {

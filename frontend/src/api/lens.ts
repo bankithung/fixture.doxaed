@@ -414,6 +414,13 @@ export const lensApi = {
     api.delete<{ removed: boolean }>(
       `/api/lens/p/${encodeURIComponent(token)}/photos/${encodeURIComponent(uploadRef)}/`,
     ),
+  /** Fix the caption of the school's own PENDING photo (locked once
+   * moderated). */
+  editOwnCaption: (token: string, uploadRef: string, caption: string) =>
+    api.patch<{ photo: LensOwnPhoto }>(
+      `/api/lens/p/${encodeURIComponent(token)}/photos/${encodeURIComponent(uploadRef)}/`,
+      { caption },
+    ),
   /** Name the school's photo-story entry (title mandatory at submit time)
    * and optionally give it a description. Locked once moderated. */
   setStoryTitle: (

@@ -136,6 +136,9 @@ export function LensUploadPage({
   const [items, setItems] = useState<UploadItem[]>([]);
   const [running, setRunning] = useState(false);
   const [deleteRef, setDeleteRef] = useState<string | null>(null);
+  // The own-photo currently open in the preview sheet, and its caption draft.
+  const [previewRef, setPreviewRef] = useState<string | null>(null);
+  const [captionDraft, setCaptionDraft] = useState<string | null>(null);
   // "" = no category picked yet (campaigns without categories stay on "").
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   // Picked photos awaiting confirmation.
@@ -815,12 +818,23 @@ export function LensUploadPage({
                     className="relative flex flex-col gap-1"
                     data-testid={`own-photo-${p.upload_ref}`}
                   >
-                    <img
-                      src={p.thumb_url}
-                      alt={p.caption || t("Uploaded photo")}
-                      loading="lazy"
-                      className="aspect-square w-full rounded-md border border-border object-cover"
-                    />
+                    <button
+                      type="button"
+                      aria-label={`${t("Preview")} ${p.caption || p.category || p.upload_ref}`}
+                      data-testid={`preview-${p.upload_ref}`}
+                      onClick={() => {
+                        setPreviewRef(p.upload_ref);
+                        setCaptionDraft(null);
+                      }}
+                      className="block w-full overflow-hidden rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <img
+                        src={p.thumb_url}
+                        alt={p.caption || t("Uploaded photo")}
+                        loading="lazy"
+                        className="aspect-square w-full rounded-md border border-border object-cover transition-transform hover:scale-[1.03]"
+                      />
+                    </button>
                     {p.category ? (
                       <p className="truncate text-[0.625rem] text-muted-foreground">
                         {p.category}
@@ -847,6 +861,119 @@ export function LensUploadPage({
           </section>
         </section>
       </main>
+
+      {/* Own-photo preview: the picture big, its caption EDITABLE while
+          pending, plus status and remove. */}
+      <Dialog
+        open={previewRef !== null}
+        onOpenChange={(o) => {
+          if (!o) setPreviewRef(null);
+        }}
+        ariaLabel={t("Photo preview")}
+        variant="sheet"
+      >
+        {(() => {
+          const photo = ctx.photos.find(
+            (x) => x.upload_ref === previewRef,
+          );
+          if (!photo) return null;
+          const editable =
+            ctx.campaign.is_open && photo.status === "pending";
+          return (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t("Your photo")}</DialogTitle>
+                <DialogDescription>
+                  {photo.category || t("No category")} ·{" "}
+                  {ownStatusChip(photo.status)}
+                </DialogDescription>
+              </DialogHeader>
+              <img
+                src={photo.url}
+                alt={photo.caption || t("Uploaded photo")}
+                className="max-h-[50vh] w-full rounded-md object-contain"
+                data-testid="preview-image"
+              />
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-medium" htmlFor="own-caption">
+                  {t("Caption")}
+                  {!editable ? (
+                    <span className="ml-1 font-normal text-muted-foreground">
+                      ({t("Locked once reviewed")})
+                    </span>
+                  ) : null}
+                </label>
+                <input
+                  id="own-caption"
+                  value={captionDraft ?? photo.caption ?? ""}
+                  data-testid="caption-input"
+                  maxLength={200}
+                  disabled={!editable}
+                  placeholder={t("Describe this photo (optional)")}
+                  onChange={(e) => setCaptionDraft(e.target.value)}
+                  className="h-10 w-full rounded-md border border-border bg-card px-2.5 text-sm"
+                />
+              </div>
+              <DialogFooter>
+                {editable ? (
+                  <Button
+                    variant="destructive"
+                    className="mr-auto"
+                    data-testid="remove-from-preview-btn"
+                    onClick={() => {
+                      setDeleteRef(photo.upload_ref);
+                      setPreviewRef(null);
+                    }}
+                  >
+                    <Trash2 aria-hidden="true" className="h-4 w-4" />
+                    {t("Remove")}
+                  </Button>
+                ) : null}
+                <Button variant="outline" onClick={() => setPreviewRef(null)}>
+                  {t("Close")}
+                </Button>
+                {editable ? (
+                  <Button
+                    data-testid="save-caption-btn"
+                    disabled={
+                      (captionDraft ?? "") === (photo.caption ?? "")
+                    }
+                    onClick={async () => {
+                      try {
+                        await lensApi.editOwnCaption(
+                          token,
+                          photo.upload_ref,
+                          captionDraft ?? "",
+                        );
+                        push({ kind: "success", title: t("Caption saved") });
+                        void qc.invalidateQueries({
+                          queryKey: qk.lensPass(token),
+                        });
+                        setCaptionDraft(null);
+                        setPreviewRef(null);
+                      } catch (e) {
+                        const code =
+                          e instanceof ApiError
+                            ? String(e.payload?.detail ?? "")
+                            : "";
+                        push({
+                          kind: "error",
+                          title:
+                            code === "photo_locked"
+                              ? t("This photo is already in review.")
+                              : t("Could not save the caption."),
+                        });
+                      }
+                    }}
+                  >
+                    {t("Save caption")}
+                  </Button>
+                ) : null}
+              </DialogFooter>
+            </>
+          );
+        })()}
+      </Dialog>
 
       <Dialog
         open={deleteRef !== null}

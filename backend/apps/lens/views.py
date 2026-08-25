@@ -785,7 +785,10 @@ class LensPassPhotosView(GenericAPIView):
 
 class LensPassPhotoDetailView(GenericAPIView):
     """`DELETE /api/lens/p/{token}/photos/{upload_ref}/` — teacher removes
-    their own pending photo (frees quota)."""
+    their own pending photo (frees quota).
+
+    `PATCH` — fix the caption of their own pending photo; approved/hidden
+    ones are locked (moderated content belongs to the host)."""
 
     permission_classes = [AllowAny]
     throttle_classes = [LensUploadThrottle]
@@ -794,6 +797,14 @@ class LensPassPhotoDetailView(GenericAPIView):
         p = _resolve_or_404(token)
         photo_service.remove_own_photo(pass_=p, upload_ref=upload_ref)
         return Response({"removed": True})
+
+    def patch(self, request, token, upload_ref):
+        p = _resolve_or_404(token)
+        photo = photo_service.edit_own_caption(
+            pass_=p, upload_ref=upload_ref,
+            caption=str(request.data.get("caption") or ""),
+        )
+        return Response({"photo": _own_photo_payload(photo)})
 
 
 class LensPassStoryTitleView(GenericAPIView):
