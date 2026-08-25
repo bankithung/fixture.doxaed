@@ -119,4 +119,37 @@ describe("AwardsSettingsCard", () => {
     expect(await screen.findByTestId("ladder-points-1")).toBeDisabled();
     expect(screen.queryByTestId("awards-save")).not.toBeInTheDocument();
   });
+
+  it("says when a group has quietly lost a whole sport", async () => {
+    // "Overall" frozen to the table-tennis competitions excludes sepak takraw
+    // from the overall trophy, and nothing said so (owner 2026-08-25).
+    vi.mocked(tournamentsApi.awards).mockResolvedValue({
+      ...PAYLOAD,
+      awards: {
+        ...PAYLOAD.awards,
+        groups: [
+          { key: "overall", label: "Overall", include: [TT], decide: "points" },
+        ],
+      },
+    });
+    renderCard();
+
+    expect(await screen.findByTestId("awards-group-warn-0")).toHaveTextContent(
+      "Sepak Takraw",
+    );
+    // And "every competition" is a state the host can pick, not one they can
+    // only reach by re-ticking every box.
+    expect(screen.getByTestId("awards-group-all-0")).not.toBeChecked();
+    await userEvent.click(screen.getByTestId("awards-group-all-0"));
+    expect(screen.queryByTestId("awards-group-warn-0")).toBeNull();
+    await userEvent.click(screen.getByTestId("awards-save"));
+    await waitFor(() =>
+      expect(tournamentsApi.saveAwards).toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({
+          groups: [expect.objectContaining({ include: [] })],
+        }),
+      ),
+    );
+  });
 });

@@ -113,6 +113,20 @@ export function AwardsSettingsCard({
     });
   };
 
+  /** Sports a frozen include list covers NONE of. "Overall" quietly losing a
+   * whole sport is the failure this catches: the list was written from the
+   * competitions that existed the day it was saved (owner 2026-08-25). */
+  const missingSports = (include: string[]): string[] => {
+    const covered = new Set(
+      resolveInclude(include, leafKeys).map((k) => k.split(".")[0]),
+    );
+    const all = new Map<string, string>();
+    for (const c of q.data?.competitions ?? []) all.set(c.sport_key, c.sport_name);
+    return [...all.entries()]
+      .filter(([key]) => !covered.has(key))
+      .map(([, name]) => name);
+  };
+
   const moveGroup = (gi: number, by: number): void => {
     const groups = [...draft.groups];
     const target = gi + by;
@@ -344,12 +358,35 @@ export function AwardsSettingsCard({
                         { value: "golds", label: t("Most golds") },
                       ]}
                     />
+                    <label className="flex items-center gap-1.5 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={g.include.length === 0}
+                        disabled={!canManage}
+                        data-testid={`awards-group-all-${gi}`}
+                        onChange={(e) =>
+                          patch({
+                            groups: draft.groups.map((row, j) =>
+                              j === gi
+                                ? {
+                                    ...row,
+                                    include: e.target.checked
+                                      ? []
+                                      : [...leafKeys],
+                                  }
+                                : row,
+                            ),
+                          })
+                        }
+                        className="h-3.5 w-3.5 rounded border-border accent-primary"
+                      />
+                      {t("Every competition")}
+                    </label>
                     <span className="font-tabular text-xs text-muted-foreground">
                       {covered.length}{" "}
                       {covered.length === 1
                         ? t("competition")
                         : t("competitions")}
-                      {g.include.length === 0 ? ` · ${t("everything")}` : ""}
                     </span>
                     {canManage ? (
                       <span className="ml-auto flex items-center gap-1">
@@ -384,6 +421,16 @@ export function AwardsSettingsCard({
                       </span>
                     ) : null}
                   </div>
+                  {g.include.length > 0 && missingSports(g.include).length ? (
+                    <p
+                      data-testid={`awards-group-warn-${gi}`}
+                      className="rounded-md bg-warning-muted px-2 py-1 text-[0.6875rem] text-warning"
+                    >
+                      {t("This group leaves out every")}{" "}
+                      {missingSports(g.include).join(", ")}{" "}
+                      {t("competition. A competition added later stays out too.")}
+                    </p>
+                  ) : null}
                   <details className="text-xs">
                     <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                       {t("Competitions in this group")}
