@@ -173,7 +173,13 @@ describe("LensUploadPage", () => {
     mount();
     await screen.findByTestId("category-picker");
 
-    await userEvent.click(screen.getByTestId("category-Best Action Shot"));
+    // Pick a different category in the dropdown; its usage rides in the label.
+    await userEvent.click(screen.getByRole("button", { name: "Photo category" }));
+    await userEvent.click(
+      await screen.findByRole("option", {
+        name: /Best Action Shot \(3\/4\)/,
+      }),
+    );
     await userEvent.upload(screen.getByTestId("file-input"), [
       new File(["a"], "a.jpg", { type: "image/jpeg" }),
     ]);
@@ -182,13 +188,9 @@ describe("LensUploadPage", () => {
     await waitFor(() => expect(lensApi.upload).toHaveBeenCalledTimes(1));
     const [, fd] = vi.mocked(lensApi.upload).mock.calls[0];
     expect((fd as FormData).get("category")).toBe("Best Action Shot");
-    // The chip shows the per-school usage against its limit.
-    expect(screen.getByTestId("category-Best Action Shot")).toHaveTextContent(
-      "3/4",
-    );
   });
 
-  it("blocks the picker when the selected category is at its limit", async () => {
+  it("locks the picker while a full category is selected, and defaults to one with room", async () => {
     vi.mocked(lensApi.passContext).mockResolvedValue({
       ...CTX,
       quota: { used: 12, max: 36, by_category: { "Best Action Shot": 4 } },
@@ -196,14 +198,20 @@ describe("LensUploadPage", () => {
     mount();
     await screen.findByTestId("category-picker");
 
-    await userEvent.click(screen.getByTestId("category-Best Action Shot"));
+    // The default is a category WITH room (Best Team Spirit), so the picker
+    // opens ready to use.
+    expect(screen.getByTestId("file-input")).toBeEnabled();
+
+    const combo = screen.getByRole("button", { name: "Photo category" });
+    await userEvent.click(combo);
+    // The full category says so right in the option list.
+    await userEvent.click(
+      await screen.findByRole("option", { name: /Best Action Shot \(4\/4\) · Full/ }),
+    );
+
     expect(screen.getByTestId("file-input")).toBeDisabled();
     expect(screen.getByText("Category limit reached")).toBeInTheDocument();
     expect(screen.getByTestId("category-full-hint")).toBeInTheDocument();
-
-    // Another category still accepts uploads.
-    await userEvent.click(screen.getByTestId("category-Best Team Spirit"));
-    expect(screen.getByTestId("file-input")).toBeEnabled();
   });
 
   it("shows the closed state without an uploader when the campaign closed", async () => {

@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowDown,
+  ArrowLeftRight,
   ArrowUp,
   Camera,
   CheckCircle2,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 import { lensApi, type LensOwnPhoto } from "@/api/lens";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/Select";
 import {
   Dialog,
   DialogDescription,
@@ -192,8 +194,22 @@ export function LensUploadPage({
   const categories = ctx.campaign.award_categories ?? [];
   const limits = ctx.campaign.category_limits ?? {};
   const byCategory = ctx.quota.by_category ?? {};
-  const category = selectedCat ?? categories[0] ?? "";
   const storyCategories = ctx.campaign.story_categories ?? [];
+
+  // Room check per category: a story category has room while its entry still
+  // lacks frames; an ordinary category while the school is under its cap.
+  const roomIn = (cat: string): number => {
+    if (storyCategories.includes(cat)) {
+      const frames =
+        ctx.stories.find((st) => st.category === cat)?.photos.length ?? 0;
+      return Math.max(0, ctx.campaign.story_photos_per_entry - frames);
+    }
+    const capN = limits[cat];
+    if (capN === undefined) return Infinity;
+    return Math.max(0, capN - (byCategory[cat] ?? 0));
+  };
+
+  const category = selectedCat ?? categories.find((c) => roomIn(c) > 0) ?? "";
   const isStoryCat = storyCategories.includes(category);
   const story = isStoryCat
     ? (ctx.stories.find((s) => s.category === category) ?? null)
@@ -214,6 +230,33 @@ export function LensUploadPage({
       ? Infinity
       : Math.max(0, catLimit - catUsed);
   const effectiveRemaining = Math.min(remaining, catRemaining);
+  // The picker locks when there is nowhere to put a photo: the school is out
+  // of quota, or every category is full. Campaigns without categories only
+  // answer to the overall quota.
+  const noSlots =
+    remaining === 0 ||
+    (categories.length > 0 && category === "");
+  const pickerLocked = running || noSlots || effectiveRemaining === 0;
+
+  // Dropdown options with usage in the label; a full category says so.
+  const categoryOptions = categories.map((cat) => {
+    const capN = storyCategories.includes(cat)
+      ? ctx.campaign.story_photos_per_entry
+      : limits[cat];
+    const usedN = storyCategories.includes(cat)
+      ? (ctx.stories.find((st) => st.category === cat)?.photos.length ?? 0)
+      : (byCategory[cat] ?? 0);
+    const full =
+      !storyCategories.includes(cat) &&
+      capN !== undefined &&
+      roomIn(cat) === 0;
+    return {
+      value: cat,
+      label: `${cat}${capN !== undefined ? ` (${usedN}/${capN})` : ""}${
+        full ? ` · ${t("Full")}` : ""
+      }`,
+    };
+  });
 
   const setItem = (key: string, patch: Partial<UploadItem>): void => {
     setItems((cur) =>
@@ -353,12 +396,14 @@ export function LensUploadPage({
               {ctx.institution.name}
             </span>
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               className="ml-auto shrink-0"
               onClick={switchSchool}
               data-testid="switch-school"
+              title={t("Sign in as a different school")}
             >
+              <ArrowLeftRight aria-hidden="true" className="h-3.5 w-3.5" />
               {t("Switch school")}
             </Button>
           </header>
@@ -391,55 +436,21 @@ export function LensUploadPage({
                 </span>
               </div>
 
-              {/* Categories: one horizontal scroller on a phone, never a
-                  stacked tower of chips. */}
+              {/* Categories: ONE compact dropdown (house Select), not a wall
+                  of chips. Usage rides in the option label; full ones say so. */}
               {categories.length > 0 ? (
                 <div data-testid="category-picker">
-                  <div
-                    role="radiogroup"
+                  <Select
+                    size="lg"
+                    className="w-full"
                     aria-label={t("Photo category")}
-                    className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                  >
-                    {categories.map((cat) => {
-                      const catIsStory = storyCategories.includes(cat);
-                      const capN = catIsStory
-                        ? ctx.campaign.story_photos_per_entry
-                        : limits[cat];
-                      const usedN = catIsStory
-                        ? (ctx.stories
-                            .find((s) => s.category === cat)
-                            ?.photos.length ?? 0)
-                        : (byCategory[cat] ?? 0);
-                      const full =
-                        !catIsStory && capN !== undefined && usedN >= capN;
-                      return (
-                        <button
-                          key={cat}
-                          type="button"
-                          role="radio"
-                          aria-checked={category === cat}
-                          data-testid={`category-${cat}`}
-                          disabled={running}
-                          onClick={() => setSelectedCat(cat)}
-                          className={cn(
-                            "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
-                            category === cat
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border bg-card text-muted-foreground hover:text-foreground",
-                            full && "opacity-60",
-                          )}
-                        >
-                          {cat}
-                          {capN !== undefined ? (
-                            <span className="font-tabular">
-                              {usedN}/{capN}
-                            </span>
-                          ) : null}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {catRemaining === 0 && (isStoryCat || catLimit !== undefined) ? (
+                    value={category}
+                    onChange={(v) => setSelectedCat(v || null)}
+                    options={categoryOptions}
+                  />
+                  {category !== "" &&
+                  catRemaining === 0 &&
+                  (isStoryCat || catLimit !== undefined) ? (
                     <p
                       className="pt-1 text-xs text-muted-foreground"
                       data-testid="category-full-hint"
@@ -459,11 +470,7 @@ export function LensUploadPage({
                 type="file"
                 accept="image/*"
                 multiple
-                disabled={
-                  running ||
-                  effectiveRemaining === 0 ||
-                  picked.length >= effectiveRemaining
-                }
+                disabled={pickerLocked || picked.length >= effectiveRemaining}
                 className="sr-only"
                 onChange={(e) => {
                   const files = Array.from(e.target.files ?? []);
@@ -475,7 +482,7 @@ export function LensUploadPage({
                   <span
                     className={cn(
                       "inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary-hover",
-                      (effectiveRemaining === 0 ||
+                      (pickerLocked ||
                         picked.length >= effectiveRemaining) &&
                         "pointer-events-none opacity-50",
                     )}
@@ -483,11 +490,14 @@ export function LensUploadPage({
                     <Camera aria-hidden="true" className="h-4 w-4" />
                     {remaining === 0
                       ? t("Photo limit reached")
-                      : effectiveRemaining === 0 || picked.length >= effectiveRemaining
-                        ? picked.length > 0
-                          ? t("Slot limit reached for this batch")
-                          : t("Category limit reached")
-                        : t("Choose photos")}
+                      : categories.length > 0 && category === ""
+                        ? t("All categories are full")
+                        : effectiveRemaining === 0 ||
+                            picked.length >= effectiveRemaining
+                          ? picked.length > 0
+                            ? t("Slot limit reached for this batch")
+                            : t("Category limit reached")
+                          : t("Choose photos")}
                   </span>
                 </label>
               ) : null}
