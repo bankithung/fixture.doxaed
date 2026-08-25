@@ -123,12 +123,12 @@ describe("LensUploadPage", () => {
     mount();
 
     const band = await screen.findByTestId("quota-band");
-    expect(band).toHaveTextContent("12 of 36 photos used");
-    expect(
-      screen.getByText("Photos may be used for highlights."),
-    ).toBeInTheDocument();
+    expect(band).toHaveTextContent("12/36");
+    // The school chip names who is signed in, with a way to switch.
+    expect(screen.getByTestId("school-chip")).toHaveTextContent("Grace School");
+    expect(screen.getByTestId("switch-school")).toBeInTheDocument();
     expect(screen.getByTestId("own-photo-r1")).toBeInTheDocument();
-    expect(screen.getByText("Pending review")).toBeInTheDocument();
+    expect(screen.getByText("Pending")).toBeInTheDocument();
     expect(screen.getByText("In album")).toBeInTheDocument();
   });
 
@@ -139,6 +139,14 @@ describe("LensUploadPage", () => {
     const fileA = new File(["a"], "a.jpg", { type: "image/jpeg" });
     const fileB = new File(["b"], "b.jpg", { type: "image/jpeg" });
     await userEvent.upload(screen.getByTestId("file-input"), [fileA, fileB]);
+
+    // Nothing uploads yet: the teacher first reviews what they picked.
+    expect(lensApi.upload).not.toHaveBeenCalled();
+    const review = screen.getByTestId("review-area");
+    // The review grid previews every picked photo by name.
+    expect(within(review).getByAltText("a.jpg")).toBeInTheDocument();
+    expect(within(review).getByAltText("b.jpg")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("confirm-upload-btn"));
 
     await waitFor(() => expect(lensApi.upload).toHaveBeenCalledTimes(2));
     expect(vi.mocked(compressImage)).toHaveBeenCalledTimes(2);
@@ -169,6 +177,7 @@ describe("LensUploadPage", () => {
     await userEvent.upload(screen.getByTestId("file-input"), [
       new File(["a"], "a.jpg", { type: "image/jpeg" }),
     ]);
+    await userEvent.click(await screen.findByTestId("confirm-upload-btn"));
 
     await waitFor(() => expect(lensApi.upload).toHaveBeenCalledTimes(1));
     const [, fd] = vi.mocked(lensApi.upload).mock.calls[0];

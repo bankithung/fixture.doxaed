@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Loader2,
   Trash2,
+  X,
 } from "lucide-react";
 import { lensApi, type LensOwnPhoto } from "@/api/lens";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,31 @@ interface UploadItem {
   error?: string;
 }
 
+/** A picked-but-not-yet-confirmed photo, with a local preview URL. */
+interface PickedPhoto {
+  key: string;
+  file: File;
+  preview: string;
+}
+
+function makePreview(file: File): string {
+  try {
+    return typeof URL.createObjectURL === "function"
+      ? URL.createObjectURL(file)
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+function releasePreview(photo: PickedPhoto): void {
+  if (
+    photo.preview &&
+    typeof URL.revokeObjectURL === "function"
+  )
+    URL.revokeObjectURL(photo.preview);
+}
+
 function uploadErr(e: unknown): string {
   const code = e instanceof ApiError ? String(e.payload?.detail ?? "") : "";
   switch (code) {
@@ -47,7 +73,7 @@ function uploadErr(e: unknown): string {
     case "story_full":
       return t("This photo story already holds all its photographs.");
     case "unknown_category":
-      return t("This category is no longer on the campaign. Reload the page.");
+      return t("This category is no longer on the campaign.");
     case "file_too_large":
       return t("This file is too large (10 MB limit).");
     case "unsupported_type":
@@ -74,25 +100,31 @@ function ownStatusChip(status: LensOwnPhoto["status"]): React.ReactElement {
       {status === "approved"
         ? t("In album")
         : status === "pending"
-          ? t("Pending review")
+          ? t("Pending")
           : t("Removed")}
     </span>
   );
 }
 
 /**
- * Where a school lands after signing in behind the shared QR card: no login,
- * mobile-first, the teacher in charge uploads the school's photos from their
- * own phone (spec 2026-07-10 §4.3). Uploads run sequentially with a visible
- * per-file state list, never a single busy boolean.
+ * Where a school lands after signing in behind the shared QR card (spec
+ * 2026-07-10 §4.3). ONE section, mobile-first (owner 2026-08-25):
  *
- * The session token comes from the join page as a prop (it is a credential, so
- * it never rides in the URL); the route param remains the fallback.
+ * header (school + switch) → pick category → pick photos → REVIEW them →
+ * confirm uploads sequentially with per-file state → your photos below.
+ * Nothing uploads until the teacher confirms the review grid, so a fat-finger
+ * gallery pick never burns the school's quota.
+ *
+ * The session token comes from the join page as a prop (it is a credential,
+ * so it never rides in the URL); the route param remains the fallback.
  */
 export function LensUploadPage({
   sessionToken,
+  onSwitchSchool,
 }: {
   sessionToken?: string;
+  /** Called by the header's Switch control — the join page resets its form. */
+  onSwitchSchool?: () => void;
 } = {}): React.ReactElement {
   const { token: routeToken = "" } = useParams();
   const token = sessionToken ?? routeToken;
@@ -104,6 +136,8 @@ export function LensUploadPage({
   const [deleteRef, setDeleteRef] = useState<string | null>(null);
   // "" = no category picked yet (campaigns without categories stay on "").
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
+  // Picked photos awaiting confirmation.
+  const [picked, setPicked] = useState<PickedPhoto[]>([]);
   // Local draft of the story title while editing (null = show what is saved).
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
 
@@ -113,6 +147,16 @@ export function LensUploadPage({
     enabled: Boolean(token),
     retry: false,
   });
+
+  // Release any leftover preview URLs when the page goes away.
+  useEffect(() => {
+    return () => {
+      setPicked((cur) => {
+        cur.forEach(releasePreview);
+        return [];
+      });
+    };
+  }, []);
 
   if (q.isLoading) {
     return (
@@ -132,7 +176,7 @@ export function LensUploadPage({
             {t("This link is not valid")}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("The QR card may have been replaced. Ask the organizers for a new one.")}
+            {t("Ask the organizers for the current card.")}
           </p>
         </Centered>
       </PublicShell>
@@ -151,8 +195,6 @@ export function LensUploadPage({
   const category = selectedCat ?? categories[0] ?? "";
   const storyCategories = ctx.campaign.story_categories ?? [];
   const isStoryCat = storyCategories.includes(category);
-  // The school's single entry for the selected story category (one per
-  // school+category, enforced server-side).
   const story = isStoryCat
     ? (ctx.stories.find((s) => s.category === category) ?? null)
     : null;
@@ -162,8 +204,6 @@ export function LensUploadPage({
   const open = ctx.campaign.is_open;
   const catLimit = category ? limits[category] : undefined;
   const catUsed = category ? (byCategory[category] ?? 0) : 0;
-  // A STORY category's own cap counts ENTRIES, not photos — what bounds the
-  // picker here is how many frames the entry still lacks.
   const catRemaining = isStoryCat
     ? Math.max(
         0,
@@ -173,8 +213,6 @@ export function LensUploadPage({
     : catLimit === undefined
       ? Infinity
       : Math.max(0, catLimit - catUsed);
-  // What the picker can actually accept right now: the overall cap and, when
-  // the selected category has its own limit, that category's cap too.
   const effectiveRemaining = Math.min(remaining, catRemaining);
 
   const setItem = (key: string, patch: Partial<UploadItem>): void => {
@@ -183,46 +221,69 @@ export function LensUploadPage({
     );
   };
 
-  const startUpload = async (selected: File[]): Promise<void> => {
-    let files = selected;
-    if (files.length > effectiveRemaining) {
-      files = files.slice(0, effectiveRemaining);
+  const pickFiles = (files: File[]): void => {
+    const room = Math.max(0, effectiveRemaining - picked.length);
+    const accepted = files.slice(0, room);
+    if (accepted.length < files.length) {
       push({
         kind: "info",
         title: t("Some photos were skipped"),
-        description:
-          effectiveRemaining === catRemaining && catRemaining < remaining
-            ? t("This category's photo limit allows fewer photos than you picked.")
-            : t("Your school's photo limit allows fewer photos than you picked."),
+        description: t("Not enough slots left for all of them."),
       });
     }
-    if (files.length === 0) return;
-    const batch: UploadItem[] = files.map((f, i) => ({
-      key: `${Date.now()}-${i}-${f.name}`,
-      name: f.name,
+    if (accepted.length === 0) return;
+    setPicked((cur) => [
+      ...cur,
+      ...accepted.map((f, i) => ({
+        key: `${Date.now()}-${i}-${f.name}`,
+        file: f,
+        preview: makePreview(f),
+      })),
+    ]);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  const unpick = (key: string): void => {
+    setPicked((cur) => {
+      const target = cur.find((x) => x.key === key);
+      if (target) releasePreview(target);
+      return cur.filter((x) => x.key !== key);
+    });
+  };
+
+  const clearPicked = (): void => {
+    picked.forEach(releasePreview);
+    setPicked([]);
+  };
+
+  const confirmUpload = async (): Promise<void> => {
+    if (picked.length === 0 || running) return;
+    const batch: UploadItem[] = picked.map((p) => ({
+      key: p.key,
+      name: p.file.name,
       state: "waiting",
     }));
     setItems(batch);
     setRunning(true);
     // Sequential on purpose: school connections choke on parallel uploads,
     // and the per-file list stays honest about what is actually in flight.
-    for (let i = 0; i < files.length; i += 1) {
-      const key = batch[i].key;
-      setItem(key, { state: "uploading" });
+    for (let i = 0; i < picked.length; i += 1) {
+      const photo = picked[i];
+      setItem(photo.key, { state: "uploading" });
       try {
-        const compact = await compressImage(files[i], { preferJpeg: true });
+        const compact = await compressImage(photo.file, { preferJpeg: true });
         const fd = new FormData();
         fd.append("file", compact, compact.name);
         if (category) fd.append("category", category);
         fd.append("event_id", newEventId());
         await lensApi.upload(token, fd);
-        setItem(key, { state: "done" });
+        setItem(photo.key, { state: "done" });
       } catch (e) {
-        setItem(key, { state: "error", error: uploadErr(e) });
+        setItem(photo.key, { state: "error", error: uploadErr(e) });
       }
     }
     setRunning(false);
-    if (inputRef.current) inputRef.current.value = "";
+    clearPicked();
     void qc.invalidateQueries({ queryKey: qk.lensPass(token) });
   };
 
@@ -258,66 +319,86 @@ export function LensUploadPage({
     }
   };
 
+  const switchSchool = (): void => {
+    if (onSwitchSchool) {
+      onSwitchSchool();
+      return;
+    }
+    // Direct-mount fallback: clearing the stored session reloads into the
+    // join page behind the same card.
+    try {
+      sessionStorage.removeItem("lens.session");
+    } catch {
+      /* ignore */
+    }
+    window.location.reload();
+  };
+
   return (
     <PublicShell tournamentName={ctx.tournament.name}>
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-6">
-        <header className="flex flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="page-title">{ctx.campaign.title}</h1>
-            <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+      {/* ONE section: everything lives in a single panel, starting from its
+          own header (owner 2026-08-25). */}
+      <main className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6 sm:py-6">
+        <section className="panel overflow-hidden" data-testid="upload-root">
+          {/* Header: album name, your school, and the way out. */}
+          <header className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-3 sm:px-4">
+            <h1 className="min-w-0 truncate text-base font-semibold tracking-tight">
+              {ctx.campaign.title}
+            </h1>
+            <span
+              data-testid="school-chip"
+              className="max-w-[10rem] truncate rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary sm:max-w-xs"
+              title={ctx.institution.name}
+            >
               {ctx.institution.name}
             </span>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {ctx.campaign.tagline} · {ctx.tournament.name}
-          </p>
-        </header>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto shrink-0"
+              onClick={switchSchool}
+              data-testid="switch-school"
+            >
+              {t("Switch school")}
+            </Button>
+          </header>
 
-        {/* Quota band. */}
-        <section className="panel p-3" data-testid="quota-band">
-          <p className="font-tabular text-sm font-semibold">
-            {used} {t("of")} {max} {t("photos used")}
-          </p>
-          <div
-            role="progressbar"
-            aria-valuenow={used}
-            aria-valuemin={0}
-            aria-valuemax={max}
-            aria-label={t("Photos used")}
-            className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted"
-          >
-            <div
-              className="h-full rounded-full bg-primary"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-        </section>
-
-        <p className="rounded-lg bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
-          {ctx.campaign.consent_note}
-        </p>
-
-        {ctx.campaign.is_open ? (
-          <section className="panel">
-            <div className="panel-header">
-              <h2 className="panel-title">{t("Upload photos")}</h2>
-            </div>
-            <div className="flex flex-col gap-3 p-3">
-              <p className="text-xs text-muted-foreground">
-                {ctx.campaign.instructions}
-              </p>
-              {categories.length > 0 ? (
+          {open ? (
+            <div className="flex flex-col gap-3 p-3 sm:p-4">
+              {/* Quota: one quiet inline line, never a slab. */}
+              <div
+                className="flex items-center gap-2"
+                data-testid="quota-band"
+              >
+                <span className="font-tabular text-sm font-semibold">
+                  {used}/{max}
+                </span>
                 <div
-                  className="flex flex-col gap-1.5"
-                  data-testid="category-picker"
+                  role="progressbar"
+                  aria-valuenow={used}
+                  aria-valuemin={0}
+                  aria-valuemax={max}
+                  aria-label={t("Photos used")}
+                  className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted"
                 >
-                  <span className="text-xs font-medium">
-                    {t("Uploading to")}
-                  </span>
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {t("photos")}
+                </span>
+              </div>
+
+              {/* Categories: one horizontal scroller on a phone, never a
+                  stacked tower of chips. */}
+              {categories.length > 0 ? (
+                <div data-testid="category-picker">
                   <div
                     role="radiogroup"
                     aria-label={t("Photo category")}
-                    className="flex flex-wrap gap-1.5"
+                    className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                   >
                     {categories.map((cat) => {
                       const catIsStory = storyCategories.includes(cat);
@@ -341,7 +422,7 @@ export function LensUploadPage({
                           disabled={running}
                           onClick={() => setSelectedCat(cat)}
                           className={cn(
-                            "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
+                            "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
                             category === cat
                               ? "border-primary bg-primary/10 text-primary"
                               : "border-border bg-card text-muted-foreground hover:text-foreground",
@@ -358,22 +439,19 @@ export function LensUploadPage({
                       );
                     })}
                   </div>
-                  {catLimit !== undefined && catRemaining === 0 ? (
+                  {catRemaining === 0 && (isStoryCat || catLimit !== undefined) ? (
                     <p
-                      className="text-xs text-muted-foreground"
+                      className="pt-1 text-xs text-muted-foreground"
                       data-testid="category-full-hint"
                     >
                       {isStoryCat
-                        ? t(
-                            "Your photo story holds all its photographs. Remove one to replace it.",
-                          )
-                        : t(
-                            "This category is full for your school. Pick another one.",
-                          )}
+                        ? t("Story complete.")
+                        : t("Category limit reached.")}
                     </p>
                   ) : null}
                 </div>
               ) : null}
+
               <input
                 ref={inputRef}
                 id="lens-file-input"
@@ -381,31 +459,93 @@ export function LensUploadPage({
                 type="file"
                 accept="image/*"
                 multiple
-                disabled={running || effectiveRemaining === 0}
+                disabled={
+                  running ||
+                  effectiveRemaining === 0 ||
+                  picked.length >= effectiveRemaining
+                }
                 className="sr-only"
                 onChange={(e) => {
                   const files = Array.from(e.target.files ?? []);
-                  if (files.length) void startUpload(files);
+                  if (files.length) pickFiles(files);
                 }}
               />
-              <label htmlFor="lens-file-input">
-                <span
-                  className={cn(
-                    "inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary-hover",
-                    (running || effectiveRemaining === 0) &&
-                      "pointer-events-none opacity-50",
-                  )}
-                >
-                  <Camera aria-hidden="true" className="h-4 w-4" />
-                  {remaining === 0
-                    ? t("Photo limit reached")
-                    : effectiveRemaining === 0
-                      ? t("Category limit reached")
-                      : running
-                        ? t("Uploading")
+              {!running && items.length === 0 ? (
+                <label htmlFor="lens-file-input">
+                  <span
+                    className={cn(
+                      "inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary-hover",
+                      (effectiveRemaining === 0 ||
+                        picked.length >= effectiveRemaining) &&
+                        "pointer-events-none opacity-50",
+                    )}
+                  >
+                    <Camera aria-hidden="true" className="h-4 w-4" />
+                    {remaining === 0
+                      ? t("Photo limit reached")
+                      : effectiveRemaining === 0 || picked.length >= effectiveRemaining
+                        ? picked.length > 0
+                          ? t("Slot limit reached for this batch")
+                          : t("Category limit reached")
                         : t("Choose photos")}
-                </span>
-              </label>
+                  </span>
+                </label>
+              ) : null}
+
+              {/* REVIEW before upload: nothing leaves the phone until the
+                  teacher confirms what they picked. */}
+              {picked.length > 0 && !running ? (
+                <div
+                  className="rounded-lg border border-border p-2.5"
+                  data-testid="review-area"
+                >
+                  <ul className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                    {picked.map((p) => (
+                      <li key={p.key} className="relative">
+                        <img
+                          src={p.preview}
+                          alt={p.file.name}
+                          className="aspect-square w-full rounded-md border border-border object-cover"
+                        />
+                        <button
+                          type="button"
+                          aria-label={`${t("Remove")} ${p.file.name}`}
+                          data-testid={`unpick-${p.key}`}
+                          onClick={() => unpick(p.key)}
+                          className="absolute right-1 top-1 rounded-full bg-background/90 p-0.5 text-foreground shadow-sm hover:bg-destructive hover:text-destructive-foreground"
+                        >
+                          <X aria-hidden="true" className="h-3.5 w-3.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                      {category
+                        ? `${t("To")} ${category}`
+                        : t("Ready to upload")}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={clearPicked}
+                      data-testid="cancel-pick-btn"
+                    >
+                      {t("Cancel")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => void confirmUpload()}
+                      disabled={picked.length === 0}
+                      data-testid="confirm-upload-btn"
+                    >
+                      {t("Upload")} ({picked.length})
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Per-file progress while the confirmed batch is in flight. */}
               {items.length > 0 ? (
                 <ul className="flex flex-col gap-1" data-testid="upload-list">
                   {items.map((it) => (
@@ -453,175 +593,158 @@ export function LensUploadPage({
                 </ul>
               ) : null}
             </div>
-          </section>
-        ) : (
-          <section
-            className="panel p-4 text-center"
-            data-testid="closed-state"
-          >
-            <h2 className="text-base font-semibold">
-              {t("Uploads have closed")}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t("Thanks for taking part. Your photos below stay with the organizers.")}
+          ) : (
+            <p
+              className="px-4 py-8 text-center text-sm text-muted-foreground"
+              data-testid="closed-state"
+            >
+              {t("Uploads have closed.")}
             </p>
-          </section>
-        )}
+          )}
 
-        {/* My photos. */}
-        {story ? (
-          /* A photo-story entry is authored as ONE work: its title and the
-             intended order of its frames live here, beside the frames. */
-          <section className="panel" data-testid="story-panel">
-            <div className="panel-header">
-              <h2 className="panel-title">{t("Your photo story")}</h2>
-              <span className="font-tabular text-xs text-muted-foreground">
-                {storyFrames.length}/{ctx.campaign.story_photos_per_entry}
-              </span>
-            </div>
-            <div className="flex flex-col gap-3 p-3">
-              <div className="flex items-end gap-2">
-                <label className="min-w-0 flex-1 text-xs font-medium">
-                  {t("Story title")}
+          {/* Photo story authoring: only when the selected category IS a
+              story entry. */}
+          {story ? (
+            <section
+              className="border-t border-border"
+              data-testid="story-panel"
+            >
+              <div className="flex items-center gap-2 px-3 pt-3 sm:px-4">
+                <h2 className="panel-title">{t("Your photo story")}</h2>
+                <span className="font-tabular text-xs text-muted-foreground">
+                  {storyFrames.length}/{ctx.campaign.story_photos_per_entry}
+                </span>
+              </div>
+              <div className="flex flex-col gap-2.5 p-3 sm:p-4">
+                <div className="flex items-end gap-2">
                   <input
                     value={titleDraft ?? story.title ?? ""}
                     data-testid="story-title-input"
                     disabled={running || !open}
                     maxLength={120}
-                    placeholder={t("Give this story a title")}
+                    placeholder={t("Story title")}
+                    aria-label={t("Story title")}
                     onChange={(e) => setTitleDraft(e.target.value)}
-                    className="mt-1 h-9 w-full rounded-md border border-border bg-card px-2.5 text-sm"
+                    className="h-9 min-w-0 flex-1 rounded-md border border-border bg-card px-2.5 text-sm"
                   />
-                </label>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  data-testid="story-title-save"
-                  disabled={running || !open || (titleDraft ?? "") === (story.title ?? "")}
-                  onClick={async () => {
-                    try {
-                      await lensApi.setStoryTitle(token, story.id, titleDraft ?? "");
-                      push({ kind: "success", title: t("Title saved") });
-                      void qc.invalidateQueries({ queryKey: qk.lensPass(token) });
-                    } catch {
-                      push({ kind: "error", title: t("Could not save the title.") });
-                    }
-                  }}
-                >
-                  {t("Save")}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t(
-                  "The judges read these photographs together, in this order. Use the arrows to arrange them.",
-                )}
-              </p>
-              <ol className="flex flex-col gap-2" data-testid="story-frames">
-                {storyFrames.map((f, idx) => (
-                  <li
-                    key={f.upload_ref}
-                    className="flex items-center gap-2.5 rounded-lg border border-border p-2"
-                    data-testid={`story-frame-${f.position}`}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="story-title-save"
+                    disabled={running || !open || (titleDraft ?? "") === (story.title ?? "")}
+                    onClick={async () => {
+                      try {
+                        await lensApi.setStoryTitle(token, story.id, titleDraft ?? "");
+                        push({ kind: "success", title: t("Title saved") });
+                        void qc.invalidateQueries({ queryKey: qk.lensPass(token) });
+                      } catch {
+                        push({ kind: "error", title: t("Could not save the title.") });
+                      }
+                    }}
                   >
-                    <span className="font-tabular w-5 shrink-0 text-center text-sm font-semibold text-muted-foreground">
-                      {f.position}
-                    </span>
+                    {t("Save")}
+                  </Button>
+                </div>
+                <ol className="flex flex-col gap-2" data-testid="story-frames">
+                  {storyFrames.map((f, idx) => (
+                    <li
+                      key={f.upload_ref}
+                      className="flex items-center gap-2.5 rounded-lg border border-border p-2"
+                      data-testid={`story-frame-${f.position}`}
+                    >
+                      <span className="font-tabular w-5 shrink-0 text-center text-sm font-semibold text-muted-foreground">
+                        {f.position}
+                      </span>
+                      <img
+                        src={f.thumb_url}
+                        alt={f.caption || t("Uploaded photo")}
+                        loading="lazy"
+                        className="h-12 w-12 shrink-0 rounded-md border border-border object-cover"
+                      />
+                      <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                        {f.caption || t("No caption")}
+                      </p>
+                      <div className="flex shrink-0 flex-col gap-0.5">
+                        <button
+                          type="button"
+                          aria-label={t("Move earlier")}
+                          data-testid={`frame-up-${f.position}`}
+                          disabled={running || !open || idx === 0}
+                          onClick={() => void moveFrame(f.upload_ref, f.position - 1)}
+                          className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                        >
+                          <ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={t("Move later")}
+                          data-testid={`frame-down-${f.position}`}
+                          disabled={running || !open || idx === storyFrames.length - 1}
+                          onClick={() => void moveFrame(f.upload_ref, f.position + 1)}
+                          className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                        >
+                          <ArrowDown aria-hidden="true" className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </section>
+          ) : null}
+
+          {/* Your photos. */}
+          <section className="border-t border-border">
+            <div className="flex items-center gap-2 px-3 pt-3 sm:px-4">
+              <h2 className="panel-title">{t("Your photos")}</h2>
+              <span className="font-tabular text-xs text-muted-foreground">
+                {ctx.photos.length}
+              </span>
+            </div>
+            {ctx.photos.length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+                {t("Nothing uploaded yet.")}
+              </p>
+            ) : (
+              <ul className="grid grid-cols-3 gap-2 p-3 sm:grid-cols-4">
+                {ctx.photos.map((p) => (
+                  <li
+                    key={p.upload_ref}
+                    className="relative flex flex-col gap-1"
+                    data-testid={`own-photo-${p.upload_ref}`}
+                  >
                     <img
-                      src={f.thumb_url}
-                      alt={f.caption || t("Uploaded photo")}
+                      src={p.thumb_url}
+                      alt={p.caption || t("Uploaded photo")}
                       loading="lazy"
-                      className="h-14 w-14 shrink-0 rounded-md border border-border object-cover"
+                      className="aspect-square w-full rounded-md border border-border object-cover"
                     />
-                    <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                      {f.caption || t("No caption")}
-                    </p>
-                    <div className="flex shrink-0 flex-col gap-0.5">
-                      <button
-                        type="button"
-                        aria-label={t("Move earlier")}
-                        data-testid={`frame-up-${f.position}`}
-                        disabled={running || !open || idx === 0}
-                        onClick={() => void moveFrame(f.upload_ref, f.position - 1)}
-                        className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                      >
-                        <ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={t("Move later")}
-                        data-testid={`frame-down-${f.position}`}
-                        disabled={running || !open || idx === storyFrames.length - 1}
-                        onClick={() => void moveFrame(f.upload_ref, f.position + 1)}
-                        className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                      >
-                        <ArrowDown aria-hidden="true" className="h-3.5 w-3.5" />
-                      </button>
+                    {p.category ? (
+                      <p className="truncate text-[0.625rem] text-muted-foreground">
+                        {p.category}
+                      </p>
+                    ) : null}
+                    <div className="flex items-center justify-between gap-1">
+                      {ownStatusChip(p.status)}
+                      {ctx.campaign.is_open && p.status === "pending" ? (
+                        <button
+                          type="button"
+                          aria-label={t("Remove this photo")}
+                          data-testid={`delete-${p.upload_ref}`}
+                          onClick={() => setDeleteRef(p.upload_ref)}
+                          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
+                        >
+                          <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
                     </div>
                   </li>
                 ))}
-              </ol>
-            </div>
-          </section>
-        ) : null}
-
-        {story === null && isStoryCat && open ? (
-          <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-            {t(
-              "The first photo you add to this category starts your photo story.",
+              </ul>
             )}
-          </p>
-        ) : null}
-
-        <section className="panel">
-          <div className="panel-header">
-            <h2 className="panel-title">{t("Your photos")}</h2>
-            <span className="font-tabular text-xs text-muted-foreground">
-              {ctx.photos.length}
-            </span>
-          </div>
-          {ctx.photos.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-              {t("Nothing uploaded yet. Your photos will show here.")}
-            </p>
-          ) : (
-            <ul className="grid grid-cols-3 gap-2 p-3 sm:grid-cols-4">
-              {ctx.photos.map((p) => (
-                <li
-                  key={p.upload_ref}
-                  className="relative flex flex-col gap-1"
-                  data-testid={`own-photo-${p.upload_ref}`}
-                >
-                  <img
-                    src={p.thumb_url}
-                    alt={p.caption || t("Uploaded photo")}
-                    loading="lazy"
-                    className="aspect-square w-full rounded-md border border-border object-cover"
-                  />
-                  {p.category ? (
-                    <p className="truncate text-[0.625rem] text-muted-foreground">
-                      {p.category}
-                    </p>
-                  ) : null}
-                  <div className="flex items-center justify-between gap-1">
-                    {ownStatusChip(p.status)}
-                    {ctx.campaign.is_open && p.status === "pending" ? (
-                      <button
-                        type="button"
-                        aria-label={t("Remove this photo")}
-                        data-testid={`delete-${p.upload_ref}`}
-                        onClick={() => setDeleteRef(p.upload_ref)}
-                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
-                      >
-                        <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
-                      </button>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+          </section>
         </section>
-      </div>
+      </main>
 
       <Dialog
         open={deleteRef !== null}

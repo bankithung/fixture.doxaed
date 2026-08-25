@@ -88,7 +88,21 @@ export function LensJoinPage(): React.ReactElement {
   }, [ctxQ.data, q]);
 
   // Signed in: the upload page IS this page from here on.
-  if (session) return <LensUploadPage sessionToken={session} />;
+  if (session)
+    return (
+      <LensUploadPage
+        sessionToken={session}
+        onSwitchSchool={() => {
+          // Back to the picker: forget this session on this device.
+          try {
+            sessionStorage.removeItem(STORE_KEY);
+          } catch {
+            /* ignore */
+          }
+          setSession("");
+        }}
+      />
+    );
 
   if (ctxQ.isLoading) {
     return (
@@ -152,9 +166,8 @@ export function LensJoinPage(): React.ReactElement {
             <h1 className="mt-0.5 text-lg font-semibold tracking-tight">
               {ctx.campaign.title}
             </h1>
-            <p className="text-sm text-primary">{ctx.campaign.tagline}</p>
             {ctx.campaign.instructions ? (
-              <p className="mt-2 text-sm text-muted-foreground">
+              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                 {ctx.campaign.instructions}
               </p>
             ) : null}
@@ -256,9 +269,6 @@ export function LensJoinPage(): React.ReactElement {
                     className="h-11 w-full rounded-md border border-border bg-background pl-8 pr-2 font-tabular text-base tracking-[0.2em] outline-none placeholder:tracking-normal placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {t("The host gives each school its own code.")}
-                </p>
               </div>
 
               {error ? (

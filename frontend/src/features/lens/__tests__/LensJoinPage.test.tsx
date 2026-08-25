@@ -96,7 +96,6 @@ describe("LensJoinPage", () => {
     mount();
 
     expect(await screen.findByText("Guest Lens")).toBeInTheDocument();
-    expect(screen.getByText("36 Shots Challenge")).toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId("school-i1"));
     await userEvent.type(screen.getByTestId("code-input"), "mk4tq9rb");
