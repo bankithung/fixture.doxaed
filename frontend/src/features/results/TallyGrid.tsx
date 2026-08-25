@@ -4,7 +4,7 @@ import { TeamCrest } from "@/components/ui/TeamCrest";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { MedalChip } from "./MedalChip";
+import { MedalChip, medalColumn } from "./MedalChip";
 import {
   cellPlacings,
   columnMedals,
@@ -87,8 +87,10 @@ export function TallyGrid({
                 key={p}
                 rowSpan={2}
                 scope="col"
+                data-testid={`tally-medal-head-${p}`}
                 className={cn(
-                  "border-b border-border bg-card px-2 py-2 text-center text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground",
+                  "border-b border-border px-2 py-2 text-center text-[0.6875rem] font-semibold uppercase tracking-wide",
+                  medalColumn(p).head,
                   i === 0 && "border-l",
                 )}
               >
@@ -195,18 +197,24 @@ export function TallyGrid({
                     </td>
                   );
                 })}
-                {places.map((p, idx) => (
-                  <td
-                    key={p}
-                    className={cn(
-                      "border-b border-border px-2 py-2 text-center font-tabular text-sm transition-colors group-hover:bg-accent/60",
-                      idx === 0 && "border-l",
-                      !(totals.medals[String(p)] ?? 0) && "text-muted-foreground/50",
-                    )}
-                  >
-                    {totals.medals[String(p)] ?? 0}
-                  </td>
-                ))}
+                {places.map((p, idx) => {
+                  const n = totals.medals[String(p)] ?? 0;
+                  return (
+                    <td
+                      key={p}
+                      className={cn(
+                        "border-b border-border px-2 py-2 text-center font-tabular text-sm",
+                        medalColumn(p).cell,
+                        idx === 0 && "border-l",
+                        n
+                          ? cn("font-semibold", medalColumn(p).ink)
+                          : "text-muted-foreground/50",
+                      )}
+                    >
+                      {n}
+                    </td>
+                  );
+                })}
                 <td className="border-b border-l border-border px-3 py-2 text-right transition-colors group-hover:bg-accent/60">
                   <span className="font-tabular text-sm font-semibold">
                     {totals.points}
@@ -240,7 +248,9 @@ export function TallyGrid({
               <td
                 key={p}
                 className={cn(
-                  "px-2 py-2 text-center font-tabular text-xs text-muted-foreground",
+                  "px-2 py-2 text-center font-tabular text-xs",
+                  medalColumn(p).cell,
+                  medalColumn(p).ink,
                   idx === 0 && "border-l border-border",
                 )}
               >

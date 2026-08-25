@@ -297,18 +297,19 @@ def group_leaves(group: dict, leaf_keys: list[str]) -> list[str]:
 def suggest_groups(sports: list[dict] | None) -> list[dict]:
     """Groups a host would probably want, read off their own category tree.
 
-    One group per (age band, gender) pair that appears anywhere, spanning
-    SPORTS — "U-14 Boys" covers both the table tennis and the sepak takraw
-    U-14 boys competitions, which is exactly how the reference medal sheet
-    bands its columns — plus an Overall. It is a starting point the host edits,
-    never a rule: nothing downstream re-derives it.
+    One group per (SPORT, age band, gender) — table tennis U-14 boys and sepak
+    takraw U-14 boys are different sports and therefore different champions
+    (owner 2026-08-25); merging them would award one trophy for two games. Plus
+    an Overall across everything. It is a starting point the host edits, never
+    a rule: nothing downstream re-derives it, and a host who DOES want a
+    combined group just ticks both sports into one.
     """
     from apps.tournaments.services.sports import iter_leaves
 
     leaves = iter_leaves(sports)
-    # (age segment, gender segment) -> the leaf-key prefixes that reach it.
-    buckets: dict[tuple[str, str], list[str]] = {}
-    order: list[tuple[str, str]] = []
+    # (sport, age segment, gender segment) -> leaf-key prefixes that reach it.
+    buckets: dict[tuple[str, str, str], list[str]] = {}
+    order: list[tuple[str, str, str]] = []
     genders = {"boys", "girls", "men", "women", "male", "female", "mixed"}
     for leaf in leaves:
         parts = leaf["leaf_key"].split(".")
@@ -323,7 +324,7 @@ def suggest_groups(sports: list[dict] | None) -> list[dict]:
             continue
         age_name = path[gender_at - 2]
         gender_name = path[gender_at - 1]
-        key = (str(age_name), str(gender_name))
+        key = (str(leaf["sport_name"]), str(age_name), str(gender_name))
         prefix = ".".join(parts[: gender_at + 1])
         if key not in buckets:
             buckets[key] = []
@@ -332,12 +333,12 @@ def suggest_groups(sports: list[dict] | None) -> list[dict]:
             buckets[key].append(prefix)
     out = [
         {
-            "key": _slug(f"{age} {gender}"),
-            "label": f"{age} {gender}",
-            "include": buckets[(age, gender)],
+            "key": _slug(f"{sport} {age} {gender}"),
+            "label": f"{sport} {age} {gender}",
+            "include": buckets[(sport, age, gender)],
             "decide": "points",
         }
-        for (age, gender) in order
+        for (sport, age, gender) in order
     ]
     out.append({
         "key": "overall", "label": "Overall Champion",

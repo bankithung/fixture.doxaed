@@ -225,7 +225,11 @@ describe("LensUploadPage", () => {
       "src",
       "/media/lens_photos/c1/r1.jpg",
     );
-    const input = screen.getByTestId("caption-input");
+    // It opens as a VIEW of what was submitted, not straight into a form.
+    expect(screen.getByTestId("preview-details")).toBeInTheDocument();
+    expect(screen.queryByTestId("caption-input")).toBeNull();
+    await userEvent.click(screen.getByTestId("preview-edit-btn"));
+    const input = await screen.findByTestId("caption-input");
     expect(input).toBeEnabled();
 
     // Fixing the caption saves and refetches, so grid + quota stay honest.
@@ -234,7 +238,7 @@ describe("LensUploadPage", () => {
     });
     await userEvent.clear(input);
     await userEvent.type(input, "The winning spike");
-    await userEvent.click(screen.getByTestId("save-caption-btn"));
+    await userEvent.click(screen.getByTestId("preview-save-btn"));
     await waitFor(() =>
       expect(lensApi.editOwnCaption).toHaveBeenCalledWith(
         "tok123",
@@ -296,16 +300,13 @@ describe("LensUploadPage", () => {
       within(review).getByTestId("review-story-description"),
       "From warm-up to podium",
     );
-    await userEvent.type(
-      within(review).getByLabelText(/Caption a\.jpg/),
-      "The winning spike",
-    );
+    // No per-photo caption inside a story batch: the entry is named ONCE, by
+    // its title, and a caption beside it is the same sentence twice.
+    expect(within(review).queryByLabelText(/Caption a\.jpg/)).toBeNull();
     await userEvent.type(titleInput, "Road to the final");
     await userEvent.click(within(review).getByTestId("confirm-upload-btn"));
 
     await waitFor(() => expect(lensApi.upload).toHaveBeenCalledTimes(1));
-    const [, fd] = vi.mocked(lensApi.upload).mock.calls[0];
-    expect((fd as FormData).get("caption")).toBe("The winning spike");
     // The entry the uploads created is named immediately.
     await waitFor(() =>
       expect(lensApi.setStoryTitle).toHaveBeenCalledWith("tok123", "s9", {

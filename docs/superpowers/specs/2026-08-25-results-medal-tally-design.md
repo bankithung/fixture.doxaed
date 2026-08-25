@@ -104,10 +104,14 @@ matched by the same `leaf_matches_prefix`. An empty `include` means every
 competition, which is how "Overall Champion" is expressed without a special
 case. `decide` is `points` (default) or `golds`.
 
-Authored for both tournaments per the owner: **U-14 Boys, U-14 Girls, Open
-Boys, Open Girls, Overall**. Each spans sports where the categories do (U-14
-Boys covers both table tennis and sepak takraw), which is exactly the reference
-sheet's own banding.
+`suggest_groups` proposes one group per (SPORT, age band, gender). Sports are
+NOT merged: table tennis U-14 boys and sepak takraw U-14 boys are different
+games and therefore different champions (owner 2026-08-25), and one trophy for
+two sports is simply wrong. A host who wants a combined group ticks both sports
+into one — which is the whole point of the include list being authored.
+
+Seeded on both tournaments: **Table Tennis U-14 Boys / U-14 Girls / Open Boys /
+Open Girls, Sepak Takraw U-14 Boys / U-14 Girls, Overall**.
 
 ### D4. A student is credited the FULL team points
 

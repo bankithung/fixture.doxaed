@@ -67,18 +67,18 @@ def test_defaults_are_the_owners_ladder_and_the_feature_is_off_until_asked():
     assert body["can_manage"] is True
 
 
-def test_it_suggests_groups_read_off_the_hosts_own_category_tree():
-    """One group per age band and gender, spanning SPORTS — exactly how the
-    reference medal sheet bands its columns."""
+def test_it_suggests_one_group_per_sport_age_and_gender():
+    """Table tennis U-14 boys and sepak takraw U-14 boys are different SPORTS
+    and therefore different champions (owner 2026-08-25) — merging them would
+    award one trophy for two games."""
     admin = _user(f"aw-{uuid.uuid4().hex[:6]}@test.local")
     t = _tournament(admin)
     body = _client(admin).get(f"/api/tournaments/{t.id}/awards/").json()
 
     groups = {g["label"]: g for g in body["suggested_groups"]}
-    assert "U-14 Boys" in groups
-    assert set(groups["U-14 Boys"]["include"]) == {
-        "table_tennis.u_14.boys", "sepak_takraw.u_14.boys",
-    }
+    assert groups["Table Tennis U-14 Boys"]["include"] == ["table_tennis.u_14.boys"]
+    assert groups["Sepak Takraw U-14 Boys"]["include"] == ["sepak_takraw.u_14.boys"]
+    assert "U-14 Boys" not in groups
     assert groups["Overall Champion"]["include"] == []
 
 

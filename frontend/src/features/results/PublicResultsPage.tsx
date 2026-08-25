@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
 import { PublicViewerHeader } from "@/features/live/PublicViewerHeader";
-import { Bookmark } from "@/features/fixtures/publicTournamentViews";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { ChampionsView } from "./ChampionsView";
+import { medalColumn } from "./MedalChip";
 import { PointsChart } from "./PointsChart";
 import { StudentsView } from "./StudentsView";
 import { TallyGrid } from "./TallyGrid";
@@ -49,6 +49,81 @@ import {
 
 type View = "tally" | "champions" | "students";
 const VIEWS: View[] = ["tally", "champions", "students"];
+
+/** The view switcher, inside the board rather than a tab attached above it —
+ * one section means one box (owner 2026-08-25). */
+function Segment({
+  active,
+  onClick,
+  label,
+  count,
+  testid,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count?: number;
+  testid: string;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      data-testid={testid}
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[0.8125rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        active
+          ? "bg-card text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {label}
+      {count != null ? (
+        <span className="font-tabular text-[0.625rem] text-muted-foreground">
+          {count}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+/** The sport filter: a chip row, not a second set of tabs. */
+function Chip({
+  active,
+  onClick,
+  label,
+  count,
+  testid,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count?: number;
+  testid: string;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      data-testid={testid}
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        active
+          ? "border-primary/40 bg-primary/10 text-primary"
+          : "border-border text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {label}
+      {count != null ? (
+        <span className="font-tabular text-[0.625rem] opacity-70">{count}</span>
+      ) : null}
+    </button>
+  );
+}
 
 function Stat({
   value,
@@ -190,9 +265,11 @@ export function PublicResultsPage(): React.ReactElement {
         active="results"
         connected={false}
       />
-      <main className="flex w-full flex-1 flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
-        {/* A real heading, and the only thing that survives onto paper: the
-            print sheet must name the meet it is a tally of. */}
+      {/* ONE section (owner 2026-08-25). The heading, the totals, the view
+          switcher, the filters and the sheet itself are one board: read across
+          four floating cards, a medal tally is four things rather than one. */}
+      <main className="flex w-full flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">
+       <section className="flex w-full flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">
@@ -255,9 +332,9 @@ export function PublicResultsPage(): React.ReactElement {
           </div>
         ) : (
           <>
-            <section
+            <div
               data-testid="results-summary"
-              className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-xl border border-border bg-card px-5 py-4 shadow-sm"
+              className="flex flex-wrap items-center gap-x-8 gap-y-3 border-y border-border py-3"
             >
               <Stat value={q.data.totals.medals} label={t("Medals awarded")} />
               <Stat value={q.data.totals.points} label={t("Points awarded")} />
@@ -274,39 +351,42 @@ export function PublicResultsPage(): React.ReactElement {
                 {ladder.map((l) => (
                   <span
                     key={l.place}
-                    className="rounded-lg bg-muted px-2.5 py-1 text-xs"
+                    className={cn(
+                      "rounded-lg px-2.5 py-1 text-xs",
+                      medalColumn(l.place).head,
+                    )}
                     data-testid={`ladder-${l.place}`}
                   >
-                    <span className="font-medium">{l.label || l.place}</span>{" "}
-                    <span className="font-tabular text-muted-foreground">
+                    <span className="font-semibold">{l.label || l.place}</span>{" "}
+                    <span className="font-tabular">
                       {l.points} {t("pts")}
                     </span>
                   </span>
                 ))}
               </div>
-            </section>
+            </div>
 
-            <div className="flex flex-col print:block">
+            <div className="flex flex-col gap-4">
               <div
                 role="tablist"
                 aria-label={t("Results views")}
-                className="flex flex-wrap items-end gap-1 overflow-x-auto px-2 print:hidden"
+                className="flex flex-wrap gap-1 self-start rounded-lg bg-muted p-1 print:hidden"
               >
-                <Bookmark
+                <Segment
                   testid="results-view-tally"
                   active={view === "tally"}
                   onClick={() => setParam({ view: null })}
                   label={t("Medal tally")}
                   count={q.data.schools.length}
                 />
-                <Bookmark
+                <Segment
                   testid="results-view-champions"
                   active={view === "champions"}
                   onClick={() => setParam({ view: "champions" })}
                   label={t("Champions")}
                   count={q.data.groups.length}
                 />
-                <Bookmark
+                <Segment
                   testid="results-view-students"
                   active={view === "students"}
                   onClick={() => setParam({ view: "students" })}
@@ -315,7 +395,7 @@ export function PublicResultsPage(): React.ReactElement {
                 />
               </div>
 
-              <div className="flex flex-col gap-4 rounded-xl rounded-tl-none border border-border bg-card p-4 shadow-sm sm:p-5">
+              <div className="flex flex-col gap-4">
                 {view !== "champions" ? (
                   <div className="flex flex-wrap items-center gap-3 print:hidden">
                     <div className="relative min-w-[12rem] flex-1 sm:max-w-xs">
@@ -391,9 +471,9 @@ export function PublicResultsPage(): React.ReactElement {
                     <div
                       role="tablist"
                       aria-label={t("Sports")}
-                      className="flex flex-wrap items-center gap-1 print:hidden"
+                      className="flex flex-wrap items-center gap-1.5 print:hidden"
                     >
-                      <Bookmark
+                      <Chip
                         testid="results-sport-all"
                         active={!sport}
                         onClick={() => setParam({ sport: null })}
@@ -401,7 +481,7 @@ export function PublicResultsPage(): React.ReactElement {
                         count={allColumns.length}
                       />
                       {bands.map((b) => (
-                        <Bookmark
+                        <Chip
                           key={b.sportKey}
                           testid={`results-sport-${b.sportKey}`}
                           active={sport === b.sportKey}
@@ -515,6 +595,7 @@ export function PublicResultsPage(): React.ReactElement {
             </div>
           </>
         )}
+       </section>
       </main>
     </div>
   );

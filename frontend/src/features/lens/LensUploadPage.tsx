@@ -7,6 +7,7 @@ import {
   Camera,
   CheckCircle2,
   Loader2,
+  Pencil,
   Trash2,
   X,
 } from "lucide-react";
@@ -138,7 +139,12 @@ export function LensUploadPage({
   const [deleteRef, setDeleteRef] = useState<string | null>(null);
   // The own-photo currently open in the preview sheet, and its caption draft.
   const [previewRef, setPreviewRef] = useState<string | null>(null);
+  // The preview opens as a VIEW of what was submitted; editing is a deliberate
+  // step, not the default state (owner 2026-08-25).
+  const [previewEditing, setPreviewEditing] = useState(false);
   const [captionDraft, setCaptionDraft] = useState<string | null>(null);
+  const [pvTitle, setPvTitle] = useState("");
+  const [pvDesc, setPvDesc] = useState("");
   // "" = no category picked yet (campaigns without categories stay on "").
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   // Picked photos awaiting confirmation.
@@ -552,31 +558,42 @@ export function LensUploadPage({
                         >
                           <X aria-hidden="true" className="h-3.5 w-3.5" />
                         </button>
-                        <input
-                          value={p.caption}
-                          data-testid={`pick-caption-${p.key}`}
-                          maxLength={200}
-                          placeholder={t("Caption…")}
-                          aria-label={`${t("Caption")} ${p.file.name}`}
-                          onChange={(e) =>
-                            setPicked((cur) =>
-                              cur.map((x) =>
-                                x.key === p.key
-                                  ? { ...x, caption: e.target.value }
-                                  : x,
-                              ),
-                            )
-                          }
-                          className="mt-1 w-full rounded-md border border-border bg-card px-2 py-1 text-[0.6875rem]"
-                        />
+                        {/* An ordinary photo carries its own caption. A
+                            STORY frame does not: the entry is named once, by
+                            its title, and a caption beside it is the same
+                            sentence typed twice (owner 2026-08-25). */}
+                        {!isStoryCat ? (
+                          <input
+                            value={p.caption}
+                            data-testid={`pick-caption-${p.key}`}
+                            maxLength={200}
+                            placeholder={t("Caption…")}
+                            aria-label={`${t("Caption")} ${p.file.name}`}
+                            onChange={(e) =>
+                              setPicked((cur) =>
+                                cur.map((x) =>
+                                  x.key === p.key
+                                    ? { ...x, caption: e.target.value }
+                                    : x,
+                                ),
+                              )
+                            }
+                            className="mt-1 w-full rounded-md border border-border bg-card px-2 py-1 text-[0.6875rem]"
+                          />
+                        ) : null}
                       </li>
                     ))}
                   </ul>
 
                   {/* A STORY batch names itself here, BEFORE uploading:
-                      title is mandatory, description optional. */}
+                      title is mandatory, description optional. It sits under
+                      its own heading because it names the ENTRY, not the
+                      photograph above it. */}
                   {isStoryCat ? (
-                    <div className="mt-2.5 flex flex-col gap-2">
+                    <div className="mt-2.5 flex flex-col gap-2 rounded-lg border border-border bg-muted/20 p-2.5">
+                      <p className="text-xs font-medium">
+                        {t("Your story entry")}
+                      </p>
                       <input
                         value={titleDraft ?? ""}
                         data-testid="review-story-title"
@@ -717,6 +734,7 @@ export function LensUploadPage({
                       onClick={() => {
                         setPreviewRef(p.upload_ref);
                         setCaptionDraft(null);
+                        setPreviewEditing(false);
                       }}
                       className="block w-full overflow-hidden rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
@@ -765,16 +783,78 @@ export function LensUploadPage({
         variant="sheet"
       >
         {(() => {
-          const photo = ctx.photos.find(
-            (x) => x.upload_ref === previewRef,
-          );
+          const photo = ctx.photos.find((x) => x.upload_ref === previewRef);
           if (!photo) return null;
-          const editable =
-            ctx.campaign.is_open && photo.status === "pending";
+          const editable = ctx.campaign.is_open && photo.status === "pending";
+          // A frame of a photo story is described by its STORY: one title and
+          // one description for the whole entry. An ordinary photo carries its
+          // own caption. Either way the sheet shows what was submitted first.
+          const inStory = ctx.stories.find((x) => x.id === photo.story_id);
+          const startEdit = (): void => {
+            setCaptionDraft(photo.caption ?? "");
+            setPvTitle(inStory?.title ?? "");
+            setPvDesc(inStory?.description ?? "");
+            setPreviewEditing(true);
+          };
+          const Field = ({
+            label,
+            value,
+          }: {
+            label: string;
+            value: string;
+          }): React.ReactElement => (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground">
+                {label}
+              </span>
+              {value ? (
+                <p className="whitespace-pre-wrap break-words text-sm">{value}</p>
+              ) : (
+                <p className="text-sm text-muted-foreground/60">{t("Not set")}</p>
+              )}
+            </div>
+          );
+          const dirty = inStory
+            ? pvTitle.trim() !== (inStory.title ?? "") ||
+              pvDesc.trim() !== (inStory.description ?? "")
+            : (captionDraft ?? "") !== (photo.caption ?? "");
+          const save = async (): Promise<void> => {
+            try {
+              if (inStory) {
+                if (!pvTitle.trim()) return;
+                await lensApi.setStoryTitle(token, inStory.id, {
+                  title: pvTitle.trim(),
+                  description: pvDesc.trim(),
+                });
+              } else {
+                await lensApi.editOwnCaption(
+                  token,
+                  photo.upload_ref,
+                  captionDraft ?? "",
+                );
+              }
+              push({ kind: "success", title: t("Saved") });
+              void qc.invalidateQueries({ queryKey: qk.lensPass(token) });
+              setPreviewEditing(false);
+              setCaptionDraft(null);
+            } catch (e) {
+              const code =
+                e instanceof ApiError ? String(e.payload?.detail ?? "") : "";
+              push({
+                kind: "error",
+                title:
+                  code === "photo_locked"
+                    ? t("This photo is already in review.")
+                    : t("Could not save."),
+              });
+            }
+          };
           return (
             <>
               <DialogHeader>
-                <DialogTitle>{t("Your photo")}</DialogTitle>
+                <DialogTitle>
+                  {inStory ? inStory.title || t("Your story") : t("Your photo")}
+                </DialogTitle>
                 <DialogDescription>
                   {photo.category || t("No category")} ·{" "}
                   {ownStatusChip(photo.status)}
@@ -782,32 +862,79 @@ export function LensUploadPage({
               </DialogHeader>
               <img
                 src={photo.url}
-                alt={photo.caption || t("Uploaded photo")}
+                alt={photo.caption || inStory?.title || t("Uploaded photo")}
                 className="max-h-[50vh] w-full rounded-md object-contain"
                 data-testid="preview-image"
               />
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-medium" htmlFor="own-caption">
-                  {t("Caption")}
+
+              {!previewEditing ? (
+                <div className="flex flex-col gap-3" data-testid="preview-details">
+                  {inStory ? (
+                    <>
+                      <Field label={t("Story title")} value={inStory.title} />
+                      <Field
+                        label={t("Description")}
+                        value={inStory.description}
+                      />
+                    </>
+                  ) : (
+                    <Field label={t("Caption")} value={photo.caption} />
+                  )}
                   {!editable ? (
-                    <span className="ml-1 font-normal text-muted-foreground">
-                      ({t("Locked once reviewed")})
-                    </span>
+                    <p className="text-xs text-muted-foreground">
+                      {t("Locked once reviewed.")}
+                    </p>
                   ) : null}
-                </label>
-                <input
-                  id="own-caption"
-                  value={captionDraft ?? photo.caption ?? ""}
-                  data-testid="caption-input"
-                  maxLength={200}
-                  disabled={!editable}
-                  placeholder={t("Describe this photo (optional)")}
-                  onChange={(e) => setCaptionDraft(e.target.value)}
-                  className="h-10 w-full rounded-md border border-border bg-card px-2.5 text-sm"
-                />
-              </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2" data-testid="preview-edit">
+                  {inStory ? (
+                    <>
+                      <label className="text-xs font-medium" htmlFor="pv-title">
+                        {t("Story title")} *
+                      </label>
+                      <input
+                        id="pv-title"
+                        value={pvTitle}
+                        data-testid="preview-title-input"
+                        maxLength={120}
+                        onChange={(e) => setPvTitle(e.target.value)}
+                        className="h-10 w-full rounded-md border border-border bg-card px-2.5 text-sm"
+                      />
+                      <label className="text-xs font-medium" htmlFor="pv-desc">
+                        {t("Description (optional)")}
+                      </label>
+                      <textarea
+                        id="pv-desc"
+                        value={pvDesc}
+                        data-testid="preview-description-input"
+                        rows={3}
+                        maxLength={1000}
+                        onChange={(e) => setPvDesc(e.target.value)}
+                        className="w-full rounded-md border border-border bg-card px-2.5 py-2 text-sm"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <label className="text-xs font-medium" htmlFor="own-caption">
+                        {t("Caption")}
+                      </label>
+                      <input
+                        id="own-caption"
+                        value={captionDraft ?? ""}
+                        data-testid="caption-input"
+                        maxLength={200}
+                        placeholder={t("Describe this photo (optional)")}
+                        onChange={(e) => setCaptionDraft(e.target.value)}
+                        className="h-10 w-full rounded-md border border-border bg-card px-2.5 text-sm"
+                      />
+                    </>
+                  )}
+                </div>
+              )}
+
               <DialogFooter>
-                {editable ? (
+                {editable && !previewEditing ? (
                   <Button
                     variant="destructive"
                     className="mr-auto"
@@ -821,46 +948,42 @@ export function LensUploadPage({
                     {t("Remove")}
                   </Button>
                 ) : null}
-                <Button variant="outline" onClick={() => setPreviewRef(null)}>
-                  {t("Close")}
-                </Button>
-                {editable ? (
-                  <Button
-                    data-testid="save-caption-btn"
-                    disabled={
-                      (captionDraft ?? "") === (photo.caption ?? "")
-                    }
-                    onClick={async () => {
-                      try {
-                        await lensApi.editOwnCaption(
-                          token,
-                          photo.upload_ref,
-                          captionDraft ?? "",
-                        );
-                        push({ kind: "success", title: t("Caption saved") });
-                        void qc.invalidateQueries({
-                          queryKey: qk.lensPass(token),
-                        });
+                {previewEditing ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      data-testid="preview-cancel-edit"
+                      onClick={() => {
+                        setPreviewEditing(false);
                         setCaptionDraft(null);
-                        setPreviewRef(null);
-                      } catch (e) {
-                        const code =
-                          e instanceof ApiError
-                            ? String(e.payload?.detail ?? "")
-                            : "";
-                        push({
-                          kind: "error",
-                          title:
-                            code === "photo_locked"
-                              ? t("This photo is already in review.")
-                              : t("Could not save the caption."),
-                        });
-                      }
-                    }}
-                  >
-                    {t("Save caption")}
-                  </Button>
-                ) : null}
+                      }}
+                    >
+                      {t("Cancel")}
+                    </Button>
+                    <Button
+                      data-testid="preview-save-btn"
+                      disabled={!dirty || (!!inStory && !pvTitle.trim())}
+                      onClick={() => void save()}
+                    >
+                      {t("Save")}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => setPreviewRef(null)}
+                    >
+                      {t("Close")}
+                    </Button>
+                    {editable ? (
+                      <Button data-testid="preview-edit-btn" onClick={startEdit}>
+                        <Pencil aria-hidden="true" className="h-4 w-4" />
+                        {t("Edit")}
+                      </Button>
+                    ) : null}
+                  </>
+                )}
               </DialogFooter>
             </>
           );

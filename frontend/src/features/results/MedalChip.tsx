@@ -23,6 +23,41 @@ export function medalTint(place: number): string {
   return TINT[place] ?? FALLBACK;
 }
 
+/** The gold / silver / bronze column of a tally, tinted so the eye finds it
+ * without reading the header. Static class strings because Tailwind cannot
+ * see a composed one. */
+const COLUMN: Record<number, { head: string; cell: string; ink: string }> = {
+  1: {
+    head: "bg-medal-1-muted text-medal-1",
+    cell: "bg-medal-1-muted/50",
+    ink: "text-medal-1",
+  },
+  2: {
+    head: "bg-medal-2-muted text-medal-2",
+    cell: "bg-medal-2-muted/50",
+    ink: "text-medal-2",
+  },
+  3: {
+    head: "bg-medal-3-muted text-medal-3",
+    cell: "bg-medal-3-muted/50",
+    ink: "text-medal-3",
+  },
+};
+
+export function medalColumn(place: number): {
+  head: string;
+  cell: string;
+  ink: string;
+} {
+  return (
+    COLUMN[place] ?? {
+      head: "bg-muted text-muted-foreground",
+      cell: "bg-muted/30",
+      ink: "text-foreground",
+    }
+  );
+}
+
 export function MedalChip({
   place,
   label,
