@@ -253,6 +253,67 @@ export function AlbumPanel({
                 </p>
               </div>
 
+              {/* Filters sit under the header, ABOVE the winners and the
+                  stories, because they govern both. Below them a reader
+                  scrolls past everything the control filters before reaching
+                  it (owner 2026-08-25). On a desk they are an inline row; on a phone six
+                  category chips plus a school select stacked three rows deep,
+                  so there they live behind one thumb-reachable button instead
+                  (owner 2026-08-25). */}
+              {!isMobile ? (
+                <div className="sticky top-[57px] z-10 flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-3 sm:px-5">
+                  <span className="flex shrink-0 items-center gap-1.5 pr-1 text-[0.6875rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
+                    {t("Filter")}
+                  </span>
+                  {chip("", t("All"), total)}
+                  {(q.data?.award_categories ?? []).map((cat) =>
+                    chip(cat, cat, countIn(cat)),
+                  )}
+                  {category || school ? (
+                    <button
+                      type="button"
+                      data-testid="album-filter-reset"
+                      onClick={() => {
+                        setCategory("");
+                        setSchool("");
+                      }}
+                      className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-primary"
+                    >
+                      {t("Clear")}
+                    </button>
+                  ) : null}
+                  <div className="ml-auto w-56">
+                    <Select
+                      aria-label={t("Filter by school")}
+                      value={school}
+                      onChange={setSchool}
+                      options={schoolOptions}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 border-b border-border px-4 py-2">
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                    {category || t("All categories")}
+                    {school ? ` · ${school}` : ""}
+                  </span>
+                  {category || school ? (
+                    <button
+                      type="button"
+                      data-testid="album-filter-clear"
+                      onClick={() => {
+                        setCategory("");
+                        setSchool("");
+                      }}
+                      className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-primary"
+                    >
+                      {t("Clear")}
+                    </button>
+                  ) : null}
+                </div>
+              )}
+
               {/* Prizes lead the album: the first thing a visitor wants is
                   who won (owner 2026-08-25). A winner may be a single
                   photograph or a whole story. */}
@@ -391,48 +452,6 @@ export function AlbumPanel({
                 </div>
               ) : null}
 
-              {/* Prize winners lead: they are the editorial top of the album. */}
-              {/* Filters. On a desk they are an inline row; on a phone six
-                  category chips plus a school select stacked three rows deep,
-                  so there they live behind one thumb-reachable button instead
-                  (owner 2026-08-25). */}
-              {!isMobile ? (
-                <div className="sticky top-[57px] z-10 flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-3 sm:px-5">
-                  {chip("", t("All"), total)}
-                  {(q.data?.award_categories ?? []).map((cat) =>
-                    chip(cat, cat, countIn(cat)),
-                  )}
-                  <div className="ml-auto w-56">
-                    <Select
-                      aria-label={t("Filter by school")}
-                      value={school}
-                      onChange={setSchool}
-                      options={schoolOptions}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 border-b border-border px-4 py-2">
-                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                    {category || t("All categories")}
-                    {school ? ` · ${school}` : ""}
-                  </span>
-                  {category || school ? (
-                    <button
-                      type="button"
-                      data-testid="album-filter-clear"
-                      onClick={() => {
-                        setCategory("");
-                        setSchool("");
-                      }}
-                      className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-primary"
-                    >
-                      {t("Clear")}
-                    </button>
-                  ) : null}
-                </div>
-              )}
-
               {/* The wall. */}
               {photos.length === 0 ? (
                 <p className="px-4 py-14 text-center text-sm text-muted-foreground">
@@ -561,7 +580,13 @@ export function AlbumPanel({
 
       {/* Scan the poster's QR right here: the phone opens its camera, reads
           the join link, and walks into the school-code upload flow. */}
-      <div className="pointer-events-none fixed bottom-4 left-1/2 z-20 -translate-x-1/2">
+      <div
+        className={cn(
+          "pointer-events-none fixed left-1/2 z-20 -translate-x-1/2",
+          // Clear of the filter bar, which owns the bottom edge on a phone.
+          isMobile ? "bottom-[4.75rem]" : "bottom-4",
+        )}
+      >
         <Button
           size="lg"
           onClick={() => setScanOpen(true)}
