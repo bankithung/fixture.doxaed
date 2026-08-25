@@ -707,6 +707,172 @@ export interface PublicEntriesPayload {
   totals: { schools: number; competitions: number; teams: number };
 }
 
+/* ------------------------------------------------------------------ results */
+
+/** One place in one competition, and who holds it. */
+export interface PublicResultPlace {
+  place: number;
+  /** The ladder's own word for it ("Gold"), or an ordinal. */
+  label: string;
+  points: number;
+  /** How it was arrived at: final | third_place | semi_final | standings | manual. */
+  source: string;
+  match_id: string;
+  note: string;
+  /** Usually one; two when a bronze is shared by both losing semi-finalists. */
+  winners: {
+    team_id: string;
+    team_name: string;
+    institution_id: string;
+    institution_name: string;
+    crest: string;
+  }[];
+}
+
+export interface PublicResultCompetition {
+  leaf_key: string;
+  sport_key: string;
+  sport_name: string;
+  path: string[];
+  label: string;
+  /** final = every match played · provisional = still running · pending. */
+  status: "final" | "provisional" | "pending";
+  places: PublicResultPlace[];
+}
+
+/** One school's row of the medal tally. */
+export interface PublicResultSchool {
+  id: string;
+  name: string;
+  short_name: string;
+  crest: string;
+  /** place -> how many of them ({"1": 3, "2": 1}). */
+  medals: Record<string, number>;
+  points: number;
+  /** leaf_key -> the placings this school holds there. */
+  results: Record<
+    string,
+    { place: number; points: number; label: string; team_name: string }[]
+  >;
+  rank: number;
+}
+
+export interface PublicResultGroupRow {
+  id: string;
+  name: string;
+  crest: string;
+  medals: Record<string, number>;
+  points: number;
+  rank: number;
+}
+
+/** An authored category group ("U-14 Boys") and who is winning it. */
+export interface PublicResultGroup {
+  key: string;
+  label: string;
+  include: string[];
+  decide: "points" | "golds";
+  leaf_keys: string[];
+  status: "final" | "provisional" | "pending";
+  table: PublicResultGroupRow[];
+  /** Every row on rank 1 — a tie has more than one champion. */
+  champions: PublicResultGroupRow[];
+}
+
+export interface PublicResultStudent {
+  person_id: string;
+  name: string;
+  institution_id: string;
+  institution_name: string;
+  crest: string;
+  class_section: string;
+  roll_no: string;
+  events: {
+    leaf_key: string;
+    label: string;
+    sport_name: string;
+    team_id: string;
+    team_name: string;
+    place: number | null;
+    place_label: string;
+    points: number;
+    status: string;
+  }[];
+  medals: Record<string, number>;
+  points: number;
+  event_count: number;
+  medal_count: number;
+}
+
+export interface PublicResultsPayload {
+  tournament: {
+    id: string;
+    slug: string;
+    name: string;
+    status: string;
+    starts_at: string | null;
+    ends_at: string | null;
+  };
+  awards: {
+    enabled: boolean;
+    ladder: { place: number; points: number; label: string }[];
+    bronze: string;
+    /** Every place any ladder in this tournament scores. */
+    places: number[];
+  };
+  competitions: PublicResultCompetition[];
+  schools: PublicResultSchool[];
+  groups: PublicResultGroup[];
+  students: PublicResultStudent[];
+  totals: {
+    schools: number;
+    competitions: number;
+    decided: number;
+    medals: number;
+    points: number;
+    students: number;
+  };
+}
+
+/** The medal tally setup a manager owns. */
+export interface AwardsConfig {
+  enabled: boolean;
+  ladder: { place: number; points: number; label: string }[];
+  by_competition: {
+    match: string;
+    ladder: { place: number; points: number; label: string }[];
+  }[];
+  bronze: string;
+  groups: {
+    key: string;
+    label: string;
+    include: string[];
+    decide: "points" | "golds";
+  }[];
+  overrides: {
+    leaf_key: string;
+    place: number;
+    team_id: string;
+    label: string;
+    note: string;
+    by: string;
+    at: string;
+  }[];
+}
+
+export interface AwardsPayload {
+  awards: AwardsConfig;
+  competitions: {
+    leaf_key: string;
+    sport_key: string;
+    sport_name: string;
+    path: string[];
+    label: string;
+  }[];
+  suggested_groups: AwardsConfig["groups"];
+  can_manage: boolean;
+}
+
 export interface PublicSchedulePayload {
   tournament: {
     id: string;
@@ -1470,6 +1636,21 @@ export const tournamentsApi = {
     api.get<PublicEntriesPayload>(
       `/api/public/tournaments/${encodeURIComponent(slug)}/${id}/entries/`,
     ),
+  /** The medal tally: every placing, what it scored, the category champions
+   * and the students behind them. Derived from the fixture, so it is right the
+   * moment a final ends. */
+  publicResults: (slug: string, id: string) =>
+    api.get<PublicResultsPayload>(
+      `/api/public/tournaments/${encodeURIComponent(slug)}/${id}/results/`,
+    ),
+  /** The medal tally SETUP a manager owns: points ladder, category groups,
+   * hand-set placings. Readable by anyone who can see the tournament. */
+  awards: (id: string) => api.get<AwardsPayload>(`/api/tournaments/${id}/awards/`),
+  saveAwards: (id: string, awards: Partial<AwardsConfig>, eventId?: string) =>
+    api.patch<AwardsPayload>(`/api/tournaments/${id}/awards/`, {
+      awards,
+      ...(eventId ? { event_id: eventId } : {}),
+    }),
   /** Public read-only standings (AllowAny; same slug+UUID gating as the
    * public schedule — control room spec §2.d). */
   publicStandings: (slug: string, id: string) =>

@@ -15,6 +15,7 @@ import {
   Trophy,
   Wrench,
 } from "lucide-react";
+import { AwardsSettingsCard } from "@/features/results/AwardsSettingsCard";
 import { tournamentsApi } from "@/api/tournaments";
 import { ApiError } from "@/types/api";
 import { Button } from "@/components/ui/button";
@@ -271,6 +272,12 @@ export function OpsSettingsPage(): React.ReactElement {
       </Link>
 
       <DisputesPanel tournamentId={id} />
+
+      {/* The medal tally's own setup: the points a placing is worth and the
+          champions this meet awards. It lives on the ops page rather than the
+          setup wizard because a host settles the ladder during the meet, not
+          before it (spec 2026-08-25). */}
+      <AwardsSettingsCard tournamentId={id} canManage={canManage} />
 
       {/* Setup & configuration hatch — demoted, for late changes / regeneration. */}
       {canManage ? (

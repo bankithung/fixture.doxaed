@@ -68,6 +68,17 @@
        (CVD ΔE >= 12, >= 3:1 on the card surface) in true stack order
        violet | amber | blue: 1 = played (violet, matches primary),
        2 = upcoming (blue), 3 = live (amber). */
+    /* Medal placings. Gold/silver/bronze are fixed by the world, not by the
+       brand, so they are their own trio. Validated for this surface: CVD
+       separation ΔE 15.5 (deutan) / normal 17.8, all three >= 3:1 on the card.
+       Silver reads neutral by definition — which is exactly why a medal chip
+       always carries its place number too. */
+    --medal-1: 40 95% 38%;
+    --medal-2: 212 24% 48%;
+    --medal-3: 22 62% 40%;
+    --medal-1-muted: 42 90% 93%;
+    --medal-2-muted: 212 28% 94%;
+    --medal-3-muted: 24 60% 94%;
     --chart-1: 255 70% 56%;
     --chart-2: 214 70% 45%;
     --chart-3: 38 92% 42%;
@@ -122,6 +133,14 @@
     --brand-ink: 210 40% 96%;
 
     /* Chart series, re-stepped for the dark card surface (validated). */
+    /* Dark medals: re-stepped against the dark card, not flipped. CVD ΔE 18.1
+       (protan) / normal 20.7, all three >= 3:1. */
+    --medal-1: 43 80% 47%;
+    --medal-2: 211 30% 58%;
+    --medal-3: 24 66% 50%;
+    --medal-1-muted: 43 40% 16%;
+    --medal-2-muted: 211 25% 20%;
+    --medal-3-muted: 24 35% 16%;
     --chart-1: 256 86% 67%;
     --chart-2: 213 77% 56%;
     --chart-3: 40 100% 39%;

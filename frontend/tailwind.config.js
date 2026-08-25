@@ -70,6 +70,18 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // Medal placings (see index.css --medal-*). Gold/silver/bronze are
+        // culturally fixed, so they are their own status trio rather than a
+        // reuse of warning/muted — and every chip that wears one also carries
+        // its place number, so identity is never colour alone.
+        medal: {
+          1: "hsl(var(--medal-1))",
+          2: "hsl(var(--medal-2))",
+          3: "hsl(var(--medal-3))",
+          "1-muted": "hsl(var(--medal-1-muted))",
+          "2-muted": "hsl(var(--medal-2-muted))",
+          "3-muted": "hsl(var(--medal-3-muted))",
+        },
         // Dashboard chart series (see index.css --chart-*).
         chart: {
           1: "hsl(var(--chart-1))",

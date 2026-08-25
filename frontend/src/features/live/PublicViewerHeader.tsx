@@ -6,7 +6,7 @@ import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
-type Tab = "schedule" | "standings" | "entries" | "album";
+type Tab = "schedule" | "standings" | "entries" | "results" | "album";
 
 /** The public-viewer tabs (Matches / Standings / Schools), Google-sports-panel
  * style.
@@ -16,7 +16,10 @@ type Tab = "schedule" | "standings" | "entries" | "album";
  * is a scope INSIDE Matches now (owner 2026-08-21), so following a bracket
  * never costs a page load. Schools is its own tab, not a scope: it answers a
  * question about ENTRIES rather than about a day's play, and it is the first
- * thing a parent or a visiting school looks for (owner 2026-08-22). */
+ * thing a parent or a visiting school looks for (owner 2026-08-22). Results is
+ * its own tab for the same reason: the medal tally is what a school takes home
+ * from the meet, and it outlives the fixture it was computed from (owner
+ * 2026-08-25). */
 export function PublicViewerTabs({
   slug,
   id,
@@ -30,6 +33,7 @@ export function PublicViewerTabs({
     { key: "schedule", label: t("Matches"), to: routes.publicSchedule(slug, id) },
     { key: "standings", label: t("Standings"), to: routes.publicStandings(slug, id) },
     { key: "entries", label: t("Schools"), to: routes.publicEntries(slug, id) },
+    { key: "results", label: t("Results"), to: routes.publicResults(slug, id) },
     { key: "album", label: t("Photos"), to: `${routes.publicSchedule(slug, id)}?view=album` },
   ];
   return (

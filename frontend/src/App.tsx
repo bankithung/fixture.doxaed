@@ -95,6 +95,7 @@ const PublicDirectoryPage = lazy(() => import("@/features/forms/PublicDirectoryP
 const LiveViewerPage = lazy(() => import("@/features/live/LiveViewerPage").then((m) => ({ default: m.LiveViewerPage })));
 const PublicStandingsPage = lazy(() => import("@/features/live/PublicStandingsPage").then((m) => ({ default: m.PublicStandingsPage })));
 const PublicEntriesPage = lazy(() => import("@/features/fixtures/PublicEntriesPage").then((m) => ({ default: m.PublicEntriesPage })));
+const PublicResultsPage = lazy(() => import("@/features/results/PublicResultsPage").then((m) => ({ default: m.PublicResultsPage })));
 const PublicBracketRedirect = lazy(() => import("@/features/live/PublicBracketRedirect").then((m) => ({ default: m.PublicBracketRedirect })));
 const PublicTeamPage = lazy(() => import("@/features/live/PublicTeamPage").then((m) => ({ default: m.PublicTeamPage })));
 const PublicSchoolPage = lazy(() => import("@/features/live/PublicSchoolPage").then((m) => ({ default: m.PublicSchoolPage })));
@@ -218,6 +219,12 @@ export default function App(): React.ReactElement {
               <Route
                 path="/t/:slug/:id/schools"
                 element={<PublicEntriesPage />}
+              />
+              {/* The medal tally: placings, points, category champions and
+                  the students behind them (owner 2026-08-25). */}
+              <Route
+                path="/t/:slug/:id/results"
+                element={<PublicResultsPage />}
               />
               <Route path="/t/:slug/:id/live" element={<PublicLiveRedirect />} />
               <Route path="/t/:slug/:id/bracket" element={<PublicBracketRedirect />} />

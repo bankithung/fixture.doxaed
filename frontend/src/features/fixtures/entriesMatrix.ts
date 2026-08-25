@@ -13,20 +13,39 @@ import type {
  * module the page renders and the tests drive directly.
  */
 
-/** A column of the matrix: the competition plus the code its header shows. */
-export interface MatrixColumn extends PublicEntryCompetition {
+/** The least a competition must be to become a column: a key, its sport and
+ * the category path the header code is built from. The entries grid and the
+ * medal tally both key on exactly this, so the column model is shared rather
+ * than forked — a code that means one thing on one public tab and another on
+ * the next would be worse than no code at all. */
+export interface CompetitionLike {
+  leaf_key: string;
+  sport_key: string;
+  sport_name: string;
+  /** Segment names BELOW the sport ("U-14", "Boys", "Singles"). */
+  path: string[];
+  label: string;
+}
+
+/** A competition plus the display fields a grid header needs. */
+export type WithCode<T extends CompetitionLike> = T & {
   /** The header code ("UBS"), unique across the whole matrix. */
   code: string;
   /** The category without the sport ("U-14 · Boys · Singles"). */
   title: string;
-}
+};
+
+/** A column of the entries matrix. */
+export type MatrixColumn = WithCode<PublicEntryCompetition>;
 
 /** One sport's run of columns — the grid's top band, `span` cells wide. */
-export interface MatrixBand {
+export interface Band<T extends CompetitionLike> {
   sportKey: string;
   sportName: string;
-  columns: MatrixColumn[];
+  columns: WithCode<T>[];
 }
+
+export type MatrixBand = Band<PublicEntryCompetition>;
 
 /** Initials of a category path: ["U-14","Boys","Singles"] -> "UBS".
  *
@@ -59,7 +78,7 @@ export function pathCode(path: string[], sportName: string): string {
  * would map one code to two competitions and the grid would lie. A clash is
  * broken by suffixing an index, so every code names exactly one column.
  */
-export function columnCodes(comps: PublicEntryCompetition[]): string[] {
+export function columnCodes(comps: CompetitionLike[]): string[] {
   const used = new Set<string>();
   return comps.map((c) => {
     const base = pathCode(c.path, c.sport_name) || "?";
@@ -76,13 +95,15 @@ export function columnCodes(comps: PublicEntryCompetition[]): string[] {
 
 /** The category label without the sport ("U-14 · Boys · Singles"), falling
  * back to the sport name for a category-less sport. */
-export function columnTitle(comp: PublicEntryCompetition): string {
+export function columnTitle(comp: CompetitionLike): string {
   return comp.path.length ? comp.path.join(" · ") : comp.sport_name;
 }
 
 /** Columns in payload order (the organiser's own category order), each with
  * its unique code. */
-export function buildColumns(comps: PublicEntryCompetition[]): MatrixColumn[] {
+export function buildColumns<T extends CompetitionLike>(
+  comps: T[],
+): WithCode<T>[] {
   const codes = columnCodes(comps);
   return comps.map((c, i) => ({
     ...c,
@@ -93,8 +114,10 @@ export function buildColumns(comps: PublicEntryCompetition[]): MatrixColumn[] {
 
 /** Columns grouped into their sport bands, sports in first-appearance order —
  * the band header spans its own run, so the runs must stay contiguous. */
-export function buildBands(columns: MatrixColumn[]): MatrixBand[] {
-  const bands: MatrixBand[] = [];
+export function buildBands<T extends CompetitionLike>(
+  columns: WithCode<T>[],
+): Band<T>[] {
+  const bands: Band<T>[] = [];
   for (const col of columns) {
     const last = bands[bands.length - 1];
     if (last && last.sportKey === col.sport_key) {
@@ -128,7 +151,7 @@ export function cellCount(
  * would make the filter look broken. */
 export function visibleRows(
   rows: PublicEntryInstitution[],
-  columns: MatrixColumn[],
+  columns: CompetitionLike[],
   opts: { search?: string; sport?: string; sort?: SortKey } = {},
 ): PublicEntryInstitution[] {
   const q = (opts.search ?? "").trim().toLowerCase();
