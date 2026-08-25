@@ -290,15 +290,22 @@ describe("LensUploadPage", () => {
     ).toBeDisabled();
     expect(within(review).getByText(/A story title is required/i));
 
-    // Optional description rides along only when filled.
+    // Optional description rides along only when filled — and each
+    // photograph gets its own optional caption right in the grid.
     await userEvent.type(
       within(review).getByTestId("review-story-description"),
       "From warm-up to podium",
+    );
+    await userEvent.type(
+      within(review).getByLabelText(/Caption a\.jpg/),
+      "The winning spike",
     );
     await userEvent.type(titleInput, "Road to the final");
     await userEvent.click(within(review).getByTestId("confirm-upload-btn"));
 
     await waitFor(() => expect(lensApi.upload).toHaveBeenCalledTimes(1));
+    const [, fd] = vi.mocked(lensApi.upload).mock.calls[0];
+    expect((fd as FormData).get("caption")).toBe("The winning spike");
     // The entry the uploads created is named immediately.
     await waitFor(() =>
       expect(lensApi.setStoryTitle).toHaveBeenCalledWith("tok123", "s9", {
@@ -337,73 +344,4 @@ describe("LensUploadPage", () => {
     expect(await screen.findByText("Photo removed")).toBeInTheDocument();
   });
 
-  it("authors a photo story: title, ordered frames, and entry-scoped caps", async () => {
-    const STORY = "Beyond the Court - A Photo Story";
-    vi.mocked(lensApi.passContext).mockResolvedValue({
-      ...CTX,
-      campaign: {
-        ...CTX.campaign,
-        award_categories: [STORY],
-        category_limits: { [STORY]: 1 },
-        story_categories: [STORY],
-        story_photos_per_entry: 4,
-      },
-      stories: [
-        {
-          id: "s1",
-          title: "",
-          description: "",
-          category: STORY,
-          photos: [
-            {
-              upload_ref: "f2",
-              url: "/m/f2.jpg",
-              thumb_url: "/m/f2_t.jpg",
-              caption: "second",
-              position: 2,
-              created_at: "2026-08-21T10:00:00Z",
-            },
-            {
-              upload_ref: "f1",
-              url: "/m/f1.jpg",
-              thumb_url: "/m/f1_t.jpg",
-              caption: "first",
-              position: 1,
-              created_at: "2026-08-21T09:00:00Z",
-            },
-          ],
-        },
-      ],
-    });
-    vi.mocked(lensApi.reorderStory).mockResolvedValue({ story: {} as never });
-    mount();
-
-    // The panel renders the frames in their INTENDED order (position), not
-    // upload order.
-    const panel = await screen.findByTestId("story-panel");
-    expect(panel).toHaveTextContent("first");
-    expect(panel).toHaveTextContent("second");
-    const positions = within(panel)
-      .getAllByText(/^(1|2)$/, { selector: "span.font-tabular" })
-      .map((el) => el.textContent);
-    expect(positions).toEqual(["1", "2"]);
-    expect(screen.getByTestId("frame-up-2")).toBeEnabled();
-
-    await userEvent.click(screen.getByTestId("frame-up-2"));
-    expect(lensApi.reorderStory).toHaveBeenCalledWith("tok123", "s1", {
-      upload_ref: "f2",
-      position: 1,
-    });
-
-    // The entry gets its title.
-    vi.mocked(lensApi.setStoryTitle).mockResolvedValue({ story: {} as never });
-    await userEvent.type(
-      screen.getByTestId("story-title-input"),
-      "Road to the final",
-    );
-    await userEvent.click(screen.getByTestId("story-title-save"));
-    expect(lensApi.setStoryTitle).toHaveBeenCalledWith("tok123", "s1", {
-      title: "Road to the final",
-    });
-  });
 });

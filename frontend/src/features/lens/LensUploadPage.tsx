@@ -3,9 +3,7 @@ import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
-  ArrowDown,
   ArrowLeftRight,
-  ArrowUp,
   Camera,
   CheckCircle2,
   Loader2,
@@ -45,6 +43,8 @@ interface PickedPhoto {
   key: string;
   file: File;
   preview: string;
+  /** Optional per-photo caption (the competition allows ~15 words each). */
+  caption: string;
 }
 
 function makePreview(file: File): string {
@@ -146,7 +146,6 @@ export function LensUploadPage({
   // Local draft of the story title/description: used BOTH in the review step
   // (mandatory title before upload) and in the story band afterwards.
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
-  const [descDraft, setDescDraft] = useState<string | null>(null);
   const [storyDescDraft, setStoryDescDraft] = useState("");
   const resetStoryDrafts = (): void => {
     setTitleDraft(null);
@@ -292,6 +291,7 @@ export function LensUploadPage({
         key: `${Date.now()}-${i}-${f.name}`,
         file: f,
         preview: makePreview(f),
+        caption: "",
       })),
     ]);
     if (inputRef.current) inputRef.current.value = "";
@@ -335,6 +335,7 @@ export function LensUploadPage({
         const compact = await compressImage(photo.file, { preferJpeg: true });
         const fd = new FormData();
         fd.append("file", compact, compact.name);
+        if (photo.caption.trim()) fd.append("caption", photo.caption.trim());
         if (category) fd.append("category", category);
         fd.append("event_id", newEventId());
         const res = await lensApi.upload(token, fd);
@@ -383,19 +384,6 @@ export function LensUploadPage({
       });
     } finally {
       setDeleteRef(null);
-    }
-  };
-
-  const moveFrame = async (uploadRef: string, position: number): Promise<void> => {
-    if (!story) return;
-    try {
-      await lensApi.reorderStory(token, story.id, {
-        upload_ref: uploadRef,
-        position,
-      });
-      void qc.invalidateQueries({ queryKey: qk.lensPass(token) });
-    } catch {
-      push({ kind: "error", title: t("Could not reorder the story.") });
     }
   };
 
@@ -564,6 +552,23 @@ export function LensUploadPage({
                         >
                           <X aria-hidden="true" className="h-3.5 w-3.5" />
                         </button>
+                        <input
+                          value={p.caption}
+                          data-testid={`pick-caption-${p.key}`}
+                          maxLength={200}
+                          placeholder={t("Caption…")}
+                          aria-label={`${t("Caption")} ${p.file.name}`}
+                          onChange={(e) =>
+                            setPicked((cur) =>
+                              cur.map((x) =>
+                                x.key === p.key
+                                  ? { ...x, caption: e.target.value }
+                                  : x,
+                              ),
+                            )
+                          }
+                          className="mt-1 w-full rounded-md border border-border bg-card px-2 py-1 text-[0.6875rem]"
+                        />
                       </li>
                     ))}
                   </ul>
@@ -684,119 +689,6 @@ export function LensUploadPage({
               {t("Uploads have closed.")}
             </p>
           )}
-
-          {/* Photo story authoring: only when the selected category IS a
-              story entry. */}
-          {story ? (
-            <section
-              className="border-t border-border"
-              data-testid="story-panel"
-            >
-              <div className="flex items-center gap-2 px-3 pt-3 sm:px-4">
-                <h2 className="panel-title">{t("Your photo story")}</h2>
-                <span className="font-tabular text-xs text-muted-foreground">
-                  {storyFrames.length}/{ctx.campaign.story_photos_per_entry}
-                </span>
-              </div>
-              <div className="flex flex-col gap-2.5 p-3 sm:p-4">
-                <div className="flex flex-col gap-2">
-                  <input
-                    value={titleDraft ?? story.title ?? ""}
-                    data-testid="story-title-input"
-                    disabled={running || !open}
-                    maxLength={120}
-                    placeholder={t("Story title")}
-                    aria-label={t("Story title")}
-                    onChange={(e) => setTitleDraft(e.target.value)}
-                    className="h-10 w-full rounded-md border border-border bg-card px-2.5 text-sm"
-                  />
-                  <textarea
-                    value={descDraft ?? story.description ?? ""}
-                    data-testid="story-desc-input"
-                    disabled={running || !open}
-                    maxLength={1000}
-                    rows={2}
-                    placeholder={t("Description (optional)")}
-                    aria-label={t("Description")}
-                    onChange={(e) => setDescDraft(e.target.value)}
-                    className="w-full rounded-md border border-border bg-card px-2.5 py-2 text-sm"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="self-start"
-                    data-testid="story-title-save"
-                    disabled={
-                      running ||
-                      !open ||
-                      ((titleDraft ?? "") === (story.title ?? "") &&
-                        (descDraft ?? "") === (story.description ?? ""))
-                    }
-                    onClick={async () => {
-                      try {
-                        await lensApi.setStoryTitle(token, story.id, {
-                          title: titleDraft ?? "",
-                          ...(descDraft !== null
-                            ? { description: descDraft }
-                            : {}),
-                        });
-                        push({ kind: "success", title: t("Story saved") });
-                        void qc.invalidateQueries({ queryKey: qk.lensPass(token) });
-                      } catch {
-                        push({ kind: "error", title: t("Could not save the story.") });
-                      }
-                    }}
-                  >
-                    {t("Save")}
-                  </Button>
-                </div>
-                <ol className="flex flex-col gap-2" data-testid="story-frames">
-                  {storyFrames.map((f, idx) => (
-                    <li
-                      key={f.upload_ref}
-                      className="flex items-center gap-2.5 rounded-lg border border-border p-2"
-                      data-testid={`story-frame-${f.position}`}
-                    >
-                      <span className="font-tabular w-5 shrink-0 text-center text-sm font-semibold text-muted-foreground">
-                        {f.position}
-                      </span>
-                      <img
-                        src={f.thumb_url}
-                        alt={f.caption || t("Uploaded photo")}
-                        loading="lazy"
-                        className="h-12 w-12 shrink-0 rounded-md border border-border object-cover"
-                      />
-                      <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                        {f.caption || t("No caption")}
-                      </p>
-                      <div className="flex shrink-0 flex-col gap-0.5">
-                        <button
-                          type="button"
-                          aria-label={t("Move earlier")}
-                          data-testid={`frame-up-${f.position}`}
-                          disabled={running || !open || idx === 0}
-                          onClick={() => void moveFrame(f.upload_ref, f.position - 1)}
-                          className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                        >
-                          <ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={t("Move later")}
-                          data-testid={`frame-down-${f.position}`}
-                          disabled={running || !open || idx === storyFrames.length - 1}
-                          onClick={() => void moveFrame(f.upload_ref, f.position + 1)}
-                          className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                        >
-                          <ArrowDown aria-hidden="true" className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            </section>
-          ) : null}
 
           {/* Your photos. */}
           <section className="border-t border-border">
