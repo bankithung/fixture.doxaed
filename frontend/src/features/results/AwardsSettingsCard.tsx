@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, Medal, Plus, Trash2, Wand2 } from "lucide-react";
-import { ApiError } from "@/api/client";
+import { ApiError } from "@/types/api";
 import { tournamentsApi, type AwardsConfig } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
